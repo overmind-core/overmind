@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <script>
+      (function() {
+        var theme = localStorage.getItem('overmind-theme');
+        var resolved = theme === 'dark' ? 'dark' : (theme === 'light' ? 'light' : (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'));
+        if (resolved === 'dark') document.documentElement.classList.add('dark');
+        else document.documentElement.classList.remove('dark');
+      })();
+    </script>
+    <title>Overmind | Supervision for Super-intelligence</title>
+    <meta name="description" content="Overmind is a devtool that enables AI to learn from production data. Using pattern of life analysis, it turns real-world agent behaviour into continuous improvement, allowing teams to ship secure and highly specialised agents." />
+    <link rel="icon" href="/favicon.ico" />
+    <link rel="apple-touch-icon" href="/logo192.png" />
+    <link rel="manifest" href="/manifest.json" />
+    <meta name="theme-color" content="#000000" />
+  </head>
+  <body>
+    <div id="app"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

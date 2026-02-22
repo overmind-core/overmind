@@ -1,0 +1,89 @@
+x-env-common: &env-common
+  env_file: .env
+  environment:
+    - DATABASE_URL=postgresql+asyncpg://overmind:overmind@postgres:5432/overmind_core
+    - VALKEY_HOST=valkey
+    - VALKEY_PORT=6379
+    - VALKEY_DB=0
+    - CELERY_BROKER_URL=redis://valkey:6379/0
+    - CELERY_RESULT_BACKEND=redis://valkey:6379/0
+    - SECRET_KEY=${SECRET_KEY:-local-dev-secret-change-in-production}
+    - DEBUG=${DEBUG:-true}
+    - PROXY_TOKEN=${PROXY_TOKEN:-default-proxy-token}
+    - OVERMIND_TRACES_URL=http://api:8000/api/v1/traces/create-backend-trace
+    - FRONTEND_URL=${FRONTEND_URL:-http://localhost:5173}
+
+services:
+  postgres:
+    image: postgres:17-bullseye
+    environment:
+      POSTGRES_USER: overmind
+      POSTGRES_PASSWORD: overmind
+      POSTGRES_DB: overmind_core
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U overmind -d overmind_core"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  valkey:
+    image: valkey/valkey:latest
+    ports:
+      - "6379:6379"
+    volumes:
+      - valkey_data:/data
+    healthcheck:
+      test: ["CMD", "valkey-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  api:
+    build: .
+    command: >
+      sh -c "alembic upgrade head &&
+             uvicorn overmind_core.main:app --host 0.0.0.0 --port 8000 --reload"
+    <<: *env-common
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./overmind_core:/app/overmind_core
+      - ./alembic:/app/alembic
+      - ./tests:/app/tests
+    depends_on:
+      postgres:
+        condition: service_healthy
+      valkey:
+        condition: service_healthy
+
+  celery-worker:
+    build: .
+    command: celery -A overmind_core.celery_worker worker --loglevel=info --pool=prefork --concurrency=2
+    <<: *env-common
+    volumes:
+      - ./overmind_core:/app/overmind_core
+    depends_on:
+      postgres:
+        condition: service_healthy
+      valkey:
+        condition: service_healthy
+
+  celery-beat:
+    build: .
+    command: celery -A overmind_core.celery_worker beat --loglevel=info
+    <<: *env-common
+    volumes:
+      - ./overmind_core:/app/overmind_core
+    depends_on:
+      postgres:
+        condition: service_healthy
+      valkey:
+        condition: service_healthy
+
+volumes:
+  postgres_data:
+  valkey_data:

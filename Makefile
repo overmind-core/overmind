@@ -1,0 +1,38 @@
+.PHONY: run stop logs migrate revision test lint psql
+
+run:
+	docker compose up --build
+
+run-detached:
+	docker compose up --build -d
+
+stop:
+	docker compose down
+
+logs:
+	docker compose logs -f
+
+logs-api:
+	docker compose logs -f api
+
+migrate:
+	docker compose exec api alembic upgrade head
+
+revision:
+	docker compose exec api alembic revision --autogenerate -m "$(m)"
+
+test:
+	docker compose run --rm api python -m pytest $(test_args)
+
+lint:
+	docker compose run --rm api ruff check --fix overmind_core/
+	docker compose run --rm api ruff format overmind_core/
+
+psql:
+	docker compose exec postgres psql -U overmind -d overmind_core
+
+shell:
+	docker compose exec api python -c "import overmind_core; print('overmind_core loaded')"
+
+clean:
+	docker compose down -v

@@ -1,0 +1,124 @@
+from typing import Any, List, Optional
+from pydantic import BaseModel, Field
+from uuid import UUID
+from overmind_core.utils import calculate_llm_usage_cost, _safe_int
+from overmind_core.models.traces import SpanModel, TraceModel
+
+
+def _nonempty(value: Any) -> Any:
+    """Return *value* only if it is non-empty (not None / {} / []).
+
+    Stored JSONB columns that were never set default to {} or []; we normalise
+    those to None so the frontend correctly shows "—" instead of "{}" or "[]".
+    """
+    if value is None:
+        return None
+    if isinstance(value, (dict, list)) and len(value) == 0:
+        return None
+    return value
+
+
+class SpanResponseModel(BaseModel):
+    user_id: Optional[UUID] = Field(None, alias="UserId")
+    project_id: Optional[UUID] = Field(None, alias="ProjectId")
+    business_id: Optional[UUID] = Field(
+        None, alias="BusinessId"
+    )  # org id, not used anymore
+
+    trace_id: UUID = Field(..., alias="TraceId")
+    span_id: str = Field(..., alias="SpanId")
+    parent_span_id: Optional[str] = Field(None, alias="ParentSpanId")
+    trace_state: Optional[str] = Field("", alias="TraceState")
+    start_time_unix_nano: int = Field(..., alias="StartTimeUnixNano")
+    end_time_unix_nano: int = Field(..., alias="EndTimeUnixNano")
+    duration_nano: int = Field(..., alias="DurationNano")
+    status_code: int = Field(..., alias="StatusCode")
+    status_message: Optional[str] = Field("", alias="StatusMessage")
+    resource_attributes: dict = Field(default_factory=dict, alias="ResourceAttributes")
+    span_attributes: dict = Field(default_factory=dict, alias="SpanAttributes")
+    inputs: Optional[Any] = Field(None, alias="Inputs")
+    outputs: Optional[Any] = Field(None, alias="Outputs")
+    policy_outcome: Optional[str] = Field("", alias="PolicyOutcome")
+    scope_name: Optional[str] = Field("", alias="ScopeName")
+    name: Optional[str] = Field("", alias="Name")
+    scope_version: Optional[str] = Field("", alias="ScopeVersion")
+    events: list = Field(default_factory=list, alias="Events")
+    links: list = Field(default_factory=list, alias="Links")
+
+    @classmethod
+    def from_orm_obj(
+        cls, obj: SpanModel, trace_obj: Optional[TraceModel] = None
+    ) -> "SpanResponseModel":
+        # Directly load from ORM (SQLAlchemy) object to Pydantic model
+        return cls(
+            UserId=getattr(obj, "user_id", None),
+            ProjectId=getattr(obj, "project_id", None),
+            BusinessId=None,
+            TraceId=obj.trace_id,
+            SpanId=obj.span_id,
+            ParentSpanId=obj.parent_span_id,
+            TraceState="",  # not present in ORM
+            StartTimeUnixNano=obj.start_time_unix_nano,
+            EndTimeUnixNano=obj.end_time_unix_nano,
+            DurationNano=obj.end_time_unix_nano - obj.start_time_unix_nano,
+            StatusCode=obj.status_code,
+            StatusMessage="",
+            ResourceAttributes=trace_obj.metadata_attributes if trace_obj else {},
+            SpanAttributes={
+                **obj.metadata_attributes,
+                "feedback_score": obj.feedback_score,
+                "cost": obj.metadata_attributes.get("cost")
+                or calculate_llm_usage_cost(
+                    str(obj.metadata_attributes.get("gen_ai.request.model", "") or ""),
+                    _safe_int(
+                        obj.metadata_attributes.get("gen_ai.usage.input_tokens", 0)
+                    ),
+                    _safe_int(
+                        obj.metadata_attributes.get("gen_ai.usage.output_tokens", 0)
+                    ),
+                ),
+            },
+            Inputs=_nonempty(obj.input),
+            Outputs=_nonempty(obj.output),
+            PolicyOutcome=obj.metadata_attributes.get("PolicyOutcome", ""),
+            ScopeName=trace_obj.source if trace_obj else obj.operation,
+            Name=obj.operation,
+            ScopeVersion=trace_obj.version if trace_obj else "",
+            Events=obj.metadata_attributes.get("events", []),
+            Links=obj.metadata_attributes.get("links", []),
+        )
+
+    class Config:
+        allow_population_by_field_name = True
+        orm_mode = True
+        extra = "allow"
+
+
+class TraceSpansResponseModel(BaseModel):
+    trace_id: str
+    spans: List[SpanResponseModel]
+    span_count: int
+
+
+class TraceListResponseModel(BaseModel):
+    class TraceListFilterModel(BaseModel):
+        # ── Required / structural ────────────────────────────────────────────
+        project_id: UUID
+        user_id: Optional[str] = None  # set from auth context, not from the request
+        start_time_nano: Optional[int] = None
+        end_time_nano: Optional[int] = None
+        root_only: bool = True
+        limit: int = 100
+        offset: int = 0
+        # ── Prompt shorthand (compound key, kept explicit) ───────────────────
+        prompt_slug: Optional[str] = None
+        prompt_version: Optional[str] = None
+        # ── Generic DRF-style filter expressions ────────────────────────────
+        # Each entry: "field;operator;value"  (see trace_filter_backend.py)
+        query: List[str] = []
+
+    traces: List[SpanResponseModel]
+    count: int
+    limit: int
+    offset: int
+    filters: TraceListFilterModel

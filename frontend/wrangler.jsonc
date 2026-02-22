@@ -1,0 +1,12 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "console-overmind",
+  "compatibility_date": "2025-10-14",
+  "pages_build_output_dir": "dist",
+  "observability": {
+    "enabled": true
+  },
+  "vars": {
+    "WRANGLER_LOG_LEVEL": "debug"
+  }
+}

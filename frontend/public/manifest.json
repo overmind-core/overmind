@@ -1,0 +1,17 @@
+{
+  "background_color": "#fafafa",
+  "description": "AI agent observability and orchestration platform",
+  "display": "standalone",
+  "icons": [
+    {
+      "purpose": "any",
+      "sizes": "any",
+      "src": "overmin_logo_large.svg",
+      "type": "image/svg+xml"
+    }
+  ],
+  "name": "Overmind",
+  "short_name": "Overmind",
+  "start_url": "/",
+  "theme_color": "#ed670f"
+}
