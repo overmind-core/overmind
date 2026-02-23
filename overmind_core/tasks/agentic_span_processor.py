@@ -68,7 +68,7 @@ def detect_agentic_span(
     return False
 
 
-def _find_tool_result(messages: list[Dict], tool_call_id: str) -> str | None:
+def _find_tool_result(messages: list[dict], tool_call_id: str) -> str | None:
     """Find the tool result message matching a tool call ID."""
     for msg in messages:
         if not isinstance(msg, dict):
@@ -78,7 +78,7 @@ def _find_tool_result(messages: list[Dict], tool_call_id: str) -> str | None:
     return None
 
 
-def _extract_tool_calls_from_messages(messages: list[Dict]) -> list[dict[str, Any]]:
+def _extract_tool_calls_from_messages(messages: list[dict]) -> list[dict[str, Any]]:
     """
     Extract all tool calls and their results from a message list.
 
@@ -391,7 +391,7 @@ def _safe_parse_json(data: Any) -> Any:
     return data
 
 
-def _get_tools_from_metadata_attributes(metadata_attributes: Dict) -> list[Dict]:
+def _get_tools_from_metadata_attributes(metadata_attributes: dict) -> list[dict]:
     """
     Reconstruct the OpenAI-format tools array from the flat
     ``llm.request.functions.N.*`` keys stored in metadata_attributes by the
@@ -405,7 +405,7 @@ def _get_tools_from_metadata_attributes(metadata_attributes: Dict) -> list[Dict]
     if not metadata_attributes or not isinstance(metadata_attributes, dict):
         return []
 
-    tools: list[Dict] = []
+    tools: list[dict] = []
     i = 0
     while True:
         prefix = f"llm.request.functions.{i}"
@@ -432,7 +432,7 @@ def _get_tools_from_metadata_attributes(metadata_attributes: Dict) -> list[Dict]
     return tools
 
 
-def _format_message_history(messages: list[Dict]) -> str:
+def _format_message_history(messages: list[dict]) -> str:
     """
     Format a list of messages into a human-readable conversation history for the judge.
 
@@ -524,7 +524,7 @@ def extract_tool_call_span_for_evaluation(
         input_data if isinstance(input_data, list) else []
     )
 
-    tool_calls: list[Dict] = []
+    tool_calls: list[dict] = []
     if isinstance(output_data, dict):
         if output_data.get("tool_calls"):
             tool_calls = output_data["tool_calls"]

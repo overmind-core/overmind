@@ -793,7 +793,7 @@ async def _run_backtesting(
         # ---------------------------------------------------------------
         # 5. Aggregate results per model
         # ---------------------------------------------------------------
-        results_by_model: dict[str, list[Dict]] = defaultdict(list)
+        results_by_model: dict[str, list[dict]] = defaultdict(list)
         for r in processed_results:
             results_by_model[r["model_name"]].append(r)
 

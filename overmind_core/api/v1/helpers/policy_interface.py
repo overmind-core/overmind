@@ -27,7 +27,7 @@ class OrgPolicyProvider(Protocol):
 
     async def get_org_mcp_policy(
         self, organisation_id: UUID, db: AsyncSession
-    ) -> Dict | None:
+    ) -> dict | None:
         ...
 
 
@@ -46,5 +46,5 @@ class NoopOrgPolicyProvider:
 
     async def get_org_mcp_policy(
         self, organisation_id: UUID, db: AsyncSession
-    ) -> Dict | None:
+    ) -> dict | None:
         return None
