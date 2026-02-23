@@ -3,7 +3,8 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import { AlertTriangle, ArrowLeft, CheckCircle, Clock, Loader2, XCircle } from "lucide-react";
 
 import apiClient from "@/client";
-import { BacktestRecommendations } from "@/components/jobs/JobCard";
+import { JobResult } from "@/components/jobs";
+import { SheetWrapper } from "@/components/sheet-wrapper";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import {
@@ -14,7 +15,6 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { SheetWrapper } from "@/components/sheet-wrapper";
 
 export const Route = createFileRoute("/_auth/jobs/$jobId")({
   component: () => (
@@ -70,51 +70,6 @@ function humanSlug(slug?: string | null): string {
   return slug.replace(/-/g, " ").replace(/_/g, " ");
 }
 
-function JobResultContent({ result }: { result: Record<string, unknown> }) {
-  const recommendations = result.recommendations as Record<string, unknown> | undefined;
-  const hasRecommendations =
-    recommendations && typeof recommendations === "object" && recommendations.summary;
-
-  const complexKeys = new Set(["status", "raw", "comparison_test", "recommendations"]);
-  const simpleEntries = Object.entries(result).filter(([k]) => !complexKeys.has(k));
-
-  return (
-    <div className="space-y-4">
-      {simpleEntries.length > 0 && (
-        <div className="flex flex-wrap gap-6">
-          {simpleEntries.map(([k, v]) => {
-            let display: string;
-            if (v == null) {
-              display = "—";
-            } else if (typeof v === "object") {
-              display = JSON.stringify(v);
-              if (display.length > 60) display = `${display.slice(0, 57)}…`;
-            } else {
-              display = String(v);
-            }
-            return (
-              <div className="min-w-[80px]" key={k}>
-                <span className="text-[0.68rem] font-medium uppercase tracking-wider text-muted-foreground">
-                  {k.replace(/_/g, " ")}
-                </span>
-                <p className="mt-0.5 text-sm font-semibold text-foreground break-all">{display}</p>
-              </div>
-            );
-          })}
-        </div>
-      )}
-
-      {hasRecommendations && (
-        <div className="rounded-md border border-border bg-muted/30 p-4 space-y-3">
-          <p className="text-[0.72rem] font-semibold uppercase tracking-widest text-muted-foreground">
-            Recommendations
-          </p>
-          <BacktestRecommendations data={recommendations} />
-        </div>
-      )}
-    </div>
-  );
-}
 
 function JobDetailPage() {
   const { jobId } = Route.useParams();
@@ -236,7 +191,7 @@ function JobDetailPage() {
                 <h2 className="text-base font-semibold">Result</h2>
               </CardHeader>
               <CardContent>
-                <JobResultContent result={job.result as Record<string, unknown>} />
+                <JobResult job={job} />
               </CardContent>
             </Card>
           )}
