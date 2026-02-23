@@ -3,7 +3,7 @@ import uuid as _uuid
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
-from sqlalchemy import select
+from sqlalchemy import and_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from typing import Any
 
@@ -149,6 +149,103 @@ async def add_suggestion_feedback(
     suggestion.vote = data.vote
     suggestion.feedback = data.feedback
 
+    await db.commit()
+    await db.refresh(suggestion)
+
+    return SuggestionDetailOut(
+        id=str(suggestion.suggestion_id),
+        title=suggestion.title,
+        description=suggestion.description,
+        status=suggestion.status,
+        vote=suggestion.vote,
+        feedback=suggestion.feedback,
+        prompt_slug=suggestion.prompt_slug,
+        new_prompt_version=suggestion.new_prompt_version,
+        scores=suggestion.scores,
+        created_at=suggestion.created_at.isoformat() if suggestion.created_at else None,
+    )
+
+
+@router.post("/{suggestion_id}/accept", response_model=SuggestionDetailOut)
+async def accept_suggestion(
+    suggestion_id: str,
+    user: AuthenticatedUserOrToken = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Accept a prompt version suggestion.
+
+    Atomically flips is_active: the suggested new version becomes active,
+    all other versions of the same slug+project become inactive.
+    Sets suggestion status to 'accepted'.
+    """
+    try:
+        sid = _uuid.UUID(suggestion_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid suggestion_id format")
+
+    suggestion = await get_suggestion_or_404(sid, user, db)
+
+    if suggestion.new_prompt_version is None:
+        raise HTTPException(
+            status_code=400, detail="Suggestion has no associated prompt version"
+        )
+
+    # Deactivate all versions for this slug+project
+    all_versions_q = await db.execute(
+        select(Prompt).where(
+            and_(
+                Prompt.slug == suggestion.prompt_slug,
+                Prompt.project_id == suggestion.project_id,
+            )
+        )
+    )
+    all_versions = all_versions_q.scalars().all()
+    for v in all_versions:
+        v.is_active = False
+
+    # Activate the accepted version
+    target = next(
+        (v for v in all_versions if v.version == suggestion.new_prompt_version), None
+    )
+    if not target:
+        raise HTTPException(status_code=404, detail="Target prompt version not found")
+    target.is_active = True
+
+    suggestion.status = "accepted"
+    await db.commit()
+    await db.refresh(suggestion)
+
+    return SuggestionDetailOut(
+        id=str(suggestion.suggestion_id),
+        title=suggestion.title,
+        description=suggestion.description,
+        status=suggestion.status,
+        vote=suggestion.vote,
+        feedback=suggestion.feedback,
+        prompt_slug=suggestion.prompt_slug,
+        new_prompt_version=suggestion.new_prompt_version,
+        scores=suggestion.scores,
+        created_at=suggestion.created_at.isoformat() if suggestion.created_at else None,
+    )
+
+
+@router.post("/{suggestion_id}/dismiss", response_model=SuggestionDetailOut)
+async def dismiss_suggestion(
+    suggestion_id: str,
+    user: AuthenticatedUserOrToken = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Dismiss a suggestion. The currently active version remains unchanged.
+    """
+    try:
+        sid = _uuid.UUID(suggestion_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid suggestion_id format")
+
+    suggestion = await get_suggestion_or_404(sid, user, db)
+    suggestion.status = "dismissed"
     await db.commit()
     await db.refresh(suggestion)
 
