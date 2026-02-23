@@ -180,26 +180,40 @@ async def get_analytics_for_prompt(
 
 async def get_latest_prompts_for_project(project_id, db: AsyncSession) -> list[Prompt]:
     """
-    Return the latest version of each prompt slug in a project.
+    Return the is_active version of each prompt slug in a project.
 
-    Args:
-        project_id: The project UUID
-        db: Database session
-
-    Returns:
-        List of Prompt objects representing the latest version of each prompt slug
+    Falls back to max(version) for any slug that has no is_active=True row
+    (e.g. legacy data inserted before this column existed).
     """
+    # Primary: rows explicitly marked active
+    active_result = await db.execute(
+        select(Prompt).where(
+            and_(Prompt.project_id == project_id, Prompt.is_active.is_(True))
+        )
+    )
+    active_prompts = list(active_result.scalars().all())
+
+    # Fallback: for slugs with no active row, use max version (legacy safety net)
+    active_slugs = {p.slug for p in active_prompts}
+    if active_slugs:
+        fallback_where = and_(
+            Prompt.project_id == project_id,
+            Prompt.slug.not_in(active_slugs),
+        )
+    else:
+        fallback_where = Prompt.project_id == project_id
+
     subq = (
         select(
             Prompt.project_id,
             Prompt.slug,
             func.max(Prompt.version).label("max_version"),
         )
-        .where(Prompt.project_id == project_id)
+        .where(fallback_where)
         .group_by(Prompt.project_id, Prompt.slug)
         .subquery()
     )
-    result = await db.execute(
+    fallback_result = await db.execute(
         select(Prompt).join(
             subq,
             and_(
@@ -209,4 +223,6 @@ async def get_latest_prompts_for_project(project_id, db: AsyncSession) -> list[P
             ),
         )
     )
-    return list(result.scalars().all())
+    fallback_prompts = list(fallback_result.scalars().all())
+
+    return active_prompts + fallback_prompts

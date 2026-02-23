@@ -48,6 +48,16 @@ export interface GetSuggestionApiV1SuggestionsSuggestionIdGetRequest {
     useCache?: boolean;
 }
 
+export interface AcceptSuggestionApiV1SuggestionsSuggestionIdAcceptPostRequest {
+    suggestionId: string;
+    useCache?: boolean;
+}
+
+export interface DismissSuggestionApiV1SuggestionsSuggestionIdDismissPostRequest {
+    suggestionId: string;
+    useCache?: boolean;
+}
+
 /**
  * 
  */
@@ -202,6 +212,100 @@ export class SuggestionsApi extends runtime.BaseAPI {
      */
     async getSuggestionApiV1SuggestionsSuggestionIdGet(requestParameters: GetSuggestionApiV1SuggestionsSuggestionIdGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<SuggestionDetailOut> {
         const response = await this.getSuggestionApiV1SuggestionsSuggestionIdGetRaw(requestParameters, initOverrides);
+        return await response.value();
+    }
+
+    /**
+     * Accept a prompt version suggestion, atomically making the new version active.
+     * Accept Suggestion
+     */
+    async acceptSuggestionApiV1SuggestionsSuggestionIdAcceptPostRaw(requestParameters: AcceptSuggestionApiV1SuggestionsSuggestionIdAcceptPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<SuggestionDetailOut>> {
+        if (requestParameters['suggestionId'] == null) {
+            throw new runtime.RequiredError(
+                'suggestionId',
+                'Required parameter "suggestionId" was null or undefined when calling acceptSuggestionApiV1SuggestionsSuggestionIdAcceptPost().'
+            );
+        }
+
+        const queryParameters: any = {};
+
+        if (requestParameters['useCache'] != null) {
+            queryParameters['use_cache'] = requestParameters['useCache'];
+        }
+
+        const headerParameters: runtime.HTTPHeaders = {};
+
+        if (this.configuration && this.configuration.accessToken) {
+            // oauth required
+            headerParameters["Authorization"] = await this.configuration.accessToken("OAuth2PasswordBearer", []);
+        }
+
+        let urlPath = `/api/v1/suggestions/{suggestion_id}/accept`;
+        urlPath = urlPath.replace(`{${"suggestion_id"}}`, encodeURIComponent(String(requestParameters['suggestionId'])));
+
+        const response = await this.request({
+            path: urlPath,
+            method: 'POST',
+            headers: headerParameters,
+            query: queryParameters,
+        }, initOverrides);
+
+        return new runtime.JSONApiResponse(response, (jsonValue) => SuggestionDetailOutFromJSON(jsonValue));
+    }
+
+    /**
+     * Accept a prompt version suggestion, atomically making the new version active.
+     * Accept Suggestion
+     */
+    async acceptSuggestionApiV1SuggestionsSuggestionIdAcceptPost(requestParameters: AcceptSuggestionApiV1SuggestionsSuggestionIdAcceptPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<SuggestionDetailOut> {
+        const response = await this.acceptSuggestionApiV1SuggestionsSuggestionIdAcceptPostRaw(requestParameters, initOverrides);
+        return await response.value();
+    }
+
+    /**
+     * Dismiss a suggestion, leaving the active version unchanged.
+     * Dismiss Suggestion
+     */
+    async dismissSuggestionApiV1SuggestionsSuggestionIdDismissPostRaw(requestParameters: DismissSuggestionApiV1SuggestionsSuggestionIdDismissPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<SuggestionDetailOut>> {
+        if (requestParameters['suggestionId'] == null) {
+            throw new runtime.RequiredError(
+                'suggestionId',
+                'Required parameter "suggestionId" was null or undefined when calling dismissSuggestionApiV1SuggestionsSuggestionIdDismissPost().'
+            );
+        }
+
+        const queryParameters: any = {};
+
+        if (requestParameters['useCache'] != null) {
+            queryParameters['use_cache'] = requestParameters['useCache'];
+        }
+
+        const headerParameters: runtime.HTTPHeaders = {};
+
+        if (this.configuration && this.configuration.accessToken) {
+            // oauth required
+            headerParameters["Authorization"] = await this.configuration.accessToken("OAuth2PasswordBearer", []);
+        }
+
+        let urlPath = `/api/v1/suggestions/{suggestion_id}/dismiss`;
+        urlPath = urlPath.replace(`{${"suggestion_id"}}`, encodeURIComponent(String(requestParameters['suggestionId'])));
+
+        const response = await this.request({
+            path: urlPath,
+            method: 'POST',
+            headers: headerParameters,
+            query: queryParameters,
+        }, initOverrides);
+
+        return new runtime.JSONApiResponse(response, (jsonValue) => SuggestionDetailOutFromJSON(jsonValue));
+    }
+
+    /**
+     * Dismiss a suggestion, leaving the active version unchanged.
+     * Dismiss Suggestion
+     */
+    async dismissSuggestionApiV1SuggestionsSuggestionIdDismissPost(requestParameters: DismissSuggestionApiV1SuggestionsSuggestionIdDismissPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<SuggestionDetailOut> {
+        const response = await this.dismissSuggestionApiV1SuggestionsSuggestionIdDismissPostRaw(requestParameters, initOverrides);
         return await response.value();
     }
 

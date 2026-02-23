@@ -848,6 +848,8 @@ async def create_prompt_version(
         display_name=base_prompt.display_name,
         evaluation_criteria=evaluation_criteria,
         improvement_metadata=improvement_metadata,
+        tags=base_prompt.tags,
+        is_active=False,  # tuning-created versions await acceptance
     )
 
     session.add(new_prompt)
