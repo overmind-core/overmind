@@ -1,3 +1,14 @@
+FROM oven/bun:1 AS frontend-build
+
+WORKDIR /frontend
+COPY frontend/package.json frontend/bun.lock ./
+RUN bun install --frozen-lockfile
+COPY frontend/ ./
+ENV VITE_API_BASE_URL=""
+ENV VITE_PUBLIC_POSTHOG_KEY=""
+ENV VITE_PUBLIC_POSTHOG_HOST=""
+RUN bun run build
+
 FROM python:3.12-slim
 
 WORKDIR /app
@@ -16,5 +27,7 @@ COPY overmind_core/ ./overmind_core/
 COPY alembic/ ./alembic/
 COPY alembic.ini ./alembic.ini
 COPY tests/ ./tests/
+
+COPY --from=frontend-build /frontend/dist ./frontend_dist
 
 EXPOSE 8000

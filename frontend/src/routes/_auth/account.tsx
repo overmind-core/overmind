@@ -1,24 +1,16 @@
 import { useState } from "react";
 
 import { useQuery } from "@tanstack/react-query";
-import { createFileRoute, useNavigate } from "@tanstack/react-router";
-import { Calendar, CheckCircle, Loader2, Mail, Trash2, User, XCircle } from "lucide-react";
+import { createFileRoute } from "@tanstack/react-router";
+import { Calendar, CheckCircle, Loader2, Lock, Mail, User, XCircle } from "lucide-react";
 
 import apiClient from "@/client";
 import { Alert } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import {
-  Dialog,
-  DialogClose,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
 import { formatDate } from "@/lib/utils";
 
@@ -27,10 +19,6 @@ export const Route = createFileRoute("/_auth/account")({
 });
 
 function AccountPage() {
-  const navigate = useNavigate();
-  const [deactivating, setDeactivating] = useState(false);
-  const [deactivateError, setDeactivateError] = useState("");
-
   const {
     data: userData,
     isLoading,
@@ -39,26 +27,6 @@ function AccountPage() {
     queryFn: () => apiClient.users.getCurrentUserProfileApiV1IamUsersMeGet(),
     queryKey: ["current-user"],
   });
-
-  const handleDeactivate = async () => {
-    try {
-      setDeactivating(true);
-      setDeactivateError("");
-      await apiClient.users.deactivateCurrentUserApiV1IamUsersMeDelete();
-      localStorage.removeItem("token");
-      localStorage.removeItem("auth_token");
-      localStorage.removeItem("auth_user");
-      navigate({ to: "/login" });
-    } catch (err) {
-      const msg =
-        (err as { data?: { detail?: { message?: string } } })?.data?.detail?.message ??
-        (err as Error)?.message ??
-        "Failed to deactivate";
-      setDeactivateError(msg);
-    } finally {
-      setDeactivating(false);
-    }
-  };
 
   if (isLoading) {
     return (
@@ -157,9 +125,6 @@ function AccountPage() {
                 <Badge variant={userData.isActive ? "success" : "secondary"}>
                   {userData.isActive ? "Active" : "Inactive"}
                 </Badge>
-                <Badge variant={userData.isVerified ? "success" : "warning"}>
-                  {userData.isVerified ? "Verified" : "Unverified"}
-                </Badge>
               </div>
             </div>
           </div>
@@ -176,63 +141,119 @@ function AccountPage() {
               </p>
             </div>
           </div>
-          <div className="flex items-center gap-4">
-            <div className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-accent/10">
-              <Calendar className="size-5 text-accent/80" />
-            </div>
-            <div className="min-w-0">
-              <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
-                Last Login
-              </p>
-              <p className="text-sm text-foreground">
-                {formatDate(userData.lastLogin?.toISOString())}
-              </p>
-            </div>
-          </div>
         </CardContent>
       </Card>
 
-      <Card className="overflow-hidden border-destructive/30 dark:border-destructive/40">
-        <div className="border-b border-destructive/20 bg-destructive/5 px-6 py-4 dark:bg-destructive/10">
-          <p className="font-medium text-destructive dark:text-destructive">Danger Zone</p>
-          <p className="text-sm text-muted-foreground">Irreversible and destructive actions</p>
-        </div>
-        <CardContent className="flex items-center justify-between gap-4 py-6">
-          <div>
-            <p className="font-medium text-foreground">Deactivate Account</p>
-            <p className="text-sm text-muted-foreground">
-              Temporarily disable access. Contact support to reactivate.
-            </p>
-          </div>
-          <Dialog>
-            <DialogTrigger asChild>
-              <Button size="icon" variant="destructive">
-                <Trash2 className="size-4" />
-              </Button>
-            </DialogTrigger>
-            <DialogContent>
-              <DialogHeader>
-                <DialogTitle>Deactivate Account</DialogTitle>
-                <DialogDescription>
-                  Are you sure? Your account will be disabled and you will be logged out. Contact
-                  support to reactivate.
-                </DialogDescription>
-              </DialogHeader>
-              {deactivateError && <Alert variant="destructive">{deactivateError}</Alert>}
-              <DialogFooter>
-                <DialogClose asChild>
-                  <Button disabled={deactivating} variant="outline">
-                    Cancel
-                  </Button>
-                </DialogClose>
-                <Button disabled={deactivating} onClick={handleDeactivate} variant="destructive">
-                  {deactivating ? <Loader2 className="size-4 animate-spin" /> : "Deactivate"}
-                </Button>
-              </DialogFooter>
-            </DialogContent>
-          </Dialog>
-        </CardContent>
-      </Card>
+      <ChangePasswordCard />
     </div>
+  );
+}
+
+function ChangePasswordCard() {
+  const [currentPassword, setCurrentPassword] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+  const [success, setSuccess] = useState("");
+
+  const baseUrl = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8000";
+
+  const handleChangePassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError("");
+    setSuccess("");
+
+    if (newPassword !== confirmPassword) {
+      setError("New passwords do not match");
+      return;
+    }
+    if (newPassword.length < 4) {
+      setError("New password must be at least 4 characters");
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const token = localStorage.getItem("token");
+      const res = await fetch(`${baseUrl}/api/v1/iam/users/me/password`, {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({
+          current_password: currentPassword,
+          new_password: newPassword,
+        }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data?.detail?.message ?? data?.detail ?? "Failed to change password");
+      }
+      setSuccess("Password changed successfully");
+      setCurrentPassword("");
+      setNewPassword("");
+      setConfirmPassword("");
+    } catch (err) {
+      setError((err as Error).message || "Failed to change password");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <Card className="overflow-hidden border-border">
+      <div className="border-b border-border bg-primary/5 px-6 py-4">
+        <div className="flex items-center gap-2">
+          <Lock className="size-4 text-primary" />
+          <p className="font-medium text-foreground">Change Password</p>
+        </div>
+        <p className="text-sm text-muted-foreground">Update your login password</p>
+      </div>
+      <CardContent className="pt-6">
+        <form className="max-w-sm space-y-4" onSubmit={handleChangePassword}>
+          <div className="space-y-1.5">
+            <Label htmlFor="current-password">Current Password</Label>
+            <Input
+              autoComplete="current-password"
+              id="current-password"
+              onChange={(e) => setCurrentPassword(e.target.value)}
+              required
+              type="password"
+              value={currentPassword}
+            />
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="new-password">New Password</Label>
+            <Input
+              autoComplete="new-password"
+              id="new-password"
+              onChange={(e) => setNewPassword(e.target.value)}
+              required
+              type="password"
+              value={newPassword}
+            />
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="confirm-password">Confirm New Password</Label>
+            <Input
+              autoComplete="new-password"
+              id="confirm-password"
+              onChange={(e) => setConfirmPassword(e.target.value)}
+              required
+              type="password"
+              value={confirmPassword}
+            />
+          </div>
+          {error && <Alert variant="destructive">{error}</Alert>}
+          {success && <Alert variant="success">{success}</Alert>}
+          <Button disabled={loading} type="submit">
+            {loading && <Loader2 className="mr-2 size-4 animate-spin" />}
+            Change Password
+          </Button>
+        </form>
+      </CardContent>
+    </Card>
   );
 }

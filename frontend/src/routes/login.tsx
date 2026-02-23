@@ -1,21 +1,63 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { useState } from "react";
+
+import { createFileRoute, useNavigate } from "@tanstack/react-router";
+import { Loader2 } from "lucide-react";
+
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 
 export const Route = createFileRoute("/login")({
   component: RouteComponent,
 });
 
-import { ContinueWithGoogle } from "@/components/continue-with-google";
-import { Separator } from "@/components/ui/separator";
-
 const TAGLINE = "Supervision for Super-intelligence";
 const BANNER_SRC = "/overmind_banner.jpg";
 
 function RouteComponent() {
-  const { authUser: user } = Route.useRouteContext();
+  const navigate = useNavigate();
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [error, setError] = useState("");
+  const [loading, setLoading] = useState(false);
+
+  const baseUrl = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8000";
+
+  const handleLogin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError("");
+    setLoading(true);
+    try {
+      const res = await fetch(`${baseUrl}/api/v1/iam/users/login`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, password }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data?.detail?.message ?? data?.detail ?? "Invalid email or password");
+      }
+      const data = await res.json();
+      localStorage.setItem("token", data.access_token);
+      localStorage.setItem(
+        "auth_user",
+        JSON.stringify({
+          id: data.user.user_id,
+          email: data.user.email,
+          name: data.user.full_name,
+          picture: null,
+        })
+      );
+      navigate({ to: "/" });
+    } catch (err) {
+      setError((err as Error).message || "Login failed");
+    } finally {
+      setLoading(false);
+    }
+  };
 
   return (
     <div className="relative flex h-screen w-full flex-col bg-muted/30 lg:flex-row">
-      {/* Subtle grid background - desktop only */}
       <div
         className="pointer-events-none absolute inset-0 z-0 hidden lg:block"
         style={{
@@ -27,40 +69,62 @@ function RouteComponent() {
         }}
       />
 
-      {/* Mobile: full-screen image with backdrop overlay */}
       <div className="absolute inset-0 lg:hidden">
         <img alt="Overmind" className="h-full w-full object-cover object-center" src={BANNER_SRC} />
         <div className="absolute inset-0 bg-linear-to-b from-black/30 via-black/50 to-black/80" />
       </div>
 
-      {/* Form side - on mobile: overlay on image with backdrop; on desktop: side panel */}
       <div className="relative z-10 flex min-h-0 flex-1 flex-col justify-center px-6 py-8 sm:px-12 sm:py-12 lg:w-[420px] lg:shrink-0 lg:bg-transparent">
-        <div className="space-y-4 rounded-xl bg-background/5 px-6 py-6 shadow-2xl backdrop-blur-md lg:rounded-none lg:bg-transparent lg:px-0 lg:py-0 lg:shadow-none lg:backdrop-blur-none">
+        <div className="space-y-5 rounded-xl bg-background/5 px-6 py-6 shadow-2xl backdrop-blur-md lg:rounded-none lg:bg-transparent lg:px-0 lg:py-0 lg:shadow-none lg:backdrop-blur-none">
           <h1 className="text-center text-3xl font-semibold tracking-tight sm:text-4xl invert lg:invert-0">
             Welcome to Overmind
           </h1>
           <p className="text-center text-lg text-muted-foreground sm:text-xl">{TAGLINE}</p>
-          <p className="text-center text-sm text-muted-foreground">
-            Sign in with your Google account to get started
-          </p>
-          <div className="flex justify-center">
-            <div className="w-full max-w-xs">
-              <ContinueWithGoogle />
+
+          <form className="mx-auto w-full max-w-xs space-y-4" onSubmit={handleLogin}>
+            <div className="space-y-1.5">
+              <Label className="invert lg:invert-0" htmlFor="email">
+                Username
+              </Label>
+              <Input
+                autoComplete="username"
+                id="email"
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="admin"
+                required
+                type="text"
+                value={email}
+              />
             </div>
-          </div>
-          {user && (
-            <>
-              <Separator className="my-4" />
-              <div className="rounded-lg bg-muted/50 px-4 py-3 text-center text-sm">
-                <p className="font-medium text-foreground">{user.name ?? user.email ?? user.id}</p>
-                {user.email && <p className="text-muted-foreground">{user.email}</p>}
-              </div>
-            </>
-          )}
+            <div className="space-y-1.5">
+              <Label className="invert lg:invert-0" htmlFor="password">
+                Password
+              </Label>
+              <Input
+                autoComplete="current-password"
+                id="password"
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder="Password"
+                required
+                type="password"
+                value={password}
+              />
+            </div>
+            {error && (
+              <p className="text-sm text-destructive">{error}</p>
+            )}
+            <Button className="w-full h-11 font-medium" disabled={loading} size="lg" type="submit">
+              {loading && <Loader2 className="mr-2 size-4 animate-spin" />}
+              Sign in
+            </Button>
+          </form>
+
+          <p className="text-center text-xs text-muted-foreground">
+            Default credentials: admin / admin
+          </p>
         </div>
       </div>
 
-      {/* Banner: Desktop - full side panel */}
       <div className="relative hidden min-h-0 flex-1 lg:block">
         <img
           alt="Overmind"

@@ -2,12 +2,9 @@ import { useQuery } from "@tanstack/react-query";
 
 import apiClient from "@/client";
 
-export function useProjectsList(organisationId?: string) {
+export function useProjectsList() {
   return useQuery({
-    queryFn: () =>
-      apiClient.projects.listUserProjectsApiV1IamProjectsGet(
-        organisationId ? { organisationId } : {}
-      ),
-    queryKey: ["projects", organisationId],
+    queryFn: () => apiClient.projects.listUserProjectsApiV1IamProjectsGet({}),
+    queryKey: ["projects"],
   });
 }

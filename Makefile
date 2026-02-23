@@ -1,10 +1,18 @@
 .PHONY: run stop logs migrate revision test lint psql
 
+OPEN_CMD := $(shell command -v xdg-open 2>/dev/null || command -v open 2>/dev/null)
+
 run:
+ifdef OPEN_CMD
+	@(until curl -sf http://localhost:8000/health >/dev/null 2>&1; do sleep 2; done && $(OPEN_CMD) http://localhost:8000) &
+endif
 	docker compose up --build
 
 run-detached:
 	docker compose up --build -d
+ifdef OPEN_CMD
+	@(until curl -sf http://localhost:8000/health >/dev/null 2>&1; do sleep 2; done && $(OPEN_CMD) http://localhost:8000) &
+endif
 
 stop:
 	docker compose down

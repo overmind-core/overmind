@@ -71,7 +71,7 @@ def hash_token(token: str) -> str:
 def generate_token() -> tuple[str, str, str]:
     token_bytes = secrets.token_bytes(32)
     token_suffix = token_bytes.hex()
-    prefix = "ovr_"
+    prefix = settings.api_token_prefix
     full_token = f"{prefix}{token_suffix}"
     token_hash = hash_token(full_token)
     return full_token, token_hash, prefix
@@ -126,7 +126,7 @@ def deserialize_user_from_cache(cached_data: str) -> UserModel:
 async def get_token_record(
     token: str, db: AsyncSession, use_cache: bool = True
 ) -> TokenModel:
-    if not token or not token.startswith("ovr_"):
+    if not token or not token.startswith(settings.api_token_prefix):
         raise unauthorized_response("Invalid or inactive token")
 
     token_hash = hash_token(token)

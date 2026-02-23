@@ -1,5 +1,5 @@
 import { Link, useNavigate, useRouterState } from "@tanstack/react-router";
-import { BarChart3, Bot, Briefcase, Building2, Home, LogIn, LogOut, User } from "lucide-react";
+import { BarChart3, Bot, Briefcase, Home, LogIn, LogOut, User } from "lucide-react";
 
 import {
   DropdownMenu,
@@ -103,12 +103,6 @@ export function AppSidebar() {
                     <Link to="/account">
                       <User className="size-4" />
                       Account
-                    </Link>
-                  </DropdownMenuItem>
-                  <DropdownMenuItem asChild>
-                    <Link to="/organisations">
-                      <Building2 className="size-4" />
-                      Organisations
                     </Link>
                   </DropdownMenuItem>
                   <DropdownMenuSeparator />

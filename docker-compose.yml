@@ -11,7 +11,7 @@ x-env-common: &env-common
     - DEBUG=${DEBUG:-true}
     - PROXY_TOKEN=${PROXY_TOKEN:-default-proxy-token}
     - OVERMIND_TRACES_URL=http://api:8000/api/v1/traces/create-backend-trace
-    - FRONTEND_URL=${FRONTEND_URL:-http://localhost:5173}
+    - FRONTEND_URL=${FRONTEND_URL:-http://localhost:8000}
 
 services:
   postgres:

@@ -5,7 +5,6 @@ Task to auto-generate evaluation criteria for prompts based on their linked span
 import asyncio
 import json
 import logging
-from async_lru import alru_cache
 from typing import Any, Dict, List, Optional
 from uuid import UUID
 
@@ -232,10 +231,14 @@ async def _generate_criteria_for_prompt(prompt_id: str) -> Dict[str, Any]:
     }
 
 
-@alru_cache(maxsize=1000)
+_criteria_cache: Dict[str, Optional[Dict[str, List[str]]]] = {}
+
+
 async def ensure_prompt_has_criteria(prompt_id: str) -> Optional[Dict[str, List[str]]]:
     """
     Check if a prompt has evaluation criteria, and generate them if not.
+    Results are cached in a plain dict to avoid alru_cache's event-loop affinity
+    (Celery tasks create a new loop on each invocation via asyncio.run).
 
     Args:
         prompt_id: String ID of the prompt (format: {project_id}_{version}_{slug})
@@ -243,6 +246,8 @@ async def ensure_prompt_has_criteria(prompt_id: str) -> Optional[Dict[str, List[
     Returns:
         The evaluation criteria (existing or newly generated)
     """
+    if prompt_id in _criteria_cache:
+        return _criteria_cache[prompt_id]
     AsyncSessionLocal = get_session_local()
     async with AsyncSessionLocal() as session:
         try:
@@ -267,12 +272,15 @@ async def ensure_prompt_has_criteria(prompt_id: str) -> Optional[Dict[str, List[
 
         # If criteria already exists, return it
         if prompt.evaluation_criteria:
+            _criteria_cache[prompt_id] = prompt.evaluation_criteria
             return prompt.evaluation_criteria
 
         # Otherwise, trigger generation task
         logger.info(f"No criteria found for prompt {prompt_id}, generating...")
         result = await _generate_criteria_for_prompt(prompt_id)
-        return result.get("criteria")
+        criteria = result.get("criteria")
+        _criteria_cache[prompt_id] = criteria
+        return criteria
 
 
 @shared_task(name="criteria_generator.generate_criteria")

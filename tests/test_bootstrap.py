@@ -16,7 +16,7 @@ async def test_bootstrap_creates_user_project_token(db_session):
 
     users = (await db_session.execute(select(User))).scalars().all()
     assert len(users) == 1
-    assert users[0].email == "admin@localhost"
+    assert users[0].email == "admin"
 
     projects = (await db_session.execute(select(Project))).scalars().all()
     assert len(projects) == 1
@@ -45,9 +45,9 @@ async def test_default_user_can_login(seed_user, test_client):
     """The bootstrapped admin user can log in with default credentials."""
     resp = await test_client.post(
         "/api/v1/iam/users/login",
-        json={"email": "admin@localhost", "password": "admin"},
+        json={"email": "admin", "password": "admin"},
     )
     assert resp.status_code == 200
     data = resp.json()
     assert "access_token" in data
-    assert data["user"]["email"] == "admin@localhost"
+    assert data["user"]["email"] == "admin"

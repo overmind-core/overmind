@@ -224,7 +224,7 @@ async def seed_user(db_session):
     from overmind_core.api.v1.helpers.authentication import hash_password, generate_token
 
     user = User(
-        email="admin@localhost",
+        email="admin",
         full_name="Admin",
         hashed_password=hash_password("admin"),
         is_active=True,
@@ -268,7 +268,7 @@ async def auth_headers(seed_user, test_client):
     """JWT auth headers for the seeded admin user."""
     resp = await test_client.post(
         "/api/v1/iam/users/login",
-        json={"email": "admin@localhost", "password": "admin"},
+        json={"email": "admin", "password": "admin"},
     )
     assert resp.status_code == 200, resp.text
     token = resp.json()["access_token"]

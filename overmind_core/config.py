@@ -43,6 +43,10 @@ class Settings(BaseSettings):
     anthropic_api_key: str = ""
     gemini_api_key: str = ""
 
+    # API token prefix — distinguishes tokens from different editions.
+    # Core standalone uses "ovr_core_"; managed/enterprise overrides to "ovr_".
+    api_token_prefix: str = "ovr_core_"
+
     # AWS (optional — only needed for Bedrock, Textract, Comprehend features)
     aws_region: str = "us-east-1"
 

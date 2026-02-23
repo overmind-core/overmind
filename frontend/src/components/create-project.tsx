@@ -1,10 +1,9 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { ArrowLeft, FileText, FolderOpen, Hash, Loader2, Plus, Save } from "lucide-react";
 
-import apiClient from "@/client";
 import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
@@ -17,15 +16,7 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
-import { useOrganisationsList } from "@/hooks/use-organisations";
 
 function generateProjectSlug(name: string): string {
   return name
@@ -40,13 +31,11 @@ interface CreateProjectFormData {
   name: string;
   slug: string;
   description: string;
-  organisation_id: string;
 }
 
 const initialFormData: CreateProjectFormData = {
   description: "",
   name: "",
-  organisation_id: "",
   slug: "",
 };
 
@@ -58,29 +47,30 @@ function CreateProjectForm({
   onCancel?: () => void;
 }) {
   const queryClient = useQueryClient();
-  const { data: orgsData, isLoading: orgsLoading } = useOrganisationsList();
-
   const [formData, setFormData] = useState<CreateProjectFormData>(initialFormData);
 
-  useEffect(() => {
-    if (orgsData?.organisations.length && !formData.organisation_id) {
-      setFormData((prev) => ({
-        ...prev,
-        organisation_id: orgsData.organisations[0].organisationId,
-      }));
-    }
-  }, [orgsData]);
+  const baseUrl = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8000";
 
   const createMutation = useMutation({
-    mutationFn: (data: CreateProjectFormData) =>
-      apiClient.projects.createProjectApiV1IamProjectsPost({
-        createProjectRequest: {
-          description: data.description,
-          name: data.name,
-          organisationId: data.organisation_id,
-          slug: data.slug,
+    mutationFn: async (data: CreateProjectFormData) => {
+      const token = localStorage.getItem("token");
+      const res = await fetch(`${baseUrl}/api/v1/iam/projects/`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
         },
-      }),
+        body: JSON.stringify({
+          name: data.name,
+          description: data.description,
+        }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err?.detail?.message ?? err?.detail ?? "Failed to create project");
+      }
+      return res.json();
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["projects"] });
       onSuccess?.();
@@ -97,17 +87,10 @@ function CreateProjectForm({
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-
-    if (
-      !formData.name.trim() ||
-      !formData.slug.trim() ||
-      !formData.organisation_id ||
-      !formData.description.trim()
-    ) {
+    if (!formData.name.trim() || !formData.description.trim()) {
       createMutation.reset();
       return;
     }
-
     createMutation.mutate(formData);
   };
 
@@ -154,26 +137,6 @@ function CreateProjectForm({
       </div>
 
       <div className="space-y-2">
-        <Label>Organisation</Label>
-        <Select
-          disabled={orgsLoading}
-          onValueChange={(value) => setFormData((prev) => ({ ...prev, organisation_id: value }))}
-          value={formData.organisation_id}
-        >
-          <SelectTrigger className="w-full">
-            <SelectValue placeholder="Select organisation" />
-          </SelectTrigger>
-          <SelectContent>
-            {orgsData?.organisations.map((org) => (
-              <SelectItem key={org.organisationId} value={org.organisationId}>
-                {org.name}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      </div>
-
-      <div className="space-y-2">
         <Label htmlFor="project-description">
           Description<span className="-ml-1.5 text-destructive">*</span>
         </Label>
@@ -204,7 +167,7 @@ function CreateProjectForm({
         <Button disabled={loading} onClick={onCancel} type="button" variant="outline">
           Cancel
         </Button>
-        <Button className="gap-2" disabled={loading || !formData.description.trim() || !formData.organisation_id} type="submit">
+        <Button className="gap-2" disabled={loading || !formData.description.trim()} type="submit">
           {loading ? <Loader2 className="size-4 animate-spin" /> : <Save className="size-4" />}
           {loading ? "Creating..." : "Create Project"}
         </Button>

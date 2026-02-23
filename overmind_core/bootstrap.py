@@ -20,7 +20,7 @@ from overmind_core.models.iam.users import User
 
 logger = logging.getLogger(__name__)
 
-DEFAULT_ADMIN_EMAIL = "admin@localhost"
+DEFAULT_ADMIN_EMAIL = "admin"
 DEFAULT_ADMIN_PASSWORD = "admin"
 
 
@@ -79,7 +79,7 @@ async def ensure_default_user(db: AsyncSession) -> None:
 
     logger.info(
         "=== FIRST RUN: provisioned default user ===\n"
-        "  email:        %s\n"
+        "  username:     %s\n"
         "  password:     %s\n"
         "  project:      %s (id: %s)\n"
         "  API token:    %s\n"

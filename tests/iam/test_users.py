@@ -7,20 +7,20 @@ import pytest
 async def test_login_success(seed_user, test_client):
     resp = await test_client.post(
         "/api/v1/iam/users/login",
-        json={"email": "admin@localhost", "password": "admin"},
+        json={"email": "admin", "password": "admin"},
     )
     assert resp.status_code == 200
     data = resp.json()
     assert data["token_type"] == "bearer"
     assert data["access_token"]
-    assert data["user"]["email"] == "admin@localhost"
+    assert data["user"]["email"] == "admin"
 
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
     "email,password",
     [
-        ("admin@localhost", "wrongpassword"),
+        ("admin", "wrongpassword"),
         ("nobody@example.com", "admin"),
         ("nobody@example.com", "wrongpassword"),
     ],
@@ -39,7 +39,7 @@ async def test_get_me(seed_user, test_client, auth_headers):
     resp = await test_client.get("/api/v1/iam/users/me", headers=auth_headers)
     assert resp.status_code == 200
     data = resp.json()
-    assert data["email"] == "admin@localhost"
+    assert data["email"] == "admin"
     assert data["full_name"] == "Admin"
 
 
@@ -55,14 +55,14 @@ async def test_change_password(seed_user, test_client, auth_headers):
     # Old password no longer works
     resp = await test_client.post(
         "/api/v1/iam/users/login",
-        json={"email": "admin@localhost", "password": "admin"},
+        json={"email": "admin", "password": "admin"},
     )
     assert resp.status_code == 401
 
     # New password works
     resp = await test_client.post(
         "/api/v1/iam/users/login",
-        json={"email": "admin@localhost", "password": "newsecure123"},
+        json={"email": "admin", "password": "newsecure123"},
     )
     assert resp.status_code == 200
 

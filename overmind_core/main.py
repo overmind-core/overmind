@@ -3,9 +3,16 @@ overmind_core standalone entry point.
 
 Self-hosted single-user instance. On first startup auto-provisions a
 default admin user, project, and API token.
+
+The built frontend (React SPA) is served from /frontend_dist when present,
+so the entire application is accessible on a single port.
 """
 
+from pathlib import Path
+
 from fastapi import FastAPI
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
 from overmind_core.overmind.invocation_helpers import ClientCacheManager
 from fastapi.middleware.cors import CORSMiddleware
 from overmind_core.config import settings
@@ -18,6 +25,8 @@ from overmind_core.celery_app import get_celery_app
 from overmind_core.bootstrap import ensure_default_user
 from logging import getLogger, Filter
 import logging
+
+FRONTEND_DIR = Path(__file__).resolve().parent.parent / "frontend_dist"
 
 logger = getLogger(__name__)
 logger.setLevel(logging.INFO)
@@ -96,14 +105,28 @@ app.include_router(core_api_router, prefix="/api/v1")
 app.include_router(core_auth_router, prefix="/api/v1")
 
 
-@app.get("/")
-def read_root():
-    return {"message": "Welcome to Overmind Core"}
-
-
 @app.get("/health")
 def health_check():
     return {"status": "healthy"}
+
+
+# ---------------------------------------------------------------------------
+# Frontend SPA serving
+# ---------------------------------------------------------------------------
+if FRONTEND_DIR.is_dir():
+    app.mount("/assets", StaticFiles(directory=FRONTEND_DIR / "assets"), name="frontend-assets")
+
+    @app.get("/{full_path:path}")
+    async def serve_spa(full_path: str):
+        """Serve the React SPA for any route not matched by the API."""
+        file_path = (FRONTEND_DIR / full_path).resolve()
+        if file_path.is_relative_to(FRONTEND_DIR) and file_path.is_file():
+            return FileResponse(file_path)
+        return FileResponse(FRONTEND_DIR / "index.html")
+else:
+    @app.get("/")
+    def read_root():
+        return {"message": "Welcome to Overmind Core (frontend not built)"}
 
 
 if __name__ == "__main__":

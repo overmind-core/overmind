@@ -18,7 +18,7 @@ async def test_create_token(seed_user, test_client, auth_headers):
     assert resp.status_code == 200
     data = resp.json()
     assert data["name"] == "New Token"
-    assert data["token"].startswith("ovr_")
+    assert data["token"].startswith("ovr_core_")
     assert data["project_id"] == str(project.project_id)
 
 
@@ -98,4 +98,4 @@ async def test_created_token_authenticates_requests(seed_user, test_client, auth
         "/api/v1/iam/users/me", headers={"X-API-Token": plain_token}
     )
     assert resp.status_code == 200
-    assert resp.json()["email"] == "admin@localhost"
+    assert resp.json()["email"] == "admin"

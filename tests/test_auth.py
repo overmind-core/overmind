@@ -24,7 +24,7 @@ async def test_invalid_jwt_returns_401(test_client, db_session):
 async def test_invalid_api_token_returns_401(test_client, db_session):
     resp = await test_client.get(
         "/api/v1/iam/users/me",
-        headers={"X-API-Token": "ovr_nonexistenttoken123456"},
+        headers={"X-API-Token": "ovr_core_nonexistenttoken123456"},
     )
     assert resp.status_code == 401
 

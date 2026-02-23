@@ -3,15 +3,11 @@ import {
   BacktestingApi,
   Configuration,
   JobsApi,
-  OauthApi,
   OnboardingApi,
-  OrganisationsApi,
   ProjectsApi,
   PromptsApi,
-  RolesApi,
   SpansApi,
   SuggestionsApi,
-  TokenRolesApi,
   TokensApi,
   TracesApi,
   UsersApi,
@@ -28,12 +24,8 @@ class OvermindClient {
   spans: SpansApi;
   suggestions: SuggestionsApi;
   tokens: TokensApi;
-  roles: RolesApi;
-  tokenRoles: TokenRolesApi;
-  organisations: OrganisationsApi;
   onboarding: OnboardingApi;
   users: UsersApi;
-  oauth: OauthApi;
   agentReviews: AgentReviewsApi;
   constructor(config: Configuration) {
     this.agents = new AgentsApi(config);
@@ -45,39 +37,10 @@ class OvermindClient {
     this.spans = new SpansApi(config);
     this.suggestions = new SuggestionsApi(config);
     this.tokens = new TokensApi(config);
-    this.roles = new RolesApi(config);
-    this.tokenRoles = new TokenRolesApi(config);
-    this.organisations = new OrganisationsApi(config);
     this.onboarding = new OnboardingApi(config);
     this.users = new UsersApi(config);
     this.agentReviews = new AgentReviewsApi(config);
-    this.oauth = new OauthApi(
-      new Configuration({
-        basePath: config.basePath,
-      })
-    );
   }
-
-  /** Custom request for endpoints not in the OpenAPI spec (e.g. chat traces) */
-  // async request<T = unknown>(path: string, options?: RequestInit): Promise<T> {
-  //   const apiBase = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8000/api/";
-  //   const url = path.startsWith("http") ? path : `${apiBase}${path}`;
-  //   const token = localStorage.getItem("token") ?? localStorage.getItem("auth_token");
-  //   const headers: Record<string, string> = {
-  //     "Content-Type": "application/json",
-  //     ...(options?.headers as Record<string, string>),
-  //   };
-  //   if (token) headers.Authorization = `Bearer ${token}`;
-
-  //   const res = await fetch(url, { ...options, headers });
-  //   if (!res.ok) {
-  //     const errData = await res.json().catch(() => ({}));
-  //     const msg = errData?.detail?.message ?? errData?.detail ?? "Request failed";
-  //     throw new Error(typeof msg === "string" ? msg : JSON.stringify(msg));
-  //   }
-  //   const ct = res.headers.get("content-type");
-  //   return ct?.includes("application/json") ? res.json() : (res.text() as unknown as T);
-  // }
 }
 
 const baseUrl = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8000";
