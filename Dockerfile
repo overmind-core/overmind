@@ -9,7 +9,7 @@ ENV VITE_PUBLIC_POSTHOG_KEY=""
 ENV VITE_PUBLIC_POSTHOG_HOST=""
 RUN bun run build
 
-FROM python:3.12-slim
+FROM python:3.13-slim
 
 WORKDIR /app
 

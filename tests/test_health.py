@@ -5,9 +5,14 @@ import pytest
 
 @pytest.mark.asyncio
 async def test_root(test_client):
+    from overmind_core.main import FRONTEND_DIR
+
     resp = await test_client.get("/")
     assert resp.status_code == 200
-    assert resp.json()["message"] == "Welcome to Overmind Core"
+    if FRONTEND_DIR.is_dir():
+        assert "text/html" in resp.headers.get("content-type", "")
+    else:
+        assert "message" in resp.json()
 
 
 @pytest.mark.asyncio

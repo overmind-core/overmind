@@ -7,7 +7,7 @@ readme = "README.md"
 packages = [{include = "overmind_core"}]
 
 [tool.poetry.dependencies]
-python = "^3.12"
+python = "^3.13"
 openai = ">=1.0.0"
 pydantic = {extras = ["email"], version = "^2.11.9"}
 pydantic-settings = ">=2.8.1"
