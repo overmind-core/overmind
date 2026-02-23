@@ -4,7 +4,7 @@ Utility functions for the policies endpoint.
 
 import hashlib
 import json
-from typing import Any, Optional, Dict
+from typing import Any
 
 
 def to_plain(obj: Any) -> Any:
@@ -23,9 +23,9 @@ def to_plain(obj: Any) -> Any:
 
 
 def compute_policies_hash(
-    llm_policy: Optional[Dict[str, Any]],
-    mcp_policy: Optional[Any],
-    chatbot_policy: Optional[Any],
+    llm_policy: dict[str, Any] | None,
+    mcp_policy: Any | None,
+    chatbot_policy: Any | None,
 ) -> str:
     """
     Compute a deterministic hash of policy data.

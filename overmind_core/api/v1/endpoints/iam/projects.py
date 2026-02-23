@@ -6,7 +6,6 @@ Auth is a simple ownership check via the user_projects association.
 """
 
 import re
-from typing import List, Optional
 from uuid import UUID
 
 from fastapi import APIRouter, Depends
@@ -44,16 +43,16 @@ def _slugify(name: str) -> str:
 
 class CreateProjectRequest(BaseModel):
     name: str
-    description: Optional[str] = None
+    description: str | None = None
 
 
 class UpdateProjectRequest(BaseModel):
-    name: Optional[str] = None
-    description: Optional[str] = None
+    name: str | None = None
+    description: str | None = None
 
 
 class ProjectListResponse(BaseModel):
-    projects: List[CoreProjectModel]
+    projects: list[CoreProjectModel]
     total_count: int
 
 

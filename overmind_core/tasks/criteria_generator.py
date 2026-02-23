@@ -5,7 +5,7 @@ Task to auto-generate evaluation criteria for prompts based on their linked span
 import asyncio
 import json
 import logging
-from typing import Any, Dict, List, Optional
+from typing import Any
 from uuid import UUID
 
 from celery import shared_task
@@ -29,12 +29,12 @@ logger = logging.getLogger(__name__)
 
 
 class CriteriaResponse(BaseModel):
-    correctness: List[str] = Field(description="List of correctness rules")
+    correctness: list[str] = Field(description="List of correctness rules")
 
 
 async def _get_spans_for_prompt(
     prompt_id: str, limit: int = 10, prefer_judge_feedback: bool = True
-) -> List[SpanModel]:
+) -> list[SpanModel]:
     """Fetch spans linked to a prompt. Prefer spans with judge_feedback when adjusting criteria.
     Excludes system-generated spans (prompt tuning, backtesting)."""
     AsyncSessionLocal = get_session_local()
@@ -67,7 +67,7 @@ async def _get_spans_for_prompt(
 
 
 async def _format_spans_as_examples(
-    spans: List[SpanModel], include_judge_feedback: bool = True
+    spans: list[SpanModel], include_judge_feedback: bool = True
 ) -> str:
     """Format spans into a readable example format. Includes judge feedback when present."""
     examples = []
@@ -95,7 +95,7 @@ Output: {json.dumps(span.output or {}, indent=2)}{judge_section}
 
 
 async def _store_criteria_to_prompt(
-    prompt_id: str, criteria: Dict[str, List[str]]
+    prompt_id: str, criteria: dict[str, list[str]]
 ) -> bool:
     """Store generated criteria in evaluation_criteria field."""
     AsyncSessionLocal = get_session_local()
@@ -140,7 +140,7 @@ async def _get_project_description(project_id: UUID) -> str:
         return "No project description available."
 
 
-async def _generate_criteria_for_prompt(prompt_id: str) -> Dict[str, Any]:
+async def _generate_criteria_for_prompt(prompt_id: str) -> dict[str, Any]:
     """
     Generate evaluation criteria for a prompt using its linked spans and project context.
     Generates up to 5 specific rules for correctness evaluation.
@@ -231,10 +231,10 @@ async def _generate_criteria_for_prompt(prompt_id: str) -> Dict[str, Any]:
     }
 
 
-_criteria_cache: Dict[str, Optional[Dict[str, List[str]]]] = {}
+_criteria_cache: dict[str, dict[str, list[str]] | None] = {}
 
 
-async def ensure_prompt_has_criteria(prompt_id: str) -> Optional[Dict[str, List[str]]]:
+async def ensure_prompt_has_criteria(prompt_id: str) -> dict[str, list[str]] | None:
     """
     Check if a prompt has evaluation criteria, and generate them if not.
     Results are cached in a plain dict to avoid alru_cache's event-loop affinity
@@ -284,7 +284,7 @@ async def ensure_prompt_has_criteria(prompt_id: str) -> Optional[Dict[str, List[
 
 
 @shared_task(name="criteria_generator.generate_criteria")
-def generate_criteria_task(prompt_id: str) -> Dict[str, Any]:
+def generate_criteria_task(prompt_id: str) -> dict[str, Any]:
     """
     Celery task to generate evaluation criteria for a prompt.
 

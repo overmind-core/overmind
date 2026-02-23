@@ -6,7 +6,7 @@ Separate from criteria generation - focuses only on describing what the agent do
 import asyncio
 import json
 import logging
-from typing import Any, Dict, List, Optional
+from typing import Any
 from uuid import UUID
 
 from celery import shared_task
@@ -47,9 +47,9 @@ async def _get_project_description(project_id: UUID) -> str:
 
 
 async def _format_spans_as_examples(
-    spans: List[SpanModel],
+    spans: list[SpanModel],
     include_feedback: bool = False,
-    feedback_override: Optional[Dict[str, Dict[str, str]]] = None,
+    feedback_override: dict[str, dict[str, str]] | None = None,
 ) -> str:
     """Format spans into a readable example format."""
     examples = []
@@ -88,7 +88,7 @@ Output: {json.dumps(span.output or {}, indent=2)}{feedback_section}
 
 async def _generate_initial_agent_description(
     prompt_id: str, span_limit: int = 10
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """
     Generate initial agent description based on first N spans.
 
@@ -217,9 +217,9 @@ async def _generate_initial_agent_description(
 
 async def _update_agent_description_from_feedback(
     prompt_id: str,
-    span_ids: List[str],
-    feedback_override: Optional[Dict[str, Dict[str, str]]] = None,
-) -> Dict[str, Any]:
+    span_ids: list[str],
+    feedback_override: dict[str, dict[str, str]] | None = None,
+) -> dict[str, Any]:
     """
     Update agent description based on user feedback on spans.
 
@@ -375,7 +375,7 @@ async def _update_agent_description_from_feedback(
 
 
 @shared_task(name="agent_description_generator.generate_initial_description")
-def generate_initial_agent_description_task(prompt_id: str) -> Dict[str, Any]:
+def generate_initial_agent_description_task(prompt_id: str) -> dict[str, Any]:
     """
     Celery task to generate initial agent description for a newly discovered prompt.
 
@@ -406,8 +406,8 @@ def generate_initial_agent_description_task(prompt_id: str) -> Dict[str, Any]:
 
 @shared_task(name="agent_description_generator.update_from_feedback")
 def update_agent_description_from_feedback_task(
-    prompt_id: str, span_ids: List[str]
-) -> Dict[str, Any]:
+    prompt_id: str, span_ids: list[str]
+) -> dict[str, Any]:
     """
     Celery task to update agent description based on user feedback.
 

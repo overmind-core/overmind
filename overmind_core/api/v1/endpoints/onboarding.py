@@ -1,4 +1,3 @@
-from typing import Optional
 from fastapi import APIRouter, Depends, Response
 from pydantic import BaseModel
 from sqlalchemy import select
@@ -12,13 +11,13 @@ router = APIRouter(tags=["onboarding"])
 
 class UserOnboardingRequest(BaseModel):
     priorities: list[str]
-    description: Optional[str] = None
+    description: str | None = None
 
 
 class UserOnboardingResponse(BaseModel):
     step: str
     status: str
-    priorities: Optional[list[str]] = None
+    priorities: list[str] | None = None
     description: str
 
     @classmethod

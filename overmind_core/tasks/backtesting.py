@@ -14,7 +14,7 @@ import uuid
 import uuid as uuid_module
 from collections import Counter, defaultdict
 from datetime import datetime, timedelta, timezone
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any
 from uuid import UUID
 
 from celery import shared_task
@@ -47,7 +47,7 @@ logger = logging.getLogger(__name__)
 # have an API key configured.  The full list is kept for reference /
 # documentation and for callers that pass an explicit list.
 # ---------------------------------------------------------------------------
-_ALL_BACKTEST_MODELS: List[str] = [
+_ALL_BACKTEST_MODELS: list[str] = [
     # OpenAI
     "gpt-5-mini",
     "gpt-5.2",
@@ -64,7 +64,7 @@ _ALL_BACKTEST_MODELS: List[str] = [
 ]
 
 
-def get_default_backtest_models() -> List[str]:
+def get_default_backtest_models() -> list[str]:
     """Return backtest models filtered to providers with available API keys."""
     return get_available_backtest_models()
 
@@ -99,7 +99,7 @@ def _next_backtest_threshold(last_count: int) -> int:
 # ---------------------------------------------------------------------------
 
 
-def _interleave_models_by_provider(models: List[str]) -> List[str]:
+def _interleave_models_by_provider(models: list[str]) -> list[str]:
     """Reorder models so that consecutive entries target different providers.
 
     E.g. [gpt-5-mini, gpt-5.2, claude-opus, claude-sonnet, gemini-3-pro, gemini-3-flash]
@@ -108,12 +108,12 @@ def _interleave_models_by_provider(models: List[str]) -> List[str]:
     This spreads load across providers when tasks are processed through a
     concurrency-limited semaphore.
     """
-    by_provider: Dict[str, List[str]] = defaultdict(list)
+    by_provider: dict[str, list[str]] = defaultdict(list)
     for model in models:
         provider = LLM_PROVIDER_BY_MODEL.get(model, "unknown")
         by_provider[provider].append(model)
 
-    result: List[str] = []
+    result: list[str] = []
     queues = list(by_provider.values())
     max_len = max((len(q) for q in queues), default=0)
     for i in range(max_len):
@@ -128,7 +128,7 @@ def _interleave_models_by_provider(models: List[str]) -> List[str]:
 # ---------------------------------------------------------------------------
 
 
-def _detect_current_model(spans: List[SpanModel]) -> Optional[str]:
+def _detect_current_model(spans: list[SpanModel]) -> str | None:
     """Return the most-commonly used model across the input spans."""
     model_counts: Counter = Counter()
     for span in spans:
@@ -141,11 +141,11 @@ def _detect_current_model(spans: List[SpanModel]) -> Optional[str]:
     return None
 
 
-def _compute_baseline_metrics(spans: List[SpanModel]) -> Dict[str, float]:
+def _compute_baseline_metrics(spans: list[SpanModel]) -> dict[str, float]:
     """Compute cost / latency / performance baseline from the original spans."""
-    latencies: List[float] = []
-    costs: List[float] = []
-    scores: List[float] = []
+    latencies: list[float] = []
+    costs: list[float] = []
+    scores: list[float] = []
 
     for span in spans:
         # Latency
@@ -186,10 +186,10 @@ def _compute_baseline_metrics(spans: List[SpanModel]) -> Dict[str, float]:
 
 
 def _generate_recommendations(
-    current_model: Optional[str],
-    baseline: Dict[str, float],
-    model_metrics: Dict[str, Dict[str, float]],
-) -> Dict[str, Any]:
+    current_model: str | None,
+    baseline: dict[str, float],
+    model_metrics: dict[str, dict[str, float]],
+) -> dict[str, Any]:
     """Produce model-switch recommendations from backtest aggregate metrics.
 
     Heuristic:
@@ -205,7 +205,7 @@ def _generate_recommendations(
     b_cost = baseline.get("avg_cost_per_request", 0)
     has_baseline_score = baseline.get("scored_span_count", 0) > 0
 
-    recs: Dict[str, Any] = {
+    recs: dict[str, Any] = {
         "current_model": {
             "name": current_model or "unknown",
             "avg_eval_score": round(b_score, 4),
@@ -216,7 +216,7 @@ def _generate_recommendations(
     }
 
     # Filter out current model and disqualified models
-    candidates: Dict[str, Dict[str, float]] = {}
+    candidates: dict[str, dict[str, float]] = {}
     for model, metrics in model_metrics.items():
         if model == current_model:
             continue
@@ -256,7 +256,7 @@ def _generate_recommendations(
         }
 
     # --- Speed / cost candidates (within tolerance) ---
-    within_tol: Dict[str, Dict[str, float]] = {}
+    within_tol: dict[str, dict[str, float]] = {}
     for model, metrics in candidates.items():
         if (
             not has_baseline_score
@@ -313,7 +313,7 @@ def _generate_recommendations(
             }
 
     # --- Best overall (weighted composite) ---
-    best_model: Optional[str] = None
+    best_model: str | None = None
     best_combined = float("-inf")
 
     for model, metrics in within_tol.items():
@@ -391,7 +391,7 @@ def _generate_recommendations(
 # ---------------------------------------------------------------------------
 
 
-async def _fetch_spans_for_backtesting(prompt_id: str, limit: int) -> List[SpanModel]:
+async def _fetch_spans_for_backtesting(prompt_id: str, limit: int) -> list[SpanModel]:
     """Fetch spans with inputs for backtesting (excludes system-generated spans)."""
     AsyncSessionLocal = get_session_local()
     async with AsyncSessionLocal() as session:
@@ -411,7 +411,7 @@ async def _fetch_spans_for_backtesting(prompt_id: str, limit: int) -> List[SpanM
         return list(result.scalars().all())
 
 
-async def _get_prompt_criteria(prompt_id: str) -> Dict[str, List[str]]:
+async def _get_prompt_criteria(prompt_id: str) -> dict[str, list[str]]:
     """Get the evaluation criteria for a prompt_id.
 
     Raises ValueError if prompt not found or has no criteria.
@@ -451,9 +451,9 @@ async def _get_prompt_criteria(prompt_id: str) -> Dict[str, List[str]]:
 def _run_model_on_input(
     model_name: str,
     input_text: str,
-    messages: Optional[List[Dict[str, Any]]] = None,
-    tools: Optional[List[Dict[str, Any]]] = None,
-) -> Dict[str, Any]:
+    messages: list[dict[str, Any]] | None = None,
+    tools: list[dict[str, Any]] | None = None,
+) -> dict[str, Any]:
     """Run a single model on an input and collect metrics.
 
     When ``messages`` is provided it is forwarded directly to ``call_llm``
@@ -508,14 +508,14 @@ def _run_model_on_input(
 
 async def _run_backtesting(
     prompt_id: str,
-    models: List[str],
+    models: list[str],
     span_count: int,
     user_id: str,
-    organisation_id: Optional[str] = None,
+    organisation_id: str | None = None,
     *,
     job_id: str,
-    celery_task_id: Optional[str] = None,
-) -> Dict[str, Any]:
+    celery_task_id: str | None = None,
+) -> dict[str, Any]:
     """Run backtesting for multiple models on a set of spans.
 
     Improvements over the original sequential version:
@@ -561,8 +561,8 @@ async def _run_backtesting(
         criteria_text = _format_criteria(criteria_dict["correctness"])
 
         # Fetch project/agent context for evaluation prompts
-        project_description: Optional[str] = None
-        agent_description: Optional[str] = None
+        project_description: str | None = None
+        agent_description: str | None = None
         async with AsyncSessionLocal() as ctx_session:
             try:
                 project_id_str, version, slug = Prompt.parse_prompt_id(prompt_id)
@@ -609,7 +609,7 @@ async def _run_backtesting(
 
         # Iterate span-first, model-second so that with the interleaved
         # model order consecutive items naturally target different providers.
-        work_items: List[tuple] = []
+        work_items: list[tuple] = []
         for span in spans:
             input_text = _get_span_input_text_merged(span)
             if not input_text:
@@ -630,7 +630,7 @@ async def _run_backtesting(
 
         async def _process_item(
             model_name: str, span: SpanModel, input_text: str
-        ) -> Dict[str, Any]:
+        ) -> dict[str, Any]:
             async with semaphore:
                 parsed_span_input = _safe_parse_json(span.input)
                 input_data = parsed_span_input or {}
@@ -769,7 +769,7 @@ async def _run_backtesting(
         )
 
         # Gracefully handle any per-item exceptions
-        processed_results: List[Dict[str, Any]] = []
+        processed_results: list[dict[str, Any]] = []
         for i, res in enumerate(all_results):
             if isinstance(res, Exception):
                 m_name, sp, _ = work_items[i]
@@ -793,11 +793,11 @@ async def _run_backtesting(
         # ---------------------------------------------------------------
         # 5. Aggregate results per model
         # ---------------------------------------------------------------
-        results_by_model: Dict[str, List[Dict]] = defaultdict(list)
+        results_by_model: dict[str, list[Dict]] = defaultdict(list)
         for r in processed_results:
             results_by_model[r["model_name"]].append(r)
 
-        results: Dict[str, Any] = {
+        results: dict[str, Any] = {
             "backtest_run_id": str(backtest_run_id),
             "prompt_id": prompt_id,
             "span_count": len(spans),
@@ -809,7 +809,7 @@ async def _run_backtesting(
             "model_results": {},
         }
 
-        model_agg_metrics: Dict[str, Dict[str, float]] = {}
+        model_agg_metrics: dict[str, dict[str, float]] = {}
 
         for model_name in models:
             model_items = results_by_model.get(model_name, [])
@@ -1018,13 +1018,13 @@ async def _run_backtesting(
 def run_model_backtesting_task(
     self,
     prompt_id: str,
-    models: List[str],
+    models: list[str],
     span_count: int,
     user_id: str,
-    organisation_id: Optional[str] = None,
+    organisation_id: str | None = None,
     *,
     job_id: str,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """Celery task to run model backtesting (dispatched by job reconciler)."""
 
     async def _run():
@@ -1053,8 +1053,8 @@ def run_model_backtesting_task(
 
 
 async def validate_backtesting_eligibility(
-    prompt: Prompt, session, models: Optional[List[str]] = None
-) -> Tuple[bool, Optional[str], Optional[Dict[str, Any]]]:
+    prompt: Prompt, session, models: list[str] | None = None
+) -> tuple[bool, str | None, dict[str, Any] | None]:
     """
     Validate if a prompt is eligible for backtesting.
 
@@ -1215,7 +1215,7 @@ async def validate_backtesting_eligibility(
 
 async def _check_and_create_backtesting_job(
     prompt: Prompt, session, celery_task_id
-) -> Optional[Dict[str, Any]]:
+) -> dict[str, Any] | None:
     """
     Validate a prompt's eligibility for backtesting and create a PENDING job if eligible.
 
@@ -1296,7 +1296,7 @@ async def _check_and_create_backtesting_job(
 
 async def _check_backtesting_candidates(
     celery_task_id: str,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """
     Iterate all latest prompts and create PENDING backtesting jobs for
     eligible ones.  Mirrors ``_improve_prompt_templates`` in prompt_improvement.
@@ -1333,8 +1333,8 @@ async def _check_backtesting_candidates(
                 f"Backtesting check: found {len(latest_prompts)} prompts to evaluate"
             )
 
-            job_results: List[Dict[str, Any]] = []
-            errors: List[str] = []
+            job_results: list[dict[str, Any]] = []
+            errors: list[str] = []
 
             for prompt in latest_prompts:
                 try:
@@ -1389,7 +1389,7 @@ async def _check_backtesting_candidates(
 
 @shared_task(name="backtesting.check_backtesting_candidates", bind=True)
 @with_task_lock(lock_name="backtesting_check")
-def check_backtesting_candidates(self) -> Dict[str, Any]:
+def check_backtesting_candidates(self) -> dict[str, Any]:
     """
     Celery periodic task: scan prompts and create PENDING backtesting jobs.
 

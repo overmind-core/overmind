@@ -3,7 +3,7 @@ Pydantic model for Organisation entity.
 """
 
 from pydantic import BaseModel, ConfigDict
-from typing import Optional, Dict, Any, List
+from typing import Any
 from datetime import datetime
 from uuid import UUID
 
@@ -18,11 +18,11 @@ class OrganisationModel(BaseModel):
     organisation_id: UUID
     name: str
     slug: str
-    description: Optional[str] = None
+    description: str | None = None
     is_active: bool
-    settings: Optional[Dict[str, Any]] = None
+    settings: dict[str, Any] | None = None
     sign_on_method: str
-    sign_on_config: Optional[Dict[str, Any]] = None
-    domains: Optional[List[str]] = None
-    created_at: Optional[datetime] = None
-    updated_at: Optional[datetime] = None
+    sign_on_config: dict[str, Any] | None = None
+    domains: list[str] | None = None
+    created_at: datetime | None = None
+    updated_at: datetime | None = None

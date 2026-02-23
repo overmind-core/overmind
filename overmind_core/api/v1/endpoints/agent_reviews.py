@@ -5,7 +5,7 @@ Agent review endpoints for interactive criteria refinement and span feedback.
 import json
 import logging
 import uuid as _uuid
-from typing import List, Optional, Dict, Any
+from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
@@ -32,35 +32,35 @@ class SpanForReview(BaseModel):
     span_id: str
     input: Any
     output: Any
-    correctness_score: Optional[float] = None
+    correctness_score: float | None = None
     created_at: str
 
 
 class AgentReviewSpansResponse(BaseModel):
     prompt_id: str
-    worst_spans: List[SpanForReview]
-    best_spans: List[SpanForReview]
-    agent_description: Optional[str] = None
-    evaluation_criteria: Optional[Dict[str, List[str]]] = None
+    worst_spans: list[SpanForReview]
+    best_spans: list[SpanForReview]
+    agent_description: str | None = None
+    evaluation_criteria: dict[str, list[str]] | None = None
 
 
 class AgentDescriptionUpdateRequest(BaseModel):
     description: str
-    criteria: Dict[str, List[str]]
+    criteria: dict[str, list[str]]
 
 
 class SyncRefreshDescriptionRequest(BaseModel):
-    span_ids: List[str]
+    span_ids: list[str]
     # Inline feedback from the current review session (span_id → {rating, text}).
     # When present this is used instead of reading judge_feedback from the DB,
     # so intermediate iterations never expose stale feedback from a prior session.
-    feedback: Optional[Dict[str, Dict[str, str]]] = None
+    feedback: dict[str, dict[str, str]] | None = None
 
 
 class ReviewFailedRequest(BaseModel):
     iteration: int
-    span_ids: List[str]
-    feedback: Dict[str, str]
+    span_ids: list[str]
+    feedback: dict[str, str]
 
 
 # Note: Span feedback should be submitted via the existing /spans/{span_id}/feedback endpoint
@@ -75,7 +75,7 @@ class ReviewFailedRequest(BaseModel):
 @router.get("/{prompt_slug}/review-spans", response_model=AgentReviewSpansResponse)
 async def get_spans_for_review(
     prompt_slug: str,
-    project_id: Optional[str] = Query(None, description="Filter by project ID"),
+    project_id: str | None = Query(None, description="Filter by project ID"),
     user: AuthenticatedUserOrToken = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
@@ -174,7 +174,7 @@ async def get_spans_for_review(
 async def update_agent_description_and_criteria(
     prompt_slug: str,
     payload: AgentDescriptionUpdateRequest,
-    project_id: Optional[str] = Query(None),
+    project_id: str | None = Query(None),
     user: AuthenticatedUserOrToken = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
@@ -238,7 +238,7 @@ async def update_agent_description_and_criteria(
 @router.post("/{prompt_slug}/update-agent-description")
 async def update_agent_description_from_feedback(
     prompt_slug: str,
-    project_id: Optional[str] = Query(None),
+    project_id: str | None = Query(None),
     user: AuthenticatedUserOrToken = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
@@ -312,7 +312,7 @@ async def update_agent_description_from_feedback(
 async def sync_refresh_description(
     prompt_slug: str,
     payload: SyncRefreshDescriptionRequest,
-    project_id: Optional[str] = Query(None),
+    project_id: str | None = Query(None),
     user: AuthenticatedUserOrToken = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
@@ -353,7 +353,7 @@ async def sync_refresh_description(
 @router.post("/{prompt_slug}/mark-initial-review-complete")
 async def mark_initial_review_complete(
     prompt_slug: str,
-    project_id: Optional[str] = Query(None),
+    project_id: str | None = Query(None),
     user: AuthenticatedUserOrToken = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
@@ -394,7 +394,7 @@ async def mark_initial_review_complete(
 async def report_review_failed(
     prompt_slug: str,
     payload: ReviewFailedRequest,
-    project_id: Optional[str] = Query(None),
+    project_id: str | None = Query(None),
     user: AuthenticatedUserOrToken = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
@@ -439,7 +439,7 @@ async def complete_periodic_review(
     current_span_count: int = Query(
         ..., description="Current span count at time of review completion"
     ),
-    project_id: Optional[str] = Query(None),
+    project_id: str | None = Query(None),
     user: AuthenticatedUserOrToken = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):

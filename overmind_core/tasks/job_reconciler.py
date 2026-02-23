@@ -7,7 +7,7 @@ by dispatching the appropriate Celery tasks.
 
 import asyncio
 import logging
-from typing import Any, Dict
+from typing import Any
 
 from celery import shared_task
 from sqlalchemy import select, and_
@@ -106,7 +106,7 @@ async def _cleanup_stale_running_jobs(session) -> int:
     return cleaned
 
 
-async def _execute_pending_jobs() -> Dict[str, Any]:
+async def _execute_pending_jobs() -> dict[str, Any]:
     """
     Find all pending jobs and execute them by dispatching Celery tasks.
 
@@ -354,7 +354,7 @@ async def _execute_pending_jobs() -> Dict[str, Any]:
 
 @shared_task(name="job_reconciler.reconcile_pending_jobs")
 @with_task_lock(lock_name="job_reconciler")
-def reconcile_pending_jobs() -> Dict[str, Any]:
+def reconcile_pending_jobs() -> dict[str, Any]:
     """
     Celery periodic task to reconcile pending jobs.
 

@@ -5,7 +5,6 @@ Utility functions for the jobs endpoint.
 import logging
 import uuid as _uuid
 from datetime import datetime
-from typing import Optional
 
 from fastapi import HTTPException
 from sqlalchemy import and_, select
@@ -20,7 +19,7 @@ logger = logging.getLogger(__name__)
 
 
 def resolve_project_id(
-    project_id: Optional[str], user: AuthenticatedUserOrToken
+    project_id: str | None, user: AuthenticatedUserOrToken
 ) -> _uuid.UUID:
     """
     Resolve project_id from query or user's first project.
@@ -178,10 +177,10 @@ async def create_job(
     db: AsyncSession,
     job_type: str,
     project_id,
-    prompt_slug: Optional[str] = None,
-    celery_task_id: Optional[str] = None,
+    prompt_slug: str | None = None,
+    celery_task_id: str | None = None,
     user_id: _uuid.UUID = None,
-    result: Optional[dict] = None,
+    result: dict | None = None,
 ) -> Job:
     """
     Create a new Job row in 'pending' status and return it.
@@ -229,7 +228,7 @@ async def create_job(
 
 async def find_latest_prompt(
     slug: str, project_id, db: AsyncSession
-) -> Optional[Prompt]:
+) -> Prompt | None:
     """
     Find the latest version of a prompt by slug and project.
 

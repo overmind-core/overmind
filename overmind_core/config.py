@@ -1,5 +1,4 @@
 import logging
-from typing import Optional
 
 from opentelemetry import trace
 from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
@@ -21,11 +20,11 @@ class Settings(BaseSettings):
     valkey_host: str = "valkey"
     valkey_port: int = 6379
     valkey_db: int = 0
-    valkey_auth_token: Optional[str] = None
+    valkey_auth_token: str | None = None
 
     # Celery settings
-    celery_broker_url: Optional[str] = None
-    celery_result_backend: Optional[str] = None
+    celery_broker_url: str | None = None
+    celery_result_backend: str | None = None
     celery_task_serializer: str = "json"
     celery_result_serializer: str = "json"
 

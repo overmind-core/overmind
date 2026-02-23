@@ -1,4 +1,3 @@
-from typing import Dict, List, Optional
 from collections import Counter
 import re
 import logging
@@ -155,7 +154,7 @@ def get_comprehend_client():
 
 def chunk_text_by_bytes(
     text: str, max_chunk_size: int = MAX_CHUNK_SIZE_BYTES
-) -> List[str]:
+) -> list[str]:
     """
     Chunks text into segments that don't exceed max_chunk_size bytes.
     Tries to split at sentence boundaries (full stops), then spaces, then character boundaries.
@@ -280,7 +279,7 @@ def call_comprehend(text: str) -> list[dict]:
     return formatted_entities
 
 
-def call_nerpa(text: str, info_types: Optional[Dict[str, str]] = None) -> list[dict]:
+def call_nerpa(text: str, info_types: dict[str, str] | None = None) -> list[dict]:
     if not settings.nerpa_base_url:
         raise HTTPException(
             status_code=503,
@@ -310,7 +309,7 @@ def call_nerpa(text: str, info_types: Optional[Dict[str, str]] = None) -> list[d
 
 
 def _process_single_chunk(
-    chunk_text: str, engine: str, info_types: Optional[Dict[str, str]] = None
+    chunk_text: str, engine: str, info_types: dict[str, str] | None = None
 ) -> tuple[str, Counter, list[dict]]:
     """
     Processes a single chunk of text for PII detection and redaction.
@@ -378,7 +377,7 @@ def _process_single_chunk(
 
 
 def deidentify(
-    input_str: str, engine: str, info_types: Optional[Dict[str, str]] = None
+    input_str: str, engine: str, info_types: dict[str, str] | None = None
 ) -> tuple[str, Counter, list[dict]]:
     """
     Detects and redacts PII entities from input text using AWS Comprehend.

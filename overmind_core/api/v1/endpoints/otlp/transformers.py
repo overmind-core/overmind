@@ -1,7 +1,8 @@
 import logging
 import json
 import zlib
-from typing import Any, Callable, Dict, List, Optional
+from typing import Any
+from collections.abc import Callable
 from fastapi import Request
 from opentelemetry.proto.collector.trace.v1 import trace_service_pb2
 from sqlalchemy import select
@@ -247,7 +248,7 @@ async def create_trace(
     return {"message": f"Successfully processed {len(spans_data)} spans."}
 
 
-def _detect_response_type(output_data: Any) -> Optional[str]:
+def _detect_response_type(output_data: Any) -> str | None:
     """
     Determine the response_type of an LLM span from its output.
 
@@ -281,7 +282,7 @@ def _detect_response_type(output_data: Any) -> Optional[str]:
     return None
 
 
-def _extract_tool_call_metadata(output_data: Any) -> Dict[str, Any]:
+def _extract_tool_call_metadata(output_data: Any) -> dict[str, Any]:
     """
     Extract tool call count and unique tool names from output data.
 
@@ -296,7 +297,7 @@ def _extract_tool_call_metadata(output_data: Any) -> Dict[str, Any]:
         except (json.JSONDecodeError, ValueError):
             return {"tool_calls_count": 0, "tools_called": []}
 
-    raw_tool_calls: List[Any] = []
+    raw_tool_calls: list[Any] = []
     if isinstance(output_data, dict):
         if output_data.get("tool_calls"):
             raw_tool_calls = output_data["tool_calls"]
@@ -314,7 +315,7 @@ def _extract_tool_call_metadata(output_data: Any) -> Dict[str, Any]:
                 raw_tool_calls = [msg["function_call"]]
                 break
 
-    tools_called: List[str] = []
+    tools_called: list[str] = []
     for tc in raw_tool_calls:
         if not isinstance(tc, dict):
             continue
@@ -334,7 +335,7 @@ def _extract_tool_call_metadata(output_data: Any) -> Dict[str, Any]:
 
 def tranform_spans_for_postgres(
     spans_data: list[dict],
-) -> tuple[list[TraceModel], list[SpanModel], Optional[ConversationModel]]:
+) -> tuple[list[TraceModel], list[SpanModel], ConversationModel | None]:
     """
     Transforms OTLP trace data into SQLAlchemy TraceModel and SpanModel instances
     suitable for insertion into PostgreSQL.
@@ -344,7 +345,7 @@ def tranform_spans_for_postgres(
     """
     trace_models: list[TraceModel] = []
     span_models: list[SpanModel] = []
-    conversation_model: Optional[ConversationModel] = None
+    conversation_model: ConversationModel | None = None
 
     for span in spans_data:
         # Compose SpanModel (SQLAlchemy)
@@ -380,7 +381,7 @@ def tranform_spans_for_postgres(
         if response_type == "tool_calls":
             is_agentic = True  # tool-calling spans are always agentic
 
-        tool_type_metadata: Dict[str, Any] = {}
+        tool_type_metadata: dict[str, Any] = {}
         if response_type:
             tool_type_metadata["response_type"] = response_type
             if response_type == "tool_calls":

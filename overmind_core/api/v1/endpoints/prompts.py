@@ -12,7 +12,6 @@ from overmind_core.api.v1.endpoints.jobs import JobType, JobStatus
 from overmind_core.tasks.criteria_generator import generate_criteria_task
 from overmind_core.tasks.prompt_display_name_generator import generate_display_name_task
 from uuid import UUID
-from typing import List, Optional, Dict
 import hashlib
 import logging
 import uuid as _uuid
@@ -42,17 +41,17 @@ class PromptDetail(BaseModel):
     version: int
     project_id: str
     user_id: str
-    display_name: Optional[str] = None
+    display_name: str | None = None
     created_at: str
-    updated_at: Optional[str] = None
-    evaluation_criteria: Optional[Dict[str, List[str]]] = None
+    updated_at: str | None = None
+    evaluation_criteria: dict[str, list[str]] | None = None
 
     class Config:
         from_attributes = True
 
 
 class UpdateCriteriaRequest(BaseModel):
-    evaluation_criteria: Dict[str, List[str]]
+    evaluation_criteria: dict[str, list[str]]
     re_evaluate: bool = False
 
 
@@ -180,10 +179,10 @@ async def create_prompt(
     )
 
 
-@router.get("/", response_model=List[PromptDetail])
+@router.get("/", response_model=list[PromptDetail])
 async def list_prompts(
     project_id: str = Query(..., description="Project ID to filter prompts"),
-    slug: Optional[str] = Query(None, description="Filter by slug"),
+    slug: str | None = Query(None, description="Filter by slug"),
     db: AsyncSession = Depends(get_db),
     current_user: AuthenticatedUserOrToken = Depends(get_current_user),
 ):

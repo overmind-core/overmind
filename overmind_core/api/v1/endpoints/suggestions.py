@@ -5,7 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
-from typing import List, Any, Optional
+from typing import Any
 
 from overmind_core.api.v1.endpoints.utils.suggestions import get_suggestion_or_404
 from overmind_core.api.v1.helpers.authentication import AuthenticatedUserOrToken, get_current_user
@@ -25,20 +25,20 @@ class Suggestion(BaseModel):
 class DetectedAgent(BaseModel):
     name: str
     prompt: str
-    suggestions: List[Suggestion]
-    traces: List[Any]
+    suggestions: list[Suggestion]
+    traces: list[Any]
 
 
 class PaginatedResponse(BaseModel):
-    data: List[DetectedAgent]
-    next_page: Optional[int] = None
-    previous_page: Optional[int] = None
+    data: list[DetectedAgent]
+    next_page: int | None = None
+    previous_page: int | None = None
 
 
 @router.get("/", response_model=PaginatedResponse)
 async def get_prompt_optimizations(
-    page: Optional[int] = None,
-    page_size: Optional[int] = None,
+    page: int | None = None,
+    page_size: int | None = None,
     user: AuthenticatedUserOrToken = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
@@ -76,7 +76,7 @@ async def get_prompt_optimizations(
 
 class SuggestionFeedbackRequest(BaseModel):
     vote: int  # upvote = 1, downvote = -1
-    feedback: Optional[str] = None
+    feedback: str | None = None
 
 
 class SuggestionDetailOut(BaseModel):
@@ -85,11 +85,11 @@ class SuggestionDetailOut(BaseModel):
     description: str
     status: str
     vote: int
-    feedback: Optional[str] = None
-    prompt_slug: Optional[str] = None
-    new_prompt_version: Optional[int] = None
-    scores: Optional[dict] = None
-    created_at: Optional[str] = None
+    feedback: str | None = None
+    prompt_slug: str | None = None
+    new_prompt_version: int | None = None
+    scores: dict | None = None
+    created_at: str | None = None
 
 
 @router.get("/{suggestion_id}", response_model=SuggestionDetailOut)

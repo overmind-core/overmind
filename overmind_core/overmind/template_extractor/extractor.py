@@ -29,7 +29,6 @@ from __future__ import annotations
 import re
 from collections import defaultdict
 from dataclasses import dataclass, field
-from typing import Dict, List, Optional, Set, Tuple
 
 from .helpers import (
     Token,
@@ -65,7 +64,7 @@ class ExtractedVariable:
 
     name: str
     value: str
-    tokens: List[Token]
+    tokens: list[Token]
 
 
 @dataclass
@@ -73,7 +72,7 @@ class TemplateMatch:
     """A single string that matched a template."""
 
     original_string: str
-    variables: Dict[str, str]  # var_name -> value
+    variables: dict[str, str]  # var_name -> value
 
 
 @dataclass
@@ -81,9 +80,9 @@ class Template:
     """A discovered template with its matches."""
 
     template_string: str  # Human-readable template with {var_N} placeholders
-    elements: List[TemplateElement]  # Structured representation
-    anchor_tokens: List[str]  # The fixed tokens that define this template
-    matches: List[TemplateMatch] = field(default_factory=list)
+    elements: list[TemplateElement]  # Structured representation
+    anchor_tokens: list[str]  # The fixed tokens that define this template
+    matches: list[TemplateMatch] = field(default_factory=list)
 
     def __repr__(self) -> str:
         return f"Template({self.template_string!r}, {len(self.matches)} matches)"
@@ -93,8 +92,8 @@ class Template:
 class ExtractionResult:
     """Complete result of template extraction."""
 
-    templates: List[Template]
-    unmatched: List[str]  # Strings that didn't match any template (unique)
+    templates: list[Template]
+    unmatched: list[str]  # Strings that didn't match any template (unique)
 
     def summary(self) -> str:
         """Return a human-readable summary."""
@@ -136,7 +135,7 @@ class ExtractionConfig:
     strict_mode: bool = True
     # Performance options
     use_parallel: bool = True  # Use parallel processing for grouping
-    n_jobs: Optional[int] = None  # Number of parallel workers (None = auto)
+    n_jobs: int | None = None  # Number of parallel workers (None = auto)
 
 
 # =============================================================================
@@ -144,7 +143,7 @@ class ExtractionConfig:
 # =============================================================================
 
 
-def _parse_template_string(template_string: str) -> List[TemplateElement]:
+def _parse_template_string(template_string: str) -> list[TemplateElement]:
     """
     Parse a template string into structured elements.
 
@@ -180,10 +179,10 @@ def _parse_template_string(template_string: str) -> List[TemplateElement]:
 
 
 def _create_template_from_group(
-    strings: List[str],
-    token_lists: List[List[Token]],
+    strings: list[str],
+    token_lists: list[list[Token]],
     config: ExtractionConfig,
-) -> Optional[Template]:
+) -> Template | None:
     """
     Create a Template from a group of strings believed to share the same template.
 
@@ -245,11 +244,11 @@ def _create_template_from_group(
 
 
 def _split_by_variable_patterns(
-    indices: List[int],
-    token_lists: List[List[Token]],
-    anchors: List[str],
+    indices: list[int],
+    token_lists: list[list[Token]],
+    anchors: list[str],
     min_group_size: int = 2,
-) -> List[Set[int]]:
+) -> list[set[int]]:
     """
     Split a group by consistent variable values (strict mode).
 
@@ -269,7 +268,7 @@ def _split_by_variable_patterns(
         return [{idx} for idx in indices]
 
     # Extract variables for each string
-    var_patterns: Dict[int, Tuple[str, ...]] = {}
+    var_patterns: dict[int, tuple[str, ...]] = {}
 
     for idx in indices:
         token_vals = token_values(token_lists[idx])
@@ -319,13 +318,13 @@ def _split_by_variable_patterns(
         return [set(indices)]
 
     # Build signature using only template variation positions
-    def get_signature(pattern: Tuple[str, ...]) -> Tuple[str, ...]:
+    def get_signature(pattern: tuple[str, ...]) -> tuple[str, ...]:
         return tuple(
             pattern[i] if i < len(pattern) else "" for i in template_var_positions
         )
 
     # Group by signature
-    sig_groups: Dict[Tuple[str, ...], Set[int]] = defaultdict(set)
+    sig_groups: dict[tuple[str, ...], set[int]] = defaultdict(set)
     for idx in indices:
         sig = get_signature(var_patterns[idx])
         sig_groups[sig].add(idx)
@@ -343,10 +342,10 @@ def _split_by_variable_patterns(
 
 
 def _refine_group_by_structure(
-    indices: Set[int],
-    token_lists: List[List[Token]],
+    indices: set[int],
+    token_lists: list[list[Token]],
     config: ExtractionConfig,
-) -> List[Set[int]]:
+) -> list[set[int]]:
     """
     Refine a candidate group by splitting based on actual anchor compatibility.
 
@@ -376,7 +375,7 @@ def _refine_group_by_structure(
         return [{i} for i in indices]
 
     # Group by anchor validation
-    valid_group: Set[int] = set()
+    valid_group: set[int] = set()
     invalid_indices = []
 
     for i, idx in enumerate(idx_list):
@@ -400,7 +399,7 @@ def _refine_group_by_structure(
     return result
 
 
-def _merge_overlapping_groups(groups: List[Set[int]]) -> List[Set[int]]:
+def _merge_overlapping_groups(groups: list[set[int]]) -> list[set[int]]:
     """Merge groups that have overlapping members."""
     if not groups:
         return []
@@ -427,10 +426,10 @@ def _merge_overlapping_groups(groups: List[Set[int]]) -> List[Set[int]]:
 
 
 def _iterative_grouping(
-    strings: List[str],
-    token_lists: List[List[Token]],
+    strings: list[str],
+    token_lists: list[list[Token]],
     config: ExtractionConfig,
-) -> List[Set[int]]:
+) -> list[set[int]]:
     """
     Perform iterative grouping to find template groups.
 
@@ -521,11 +520,11 @@ def _consolidate_constant_variables(template: Template) -> Template:
         return template
 
     # Find which variables are constant (same value in all matches)
-    all_var_names: Set[str] = set()
+    all_var_names: set[str] = set()
     for match in template.matches:
         all_var_names.update(match.variables.keys())
 
-    constant_vars: Dict[str, str] = {}  # var_name -> constant_value
+    constant_vars: dict[str, str] = {}  # var_name -> constant_value
     for var_name in all_var_names:
         values = [m.variables.get(var_name, "") for m in template.matches]
         if len(set(values)) == 1:
@@ -570,7 +569,7 @@ def _consolidate_constant_variables(template: Template) -> Template:
             merged_elements.append(elem)
 
     # Renumber remaining variables (var_0, var_1, ...)
-    var_mapping: Dict[str, str] = {}  # old_name -> new_name
+    var_mapping: dict[str, str] = {}  # old_name -> new_name
     new_var_idx = 0
     final_elements = []
 
@@ -619,8 +618,8 @@ def _consolidate_constant_variables(template: Template) -> Template:
 
 
 def extract_templates(
-    strings: List[str],
-    config: Optional[ExtractionConfig] = None,
+    strings: list[str],
+    config: ExtractionConfig | None = None,
 ) -> ExtractionResult:
     """
     Extract templates from a list of strings.
@@ -663,7 +662,7 @@ def extract_templates(
     groups = _iterative_grouping(strings, token_lists, config)
 
     templates = []
-    matched_indices: Set[int] = set()
+    matched_indices: set[int] = set()
 
     # Try to create a template from each group
     for group in groups:
@@ -689,7 +688,7 @@ def extract_templates(
 
 def match_string_to_template(
     string: str, template: Template
-) -> Optional[TemplateMatch]:
+) -> TemplateMatch | None:
     """
     Try to match a single string against an existing template.
 

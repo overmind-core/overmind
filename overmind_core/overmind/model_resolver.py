@@ -8,7 +8,6 @@ with any single provider while always preferring the best model for the job.
 
 import logging
 from enum import Enum
-from typing import Dict, List, Set, Tuple
 
 from overmind_core.config import settings
 
@@ -25,7 +24,7 @@ class TaskType(str, Enum):
 
 # Priority-ordered model lists per task.
 # First model whose provider has a configured API key wins.
-MODEL_PRIORITY: Dict[TaskType, List[Tuple[str, str]]] = {
+MODEL_PRIORITY: dict[TaskType, list[tuple[str, str]]] = {
     TaskType.JUDGE_SCORING: [
         ("gpt-5-mini", "openai"),
         ("gemini-3-flash-preview", "gemini"),
@@ -55,7 +54,7 @@ MODEL_PRIORITY: Dict[TaskType, List[Tuple[str, str]]] = {
 
 # Backtest models grouped by provider.  get_available_backtest_models()
 # filters this to providers that have an API key.
-BACKTEST_MODELS_BY_PROVIDER: Dict[str, List[str]] = {
+BACKTEST_MODELS_BY_PROVIDER: dict[str, list[str]] = {
     "openai": ["gpt-5-mini", "gpt-5.2", "gpt-5-nano"],
     "anthropic": ["claude-opus-4-6", "claude-sonnet-4-6", "claude-haiku-4-5"],
     "gemini": [
@@ -67,9 +66,9 @@ BACKTEST_MODELS_BY_PROVIDER: Dict[str, List[str]] = {
 }
 
 
-def get_available_providers() -> Set[str]:
+def get_available_providers() -> set[str]:
     """Return providers that have a non-empty API key configured."""
-    available: Set[str] = set()
+    available: set[str] = set()
     if settings.openai_api_key:
         available.add("openai")
     if settings.anthropic_api_key:
@@ -102,10 +101,10 @@ def resolve_model(task: TaskType) -> str:
     )
 
 
-def get_available_backtest_models() -> List[str]:
+def get_available_backtest_models() -> list[str]:
     """Return the default backtest model list filtered to available providers."""
     available = get_available_providers()
-    models: List[str] = []
+    models: list[str] = []
     for provider, provider_models in BACKTEST_MODELS_BY_PROVIDER.items():
         if provider in available:
             models.extend(provider_models)

@@ -3,7 +3,7 @@ Pydantic model for Token entity.
 """
 
 from pydantic import BaseModel, ConfigDict
-from typing import Optional, Dict, Any, List
+from typing import Any
 from datetime import datetime
 from uuid import UUID
 from .user import UserBaseModel
@@ -25,21 +25,21 @@ class TokenModel(BaseModel):
 
     token_id: UUID
     name: str
-    description: Optional[str] = None
+    description: str | None = None
     user_id: UUID
-    organisation_id: Optional[UUID] = None
+    organisation_id: UUID | None = None
     project_id: UUID
     token_hash: str
     prefix: str
     is_active: bool
-    expires_at: Optional[datetime] = None
-    last_used_at: Optional[datetime] = None
-    allowed_ips: Optional[List[str]] = None
-    rate_limit: Optional[Dict[str, Any]] = None
-    created_at: Optional[datetime] = None
-    updated_at: Optional[datetime] = None
+    expires_at: datetime | None = None
+    last_used_at: datetime | None = None
+    allowed_ips: list[str] | None = None
+    rate_limit: dict[str, Any] | None = None
+    created_at: datetime | None = None
+    updated_at: datetime | None = None
 
     # Relationships
     user: UserBaseModel
-    organisation: Optional[OrganisationModel] = None
+    organisation: OrganisationModel | None = None
     project: ProjectModel

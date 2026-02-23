@@ -6,7 +6,6 @@ from collections import Counter
 import copy
 import io
 import logging
-from typing import List, Tuple, Optional
 from PIL import Image, ImageDraw, ImageFont
 import pymupdf
 from functools import lru_cache
@@ -45,7 +44,7 @@ def get_textract_client():
 
 def ocr_extract_text_and_words(
     file_bytes: bytes, is_pdf: bool = False
-) -> List[Tuple[Image.Image, str, List[dict]]]:
+) -> list[tuple[Image.Image, str, list[dict]]]:
     """
     Extracts text from a PDF or image file bytes using Amazon Textract.
 
@@ -144,7 +143,7 @@ def ocr_extract_text_and_words(
 
 
 def obfuscate_pii_on_image(
-    image: Image.Image, pii_boxes_to_obfuscate: List[Tuple[dict, str]]
+    image: Image.Image, pii_boxes_to_obfuscate: list[tuple[dict, str]]
 ) -> Image.Image:
     """
     Draws white boxes with placeholder text over PII entities on the image.
@@ -224,8 +223,8 @@ def process_file_with_ocr_and_pii(
     file_bytes: bytes,
     engine: str,
     is_pdf: bool = False,
-    info_types: Optional[List[str]] = None,
-) -> Tuple[List[Image.Image], str, Counter, List[Tuple[str, List[dict]]]]:
+    info_types: list[str] | None = None,
+) -> tuple[list[Image.Image], str, Counter, list[tuple[str, list[dict]]]]:
     """
     Main function to run the full OCR -> PII detection -> Obfuscation pipeline.
 
@@ -359,8 +358,8 @@ def process_file_with_ocr_and_pii(
 
 
 def create_pdf_with_text_overlay(
-    images: List[Image.Image],
-    page_text_data: Optional[List[Tuple[str, List[dict]]]] = None,
+    images: list[Image.Image],
+    page_text_data: list[tuple[str, list[dict]]] | None = None,
     debug_visible_text: bool = False,
 ) -> bytes:
     """
@@ -463,9 +462,9 @@ def create_pdf_with_text_overlay(
 
 
 def images_to_bytes(
-    images: List[Image.Image],
+    images: list[Image.Image],
     output_format: str = "pdf",
-    page_text_data: Optional[List[Tuple[str, List[dict]]]] = None,
+    page_text_data: list[tuple[str, list[dict]]] | None = None,
     debug_visible_text: bool = False,
 ) -> bytes:
     """

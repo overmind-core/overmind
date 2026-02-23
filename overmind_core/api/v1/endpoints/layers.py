@@ -13,7 +13,7 @@ from overmind_core.overmind.layers import run_overmind_layer
 from overmind_core.overmind.llms import SUPPORTED_LLM_MODEL_NAMES
 from overmind_core.api.v1.helpers.permissions import ProjectPermission
 from pydantic import BaseModel, field_validator
-from typing import Any, Dict, List, Optional, Literal
+from typing import Any, Literal
 import logging
 import base64
 from overmind_core.overmind.ocr_pii import process_file_with_ocr_and_pii, images_to_bytes
@@ -31,13 +31,13 @@ class RunLayerRequest(BaseModel):
 
     input_data: str
     layer_position: Literal["input", "output"]
-    policies: Optional[List[Any]] = None
-    kwargs: Optional[Dict[str, Any]] = None
-    model_name: Optional[str] = None
+    policies: list[Any] | None = None
+    kwargs: dict[str, Any] | None = None
+    model_name: str | None = None
 
     @field_validator("model_name")
     @classmethod
-    def validate_model_name(cls, v: Optional[str]) -> Optional[str]:
+    def validate_model_name(cls, v: str | None) -> str | None:
         if v is None:
             return v
         if v not in SUPPORTED_LLM_MODEL_NAMES:
@@ -51,10 +51,10 @@ class RunLayerResponse(BaseModel):
     Response returned by /layers/run (the first element of run_overmind_layer tuple).
     """
 
-    policy_results: Dict[str, Dict[str, Any]]
+    policy_results: dict[str, dict[str, Any]]
     overall_policy_outcome: str
-    processed_data: Optional[str] = None
-    span_context: Dict[str, str]
+    processed_data: str | None = None
+    span_context: dict[str, str]
 
 
 class ProcessFileResponse(BaseModel):
@@ -62,11 +62,11 @@ class ProcessFileResponse(BaseModel):
     Response returned by /layers/process-file.
     """
 
-    policy_results: Dict[str, Dict[str, Any]]
+    policy_results: dict[str, dict[str, Any]]
     overall_policy_outcome: str
-    processed_data: Optional[str] = None
-    span_context: Dict[str, str]
-    processed_file: Dict[str, Any]  # Changed from Dict[str, str] to support bytes
+    processed_data: str | None = None
+    span_context: dict[str, str]
+    processed_file: dict[str, Any]  # Changed from dict[str, str] to support bytes
 
 
 @router.post("/run", response_model=RunLayerResponse)

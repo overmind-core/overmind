@@ -13,7 +13,7 @@ implementation.  Both are registered on ``app.state`` at startup:
 * ``app.state.org_policy_provider``    — defined in ``policy_interface.py``
 """
 
-from typing import Any, List, Optional, Protocol, runtime_checkable
+from typing import Any, Protocol, runtime_checkable
 from uuid import UUID
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -29,8 +29,8 @@ class AuthenticatedContext(Protocol):
     """Represents an authenticated caller — either a user session or an API token."""
 
     user_id: UUID
-    project_id: Optional[UUID]  # set when auth is via token
-    token_id: Optional[UUID]  # set when auth is via token
+    project_id: UUID | None  # set when auth is via token
+    token_id: UUID | None  # set when auth is via token
 
 
 # ---------------------------------------------------------------------------
@@ -65,9 +65,9 @@ class AuthorizationProvider(Protocol):
         self,
         user: Any,
         db: AsyncSession,
-        required_permissions: List[str],
-        organisation_id: Optional[UUID] = None,
-        project_id: Optional[UUID] = None,
+        required_permissions: list[str],
+        organisation_id: UUID | None = None,
+        project_id: UUID | None = None,
         mode: str = "all",
     ) -> Any:
         """Raise HTTP 403 if denied; return authorization context if allowed."""
@@ -86,9 +86,9 @@ class NoopAuthorizationProvider:
         self,
         user: Any,
         db: AsyncSession,
-        required_permissions: List[str],
-        organisation_id: Optional[UUID] = None,
-        project_id: Optional[UUID] = None,
+        required_permissions: list[str],
+        organisation_id: UUID | None = None,
+        project_id: UUID | None = None,
         mode: str = "all",
     ) -> None:
         # In core mode every authenticated user is authorized.

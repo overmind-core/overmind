@@ -6,7 +6,7 @@ import asyncio
 import logging
 import random
 import uuid
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any
 from uuid import UUID
 
 from celery import shared_task
@@ -28,7 +28,7 @@ MIN_UNSCORED_SPANS_FOR_SCORING = 10
 
 async def validate_judge_scoring_eligibility(
     prompt: Prompt, session
-) -> Tuple[bool, Optional[str], Optional[Dict[str, Any]]]:
+) -> tuple[bool, str | None, dict[str, Any] | None]:
     """
     Validate if a prompt is eligible for judge scoring.
 
@@ -128,7 +128,7 @@ async def validate_judge_scoring_eligibility(
     return True, None, stats
 
 
-async def _get_unscored_spans() -> List[SpanModel]:
+async def _get_unscored_spans() -> list[SpanModel]:
     """
     Fetch all spans that:
     1. Don't have a correctness score in feedback_score
@@ -196,8 +196,8 @@ async def _get_unscored_spans() -> List[SpanModel]:
 
 
 async def _auto_evaluate_unscored_spans(
-    celery_task_id: Optional[str] = None,
-) -> Dict[str, Any]:
+    celery_task_id: str | None = None,
+) -> dict[str, Any]:
     """
     Automatically evaluate unscored spans prompt by prompt.
 
@@ -367,7 +367,7 @@ async def _auto_evaluate_unscored_spans(
 
 @shared_task(name="auto_evaluation.evaluate_unscored_spans", bind=True)
 @with_task_lock(lock_name="auto_evaluate_unscored_spans")
-def auto_evaluate_unscored_spans_task(self) -> Dict[str, Any]:
+def auto_evaluate_unscored_spans_task(self) -> dict[str, Any]:
     """
     Celery periodic task to check unscored spans and create evaluation jobs.
 
@@ -389,7 +389,7 @@ def auto_evaluate_unscored_spans_task(self) -> Dict[str, Any]:
 
 async def _execute_prompt_spans_evaluation(
     prompt_id: str, project_id: str, prompt_slug: str, job_id: str
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """
     Execute the actual span evaluation for a job.
 
@@ -519,7 +519,7 @@ async def _execute_prompt_spans_evaluation(
 @shared_task(name="auto_evaluation.evaluate_prompt_spans", bind=True)
 def evaluate_prompt_spans_task(
     self, prompt_id: str, project_id: str, prompt_slug: str, job_id: str
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """
     Celery task to evaluate spans for a single prompt (dispatched by job reconciler).
 

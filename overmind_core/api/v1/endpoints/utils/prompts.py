@@ -2,10 +2,10 @@
 Utility functions for the prompts endpoint.
 """
 
-from typing import List, Optional, Dict, Any
+from typing import Any
 
 
-def normalize_criteria_rules(rules: List[str]) -> set:
+def normalize_criteria_rules(rules: list[str]) -> set:
     """
     Normalize a list of criteria rules for comparison.
     Converts to lowercase and removes duplicates (order-independent).
@@ -20,7 +20,7 @@ def normalize_criteria_rules(rules: List[str]) -> set:
 
 
 def are_criteria_same(
-    old_criteria: Optional[Dict[str, List[str]]], new_criteria: Dict[str, List[str]]
+    old_criteria: dict[str, list[str]] | None, new_criteria: dict[str, list[str]]
 ) -> bool:
     """
     Compare two criteria dictionaries to check if they're the same.
@@ -68,8 +68,8 @@ def are_criteria_same(
 
 
 def are_descriptions_same(
-    old_agent_description: Optional[Dict[str, Any]],
-    new_description: Optional[str],
+    old_agent_description: dict[str, Any] | None,
+    new_description: str | None,
 ) -> bool:
     """
     Check whether the description field inside agent_description has effectively
@@ -84,7 +84,7 @@ def are_descriptions_same(
     Returns:
         True if the description is the same, False if it has changed.
     """
-    old_text: Optional[str] = None
+    old_text: str | None = None
     if old_agent_description and isinstance(old_agent_description, dict):
         old_text = old_agent_description.get("description")
 

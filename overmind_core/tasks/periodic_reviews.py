@@ -5,7 +5,7 @@ These reviews are dismissible, allowing users to skip if satisfied with current 
 
 import asyncio
 import logging
-from typing import Dict, Any, Optional
+from typing import Any
 from uuid import UUID
 
 from celery import shared_task
@@ -23,7 +23,7 @@ logger = logging.getLogger(__name__)
 REVIEW_THRESHOLDS = [10, 50, 100, 200, 500, 1000]
 
 
-def get_next_review_threshold(current_count: int) -> Optional[int]:
+def get_next_review_threshold(current_count: int) -> int | None:
     """
     Calculate the next review threshold based on current span count.
     Sequence: 10, 50, 100, 200, 500, 1000, 2000, 3000, 4000...
@@ -117,7 +117,7 @@ async def _update_next_review_threshold(prompt: Prompt, current_span_count: int)
         logger.info(f"Prompt {prompt.prompt_id} has no more scheduled reviews")
 
 
-async def _check_prompts_for_reviews() -> Dict[str, Any]:
+async def _check_prompts_for_reviews() -> dict[str, Any]:
     """
     Check all prompts across all projects for review thresholds.
 
@@ -178,7 +178,7 @@ async def _check_prompts_for_reviews() -> Dict[str, Any]:
 
 @shared_task(name="periodic_reviews.check_review_triggers", bind=True)
 @with_task_lock(lock_name="periodic_reviews")
-def check_review_triggers_task(self) -> Dict[str, Any]:
+def check_review_triggers_task(self) -> dict[str, Any]:
     """
     Celery task to check for prompts that need periodic reviews.
     Runs periodically (e.g., every hour) to detect when prompts reach review thresholds.
@@ -209,7 +209,7 @@ def check_review_triggers_task(self) -> Dict[str, Any]:
 @shared_task(name="periodic_reviews.mark_review_completed")
 def mark_review_completed_task(
     prompt_id: str, current_span_count: int
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """
     Mark a periodic review as completed and update the next review threshold.
     Called after user completes or dismisses a periodic review.

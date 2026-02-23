@@ -1,6 +1,6 @@
 import logging
 import uuid
-from typing import List, Literal
+from typing import Literal
 from fastapi import APIRouter, Depends, Body, HTTPException, Request
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -108,7 +108,7 @@ async def submit_span_feedback(
 @router.post("/evaluate")
 async def evaluate_spans(
     request: Request,
-    span_ids: List[str] = Body(..., description="List of span IDs to evaluate"),
+    span_ids: list[str] = Body(..., description="List of span IDs to evaluate"),
     current_user: AuthenticatedUserOrToken = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):

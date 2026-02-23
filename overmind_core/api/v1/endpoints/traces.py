@@ -1,6 +1,5 @@
 import logging
 from uuid import UUID
-from typing import List, Optional
 from datetime import datetime
 from fastapi import APIRouter, Depends, Query, Request
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -95,15 +94,15 @@ async def list_traces(
     limit: int = Query(100, ge=1, le=1000),
     offset: int = Query(0, ge=0),
     root_only: bool = Query(True),
-    start_timestamp: Optional[datetime] = Query(None),
-    end_timestamp: Optional[datetime] = Query(None),
-    prompt_slug: Optional[str] = Query(None),
-    prompt_version: Optional[str] = Query(None),
+    start_timestamp: datetime | None = Query(None),
+    end_timestamp: datetime | None = Query(None),
+    prompt_slug: str | None = Query(None),
+    prompt_version: str | None = Query(None),
     # TODO: remove all and just keep query, ordering, and root_only, pagination
     # drf like filter=["status;eq;error","duration_ms;gte;100","duration_ms;lte;5000"]
-    query: List[str] = Query(default=[], description=_FILTER_DESCRIPTION),
+    query: list[str] = Query(default=[], description=_FILTER_DESCRIPTION),
     # drf like ordering=["-start_time_unix_nano","-duration_ms"]
-    ordering: List[str] = Query(default=[], description="Ordering of the traces"),
+    ordering: list[str] = Query(default=[], description="Ordering of the traces"),
     current_user: AuthenticatedUserOrToken = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
@@ -156,7 +155,7 @@ async def list_traces(
     return await _list_traces(db=db, filters=filters)
 
 
-def validate_ordering(ordering: List[str], allowed: List[str]) -> List[str]:
+def validate_ordering(ordering: list[str], allowed: list[str]) -> list[str]:
     """
     Ensure that each field in the ordering list (with or without leading '-')
     is inside the allowed set. Returns a filtered list of valid ordering fields

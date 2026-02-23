@@ -8,7 +8,7 @@ policy configuration without importing SQL models directly.
 - Enterprise provides SqlOrgPolicyProvider which wraps Valkey-cached DB queries.
 """
 
-from typing import Any, Dict, List, Optional, Protocol
+from typing import Any, Protocol
 from uuid import UUID
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -17,17 +17,17 @@ from sqlalchemy.ext.asyncio import AsyncSession
 class OrgPolicyProvider(Protocol):
     async def get_org_policy_version(
         self, organisation_id: UUID, db: AsyncSession
-    ) -> Optional[Any]:
+    ) -> Any | None:
         ...
 
     async def get_org_llm_policies(
         self, db: AsyncSession, current_user: Any
-    ) -> Dict[str, List[Any]]:
+    ) -> dict[str, list[Any]]:
         ...
 
     async def get_org_mcp_policy(
         self, organisation_id: UUID, db: AsyncSession
-    ) -> Optional[Dict]:
+    ) -> Dict | None:
         ...
 
 
@@ -36,15 +36,15 @@ class NoopOrgPolicyProvider:
 
     async def get_org_policy_version(
         self, organisation_id: UUID, db: AsyncSession
-    ) -> Optional[Any]:
+    ) -> Any | None:
         return None
 
     async def get_org_llm_policies(
         self, db: AsyncSession, current_user: Any
-    ) -> Dict[str, List[Any]]:
+    ) -> dict[str, list[Any]]:
         return {"input": [], "output": []}
 
     async def get_org_mcp_policy(
         self, organisation_id: UUID, db: AsyncSession
-    ) -> Optional[Dict]:
+    ) -> Dict | None:
         return None

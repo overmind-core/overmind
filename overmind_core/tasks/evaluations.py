@@ -1,7 +1,7 @@
 import asyncio
 import json
 import logging
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from celery import shared_task
 from litellm import RateLimitError
@@ -69,7 +69,7 @@ class CorrectnessResult(BaseModel):
     correctness: float = Field(description="Correctness score from 0 to 1")
 
 
-def _format_criteria(criteria_rules: List[str]) -> str:
+def _format_criteria(criteria_rules: list[str]) -> str:
     """Format a list of criteria rules as a readable numbered string."""
     return "\n".join(f"- Rule {i + 1}: {rule}" for i, rule in enumerate(criteria_rules))
 
@@ -82,12 +82,12 @@ def _format_criteria(criteria_rules: List[str]) -> str:
     before_sleep=before_sleep_log(logger, logging.WARNING),
 )
 def _evaluate_correctness_with_llm(
-    input_data: Dict[str, Any],
-    output_data: Dict[str, Any],
+    input_data: dict[str, Any],
+    output_data: dict[str, Any],
     criteria_text: str,
-    project_description: Optional[str] = None,
-    agent_description: Optional[str] = None,
-    span_metadata: Optional[Dict[str, Any]] = None,
+    project_description: str | None = None,
+    agent_description: str | None = None,
+    span_metadata: dict[str, Any] | None = None,
 ) -> float:
     """
     Call LLM to evaluate correctness and return a normalized score.
@@ -233,7 +233,7 @@ def _evaluate_correctness_with_llm(
     return max(0.0, min(1.0, correctness_value))
 
 
-def _extract_span_payload(span: SpanModel) -> Dict[str, Any]:
+def _extract_span_payload(span: SpanModel) -> dict[str, Any]:
     """Extract input, output, metadata, and input_params from a span model."""
     return {
         "input": span.input or {},
@@ -264,7 +264,7 @@ async def _store_span_score(span_id: str, correctness: float) -> bool:
 
 async def _get_context_for_span(
     span: SpanModel,
-) -> tuple[str, Optional[str], Optional[str]]:
+) -> tuple[str, str | None, str | None]:
     """
     Get evaluation criteria, project description, and agent description for a span.
 
@@ -364,7 +364,7 @@ async def _get_context_for_span(
 
 async def _evaluate_span_correctness(
     span_id: str,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """Evaluate a single span's correctness using LLM."""
     AsyncSessionLocal = get_session_local()
     async with AsyncSessionLocal() as session:
@@ -409,12 +409,12 @@ async def _evaluate_span_correctness(
 
 @shared_task(name="evaluations.evaluate_spans")
 def evaluate_spans_task(
-    span_ids: List[str],
-    business_id: Optional[str] = None,
-    user_id: Optional[str] = None,
+    span_ids: list[str],
+    business_id: str | None = None,
+    user_id: str | None = None,
     *,
     job_id: str,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """
     Evaluate multiple spans based on provided criteria or prompt template criteria.
 
@@ -443,7 +443,7 @@ def evaluate_spans_task(
 
             semaphore = asyncio.Semaphore(_MAX_CONCURRENT_EVALUATIONS)
 
-            async def _evaluate_with_limit(span_id: str) -> Dict[str, Any]:
+            async def _evaluate_with_limit(span_id: str) -> dict[str, Any]:
                 async with semaphore:
                     try:
                         return await _evaluate_span_correctness(span_id=span_id)

@@ -9,7 +9,7 @@ import json
 import logging
 import uuid as uuid_module
 from datetime import datetime, timedelta, timezone
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any
 
 from celery import shared_task
 from pydantic import BaseModel, Field
@@ -48,12 +48,12 @@ logger = logging.getLogger(__name__)
 INITIAL_THRESHOLDS = [50, 100, 200, 500, 1000]
 
 
-def _get_tools_from_span(span: SpanModel) -> List[Dict[str, Any]]:
+def _get_tools_from_span(span: SpanModel) -> list[dict[str, Any]]:
     """Extract tool definitions pre-reconstructed at ingestion time."""
     return (span.metadata_attributes or {}).get("available_tools") or []
 
 
-def _format_span_examples_text(spans: List[SpanModel], limit: int = 10) -> str:
+def _format_span_examples_text(spans: list[SpanModel], limit: int = 10) -> str:
     """
     Format a list of spans as a human-readable examples string for prompts.
 
@@ -239,7 +239,7 @@ async def is_prompt_used_recently(prompt_id: str, session, days: int = 7) -> boo
 
 async def is_latest_prompt_adopted(
     prompt: Prompt, current_span_count: int, session, adoption_threshold: float = 0.25
-) -> Tuple[bool, Dict[str, Any]]:
+) -> tuple[bool, dict[str, Any]]:
     """
     Check if the latest prompt version is being adopted by at least X% of new spans.
 
@@ -320,7 +320,7 @@ async def is_latest_prompt_adopted(
 
 async def fetch_spans_by_score_buckets(
     prompt_id: str, session, per_bucket: int = 15
-) -> Dict[str, List[SpanModel]]:
+) -> dict[str, list[SpanModel]]:
     """
     Fetch latest spans from each score bucket.
 
@@ -395,15 +395,15 @@ async def fetch_spans_by_score_buckets(
 
 
 class SuggestionResponse(BaseModel):
-    suggestions: List[str] = Field(description="List of improvement suggestions")
+    suggestions: list[str] = Field(description="List of improvement suggestions")
 
 
 async def generate_improvement_suggestions(
-    poor_spans: List[SpanModel],
+    poor_spans: list[SpanModel],
     prompt: Prompt,
     project_description: str = "",
     agent_description: str = "",
-) -> List[str]:
+) -> list[str]:
     """
     Use Claude Sonnet 4.5 to analyze poor performing spans and generate suggestions.
 
@@ -515,8 +515,8 @@ Note: If tool definitions exist in the prompt, preserve them while improving ins
 
 
 async def _generate_tool_improvement_suggestions(
-    poor_spans: List[SpanModel], prompt: Prompt
-) -> List[str]:
+    poor_spans: list[SpanModel], prompt: Prompt
+) -> list[str]:
     """
     Generate improvement suggestions for tool-calling agent prompts.
 
@@ -576,8 +576,8 @@ async def _generate_tool_improvement_suggestions(
 
 async def improve_prompt_template(
     current_prompt: Prompt,
-    suggestions: List[str],
-    span_examples: Dict[str, List[SpanModel]],
+    suggestions: list[str],
+    span_examples: dict[str, list[SpanModel]],
     project_description: str = "",
     agent_description: str = "",
 ) -> str:
@@ -598,7 +598,7 @@ async def improve_prompt_template(
     Returns:
         The new improved prompt string
     """
-    all_spans: List[SpanModel] = [
+    all_spans: list[SpanModel] = [
         s for bucket in span_examples.values() for s in bucket
     ]
 
@@ -663,8 +663,8 @@ async def improve_prompt_template(
 
 async def _improve_tool_prompt_template(
     current_prompt: Prompt,
-    suggestions: List[str],
-    span_examples: Dict[str, List[SpanModel]],
+    suggestions: list[str],
+    span_examples: dict[str, list[SpanModel]],
 ) -> str:
     """
     Generate an improved prompt template for tool-calling agent prompts.
@@ -844,8 +844,8 @@ async def create_prompt_version(
 
 async def generate_outputs_with_new_prompt(
     new_prompt: Any,
-    old_spans: List[SpanModel],
-) -> List[Dict[str, Any]]:
+    old_spans: list[SpanModel],
+) -> list[dict[str, Any]]:
     """
     Generate new outputs using a prompt template with inputs from old spans.
 
@@ -910,7 +910,7 @@ async def generate_outputs_with_new_prompt(
             # so the model receives the same conversation context.
             span_input = _safe_parse_json(old_span.input)
             if isinstance(span_input, list) and span_input:
-                messages: List[Dict[str, Any]] = []
+                messages: list[dict[str, Any]] = []
                 system_replaced = False
                 for msg in span_input:
                     if (
@@ -977,11 +977,11 @@ async def generate_outputs_with_new_prompt(
 
 async def create_comparison_spans(
     new_prompt: Prompt,
-    generation_results: List[Dict[str, Any]],
+    generation_results: list[dict[str, Any]],
     session,
-    project_description: Optional[str] = None,
-    agent_description: Optional[str] = None,
-) -> List[SpanModel]:
+    project_description: str | None = None,
+    agent_description: str | None = None,
+) -> list[SpanModel]:
     """
     Create new spans with the generated outputs using pre-computed or freshly evaluated scores.
 
@@ -1091,8 +1091,8 @@ async def create_comparison_spans(
 
 
 async def calculate_comparison_metrics(
-    old_spans: List[SpanModel], new_spans: List[SpanModel]
-) -> Dict[str, Any]:
+    old_spans: list[SpanModel], new_spans: list[SpanModel]
+) -> dict[str, Any]:
     """
     Calculate comparison metrics between old and new prompts.
 
@@ -1185,7 +1185,7 @@ async def calculate_comparison_metrics(
 
 async def validate_prompt_tuning_eligibility(
     prompt: Prompt, session
-) -> Tuple[bool, Optional[str], Optional[Dict[str, Any]]]:
+) -> tuple[bool, str | None, dict[str, Any] | None]:
     """
     Validate if a prompt is eligible for prompt tuning.
 
@@ -1309,7 +1309,7 @@ async def validate_prompt_tuning_eligibility(
 
 async def _check_and_create_prompt_improvement_job(
     prompt: Prompt, session
-) -> Optional[Dict[str, Any]]:
+) -> dict[str, Any] | None:
     """
     Validate a prompt's eligibility for improvement and create a PENDING job if eligible.
 
@@ -1398,7 +1398,7 @@ async def _check_and_create_prompt_improvement_job(
 
 async def _execute_prompt_improvement(
     prompt_id: str, job_id: str, session
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """
     Execute the actual prompt improvement work for a job.
 
@@ -1521,7 +1521,7 @@ async def _execute_prompt_improvement(
         # 2. Select comparison spans (max 50, prioritise lower scores)
         # --------------------------------------------------------------
         logger.info("Selecting spans from buckets for comparison testing (max 50)")
-        comparison_spans: List[SpanModel] = []
+        comparison_spans: list[SpanModel] = []
 
         for bucket_name in ["poor", "below_average", "average", "good", "excellent"]:
             bucket_spans = span_buckets.get(bucket_name, [])
@@ -1884,8 +1884,8 @@ async def _execute_prompt_improvement(
 
 
 async def _improve_prompt_templates(
-    celery_task_id: Optional[str] = None,
-) -> Dict[str, Any]:
+    celery_task_id: str | None = None,
+) -> dict[str, Any]:
     """
     Main task logic: Find prompts that need improvement and improve them.
 
@@ -1974,7 +1974,7 @@ async def _improve_prompt_templates(
 
 @shared_task(name="prompt_improvement.improve_prompt_templates", bind=True)
 @with_task_lock(lock_name="prompt_improvement")
-def improve_prompt_templates(self) -> Dict[str, Any]:
+def improve_prompt_templates(self) -> dict[str, Any]:
     """
     Celery periodic task to check prompts and create improvement jobs.
 
@@ -1994,7 +1994,7 @@ def improve_prompt_templates(self) -> Dict[str, Any]:
     return asyncio.run(_improve_prompt_templates(celery_task_id=self.request.id))
 
 
-async def _improve_single_prompt_async(prompt_id: str, job_id: str) -> Dict[str, Any]:
+async def _improve_single_prompt_async(prompt_id: str, job_id: str) -> dict[str, Any]:
     """
     Async wrapper for executing a single prompt improvement.
 
@@ -2018,7 +2018,7 @@ async def _improve_single_prompt_async(prompt_id: str, job_id: str) -> Dict[str,
 
 
 @shared_task(name="prompt_improvement.improve_single_prompt", bind=True)
-def improve_single_prompt_task(self, prompt_id: str, job_id: str) -> Dict[str, Any]:
+def improve_single_prompt_task(self, prompt_id: str, job_id: str) -> dict[str, Any]:
     """
     Celery task to improve a single prompt (dispatched by job reconciler).
 

@@ -1,4 +1,4 @@
-from typing import Optional, List, Sequence
+from collections.abc import Sequence
 from glide import (
     ExpirySet,
     ExpiryType,
@@ -10,7 +10,7 @@ from glide import (
 from overmind_core.config import settings
 
 
-_client: Optional[GlideClient] = None
+_client: GlideClient | None = None
 
 
 async def get_valkey_client() -> GlideClient:
@@ -35,7 +35,7 @@ async def get_valkey_client() -> GlideClient:
     return _client
 
 
-async def get_key(key: str) -> Optional[str]:
+async def get_key(key: str) -> str | None:
     """
     Get a value from Valkey by key.
 
@@ -50,7 +50,7 @@ async def get_key(key: str) -> Optional[str]:
     return value.decode("utf-8") if value else None
 
 
-async def set_key(key: str, value: str, ttl: Optional[int] = None) -> bool:
+async def set_key(key: str, value: str, ttl: int | None = None) -> bool:
     """
     Set a key-value pair in Valkey.
 
@@ -142,7 +142,7 @@ async def delete_keys_by_pattern(pattern: str) -> int:
         # Delete keys if any were found
         if keys_list and isinstance(keys_list, list) and len(keys_list) > 0:
             # Keys are returned as bytes from scan, decode them to strings
-            string_keys: List[str] = [
+            string_keys: list[str] = [
                 k.decode("utf-8") if isinstance(k, bytes) else str(k) for k in keys_list
             ]
             deleted = await client.delete(string_keys)  # type: ignore[arg-type]

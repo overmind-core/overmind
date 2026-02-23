@@ -2,7 +2,7 @@
 Standardized response helpers for consistent API responses.
 """
 
-from typing import Any, List, Optional
+from typing import Any
 from fastapi import HTTPException, status
 from pydantic import BaseModel
 
@@ -12,8 +12,8 @@ class APIResponse(BaseModel):
 
     success: bool
     message: str
-    data: Optional[Any] = None
-    errors: Optional[List[str]] = None
+    data: Any | None = None
+    errors: list[str] | None = None
 
 
 def success_response(
@@ -26,7 +26,7 @@ def success_response(
 
 def error_response(
     message: str = "An error occurred",
-    errors: Optional[List[str]] = None,
+    errors: list[str] | None = None,
     status_code: int = status.HTTP_400_BAD_REQUEST,
 ) -> HTTPException:
     """Create an error response"""
@@ -36,7 +36,7 @@ def error_response(
 
 
 def validation_error_response(
-    errors: List[str], message: str = "Validation failed"
+    errors: list[str], message: str = "Validation failed"
 ) -> HTTPException:
     """Create a validation error response"""
     return error_response(

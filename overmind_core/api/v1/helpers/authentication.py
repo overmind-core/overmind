@@ -5,7 +5,8 @@ Enterprise (overmind_backend) extends this with RBAC-aware authentication
 that loads additional relationships (organisations, token_roles).
 """
 
-from typing import Any, Callable, Optional
+from typing import Any
+from collections.abc import Callable
 from uuid import UUID
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, inspect as sa_inspect
@@ -40,7 +41,7 @@ bearer_scheme = HTTPBearer(auto_error=False)
 
 
 class APITokenHeader:
-    def __call__(self, request: Request) -> Optional[str]:
+    def __call__(self, request: Request) -> str | None:
         api_token = request.headers.get("X-API-Token")
         return api_token if api_token else None
 
@@ -210,7 +211,7 @@ class AuthenticatedUserOrToken:
         self.is_active = user.is_active
         self.token = token
 
-    def get_organisation_id(self) -> Optional[UUID]:
+    def get_organisation_id(self) -> UUID | None:
         """Safely extract organisation_id from the authenticated context."""
         if self.token is not None:
             return getattr(self.token, "organisation_id", None)
@@ -245,7 +246,7 @@ async def authenticate_user(username: str, password: str, db: AsyncSession):
     return user
 
 
-def create_access_token(data: dict, expires_delta: Optional[timedelta] = None):
+def create_access_token(data: dict, expires_delta: timedelta | None = None):
     to_encode = data.copy()
     expire = datetime.utcnow() + (expires_delta or timedelta(minutes=15))
     to_encode.update({"exp": expire})
@@ -325,9 +326,9 @@ class RBACAuthenticationProvider:
         db: AsyncSession,
         use_cache: bool = True,
     ) -> AuthenticatedUserOrToken:
-        api_token: Optional[str] = request.headers.get("X-API-Token")
-        jwt_token: Optional[str] = None
-        auth_header: Optional[str] = request.headers.get("Authorization")
+        api_token: str | None = request.headers.get("X-API-Token")
+        jwt_token: str | None = None
+        auth_header: str | None = request.headers.get("Authorization")
         if auth_header and auth_header.lower().startswith("bearer "):
             jwt_token = auth_header[7:]
 
@@ -340,8 +341,8 @@ class RBACAuthenticationProvider:
 
 
 async def _authenticate_with_tokens(
-    api_token: Optional[str],
-    jwt_token: Optional[str],
+    api_token: str | None,
+    jwt_token: str | None,
     db: AsyncSession,
     use_cache: bool = True,
 ) -> AuthenticatedUserOrToken:

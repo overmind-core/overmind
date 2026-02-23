@@ -5,7 +5,7 @@ Jobs API - CRUD operations for job management.
 import logging
 import uuid as _uuid
 from enum import Enum
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
@@ -58,27 +58,27 @@ class JobCreateRequest(BaseModel):
 
 
 class JobUpdateRequest(BaseModel):
-    status: Optional[JobStatus] = None
-    result: Optional[Dict[str, Any]] = None
+    status: JobStatus | None = None
+    result: dict[str, Any] | None = None
 
 
 class JobOut(BaseModel):
     job_id: str
     job_type: JobType
-    prompt_slug: Optional[str] = None
-    prompt_display_name: Optional[str] = None
+    prompt_slug: str | None = None
+    prompt_display_name: str | None = None
     project_id: str
     status: JobStatus
-    celery_task_id: Optional[str] = None
-    result: Optional[Dict[str, Any]] = None
-    triggered_by_user_id: Optional[str] = None
-    triggered_by: Optional[str] = None  # "manual" or "scheduled"
-    created_at: Optional[str] = None
-    updated_at: Optional[str] = None
+    celery_task_id: str | None = None
+    result: dict[str, Any] | None = None
+    triggered_by_user_id: str | None = None
+    triggered_by: str | None = None  # "manual" or "scheduled"
+    created_at: str | None = None
+    updated_at: str | None = None
 
     @classmethod
     def from_model(
-        cls, job: Job, prompt_display_name: Optional[str] = None
+        cls, job: Job, prompt_display_name: str | None = None
     ) -> "JobOut":
         return cls(
             job_id=str(job.job_id),
@@ -99,7 +99,7 @@ class JobOut(BaseModel):
 
 
 class JobListResponse(BaseModel):
-    jobs: List[JobOut]
+    jobs: list[JobOut]
     total: int
 
 
@@ -284,11 +284,11 @@ async def create_job_from_user(
 
 @router.get("/", response_model=JobListResponse)
 async def list_jobs(
-    project_id: Optional[str] = Query(None),
+    project_id: str | None = Query(None),
     limit: int = Query(50, ge=1, le=200),
     offset: int = Query(0, ge=0),
-    job_type: Optional[JobType] = Query(None, description="Filter by job type"),
-    status: Optional[JobStatus] = Query(None, description="Filter by status"),
+    job_type: JobType | None = Query(None, description="Filter by job type"),
+    status: JobStatus | None = Query(None, description="Filter by status"),
     user: AuthenticatedUserOrToken = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
@@ -324,7 +324,7 @@ async def list_jobs(
 
     # Batch-resolve prompt display names for all slugs in this page
     slugs = {j.prompt_slug for j in jobs if j.prompt_slug}
-    display_names: Dict[str, str] = {}
+    display_names: dict[str, str] = {}
     if slugs:
         from overmind_core.api.v1.endpoints.utils.agents import humanise_slug
 
@@ -426,7 +426,7 @@ async def delete_job(
 
 @router.post("/extract-templates", response_model=JobOut)
 async def create_template_extraction(
-    project_id: Optional[str] = Query(None),
+    project_id: str | None = Query(None),
     user: AuthenticatedUserOrToken = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
@@ -478,7 +478,7 @@ async def create_template_extraction(
 @router.post("/{prompt_slug}/score", response_model=JobOut)
 async def create_prompt_scoring_job(
     prompt_slug: str,
-    project_id: Optional[str] = Query(None),
+    project_id: str | None = Query(None),
     user: AuthenticatedUserOrToken = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
@@ -541,7 +541,7 @@ async def create_prompt_scoring_job(
 @router.post("/{prompt_slug}/tune", response_model=JobOut)
 async def create_prompt_tuning_job(
     prompt_slug: str,
-    project_id: Optional[str] = Query(None),
+    project_id: str | None = Query(None),
     user: AuthenticatedUserOrToken = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):

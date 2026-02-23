@@ -9,13 +9,13 @@ This module handles:
 
 import json
 import logging
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
 
 def detect_agentic_span(
-    input_data: Any, output_data: Any, metadata: Dict[str, Any]
+    input_data: Any, output_data: Any, metadata: dict[str, Any]
 ) -> bool:
     """
     Detect if a span represents an agentic/multi-step interaction with tool calls.
@@ -68,7 +68,7 @@ def detect_agentic_span(
     return False
 
 
-def _find_tool_result(messages: List[Dict], tool_call_id: str) -> Optional[str]:
+def _find_tool_result(messages: list[Dict], tool_call_id: str) -> str | None:
     """Find the tool result message matching a tool call ID."""
     for msg in messages:
         if not isinstance(msg, dict):
@@ -78,7 +78,7 @@ def _find_tool_result(messages: List[Dict], tool_call_id: str) -> Optional[str]:
     return None
 
 
-def _extract_tool_calls_from_messages(messages: List[Dict]) -> List[Dict[str, Any]]:
+def _extract_tool_calls_from_messages(messages: list[Dict]) -> list[dict[str, Any]]:
     """
     Extract all tool calls and their results from a message list.
 
@@ -144,7 +144,7 @@ def _extract_tool_calls_from_messages(messages: List[Dict]) -> List[Dict[str, An
     return tool_calls
 
 
-def _extract_final_output(input_data: Any, output_data: Any) -> Dict[str, Any]:
+def _extract_final_output(input_data: Any, output_data: Any) -> dict[str, Any]:
     """
     Extract the final output that should be evaluated.
 
@@ -193,7 +193,7 @@ def _extract_original_query(input_data: Any) -> str:
     return str(input_data) if input_data else ""
 
 
-def _format_conversation_turns(messages: List[Any]) -> List[Dict[str, Any]]:
+def _format_conversation_turns(messages: list[Any]) -> list[dict[str, Any]]:
     """Format conversation turns for cleaner representation."""
     formatted = []
 
@@ -220,8 +220,8 @@ def _format_conversation_turns(messages: List[Any]) -> List[Dict[str, Any]]:
 
 
 def preprocess_span_for_evaluation(
-    input_data: Any, output_data: Any, metadata: Dict[str, Any]
-) -> Dict[str, Any]:
+    input_data: Any, output_data: Any, metadata: dict[str, Any]
+) -> dict[str, Any]:
     """
     Preprocess a span and extract structured information for evaluation.
 
@@ -243,8 +243,8 @@ def preprocess_span_for_evaluation(
         {
             "is_agentic": bool,
             "original_query": str,
-            "tool_calls": List[Dict],
-            "conversation_turns": List[Dict],
+            "tool_calls": list[Dict],
+            "conversation_turns": list[Dict],
             "final_output": Dict,
             "metadata": Dict
         }
@@ -288,7 +288,7 @@ def preprocess_span_for_evaluation(
     return result
 
 
-def format_conversation_flow(conversation_turns: List[Dict[str, Any]]) -> str:
+def format_conversation_flow(conversation_turns: list[dict[str, Any]]) -> str:
     """
     Format conversation turns into a readable string for the judge prompt.
 
@@ -324,7 +324,7 @@ def format_conversation_flow(conversation_turns: List[Dict[str, Any]]) -> str:
     return "\n".join(lines)
 
 
-def format_intermediate_steps(tool_calls: List[Dict[str, Any]]) -> str:
+def format_intermediate_steps(tool_calls: list[dict[str, Any]]) -> str:
     """
     Format tool calls and results into a readable string for the judge prompt.
 
@@ -360,7 +360,7 @@ def format_intermediate_steps(tool_calls: List[Dict[str, Any]]) -> str:
     return "\n".join(lines)
 
 
-def format_final_output(final_output: Dict[str, Any]) -> str:
+def format_final_output(final_output: dict[str, Any]) -> str:
     """
     Format the final output for the judge prompt.
 
@@ -391,7 +391,7 @@ def _safe_parse_json(data: Any) -> Any:
     return data
 
 
-def _get_tools_from_metadata_attributes(metadata_attributes: Dict) -> List[Dict]:
+def _get_tools_from_metadata_attributes(metadata_attributes: Dict) -> list[Dict]:
     """
     Reconstruct the OpenAI-format tools array from the flat
     ``llm.request.functions.N.*`` keys stored in metadata_attributes by the
@@ -405,14 +405,14 @@ def _get_tools_from_metadata_attributes(metadata_attributes: Dict) -> List[Dict]
     if not metadata_attributes or not isinstance(metadata_attributes, dict):
         return []
 
-    tools: List[Dict] = []
+    tools: list[Dict] = []
     i = 0
     while True:
         prefix = f"llm.request.functions.{i}"
         name = metadata_attributes.get(f"{prefix}.name")
         if not name:
             break
-        function_def: Dict[str, Any] = {"name": name}
+        function_def: dict[str, Any] = {"name": name}
         description = metadata_attributes.get(f"{prefix}.description")
         if description:
             function_def["description"] = description
@@ -432,7 +432,7 @@ def _get_tools_from_metadata_attributes(metadata_attributes: Dict) -> List[Dict]
     return tools
 
 
-def _format_message_history(messages: List[Dict]) -> str:
+def _format_message_history(messages: list[Dict]) -> str:
     """
     Format a list of messages into a human-readable conversation history for the judge.
 
@@ -493,8 +493,8 @@ def _format_message_history(messages: List[Dict]) -> str:
 def extract_tool_call_span_for_evaluation(
     input_data: Any,
     output_data: Any,
-    metadata_attributes: Optional[Dict[str, Any]] = None,
-) -> Dict[str, Any]:
+    metadata_attributes: dict[str, Any] | None = None,
+) -> dict[str, Any]:
     """
     Extract structured components from a tool-call span for evaluation.
 
@@ -524,7 +524,7 @@ def extract_tool_call_span_for_evaluation(
         input_data if isinstance(input_data, list) else []
     )
 
-    tool_calls: List[Dict] = []
+    tool_calls: list[Dict] = []
     if isinstance(output_data, dict):
         if output_data.get("tool_calls"):
             tool_calls = output_data["tool_calls"]
@@ -553,7 +553,7 @@ def extract_tool_call_span_for_evaluation(
 def extract_tool_answer_span_for_evaluation(
     input_data: Any,
     output_data: Any,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """
     Extract structured components from a tool-answer span for evaluation.
 
@@ -576,7 +576,7 @@ def extract_tool_answer_span_for_evaluation(
         input_data if isinstance(input_data, list) else []
     )
 
-    tool_results: List[Dict[str, str]] = []
+    tool_results: list[dict[str, str]] = []
     if isinstance(input_data, list):
         for msg in input_data:
             if not isinstance(msg, dict):

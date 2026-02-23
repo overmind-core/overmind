@@ -8,7 +8,7 @@ for the three Celery jobs (agent discovery, judge scoring, prompt tuning).
 
 import logging
 import uuid as _uuid
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
@@ -41,32 +41,32 @@ router = APIRouter()
 
 class HourlyBucket(BaseModel):
     hour: str  # ISO-8601 hour string e.g. "2026-02-10T14:00:00Z"
-    avg_score: Optional[float] = None
+    avg_score: float | None = None
     span_count: int = 0
-    avg_latency_ms: Optional[float] = None
+    avg_latency_ms: float | None = None
     estimated_cost: float = 0.0
 
 
 class AgentAnalytics(BaseModel):
     total_spans: int = 0
     scored_spans: int = 0
-    avg_score: Optional[float] = None
-    avg_latency_ms: Optional[float] = None
+    avg_score: float | None = None
+    avg_latency_ms: float | None = None
     total_estimated_cost: float = 0.0
-    hourly: List[HourlyBucket] = []
+    hourly: list[HourlyBucket] = []
 
 
 class SuggestionOut(BaseModel):
     id: str
     title: str
     description: str
-    new_prompt_version: Optional[int] = None
-    new_prompt_text: Optional[str] = None
-    scores: Optional[Dict[str, Any]] = None
+    new_prompt_version: int | None = None
+    new_prompt_text: str | None = None
+    scores: dict[str, Any] | None = None
     status: str = "pending"
     vote: int = 0
-    feedback: Optional[str] = None
-    created_at: Optional[str] = None
+    feedback: str | None = None
+    created_at: str | None = None
 
 
 class AgentOut(BaseModel):
@@ -75,20 +75,20 @@ class AgentOut(BaseModel):
     prompt_id: str
     version: int
     analytics: AgentAnalytics
-    suggestions: List[SuggestionOut] = []
-    jobs: List[JobOut] = []
+    suggestions: list[SuggestionOut] = []
+    jobs: list[JobOut] = []
     ready_for_review: bool = False
-    tags: List[str] = []
+    tags: list[str] = []
 
 
 class AgentsResponse(BaseModel):
-    data: List[AgentOut]
+    data: list[AgentOut]
 
 
 class TriggerResponse(BaseModel):
     message: str
     job_id: str
-    celery_task_id: Optional[str] = None
+    celery_task_id: str | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -98,7 +98,7 @@ class TriggerResponse(BaseModel):
 
 @router.get("/", response_model=AgentsResponse)
 async def list_agents(
-    project_id: Optional[str] = Query(None, description="Filter by project ID"),
+    project_id: str | None = Query(None, description="Filter by project ID"),
     user: AuthenticatedUserOrToken = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
@@ -120,7 +120,7 @@ async def list_agents(
 
     prompts = await get_latest_prompts_for_project(pid, db)
 
-    agents: List[AgentOut] = []
+    agents: list[AgentOut] = []
     for prompt in prompts:
         # Analytics
         analytics_dict = await get_analytics_for_prompt(prompt.prompt_id, pid, db)
@@ -218,14 +218,14 @@ class PromptVersionOut(BaseModel):
     version: int
     prompt_text: str
     hash: str
-    evaluation_criteria: Optional[Dict[str, Any]] = None
-    improvement_metadata: Optional[Dict[str, Any]] = None
-    created_at: Optional[str] = None
+    evaluation_criteria: dict[str, Any] | None = None
+    improvement_metadata: dict[str, Any] | None = None
+    created_at: str | None = None
     # Analytics for this specific version
     total_spans: int = 0
     scored_spans: int = 0
-    avg_score: Optional[float] = None
-    avg_latency_ms: Optional[float] = None
+    avg_score: float | None = None
+    avg_latency_ms: float | None = None
 
 
 class AgentDetailOut(BaseModel):
@@ -234,18 +234,18 @@ class AgentDetailOut(BaseModel):
     project_id: str
     latest_version: int
     analytics: AgentAnalytics
-    versions: List[PromptVersionOut] = []
-    suggestions: List[SuggestionOut] = []
-    jobs: List[JobOut] = []
-    agent_description: Optional[Dict[str, Any]] = None
+    versions: list[PromptVersionOut] = []
+    suggestions: list[SuggestionOut] = []
+    jobs: list[JobOut] = []
+    agent_description: dict[str, Any] | None = None
     ready_for_review: bool = False
-    tags: List[str] = []
+    tags: list[str] = []
 
 
 @router.get("/{prompt_slug}/detail", response_model=AgentDetailOut)
 async def get_agent_detail(
     prompt_slug: str,
-    project_id: Optional[str] = Query(None),
+    project_id: str | None = Query(None),
     user: AuthenticatedUserOrToken = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
@@ -279,7 +279,7 @@ async def get_agent_detail(
     latest = all_versions[0]
 
     # Build per-version analytics
-    version_outs: List[PromptVersionOut] = []
+    version_outs: list[PromptVersionOut] = []
     for v in all_versions:
         # Total spans for this version (exclude system-generated spans)
         total_q = await db.execute(
@@ -432,21 +432,21 @@ async def get_agent_detail(
 
 
 class UpdateAgentMetadataRequest(BaseModel):
-    name: Optional[str] = None
-    tags: Optional[List[str]] = None
+    name: str | None = None
+    tags: list[str] | None = None
 
 
 class UpdateAgentMetadataResponse(BaseModel):
     slug: str
     name: str
-    tags: List[str]
+    tags: list[str]
 
 
 @router.put("/{prompt_slug}/metadata", response_model=UpdateAgentMetadataResponse)
 async def update_agent_metadata(
     prompt_slug: str,
     request: UpdateAgentMetadataRequest,
-    project_id: Optional[str] = Query(None),
+    project_id: str | None = Query(None),
     user: AuthenticatedUserOrToken = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):

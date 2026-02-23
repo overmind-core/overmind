@@ -6,7 +6,6 @@ Auth is verified by checking that the user owns the project the token belongs to
 """
 
 from datetime import datetime, timedelta, timezone
-from typing import List, Optional
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Query
@@ -38,33 +37,33 @@ router = APIRouter(prefix="/tokens", tags=["Tokens"])
 
 class CreateTokenRequest(BaseModel):
     name: str = Field(..., min_length=1, max_length=100)
-    description: Optional[str] = Field(None, max_length=500)
+    description: str | None = Field(None, max_length=500)
     project_id: UUID
-    expires_in_days: Optional[int] = Field(None, ge=1, le=365)
-    allowed_ips: Optional[List[str]] = None
+    expires_in_days: int | None = Field(None, ge=1, le=365)
+    allowed_ips: list[str] | None = None
 
 
 class CreateTokenResponse(BaseModel):
     token_id: UUID
     name: str
-    description: Optional[str] = None
+    description: str | None = None
     project_id: UUID
     token: str
     prefix: str
-    expires_at: Optional[datetime] = None
-    created_at: Optional[datetime] = None
+    expires_at: datetime | None = None
+    created_at: datetime | None = None
 
 
 class UpdateTokenRequest(BaseModel):
-    name: Optional[str] = Field(None, min_length=1, max_length=100)
-    description: Optional[str] = Field(None, max_length=500)
-    is_active: Optional[bool] = None
-    expires_at: Optional[datetime] = None
-    allowed_ips: Optional[List[str]] = None
+    name: str | None = Field(None, min_length=1, max_length=100)
+    description: str | None = Field(None, max_length=500)
+    is_active: bool | None = None
+    expires_at: datetime | None = None
+    allowed_ips: list[str] | None = None
 
 
 class TokenListResponse(BaseModel):
-    tokens: List[CoreTokenModel]
+    tokens: list[CoreTokenModel]
     total_count: int
 
 

@@ -3,7 +3,6 @@ Utility functions for the agents endpoint.
 """
 
 import logging
-from typing import List
 
 from sqlalchemy import and_, cast, func, select, Float
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -148,7 +147,7 @@ async def get_analytics_for_prompt(
     )
     hourly_rows = hourly_q.all()
 
-    hourly_buckets: List[dict] = []
+    hourly_buckets: list[dict] = []
     for row in hourly_rows:
         bucket_hour: datetime = row[0]
         bucket_count = row[1] or 0
@@ -179,7 +178,7 @@ async def get_analytics_for_prompt(
     }
 
 
-async def get_latest_prompts_for_project(project_id, db: AsyncSession) -> List[Prompt]:
+async def get_latest_prompts_for_project(project_id, db: AsyncSession) -> list[Prompt]:
     """
     Return the latest version of each prompt slug in a project.
 

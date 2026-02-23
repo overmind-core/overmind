@@ -8,7 +8,6 @@ of specific types to prevent unbounded table growth.
 import asyncio
 import logging
 from datetime import datetime, timedelta, timezone
-from typing import List, Optional
 
 from celery import shared_task
 from sqlalchemy import and_, delete
@@ -39,7 +38,7 @@ CLEANUP_AGE_HOURS = 24
 
 
 async def _cleanup_old_jobs(
-    job_types: Optional[List[str]] = None,
+    job_types: list[str] | None = None,
     older_than_hours: int = CLEANUP_AGE_HOURS,
 ) -> dict:
     """
@@ -89,7 +88,7 @@ async def _cleanup_old_jobs(
 
 @shared_task(name="job_cleanup.cleanup_old_jobs")
 def cleanup_old_jobs(
-    job_types: Optional[List[str]] = None,
+    job_types: list[str] | None = None,
     older_than_hours: int = CLEANUP_AGE_HOURS,
 ) -> dict:
     """

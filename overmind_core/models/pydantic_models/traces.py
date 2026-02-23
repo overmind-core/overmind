@@ -1,4 +1,4 @@
-from typing import Any, List, Optional
+from typing import Any
 from pydantic import BaseModel, Field
 from uuid import UUID
 from overmind_core.utils import calculate_llm_usage_cost, _safe_int
@@ -19,35 +19,35 @@ def _nonempty(value: Any) -> Any:
 
 
 class SpanResponseModel(BaseModel):
-    user_id: Optional[UUID] = Field(None, alias="UserId")
-    project_id: Optional[UUID] = Field(None, alias="ProjectId")
-    business_id: Optional[UUID] = Field(
+    user_id: UUID | None = Field(None, alias="UserId")
+    project_id: UUID | None = Field(None, alias="ProjectId")
+    business_id: UUID | None = Field(
         None, alias="BusinessId"
     )  # org id, not used anymore
 
     trace_id: UUID = Field(..., alias="TraceId")
     span_id: str = Field(..., alias="SpanId")
-    parent_span_id: Optional[str] = Field(None, alias="ParentSpanId")
-    trace_state: Optional[str] = Field("", alias="TraceState")
+    parent_span_id: str | None = Field(None, alias="ParentSpanId")
+    trace_state: str | None = Field("", alias="TraceState")
     start_time_unix_nano: int = Field(..., alias="StartTimeUnixNano")
     end_time_unix_nano: int = Field(..., alias="EndTimeUnixNano")
     duration_nano: int = Field(..., alias="DurationNano")
     status_code: int = Field(..., alias="StatusCode")
-    status_message: Optional[str] = Field("", alias="StatusMessage")
+    status_message: str | None = Field("", alias="StatusMessage")
     resource_attributes: dict = Field(default_factory=dict, alias="ResourceAttributes")
     span_attributes: dict = Field(default_factory=dict, alias="SpanAttributes")
-    inputs: Optional[Any] = Field(None, alias="Inputs")
-    outputs: Optional[Any] = Field(None, alias="Outputs")
-    policy_outcome: Optional[str] = Field("", alias="PolicyOutcome")
-    scope_name: Optional[str] = Field("", alias="ScopeName")
-    name: Optional[str] = Field("", alias="Name")
-    scope_version: Optional[str] = Field("", alias="ScopeVersion")
+    inputs: Any | None = Field(None, alias="Inputs")
+    outputs: Any | None = Field(None, alias="Outputs")
+    policy_outcome: str | None = Field("", alias="PolicyOutcome")
+    scope_name: str | None = Field("", alias="ScopeName")
+    name: str | None = Field("", alias="Name")
+    scope_version: str | None = Field("", alias="ScopeVersion")
     events: list = Field(default_factory=list, alias="Events")
     links: list = Field(default_factory=list, alias="Links")
 
     @classmethod
     def from_orm_obj(
-        cls, obj: SpanModel, trace_obj: Optional[TraceModel] = None
+        cls, obj: SpanModel, trace_obj: TraceModel | None = None
     ) -> "SpanResponseModel":
         # Directly load from ORM (SQLAlchemy) object to Pydantic model
         return cls(
@@ -96,7 +96,7 @@ class SpanResponseModel(BaseModel):
 
 class TraceSpansResponseModel(BaseModel):
     trace_id: str
-    spans: List[SpanResponseModel]
+    spans: list[SpanResponseModel]
     span_count: int
 
 
@@ -104,20 +104,20 @@ class TraceListResponseModel(BaseModel):
     class TraceListFilterModel(BaseModel):
         # ── Required / structural ────────────────────────────────────────────
         project_id: UUID
-        user_id: Optional[str] = None  # set from auth context, not from the request
-        start_time_nano: Optional[int] = None
-        end_time_nano: Optional[int] = None
+        user_id: str | None = None  # set from auth context, not from the request
+        start_time_nano: int | None = None
+        end_time_nano: int | None = None
         root_only: bool = True
         limit: int = 100
         offset: int = 0
         # ── Prompt shorthand (compound key, kept explicit) ───────────────────
-        prompt_slug: Optional[str] = None
-        prompt_version: Optional[str] = None
+        prompt_slug: str | None = None
+        prompt_version: str | None = None
         # ── Generic DRF-style filter expressions ────────────────────────────
         # Each entry: "field;operator;value"  (see trace_filter_backend.py)
-        query: List[str] = []
+        query: list[str] = []
 
-    traces: List[SpanResponseModel]
+    traces: list[SpanResponseModel]
     count: int
     limit: int
     offset: int

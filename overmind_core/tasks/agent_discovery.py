@@ -9,7 +9,7 @@ import hashlib
 import logging
 import json
 import uuid
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any
 from uuid import UUID
 
 from sqlalchemy import select, func, and_
@@ -45,7 +45,7 @@ MIN_SPANS_FOR_AGENT_DISCOVERY = 10
 
 async def validate_agent_discovery_eligibility(
     project_id: UUID, session
-) -> Tuple[bool, Optional[str], Optional[Dict[str, Any]]]:
+) -> tuple[bool, str | None, dict[str, Any] | None]:
     """
     Validate if a project is eligible for agent discovery.
 
@@ -167,7 +167,7 @@ def _sanitize_for_jsonb(obj):
     return obj
 
 
-def _get_span_input_text_merged(span: SpanModel) -> Optional[str]:
+def _get_span_input_text_merged(span: SpanModel) -> str | None:
     """
     Extract the input text from a span for template matching.
 
@@ -331,7 +331,7 @@ async def _create_prompt_from_template(
 async def _get_existing_templates(
     db: AsyncSession,
     project_id: UUID,
-) -> Dict[str, Tuple[Template, UUID]]:
+) -> dict[str, tuple[Template, UUID]]:
     """
     Get existing templates from prompts in this project.
 
@@ -347,7 +347,7 @@ async def _get_existing_templates(
     result = await db.execute(stmt)
     prompts = result.scalars().all()
 
-    templates: Dict[str, Tuple[Template, UUID]] = {}
+    templates: dict[str, tuple[Template, UUID]] = {}
 
     for prompt in prompts:
         # Create a Template object from the prompt
@@ -381,7 +381,7 @@ async def _map_spans_to_templates(
     db: AsyncSession,
     project_id: UUID,
     user_id: UUID,
-) -> Dict[str, int]:
+) -> dict[str, int]:
     """
     Map unmapped spans to templates for a specific project.
 
@@ -406,7 +406,7 @@ async def _map_spans_to_templates(
     unmapped_spans = result.scalars().all()
 
     # Extract input texts from unmapped spans
-    span_texts: List[Tuple[SpanModel, str]] = []
+    span_texts: list[tuple[SpanModel, str]] = []
     for span in unmapped_spans:
         text = _get_span_input_text_merged(span)
         if text:
@@ -428,7 +428,7 @@ async def _map_spans_to_templates(
     stats = {"mapped": 0, "new_templates": 0, "unmapped": 0}
 
     # Track new prompts that need criteria generation (triggered AFTER commit)
-    new_prompt_ids: List[str] = []
+    new_prompt_ids: list[str] = []
 
     if mapped_count == 0:
         # No spans have been mapped yet - extract templates from all unmapped spans
@@ -481,7 +481,7 @@ async def _map_spans_to_templates(
 
         existing_templates = await _get_existing_templates(db, project_id)
 
-        unmatched_span_texts: List[Tuple[SpanModel, str]] = []
+        unmatched_span_texts: list[tuple[SpanModel, str]] = []
 
         # Try to match each unmapped span to existing templates
         for span, text in span_texts:
@@ -555,8 +555,8 @@ async def _map_spans_to_templates(
 
 
 async def _discover_agents(
-    celery_task_id: Optional[str] = None, job_id: Optional[str] = None
-) -> Dict[str, any]:
+    celery_task_id: str | None = None, job_id: str | None = None
+) -> dict[str, any]:
     """
     Async function to discover agents across all projects by mapping spans to templates.
 
@@ -740,7 +740,7 @@ async def _discover_agents(
 
 @celery_app.task(name="agent_discovery.discover_agents", bind=True)
 @with_task_lock(lock_name="agent_discovery")
-def discover_agents(self) -> Dict[str, any]:
+def discover_agents(self) -> dict[str, any]:
     """
     Periodic Celery beat task to discover agents across all projects.
 
@@ -756,7 +756,7 @@ def discover_agents(self) -> Dict[str, any]:
     return asyncio.run(_discover_agents(celery_task_id=self.request.id))
 
 
-async def _run_single_agent_discovery_async(job_id: str) -> Dict[str, any]:
+async def _run_single_agent_discovery_async(job_id: str) -> dict[str, any]:
     """
     Async wrapper for running agent discovery scoped to a single existing job.
 
@@ -770,7 +770,7 @@ async def _run_single_agent_discovery_async(job_id: str) -> Dict[str, any]:
 
 
 @celery_app.task(name="agent_discovery.run_agent_discovery", bind=True)
-def run_agent_discovery_task(self, job_id: str) -> Dict[str, any]:
+def run_agent_discovery_task(self, job_id: str) -> dict[str, any]:
     """
     Celery task to run agent discovery for a single job (dispatched by API or reconciler).
 

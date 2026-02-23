@@ -14,7 +14,6 @@ from overmind_core.api.v1.endpoints.utils.jobs import (
 )
 from overmind_core.db.session import get_db
 from overmind_core.models.prompts import Prompt
-from typing import List, Optional
 from uuid import UUID
 import logging
 
@@ -33,9 +32,9 @@ class BacktestingRequest(BaseModel):
     """Request to run model backtesting."""
 
     prompt_id: str
-    models: List[str]  # List of model names to test
-    max_spans: Optional[int] = 50  # Maximum number of spans to test (default 50)
-    min_spans: Optional[int] = 10  # Minimum number of spans required (default 10)
+    models: list[str]  # List of model names to test
+    max_spans: int | None = 50  # Maximum number of spans to test (default 50)
+    min_spans: int | None = 10  # Minimum number of spans required (default 10)
 
 
 class BacktestingResponse(BaseModel):
@@ -45,10 +44,10 @@ class BacktestingResponse(BaseModel):
     job_id: str
     prompt_id: str
     span_count: int
-    models: List[str]
+    models: list[str]
 
 
-@router.get("/models", response_model=List[ModelInfo])
+@router.get("/models", response_model=list[ModelInfo])
 async def list_available_models(
     current_user: AuthenticatedUserOrToken = Depends(get_current_user),
 ):

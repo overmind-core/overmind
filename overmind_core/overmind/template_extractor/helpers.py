@@ -12,7 +12,6 @@ from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from difflib import SequenceMatcher
-from typing import Dict, FrozenSet, List, Optional, Set, Tuple
 
 
 # =============================================================================
@@ -38,7 +37,7 @@ class Token:
 _TOKEN_PATTERN = re.compile(r"\w+|[^\w\s]|\s+")
 
 
-def tokenize(text: str) -> List[Token]:
+def tokenize(text: str) -> list[Token]:
     """
     Tokenize a string into a list of tokens.
 
@@ -58,12 +57,12 @@ def tokenize(text: str) -> List[Token]:
     return tokens
 
 
-def tokens_to_string(tokens: List[Token]) -> str:
+def tokens_to_string(tokens: list[Token]) -> str:
     """Reconstruct a string from tokens."""
     return "".join(t.value for t in tokens)
 
 
-def token_values(tokens: List[Token]) -> List[str]:
+def token_values(tokens: list[Token]) -> list[str]:
     """Extract just the string values from a list of tokens."""
     return [t.value for t in tokens]
 
@@ -74,8 +73,8 @@ def is_whitespace_token(token: Token) -> bool:
 
 
 def normalize_tokens(
-    tokens: List[Token], collapse_whitespace: bool = False
-) -> List[Token]:
+    tokens: list[Token], collapse_whitespace: bool = False
+) -> list[Token]:
     """
     Normalize a token list.
 
@@ -114,7 +113,7 @@ def normalize_tokens(
 # =============================================================================
 
 
-def lcs_tokens(seq1: List[str], seq2: List[str]) -> List[str]:
+def lcs_tokens(seq1: list[str], seq2: list[str]) -> list[str]:
     """
     Find the Longest Common Subsequence of two token sequences.
 
@@ -137,7 +136,7 @@ def lcs_tokens(seq1: List[str], seq2: List[str]) -> List[str]:
     return lcs
 
 
-def multi_lcs(sequences: List[List[str]]) -> List[str]:
+def multi_lcs(sequences: list[list[str]]) -> list[str]:
     """
     Find the LCS across multiple sequences.
 
@@ -163,7 +162,7 @@ def multi_lcs(sequences: List[List[str]]) -> List[str]:
     return result
 
 
-def get_non_whitespace_tokens(tokens: List[str]) -> List[str]:
+def get_non_whitespace_tokens(tokens: list[str]) -> list[str]:
     """Get only non-whitespace tokens."""
     return [t for t in tokens if not t.isspace()]
 
@@ -174,7 +173,7 @@ def get_non_whitespace_tokens(tokens: List[str]) -> List[str]:
 EXCLUDED_ANCHOR_TOKENS = frozenset({"{", "}", "[", "]", '"', "`", "\\"})
 
 
-def get_anchor_candidate_tokens(tokens: List[str]) -> List[str]:
+def get_anchor_candidate_tokens(tokens: list[str]) -> list[str]:
     """
     Get tokens that are candidates for being anchors.
 
@@ -185,10 +184,10 @@ def get_anchor_candidate_tokens(tokens: List[str]) -> List[str]:
 
 
 def compute_anchors_for_group(
-    token_sequences: List[List[str]],
+    token_sequences: list[list[str]],
     skip_whitespace: bool = True,
     exclude_problematic: bool = True,
-) -> List[str]:
+) -> list[str]:
     """
     Compute anchor tokens for a group of token sequences.
 
@@ -213,7 +212,7 @@ def compute_anchors_for_group(
     return multi_lcs(filtered)
 
 
-def find_anchor_positions(tokens: List[str], anchors: List[str]) -> List[int]:
+def find_anchor_positions(tokens: list[str], anchors: list[str]) -> list[int]:
     """
     Find positions of anchor tokens within a token sequence.
 
@@ -239,7 +238,7 @@ def find_anchor_positions(tokens: List[str], anchors: List[str]) -> List[int]:
     return positions
 
 
-def validate_anchor_sequence(tokens: List[str], anchors: List[str]) -> bool:
+def validate_anchor_sequence(tokens: list[str], anchors: list[str]) -> bool:
     """
     Check if anchors appear in the token sequence in the correct order.
 
@@ -255,8 +254,8 @@ def validate_anchor_sequence(tokens: List[str], anchors: List[str]) -> bool:
 
 
 def extract_variables_between_anchors(
-    tokens: List[str], anchors: List[str]
-) -> Tuple[List[Tuple[str, str]], str]:
+    tokens: list[str], anchors: list[str]
+) -> tuple[list[tuple[str, str]], str]:
     """
     Extract variable values and build template string.
 
@@ -374,8 +373,8 @@ def extract_variables_between_anchors(
 
 
 def build_template_from_group(
-    token_sequences: List[List[str]], anchors: List[str]
-) -> Tuple[str, List[List[Tuple[str, str]]]]:
+    token_sequences: list[list[str]], anchors: list[str]
+) -> tuple[str, list[list[tuple[str, str]]]]:
     """
     Build a unified template string and extract variables for all sequences.
 
@@ -412,7 +411,7 @@ def build_template_from_group(
 # =============================================================================
 
 
-def jaccard_similarity(set1: Set[str], set2: Set[str]) -> float:
+def jaccard_similarity(set1: set[str], set2: set[str]) -> float:
     """
     Compute Jaccard similarity between two sets.
 
@@ -431,7 +430,7 @@ def jaccard_similarity(set1: Set[str], set2: Set[str]) -> float:
     return intersection / union
 
 
-def token_set(tokens: List[Token], skip_whitespace: bool = True) -> Set[str]:
+def token_set(tokens: list[Token], skip_whitespace: bool = True) -> set[str]:
     """
     Convert a token list to a set of unique token values.
 
@@ -448,8 +447,8 @@ def token_set(tokens: List[Token], skip_whitespace: bool = True) -> Set[str]:
 
 
 def compute_similarity_pair(
-    args: Tuple[int, int, FrozenSet[str], FrozenSet[str]],
-) -> Tuple[int, int, float]:
+    args: tuple[int, int, frozenset[str], frozenset[str]],
+) -> tuple[int, int, float]:
     """Compute similarity for a single pair (for parallel processing)."""
     i, j, set_i, set_j = args
     sim = jaccard_similarity(set_i, set_j)
@@ -457,12 +456,12 @@ def compute_similarity_pair(
 
 
 def find_candidate_groups(
-    token_lists: List[List[Token]],
+    token_lists: list[list[Token]],
     min_similarity: float = 0.3,
     skip_whitespace: bool = True,
     use_parallel: bool = True,
-    n_jobs: Optional[int] = None,
-) -> List[Set[int]]:
+    n_jobs: int | None = None,
+) -> list[set[int]]:
     """
     Find groups of strings that are candidates for sharing a template.
 
@@ -487,7 +486,7 @@ def find_candidate_groups(
     sets = [frozenset(token_set(tokens, skip_whitespace)) for tokens in token_lists]
 
     # Build adjacency list for similarity graph
-    adj: Dict[int, Set[int]] = defaultdict(set)
+    adj: dict[int, set[int]] = defaultdict(set)
 
     # For small inputs, use simple loop; for large inputs, parallelize
     if n < 20 or not use_parallel:
@@ -531,7 +530,7 @@ def find_candidate_groups(
                 adj[j].add(i)
 
     # Find connected components using BFS
-    visited: Set[int] = set()
+    visited: set[int] = set()
     groups = []
 
     for start in range(n):
@@ -539,7 +538,7 @@ def find_candidate_groups(
             continue
 
         # BFS from this node
-        group: Set[int] = set()
+        group: set[int] = set()
         queue = [start]
         while queue:
             node = queue.pop(0)
@@ -557,8 +556,8 @@ def find_candidate_groups(
 
 
 def compute_lcs_pair(
-    args: Tuple[int, int, List[str], List[str], int],
-) -> Tuple[int, int, int]:
+    args: tuple[int, int, list[str], list[str], int],
+) -> tuple[int, int, int]:
     """Compute LCS length for a single pair (for parallel processing)."""
     i, j, seq_i, seq_j, _min_anchors = args
     lcs = lcs_tokens(seq_i, seq_j)
@@ -566,12 +565,12 @@ def compute_lcs_pair(
 
 
 def find_groups_by_common_anchors(
-    token_lists: List[List[Token]],
+    token_lists: list[list[Token]],
     min_common_anchors: int = 3,
     skip_whitespace: bool = True,
     use_parallel: bool = True,
-    n_jobs: Optional[int] = None,
-) -> List[Set[int]]:
+    n_jobs: int | None = None,
+) -> list[set[int]]:
     """
     Alternative grouping strategy: group by common anchor tokens.
 
@@ -601,7 +600,7 @@ def find_groups_by_common_anchors(
         token_seqs = [[t.value for t in tl] for tl in token_lists]
 
     # Build adjacency based on LCS length
-    adj: Dict[int, Set[int]] = defaultdict(set)
+    adj: dict[int, set[int]] = defaultdict(set)
 
     # For small inputs, use simple loop
     if n < 15 or not use_parallel:
@@ -645,14 +644,14 @@ def find_groups_by_common_anchors(
                 adj[j].add(i)
 
     # Find connected components using BFS
-    visited: Set[int] = set()
+    visited: set[int] = set()
     groups = []
 
     for start in range(n):
         if start in visited:
             continue
 
-        group: Set[int] = set()
+        group: set[int] = set()
         queue = [start]
         while queue:
             node = queue.pop(0)

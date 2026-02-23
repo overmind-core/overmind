@@ -7,7 +7,6 @@ core endpoints return these.
 """
 
 from datetime import datetime
-from typing import List, Optional
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict
@@ -18,9 +17,9 @@ class CoreUserModel(BaseModel):
 
     user_id: UUID
     email: str
-    full_name: Optional[str] = None
+    full_name: str | None = None
     is_active: bool
-    created_at: Optional[datetime] = None
+    created_at: datetime | None = None
 
 
 class CoreProjectModel(BaseModel):
@@ -29,10 +28,10 @@ class CoreProjectModel(BaseModel):
     project_id: UUID
     name: str
     slug: str
-    description: Optional[str] = None
+    description: str | None = None
     is_active: bool
-    created_at: Optional[datetime] = None
-    updated_at: Optional[datetime] = None
+    created_at: datetime | None = None
+    updated_at: datetime | None = None
 
 
 class CoreTokenModel(BaseModel):
@@ -40,13 +39,13 @@ class CoreTokenModel(BaseModel):
 
     token_id: UUID
     name: str
-    description: Optional[str] = None
+    description: str | None = None
     prefix: str
     project_id: UUID
     user_id: UUID
     is_active: bool
-    expires_at: Optional[datetime] = None
-    last_used_at: Optional[datetime] = None
-    allowed_ips: Optional[List[str]] = None
-    created_at: Optional[datetime] = None
-    updated_at: Optional[datetime] = None
+    expires_at: datetime | None = None
+    last_used_at: datetime | None = None
+    allowed_ips: list[str] | None = None
+    created_at: datetime | None = None
+    updated_at: datetime | None = None

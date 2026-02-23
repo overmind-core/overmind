@@ -1,5 +1,5 @@
 import re
-from typing import Any, Dict, List, Optional
+from typing import Any
 from openai import OpenAI
 from litellm import completion
 import json
@@ -57,7 +57,7 @@ def normalize_model_name(model_name: str) -> str:
     return model_name  # return as-is if stripping didn't help
 
 
-def get_embedding(input_text: str, system_prompt: Optional[str] = None) -> list[float]:
+def get_embedding(input_text: str, system_prompt: str | None = None) -> list[float]:
     """
     Get an embedding vector for the given input text using OpenAI's embeddings API.
 
@@ -91,12 +91,12 @@ def get_embedding(input_text: str, system_prompt: Optional[str] = None) -> list[
 
 def call_llm(
     input_text: str,
-    system_prompt: Optional[str] = None,
-    model: Optional[str] = None,
-    response_format: Optional[BaseModel] = None,
+    system_prompt: str | None = None,
+    model: str | None = None,
+    response_format: BaseModel | None = None,
     request_kwargs: dict = {},
-    messages: Optional[List[Dict[str, Any]]] = None,
-    tools: Optional[List[Dict[str, Any]]] = None,
+    messages: list[dict[str, Any]] | None = None,
+    tools: list[dict[str, Any]] | None = None,
 ) -> tuple[str, dict]:
     """
     Call an LLM and return the response along with usage metrics.

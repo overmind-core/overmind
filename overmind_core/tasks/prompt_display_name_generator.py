@@ -4,7 +4,6 @@ Display name generation for prompts using LLM.
 
 import asyncio
 import logging
-from typing import Dict
 from faker import Faker
 from celery import shared_task
 from overmind_core.overmind.llms import call_llm
@@ -69,7 +68,7 @@ async def generate_display_name_for_prompt(
 
 
 @shared_task(name="prompt_display_name_generator.generate_display_name_task")
-def generate_display_name_task(prompt_id: str) -> Dict[str, str]:
+def generate_display_name_task(prompt_id: str) -> dict[str, str]:
     """
     Celery task to generate a display name for a prompt in the background.
 

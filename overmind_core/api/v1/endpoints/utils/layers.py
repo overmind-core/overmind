@@ -6,7 +6,6 @@ import io
 import zipfile
 import xml.etree.ElementTree as ET
 import logging
-from typing import Optional
 import pymupdf
 
 logger = logging.getLogger(__name__)
@@ -54,7 +53,7 @@ def extract_text_from_docx(data: bytes) -> str:
             return ""
 
 
-def extract_text_from_pdf(data: bytes) -> Optional[str]:
+def extract_text_from_pdf(data: bytes) -> str | None:
     """
     Extract text from a PDF file.
 

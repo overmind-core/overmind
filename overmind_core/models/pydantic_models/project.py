@@ -3,7 +3,7 @@ Pydantic model for Project entity.
 """
 
 from pydantic import BaseModel, ConfigDict
-from typing import Optional, Dict, Any
+from typing import Any
 from datetime import datetime
 from uuid import UUID
 
@@ -20,9 +20,9 @@ class ProjectModel(BaseModel):
     project_id: UUID
     name: str
     slug: str
-    description: Optional[str] = None
-    organisation_id: Optional[UUID] = None
+    description: str | None = None
+    organisation_id: UUID | None = None
     is_active: bool
-    settings: Optional[Dict[str, Any]] = None
-    created_at: Optional[datetime] = None
-    updated_at: Optional[datetime] = None
+    settings: dict[str, Any] | None = None
+    created_at: datetime | None = None
+    updated_at: datetime | None = None

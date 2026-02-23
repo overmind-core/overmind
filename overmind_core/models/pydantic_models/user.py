@@ -3,7 +3,6 @@ Pydantic model for User entity.
 """
 
 from pydantic import BaseModel, ConfigDict
-from typing import List, Optional
 from datetime import datetime
 from uuid import UUID
 
@@ -22,15 +21,15 @@ class UserBaseModel(BaseModel):
 
     user_id: UUID
     email: str
-    full_name: Optional[str] = None
+    full_name: str | None = None
     is_active: bool
     is_verified: bool
     sign_on_method: str
-    avatar_url: Optional[str] = None
+    avatar_url: str | None = None
     timezone: str
-    created_at: Optional[datetime] = None
-    updated_at: Optional[datetime] = None
-    last_login: Optional[datetime] = None
+    created_at: datetime | None = None
+    updated_at: datetime | None = None
+    last_login: datetime | None = None
 
 
 class UserModel(UserBaseModel):
@@ -40,5 +39,5 @@ class UserModel(UserBaseModel):
     """
 
     # Relationships - these are loaded when needed via selectinload
-    projects: Optional[List[ProjectModel]] = None
-    organisations: Optional[List[OrganisationModel]] = None
+    projects: list[ProjectModel] | None = None
+    organisations: list[OrganisationModel] | None = None

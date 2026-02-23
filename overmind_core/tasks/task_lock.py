@@ -5,7 +5,8 @@ Utility for preventing concurrent executions of periodic Celery tasks using Valk
 import logging
 from contextlib import contextmanager
 from functools import wraps
-from typing import Any, Callable, Optional
+from typing import Any
+from collections.abc import Callable
 from valkey import Valkey
 
 from overmind_core.config import settings
@@ -86,7 +87,7 @@ def acquire_task_lock(
 
 
 def with_task_lock(
-    lock_name: Optional[str] = None,
+    lock_name: str | None = None,
     blocking: bool = False,
 ):
     """
