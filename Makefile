@@ -33,14 +33,14 @@ test:
 	docker compose run --rm api python -m pytest $(test_args)
 
 lint:
-	docker compose run --rm api ruff check --fix overmind_core/
-	docker compose run --rm api ruff format overmind_core/
+	docker compose run --rm api ruff check --fix overmind/
+	docker compose run --rm api ruff format overmind/
 
 psql:
 	docker compose exec postgres psql -U overmind -d overmind_core
 
 shell:
-	docker compose exec api python -c "import overmind_core; print('overmind_core loaded')"
+	docker compose exec api python -c "import overmind; print('overmind loaded')"
 
 clean:
 	docker compose down -v

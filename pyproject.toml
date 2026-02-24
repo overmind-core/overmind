@@ -1,10 +1,10 @@
 [tool.poetry]
-name = "overmind_core"
+name = "overmind"
 version = "0.1.0"
 description = "Core observability backend for distributed tracing"
 authors = ["Overmindlab.ai"]
 readme = "README.md"
-packages = [{include = "overmind_core"}]
+packages = [{include = "overmind"}]
 license = "AGPL-3.0"
 
 [tool.poetry.dependencies]

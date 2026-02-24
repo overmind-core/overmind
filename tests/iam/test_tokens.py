@@ -37,7 +37,7 @@ async def test_list_tokens(seed_user, test_client, auth_headers):
 @pytest.mark.asyncio
 async def test_update_token(seed_user, test_client, auth_headers, db_session):
     _, project, _ = seed_user
-    from overmind_core.models.iam.tokens import Token
+    from overmind.models.iam.tokens import Token
     from sqlalchemy import select
 
     token_row = (
