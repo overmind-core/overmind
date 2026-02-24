@@ -43,6 +43,7 @@ class JobStatus(str, Enum):
     PENDING = "pending"
     RUNNING = "running"
     COMPLETED = "completed"
+    PARTIALLY_COMPLETED = "partially_completed"
     FAILED = "failed"
     CANCELLED = "cancelled"
 
@@ -183,7 +184,7 @@ async def create_job_from_user(
 
     if data.job_type == JobType.JUDGE_SCORING:
         # Run validation checks for user-triggered judge scoring jobs
-        from overmind.tasks.auto_evaluation import validate_judge_scoring_eligibility
+        from overmind.tasks.evaluations import validate_judge_scoring_eligibility
 
         (
             is_eligible,
@@ -502,7 +503,7 @@ async def create_prompt_scoring_job(
     await get_check_pending_job_count(db, str(pid), prompt_slug, JobType.JUDGE_SCORING)
 
     # Run validation checks for user-triggered judge scoring jobs
-    from overmind.tasks.auto_evaluation import validate_judge_scoring_eligibility
+    from overmind.tasks.evaluations import validate_judge_scoring_eligibility
 
     (
         is_eligible,
@@ -607,7 +608,7 @@ async def trigger_job(
     db: AsyncSession = Depends(get_db),
 ):
     from overmind.tasks.prompt_improvement import improve_prompt_templates
-    from overmind.tasks.auto_evaluation import auto_evaluate_unscored_spans_task
+    from overmind.tasks.evaluations import auto_evaluate_unscored_spans_task
     from overmind.tasks.agent_discovery import run_agent_discovery_task
 
     job = await get_job_or_404(job_id, user, db)

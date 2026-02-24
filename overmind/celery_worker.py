@@ -2,7 +2,6 @@ from overmind.celery_app import celery_app
 from overmind.tasks import (
     evaluations,
     agent_discovery,
-    auto_evaluation,
     criteria_generator,
     prompt_improvement,
     job_reconciler,
@@ -14,7 +13,6 @@ __all__ = [
     "celery_app",
     "evaluations",
     "agent_discovery",
-    "auto_evaluation",
     "criteria_generator",
     "prompt_improvement",
     "job_reconciler",

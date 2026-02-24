@@ -931,8 +931,28 @@ async def _run_backtesting(
                 logger.error(f"Failed to create backtest suggestion: {exc}")
 
         # ---------------------------------------------------------------
-        # 8. Update Job status to completed
+        # 8. Update Job status based on success/failure counts
         # ---------------------------------------------------------------
+        total_items = len(processed_results)
+        success_count = sum(1 for r in processed_results if r.get("success"))
+        error_count = total_items - success_count
+
+        if success_count == 0:
+            final_status = JobStatus.FAILED
+            logger.error(
+                f"Backtesting job {job_id} failed: 0/{total_items} items succeeded"
+            )
+        elif error_count > 0:
+            final_status = JobStatus.PARTIALLY_COMPLETED
+            logger.warning(
+                f"Backtesting job {job_id} partially completed: {success_count}/{total_items} items succeeded"
+            )
+        else:
+            final_status = JobStatus.COMPLETED
+            logger.info(
+                f"Backtesting job {job_id} completed: {success_count}/{total_items} items succeeded"
+            )
+
         try:
             async with AsyncSessionLocal() as session:
                 job_result = await session.execute(
@@ -940,7 +960,7 @@ async def _run_backtesting(
                 )
                 job = job_result.scalar_one_or_none()
                 if job:
-                    job.status = JobStatus.COMPLETED.value
+                    job.status = final_status.value
                     # Preserve scored_count_at_creation from the initial parameters
                     # so validate_backtesting_eligibility can read it and advance
                     # the threshold guard on the next scheduler run.
@@ -951,12 +971,14 @@ async def _run_backtesting(
                         "current_model": current_model,
                         "models_tested": len(models),
                         "spans_tested": len(spans),
+                        "spans_succeeded": success_count,
+                        "spans_failed": error_count,
                         "recommendations": recommendations,
                         "suggestion_id": results.get("suggestion_id"),
                         "parameters": existing_params,
                     }
                     await session.commit()
-                    logger.info(f"Updated job {job_id} to completed")
+                    logger.info(f"Updated job {job_id} to {final_status.value}")
         except Exception as exc:
             logger.error(f"Failed to update job status: {exc}")
 

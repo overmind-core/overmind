@@ -21,6 +21,7 @@ export const JobStatus = {
     Pending: 'pending',
     Running: 'running',
     Completed: 'completed',
+    PartiallyCompleted: 'partially_completed',
     Failed: 'failed',
     Cancelled: 'cancelled'
 } as const;
