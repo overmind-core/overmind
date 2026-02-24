@@ -6,7 +6,7 @@ from unittest.mock import AsyncMock, patch
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import async_sessionmaker, AsyncSession
 
-from overmind_core.models.jobs import Job
+from overmind.models.jobs import Job
 
 
 @pytest.mark.asyncio
@@ -14,7 +14,7 @@ async def test_cleanup_deletes_old_terminal_jobs(
     seed_user, db_session, job_factory, test_engine
 ):
     """System-triggered completed jobs older than 24h should be deleted."""
-    from overmind_core.tasks.job_cleanup import _cleanup_old_jobs
+    from overmind.tasks.job_cleanup import _cleanup_old_jobs
 
     _, project, _ = seed_user
     old_time = datetime.now(timezone.utc) - timedelta(hours=48)
@@ -43,10 +43,10 @@ async def test_cleanup_deletes_old_terminal_jobs(
     )
 
     with patch(
-        "overmind_core.tasks.job_cleanup.get_session_local",
+        "overmind.tasks.job_cleanup.get_session_local",
         return_value=test_session_factory,
     ), patch(
-        "overmind_core.tasks.job_cleanup.dispose_engine", new_callable=AsyncMock
+        "overmind.tasks.job_cleanup.dispose_engine", new_callable=AsyncMock
     ):
         result = await _cleanup_old_jobs()
 
@@ -62,7 +62,7 @@ async def test_cleanup_preserves_user_triggered_jobs(
     seed_user, db_session, job_factory, test_engine
 ):
     """Jobs with triggered_by_user_id set should NOT be deleted."""
-    from overmind_core.tasks.job_cleanup import _cleanup_old_jobs
+    from overmind.tasks.job_cleanup import _cleanup_old_jobs
 
     user, project, _ = seed_user
     old_time = datetime.now(timezone.utc) - timedelta(hours=48)
@@ -81,10 +81,10 @@ async def test_cleanup_preserves_user_triggered_jobs(
     )
 
     with patch(
-        "overmind_core.tasks.job_cleanup.get_session_local",
+        "overmind.tasks.job_cleanup.get_session_local",
         return_value=test_session_factory,
     ), patch(
-        "overmind_core.tasks.job_cleanup.dispose_engine", new_callable=AsyncMock
+        "overmind.tasks.job_cleanup.dispose_engine", new_callable=AsyncMock
     ):
         result = await _cleanup_old_jobs()
 

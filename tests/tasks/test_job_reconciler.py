@@ -10,8 +10,8 @@ async def test_reconciler_dispatches_pending_job(
     seed_user, db_session, job_factory, test_engine
 ):
     """A pending judge_scoring job with parameters should be dispatched."""
-    from overmind_core.tasks.job_reconciler import _execute_pending_jobs
-    from overmind_core.models.jobs import Job
+    from overmind.tasks.job_reconciler import _execute_pending_jobs
+    from overmind.models.jobs import Job
 
     user, project, _ = seed_user
 
@@ -38,12 +38,12 @@ async def test_reconciler_dispatches_pending_job(
     )
 
     with patch(
-        "overmind_core.tasks.job_reconciler.celery_app"
+        "overmind.tasks.job_reconciler.celery_app"
     ) as mock_celery, patch(
-        "overmind_core.tasks.job_reconciler.get_session_local",
+        "overmind.tasks.job_reconciler.get_session_local",
         return_value=test_session_factory,
     ), patch(
-        "overmind_core.db.session.dispose_engine", new_callable=AsyncMock
+        "overmind.db.session.dispose_engine", new_callable=AsyncMock
     ):
         mock_celery.send_task.return_value = fake_task
         mock_celery.AsyncResult.return_value = MagicMock(state="PENDING")
@@ -62,7 +62,7 @@ async def test_reconciler_skips_when_duplicate_running(
     seed_user, db_session, job_factory, test_engine
 ):
     """If a job of the same type/prompt is already running, the pending one is skipped."""
-    from overmind_core.tasks.job_reconciler import _execute_pending_jobs
+    from overmind.tasks.job_reconciler import _execute_pending_jobs
 
     _, project, _ = seed_user
 
@@ -87,12 +87,12 @@ async def test_reconciler_skips_when_duplicate_running(
     )
 
     with patch(
-        "overmind_core.tasks.job_reconciler.celery_app"
+        "overmind.tasks.job_reconciler.celery_app"
     ) as mock_celery, patch(
-        "overmind_core.tasks.job_reconciler.get_session_local",
+        "overmind.tasks.job_reconciler.get_session_local",
         return_value=test_session_factory,
     ), patch(
-        "overmind_core.db.session.dispose_engine", new_callable=AsyncMock
+        "overmind.db.session.dispose_engine", new_callable=AsyncMock
     ):
         mock_celery.AsyncResult.return_value = MagicMock(state="STARTED")
         result = await _execute_pending_jobs()
@@ -107,7 +107,7 @@ async def test_reconciler_cleans_stale_running_job(
     seed_user, db_session, job_factory
 ):
     """A running job whose Celery task has FAILURE state should be marked failed."""
-    from overmind_core.tasks.job_reconciler import _cleanup_stale_running_jobs
+    from overmind.tasks.job_reconciler import _cleanup_stale_running_jobs
 
     _, project, _ = seed_user
 
@@ -124,7 +124,7 @@ async def test_reconciler_cleans_stale_running_job(
     mock_result.result = Exception("Worker crashed")
 
     with patch(
-        "overmind_core.tasks.job_reconciler.celery_app"
+        "overmind.tasks.job_reconciler.celery_app"
     ) as mock_celery:
         mock_celery.AsyncResult.return_value = mock_result
         cleaned = await _cleanup_stale_running_jobs(db_session)

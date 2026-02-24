@@ -7,10 +7,10 @@ from sqlalchemy import select
 @pytest.mark.asyncio
 async def test_bootstrap_creates_user_project_token(db_session):
     """ensure_default_user creates admin + project + token on empty DB."""
-    from overmind_core.bootstrap import ensure_default_user
-    from overmind_core.models.iam.users import User
-    from overmind_core.models.iam.projects import Project
-    from overmind_core.models.iam.tokens import Token
+    from overmind.bootstrap import ensure_default_user
+    from overmind.models.iam.users import User
+    from overmind.models.iam.projects import Project
+    from overmind.models.iam.tokens import Token
 
     await ensure_default_user(db_session)
 
@@ -30,8 +30,8 @@ async def test_bootstrap_creates_user_project_token(db_session):
 @pytest.mark.asyncio
 async def test_bootstrap_is_idempotent(db_session):
     """Calling ensure_default_user twice should not create duplicates."""
-    from overmind_core.bootstrap import ensure_default_user
-    from overmind_core.models.iam.users import User
+    from overmind.bootstrap import ensure_default_user
+    from overmind.models.iam.users import User
 
     await ensure_default_user(db_session)
     await ensure_default_user(db_session)

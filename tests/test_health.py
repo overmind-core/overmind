@@ -5,7 +5,7 @@ import pytest
 
 @pytest.mark.asyncio
 async def test_root(test_client):
-    from overmind_core.main import FRONTEND_DIR
+    from overmind.main import FRONTEND_DIR
 
     resp = await test_client.get("/")
     assert resp.status_code == 200

@@ -10,10 +10,10 @@ def _mock_celery_delay(monkeypatch):
     mock_task = MagicMock()
     mock_task.delay = MagicMock(return_value=MagicMock(id="fake-task-id"))
     monkeypatch.setattr(
-        "overmind_core.api.v1.endpoints.prompts.generate_display_name_task", mock_task
+        "overmind.api.v1.endpoints.prompts.generate_display_name_task", mock_task
     )
     monkeypatch.setattr(
-        "overmind_core.api.v1.endpoints.prompts.generate_criteria_task", mock_task
+        "overmind.api.v1.endpoints.prompts.generate_criteria_task", mock_task
     )
 
 

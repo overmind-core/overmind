@@ -9,7 +9,7 @@ async def test_discovery_eligible_with_enough_spans(
     seed_user, db_session, span_factory
 ):
     """A project with >=10 unmapped spans should be eligible for discovery."""
-    from overmind_core.tasks.agent_discovery import validate_agent_discovery_eligibility
+    from overmind.tasks.agent_discovery import validate_agent_discovery_eligibility
 
     user, project, _ = seed_user
 
@@ -33,7 +33,7 @@ async def test_discovery_ineligible_with_few_spans(
     seed_user, db_session, span_factory
 ):
     """A project with fewer than 10 spans should NOT be eligible."""
-    from overmind_core.tasks.agent_discovery import validate_agent_discovery_eligibility
+    from overmind.tasks.agent_discovery import validate_agent_discovery_eligibility
 
     user, project, _ = seed_user
 

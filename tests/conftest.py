@@ -1,5 +1,5 @@
 """
-Shared test fixtures for overmind_core.
+Shared test fixtures for overmind.
 
 Uses real Postgres (from docker-compose) with per-test table
 create/drop, mocked Valkey (in-memory dict), and mocked LLM calls.
@@ -21,10 +21,10 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 os.environ.setdefault("DEBUG", "false")
 os.environ.setdefault("SECRET_KEY", "test-secret-key-for-tests")
 
-from overmind_core.db.base import Base  # noqa: E402
-from overmind_core.main import app  # noqa: E402
+from overmind.db.base import Base  # noqa: E402
+from overmind.main import app  # noqa: E402
 
-TEST_DB_NAME = "overmind_core_test"
+TEST_DB_NAME = "overmind_test"
 ADMIN_DB_URL = "postgresql+asyncpg://overmind:overmind@postgres:5432/overmind_core"
 TEST_DB_URL = f"postgresql+asyncpg://overmind:overmind@postgres:5432/{TEST_DB_NAME}"
 
@@ -109,20 +109,20 @@ async def mock_valkey(monkeypatch):
     async def _delete_keys_by_pattern(pattern: str) -> int:
         return 0
 
-    monkeypatch.setattr("overmind_core.db.valkey.get_key", _get_key)
-    monkeypatch.setattr("overmind_core.db.valkey.set_key", _set_key)
-    monkeypatch.setattr("overmind_core.db.valkey.delete_key", _delete_key)
-    monkeypatch.setattr("overmind_core.db.valkey.delete_keys", _delete_keys)
+    monkeypatch.setattr("overmind.db.valkey.get_key", _get_key)
+    monkeypatch.setattr("overmind.db.valkey.set_key", _set_key)
+    monkeypatch.setattr("overmind.db.valkey.delete_key", _delete_key)
+    monkeypatch.setattr("overmind.db.valkey.delete_keys", _delete_keys)
     monkeypatch.setattr(
-        "overmind_core.db.valkey.delete_keys_by_pattern", _delete_keys_by_pattern
+        "overmind.db.valkey.delete_keys_by_pattern", _delete_keys_by_pattern
     )
 
     # Also patch where these are imported directly
     for mod in [
-        "overmind_core.api.v1.helpers.authentication",
-        "overmind_core.api.v1.endpoints.iam.users",
-        "overmind_core.api.v1.endpoints.iam.projects",
-        "overmind_core.api.v1.endpoints.iam.tokens",
+        "overmind.api.v1.helpers.authentication",
+        "overmind.api.v1.endpoints.iam.users",
+        "overmind.api.v1.endpoints.iam.projects",
+        "overmind.api.v1.endpoints.iam.tokens",
     ]:
         try:
             monkeypatch.setattr(f"{mod}.get_key", _get_key, raising=False)
@@ -150,7 +150,7 @@ async def mock_llm(monkeypatch):
     })
 
     mock = AsyncMock(return_value=default_response)
-    monkeypatch.setattr("overmind_core.overmind.llms.call_llm", mock)
+    monkeypatch.setattr("overmind.core.llms.call_llm", mock)
     return mock
 
 
@@ -170,7 +170,7 @@ async def mock_celery(monkeypatch):
         return result
 
     monkeypatch.setattr(
-        "overmind_core.celery_app.get_celery_app",
+        "overmind.celery_app.get_celery_app",
         lambda: MagicMock(send_task=fake_send_task),
     )
     return dispatched
@@ -182,10 +182,10 @@ async def mock_celery(monkeypatch):
 
 @pytest_asyncio.fixture(scope="function")
 async def test_client(db_session):
-    from overmind_core.db.session import get_db
-    from overmind_core.api.v1.helpers.policy_interface import NoopOrgPolicyProvider
-    from overmind_core.api.v1.helpers.authentication import RBACAuthenticationProvider
-    from overmind_core.api.v1.helpers.auth_interface import NoopAuthorizationProvider
+    from overmind.db.session import get_db
+    from overmind.api.v1.helpers.policy_interface import NoopOrgPolicyProvider
+    from overmind.api.v1.helpers.authentication import RBACAuthenticationProvider
+    from overmind.api.v1.helpers.auth_interface import NoopAuthorizationProvider
 
     async def override_get_db():
         try:
@@ -217,11 +217,11 @@ async def test_client(db_session):
 @pytest_asyncio.fixture(scope="function")
 async def seed_user(db_session):
     """Bootstrap the default admin + project + token. Returns (user, project, plain_token)."""
-    from overmind_core.models.iam.users import User
-    from overmind_core.models.iam.projects import Project
-    from overmind_core.models.iam.tokens import Token
-    from overmind_core.models.iam.relationships import user_project_association
-    from overmind_core.api.v1.helpers.authentication import hash_password, generate_token
+    from overmind.models.iam.users import User
+    from overmind.models.iam.projects import Project
+    from overmind.models.iam.tokens import Token
+    from overmind.models.iam.relationships import user_project_association
+    from overmind.api.v1.helpers.authentication import hash_password, generate_token
 
     user = User(
         email="admin",
@@ -288,8 +288,8 @@ async def api_token_headers(seed_user):
 
 @pytest_asyncio.fixture(scope="function")
 async def user_factory(db_session):
-    from overmind_core.models.iam.users import User
-    from overmind_core.api.v1.helpers.authentication import hash_password
+    from overmind.models.iam.users import User
+    from overmind.api.v1.helpers.authentication import hash_password
 
     async def _create(
         email: Optional[str] = None,
@@ -312,8 +312,8 @@ async def user_factory(db_session):
 
 @pytest_asyncio.fixture(scope="function")
 async def project_factory(db_session):
-    from overmind_core.models.iam.projects import Project
-    from overmind_core.models.iam.relationships import user_project_association
+    from overmind.models.iam.projects import Project
+    from overmind.models.iam.relationships import user_project_association
 
     async def _create(user, name: str = "Test Project") -> "Project":
         slug = name.lower().replace(" ", "-")
@@ -333,7 +333,7 @@ async def project_factory(db_session):
 
 @pytest_asyncio.fixture(scope="function")
 async def prompt_factory(db_session):
-    from overmind_core.models.prompts import Prompt
+    from overmind.models.prompts import Prompt
 
     async def _create(
         project_id,
@@ -364,7 +364,7 @@ async def prompt_factory(db_session):
 
 @pytest_asyncio.fixture(scope="function")
 async def span_factory(db_session):
-    from overmind_core.models.traces import TraceModel, SpanModel
+    from overmind.models.traces import TraceModel, SpanModel
 
     async def _create(
         project_id,
@@ -423,7 +423,7 @@ async def span_factory(db_session):
 
 @pytest_asyncio.fixture(scope="function")
 async def job_factory(db_session):
-    from overmind_core.models.jobs import Job
+    from overmind.models.jobs import Job
 
     async def _create(
         project_id,

@@ -46,12 +46,12 @@ services:
     build: .
     command: >
       sh -c "alembic upgrade head &&
-             uvicorn overmind_core.main:app --host 0.0.0.0 --port 8000 --reload"
+             uvicorn overmind.main:app --host 0.0.0.0 --port 8000 --reload"
     <<: *env-common
     ports:
       - "8000:8000"
     volumes:
-      - ./overmind_core:/app/overmind_core
+      - ./overmind:/app/overmind
       - ./alembic:/app/alembic
       - ./tests:/app/tests
     depends_on:
@@ -62,10 +62,10 @@ services:
 
   celery-worker:
     build: .
-    command: celery -A overmind_core.celery_worker worker --loglevel=info --pool=prefork --concurrency=2
+    command: celery -A overmind.celery_worker worker --loglevel=info --pool=prefork --concurrency=2
     <<: *env-common
     volumes:
-      - ./overmind_core:/app/overmind_core
+      - ./overmind:/app/overmind
     depends_on:
       postgres:
         condition: service_healthy
@@ -74,10 +74,10 @@ services:
 
   celery-beat:
     build: .
-    command: celery -A overmind_core.celery_worker beat --loglevel=info
+    command: celery -A overmind.celery_worker beat --loglevel=info
     <<: *env-common
     volumes:
-      - ./overmind_core:/app/overmind_core
+      - ./overmind:/app/overmind
     depends_on:
       postgres:
         condition: service_healthy

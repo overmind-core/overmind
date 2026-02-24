@@ -3,7 +3,7 @@
 import pytest
 from sqlalchemy import select
 
-from overmind_core.models.jobs import Job
+from overmind.models.jobs import Job
 
 
 @pytest.mark.asyncio
@@ -11,7 +11,7 @@ async def test_scanner_creates_job_for_eligible_prompt(
     seed_user, db_session, prompt_factory, span_factory
 ):
     """A prompt with criteria + >=10 unscored spans should get a pending job."""
-    from overmind_core.tasks.auto_evaluation import validate_judge_scoring_eligibility
+    from overmind.tasks.auto_evaluation import validate_judge_scoring_eligibility
 
     user, project, _ = seed_user
 
@@ -44,7 +44,7 @@ async def test_scanner_skips_ineligible_prompt(
     seed_user, db_session, prompt_factory, span_factory
 ):
     """A prompt with fewer than 10 unscored spans should NOT be eligible."""
-    from overmind_core.tasks.auto_evaluation import validate_judge_scoring_eligibility
+    from overmind.tasks.auto_evaluation import validate_judge_scoring_eligibility
 
     user, project, _ = seed_user
 
@@ -77,7 +77,7 @@ async def test_scanner_skips_prompt_without_criteria(
     seed_user, db_session, prompt_factory, span_factory
 ):
     """A prompt without evaluation_criteria should NOT be eligible."""
-    from overmind_core.tasks.auto_evaluation import validate_judge_scoring_eligibility
+    from overmind.tasks.auto_evaluation import validate_judge_scoring_eligibility
 
     user, project, _ = seed_user
 

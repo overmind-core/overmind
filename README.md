@@ -133,8 +133,8 @@ Interactive API docs are at **http://localhost:8000/docs**.
 ## Project Structure
 
 ```
-overmind_core/
-├── overmind_core/
+overmind/
+├── overmind/
 │   ├── main.py              # FastAPI app entry point
 │   ├── config.py            # Settings (from env vars)
 │   ├── bootstrap.py         # Auto-provision default user/project/token
@@ -176,13 +176,13 @@ export OPENAI_API_KEY=sk-...
 alembic upgrade head
 
 # Start the API
-uvicorn overmind_core.main:app --host 0.0.0.0 --port 8000 --reload
+uvicorn overmind.main:app --host 0.0.0.0 --port 8000 --reload
 
 # In another terminal — start the Celery worker
-celery -A overmind_core.celery_worker worker --loglevel=info
+celery -A overmind.celery_worker worker --loglevel=info
 
 # In another terminal — start the Celery beat scheduler
-celery -A overmind_core.celery_worker beat --loglevel=info
+celery -A overmind.celery_worker beat --loglevel=info
 ```
 
 ### Frontend Development

@@ -13,10 +13,10 @@ import sys
 
 sys.path.append(os.path.join(os.path.dirname(__file__), ".."))
 
-from overmind_core.db.base import Base
-import overmind_core.models  # noqa: F401 — register core models with metadata
+from overmind.db.base import Base
+import overmind.models  # noqa: F401 — register core models with metadata
 
-from overmind_core.db.session import get_engine_instance
+from overmind.db.session import get_engine_instance
 
 config = context.config
 
