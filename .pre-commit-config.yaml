@@ -1,0 +1,39 @@
+# See https://pre-commit.com for more information
+# See https://pre-commit.com/hooks.html for more hooks
+exclude: "alembic/versions|frontend/src/api|scripts"
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v6.0.0
+    hooks:
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+      - id: check-yaml
+      - id: check-added-large-files
+      - id: check-json
+        exclude: "frontend/tsconfig.json"
+      - id: check-toml
+      - id: check-docstring-first
+      - id: check-case-conflict
+      - id: detect-private-key
+
+  - repo: https://github.com/executablebooks/mdformat
+    rev: 0.7.22
+    hooks:
+      - id: mdformat
+        additional_dependencies:
+          - mdformat-gfm
+          - mdformat_frontmatter
+
+  - repo: https://github.com/asottile/pyupgrade
+    rev: v3.21.2
+    hooks:
+      - id: pyupgrade
+        args: [--py312-plus]
+
+  - repo: local
+    hooks:
+      - id: make-lint-format
+        name: make lint-format
+        entry: make lint-format
+        language: system
+        types_or: [python, pyi]
