@@ -2,9 +2,10 @@
 name = "overmind_core"
 version = "0.1.0"
 description = "Core observability backend for distributed tracing"
-authors = ["Akhat", "Tyler"]
+authors = ["Overmindlab.ai"]
 readme = "README.md"
 packages = [{include = "overmind_core"}]
+license = "AGPL-3.0"
 
 [tool.poetry.dependencies]
 python = "^3.13"
