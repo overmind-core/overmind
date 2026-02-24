@@ -768,6 +768,7 @@ async def _auto_evaluate_unscored_spans(
 
         spans_count = len(spans)
         logger.info(f"Found {spans_count} unscored spans across all prompts")
+
         # Group spans by (project_id, prompt_slug)
         spans_by_prompt = {}
         for span in spans:
