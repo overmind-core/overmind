@@ -5,7 +5,6 @@ import { Bot, ExternalLink, Loader2, RefreshCw } from "lucide-react";
 import { ResponseError } from "@/api";
 import apiClient from "@/client";
 import { AgentGrid } from "@/components/agent-grid";
-import { APIKeySection } from "@/components/api-keys";
 import { Alert } from "@/components/ui/alert";
 import { DismissibleAlert } from "@/components/ui/dismissible-alert";
 import { Button } from "@/components/ui/button";
@@ -18,39 +17,22 @@ export const Route = createFileRoute("/_auth/")({
 function TracesPlaceholder() {
   return (
     <div className="flex w-full flex-col items-center py-8 text-center">
-      <div className="mb-4 flex size-16 items-center justify-center rounded-full border border-border bg-amber-500/10">
-        <svg
-          className="size-10"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth={1.4}
-          viewBox="0 0 24 24"
-        >
-          <circle cx="12" cy="12" r="9.2" stroke="currentColor" />
-          <path
-            d="M9.5 13.85l2.23 2.05 3.94-5.2"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            strokeWidth={1.5}
-          />
-        </svg>
-      </div>
-      <p className="mb-2 text-base font-medium">No agents detected yet</p>
+      <p className="mb-2 font-display text-4xl font-medium">No agents detected yet</p>
       <p className="mx-auto mb-4 max-w-sm text-sm text-muted-foreground">
         Connect your LLM application and ingest traces, then extract templates to see your agents
         here.
       </p>
       <div className="flex flex-wrap justify-center gap-3">
         <a
-          className="inline-flex items-center rounded-lg bg-amber-600 px-4 py-2 text-sm font-semibold text-black hover:bg-amber-500"
-          href="https://docs.overmindlab.ai/guides/integrate"
+          className="inline-flex items-center rounded-lg bg-black px-4 py-2 text-sm font-semibold text-white hover:bg-black/80 dark:bg-white dark:text-black dark:hover:bg-white/80"
+          href="https://docs.overmindlab.ai/"
           rel="noopener noreferrer"
           target="_blank"
         >
-          Integration Guide <ExternalLink className="ml-1.5 size-4" />
+          Get Started <ExternalLink className="ml-1.5 size-4" />
         </a>
         <a
-          className="inline-flex items-center rounded text-sm font-medium text-amber-600 hover:underline"
+          className="inline-flex items-center rounded text-sm font-medium text-foreground hover:underline"
           href="https://docs.overmindlab.ai/guides/manual-upload"
           rel="noopener noreferrer"
           target="_blank"
@@ -85,7 +67,7 @@ function DocsSection() {
           </a>
           <a
             className="inline-flex items-center rounded-lg bg-amber-500/10 px-3 py-2 text-sm font-semibold text-amber-600 transition-colors hover:bg-amber-500/20"
-            href="https://docs.overmindlab.ai/guides/"
+            href="https://docs.overmindlab.ai/guides/getting-started"
             rel="noopener noreferrer"
             target="_blank"
           >
@@ -147,10 +129,10 @@ function AgentsSection() {
     <div className="mb-6 space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-4">
         <div className="flex items-center gap-3">
-          <Bot className="size-5 shrink-0 text-amber-600" />
-          <h2 className="text-lg font-bold text-amber-600">Detected Agents</h2>
+          <Bot className="size-5 shrink-0 text-black dark:text-white" />
+          <h2 className="font-display text-lg font-bold text-black dark:text-white">Detected Agents</h2>
           {agents.length > 0 && (
-            <span className="rounded-full border border-border bg-amber-500/10 px-2 py-0.5 text-sm font-semibold text-amber-600">
+            <span className="rounded-sm bg-black px-2 py-0.5 text-sm font-semibold text-white dark:bg-white dark:text-black">
               {agents.length}
             </span>
           )}
@@ -192,13 +174,7 @@ function AgentsSection() {
 function HomePage() {
   return (
     <div className="space-y-6 pb-8">
-      <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-        <DocsSection />
-        <APIKeySection fillHeight short />
-      </div>
       <AgentsSection />
-      {/* <ChatStatsSection /> */}
-      {/* <ConversationsSection /> */}
     </div>
   );
 }

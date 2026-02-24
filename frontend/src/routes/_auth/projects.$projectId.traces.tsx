@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 
-import { createFileRoute, Link, Outlet, useMatches } from "@tanstack/react-router";
+import { createFileRoute, Outlet, useMatches } from "@tanstack/react-router";
 import type { Table as TableType } from "@tanstack/react-table";
 import {
   flexRender,
@@ -11,7 +11,6 @@ import {
   type SortingState,
   type VisibilityState,
 } from "@tanstack/react-table";
-import { Cog } from "lucide-react";
 import { toast } from "sonner";
 
 import {
@@ -22,7 +21,6 @@ import {
 import { tracesColumns } from "@/components/traces/traces-columns";
 
 import { Alert } from "@/components/ui/alert";
-import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent } from "@/components/ui/sheet";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
@@ -279,8 +277,7 @@ function TracesPage() {
   });
 
   return (
-    <div className="page-wrapper">
-      <PageHeader />
+    <div className="flex h-full flex-col gap-4">
       <TracesTableToolbar
         filters={advancedFilters}
         onFiltersChange={(filters) =>
@@ -300,50 +297,46 @@ function TracesPage() {
         timeRange={timeRange}
       />
 
-      <div className="page-content">
-        <div className="flex min-w-0 flex-1 flex-col overflow-hidden rounded-md border border-border">
-          {isLoading && (
-            <div className="space-y-2 p-4">
-              {[1, 2, 3, 4, 5].map((i) => (
-                <Skeleton className="h-12 w-full" key={i} />
-              ))}
-            </div>
-          )}
-          {error && (
-            <Alert className="m-4" variant="destructive">
-              Failed to load traces: {(error as Error).message}
-            </Alert>
-          )}
-          {!isLoading && !projectId && (
-            <div className="flex flex-1 items-center justify-center py-12 text-center text-muted-foreground">
-              No project selected. Select a project to view traces.
-            </div>
-          )}
-          {!isLoading && projectId && data?.traces.length === 0 && (
-            <div className="flex flex-1 items-center justify-center py-12 text-center text-muted-foreground">
-              No traces found, adjust your filters or set up your API key to start tracing your AI
-              agent with Overmind.
-            </div>
-          )}
-          {!isLoading && filteredAndSorted.length > 0 && <RenderTable table={table} />}
-        </div>
+      <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-md border border-border">
+        {isLoading && (
+          <div className="space-y-2 p-4">
+            {[1, 2, 3, 4, 5].map((i) => (
+              <Skeleton className="h-12 w-full" key={i} />
+            ))}
+          </div>
+        )}
+        {error && (
+          <Alert className="m-4" variant="destructive">
+            Failed to load traces: {(error as Error).message}
+          </Alert>
+        )}
+        {!isLoading && !projectId && (
+          <div className="flex flex-1 items-center justify-center py-12 text-center text-muted-foreground">
+            No project selected. Select a project to view traces.
+          </div>
+        )}
         {!isLoading && projectId && data?.traces.length === 0 && (
-          <>
-            <div className="h-4" />
-            <APIKeySection projectId={projectId} />
-          </>
+          <div className="flex flex-1 items-center justify-center py-12 text-center text-muted-foreground">
+            No traces found, adjust your filters or set up your API key to start tracing your AI
+            agent with Overmind.
+          </div>
         )}
-
-        {showPagination && (
-          <TracesTablePagination
-            onPageChange={(p) => setSearch({ page: p })}
-            onPageSizeChange={(s) => setSearch({ page: 1, pageSize: s })}
-            page={page}
-            pageSize={pageSize}
-            count={data?.count ?? 0}
-          />
-        )}
+        {!isLoading && filteredAndSorted.length > 0 && <RenderTable table={table} />}
       </div>
+
+      {!isLoading && projectId && data?.traces.length === 0 && (
+        <APIKeySection projectId={projectId} />
+      )}
+
+      {showPagination && (
+        <TracesTablePagination
+          onPageChange={(p) => setSearch({ page: p })}
+          onPageSizeChange={(s) => setSearch({ page: 1, pageSize: s })}
+          page={page}
+          pageSize={pageSize}
+          count={data?.count ?? 0}
+        />
+      )}
 
       <Sheet modal={false} onOpenChange={handleDrawerClose} open={!!traceId}>
         <SheetContent
@@ -361,19 +354,6 @@ function TracesPage() {
     </div>
   );
 }
-const PageHeader = () => {
-  const { projectId } = Route.useParams();
-  return (
-    <div className="shrink-0 flex items-center flex-row justify-between gap-2">
-      <h1 className="text-xl font-bold">Traces</h1>
-      <Link params={{ projectId }} to="/projects/$projectId">
-        <Button size="icon" variant="ghost">
-          <Cog className="size-4" />
-        </Button>
-      </Link>
-    </div>
-  );
-};
 
 const TRACES_SELECTION_TOAST_ID = "traces-row-selection";
 

@@ -1,7 +1,13 @@
 import { useState } from "react";
 
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { ChevronDown, ChevronUp, MessageSquare, ThumbsDown, ThumbsUp } from "lucide-react";
+import {
+  ChevronDown,
+  ChevronUp,
+  MessageSquare,
+  ThumbsDown,
+  ThumbsUp,
+} from "lucide-react";
 
 import type { SuggestionOut } from "@/api";
 import apiClient from "@/client";
@@ -74,6 +80,7 @@ function MetricCell({
   );
 }
 
+
 export function SuggestionCard({ suggestion }: { suggestion: SuggestionOut }) {
   const queryClient = useQueryClient();
   const [feedbackExpanded, setFeedbackExpanded] = useState(false);
@@ -124,13 +131,14 @@ export function SuggestionCard({ suggestion }: { suggestion: SuggestionOut }) {
   return (
     <button
       className={cn(
-        "rounded-lg border border-border bg-card p-4 shadow-sm transition-all hover:shadow-md text-left w-full",
-        "focus:outline-none focus:ring-2 focus:ring-amber-500/30"
+        "border border-border bg-card p-4 transition-colors hover:border-[var(--accent-warm)] text-left w-full",
+        "focus:outline-none focus:ring-2 focus:ring-amber-500/30",
       )}
       onClick={() => setExpanded(expanded ? null : suggestion.id)}
       onKeyDown={(e) => e.key === "Enter" && setExpanded(expanded ? null : suggestion.id)}
       type="button"
     >
+      {/* Header row */}
       <div className="flex items-center justify-between">
         <span className="text-base font-semibold capitalize">{suggestion.title}</span>
         <div className="flex items-center gap-1">
@@ -161,6 +169,8 @@ export function SuggestionCard({ suggestion }: { suggestion: SuggestionOut }) {
           </Button>
         </div>
       </div>
+
+      {/* Description */}
       <p className="mt-1 text-sm text-muted-foreground">{suggestion.description}</p>
 
       {hasMetrics && (
@@ -200,6 +210,7 @@ export function SuggestionCard({ suggestion }: { suggestion: SuggestionOut }) {
         </div>
       )}
 
+      {/* Feedback + expanded prompt */}
       <div className="mt-2">
         <Button
           className="h-auto p-0 text-xs text-muted-foreground hover:text-foreground"

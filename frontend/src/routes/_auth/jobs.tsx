@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo } from "react";
 
 import { useQuery } from "@tanstack/react-query";
 import { createFileRoute, Outlet } from "@tanstack/react-router";
@@ -7,11 +7,8 @@ import {
   ArrowDown,
   ArrowUp,
   CheckCircle,
-  ChevronLeft,
-  ChevronRight,
   ChevronsUpDown,
   Clock,
-  EyeOff,
   Loader2,
   XCircle,
 } from "lucide-react";
@@ -19,6 +16,7 @@ import {
 import type { JobStatus, JobType, ListJobsApiV1JobsGetRequest } from "@/api";
 import apiClient from "@/client";
 import { CreateJobDialog } from "@/components/create-job-dialog";
+import { TracesTablePagination } from "@/components/traces/traces-table-pagination";
 import { Alert } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -37,7 +35,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+
 import { jobsSearchSchema } from "@/lib/schemas";
 import type { JobsSearch } from "@/lib/schemas";
 import { cn, formatDate } from "@/lib/utils";
@@ -50,7 +48,6 @@ function SortableHead({
   sortBy,
   sortDirection,
   onSort,
-  onHide,
   className,
 }: {
   field: SortField;
@@ -58,45 +55,30 @@ function SortableHead({
   sortBy: SortField;
   sortDirection: "asc" | "desc";
   onSort: (field: SortField) => void;
-  onHide: (field: SortField) => void;
   className?: string;
 }) {
   const isActive = sortBy === field;
+  const isRight = className?.includes("text-right");
   return (
     <TableHead className={className}>
-      <div className="group flex items-center gap-0.5">
+      <div className={cn("flex", isRight && "justify-end")}>
         <Button
-          className="-ml-3 h-8 gap-1"
+          className="h-8 gap-1"
           onClick={() => onSort(field)}
           size="sm"
           variant="ghost"
         >
-          {label}
-          {isActive ? (
-            sortDirection === "asc" ? (
-              <ArrowUp className="size-3.5" />
-            ) : (
-              <ArrowDown className="size-3.5" />
-            )
+        {label}
+        {isActive ? (
+          sortDirection === "asc" ? (
+            <ArrowUp className="size-3.5" />
           ) : (
-            <ChevronsUpDown className="size-3.5 text-muted-foreground/60" />
-          )}
+            <ArrowDown className="size-3.5" />
+          )
+        ) : (
+          <ChevronsUpDown className="size-3.5 text-muted-foreground/60" />
+        )}
         </Button>
-        <TooltipProvider>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button
-                className="size-6 opacity-0 transition-opacity group-hover:opacity-100"
-                onClick={() => onHide(field)}
-                size="icon"
-                variant="ghost"
-              >
-                <EyeOff className="size-3.5 text-muted-foreground/60" />
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent>Hide column</TooltipContent>
-          </Tooltip>
-        </TooltipProvider>
       </div>
     </TableHead>
   );
@@ -142,8 +124,6 @@ function JobsPage() {
   const navigate = Route.useNavigate();
   const searchParams = Route.useSearch();
   const { job_type, status, page = 1, pageSize = 25, sortBy, sortDirection } = searchParams;
-  const [hiddenCols, setHiddenCols] = useState<Set<SortField>>(new Set());
-
   const setSearch = (updates: Partial<typeof searchParams>) =>
     navigate({ resetScroll: false, search: (x) => ({ ...x, ...updates }) });
 
@@ -157,10 +137,6 @@ function JobsPage() {
     } else {
       setSearch({ sortBy: field, sortDirection: "asc" });
     }
-  };
-
-  const handleHide = (field: SortField) => {
-    setHiddenCols((prev) => new Set([...prev, field]));
   };
 
   const offset = (page - 1) * pageSize;
@@ -180,8 +156,6 @@ function JobsPage() {
 
   const rawJobs = data?.jobs ?? [];
   const total = data?.total ?? 0;
-  const totalOnPage = rawJobs.length;
-  const canNext = offset + totalOnPage < total;
   const showPagination = total > 0;
 
   const jobs = useMemo(() => {
@@ -208,13 +182,13 @@ function JobsPage() {
     });
   }, [rawJobs, sortBy, sortDirection]);
 
-  const show = (field: SortField) => !hiddenCols.has(field);
+
 
   if (isLoading) {
     return (
-      <div className="page-wrapper">
+      <div className="flex h-full flex-col gap-4">
         <JobsHeader />
-        <div className="flex justify-center py-12">
+        <div className="flex flex-1 items-center justify-center">
           <Loader2 className="size-8 animate-spin text-muted-foreground" />
         </div>
       </div>
@@ -222,9 +196,9 @@ function JobsPage() {
   }
   if (error) {
     return (
-      <div className="page-wrapper">
+      <div className="flex h-full flex-col gap-4">
         <JobsHeader />
-        <Alert className="mb-4" variant="destructive">
+        <Alert variant="destructive">
           Failed to load jobs: {(error as Error).message}
         </Alert>
       </div>
@@ -232,101 +206,84 @@ function JobsPage() {
   }
   if (!jobs || jobs.length === 0) {
     return (
-      <div className="page-wrapper">
+      <div className="flex h-full flex-col gap-4">
         <JobsHeader />
-        <div className="py-12 text-center text-muted-foreground">
+        <div className="flex flex-1 items-center justify-center rounded-md border border-dashed border-border text-center text-muted-foreground">
           <p>No jobs found. Trigger a job from the home page to see it here.</p>
         </div>
       </div>
     );
   }
   return (
-    <div className="page-wrapper">
+    <div className="flex h-full flex-col gap-4">
       <JobsHeader />
-      <div>
-        <Table>
-          <TableHeader>
-            <TableRow>
-              {show("status") && (
+
+      <div className="min-h-0 flex-1 overflow-hidden rounded-md border border-border">
+        <div className="max-h-full overflow-auto">
+          <Table>
+            <TableHeader>
+              <TableRow>
                 <SortableHead
+                  className="w-[120px]"
                   field="status"
                   label="Status"
-                  onHide={handleHide}
                   onSort={handleSort}
                   sortBy={sortBy}
                   sortDirection={sortDirection}
                 />
-              )}
-              {show("jobType") && (
                 <SortableHead
                   field="jobType"
                   label="Job Type"
-                  onHide={handleHide}
                   onSort={handleSort}
                   sortBy={sortBy}
                   sortDirection={sortDirection}
                 />
-              )}
-              {show("promptSlug") && (
                 <SortableHead
                   field="promptSlug"
                   label="Agent"
-                  onHide={handleHide}
                   onSort={handleSort}
                   sortBy={sortBy}
                   sortDirection={sortDirection}
                 />
-              )}
-              {show("triggeredBy") && (
                 <SortableHead
+                  className="w-[120px]"
                   field="triggeredBy"
                   label="Started By"
-                  onHide={handleHide}
                   onSort={handleSort}
                   sortBy={sortBy}
                   sortDirection={sortDirection}
                 />
-              )}
-              {show("createdAt") && (
                 <SortableHead
+                  className="w-[200px] text-right"
                   field="createdAt"
                   label="Started At"
-                  onHide={handleHide}
                   onSort={handleSort}
                   sortBy={sortBy}
                   sortDirection={sortDirection}
                 />
-              )}
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {jobs.map((job) => {
-              const cfg = STATUS_CONFIG[job.status] ?? STATUS_CONFIG.pending;
-              return (
-                <TableRow
-                  className="cursor-pointer hover:bg-muted/50"
-                  key={job.jobId}
-                  onClick={() => handleJobClick(job.jobId)}
-                >
-                  {show("status") && (
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {jobs.map((job) => {
+                const cfg = STATUS_CONFIG[job.status] ?? STATUS_CONFIG.pending;
+                return (
+                  <TableRow
+                    className="cursor-pointer hover:bg-muted/50"
+                    key={job.jobId}
+                    onClick={() => handleJobClick(job.jobId)}
+                  >
                     <TableCell>
                       <Badge className="gap-1" variant={cfg.variant}>
                         {cfg.icon}
                         {cfg.label}
                       </Badge>
                     </TableCell>
-                  )}
-                  {show("jobType") && (
                     <TableCell className="font-medium">
                       {JOB_TYPE_LABELS[job.jobType] ?? job.jobType}
                     </TableCell>
-                  )}
-                  {show("promptSlug") && (
                     <TableCell className={job.promptSlug ? "" : "italic text-muted-foreground"}>
                       {humanSlug(job.promptSlug ?? undefined) || "All agents"}
                     </TableCell>
-                  )}
-                  {show("triggeredBy") && (
                     <TableCell
                       className={cn(
                         "text-sm",
@@ -335,50 +292,27 @@ function JobsPage() {
                     >
                       {job.triggeredBy === "scheduled" ? "System" : "User"}
                     </TableCell>
-                  )}
-                  {show("createdAt") && (
-                    <TableCell className="text-sm text-muted-foreground">
+                    <TableCell className="text-right text-sm text-muted-foreground">
                       {formatDate(job.createdAt ?? undefined)}
                     </TableCell>
-                  )}
-                </TableRow>
-              );
-            })}
-          </TableBody>
-        </Table>
-        {showPagination && (
-          <div className="mt-4 flex items-center justify-between border-t border-border px-2 py-3 sticky bottom-0 bg-background">
-            <p className="text-sm text-muted-foreground">
-              Page {page}
-              {totalOnPage > 0 && (
-                <span className="ml-1">
-                  · {offset + 1}-{offset + totalOnPage} of {total}
-                </span>
-              )}
-            </p>
-            <div className="flex items-center gap-2">
-              <Button
-                disabled={page <= 1}
-                onClick={() => setSearch({ page: page - 1 })}
-                size="sm"
-                variant="outline"
-              >
-                <ChevronLeft className="size-4" />
-                Previous
-              </Button>
-              <Button
-                disabled={!canNext}
-                onClick={() => setSearch({ page: page + 1 })}
-                size="sm"
-                variant="outline"
-              >
-                Next
-                <ChevronRight className="size-4" />
-              </Button>
-            </div>
-          </div>
-        )}
+                  </TableRow>
+                );
+              })}
+            </TableBody>
+          </Table>
+        </div>
       </div>
+
+      {showPagination && (
+        <TracesTablePagination
+          count={total}
+          onPageChange={(p) => setSearch({ page: p })}
+          onPageSizeChange={(s) => setSearch({ page: 1, pageSize: s })}
+          page={page}
+          pageSize={pageSize}
+        />
+      )}
+
       <Outlet />
     </div>
   );
@@ -406,35 +340,32 @@ const JobsHeader = () => {
     });
 
   return (
-    <div className="flex items-center justify-between sticky top-16 bg-background z-10">
-      <h1 className="text-xl font-bold">Job History</h1>
-      <div className="flex gap-4">
-        <CreateJobDialog />
-        <Select onValueChange={setTypeFilter} value={typeFilter}>
-          <SelectTrigger className="w-[160px]">
-            <SelectValue placeholder="Job Type" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">All</SelectItem>
-            <SelectItem value="agent_discovery">Agent Discovery</SelectItem>
-            <SelectItem value="judge_scoring">Scoring</SelectItem>
-            <SelectItem value="prompt_tuning">Prompt Tuning</SelectItem>
-            <SelectItem value="model_backtesting">Model Backtesting</SelectItem>
-          </SelectContent>
-        </Select>
-        <Select onValueChange={setStatusFilter} value={statusFilter}>
-          <SelectTrigger className="w-[140px]">
-            <SelectValue placeholder="Status" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">All</SelectItem>
-            <SelectItem value="running">Running</SelectItem>
-            <SelectItem value="completed">Completed</SelectItem>
-            <SelectItem value="failed">Failed</SelectItem>
-            <SelectItem value="pending">Pending</SelectItem>
-          </SelectContent>
-        </Select>
-      </div>
+    <div className="flex shrink-0 items-center gap-4">
+      <CreateJobDialog />
+      <Select onValueChange={setTypeFilter} value={typeFilter}>
+        <SelectTrigger className="w-[160px]">
+          <SelectValue placeholder="Job Type" />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value="all">All</SelectItem>
+          <SelectItem value="agent_discovery">Agent Discovery</SelectItem>
+          <SelectItem value="judge_scoring">Scoring</SelectItem>
+          <SelectItem value="prompt_tuning">Prompt Tuning</SelectItem>
+          <SelectItem value="model_backtesting">Model Backtesting</SelectItem>
+        </SelectContent>
+      </Select>
+      <Select onValueChange={setStatusFilter} value={statusFilter}>
+        <SelectTrigger className="w-[140px]">
+          <SelectValue placeholder="Status" />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value="all">All</SelectItem>
+          <SelectItem value="running">Running</SelectItem>
+          <SelectItem value="completed">Completed</SelectItem>
+          <SelectItem value="failed">Failed</SelectItem>
+          <SelectItem value="pending">Pending</SelectItem>
+        </SelectContent>
+      </Select>
     </div>
   );
 };

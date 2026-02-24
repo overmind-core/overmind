@@ -5,14 +5,14 @@ const THEME_STORAGE_KEY = "overmind-theme";
 type Theme = "light" | "dark" | "system";
 
 function getSystemTheme(): "light" | "dark" {
-  if (typeof window === "undefined") return "light";
+  if (typeof window === "undefined") return "dark";
   return window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
 }
 
 function getStoredTheme(): Theme {
-  if (typeof window === "undefined") return "system";
+  if (typeof window === "undefined") return "dark";
   const stored = localStorage.getItem(THEME_STORAGE_KEY) as Theme | null;
-  return stored && ["light", "dark", "system"].includes(stored) ? stored : "system";
+  return stored && ["light", "dark", "system"].includes(stored) ? stored : "dark";
 }
 
 function applyTheme(theme: Theme) {
@@ -34,8 +34,8 @@ interface ThemeContextValue {
 const ThemeContext = React.createContext<ThemeContextValue | null>(null);
 
 export function ThemeProvider({ children }: { children: React.ReactNode }) {
-  const [theme, setThemeState] = React.useState<Theme>("system");
-  const [resolvedTheme, setResolvedTheme] = React.useState<"light" | "dark">("light");
+  const [theme, setThemeState] = React.useState<Theme>("dark");
+  const [resolvedTheme, setResolvedTheme] = React.useState<"light" | "dark">("dark");
   const mounted = React.useRef(false);
 
   React.useEffect(() => {

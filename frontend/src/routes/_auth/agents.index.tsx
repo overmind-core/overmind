@@ -1,6 +1,7 @@
+import { useMemo } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
-import { ExternalLink, Loader2, RefreshCw } from "lucide-react";
+import { ExternalLink, Loader2, RefreshCw, Search } from "lucide-react";
 import { useState } from "react";
 
 import { ResponseError, type AgentOut } from "@/api";
@@ -10,6 +11,7 @@ import { useProjectsList } from "@/hooks/use-projects";
 import { Alert } from "@/components/ui/alert";
 import { DismissibleAlert } from "@/components/ui/dismissible-alert";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import {
   Select,
   SelectContent,
@@ -25,31 +27,14 @@ export const Route = createFileRoute("/_auth/agents/")({
 function EmptyState() {
   return (
     <div className="flex w-full flex-col items-center py-12 text-center">
-      <div className="mb-4 flex size-16 items-center justify-center rounded-full border border-border bg-amber-500/10">
-        <svg
-          className="size-10"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth={1.4}
-          viewBox="0 0 24 24"
-        >
-          <circle cx="12" cy="12" r="9.2" stroke="currentColor" />
-          <path
-            d="M9.5 13.85l2.23 2.05 3.94-5.2"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            strokeWidth={1.5}
-          />
-        </svg>
-      </div>
-      <p className="mb-2 text-base font-medium">No agents detected yet</p>
+      <p className="mb-2 font-display text-4xl font-medium">No agents detected yet</p>
       <p className="mx-auto mb-4 max-w-sm text-sm text-muted-foreground">
         Connect your LLM application and ingest traces, then extract templates to see your agents
         here.
       </p>
       <a
-        className="inline-flex items-center rounded-lg bg-amber-600 px-4 py-2 text-sm font-semibold text-black hover:bg-amber-500"
-        href="https://docs.overmindlab.ai/guides/integrate"
+        className="inline-flex items-center rounded-lg bg-black px-4 py-2 text-sm font-semibold text-white hover:bg-black/80 dark:bg-white dark:text-black dark:hover:bg-white/80"
+        href="https://docs.overmindlab.ai/"
         rel="noopener noreferrer"
         target="_blank"
       >
@@ -65,6 +50,7 @@ function AgentsPage() {
   const projects = projectsData?.projects ?? [];
 
   const [selectedProjectId, setSelectedProjectId] = useState<string | undefined>(undefined);
+  const [search, setSearch] = useState("");
 
   const activeProjectId = selectedProjectId ?? projects[0]?.projectId;
 
@@ -96,6 +82,16 @@ function AgentsPage() {
 
   const agents = data?.data ?? ([] as AgentOut[]);
 
+  const filteredAgents = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    if (!q) return agents;
+    return agents.filter(
+      (a) =>
+        a.name.toLowerCase().includes(q) ||
+        (a.tags ?? []).some((t) => t.toLowerCase().includes(q)),
+    );
+  }, [agents, search]);
+
   const projectFilter = projects.length > 1 && (
     <Select onValueChange={setSelectedProjectId} value={activeProjectId}>
       <SelectTrigger size="sm">
@@ -116,7 +112,6 @@ function AgentsPage() {
       <div className="page-wrapper">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <h1 className="text-2xl font-bold">Agents</h1>
             {projectFilter}
           </div>
         </div>
@@ -129,7 +124,6 @@ function AgentsPage() {
       <div className="page-wrapper">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <h1 className="text-2xl font-bold">Agents</h1>
             {projectFilter}
           </div>
         </div>
@@ -139,25 +133,20 @@ function AgentsPage() {
       </div>
     );
   }
-  if (!agents || agents.length === 0) {
-    return (
-      <div className="page-wrapper">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <h1 className="text-2xl font-bold">Agents</h1>
-            {projectFilter}
-          </div>
-        </div>
-        <EmptyState />
-      </div>
-    );
-  }
   return (
     <div className="page-wrapper">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between gap-3">
         <div className="flex items-center gap-3">
-          <h1 className="text-2xl font-bold">Agents</h1>
           {projectFilter}
+          <div className="relative">
+            <Search className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              className="h-8 w-56 pl-8 text-sm"
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Search by name or tag..."
+              value={search}
+            />
+          </div>
         </div>
         <Button
           disabled={extractMutation.isPending}
@@ -186,7 +175,15 @@ function AgentsPage() {
         </Alert>
       )}
 
-      <AgentGrid agents={agents} projectId={activeProjectId} />
+      {!agents || agents.length === 0 ? (
+        <EmptyState />
+      ) : filteredAgents.length === 0 && search.trim() ? (
+        <p className="py-8 text-center text-sm text-muted-foreground">
+          No agents matching &ldquo;{search.trim()}&rdquo;
+        </p>
+      ) : (
+        <AgentGrid agents={filteredAgents} projectId={activeProjectId} />
+      )}
     </div>
   );
 }

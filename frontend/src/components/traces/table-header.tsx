@@ -1,8 +1,7 @@
 import type { Column } from "@tanstack/react-table";
-import { ArrowDown, ArrowUp, ChevronsUpDown, EyeOff } from "lucide-react";
+import { ArrowDown, ArrowUp, ChevronsUpDown } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 
 interface DataTableColumnHeaderProps<TData, TValue> extends React.HTMLAttributes<HTMLDivElement> {
@@ -19,40 +18,25 @@ export function DataTableColumnHeader<TData, TValue>({
     return <div className={cn(className)}>{title}</div>;
   }
 
+  const sorted = column.getIsSorted();
+
+  const handleClick = () => {
+    // Toggle between asc and desc (default to asc if unsorted)
+    column.toggleSorting(sorted === "asc");
+  };
+
   return (
-    <div className={cn("group flex items-center gap-0.5", className)}>
-      <Button
-        className="-ml-3 h-8 gap-1"
-        onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
-        size="sm"
-        variant="ghost"
-      >
+    <div className={cn("flex items-center", className)}>
+      <Button className="-ml-3 h-8 gap-1" onClick={handleClick} size="sm" variant="ghost">
         <span>{title}</span>
-        {column.getIsSorted() === "desc" ? (
-          <ArrowDown className="size-3.5" />
-        ) : column.getIsSorted() === "asc" ? (
-          <ArrowUp className="size-3.5" />
+        {sorted === "desc" ? (
+          <ArrowDown className="size-3.5" strokeWidth={1.5} />
+        ) : sorted === "asc" ? (
+          <ArrowUp className="size-3.5" strokeWidth={1.5} />
         ) : (
-          <ChevronsUpDown className="size-3.5 text-muted-foreground/60" />
+          <ChevronsUpDown className="size-3.5 text-muted-foreground" strokeWidth={1.5} />
         )}
       </Button>
-      {column.getCanHide() && (
-        <TooltipProvider>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button
-                className="size-6 opacity-0 transition-opacity group-hover:opacity-100"
-                onClick={() => column.toggleVisibility(false)}
-                size="icon"
-                variant="ghost"
-              >
-                <EyeOff className="size-3.5 text-muted-foreground/60" />
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent>Hide column</TooltipContent>
-          </Tooltip>
-        </TooltipProvider>
-      )}
     </div>
   );
 }

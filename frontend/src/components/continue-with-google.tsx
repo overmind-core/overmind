@@ -1,20 +1,20 @@
-import { Button } from "@/components/ui/button";
-
 const GOOGLE_OAUTH_START_URL =
   import.meta.env.VITE_GOOGLE_AUTH_START_URL ??
-  `${import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8000/"}v1/oauth/google/start`;
+  `https://api.overmindlab.ai/api/v1/oauth/google/start`;
 
-export const ContinueWithGoogle = () => {
+export function ContinueWithGoogle({ className }: { className?: string }) {
   const handleContinueWithGoogle = () => {
     window.location.href = GOOGLE_OAUTH_START_URL;
   };
 
   return (
-    <Button
-      className="w-full gap-3 h-11 font-medium"
+    <button
+      className={
+        className ??
+        "flex h-12 w-full items-center justify-center gap-3 rounded-md border border-[#3A3530] bg-[#252220] text-sm font-medium text-white transition-colors hover:border-[#4A4540] hover:bg-[#302E2C]"
+      }
       onClick={handleContinueWithGoogle}
-      size="lg"
-      variant="outline"
+      type="button"
     >
       <svg aria-hidden="true" className="size-5" focusable="false" viewBox="0 0 512 512">
         <g>
@@ -37,6 +37,6 @@ export const ContinueWithGoogle = () => {
         </g>
       </svg>
       Continue with Google
-    </Button>
+    </button>
   );
-};
+}
