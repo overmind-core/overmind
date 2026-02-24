@@ -1,6 +1,7 @@
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 
 import { useQuery } from "@tanstack/react-query";
+import type { AgentOut } from "@/api";
 import { createFileRoute, Outlet } from "@tanstack/react-router";
 import {
   AlertTriangle,
@@ -9,6 +10,7 @@ import {
   CheckCircle,
   ChevronsUpDown,
   Clock,
+  EyeOff,
   Loader2,
   XCircle,
 } from "lucide-react";
@@ -35,6 +37,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 
 import { jobsSearchSchema } from "@/lib/schemas";
 import type { JobsSearch } from "@/lib/schemas";
@@ -48,6 +51,7 @@ function SortableHead({
   sortBy,
   sortDirection,
   onSort,
+  onHide,
   className,
 }: {
   field: SortField;
@@ -55,30 +59,46 @@ function SortableHead({
   sortBy: SortField;
   sortDirection: "asc" | "desc";
   onSort: (field: SortField) => void;
+  onHide: (field: SortField) => void;
   className?: string;
 }) {
   const isActive = sortBy === field;
   const isRight = className?.includes("text-right");
   return (
     <TableHead className={className}>
-      <div className={cn("flex", isRight && "justify-end")}>
+      <div className={cn("group flex items-center gap-0.5", isRight && "justify-end")}>
         <Button
-          className="h-8 gap-1"
+          className="-ml-3 h-8 gap-1"
           onClick={() => onSort(field)}
           size="sm"
           variant="ghost"
         >
-        {label}
-        {isActive ? (
-          sortDirection === "asc" ? (
-            <ArrowUp className="size-3.5" />
+          {label}
+          {isActive ? (
+            sortDirection === "asc" ? (
+              <ArrowUp className="size-3.5" />
+            ) : (
+              <ArrowDown className="size-3.5" />
+            )
           ) : (
-            <ArrowDown className="size-3.5" />
-          )
-        ) : (
-          <ChevronsUpDown className="size-3.5 text-muted-foreground/60" />
-        )}
+            <ChevronsUpDown className="size-3.5 text-muted-foreground/60" />
+          )}
         </Button>
+        <TooltipProvider>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                className="size-6 opacity-0 transition-opacity group-hover:opacity-100"
+                onClick={() => onHide(field)}
+                size="icon"
+                variant="ghost"
+              >
+                <EyeOff className="size-3.5 text-muted-foreground/60" />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>Hide column</TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
       </div>
     </TableHead>
   );
@@ -132,6 +152,7 @@ function JobsPage() {
     navigate({ params: { jobId: id }, resetScroll: false, search: (x) => x, to: "/jobs/$jobId" });
   };
 
+  const [hiddenCols, setHiddenCols] = useState<Set<SortField>>(new Set());
   const handleSort = (field: SortField) => {
     if (sortBy === field) {
       setSearch({ sortDirection: sortDirection === "asc" ? "desc" : "asc" });
@@ -139,6 +160,8 @@ function JobsPage() {
       setSearch({ sortBy: field, sortDirection: "asc" });
     }
   };
+  const handleHide = (field: SortField) => setHiddenCols((prev) => new Set([...prev, field]));
+  const show = (field: SortField) => !hiddenCols.has(field);
 
   const offset = (page - 1) * pageSize;
 
@@ -154,6 +177,23 @@ function JobsPage() {
     queryKey: ["jobs", job_type, status, page, pageSize],
     refetchInterval: 10_000,
   });
+
+  const { data: agentsData } = useQuery<{ data: AgentOut[] }>({
+    queryFn: async () => {
+      const res = await apiClient.agents.listAgentsApiV1AgentsGet();
+      return { data: res.data ?? [] };
+    },
+    queryKey: ["agents"],
+    staleTime: 60_000,
+  });
+
+  const agentNameBySlug = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const agent of agentsData?.data ?? []) {
+      map.set(agent.slug, agent.name);
+    }
+    return map;
+  }, [agentsData]);
 
   const rawJobs = data?.jobs ?? [];
   const total = data?.total ?? 0;
@@ -224,44 +264,59 @@ function JobsPage() {
           <Table>
             <TableHeader>
               <TableRow>
-                <SortableHead
-                  className="w-[120px]"
-                  field="status"
-                  label="Status"
-                  onSort={handleSort}
-                  sortBy={sortBy}
-                  sortDirection={sortDirection}
-                />
-                <SortableHead
-                  field="jobType"
-                  label="Job Type"
-                  onSort={handleSort}
-                  sortBy={sortBy}
-                  sortDirection={sortDirection}
-                />
-                <SortableHead
-                  field="promptSlug"
-                  label="Agent"
-                  onSort={handleSort}
-                  sortBy={sortBy}
-                  sortDirection={sortDirection}
-                />
-                <SortableHead
-                  className="w-[120px]"
-                  field="triggeredBy"
-                  label="Started By"
-                  onSort={handleSort}
-                  sortBy={sortBy}
-                  sortDirection={sortDirection}
-                />
-                <SortableHead
-                  className="w-[200px] text-right"
-                  field="createdAt"
-                  label="Started At"
-                  onSort={handleSort}
-                  sortBy={sortBy}
-                  sortDirection={sortDirection}
-                />
+                {show("status") && (
+                  <SortableHead
+                    className="w-[120px]"
+                    field="status"
+                    label="Status"
+                    onHide={handleHide}
+                    onSort={handleSort}
+                    sortBy={sortBy}
+                    sortDirection={sortDirection}
+                  />
+                )}
+                {show("jobType") && (
+                  <SortableHead
+                    field="jobType"
+                    label="Job Type"
+                    onHide={handleHide}
+                    onSort={handleSort}
+                    sortBy={sortBy}
+                    sortDirection={sortDirection}
+                  />
+                )}
+                {show("promptSlug") && (
+                  <SortableHead
+                    field="promptSlug"
+                    label="Agent"
+                    onHide={handleHide}
+                    onSort={handleSort}
+                    sortBy={sortBy}
+                    sortDirection={sortDirection}
+                  />
+                )}
+                {show("triggeredBy") && (
+                  <SortableHead
+                    className="w-[120px]"
+                    field="triggeredBy"
+                    label="Started By"
+                    onHide={handleHide}
+                    onSort={handleSort}
+                    sortBy={sortBy}
+                    sortDirection={sortDirection}
+                  />
+                )}
+                {show("createdAt") && (
+                  <SortableHead
+                    className="w-[200px] text-right"
+                    field="createdAt"
+                    label="Started At"
+                    onHide={handleHide}
+                    onSort={handleSort}
+                    sortBy={sortBy}
+                    sortDirection={sortDirection}
+                  />
+                )}
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -273,29 +328,41 @@ function JobsPage() {
                     key={job.jobId}
                     onClick={() => handleJobClick(job.jobId)}
                   >
-                    <TableCell>
-                      <Badge className="gap-1" variant={cfg.variant}>
-                        {cfg.icon}
-                        {cfg.label}
-                      </Badge>
-                    </TableCell>
-                    <TableCell className="font-medium">
-                      {JOB_TYPE_LABELS[job.jobType] ?? job.jobType}
-                    </TableCell>
-                    <TableCell className={job.promptSlug ? "" : "italic text-muted-foreground"}>
-                      {humanSlug(job.promptSlug ?? undefined) || "All agents"}
-                    </TableCell>
-                    <TableCell
-                      className={cn(
-                        "text-sm",
-                        job.triggeredByUserId ? "text-muted-foreground" : "text-primary"
-                      )}
-                    >
-                      {job.triggeredBy === "scheduled" ? "System" : "User"}
-                    </TableCell>
-                    <TableCell className="text-right text-sm text-muted-foreground">
-                      {formatDate(job.createdAt ?? undefined)}
-                    </TableCell>
+                    {show("status") && (
+                      <TableCell>
+                        <Badge className="gap-1" variant={cfg.variant}>
+                          {cfg.icon}
+                          {cfg.label}
+                        </Badge>
+                      </TableCell>
+                    )}
+                    {show("jobType") && (
+                      <TableCell className="font-medium">
+                        {JOB_TYPE_LABELS[job.jobType] ?? job.jobType}
+                      </TableCell>
+                    )}
+                    {show("promptSlug") && (
+                      <TableCell className={job.promptSlug ? "" : "italic text-muted-foreground"}>
+                        {job.promptSlug
+                          ? (agentNameBySlug.get(job.promptSlug) ?? humanSlug(job.promptSlug))
+                          : "All agents"}
+                      </TableCell>
+                    )}
+                    {show("triggeredBy") && (
+                      <TableCell
+                        className={cn(
+                          "text-sm",
+                          job.triggeredByUserId ? "text-muted-foreground" : "text-primary"
+                        )}
+                      >
+                        {job.triggeredBy === "scheduled" ? "System" : "User"}
+                      </TableCell>
+                    )}
+                    {show("createdAt") && (
+                      <TableCell className="text-right text-sm text-muted-foreground">
+                        {formatDate(job.createdAt ?? undefined)}
+                      </TableCell>
+                    )}
                   </TableRow>
                 );
               })}
