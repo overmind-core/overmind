@@ -23,7 +23,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Skeleton } from "@/components/ui/skeleton";
 
 const EXPIRY_OPTIONS = [
   { label: "30 days", days: 30 },
@@ -171,22 +170,11 @@ export function CreateApiKeyDialog({
             </div>
             <div className="space-y-1.5">
               <Label htmlFor="key-role">Role</Label>
-              {rolesLoading ? (
-                <Skeleton className="h-9 w-full" />
-              ) : (
-                <Select onValueChange={setSelectedRoleId} value={selectedRoleId}>
-                  <SelectTrigger id="key-role">
-                    <SelectValue placeholder="Select a role" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {rolesData?.roles?.map((role) => (
-                      <SelectItem key={role.roleId} value={role.roleId}>
-                        {role.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              )}
+              <Input
+                disabled
+                id="key-role"
+                value="project_admin"
+              />
             </div>
             <div className="space-y-1.5">
               <Label htmlFor="key-expiry">Expires after</Label>
