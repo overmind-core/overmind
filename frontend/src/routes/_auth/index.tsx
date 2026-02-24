@@ -5,6 +5,7 @@ import { Bot, ExternalLink, Loader2, RefreshCw } from "lucide-react";
 import { ResponseError } from "@/api";
 import apiClient from "@/client";
 import { AgentGrid } from "@/components/agent-grid";
+import { NoAgentsEmptyState } from "@/components/NoAgentsEmptyState";
 import { Alert } from "@/components/ui/alert";
 import { DismissibleAlert } from "@/components/ui/dismissible-alert";
 import { Button } from "@/components/ui/button";
@@ -13,36 +14,6 @@ import { Card, CardContent, CardHeader } from "@/components/ui/card";
 export const Route = createFileRoute("/_auth/")({
   component: HomePage,
 });
-
-function TracesPlaceholder() {
-  return (
-    <div className="flex w-full flex-col items-center py-8 text-center">
-      <p className="mb-2 font-display text-4xl font-medium">No agents detected yet</p>
-      <p className="mx-auto mb-4 max-w-sm text-sm text-muted-foreground">
-        Connect your LLM application and ingest traces, then extract templates to see your agents
-        here.
-      </p>
-      <div className="flex flex-wrap justify-center gap-3">
-        <a
-          className="inline-flex items-center rounded-lg bg-black px-4 py-2 text-sm font-semibold text-white hover:bg-black/80 dark:bg-white dark:text-black dark:hover:bg-white/80"
-          href="https://docs.overmindlab.ai/"
-          rel="noopener noreferrer"
-          target="_blank"
-        >
-          Get Started <ExternalLink className="ml-1.5 size-4" />
-        </a>
-        <a
-          className="inline-flex items-center rounded text-sm font-medium text-foreground hover:underline"
-          href="https://docs.overmindlab.ai/guides/manual-upload"
-          rel="noopener noreferrer"
-          target="_blank"
-        >
-          Upload Existing Logs <ExternalLink className="ml-1 size-4" />
-        </a>
-      </div>
-    </div>
-  );
-}
 
 function DocsSection() {
   return (
@@ -166,7 +137,7 @@ function AgentsSection() {
       {extractMutation.isSuccess && (
         <Alert variant="success">Template extraction started — results will appear shortly.</Alert>
       )}
-      {agents.length === 0 ? <TracesPlaceholder /> : <AgentGrid agents={agents} />}
+      {agents.length === 0 ? <NoAgentsEmptyState /> : <AgentGrid agents={agents} />}
     </div>
   );
 }
