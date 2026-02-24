@@ -1,12 +1,13 @@
 import { useMemo } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
-import { ExternalLink, Loader2, RefreshCw, Search } from "lucide-react";
+import { Loader2, RefreshCw, Search } from "lucide-react";
 import { useState } from "react";
 
 import { ResponseError, type AgentOut } from "@/api";
 import apiClient from "@/client";
 import { AgentGrid } from "@/components/agent-grid";
+import { NoAgentsEmptyState } from "@/components/NoAgentsEmptyState";
 import { useProjectsList } from "@/hooks/use-projects";
 import { Alert } from "@/components/ui/alert";
 import { DismissibleAlert } from "@/components/ui/dismissible-alert";
@@ -24,25 +25,6 @@ export const Route = createFileRoute("/_auth/agents/")({
   component: AgentsPage,
 });
 
-function EmptyState() {
-  return (
-    <div className="flex w-full flex-col items-center py-12 text-center">
-      <p className="mb-2 font-display text-4xl font-medium">No agents detected yet</p>
-      <p className="mx-auto mb-4 max-w-sm text-sm text-muted-foreground">
-        Connect your LLM application and ingest traces, then extract templates to see your agents
-        here.
-      </p>
-      <a
-        className="inline-flex items-center rounded-lg bg-black px-4 py-2 text-sm font-semibold text-white hover:bg-black/80 dark:bg-white dark:text-black dark:hover:bg-white/80"
-        href="https://docs.overmindlab.ai/"
-        rel="noopener noreferrer"
-        target="_blank"
-      >
-        Integration Guide <ExternalLink className="ml-1.5 size-4" />
-      </a>
-    </div>
-  );
-}
 
 function AgentsPage() {
   const queryClient = useQueryClient();
@@ -176,7 +158,7 @@ function AgentsPage() {
       )}
 
       {!agents || agents.length === 0 ? (
-        <EmptyState />
+        <NoAgentsEmptyState />
       ) : filteredAgents.length === 0 && search.trim() ? (
         <p className="py-8 text-center text-sm text-muted-foreground">
           No agents matching &ldquo;{search.trim()}&rdquo;
