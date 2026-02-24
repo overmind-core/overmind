@@ -8,7 +8,7 @@ x-env-common: &env-common
     - CELERY_BROKER_URL=redis://valkey:6379/0
     - CELERY_RESULT_BACKEND=redis://valkey:6379/0
     - SECRET_KEY=${SECRET_KEY:-local-dev-secret-change-in-production}
-    - DEBUG=${DEBUG:-true}
+    - DEBUG=${DEBUG:-false}
     - PROXY_TOKEN=${PROXY_TOKEN:-default-proxy-token}
     - OVERMIND_TRACES_URL=http://api:8000/api/v1/traces/create-backend-trace
     - FRONTEND_URL=${FRONTEND_URL:-http://localhost:8000}

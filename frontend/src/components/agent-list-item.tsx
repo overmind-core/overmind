@@ -65,7 +65,7 @@ function MiniBarChart({ buckets }: { buckets: HourlyBucket[] }) {
 
 // ─── Agent List Item ─────────────────────────────────────────────────────────
 
-export function AgentListItem({ agent }: { agent: Agent }) {
+export function AgentListItem({ agent, projectId }: { agent: Agent; projectId: string }) {
   const queryClient = useQueryClient();
   const { analytics } = agent;
   const runningJobs = agent.jobs.filter((j) => j.status === "running");
@@ -74,7 +74,7 @@ export function AgentListItem({ agent }: { agent: Agent }) {
   const scoreMutation = useMutation({
     mutationFn: () =>
       apiClient.jobs
-        .createPromptScoringJobApiV1JobsPromptSlugScorePost({ promptSlug: agent.slug })
+        .createPromptScoringJobApiV1JobsPromptSlugScorePost({ promptSlug: agent.slug, projectId })
         .catch(async (error) => {
           if (error instanceof ResponseError) {
             const r = await error.response.json();
@@ -88,7 +88,7 @@ export function AgentListItem({ agent }: { agent: Agent }) {
   const tuneMutation = useMutation({
     mutationFn: () =>
       apiClient.jobs
-        .createPromptTuningJobApiV1JobsPromptSlugTunePost({ promptSlug: agent.slug })
+        .createPromptTuningJobApiV1JobsPromptSlugTunePost({ promptSlug: agent.slug, projectId })
         .catch(async (error) => {
           if (error instanceof ResponseError) {
             const r = await error.response.json();
