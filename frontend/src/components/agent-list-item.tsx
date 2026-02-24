@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import { useState } from "react";
 
 import { useMutation, useQueryClient } from "@tanstack/react-query";
@@ -10,20 +11,23 @@ import { SuggestionCard } from "@/components/suggestion-card";
 import { DismissibleAlert } from "@/components/ui/dismissible-alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { cn } from "@/lib/utils";
 import type { Agent, HourlyBucket } from "@/types/agent";
 
-function StatPill({ icon, label, value }: { icon: React.ReactNode; label: string; value: string }) {
+// ─── Metric Row ──────────────────────────────────────────────────────────────
+
+function MetricRow({ icon, label, value }: { icon: ReactNode; label: string; value: string }) {
   return (
-    <div className="inline-flex items-center gap-2 rounded-lg border border-border bg-card px-3 py-1.5">
-      {icon}
-      <div>
-        <span className="text-xs font-semibold text-muted-foreground">{label}</span>
-        <span className="ml-1 text-sm font-bold">{value}</span>
-      </div>
+    <div className="flex items-center gap-3 border-b border-border py-2 last:border-b-0">
+      <div className="flex items-center text-[var(--text-secondary)]">{icon}</div>
+      <span className="flex-1 text-[0.85rem] font-medium text-[var(--text-secondary)]">
+        {label}
+      </span>
+      <span className="text-[0.9rem] font-semibold text-foreground">{value}</span>
     </div>
   );
 }
+
+// ─── Mini Bar Chart ──────────────────────────────────────────────────────────
 
 function MiniBarChart({ buckets }: { buckets: HourlyBucket[] }) {
   const recent = buckets.slice(-24);
@@ -31,21 +35,23 @@ function MiniBarChart({ buckets }: { buckets: HourlyBucket[] }) {
 
   return (
     <div>
-      <p className="mb-2 text-xs font-semibold text-muted-foreground">Spans per hour (recent)</p>
+      <p className="mb-1 text-[0.78rem] font-semibold text-muted-foreground">
+        Spans per hour (recent)
+      </p>
       <div className="flex h-12 items-end gap-0.5">
         {recent.map((b, i) => {
           const h = Math.max(4, (b.span_count / maxCount) * 44);
           const scoreColor =
             b.avg_score == null
-              ? "bg-muted"
+              ? "bg-muted-foreground/40"
               : b.avg_score >= 0.7
-                ? "bg-green-500"
+                ? "bg-emerald-500"
                 : b.avg_score >= 0.4
                   ? "bg-amber-500"
                   : "bg-destructive";
           return (
             <div
-              className={cn("min-w-1 max-w-[18px] flex-1 rounded-t transition-all", scoreColor)}
+              className={`min-w-1 max-w-[18px] flex-1 transition-all ${scoreColor}`}
               key={b.hour ?? i}
               style={{ height: h }}
               title={`${b.span_count} spans | score: ${b.avg_score != null ? `${(b.avg_score * 100).toFixed(0)}%` : "—"} | ${b.hour?.slice(11, 16) ?? ""}`}
@@ -56,6 +62,8 @@ function MiniBarChart({ buckets }: { buckets: HourlyBucket[] }) {
     </div>
   );
 }
+
+// ─── Agent List Item ─────────────────────────────────────────────────────────
 
 export function AgentListItem({ agent }: { agent: Agent }) {
   const queryClient = useQueryClient();
@@ -95,11 +103,12 @@ export function AgentListItem({ agent }: { agent: Agent }) {
   });
 
   return (
-    <div className="rounded-xl border border-border bg-card p-6">
+    <div className="border border-border bg-card p-5 md:p-6">
+      {/* Header */}
       <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
         <div className="flex items-center gap-2">
           <Link
-            className="text-lg font-extrabold text-amber-600 capitalize hover:underline"
+            className="text-lg font-bold uppercase tracking-tight text-foreground hover:underline"
             params={{ slug: agent.slug }}
             to="/agents/$slug"
           >
@@ -163,57 +172,52 @@ export function AgentListItem({ agent }: { agent: Agent }) {
       />
 
       <div className="flex flex-col gap-4 md:flex-row">
-        <div className="flex flex-1 flex-col gap-4 rounded-xl border border-border bg-amber-500/5 p-4 md:flex-[0_0_70%]">
-          <div className="flex flex-wrap gap-2">
-            <StatPill
-              icon={<Activity className="size-3.5" />}
-              label="Spans"
-              value={analytics.total_spans.toLocaleString()}
-            />
-            <StatPill
-              icon={<BarChart3 className="size-3.5" />}
-              label="Avg Score"
-              value={
-                analytics.avg_score != null ? `${(analytics.avg_score * 100).toFixed(1)}%` : "—"
-              }
-            />
-            <StatPill
-              icon={<Clock className="size-3.5" />}
-              label="Avg Latency"
-              value={
-                analytics.avg_latency_ms != null ? `${analytics.avg_latency_ms.toFixed(0)} ms` : "—"
-              }
-            />
-            <StatPill
-              icon={<DollarSign className="size-3.5" />}
-              label="Est. Cost"
-              value={`$${analytics.total_estimated_cost.toFixed(4)}`}
-            />
-            <StatPill
-              icon={<Zap className="size-3.5" />}
-              label="Scored"
-              value={`${analytics.scored_spans} / ${analytics.total_spans}`}
-            />
-          </div>
+        {/* Left: Stats */}
+        <div className="flex-1 border border-border p-4 md:flex-[0_0_60%]">
+          <MetricRow
+            icon={<BarChart3 className="size-4" />}
+            label="Accuracy"
+            value={analytics.avg_score != null ? `${(analytics.avg_score * 100).toFixed(1)}%` : "—"}
+          />
+          <MetricRow
+            icon={<Activity className="size-4" />}
+            label="Spans"
+            value={analytics.total_spans.toLocaleString()}
+          />
+          <MetricRow
+            icon={<Clock className="size-4" />}
+            label="Avg Latency"
+            value={analytics.avg_latency_ms != null ? `${analytics.avg_latency_ms.toFixed(0)} ms` : "—"}
+          />
+          <MetricRow
+            icon={<DollarSign className="size-4" />}
+            label="Est. Cost"
+            value={`$${analytics.total_estimated_cost.toFixed(4)}`}
+          />
+          <MetricRow
+            icon={<Zap className="size-4" />}
+            label="Scored"
+            value={`${analytics.scored_spans} / ${analytics.total_spans}`}
+          />
+        </div>
+        {/* Right: Mini bar chart */}
+        <div className="flex-1 md:flex-[0_0_40%]">
           {analytics.hourly.length > 0 ? (
             <MiniBarChart buckets={analytics.hourly} />
           ) : (
-            <p className="text-sm italic text-muted-foreground">
+            <p className="py-4 text-sm italic text-muted-foreground">
               No hourly data yet — scores will appear after evaluation.
             </p>
           )}
         </div>
-        <div className="flex flex-col gap-2 md:flex-[0_0_30%]">
-          {agent.suggestions.length === 0 && (
-            <p className="py-4 text-sm italic text-muted-foreground">
-              No suggestions yet — tune the prompt to generate suggestions.
-            </p>
-          )}
-          {agent.suggestions.map((s) => (
-            <SuggestionCard key={s.id} suggestion={s} />
-          ))}
-        </div>
       </div>
+
+      {/* Suggestions summary */}
+      {agent.suggestions.length > 0 && (
+        <p className="mt-4 text-[0.85rem] text-[var(--text-secondary)]">
+          {agent.suggestions.length} suggestion{agent.suggestions.length !== 1 ? "s" : ""} available
+        </p>
+      )}
     </div>
   );
 }

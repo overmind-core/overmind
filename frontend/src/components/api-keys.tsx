@@ -3,6 +3,7 @@ import { useMemo, useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { Loader2 } from "lucide-react";
 
+import apiClient from "@/client";
 import { Button } from "@/components/ui/button";
 import { useProjectsList } from "@/hooks/use-projects";
 import { cn } from "@/lib/utils";
@@ -57,29 +58,32 @@ export function APIKeySection({
     queryKey: ["telemetry_api_key", currentProject?.projectId],
   });
 
-  const baseUrl = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8000";
-
   const generateApiKey = useMutation({
     mutationFn: async () => {
       if (!currentProject) throw new Error("No project found");
-      const token = localStorage.getItem("token");
-      const res = await fetch(`${baseUrl}/api/v1/iam/tokens/`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          ...(token ? { Authorization: `Bearer ${token}` } : {}),
-        },
-        body: JSON.stringify({
-          name: `Telemetry API Key - ${new Date().toISOString()}`,
+      const tokenResponse = await apiClient.tokens.createTokenApiV1IamTokensPost({
+        createTokenRequest: {
           description: "API key for telemetry",
-          project_id: currentProject.projectId,
-        }),
+          name: `Telemetry API Key - ${new Date().toISOString()}`,
+          organisationId: currentProject.organisationId,
+          projectId: currentProject.projectId,
+        },
       });
-      if (!res.ok) {
-        const data = await res.json().catch(() => ({}));
-        throw new Error(data?.detail?.message ?? data?.detail ?? "Failed to create token");
-      }
-      const tokenResponse = await res.json();
+
+      const rolesRes = await apiClient.roles.listCoreRolesApiV1IamRolesGet({
+        scope: "project",
+      });
+      const adminRole = rolesRes.roles?.find((r) => r.name === "project_admin");
+      if (!adminRole) throw new Error("Admin role not found");
+      await apiClient.tokenRoles.assignTokenRoleApiV1IamTokensTokenIdRolesPost({
+        assignTokenRoleRequest: {
+          expiresAt: new Date(Date.now() + 1000 * 60 * 60 * 24 * 300),
+          roleId: adminRole.roleId,
+          scopeId: currentProject.projectId,
+          scopeType: "project",
+        },
+        tokenId: tokenResponse.tokenId,
+      });
       localStorage.setItem(`telemetry_api_key_${currentProject.projectId}`, tokenResponse.token);
       return tokenResponse;
     },

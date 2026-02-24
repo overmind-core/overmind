@@ -273,6 +273,7 @@ export const tracesColumns: ColumnDef<SpanRow>[] = [
         </TooltipProvider>
       );
     },
+    enableSorting: false,
     header: ({ column }) => <DataTableColumnHeader column={column} title="Input" />,
     id: "input",
     meta: { label: "Input" },
@@ -317,6 +318,7 @@ export const tracesColumns: ColumnDef<SpanRow>[] = [
         </TooltipProvider>
       );
     },
+    enableSorting: false,
     header: ({ column }) => <DataTableColumnHeader column={column} title="Output" />,
     id: "output",
     meta: { label: "Output" },

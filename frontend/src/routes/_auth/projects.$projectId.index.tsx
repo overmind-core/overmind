@@ -1,9 +1,10 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
-import { useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { ArrowLeft, Check, Key, Loader2, Plus, Trash2 } from "lucide-react";
 
+import apiClient from "@/client";
 import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
@@ -120,6 +121,16 @@ function ProjectDetailCard({ projectId }: { projectId: string }) {
               </TableRow>
             )}
             <TableRow>
+              <TableCell className="font-mono text-xs text-muted-foreground">
+                Organisation
+              </TableCell>
+              <TableCell>{data.organisationName}</TableCell>
+            </TableRow>
+            <TableRow>
+              <TableCell className="font-mono text-xs text-muted-foreground">Members</TableCell>
+              <TableCell>{data.memberCount ?? "—"}</TableCell>
+            </TableRow>
+            <TableRow>
               <TableCell className="font-mono text-xs text-muted-foreground">Created</TableCell>
               <TableCell>{formatDate(data.createdAt?.toISOString())}</TableCell>
             </TableRow>
@@ -169,7 +180,7 @@ function ApiKeysList({ projectId }: ApiKeysListProps) {
       <TableHeader>
         <TableRow>
           <TableHead>Name</TableHead>
-          <TableHead>Prefix</TableHead>
+          <TableHead>Roles</TableHead>
           <TableHead>Created</TableHead>
           <TableHead>Expires</TableHead>
           <TableHead className="w-[80px]" />
@@ -179,9 +190,7 @@ function ApiKeysList({ projectId }: ApiKeysListProps) {
         {tokenData.tokens.map((token) => (
           <TableRow key={token.tokenId}>
             <TableCell className="font-medium">{token.name ?? "Unnamed"}</TableCell>
-            <TableCell className="font-mono text-sm text-muted-foreground">
-              {token.prefix ?? "—"}
-            </TableCell>
+            <TableCell>{token.roles?.join(", ") ?? "—"}</TableCell>
             <TableCell>{formatDate(token.createdAt.toISOString())}</TableCell>
             <TableCell>{formatDate(token.expiresAt?.toISOString())}</TableCell>
             <TableCell>
@@ -213,6 +222,7 @@ interface CreateApiKeyDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   projectId: string;
+  organisationId: string;
   onCreated: () => void;
 }
 
@@ -220,44 +230,56 @@ function CreateApiKeyDialog({
   open,
   onOpenChange,
   projectId,
+  organisationId,
   onCreated,
 }: CreateApiKeyDialogProps) {
   const [keyName, setKeyName] = useState(() => `API Key - ${Date.now()}`);
   const [keyDescription, setKeyDescription] = useState("api key for overmind");
+  const [selectedRoleId, setSelectedRoleId] = useState("");
   const [expiryDays, setExpiryDays] = useState("365");
   const [newToken, setNewToken] = useState<string | null>(null);
   const [createError, setCreateError] = useState("");
   const [createPending, setCreatePending] = useState(false);
   const [copied, setCopied] = useState(false);
 
-  const baseUrl = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8000";
+  const { data: rolesData, isLoading: rolesLoading } = useQuery({
+    enabled: open,
+    queryFn: () => apiClient.roles.listCoreRolesApiV1IamRolesGet({ scope: "project" }),
+    queryKey: ["roles", "project"],
+  });
+
+  useEffect(() => {
+    if (!rolesData) return;
+    const admin = rolesData.roles?.find((r) => r.name === "project_admin");
+    setSelectedRoleId(admin?.roleId ?? rolesData.roles?.[0]?.roleId ?? "");
+  }, [rolesData]);
 
   const handleCreate = async () => {
     setCreateError("");
     setCreatePending(true);
     try {
-      const authToken = localStorage.getItem("token");
-      const days = parseInt(expiryDays, 10);
-      const res = await fetch(`${baseUrl}/api/v1/iam/tokens/`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}),
-        },
-        body: JSON.stringify({
-          name: keyName.trim() || `API Key - ${Date.now()}`,
+      const tokenResponse = await apiClient.tokens.createTokenApiV1IamTokensPost({
+        createTokenRequest: {
           description: keyDescription.trim() || undefined,
-          project_id: projectId,
-          expires_in_days: days > 0 ? days : undefined,
-        }),
+          name: keyName.trim() || `API Key - ${Date.now()}`,
+          organisationId,
+          projectId,
+        },
       });
 
-      if (!res.ok) {
-        const data = await res.json().catch(() => ({}));
-        throw new Error(data?.detail?.message ?? data?.detail ?? "Failed to create API key");
+      if (selectedRoleId) {
+        const days = parseInt(expiryDays, 10);
+        await apiClient.tokenRoles.assignTokenRoleApiV1IamTokensTokenIdRolesPost({
+          assignTokenRoleRequest: {
+            expiresAt: days > 0 ? new Date(Date.now() + 1000 * 60 * 60 * 24 * days) : undefined,
+            roleId: selectedRoleId,
+            scopeId: projectId,
+            scopeType: "project",
+          },
+          tokenId: tokenResponse.tokenId,
+        });
       }
 
-      const tokenResponse = await res.json();
       setNewToken(tokenResponse.token);
       onCreated();
     } catch (err) {
@@ -284,7 +306,7 @@ function CreateApiKeyDialog({
   };
 
   return (
-    <Dialog onOpenChange={(isOpen) => !isOpen && handleClose()} open={open}>
+    <Dialog onOpenChange={(open) => !open && handleClose()} open={open}>
       <DialogContent className="sm:max-w-xl">
         <DialogHeader>
           <DialogTitle>Create API Key</DialogTitle>
@@ -333,6 +355,25 @@ function CreateApiKeyDialog({
               />
             </div>
             <div className="space-y-1.5">
+              <Label htmlFor="key-role">Role</Label>
+              {rolesLoading ? (
+                <Skeleton className="h-9 w-full" />
+              ) : (
+                <Select onValueChange={setSelectedRoleId} value={selectedRoleId}>
+                  <SelectTrigger id="key-role">
+                    <SelectValue placeholder="Select a role" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {rolesData?.roles?.map((role) => (
+                      <SelectItem key={role.roleId} value={role.roleId}>
+                        {role.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
+            </div>
+            <div className="space-y-1.5">
               <Label htmlFor="key-expiry">Expires after</Label>
               <Select onValueChange={setExpiryDays} value={expiryDays}>
                 <SelectTrigger id="key-expiry">
@@ -359,7 +400,7 @@ function CreateApiKeyDialog({
               <Button onClick={handleClose} variant="outline">
                 Cancel
               </Button>
-              <Button disabled={createPending} onClick={handleCreate}>
+              <Button disabled={createPending || rolesLoading} onClick={handleCreate}>
                 {createPending && <Loader2 className="mr-2 size-4 animate-spin" />}
                 Create
               </Button>
@@ -374,6 +415,7 @@ function CreateApiKeyDialog({
 // ─── Orchestrator ─────────────────────────────────────────────────────────────
 
 function ProjectApiKeys({ projectId }: { projectId: string }) {
+  const { data: project } = useProjectQuery(projectId);
   const queryClient = useQueryClient();
   const [showCreateModal, setShowCreateModal] = useState(false);
 
@@ -405,6 +447,7 @@ function ProjectApiKeys({ projectId }: { projectId: string }) {
         onCreated={handleCreated}
         onOpenChange={setShowCreateModal}
         open={showCreateModal}
+        organisationId={project?.organisationId ?? ""}
         projectId={projectId}
       />
     </>

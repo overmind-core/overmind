@@ -13,7 +13,6 @@ import {
 
 import type { AgentOut, SpanForReview } from "@/api";
 import apiClient from "@/client";
-// import { type SpanForReview, agentReviewsApi } from "@/api/agentReviews";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {

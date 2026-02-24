@@ -148,7 +148,7 @@ export function AgentCriteriaCard({ agentSlug, promptId, projectId }: Props) {
 
   return (
     <>
-      <Card className="border-border h-full flex flex-col">
+      <Card className="border-border flex max-h-[360px] flex-col">
         <CardHeader className="pb-2 shrink-0">
           <div className="flex items-center justify-between gap-2">
             <div className="flex items-center gap-1 min-w-0">
@@ -212,7 +212,7 @@ export function AgentCriteriaCard({ agentSlug, promptId, projectId }: Props) {
           </div>
         </CardHeader>
 
-        <CardContent className="flex-1 pt-0">
+        <CardContent className="flex-1 overflow-y-auto pt-0">
           {isLoading ? (
             <div className="flex items-center gap-2 py-4 text-sm text-muted-foreground">
               <Loader2 className="size-4 animate-spin" />

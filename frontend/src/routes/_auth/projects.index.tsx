@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, Link } from "@tanstack/react-router";
 import { ArrowDown, ArrowUp, ChevronsUpDown, EyeOff, FolderKanban } from "lucide-react";
 
 import { CreateProjectDialog } from "@/components/create-project";
@@ -144,7 +144,6 @@ function ProjectsPage() {
   if (!data || data.projects?.length === 0) {
     return (
       <div className="space-y-6 pb-8">
-        <h1 className="text-2xl font-bold">Projects</h1>
         <div className="flex flex-col items-center justify-center py-12 text-center">
           <FolderKanban className="mb-4 size-12 text-muted-foreground" />
           <p className="text-muted-foreground">No projects found.</p>
@@ -165,7 +164,6 @@ function ProjectsPage() {
   return (
     <div className="page-wrapper">
       <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold">Select a Project</h1>
         <CreateProjectDialog />
       </div>
       <Table>
@@ -191,6 +189,7 @@ function ProjectsPage() {
                 {...sortProps}
               />
             )}
+            <TableHead className="w-10" />
           </TableRow>
         </TableHeader>
         <TableBody>
@@ -223,6 +222,19 @@ function ProjectsPage() {
                   {project.createdAt ? formatTimestamp(project.createdAt.toISOString()) : "—"}
                 </TableCell>
               )}
+              <TableCell className="text-right">
+                <Button
+                  aria-label={`Details for ${project.name ?? "project"}`}
+                  asChild
+                  onClick={(e) => e.stopPropagation()}
+                  size="sm"
+                  variant="ghost"
+                >
+                  <Link params={{ projectId: project.projectId }} to="/projects/$projectId">
+                    Details
+                  </Link>
+                </Button>
+              </TableCell>
             </TableRow>
           ))}
         </TableBody>
