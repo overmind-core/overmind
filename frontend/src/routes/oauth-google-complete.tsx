@@ -34,7 +34,7 @@ function OAuthGoogleComplete() {
       setTimeout(() => {
         localStorage.setItem("token", response.accessToken);
         localStorage.setItem("auth_user", JSON.stringify(response.user));
-        navigate({ to: "/" });
+        navigate({ to: "/onboarding" });
       }, 300);
     },
   });
