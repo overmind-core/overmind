@@ -1,6 +1,12 @@
+<img width="4484" height="764" alt="image" src="https://github.com/user-attachments/assets/af059b21-7199-4f0f-8610-63adabbaebc0" />
+
+
 # Overmind Core
 
-Self-hosted observability backend for LLM applications. Ingest traces and spans via OTLP, manage prompts, run backtests, and apply guardrail policies — all from a single Docker Compose stack.
+Overmind is a tool that enables AI to learn from production data, turning real-world agent behaviour into continuous improvement. All from a single Docker Compose stack!
+
+<img width="3022" height="1724" alt="image" src="https://github.com/user-attachments/assets/000aa5f2-df9f-4cb6-88e8-3a0fdf6777a5" />
+
 
 ## Quick Start
 
