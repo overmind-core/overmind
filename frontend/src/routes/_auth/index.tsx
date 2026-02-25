@@ -1,53 +1,24 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { Bot, ExternalLink, Loader2, RefreshCw } from "lucide-react";
+import { Bot, Loader2, RefreshCw } from "lucide-react";
 
 import { ResponseError } from "@/api";
 import apiClient from "@/client";
 import { AgentGrid } from "@/components/agent-grid";
 import { NoAgentsEmptyState } from "@/components/NoAgentsEmptyState";
+import { QuickstartEmbed } from "@/components/quickstart/quickstart-embed";
 import { Alert } from "@/components/ui/alert";
 import { DismissibleAlert } from "@/components/ui/dismissible-alert";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 
 export const Route = createFileRoute("/_auth/")({
   component: HomePage,
 });
 
-function DocsSection() {
-  return (
-    <Card className="mb-6 flex flex-1 flex-col">
-      <CardHeader>
-        <h2 className="text-lg font-bold text-amber-600">Learn More</h2>
-      </CardHeader>
-      <CardContent className="flex flex-1 flex-col">
-        <p className="mb-4 flex-1 text-sm leading-relaxed text-muted-foreground">
-          Overmind helps you make your agents better. Ingest traces from your LLM app, analyze
-          behavior, and optimize prompts, tools, and flows. From quick debugging to systematic
-          evaluation build agents that perform.
-        </p>
-        <div className="flex flex-wrap gap-2">
-          <a
-            className="inline-flex items-center rounded-lg bg-amber-500/10 px-3 py-2 text-sm font-semibold text-amber-600 transition-colors hover:bg-amber-500/20"
-            href="https://docs.overmindlab.ai"
-            rel="noopener noreferrer"
-            target="_blank"
-          >
-            Overmind Docs <ExternalLink className="ml-1.5 size-4" />
-          </a>
-          <a
-            className="inline-flex items-center rounded-lg bg-amber-500/10 px-3 py-2 text-sm font-semibold text-amber-600 transition-colors hover:bg-amber-500/20"
-            href="https://docs.overmindlab.ai/guides/getting-started"
-            rel="noopener noreferrer"
-            target="_blank"
-          >
-            Quickstart Guide <ExternalLink className="ml-1.5 size-4" />
-          </a>
-        </div>
-      </CardContent>
-    </Card>
-  );
+
+function TracesPlaceholder() {
+  return <QuickstartEmbed />;
 }
 
 function AgentsSection() {

@@ -10,6 +10,7 @@ import {
   Home,
   LogIn,
   LogOut,
+  Rocket,
   User,
 } from "lucide-react";
 
@@ -33,6 +34,7 @@ const navLinks = [
 ];
 
 const accountLinks = [
+  { icon: Rocket, label: "Getting Started", to: "/get-started" },
   { icon: User, label: "Account", to: "/account" },
   { icon: Building2, label: "Organisations", to: "/organisations" },
 ];
