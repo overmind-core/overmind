@@ -42,7 +42,6 @@ function getTraceAttr(attrs: Record<string, unknown> | undefined, ...keys: strin
 }
 
 import apiClient from "@/client";
-import { APIKeySection } from "@/components/api-keys";
 import { TracesTablePagination } from "@/components/traces/traces-table-pagination";
 import { TracesTableToolbar } from "@/components/traces/traces-table-toolbar";
 import { spanStatusLabel, transformSpan, type SpanRow } from "@/hooks/use-traces";
@@ -317,16 +316,11 @@ function TracesPage() {
         )}
         {!isLoading && projectId && data?.traces.length === 0 && (
           <div className="flex flex-1 items-center justify-center py-12 text-center text-muted-foreground">
-            No traces found, adjust your filters or set up your API key to start tracing your AI
-            agent with Overmind.
+            No traces captured
           </div>
         )}
         {!isLoading && filteredAndSorted.length > 0 && <RenderTable table={table} />}
       </div>
-
-      {!isLoading && projectId && data?.traces.length === 0 && (
-        <APIKeySection projectId={projectId} />
-      )}
 
       {showPagination && (
         <TracesTablePagination
