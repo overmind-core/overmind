@@ -10,6 +10,18 @@ def to_nano(timestamp: datetime) -> int:
     return int(timestamp.timestamp() * 1_000_000_000)
 
 
+def safe_int(value, default: int = 0) -> int:
+    """Convert *value* to int, returning *default* on any error.
+
+    Handles int, float, numeric strings like "1500", and broken legacy values
+    like "False" that were created by the old OTLP attribute parser (int_value=0
+    gets serialised as str(False)).
+    """
+    try:
+        return int(value)
+    except (ValueError, TypeError):
+        return default
+
 
 def calculate_llm_usage_cost(
     model_name: str, input_tokens: int, output_tokens: int
