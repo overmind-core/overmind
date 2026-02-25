@@ -11,11 +11,16 @@ x-env-common: &env-common
     - DEBUG=${DEBUG:-true}
     - PROXY_TOKEN=${PROXY_TOKEN:-default-proxy-token}
     - OVERMIND_TRACES_URL=http://api:8000/api/v1/traces/create-backend-trace
-    - FRONTEND_URL=${FRONTEND_URL:-http://localhost:8000}
+    - FRONTEND_URL=${FRONTEND_URL:-http://localhost:5173}
+
+x-build-common: &build-common
+  image: overmind-dev
+  build:
+    context: .
 
 services:
   postgres:
-    image: postgres:17-bullseye
+    image: postgres:17-alpine
     environment:
       POSTGRES_USER: overmind
       POSTGRES_PASSWORD: overmind
@@ -31,7 +36,7 @@ services:
       retries: 5
 
   valkey:
-    image: valkey/valkey:latest
+    image: valkey/valkey:8-alpine
     ports:
       - "6379:6379"
     volumes:
@@ -43,11 +48,10 @@ services:
       retries: 5
 
   api:
-    build: .
+    <<: [*build-common, *env-common]
     command: >
       sh -c "alembic upgrade head &&
              uvicorn overmind.main:app --host 0.0.0.0 --port 8000 --reload"
-    <<: *env-common
     ports:
       - "8000:8000"
     volumes:
@@ -61,9 +65,8 @@ services:
         condition: service_healthy
 
   celery-worker:
-    build: .
+    <<: [*build-common, *env-common]
     command: celery -A overmind.celery_worker worker --loglevel=info --pool=prefork --concurrency=2
-    <<: *env-common
     volumes:
       - ./overmind:/app/overmind
     depends_on:
@@ -73,9 +76,8 @@ services:
         condition: service_healthy
 
   celery-beat:
-    build: .
+    <<: [*build-common, *env-common]
     command: celery -A overmind.celery_worker beat --loglevel=info
-    <<: *env-common
     volumes:
       - ./overmind:/app/overmind
     depends_on:
@@ -84,6 +86,19 @@ services:
       valkey:
         condition: service_healthy
 
+  frontend:
+    image: oven/bun:1-alpine
+    working_dir: /frontend
+    command: sh -c "bun install --frozen-lockfile && bun run dev -- --host 0.0.0.0"
+    ports:
+      - "5173:5173"
+    volumes:
+      - ./frontend:/frontend
+      - frontend_node_modules:/frontend/node_modules
+    depends_on:
+      - api
+
 volumes:
   postgres_data:
   valkey_data:
+  frontend_node_modules:

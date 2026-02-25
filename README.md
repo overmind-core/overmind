@@ -17,19 +17,20 @@ make run
 
 That's it. On first startup the system will:
 
-- Build the frontend and bundle it into the API container
+- Install dependencies and start the API, frontend, and background workers
 - Run database migrations automatically
 - Create a default admin user (`admin` / `admin`)
 - Create a default project and API token (printed in the logs)
-- **Auto-open your browser** once the server is healthy
+- **Auto-open your browser** once all services are healthy
 
-Everything (API + frontend) is served at **http://localhost:8000**. Check health at http://localhost:8000/health.
+The frontend is served by Vite at **http://localhost:5173** with hot-reloading. The API runs at **http://localhost:8000**. Check health at http://localhost:8000/health.
 
 ## Services
 
 | Service | Port | Description |
 |---------|------|-------------|
-| **api** | 8000 | FastAPI application with hot-reload + frontend |
+| **frontend** | 5173 | Vite dev server with hot-module-replacement |
+| **api** | 8000 | FastAPI application with hot-reload |
 | **postgres** | 5432 | PostgreSQL 17 database |
 | **valkey** | 6379 | Valkey (Redis-compatible) for caching and Celery broker |
 | **celery-worker** | — | Background task processing |
@@ -37,7 +38,7 @@ Everything (API + frontend) is served at **http://localhost:8000**. Check health
 
 ## First Login
 
-1. Open **http://localhost:8000** (auto-opened on `make run`)
+1. Open **http://localhost:5173** (auto-opened on `make run`)
 2. Log in with `admin` / `admin`
 3. **Change the default password immediately**
 4. Copy the API token from the startup logs (or create a new one via the UI)
@@ -86,7 +87,7 @@ All settings have sensible defaults for local development. Only LLM keys need to
 | `DATABASE_URL` | `postgresql+asyncpg://overmind:overmind@postgres:5432/overmind_core` | PostgreSQL connection string |
 | `VALKEY_HOST` | `valkey` | Valkey hostname |
 | `VALKEY_PORT` | `6379` | Valkey port |
-| `FRONTEND_URL` | `http://localhost:8000` | Frontend origin for CORS |
+| `FRONTEND_URL` | `http://localhost:5173` | Frontend origin for CORS |
 | `API_TOKEN_PREFIX` | `ovr_core_` | Prefix for generated API tokens (managed edition uses `ovr_`) |
 
 ## API Endpoints
@@ -112,20 +113,27 @@ Interactive API docs are at **http://localhost:8000/docs**.
 ## Architecture
 
 ```
+                ┌──────────────┐
+ Browser ──────▶│  Vite (HMR)  │
+                │  :5173       │
+                └──────┬───────┘
+                       │ proxy /api
+                       ▼
                 ┌──────────────┐    ┌──────────┐
- Browser ──────▶│  API + SPA   │───▶│ Postgres │
-                │  (FastAPI)   │    └──────────┘
-                │  :8000       │───▶│  Valkey   │
-┌──────────┐    └──────────────┘    └──────────┘
-│   SDKs   │───▶  (OTLP)                │
-└──────────┘                             ▼
+┌──────────┐    │   FastAPI    │───▶│ Postgres │
+│   SDKs   │───▶│   :8000     │    └──────────┘
+└──────────┘    │   (OTLP)    │───▶│  Valkey   │
+                └──────────────┘    └──────────┘
+                       │
+                       ▼
                 ┌──────────────────────────┐
                 │  Celery Worker + Beat    │
                 │  (background processing) │
                 └──────────────────────────┘
 ```
 
-- **FastAPI** serves the REST API, OTLP ingestion, and the React frontend (single port)
+- **Vite** serves the React frontend with hot-module-replacement; proxies API calls to FastAPI
+- **FastAPI** serves the REST API and OTLP ingestion
 - **PostgreSQL** stores all data (traces, spans, prompts, users, projects)
 - **Valkey** provides caching and acts as the Celery message broker
 - **Celery** runs background tasks: agent discovery, auto-evaluation, prompt improvement, backtesting, job reconciliation
@@ -187,14 +195,6 @@ celery -A overmind.celery_worker beat --loglevel=info
 
 ### Frontend Development
 
-For live-reloading frontend development, run Vite's dev server separately:
+The frontend runs as a Vite dev server inside Docker Compose with volume mounts — any changes to files in `frontend/` are picked up instantly via hot-module-replacement. No manual rebuilds needed.
 
-```bash
-cd frontend
-bun install
-bun run dev    # starts on http://localhost:5173
-```
-
-The dev server expects the API at `http://localhost:8000` (configured in `frontend/.env.development`).
-
-In production / `make run`, the frontend is pre-built and served directly by FastAPI on the same port.
+API calls from the frontend are proxied through Vite to the FastAPI backend (configured in `frontend/vite.config.ts`).

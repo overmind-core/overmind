@@ -4,14 +4,18 @@ OPEN_CMD := $(shell command -v xdg-open 2>/dev/null || command -v open 2>/dev/nu
 
 run:
 ifdef OPEN_CMD
-	@(until curl -sf http://localhost:8000/health >/dev/null 2>&1; do sleep 2; done && $(OPEN_CMD) http://localhost:8000) &
+	@(until curl -sf http://localhost:8000/health >/dev/null 2>&1 && \
+	       curl -sf http://localhost:5173 >/dev/null 2>&1; \
+	  do sleep 2; done && $(OPEN_CMD) http://localhost:5173) &
 endif
 	docker compose up --build
 
 run-detached:
 	docker compose up --build -d
 ifdef OPEN_CMD
-	@(until curl -sf http://localhost:8000/health >/dev/null 2>&1; do sleep 2; done && $(OPEN_CMD) http://localhost:8000) &
+	@(until curl -sf http://localhost:8000/health >/dev/null 2>&1 && \
+	       curl -sf http://localhost:5173 >/dev/null 2>&1; \
+	  do sleep 2; done && $(OPEN_CMD) http://localhost:5173) &
 endif
 
 stop:

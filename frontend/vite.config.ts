@@ -26,6 +26,14 @@ const config = defineConfig({
       "@": fileURLToPath(new URL("./src", import.meta.url)),
     },
   },
+  server: {
+    proxy: {
+      "/api": {
+        target: "http://api:8000",
+        changeOrigin: true,
+      },
+    },
+  },
 });
 
 export default config;
