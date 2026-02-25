@@ -1029,7 +1029,15 @@ async def _execute_prompt_spans_evaluation(
                 }
                 await db.commit()
 
-                final_status = "failed" if evaluated_count == 0 else ("partially_completed" if evaluated_count < selected else "completed")
+                final_status = (
+                    "failed"
+                    if evaluated_count == 0
+                    else (
+                        "partially_completed"
+                        if evaluated_count < selected
+                        else "completed"
+                    )
+                )
                 return {
                     "project_id": str(project_id),
                     "prompt_slug": prompt_slug,

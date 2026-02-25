@@ -226,9 +226,7 @@ async def create_job(
     return job
 
 
-async def find_latest_prompt(
-    slug: str, project_id, db: AsyncSession
-) -> Prompt | None:
+async def find_latest_prompt(slug: str, project_id, db: AsyncSession) -> Prompt | None:
     """
     Find the latest version of a prompt by slug and project.
 

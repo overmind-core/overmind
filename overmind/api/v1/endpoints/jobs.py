@@ -19,7 +19,10 @@ from overmind.api.v1.endpoints.utils.jobs import (
     create_job,
     find_latest_prompt,
 )
-from overmind.api.v1.helpers.authentication import AuthenticatedUserOrToken, get_current_user
+from overmind.api.v1.helpers.authentication import (
+    AuthenticatedUserOrToken,
+    get_current_user,
+)
 from overmind.db.session import get_db
 from overmind.models.jobs import Job
 from overmind.models.prompts import Prompt
@@ -78,9 +81,7 @@ class JobOut(BaseModel):
     updated_at: str | None = None
 
     @classmethod
-    def from_model(
-        cls, job: Job, prompt_display_name: str | None = None
-    ) -> "JobOut":
+    def from_model(cls, job: Job, prompt_display_name: str | None = None) -> "JobOut":
         return cls(
             job_id=str(job.job_id),
             job_type=JobType(job.job_type),
@@ -493,7 +494,9 @@ async def create_prompt_scoring_job(
     if not prompt:
         raise HTTPException(status_code=404, detail="Prompt not found")
 
-    await get_check_pending_job_count(db, str(project_id), prompt_slug, JobType.JUDGE_SCORING)
+    await get_check_pending_job_count(
+        db, str(project_id), prompt_slug, JobType.JUDGE_SCORING
+    )
 
     # Run validation checks for user-triggered judge scoring jobs
     from overmind.tasks.evaluations import validate_judge_scoring_eligibility

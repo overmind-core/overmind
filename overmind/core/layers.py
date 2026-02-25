@@ -74,7 +74,7 @@ def run_overmind_layer(input_data: str, policies, current_user, db, tracer, **kw
 
             all_policy_results[policy_instance.id] = result
 
-        overall_policy_outcome = set([r["result"] for r in all_policy_results.values()])
+        overall_policy_outcome = {r["result"] for r in all_policy_results.values()}
         if "rejected" in overall_policy_outcome:
             overall_policy_outcome = "rejected"
         elif "altered" in overall_policy_outcome:

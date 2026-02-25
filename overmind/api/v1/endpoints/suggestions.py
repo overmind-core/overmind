@@ -8,7 +8,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from typing import Any
 
 from overmind.api.v1.endpoints.utils.suggestions import get_suggestion_or_404
-from overmind.api.v1.helpers.authentication import AuthenticatedUserOrToken, get_current_user
+from overmind.api.v1.helpers.authentication import (
+    AuthenticatedUserOrToken,
+    get_current_user,
+)
 from overmind.db.session import get_db
 from overmind.models.prompts import Prompt
 from overmind.models.traces import SpanModel

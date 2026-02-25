@@ -686,9 +686,7 @@ def extract_templates(
     return ExtractionResult(templates=templates, unmatched=unmatched)
 
 
-def match_string_to_template(
-    string: str, template: Template
-) -> TemplateMatch | None:
+def match_string_to_template(string: str, template: Template) -> TemplateMatch | None:
     """
     Try to match a single string against an existing template.
 

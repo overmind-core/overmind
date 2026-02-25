@@ -252,7 +252,11 @@ def call_comprehend(text: str) -> list[dict]:
         response = comprehend.detect_pii_entities(Text=text, LanguageCode=language_code)
     except Exception as e:
         err_name = type(e).__name__
-        if "Credential" in err_name or "NoCredentials" in err_name or "AccessDenied" in str(e):
+        if (
+            "Credential" in err_name
+            or "NoCredentials" in err_name
+            or "AccessDenied" in str(e)
+        ):
             raise HTTPException(
                 status_code=503,
                 detail=(

@@ -2,7 +2,10 @@ import logging
 from fastapi import APIRouter, Depends, Request, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 from overmind.db.session import get_db
-from overmind.api.v1.helpers.authentication import get_current_user, AuthenticatedUserOrToken
+from overmind.api.v1.helpers.authentication import (
+    get_current_user,
+    AuthenticatedUserOrToken,
+)
 
 from .transformers import create_trace
 from .auth import is_valid_backend_user

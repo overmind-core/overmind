@@ -91,7 +91,10 @@ def resolve_model(task: TaskType) -> str:
     for model_name, provider in priority:
         if provider in available:
             logger.debug(
-                "Resolved model for %s: %s (provider=%s)", task.value, model_name, provider
+                "Resolved model for %s: %s (provider=%s)",
+                task.value,
+                model_name,
+                provider,
             )
             return model_name
 

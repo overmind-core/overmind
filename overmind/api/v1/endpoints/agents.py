@@ -23,7 +23,10 @@ from overmind.api.v1.endpoints.utils.agents import (
 )
 from overmind.tasks.periodic_reviews import REVIEW_THRESHOLDS
 from overmind.api.v1.endpoints.utils.jobs import sync_running_job_statuses
-from overmind.api.v1.helpers.authentication import AuthenticatedUserOrToken, get_current_user
+from overmind.api.v1.helpers.authentication import (
+    AuthenticatedUserOrToken,
+    get_current_user,
+)
 from overmind.db.session import get_db
 from overmind.models.jobs import Job
 from overmind.models.prompts import Prompt

@@ -2,7 +2,10 @@ import json
 from fastapi import APIRouter, Depends, Request
 from opentelemetry import trace
 from sqlalchemy.ext.asyncio import AsyncSession
-from overmind.api.v1.helpers.authentication import AuthenticatedUserOrToken, get_current_user
+from overmind.api.v1.helpers.authentication import (
+    AuthenticatedUserOrToken,
+    get_current_user,
+)
 from overmind.config import setup_opentelemetry
 from overmind.db.session import get_db
 from overmind.core.invocation_helpers import (

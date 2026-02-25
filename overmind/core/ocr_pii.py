@@ -88,10 +88,16 @@ def ocr_extract_text_and_words(
         img_bytes = img_byte_arr.getvalue()
 
         try:
-            response = textract_client.detect_document_text(Document={"Bytes": img_bytes})
+            response = textract_client.detect_document_text(
+                Document={"Bytes": img_bytes}
+            )
         except Exception as e:
             err_name = type(e).__name__
-            if "Credential" in err_name or "NoCredentials" in err_name or "AccessDenied" in str(e):
+            if (
+                "Credential" in err_name
+                or "NoCredentials" in err_name
+                or "AccessDenied" in str(e)
+            ):
                 raise HTTPException(
                     status_code=503,
                     detail=(

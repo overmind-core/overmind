@@ -68,6 +68,7 @@ def get_default_backtest_models() -> list[str]:
     """Return backtest models filtered to providers with available API keys."""
     return get_available_backtest_models()
 
+
 # Minimum scored spans required before a prompt is eligible for backtesting
 MIN_SPANS_FOR_BACKTESTING = 10
 # Maximum spans to use per model during a backtest run

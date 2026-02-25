@@ -17,18 +17,15 @@ from sqlalchemy.ext.asyncio import AsyncSession
 class OrgPolicyProvider(Protocol):
     async def get_org_policy_version(
         self, organisation_id: UUID, db: AsyncSession
-    ) -> Any | None:
-        ...
+    ) -> Any | None: ...
 
     async def get_org_llm_policies(
         self, db: AsyncSession, current_user: Any
-    ) -> dict[str, list[Any]]:
-        ...
+    ) -> dict[str, list[Any]]: ...
 
     async def get_org_mcp_policy(
         self, organisation_id: UUID, db: AsyncSession
-    ) -> dict | None:
-        ...
+    ) -> dict | None: ...
 
 
 class NoopOrgPolicyProvider:

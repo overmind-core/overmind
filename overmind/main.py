@@ -114,7 +114,11 @@ def health_check():
 # Frontend SPA serving
 # ---------------------------------------------------------------------------
 if FRONTEND_DIR.is_dir():
-    app.mount("/assets", StaticFiles(directory=FRONTEND_DIR / "assets"), name="frontend-assets")
+    app.mount(
+        "/assets",
+        StaticFiles(directory=FRONTEND_DIR / "assets"),
+        name="frontend-assets",
+    )
 
     @app.get("/{full_path:path}")
     async def serve_spa(full_path: str):
@@ -124,6 +128,7 @@ if FRONTEND_DIR.is_dir():
             return FileResponse(file_path)
         return FileResponse(FRONTEND_DIR / "index.html")
 else:
+
     @app.get("/")
     def read_root():
         return {"message": "Welcome to Overmind Core (frontend not built)"}

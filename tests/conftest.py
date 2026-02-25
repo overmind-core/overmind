@@ -87,12 +87,12 @@ async def db_session(test_engine):
 @pytest_asyncio.fixture(autouse=True)
 async def mock_valkey(monkeypatch):
     """Replace Valkey helpers with an in-memory dict."""
-    store: Dict[str, str] = {}
+    store: dict[str, str] = {}
 
-    async def _get_key(key: str) -> Optional[str]:
+    async def _get_key(key: str) -> str | None:
         return store.get(key)
 
-    async def _set_key(key: str, value: str, ttl: Optional[int] = None) -> bool:
+    async def _set_key(key: str, value: str, ttl: int | None = None) -> bool:
         store[key] = value
         return True
 
@@ -161,7 +161,7 @@ async def mock_llm(monkeypatch):
 @pytest_asyncio.fixture()
 async def mock_celery(monkeypatch):
     """Capture celery send_task and .delay() calls instead of hitting a broker."""
-    dispatched: List[Dict[str, Any]] = []
+    dispatched: list[dict[str, Any]] = []
 
     def fake_send_task(name, args=None, kwargs=None, **kw):
         dispatched.append({"name": name, "args": args, "kwargs": kwargs})
@@ -292,7 +292,7 @@ async def user_factory(db_session):
     from overmind.api.v1.helpers.authentication import hash_password
 
     async def _create(
-        email: Optional[str] = None,
+        email: str | None = None,
         full_name: str = "Test User",
         password: str = "password123",
     ) -> User:
@@ -341,8 +341,8 @@ async def prompt_factory(db_session):
         slug: str = "test-prompt",
         prompt_text: str = "You are a helpful assistant",
         version: int = 1,
-        evaluation_criteria: Optional[dict] = None,
-        agent_description: Optional[dict] = None,
+        evaluation_criteria: dict | None = None,
+        agent_description: dict | None = None,
     ) -> Prompt:
         prompt = Prompt(
             slug=slug,
@@ -369,11 +369,11 @@ async def span_factory(db_session):
     async def _create(
         project_id,
         user_id,
-        prompt_id: Optional[str] = None,
+        prompt_id: str | None = None,
         operation: str = "llm.chat",
-        feedback_score: Optional[dict] = None,
-        input_data: Optional[dict] = None,
-        output_data: Optional[dict] = None,
+        feedback_score: dict | None = None,
+        input_data: dict | None = None,
+        output_data: dict | None = None,
         trace_id=None,
     ) -> SpanModel:
         if trace_id is None:
@@ -429,11 +429,11 @@ async def job_factory(db_session):
         project_id,
         job_type: str = "judge_scoring",
         status: str = "pending",
-        prompt_slug: Optional[str] = None,
-        celery_task_id: Optional[str] = None,
+        prompt_slug: str | None = None,
+        celery_task_id: str | None = None,
         triggered_by_user_id=None,
-        result: Optional[dict] = None,
-        created_at: Optional[datetime] = None,
+        result: dict | None = None,
+        created_at: datetime | None = None,
     ) -> Job:
         job = Job(
             job_type=job_type,

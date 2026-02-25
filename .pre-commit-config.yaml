@@ -32,8 +32,8 @@ repos:
 
   - repo: local
     hooks:
-      - id: make-lint-format
-        name: make lint-format
-        entry: make lint-format
+      - id: make-lint
+        name: make lint
+        entry: make lint
         language: system
         types_or: [python, pyi]
