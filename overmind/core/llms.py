@@ -39,6 +39,7 @@ def _get_default_model() -> str:
     """Lazy default: resolved at call time so the resolver sees current API keys."""
     return resolve_model(TaskType.DEFAULT)
 
+
 # Pattern to strip date suffixes like "-2025-08-07" from versioned model names
 _DATE_SUFFIX_RE = re.compile(r"-\d{4}-\d{2}-\d{2}$")
 

@@ -6,7 +6,10 @@ from overmind.api.v1.endpoints.jobs import (
     JobType,
     get_check_pending_job_count,
 )
-from overmind.api.v1.helpers.authentication import AuthenticatedUserOrToken, get_current_user
+from overmind.api.v1.helpers.authentication import (
+    AuthenticatedUserOrToken,
+    get_current_user,
+)
 from overmind.core.llms import SUPPORTED_LLM_MODELS, SUPPORTED_LLM_MODEL_NAMES
 from overmind.api.v1.endpoints.utils.jobs import (
     cancel_existing_system_jobs,

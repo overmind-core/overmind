@@ -4,7 +4,10 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from overmind.db.session import get_db
 from overmind.models.user_onboarding import UserOnboarding
-from overmind.api.v1.helpers.authentication import AuthenticatedUserOrToken, get_current_user
+from overmind.api.v1.helpers.authentication import (
+    AuthenticatedUserOrToken,
+    get_current_user,
+)
 
 router = APIRouter(tags=["onboarding"])
 

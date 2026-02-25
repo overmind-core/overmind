@@ -13,8 +13,14 @@ from sqlalchemy import and_, cast, select, Float
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm.attributes import flag_modified
 
-from overmind.api.v1.helpers.authentication import AuthenticatedUserOrToken, get_current_user
-from overmind.api.v1.endpoints.utils.prompts import are_criteria_same, are_descriptions_same
+from overmind.api.v1.helpers.authentication import (
+    AuthenticatedUserOrToken,
+    get_current_user,
+)
+from overmind.api.v1.endpoints.utils.prompts import (
+    are_criteria_same,
+    are_descriptions_same,
+)
 from overmind.db.session import get_db
 from overmind.models.prompts import Prompt
 from overmind.models.traces import SpanModel
@@ -223,7 +229,9 @@ async def update_agent_description_and_criteria(
     # Roll back improvement metadata so prompt improvement can re-trigger with
     # the updated scoring logic — but only when something actually changed.
     if description_changed or criteria_changed:
-        from overmind.tasks.prompt_improvement import invalidate_prompt_improvement_metadata
+        from overmind.tasks.prompt_improvement import (
+            invalidate_prompt_improvement_metadata,
+        )
 
         invalidate_prompt_improvement_metadata(prompt)
 

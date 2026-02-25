@@ -6,7 +6,10 @@ from overmind.models.prompts import Prompt
 from overmind.models.traces import SpanModel
 from overmind.models.jobs import Job
 from overmind.db.session import get_db
-from overmind.api.v1.helpers.authentication import AuthenticatedUserOrToken, get_current_user
+from overmind.api.v1.helpers.authentication import (
+    AuthenticatedUserOrToken,
+    get_current_user,
+)
 from overmind.api.v1.endpoints.utils.prompts import are_criteria_same
 from overmind.api.v1.endpoints.jobs import JobType, JobStatus
 from overmind.tasks.criteria_generator import generate_criteria_task

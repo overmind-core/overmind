@@ -27,21 +27,21 @@ The frontend is served by Vite at **http://localhost:5173** with hot-reloading. 
 
 ## Services
 
-| Service | Port | Description |
-|---------|------|-------------|
-| **frontend** | 5173 | Vite dev server with hot-module-replacement |
-| **api** | 8000 | FastAPI application with hot-reload |
-| **postgres** | 5432 | PostgreSQL 17 database |
-| **valkey** | 6379 | Valkey (Redis-compatible) for caching and Celery broker |
-| **celery-worker** | — | Background task processing |
-| **celery-beat** | — | Periodic task scheduler |
+| Service           | Port | Description                                             |
+| ----------------- | ---- | ------------------------------------------------------- |
+| **frontend**      | 5173 | Vite dev server with hot-module-replacement             |
+| **api**           | 8000 | FastAPI application with hot-reload                     |
+| **postgres**      | 5432 | PostgreSQL 17 database                                  |
+| **valkey**        | 6379 | Valkey (Redis-compatible) for caching and Celery broker |
+| **celery-worker** | —    | Background task processing                              |
+| **celery-beat**   | —    | Periodic task scheduler                                 |
 
 ## First Login
 
 1. Open **http://localhost:5173** (auto-opened on `make run`)
-2. Log in with `admin` / `admin`
-3. **Change the default password immediately**
-4. Copy the API token from the startup logs (or create a new one via the UI)
+1. Log in with `admin` / `admin`
+1. **Change the default password immediately**
+1. Copy the API token from the startup logs (or create a new one via the UI)
 
 ## SDK Integration
 
@@ -77,36 +77,36 @@ make clean            # Stop services and delete all data volumes
 
 All settings have sensible defaults for local development. Only LLM keys need to be set.
 
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `OPENAI_API_KEY` | — | OpenAI API key |
-| `ANTHROPIC_API_KEY` | — | Anthropic API key |
-| `GEMINI_API_KEY` | — | Google Gemini API key |
-| `SECRET_KEY` | `local-dev-secret-...` | JWT signing key (change in production) |
-| `DEBUG` | `true` | Enable debug mode and SQL echo |
-| `DATABASE_URL` | `postgresql+asyncpg://overmind:overmind@postgres:5432/overmind_core` | PostgreSQL connection string |
-| `VALKEY_HOST` | `valkey` | Valkey hostname |
-| `VALKEY_PORT` | `6379` | Valkey port |
-| `FRONTEND_URL` | `http://localhost:5173` | Frontend origin for CORS |
-| `API_TOKEN_PREFIX` | `ovr_core_` | Prefix for generated API tokens (managed edition uses `ovr_`) |
+| Variable            | Default                                                              | Description                                                   |
+| ------------------- | -------------------------------------------------------------------- | ------------------------------------------------------------- |
+| `OPENAI_API_KEY`    | —                                                                    | OpenAI API key                                                |
+| `ANTHROPIC_API_KEY` | —                                                                    | Anthropic API key                                             |
+| `GEMINI_API_KEY`    | —                                                                    | Google Gemini API key                                         |
+| `SECRET_KEY`        | `local-dev-secret-...`                                               | JWT signing key (change in production)                        |
+| `DEBUG`             | `true`                                                               | Enable debug mode and SQL echo                                |
+| `DATABASE_URL`      | `postgresql+asyncpg://overmind:overmind@postgres:5432/overmind_core` | PostgreSQL connection string                                  |
+| `VALKEY_HOST`       | `valkey`                                                             | Valkey hostname                                               |
+| `VALKEY_PORT`       | `6379`                                                               | Valkey port                                                   |
+| `FRONTEND_URL`      | `http://localhost:5173`                                              | Frontend origin for CORS                                      |
+| `API_TOKEN_PREFIX`  | `ovr_core_`                                                          | Prefix for generated API tokens (managed edition uses `ovr_`) |
 
 ## API Endpoints
 
 All endpoints are under `/api/v1/`. Authentication is via `Authorization: Bearer <token>` header.
 
-| Group | Prefix | Description |
-|-------|--------|-------------|
-| **Traces** | `/traces` | Create, list, filter traces |
-| **Spans** | `/spans` | Query individual spans |
-| **Prompts** | `/prompts` | Prompt template management |
-| **Agents** | `/agents` | Agent discovery and metadata |
-| **Jobs** | `/jobs` | Background job management |
-| **Suggestions** | `/suggestions` | Improvement suggestions |
-| **Backtesting** | `/backtesting` | Model backtesting runs |
-| **Layers** | `/layers` | Guardrail policy execution |
-| **Proxy** | `/proxy` | LLM proxy with policy enforcement |
-| **OTLP** | `/traces/otlp` | OpenTelemetry trace ingestion |
-| **IAM** | `/iam` | Login, projects, tokens |
+| Group           | Prefix         | Description                       |
+| --------------- | -------------- | --------------------------------- |
+| **Traces**      | `/traces`      | Create, list, filter traces       |
+| **Spans**       | `/spans`       | Query individual spans            |
+| **Prompts**     | `/prompts`     | Prompt template management        |
+| **Agents**      | `/agents`      | Agent discovery and metadata      |
+| **Jobs**        | `/jobs`        | Background job management         |
+| **Suggestions** | `/suggestions` | Improvement suggestions           |
+| **Backtesting** | `/backtesting` | Model backtesting runs            |
+| **Layers**      | `/layers`      | Guardrail policy execution        |
+| **Proxy**       | `/proxy`       | LLM proxy with policy enforcement |
+| **OTLP**        | `/traces/otlp` | OpenTelemetry trace ingestion     |
+| **IAM**         | `/iam`         | Login, projects, tokens           |
 
 Interactive API docs are at **http://localhost:8000/docs**.
 
@@ -198,3 +198,42 @@ celery -A overmind.celery_worker beat --loglevel=info
 The frontend runs as a Vite dev server inside Docker Compose with volume mounts — any changes to files in `frontend/` are picked up instantly via hot-module-replacement. No manual rebuilds needed.
 
 API calls from the frontend are proxied through Vite to the FastAPI backend (configured in `frontend/vite.config.ts`).
+
+## Contributing
+
+Contributions are welcome! Here's how to get set up for local development:
+
+1. **Fork and clone** the repository
+
+1. **Install dependencies**
+
+   ```bash
+   poetry install
+   ```
+
+1. **Set up pre-commit hooks** — these run linting, formatting, and a few safety checks automatically before every commit (`pre-commit` is included in dev dependencies, so no separate install is needed)
+
+   ```bash
+   poetry run pre-commit install
+   ```
+
+1. **Create a branch** for your change
+
+   ```bash
+   git checkout -b my-feature
+   ```
+
+1. Build, add test cases and test using
+
+   ```bash
+   make test
+   ```
+
+1. **Open a pull request** against `main` with a clear description of what changed and why.
+
+### Guidelines
+
+- Keep pull requests focused — one feature or fix per PR
+- Add or update tests for any behaviour you change
+- Follow existing code style (enforced by `make lint` / pre-commit)
+- Migrations go in `alembic/versions/` — generate with `make revision m="describe change"`

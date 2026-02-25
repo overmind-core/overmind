@@ -37,8 +37,8 @@ test:
 	docker compose run --rm api python -m pytest $(test_args)
 
 lint:
-	docker compose run --rm api ruff check --fix overmind/
-	docker compose run --rm api ruff format overmind/
+	poetry run ruff check --fix overmind/
+	poetry run ruff format overmind/
 
 psql:
 	docker compose exec postgres psql -U overmind -d overmind_core

@@ -1,7 +1,10 @@
 from fastapi import APIRouter, Depends, HTTPException, Request, UploadFile, File
 from sqlalchemy.ext.asyncio import AsyncSession
 from overmind.db.session import get_db
-from overmind.api.v1.helpers.authentication import AuthenticatedUserOrToken, get_current_user
+from overmind.api.v1.helpers.authentication import (
+    AuthenticatedUserOrToken,
+    get_current_user,
+)
 from overmind.api.v1.endpoints.utils.layers import (
     extract_text_from_txt,
     extract_text_from_docx,

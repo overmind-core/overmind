@@ -5,7 +5,10 @@ from fastapi import APIRouter, Depends, Body, HTTPException, Request
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, and_
-from overmind.api.v1.helpers.authentication import AuthenticatedUserOrToken, get_current_user
+from overmind.api.v1.helpers.authentication import (
+    AuthenticatedUserOrToken,
+    get_current_user,
+)
 from overmind.api.v1.helpers.permissions import ProjectPermission
 from overmind.db.session import get_db
 from overmind.models.traces import SpanModel, TraceModel

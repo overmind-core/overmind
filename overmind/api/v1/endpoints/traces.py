@@ -7,7 +7,10 @@ from overmind.models.pydantic_models.traces import (
     TraceListResponseModel,
     TraceSpansResponseModel,
 )
-from overmind.api.v1.helpers.authentication import AuthenticatedUserOrToken, get_current_user
+from overmind.api.v1.helpers.authentication import (
+    AuthenticatedUserOrToken,
+    get_current_user,
+)
 from overmind.core.tracing_helpers import (
     _get_trace_by_id,
     _list_traces,

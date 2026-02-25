@@ -35,7 +35,9 @@ from overmind.tasks.agent_description_generator import (
     generate_initial_agent_description_task,
 )
 from overmind.tasks.task_lock import with_task_lock
-from overmind.tasks.prompt_display_name_generator import generate_display_name_for_prompt
+from overmind.tasks.prompt_display_name_generator import (
+    generate_display_name_for_prompt,
+)
 
 logger = logging.getLogger(__name__)
 
