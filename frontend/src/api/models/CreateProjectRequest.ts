@@ -37,12 +37,6 @@ export interface CreateProjectRequest {
      * @memberof CreateProjectRequest
      */
     description: string;
-    /**
-     * 
-     * @type {string}
-     * @memberof CreateProjectRequest
-     */
-    organisationId: string;
 }
 
 /**
@@ -51,7 +45,6 @@ export interface CreateProjectRequest {
 export function instanceOfCreateProjectRequest(value: object): value is CreateProjectRequest {
     if (!('name' in value) || value['name'] === undefined) return false;
     if (!('description' in value) || value['description'] === undefined) return false;
-    if (!('organisationId' in value) || value['organisationId'] === undefined) return false;
     return true;
 }
 
@@ -68,7 +61,6 @@ export function CreateProjectRequestFromJSONTyped(json: any, ignoreDiscriminator
         'name': json['name'],
         'slug': json['slug'] == null ? undefined : json['slug'],
         'description': json['description'],
-        'organisationId': json['organisation_id'],
     };
 }
 
@@ -86,7 +78,6 @@ export function CreateProjectRequestToJSONTyped(value?: CreateProjectRequest | n
         'name': value['name'],
         'slug': value['slug'],
         'description': value['description'],
-        'organisation_id': value['organisationId'],
     };
 }
 
