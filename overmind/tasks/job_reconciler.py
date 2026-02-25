@@ -24,7 +24,7 @@ logger = logging.getLogger(__name__)
 # Map job types to their corresponding Celery task functions
 JOB_TYPE_TO_TASK = {
     JobType.AGENT_DISCOVERY.value: "agent_discovery.run_agent_discovery",
-    JobType.JUDGE_SCORING.value: "auto_evaluation.evaluate_prompt_spans",
+    JobType.JUDGE_SCORING.value: "evaluations.evaluate_prompt_spans",
     JobType.PROMPT_TUNING.value: "prompt_improvement.improve_single_prompt",
     JobType.MODEL_BACKTESTING.value: "backtesting.run_model_backtesting",
 }
