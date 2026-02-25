@@ -18,7 +18,7 @@ from overmind.models.traces import SpanModel
 from overmind.models.iam.projects import Project
 from overmind.core.llms import call_llm, try_json_parsing
 from overmind.core.model_resolver import TaskType, resolve_model
-from overmind.tasks.prompts import (
+from overmind.tasks.utils.prompts import (
     CRITERIA_GENERATION_SYSTEM_PROMPT,
     CRITERIA_GENERATION_PROMPT,
     AGENTIC_NOTE_FOR_CRITERIA,

@@ -85,6 +85,17 @@ def resolve_model(task: TaskType) -> str:
     has an API key configured.  Raises ``RuntimeError`` when no
     provider is available at all.
     """
+    model, _ = resolve_model_and_provider(task)
+    return model
+
+
+def resolve_model_and_provider(task: TaskType) -> tuple[str, str]:
+    """Return the best available (model, provider) pair for *task*.
+
+    Walks the priority list and returns the first pair whose provider
+    has an API key configured.  Raises ``RuntimeError`` when no
+    provider is available at all.
+    """
     available = get_available_providers()
     priority = MODEL_PRIORITY.get(task, MODEL_PRIORITY[TaskType.DEFAULT])
 
@@ -96,7 +107,7 @@ def resolve_model(task: TaskType) -> str:
                 model_name,
                 provider,
             )
-            return model_name
+            return model_name, provider
 
     raise RuntimeError(
         f"No LLM API key configured for task '{task.value}'. "

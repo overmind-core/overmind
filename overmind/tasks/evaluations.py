@@ -24,7 +24,7 @@ from overmind.models.jobs import Job
 from overmind.api.v1.endpoints.jobs import JobType, JobStatus
 from overmind.core.llms import call_llm, try_json_parsing
 from overmind.core.model_resolver import TaskType, resolve_model
-from overmind.tasks.prompts import (
+from overmind.tasks.utils.prompts import (
     CORRECTNESS_PROMPT_TEMPLATE,
     CORRECTNESS_SYSTEM_PROMPT,
     AGENTIC_CORRECTNESS_PROMPT_TEMPLATE,
@@ -46,7 +46,7 @@ from overmind.tasks.agentic_span_processor import (
     extract_tool_call_span_for_evaluation,
     extract_tool_answer_span_for_evaluation,
 )
-from overmind.tasks.task_lock import with_task_lock
+from overmind.tasks.utils.task_lock import with_task_lock
 
 logger = logging.getLogger(__name__)
 

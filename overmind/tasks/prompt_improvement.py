@@ -23,16 +23,17 @@ from overmind.models.traces import SpanModel
 from overmind.models.jobs import Job
 from overmind.api.v1.endpoints.jobs import JobType, JobStatus
 from overmind.core.llms import call_llm, normalize_llm_response_output, try_json_parsing
-from overmind.core.model_resolver import TaskType, resolve_model
-from overmind.tasks.prompts import (
-    SUGGESTION_GENERATION_SYSTEM_PROMPT,
-    SUGGESTION_GENERATION_PROMPT,
-    PROMPT_IMPROVEMENT_SYSTEM_PROMPT,
-    PROMPT_IMPROVEMENT_PROMPT,
-    TOOL_SUGGESTION_GENERATION_PROMPT,
-    TOOL_PROMPT_IMPROVEMENT_PROMPT,
+from overmind.core.model_resolver import TaskType, resolve_model_and_provider
+from overmind.tasks.utils.prompts import (
+    SUGGESTION_GENERATION_SYSTEM_PROMPTS,
+    SUGGESTION_GENERATION_PROMPTS,
+    PROMPT_IMPROVEMENT_SYSTEM_PROMPTS,
+    PROMPT_IMPROVEMENT_PROMPTS,
+    TOOL_SUGGESTION_GENERATION_PROMPTS,
+    TOOL_PROMPT_IMPROVEMENT_PROMPTS,
+    get_prompt_for_provider,
 )
-from overmind.tasks.task_lock import with_task_lock
+from overmind.tasks.utils.task_lock import with_task_lock
 from overmind.tasks.evaluations import (
     _format_criteria,
     _evaluate_correctness_with_llm,
@@ -485,7 +486,10 @@ Note: If tool definitions exist in the prompt, preserve them while improving ins
 </ToolUsageAnalysis>
 """
 
-    prompt_text = SUGGESTION_GENERATION_PROMPT.format(
+    model, provider = resolve_model_and_provider(TaskType.PROMPT_TUNING)
+    prompt_text = get_prompt_for_provider(
+        SUGGESTION_GENERATION_PROMPTS, provider
+    ).format(
         project_description=project_description,
         agent_description=agent_description,
         current_prompt=prompt.prompt,
@@ -495,8 +499,10 @@ Note: If tool definitions exist in the prompt, preserve them while improving ins
 
     response, _ = call_llm(
         prompt_text,
-        system_prompt=SUGGESTION_GENERATION_SYSTEM_PROMPT,
-        model=resolve_model(TaskType.PROMPT_TUNING),
+        system_prompt=get_prompt_for_provider(
+            SUGGESTION_GENERATION_SYSTEM_PROMPTS, provider
+        ),
+        model=model,
         response_format=SuggestionResponse,
     )
 
@@ -546,7 +552,10 @@ async def _generate_tool_improvement_suggestions(
     poor_tool_call_examples = _format_span_examples_text(tool_call_spans)
     poor_text_examples = _format_span_examples_text(text_spans)
 
-    prompt_text = TOOL_SUGGESTION_GENERATION_PROMPT.format(
+    model, provider = resolve_model_and_provider(TaskType.PROMPT_TUNING)
+    prompt_text = get_prompt_for_provider(
+        TOOL_SUGGESTION_GENERATION_PROMPTS, provider
+    ).format(
         current_prompt=prompt.prompt,
         tool_definitions=tool_definitions_json,
         poor_tool_call_examples=poor_tool_call_examples,
@@ -555,8 +564,10 @@ async def _generate_tool_improvement_suggestions(
 
     response, _ = call_llm(
         prompt_text,
-        system_prompt=SUGGESTION_GENERATION_SYSTEM_PROMPT,
-        model=resolve_model(TaskType.PROMPT_TUNING),
+        system_prompt=get_prompt_for_provider(
+            SUGGESTION_GENERATION_SYSTEM_PROMPTS, provider
+        ),
+        model=model,
         response_format=SuggestionResponse,
     )
 
@@ -641,7 +652,8 @@ async def improve_prompt_template(
         if agent_description
         else ""
     )
-    prompt_text = PROMPT_IMPROVEMENT_PROMPT.format(
+    model, provider = resolve_model_and_provider(TaskType.PROMPT_TUNING)
+    prompt_text = get_prompt_for_provider(PROMPT_IMPROVEMENT_PROMPTS, provider).format(
         project_context=project_context,
         agent_context=agent_context,
         current_prompt=current_prompt.prompt,
@@ -652,8 +664,10 @@ async def improve_prompt_template(
 
     response, _ = call_llm(
         prompt_text,
-        system_prompt=PROMPT_IMPROVEMENT_SYSTEM_PROMPT,
-        model=resolve_model(TaskType.PROMPT_TUNING),
+        system_prompt=get_prompt_for_provider(
+            PROMPT_IMPROVEMENT_SYSTEM_PROMPTS, provider
+        ),
+        model=model,
     )
 
     improved_prompt = response.strip()
@@ -710,7 +724,10 @@ async def _improve_tool_prompt_template(
         else "No specific suggestions available - focus on improving clarity and specificity"
     )
 
-    prompt_text = TOOL_PROMPT_IMPROVEMENT_PROMPT.format(
+    model, provider = resolve_model_and_provider(TaskType.PROMPT_TUNING)
+    prompt_text = get_prompt_for_provider(
+        TOOL_PROMPT_IMPROVEMENT_PROMPTS, provider
+    ).format(
         current_prompt=current_prompt.prompt,
         tool_definitions=tool_definitions_json,
         suggestions=suggestions_text,
@@ -724,8 +741,10 @@ async def _improve_tool_prompt_template(
 
     response, _ = call_llm(
         prompt_text,
-        system_prompt=PROMPT_IMPROVEMENT_SYSTEM_PROMPT,
-        model=resolve_model(TaskType.PROMPT_TUNING),
+        system_prompt=get_prompt_for_provider(
+            PROMPT_IMPROVEMENT_SYSTEM_PROMPTS, provider
+        ),
+        model=model,
     )
 
     improved_prompt = response.strip()

@@ -1,6 +1,26 @@
 """
-Consolidated prompts for all task operations.
+All task prompt constants and vendor-specific meta-prompt variants.
+
+Prompt constants are grouped by purpose:
+  - Correctness evaluation (standard, agentic, tool-calling)
+  - Criteria generation
+  - Prompt improvement (suggestion generation + improvement, standard + tool-calling)
+  - Agent description generation
+  - Display name generation
+
+Vendor-specific improvement prompts follow the base section.
+Different model providers respond best to different prompt structures:
+  - Anthropic (Claude): XML tags, content-before-instructions ordering,
+    output-stub prefilling ("Return the improved prompt:")
+  - OpenAI (GPT):       Markdown ### headers, numbered step lists,
+    explicit output anchor ("### Improved Prompt\n")
+  - Gemini:             Markdown ## headers, numbered instructions,
+    explicit output anchor ("## Improved Prompt\n")
+
+Use get_prompt_for_provider(prompt_dict, provider) to select the right
+variant at call time.  Falls back to "anthropic" if the provider is unknown.
 """
+
 
 # ============================================================================
 # CORRECTNESS EVALUATION PROMPTS
@@ -286,7 +306,7 @@ Penalize for:
 # prompt text is improved.
 # ============================================================================
 
-TOOL_SUGGESTION_GENERATION_PROMPT = """Analyze the following poor-performing LLM interactions and identify common issues. This is a tool-calling agent with two types of interactions: tool selection calls and final answer synthesis.
+TOOL_SUGGESTION_GENERATION_PROMPT_ANTHROPIC = """Analyze the following poor-performing LLM interactions and identify common issues. This is a tool-calling agent with two types of interactions: tool selection calls and final answer synthesis.
 
 <CurrentPromptTemplate>
 {current_prompt}
@@ -329,7 +349,7 @@ Return JSON in this exact format:
   ]
 }}"""
 
-TOOL_PROMPT_IMPROVEMENT_PROMPT = """Improve the following prompt template based on the provided suggestions and example spans. This prompt is used by a tool-calling agent.
+TOOL_PROMPT_IMPROVEMENT_PROMPT_ANTHROPIC = """Improve the following prompt template based on the provided suggestions and example spans. This prompt is used by a tool-calling agent.
 
 <CurrentPromptTemplate>
 {current_prompt}
@@ -437,9 +457,9 @@ Remember: Tool calls are intermediary steps. Evaluate the final output's correct
 # PROMPT IMPROVEMENT PROMPTS
 # ============================================================================
 
-SUGGESTION_GENERATION_SYSTEM_PROMPT = """You are an expert prompt engineer analyzing LLM performance. Your task is to identify patterns in poor-performing outputs and generate specific, actionable suggestions for improving the prompt template. Return ONLY valid JSON."""
+SUGGESTION_GENERATION_SYSTEM_PROMPT_ANTHROPIC = """You are an expert prompt engineer analyzing LLM performance. Your task is to identify patterns in poor-performing outputs and generate specific, actionable suggestions for improving the prompt template. Return ONLY valid JSON."""
 
-SUGGESTION_GENERATION_PROMPT = """Analyze the following poor-performing LLM interactions (correctness score < 0.5) and identify common issues.
+SUGGESTION_GENERATION_PROMPT_ANTHROPIC = """Analyze the following poor-performing LLM interactions (correctness score < 0.5) and identify common issues.
 
 <Project Context>
 {project_description}
@@ -480,9 +500,9 @@ Return JSON in this exact format:
   ]
 }}"""
 
-PROMPT_IMPROVEMENT_SYSTEM_PROMPT = """You are an expert prompt engineer. Your task is to improve a prompt template based on suggestions and example performance data. Return ONLY the improved prompt text, nothing else."""
+PROMPT_IMPROVEMENT_SYSTEM_PROMPT_ANTHROPIC = """You are an expert prompt engineer. Your task is to improve a prompt template based on suggestions and example performance data. Return ONLY the improved prompt text, nothing else."""
 
-PROMPT_IMPROVEMENT_PROMPT = """Improve the following prompt template based on the provided context, suggestions, and example spans.
+PROMPT_IMPROVEMENT_PROMPT_ANTHROPIC = """Improve the following prompt template based on the provided context, suggestions, and example spans.
 
 {project_context}
 
@@ -594,3 +614,395 @@ DISPLAY_NAME_USER_PROMPT = """Generate a concise display name (3-4 words, title 
 {prompt_template}
 
 Display name:"""
+
+
+# ----------------------------------------------------------------------------
+# Suggestion-generation system prompts
+# ----------------------------------------------------------------------------
+
+SUGGESTION_GENERATION_SYSTEM_PROMPT_OPENAI = (
+    "You are an expert prompt engineer analyzing LLM performance.\n\n"
+    "Your task:\n"
+    "1. Identify patterns in poor-performing outputs\n"
+    "2. Generate specific, actionable suggestions for improving the prompt template\n\n"
+    "Return ONLY valid JSON — no explanation, no markdown fencing."
+)
+
+SUGGESTION_GENERATION_SYSTEM_PROMPT_GEMINI = (
+    "## Role\n"
+    "You are an expert prompt engineer analyzing LLM performance.\n\n"
+    "## Task\n"
+    "Identify patterns in poor-performing outputs and generate specific, "
+    "actionable suggestions for improving the prompt template.\n\n"
+    "## Output Format\n"
+    "Return ONLY valid JSON with no additional text or markdown formatting."
+)
+
+SUGGESTION_GENERATION_SYSTEM_PROMPTS: dict[str, str] = {
+    "anthropic": SUGGESTION_GENERATION_SYSTEM_PROMPT_ANTHROPIC,
+    "openai": SUGGESTION_GENERATION_SYSTEM_PROMPT_OPENAI,
+    "gemini": SUGGESTION_GENERATION_SYSTEM_PROMPT_GEMINI,
+}
+
+# ----------------------------------------------------------------------------
+# Prompt-improvement system prompts
+# ----------------------------------------------------------------------------
+
+PROMPT_IMPROVEMENT_SYSTEM_PROMPT_OPENAI = (
+    "You are an expert prompt engineer.\n\n"
+    "Your task:\n"
+    "- Improve the given prompt template using the provided suggestions and performance data\n"
+    "- Return ONLY the improved prompt text — no commentary, no markdown code fences, no preamble"
+)
+
+PROMPT_IMPROVEMENT_SYSTEM_PROMPT_GEMINI = (
+    "## Role\n"
+    "You are an expert prompt engineer.\n\n"
+    "## Task\n"
+    "Improve the provided prompt template based on suggestions and example performance data.\n\n"
+    "## Output\n"
+    "Return ONLY the improved prompt text. "
+    "Do not include any explanation, headers, or markdown formatting around the prompt."
+)
+
+PROMPT_IMPROVEMENT_SYSTEM_PROMPTS: dict[str, str] = {
+    "anthropic": PROMPT_IMPROVEMENT_SYSTEM_PROMPT_ANTHROPIC,
+    "openai": PROMPT_IMPROVEMENT_SYSTEM_PROMPT_OPENAI,
+    "gemini": PROMPT_IMPROVEMENT_SYSTEM_PROMPT_GEMINI,
+}
+
+# ----------------------------------------------------------------------------
+# Suggestion-generation user prompts  (standard / legacy path)
+# ----------------------------------------------------------------------------
+
+SUGGESTION_GENERATION_PROMPT_OPENAI = """Analyze the following poor-performing LLM interactions (correctness score < 0.5) and identify common issues.
+
+### Project Context
+{project_description}
+
+### Agent Context
+{agent_description}
+
+### Current Prompt Template
+{current_prompt}
+
+### Poor Performing Examples
+{poor_examples}
+
+{tool_usage_analysis}
+
+### Instructions
+- Consider the project context and agent purpose when analyzing issues
+- Identify common patterns in the poor-performing outputs
+- Focus on what the prompt is missing or unclear about
+- Generate 3-5 specific, actionable suggestions to improve the prompt
+- Each suggestion should address a distinct issue
+- Be concrete and specific, not generic
+- Ensure suggestions align with the project domain and agent purpose
+- If examples show tool usage, consider whether the prompt provides adequate guidance for tool selection and usage
+- If tool definitions exist in the prompt, preserve them while improving instructions around them
+
+Return JSON in this exact format:
+{{
+  "suggestions": [
+    "Suggestion 1: Specific improvement to address issue X",
+    "Suggestion 2: Another specific improvement",
+    ...
+  ]
+}}"""
+
+SUGGESTION_GENERATION_PROMPT_GEMINI = """Analyze the following poor-performing LLM interactions (correctness score < 0.5) and identify common issues.
+
+## Project Context
+{project_description}
+
+## Agent Context
+{agent_description}
+
+## Current Prompt Template
+{current_prompt}
+
+## Poor Performing Examples
+{poor_examples}
+
+{tool_usage_analysis}
+
+## Instructions
+1. Consider the project context and agent purpose when analyzing issues
+2. Identify common patterns in the poor-performing outputs
+3. Focus on what the prompt is missing or unclear about
+4. Generate 3-5 specific, actionable suggestions to improve the prompt
+5. Each suggestion should address a distinct issue
+6. Be concrete and specific, not generic
+7. Ensure suggestions align with the project domain and agent purpose
+8. If examples show tool usage, consider whether the prompt provides adequate guidance for tool selection and usage
+9. If tool definitions exist in the prompt, preserve them while improving instructions around them
+
+Return JSON in this exact format:
+{{
+  "suggestions": [
+    "Suggestion 1: Specific improvement to address issue X",
+    "Suggestion 2: Another specific improvement",
+    ...
+  ]
+}}"""
+
+SUGGESTION_GENERATION_PROMPTS: dict[str, str] = {
+    "anthropic": SUGGESTION_GENERATION_PROMPT_ANTHROPIC,
+    "openai": SUGGESTION_GENERATION_PROMPT_OPENAI,
+    "gemini": SUGGESTION_GENERATION_PROMPT_GEMINI,
+}
+
+# ----------------------------------------------------------------------------
+# Prompt-improvement user prompts  (standard / legacy path)
+# ----------------------------------------------------------------------------
+
+PROMPT_IMPROVEMENT_PROMPT_OPENAI = """Improve the following prompt template based on the provided context, suggestions, and example spans.
+
+{project_context}
+
+{agent_context}
+
+### Current Prompt Template
+{current_prompt}
+
+### Improvement Suggestions
+{suggestions}
+
+### Good Performing Examples (score >= 0.8)
+{good_examples}
+
+### Poor Performing Examples (score < 0.5)
+{poor_examples}
+
+### Instructions
+- Consider the project context and agent purpose when improving the prompt
+- Improve the prompt based on the suggestions
+- Use good examples to understand what works well and preserve those strengths
+- Address issues evident in poor examples
+- Make the prompt more clear, specific, and actionable
+- Ensure improvements align with the project domain and agent purpose
+- Avoid overfitting to the specific examples — keep the prompt generalizable
+- If the current prompt has template variables (e.g., {{variable_name}}), preserve them exactly
+- CRITICAL: If the prompt includes tool definitions or tool schemas, preserve them exactly as they are
+- If improving instructions around tool usage, be specific about when and how to use each tool
+- Return ONLY the improved prompt text, with no additional commentary
+
+### Improved Prompt
+"""
+
+PROMPT_IMPROVEMENT_PROMPT_GEMINI = """Improve the following prompt template based on the provided context, suggestions, and example spans.
+
+{project_context}
+
+{agent_context}
+
+## Current Prompt Template
+{current_prompt}
+
+## Improvement Suggestions
+{suggestions}
+
+## Good Performing Examples (score >= 0.8)
+{good_examples}
+
+## Poor Performing Examples (score < 0.5)
+{poor_examples}
+
+## Instructions
+1. Consider the project context and agent purpose when improving the prompt
+2. Use good examples to understand what works well and preserve those strengths
+3. Address issues evident in poor examples
+4. Make the prompt more clear, specific, and actionable
+5. Ensure improvements align with the project domain and agent purpose
+6. Avoid overfitting to specific examples — keep the prompt generalizable
+7. Preserve all template variables exactly (e.g., {{variable_name}})
+8. CRITICAL: If the prompt includes tool definitions or tool schemas, preserve them exactly
+9. If improving tool usage instructions, be specific about when and how to use each tool
+10. Return ONLY the improved prompt text with no additional commentary
+
+## Improved Prompt
+"""
+
+PROMPT_IMPROVEMENT_PROMPTS: dict[str, str] = {
+    "anthropic": PROMPT_IMPROVEMENT_PROMPT_ANTHROPIC,
+    "openai": PROMPT_IMPROVEMENT_PROMPT_OPENAI,
+    "gemini": PROMPT_IMPROVEMENT_PROMPT_GEMINI,
+}
+
+# ----------------------------------------------------------------------------
+# Tool-calling suggestion-generation user prompts
+# ----------------------------------------------------------------------------
+
+TOOL_SUGGESTION_GENERATION_PROMPT_OPENAI = """Analyze the following poor-performing LLM interactions and identify common issues. This is a tool-calling agent with two types of interactions: tool selection calls and final answer synthesis.
+
+### Current Prompt Template
+{current_prompt}
+
+### Available Tools (read-only — do NOT suggest changes to tool definitions)
+{tool_definitions}
+
+### Poor Performing Tool-Call Spans
+These spans show cases where the model selected the WRONG tools or passed BAD arguments (scored on tool selection + argument quality):
+
+{poor_tool_call_examples}
+
+### Poor Performing Text Spans
+These spans show cases where the model received correct tool results but gave a BAD final answer (scored on answer faithfulness + completeness):
+
+{poor_text_examples}
+
+### Instructions
+- Identify patterns: are failures mostly in tool selection, argument quality, or answer synthesis?
+- Generate 3-5 specific, actionable suggestions to improve the prompt template
+- Focus ONLY on improving the system/user prompt text
+- Do NOT suggest changes to tool definitions (they are API contracts)
+- If tool selection is poor, suggest clearer instructions about WHEN to use each tool
+- If arguments are poor, suggest adding constraints or examples for HOW to call tools correctly
+- If final answers are poor despite good tool results, suggest formatting and synthesis instructions
+- Be concrete and specific, not generic
+- If examples include user feedback, use it to refine the suggestions
+
+Return JSON in this exact format:
+{{
+  "suggestions": [
+    "Suggestion 1: Specific improvement to address issue X",
+    "Suggestion 2: Another specific improvement",
+    ...
+  ]
+}}"""
+
+TOOL_SUGGESTION_GENERATION_PROMPT_GEMINI = """Analyze the following poor-performing LLM interactions and identify common issues. This is a tool-calling agent with two types of interactions: tool selection calls and final answer synthesis.
+
+## Current Prompt Template
+{current_prompt}
+
+## Available Tools (read-only — do NOT suggest changes to tool definitions)
+{tool_definitions}
+
+## Poor Performing Tool-Call Spans
+These spans show cases where the model selected the WRONG tools or passed BAD arguments:
+
+{poor_tool_call_examples}
+
+## Poor Performing Text Spans
+These spans show cases where the model received correct tool results but gave a BAD final answer:
+
+{poor_text_examples}
+
+## Instructions
+1. Identify patterns: are failures mostly in tool selection, argument quality, or answer synthesis?
+2. Generate 3-5 specific, actionable suggestions to improve the prompt template
+3. Focus ONLY on improving the system/user prompt text
+4. Do NOT suggest changes to tool definitions (they are API contracts)
+5. If tool selection is poor, suggest clearer instructions about WHEN to use each tool
+6. If arguments are poor, suggest adding constraints or examples for HOW to call tools correctly
+7. If final answers are poor despite good tool results, suggest formatting and synthesis instructions
+8. Be concrete and specific, not generic
+9. If examples include user feedback, use it to refine the suggestions
+
+Return JSON in this exact format:
+{{
+  "suggestions": [
+    "Suggestion 1: Specific improvement to address issue X",
+    "Suggestion 2: Another specific improvement",
+    ...
+  ]
+}}"""
+
+TOOL_SUGGESTION_GENERATION_PROMPTS: dict[str, str] = {
+    "anthropic": TOOL_SUGGESTION_GENERATION_PROMPT_ANTHROPIC,
+    "openai": TOOL_SUGGESTION_GENERATION_PROMPT_OPENAI,
+    "gemini": TOOL_SUGGESTION_GENERATION_PROMPT_GEMINI,
+}
+
+# ----------------------------------------------------------------------------
+# Tool-calling prompt-improvement user prompts
+# ----------------------------------------------------------------------------
+
+TOOL_PROMPT_IMPROVEMENT_PROMPT_OPENAI = """Improve the following prompt template based on the provided suggestions and example spans. This prompt is used by a tool-calling agent.
+
+### Current Prompt Template
+{current_prompt}
+
+### Available Tools (read-only context — do NOT modify tool definitions)
+{tool_definitions}
+
+### Improvement Suggestions
+{suggestions}
+
+### Good Performing Tool-Call Examples (score >= 0.8)
+{good_tool_call_examples}
+
+### Good Performing Text Examples (score >= 0.8)
+{good_text_examples}
+
+### Poor Performing Tool-Call Examples (score < 0.5)
+{poor_tool_call_examples}
+
+### Poor Performing Text Examples (score < 0.5)
+{poor_text_examples}
+
+### Instructions
+- Improve ONLY the system and user prompt text
+- Do NOT modify tool definitions — they are shown for context only
+- If the current prompt has template variables (e.g., {{variable_name}}), preserve them exactly
+- Use good examples to understand what works well and preserve those strengths
+- Address issues evident in poor tool-call examples (tool selection and argument problems)
+- Address issues evident in poor text examples (answer synthesis and faithfulness problems)
+- If tool selection is a problem, add clearer guidance about when to use each tool
+- If answer synthesis is a problem, add instructions about how to present tool results faithfully
+- Keep the prompt generalizable — do not overfit to specific examples
+- Return ONLY the improved prompt text, with no additional commentary
+
+### Improved Prompt
+"""
+
+TOOL_PROMPT_IMPROVEMENT_PROMPT_GEMINI = """Improve the following prompt template based on the provided suggestions and example spans. This prompt is used by a tool-calling agent.
+
+## Current Prompt Template
+{current_prompt}
+
+## Available Tools (read-only context — do NOT modify tool definitions)
+{tool_definitions}
+
+## Improvement Suggestions
+{suggestions}
+
+## Good Performing Tool-Call Examples (score >= 0.8)
+{good_tool_call_examples}
+
+## Good Performing Text Examples (score >= 0.8)
+{good_text_examples}
+
+## Poor Performing Tool-Call Examples (score < 0.5)
+{poor_tool_call_examples}
+
+## Poor Performing Text Examples (score < 0.5)
+{poor_text_examples}
+
+## Instructions
+1. Improve ONLY the system and user prompt text
+2. Do NOT modify tool definitions — they are shown for context only
+3. Preserve all template variables exactly (e.g., {{variable_name}})
+4. Use good examples to understand what works well and preserve those strengths
+5. Address tool-call issues: tool selection errors and malformed arguments
+6. Address text issues: answer synthesis and faithfulness to tool results
+7. If tool selection is a problem, add clearer guidance about when to use each tool
+8. If answer synthesis is a problem, add instructions about presenting tool results faithfully
+9. Keep the prompt generalizable — do not overfit to specific examples
+10. Return ONLY the improved prompt text with no additional commentary
+
+## Improved Prompt
+"""
+
+TOOL_PROMPT_IMPROVEMENT_PROMPTS: dict[str, str] = {
+    "anthropic": TOOL_PROMPT_IMPROVEMENT_PROMPT_ANTHROPIC,
+    "openai": TOOL_PROMPT_IMPROVEMENT_PROMPT_OPENAI,
+    "gemini": TOOL_PROMPT_IMPROVEMENT_PROMPT_GEMINI,
+}
+
+
+def get_prompt_for_provider(prompt_dict: dict, provider: str) -> str:
+    """Return the prompt variant for *provider*, defaulting to 'anthropic'."""
+    return prompt_dict.get(provider, prompt_dict["anthropic"])

@@ -36,7 +36,7 @@ from overmind.models.iam.projects import Project
 from overmind.tasks.evaluations import _evaluate_correctness_with_llm, _format_criteria
 from overmind.tasks.agent_discovery import _get_span_input_text_merged
 from overmind.tasks.agentic_span_processor import _safe_parse_json
-from overmind.tasks.task_lock import with_task_lock
+from overmind.tasks.utils.task_lock import with_task_lock
 from overmind.utils import calculate_llm_usage_cost
 
 logger = logging.getLogger(__name__)
