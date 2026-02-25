@@ -101,7 +101,7 @@ celery_app.conf.update(
             "schedule": 300.0,  # Every 5 minutes (300 seconds)
         },
         "auto-evaluate-unscored-spans": {
-            "task": "auto_evaluation.evaluate_unscored_spans",
+            "task": "evaluations.evaluate_unscored_spans",
             "schedule": 300.0,  # Every 5 minutes (300 seconds)
         },
         "prompt-improvement": {

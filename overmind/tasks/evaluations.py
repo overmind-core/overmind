@@ -895,7 +895,7 @@ async def _auto_evaluate_unscored_spans(
         await dispose_engine()
 
 
-@shared_task(name="auto_evaluation.evaluate_unscored_spans", bind=True)
+@shared_task(name="evaluations.evaluate_unscored_spans", bind=True)
 @with_task_lock(lock_name="auto_evaluate_unscored_spans")
 def auto_evaluate_unscored_spans_task(self) -> dict[str, Any]:
     """
@@ -1067,7 +1067,7 @@ async def _execute_prompt_spans_evaluation(
         await dispose_engine()
 
 
-@shared_task(name="auto_evaluation.evaluate_prompt_spans", bind=True)
+@shared_task(name="evaluations.evaluate_prompt_spans", bind=True)
 def evaluate_prompt_spans_task(
     self, prompt_id: str, project_id: str, prompt_slug: str, job_id: str
 ) -> dict[str, Any]:
