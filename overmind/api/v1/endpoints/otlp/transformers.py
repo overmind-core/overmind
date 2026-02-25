@@ -13,7 +13,7 @@ from overmind.tasks.agentic_span_processor import (
     detect_agentic_span,
     _get_tools_from_metadata_attributes,
 )
-from overmind.utils import calculate_llm_usage_cost, _safe_int
+from overmind.utils import calculate_llm_usage_cost, safe_int
 
 logger = logging.getLogger(__name__)
 
@@ -395,8 +395,8 @@ def tranform_spans_for_postgres(
         # Compute and store cost at ingest time so it can be read back directly
         cost = calculate_llm_usage_cost(
             str(span_attributes.get("gen_ai.request.model", "") or ""),
-            _safe_int(span_attributes.get("gen_ai.usage.input_tokens", 0)),
-            _safe_int(span_attributes.get("gen_ai.usage.output_tokens", 0)),
+            safe_int(span_attributes.get("gen_ai.usage.input_tokens", 0)),
+            safe_int(span_attributes.get("gen_ai.usage.output_tokens", 0)),
         )
 
         # Add agentic flag, response_type, and cost to metadata

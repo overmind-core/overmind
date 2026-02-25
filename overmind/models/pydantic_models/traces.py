@@ -1,7 +1,7 @@
 from typing import Any
 from pydantic import BaseModel, Field
 from uuid import UUID
-from overmind.utils import calculate_llm_usage_cost, _safe_int
+from overmind.utils import calculate_llm_usage_cost, safe_int
 from overmind.models.traces import SpanModel, TraceModel
 
 
@@ -70,10 +70,10 @@ class SpanResponseModel(BaseModel):
                 "cost": obj.metadata_attributes.get("cost")
                 or calculate_llm_usage_cost(
                     str(obj.metadata_attributes.get("gen_ai.request.model", "") or ""),
-                    _safe_int(
+                    safe_int(
                         obj.metadata_attributes.get("gen_ai.usage.input_tokens", 0)
                     ),
-                    _safe_int(
+                    safe_int(
                         obj.metadata_attributes.get("gen_ai.usage.output_tokens", 0)
                     ),
                 ),
