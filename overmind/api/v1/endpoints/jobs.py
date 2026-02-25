@@ -43,6 +43,7 @@ class JobStatus(str, Enum):
     PENDING = "pending"
     RUNNING = "running"
     COMPLETED = "completed"
+    PARTIALLY_COMPLETED = "partially_completed"
     FAILED = "failed"
     CANCELLED = "cancelled"
 
@@ -183,7 +184,7 @@ async def create_job_from_user(
 
     if data.job_type == JobType.JUDGE_SCORING:
         # Run validation checks for user-triggered judge scoring jobs
-        from overmind.tasks.auto_evaluation import validate_judge_scoring_eligibility
+        from overmind.tasks.evaluations import validate_judge_scoring_eligibility
 
         (
             is_eligible,
@@ -478,7 +479,7 @@ async def create_template_extraction(
 @router.post("/{prompt_slug}/score", response_model=JobOut)
 async def create_prompt_scoring_job(
     prompt_slug: str,
-    project_id: str | None = Query(None),
+    project_id: str,
     user: AuthenticatedUserOrToken = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
@@ -488,21 +489,14 @@ async def create_prompt_scoring_job(
     For user-triggered jobs, validates eligibility before creating the job.
     Returns 400 error if validation fails with specific reason.
     """
-    if project_id:
-        pid = project_id
-    elif user.user.projects:
-        pid = str(user.user.projects[0].project_id)
-    else:
-        raise HTTPException(status_code=400, detail="No project found for user")
-
-    prompt = await find_latest_prompt(prompt_slug, pid, db)
+    prompt = await find_latest_prompt(prompt_slug, project_id, db)
     if not prompt:
         raise HTTPException(status_code=404, detail="Prompt not found")
 
-    await get_check_pending_job_count(db, str(pid), prompt_slug, JobType.JUDGE_SCORING)
+    await get_check_pending_job_count(db, str(project_id), prompt_slug, JobType.JUDGE_SCORING)
 
     # Run validation checks for user-triggered judge scoring jobs
-    from overmind.tasks.auto_evaluation import validate_judge_scoring_eligibility
+    from overmind.tasks.evaluations import validate_judge_scoring_eligibility
 
     (
         is_eligible,
@@ -523,7 +517,7 @@ async def create_prompt_scoring_job(
     job = await create_job(
         db,
         job_type=JobType.JUDGE_SCORING.value,
-        project_id=pid,
+        project_id=project_id,
         prompt_slug=prompt_slug,
         user_id=user.user_id,
         result={
@@ -607,7 +601,7 @@ async def trigger_job(
     db: AsyncSession = Depends(get_db),
 ):
     from overmind.tasks.prompt_improvement import improve_prompt_templates
-    from overmind.tasks.auto_evaluation import auto_evaluate_unscored_spans_task
+    from overmind.tasks.evaluations import auto_evaluate_unscored_spans_task
     from overmind.tasks.agent_discovery import run_agent_discovery_task
 
     job = await get_job_or_404(job_id, user, db)
