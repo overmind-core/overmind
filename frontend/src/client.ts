@@ -1,4 +1,5 @@
 import {
+  AgentReviewsApi,
   AgentsApi,
   BacktestingApi,
   Configuration,
@@ -15,7 +16,6 @@ import {
   TokensApi,
   TracesApi,
   UsersApi,
-  AgentReviewsApi,
 } from "./api";
 
 class OvermindClient {
@@ -82,7 +82,8 @@ class OvermindClient {
 
 // In dev mode, use empty string so requests go to /api/... (proxied by Vite to the live backend).
 // In production, use the full URL.
-const baseUrl = import.meta.env.VITE_API_BASE_URL ?? (import.meta.env.DEV ? "" : "https://api.overmindlab.ai");
+const baseUrl =
+  import.meta.env.VITE_API_BASE_URL ?? (import.meta.env.DEV ? "" : "https://api.overmindlab.ai");
 
 const apiClient = new OvermindClient(
   new Configuration({
@@ -92,7 +93,7 @@ const apiClient = new OvermindClient(
         post: async (context) => {
           if (context.response.status === 401) {
             localStorage.removeItem("token");
-            window.location.href = "/login";
+            // window.location.href = "/login";
           }
           return undefined;
         },

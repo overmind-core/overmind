@@ -1,5 +1,6 @@
-import { createFileRoute, Link, Outlet, useRouterState } from "@tanstack/react-router";
+import { OrganizationSwitcher, RedirectToSignUp, SignedIn, SignedOut } from "@clerk/clerk-react";
 import { useQueryClient } from "@tanstack/react-query";
+import { createFileRoute, Link, Outlet, useRouterState } from "@tanstack/react-router";
 import { ChevronRight, PanelLeftClose, PanelLeftOpen } from "lucide-react";
 
 import { AppSidebar } from "../components/app-sidebar";
@@ -45,9 +46,8 @@ function useBreadcrumbs(): Crumb[] {
   const { pathname } = location;
   const segments = pathname.split("/").filter(Boolean);
 
-  const dynamicParent = segments.length >= 2 && DYNAMIC_PARENTS.has(segments[0])
-    ? segments[0]
-    : undefined;
+  const dynamicParent =
+    segments.length >= 2 && DYNAMIC_PARENTS.has(segments[0]) ? segments[0] : undefined;
   const dynamicSlug = dynamicParent ? segments[1] : undefined;
   const cachedName = useCachedName(dynamicParent, dynamicSlug);
 
@@ -61,9 +61,7 @@ function useBreadcrumbs(): Crumb[] {
     builtPath += `/${seg}`;
 
     const isDynamicSlug = i === 1 && dynamicParent;
-    const label = isDynamicSlug && cachedName
-      ? cachedName
-      : prettifySegment(seg);
+    const label = isDynamicSlug && cachedName ? cachedName : prettifySegment(seg);
 
     crumbs.push({ label, path: builtPath });
   }
@@ -125,7 +123,8 @@ function Breadcrumb() {
 
 // ─── Layout ──────────────────────────────────────────────────────────────────
 
-function RouteComponent() {
+function RootLayout() {
+  const { config } = Route.useRouteContext();
   return (
     <SidebarProvider>
       <AppSidebar />
@@ -137,6 +136,12 @@ function RouteComponent() {
               <Breadcrumb />
               <span className="flex-1" />
               <ThemeToggle />
+              {!config.isSelfHosted && (
+                <OrganizationSwitcher
+                  createOrganizationMode={"modal"}
+                  organizationProfileMode={"modal"}
+                />
+              )}
             </header>
             <div className="flex min-h-0 flex-1 flex-col overflow-y-auto p-4 md:p-6">
               <Outlet />
@@ -145,5 +150,20 @@ function RouteComponent() {
         </div>
       </SidebarInset>
     </SidebarProvider>
+  );
+}
+
+function RouteComponent() {
+  const { config } = Route.useRouteContext();
+  if (config.isSelfHosted) return <RootLayout />;
+  return (
+    <>
+      <SignedIn>
+        <RootLayout />
+      </SignedIn>
+      <SignedOut>
+        <RedirectToSignUp />
+      </SignedOut>
+    </>
   );
 }

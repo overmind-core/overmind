@@ -1,13 +1,16 @@
 import { StrictMode } from "react";
 import ReactDOM from "react-dom/client";
 
+import { shadcn } from "@clerk/themes";
 import { RouterProvider } from "@tanstack/react-router";
 
 import "./styles.css";
 
+import { ClerkProvider } from "@clerk/clerk-react";
 import { createRouter as createTanStackRouter } from "@tanstack/react-router";
 import { Toaster } from "sonner";
 
+import { config } from "./config";
 import PostHogProvider from "./integrations/posthog-provider";
 import { getContext } from "./integrations/tanstack-query";
 import { routeTree } from "./routeTree.gen";
@@ -31,16 +34,37 @@ declare module "@tanstack/react-router" {
 
 const router = getRouter();
 
+const AuthProvider = ({ children }: { children: React.ReactNode }) => {
+  if (!config.clerkPublishableKey) {
+    return children;
+  }
+  return (
+    <ClerkProvider
+      afterSignOutUrl={"/login"}
+      appearance={{ theme: shadcn }}
+      publishableKey={config.clerkPublishableKey}
+      signInForceRedirectUrl={"/"}
+      signInUrl="/login"
+      signUpForceRedirectUrl={"/"}
+      signUpUrl="/login"
+    >
+      {children}
+    </ClerkProvider>
+  );
+};
+
 // Render the app
 const rootElement = document.getElementById("app");
 if (rootElement && !rootElement.innerHTML) {
   const root = ReactDOM.createRoot(rootElement);
   root.render(
     <StrictMode>
-      <PostHogProvider>
-        <RouterProvider router={router} />
-        <Toaster position="bottom-right" />
-      </PostHogProvider>
+      <AuthProvider>
+        <PostHogProvider>
+          <RouterProvider router={router} />
+          <Toaster position="bottom-right" />
+        </PostHogProvider>
+      </AuthProvider>
     </StrictMode>
   );
 }

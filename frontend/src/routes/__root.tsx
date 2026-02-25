@@ -2,11 +2,13 @@ import type { QueryClient } from "@tanstack/react-query";
 import { createRootRouteWithContext, Outlet, Scripts } from "@tanstack/react-router";
 
 import { ThemeProvider } from "../components/theme-provider";
+import type { config } from "../config";
 import { RootQueryProvider } from "../integrations/tanstack-query";
 
 interface MyRouterContext {
   queryClient: QueryClient;
   authUser: { id: string; email: string; name: string; picture: string | null } | undefined;
+  config: typeof config;
 }
 
 export const Route = createRootRouteWithContext<MyRouterContext>()({
