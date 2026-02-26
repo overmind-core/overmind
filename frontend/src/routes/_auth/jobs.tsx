@@ -1,7 +1,6 @@
-import { useMemo, useState } from "react";
+import { useMemo } from "react";
 
 import { useQuery } from "@tanstack/react-query";
-import type { AgentOut } from "@/api";
 import { createFileRoute, Outlet } from "@tanstack/react-router";
 import {
   AlertTriangle,
@@ -10,7 +9,6 @@ import {
   CheckCircle,
   ChevronsUpDown,
   Clock,
-  EyeOff,
   Loader2,
   XCircle,
 } from "lucide-react";
@@ -37,7 +35,6 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 
 import { jobsSearchSchema } from "@/lib/schemas";
 import type { JobsSearch } from "@/lib/schemas";
@@ -51,7 +48,6 @@ function SortableHead({
   sortBy,
   sortDirection,
   onSort,
-  onHide,
   className,
 }: {
   field: SortField;
@@ -59,20 +55,14 @@ function SortableHead({
   sortBy: SortField;
   sortDirection: "asc" | "desc";
   onSort: (field: SortField) => void;
-  onHide: (field: SortField) => void;
   className?: string;
 }) {
   const isActive = sortBy === field;
   const isRight = className?.includes("text-right");
   return (
     <TableHead className={className}>
-      <div className={cn("group flex items-center gap-0.5", isRight && "justify-end")}>
-        <Button
-          className="-ml-3 h-8 gap-1"
-          onClick={() => onSort(field)}
-          size="sm"
-          variant="ghost"
-        >
+      <div className={cn("flex", isRight && "justify-end")}>
+        <Button className="h-8 gap-1" onClick={() => onSort(field)} size="sm" variant="ghost">
           {label}
           {isActive ? (
             sortDirection === "asc" ? (
@@ -84,21 +74,6 @@ function SortableHead({
             <ChevronsUpDown className="size-3.5 text-muted-foreground/60" />
           )}
         </Button>
-        <TooltipProvider>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button
-                className="size-6 opacity-0 transition-opacity group-hover:opacity-100"
-                onClick={() => onHide(field)}
-                size="icon"
-                variant="ghost"
-              >
-                <EyeOff className="size-3.5 text-muted-foreground/60" />
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent>Hide column</TooltipContent>
-          </Tooltip>
-        </TooltipProvider>
       </div>
     </TableHead>
   );
@@ -119,7 +94,6 @@ const STATUS_CONFIG: Record<
 > = {
   completed: { icon: <CheckCircle className="size-3.5" />, label: "Completed", variant: "success" },
   failed: { icon: <XCircle className="size-3.5" />, label: "Failed", variant: "destructive" },
-  partially_completed: { icon: <AlertTriangle className="size-3.5" />, label: "Partial", variant: "warning" },
   pending: { icon: <Clock className="size-3.5" />, label: "Pending", variant: "warning" },
   running: {
     icon: <Loader2 className="size-3.5 animate-spin" />,
@@ -152,7 +126,6 @@ function JobsPage() {
     navigate({ params: { jobId: id }, resetScroll: false, search: (x) => x, to: "/jobs/$jobId" });
   };
 
-  const [hiddenCols, setHiddenCols] = useState<Set<SortField>>(new Set());
   const handleSort = (field: SortField) => {
     if (sortBy === field) {
       setSearch({ sortDirection: sortDirection === "asc" ? "desc" : "asc" });
@@ -160,8 +133,6 @@ function JobsPage() {
       setSearch({ sortBy: field, sortDirection: "asc" });
     }
   };
-  const handleHide = (field: SortField) => setHiddenCols((prev) => new Set([...prev, field]));
-  const show = (field: SortField) => !hiddenCols.has(field);
 
   const offset = (page - 1) * pageSize;
 
@@ -177,23 +148,6 @@ function JobsPage() {
     queryKey: ["jobs", job_type, status, page, pageSize],
     refetchInterval: 10_000,
   });
-
-  const { data: agentsData } = useQuery<{ data: AgentOut[] }>({
-    queryFn: async () => {
-      const res = await apiClient.agents.listAgentsApiV1AgentsGet();
-      return { data: res.data ?? [] };
-    },
-    queryKey: ["agents"],
-    staleTime: 60_000,
-  });
-
-  const agentNameBySlug = useMemo(() => {
-    const map = new Map<string, string>();
-    for (const agent of agentsData?.data ?? []) {
-      map.set(agent.slug, agent.name);
-    }
-    return map;
-  }, [agentsData]);
 
   const rawJobs = data?.jobs ?? [];
   const total = data?.total ?? 0;
@@ -217,13 +171,11 @@ function JobsPage() {
           break;
         case "createdAt":
         default:
-          cmp = (new Date(a.createdAt ?? 0).getTime()) - (new Date(b.createdAt ?? 0).getTime());
+          cmp = new Date(a.createdAt ?? 0).getTime() - new Date(b.createdAt ?? 0).getTime();
       }
       return sortDirection === "desc" ? -cmp : cmp;
     });
   }, [rawJobs, sortBy, sortDirection]);
-
-
 
   if (isLoading) {
     return (
@@ -239,9 +191,7 @@ function JobsPage() {
     return (
       <div className="flex h-full flex-col gap-4">
         <JobsHeader />
-        <Alert variant="destructive">
-          Failed to load jobs: {(error as Error).message}
-        </Alert>
+        <Alert variant="destructive">Failed to load jobs: {(error as Error).message}</Alert>
       </div>
     );
   }
@@ -264,59 +214,44 @@ function JobsPage() {
           <Table>
             <TableHeader>
               <TableRow>
-                {show("status") && (
-                  <SortableHead
-                    className="w-[120px]"
-                    field="status"
-                    label="Status"
-                    onHide={handleHide}
-                    onSort={handleSort}
-                    sortBy={sortBy}
-                    sortDirection={sortDirection}
-                  />
-                )}
-                {show("jobType") && (
-                  <SortableHead
-                    field="jobType"
-                    label="Job Type"
-                    onHide={handleHide}
-                    onSort={handleSort}
-                    sortBy={sortBy}
-                    sortDirection={sortDirection}
-                  />
-                )}
-                {show("promptSlug") && (
-                  <SortableHead
-                    field="promptSlug"
-                    label="Agent"
-                    onHide={handleHide}
-                    onSort={handleSort}
-                    sortBy={sortBy}
-                    sortDirection={sortDirection}
-                  />
-                )}
-                {show("triggeredBy") && (
-                  <SortableHead
-                    className="w-[120px]"
-                    field="triggeredBy"
-                    label="Started By"
-                    onHide={handleHide}
-                    onSort={handleSort}
-                    sortBy={sortBy}
-                    sortDirection={sortDirection}
-                  />
-                )}
-                {show("createdAt") && (
-                  <SortableHead
-                    className="w-[200px] text-right"
-                    field="createdAt"
-                    label="Started At"
-                    onHide={handleHide}
-                    onSort={handleSort}
-                    sortBy={sortBy}
-                    sortDirection={sortDirection}
-                  />
-                )}
+                <SortableHead
+                  className="w-[120px]"
+                  field="status"
+                  label="Status"
+                  onSort={handleSort}
+                  sortBy={sortBy}
+                  sortDirection={sortDirection}
+                />
+                <SortableHead
+                  field="jobType"
+                  label="Job Type"
+                  onSort={handleSort}
+                  sortBy={sortBy}
+                  sortDirection={sortDirection}
+                />
+                <SortableHead
+                  field="promptSlug"
+                  label="Agent"
+                  onSort={handleSort}
+                  sortBy={sortBy}
+                  sortDirection={sortDirection}
+                />
+                <SortableHead
+                  className="w-[120px]"
+                  field="triggeredBy"
+                  label="Started By"
+                  onSort={handleSort}
+                  sortBy={sortBy}
+                  sortDirection={sortDirection}
+                />
+                <SortableHead
+                  className="w-[200px] text-right"
+                  field="createdAt"
+                  label="Started At"
+                  onSort={handleSort}
+                  sortBy={sortBy}
+                  sortDirection={sortDirection}
+                />
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -328,41 +263,29 @@ function JobsPage() {
                     key={job.jobId}
                     onClick={() => handleJobClick(job.jobId)}
                   >
-                    {show("status") && (
-                      <TableCell>
-                        <Badge className="gap-1" variant={cfg.variant}>
-                          {cfg.icon}
-                          {cfg.label}
-                        </Badge>
-                      </TableCell>
-                    )}
-                    {show("jobType") && (
-                      <TableCell className="font-medium">
-                        {JOB_TYPE_LABELS[job.jobType] ?? job.jobType}
-                      </TableCell>
-                    )}
-                    {show("promptSlug") && (
-                      <TableCell className={job.promptSlug ? "" : "italic text-muted-foreground"}>
-                        {job.promptSlug
-                          ? (agentNameBySlug.get(job.promptSlug) ?? humanSlug(job.promptSlug))
-                          : "All agents"}
-                      </TableCell>
-                    )}
-                    {show("triggeredBy") && (
-                      <TableCell
-                        className={cn(
-                          "text-sm",
-                          job.triggeredByUserId ? "text-muted-foreground" : "text-primary"
-                        )}
-                      >
-                        {job.triggeredBy === "scheduled" ? "System" : "User"}
-                      </TableCell>
-                    )}
-                    {show("createdAt") && (
-                      <TableCell className="text-right text-sm text-muted-foreground">
-                        {formatDate(job.createdAt ?? undefined)}
-                      </TableCell>
-                    )}
+                    <TableCell>
+                      <Badge className="gap-1" variant={cfg.variant}>
+                        {cfg.icon}
+                        {cfg.label}
+                      </Badge>
+                    </TableCell>
+                    <TableCell className="font-medium">
+                      {JOB_TYPE_LABELS[job.jobType] ?? job.jobType}
+                    </TableCell>
+                    <TableCell className={job.promptSlug ? "" : "italic text-muted-foreground"}>
+                      {humanSlug(job.promptSlug ?? undefined) || "All agents"}
+                    </TableCell>
+                    <TableCell
+                      className={cn(
+                        "text-sm",
+                        job.triggeredByUserId ? "text-muted-foreground" : "text-primary"
+                      )}
+                    >
+                      {job.triggeredBy === "scheduled" ? "System" : "User"}
+                    </TableCell>
+                    <TableCell className="text-right text-sm text-muted-foreground">
+                      {formatDate(job.createdAt ?? undefined)}
+                    </TableCell>
                   </TableRow>
                 );
               })}
@@ -398,13 +321,19 @@ const JobsHeader = () => {
 
   const setTypeFilter = (v: string) =>
     setSearch({
-      job_type: v as "all" | "agent_discovery" | "judge_scoring" | "prompt_tuning" | "model_backtesting" | undefined,
+      job_type: v as
+        | "all"
+        | "agent_discovery"
+        | "judge_scoring"
+        | "prompt_tuning"
+        | "model_backtesting"
+        | undefined,
       page: 1,
     });
   const setStatusFilter = (v: string) =>
     setSearch({
       page: 1,
-      status: v as "all" | "running" | "completed" | "partially_completed" | "failed" | "pending" | undefined,
+      status: v as "all" | "running" | "completed" | "failed" | "pending" | undefined,
     });
 
   return (
@@ -430,7 +359,6 @@ const JobsHeader = () => {
           <SelectItem value="all">All</SelectItem>
           <SelectItem value="running">Running</SelectItem>
           <SelectItem value="completed">Completed</SelectItem>
-          <SelectItem value="partially_completed">Partially Completed</SelectItem>
           <SelectItem value="failed">Failed</SelectItem>
           <SelectItem value="pending">Pending</SelectItem>
         </SelectContent>

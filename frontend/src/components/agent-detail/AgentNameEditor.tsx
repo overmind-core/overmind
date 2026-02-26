@@ -2,12 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { Check, Loader2, X } from "lucide-react";
 
 import { cn } from "@/lib/utils";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from "@/components/ui/tooltip";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 
 export function AgentNameEditor({
   initialName,
@@ -88,11 +83,7 @@ export function AgentNameEditor({
             title="Save"
             type="button"
           >
-            {isSaving ? (
-              <Loader2 className="size-4 animate-spin" />
-            ) : (
-              <Check className="size-4" />
-            )}
+            {isSaving ? <Loader2 className="size-4 animate-spin" /> : <Check className="size-4" />}
           </button>
           <button
             className="flex size-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"

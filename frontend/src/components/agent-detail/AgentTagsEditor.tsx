@@ -82,8 +82,8 @@ export function AgentTagsEditor({
           </button>
         </span>
       ))}
-      {tags.length < 20 && (
-        adding ? (
+      {tags.length < 20 &&
+        (adding ? (
           <input
             ref={inputRef}
             className="h-6 w-28 rounded-full border border-border bg-muted/40 px-2.5 text-xs transition-all focus:outline-none focus:ring-1 focus:ring-ring"
@@ -104,8 +104,7 @@ export function AgentTagsEditor({
             <Plus className="size-3" />
             Add tag
           </button>
-        )
-      )}
+        ))}
     </div>
   );
 }

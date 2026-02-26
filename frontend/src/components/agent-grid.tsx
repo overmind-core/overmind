@@ -51,21 +51,19 @@ function AgentCard({ agent }: { agent: AgentOut }) {
   const { analytics } = agent;
   const populated = hasAnyData(analytics);
 
-  const accuracy =
-    analytics.avgScore != null ? `${(analytics.avgScore * 100).toFixed(0)}%` : "—";
+  const accuracy = analytics.avgScore != null ? `${(analytics.avgScore * 100).toFixed(0)}%` : "—";
   const scored =
     (analytics.totalSpans ?? 0) > 0
       ? `${analytics.scoredSpans ?? 0} / ${analytics.totalSpans ?? 0}`
       : "—";
-  const latency =
-    analytics.avgLatencyMs != null ? `${analytics.avgLatencyMs.toFixed(0)} ms` : "—";
+  const latency = analytics.avgLatencyMs != null ? `${analytics.avgLatencyMs.toFixed(0)} ms` : "—";
   const cost = `$${(analytics.totalEstimatedCost ?? 0).toFixed(4)}`;
 
   return (
     <div
       className={cn(
         "flex flex-1 cursor-pointer flex-col rounded-lg border border-border bg-card px-5 pb-4 pt-4 transition-all hover:border-[var(--accent-warm)]",
-        !populated && "opacity-60",
+        !populated && "opacity-60"
       )}
     >
       <div className="mb-3 flex items-center justify-between gap-2">

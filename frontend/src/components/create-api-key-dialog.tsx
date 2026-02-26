@@ -23,6 +23,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { Skeleton } from "@/components/ui/skeleton";
 
 const EXPIRY_OPTIONS = [
   { label: "30 days", days: 30 },
@@ -38,6 +39,7 @@ interface CreateApiKeyDialogProps {
   projectId: string;
   organisationId: string;
   onCreated: () => void;
+  defaultRole?: string;
 }
 
 export function CreateApiKeyDialog({
@@ -46,6 +48,7 @@ export function CreateApiKeyDialog({
   projectId,
   organisationId,
   onCreated,
+  defaultRole = "project_admin",
 }: CreateApiKeyDialogProps) {
   const [keyName, setKeyName] = useState(() => `API Key - ${Date.now()}`);
   const [keyDescription, setKeyDescription] = useState("api key for overmind");
@@ -64,9 +67,9 @@ export function CreateApiKeyDialog({
 
   useEffect(() => {
     if (!rolesData) return;
-    const admin = rolesData.roles?.find((r) => r.name === "project_admin");
-    setSelectedRoleId(admin?.roleId ?? rolesData.roles?.[0]?.roleId ?? "");
-  }, [rolesData]);
+    const target = rolesData.roles?.find((r) => r.name === defaultRole);
+    setSelectedRoleId(target?.roleId ?? rolesData.roles?.[0]?.roleId ?? "");
+  }, [rolesData, defaultRole]);
 
   const handleCreate = async () => {
     setCreateError("");
@@ -120,7 +123,7 @@ export function CreateApiKeyDialog({
   };
 
   return (
-    <Dialog onOpenChange={(v) => !v && handleClose()} open={open}>
+    <Dialog onOpenChange={(open) => !open && handleClose()} open={open}>
       <DialogContent className="sm:max-w-xl">
         <DialogHeader>
           <DialogTitle>Create API Key</DialogTitle>
@@ -170,11 +173,22 @@ export function CreateApiKeyDialog({
             </div>
             <div className="space-y-1.5">
               <Label htmlFor="key-role">Role</Label>
-              <Input
-                disabled
-                id="key-role"
-                value="project_admin"
-              />
+              {rolesLoading ? (
+                <Skeleton className="h-9 w-full" />
+              ) : (
+                <Select onValueChange={setSelectedRoleId} value={selectedRoleId}>
+                  <SelectTrigger id="key-role">
+                    <SelectValue placeholder="Select a role" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {rolesData?.roles?.map((role) => (
+                      <SelectItem key={role.roleId} value={role.roleId}>
+                        {role.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
             </div>
             <div className="space-y-1.5">
               <Label htmlFor="key-expiry">Expires after</Label>

@@ -11,6 +11,7 @@ import {
   Home,
   LogIn,
   LogOut,
+  Rocket,
   User,
 } from "lucide-react";
 
@@ -36,6 +37,7 @@ const navLinks = [
 export function AppSidebar() {
   const { location } = useRouterState();
   const { config } = useRouteContext({ from: "/_auth" });
+  const isSignedIn = useIsSignedIn();
 
   return (
     <Sidebar collapsible="icon">
@@ -81,11 +83,28 @@ export function AppSidebar() {
         </SidebarGroup>
       </SidebarContent>
 
-      <SidebarFooter>{config.isSelfHosted ? <OSSUserButton /> : <EEUserButton />}</SidebarFooter>
+      <SidebarFooter>
+        {isSignedIn ? (
+          <SidebarMenu>{config.isSelfHosted ? <OSSUserButton /> : <EEUserButton />}</SidebarMenu>
+        ) : (
+          <SidebarMenu>
+            <SidebarMenuItem>
+              <SidebarMenuButton asChild tooltip="Sign in">
+                <Link to="/login">
+                  <LogIn className="size-4" />
+                  <span style={{ fontFamily: "var(--font-sidebar)" }}>Sign in</span>
+                </Link>
+              </SidebarMenuButton>
+            </SidebarMenuItem>
+          </SidebarMenu>
+        )}
+      </SidebarFooter>
     </Sidebar>
   );
 }
+
 const accountLinks = [
+  { icon: Rocket, label: "Getting Started", to: "/get-started" },
   { icon: User, label: "Account", to: "/account" },
   { icon: Building2, label: "Organisations", to: "/organisations" },
 ];
@@ -95,8 +114,105 @@ function useIsSignedIn() {
   return !!(localStorage.getItem("token") ?? localStorage.getItem("auth_token"));
 }
 
+const EEUserButton = () => {
+  const { config } = useRouteContext({ from: "/_auth" });
+  const { location } = useRouterState();
+  const navigate = useNavigate();
+  const [accountOpen, setAccountOpen] = useState(false);
+
+  const handleLogout = () => {
+    localStorage.removeItem("token");
+    localStorage.removeItem("auth_token");
+    localStorage.removeItem("auth_user");
+    navigate({ to: "/login" });
+  };
+
+  const handleToggleAccount = () => {
+    setAccountOpen((prev) => !prev);
+  };
+  if (config.clerkReady) return <EEClerkUserButton />;
+  return (
+    <>
+      {/* Expandable account items — slide up from footer */}
+      <div
+        className="flex flex-col gap-1 overflow-hidden transition-all duration-200 ease-in-out"
+        style={{
+          maxHeight: accountOpen ? `${(accountLinks.length + 1) * 40}px` : "0px",
+          opacity: accountOpen ? 1 : 0,
+        }}
+      >
+        {accountLinks.map(({ to, icon: Icon, label }) => {
+          const isActive = location.pathname === to;
+          return (
+            <SidebarMenuItem key={to}>
+              <SidebarMenuButton asChild isActive={isActive} tooltip={label}>
+                <Link to={to}>
+                  <Icon className="size-4" />
+                  <span style={{ fontFamily: "var(--font-sidebar)" }}>{label}</span>
+                </Link>
+              </SidebarMenuButton>
+            </SidebarMenuItem>
+          );
+        })}
+        <SidebarMenuItem>
+          <SidebarMenuButton
+            className="text-destructive hover:text-destructive"
+            onClick={handleLogout}
+            tooltip="Logout"
+          >
+            <LogOut className="size-4" />
+            <span style={{ fontFamily: "var(--font-sidebar)" }}>Logout</span>
+          </SidebarMenuButton>
+        </SidebarMenuItem>
+      </div>
+      {/* Account trigger — toggles expansion */}
+      <SidebarMenuItem>
+        <SidebarMenuButton
+          isActive={location.pathname === "/account"}
+          onClick={handleToggleAccount}
+          tooltip="Account"
+        >
+          <User className="size-4" />
+          <span className="flex-1" style={{ fontFamily: "var(--font-sidebar)" }}>
+            Account
+          </span>
+          <ChevronUp
+            className="size-3.5 shrink-0 transition-transform duration-200"
+            style={{ transform: accountOpen ? "rotate(180deg)" : "rotate(0deg)" }}
+          />
+        </SidebarMenuButton>
+      </SidebarMenuItem>
+    </>
+  );
+};
+
+const EEClerkUserButton = () => {
+  const { isSignedIn, isLoaded } = useUser();
+  if (!isLoaded || !isSignedIn) return null;
+  return (
+    <SidebarMenuItem>
+      <div
+        className="peer/menu-button flex h-8 w-full items-center gap-2 overflow-hidden rounded-md p-2 text-left text-sm outline-none ring-sidebar-ring transition-[width,height,padding] hover:bg-sidebar-accent hover:text-sidebar-accent-foreground group-data-[collapsible=icon]:!size-8 group-data-[collapsible=icon]:!p-0 group-data-[collapsible=icon]:justify-center"
+        data-sidebar="menu-button"
+      >
+        <UserButton
+          appearance={{
+            elements: {
+              avatarBox: "size-5 shrink-0",
+              userButtonBox: "flex items-center gap-2 w-full overflow-hidden flex-row-reverse",
+              userButtonOuterIdentifier:
+                "truncate text-sm text-sidebar-foreground group-data-[collapsible=icon]:hidden",
+              userButtonTrigger: "focus:shadow-none w-full flex items-center gap-2 px-0",
+            },
+          }}
+          showName
+        />
+      </div>
+    </SidebarMenuItem>
+  );
+};
+
 const OSSUserButton = () => {
-  const isSignedIn = useIsSignedIn();
   const [accountOpen, setAccountOpen] = useState(false);
   const navigate = useNavigate();
   const handleLogout = () => {
@@ -110,105 +226,57 @@ const OSSUserButton = () => {
     setAccountOpen((prev) => !prev);
   };
   return (
-    <SidebarMenu>
-      {isSignedIn ? (
-        <>
-          {/* Expandable account items — slide up from footer */}
-          <div
-            className="flex flex-col gap-1 overflow-hidden transition-all duration-200 ease-in-out"
-            style={{
-              maxHeight: accountOpen ? `${(accountLinks.length + 1) * 40}px` : "0px",
-              opacity: accountOpen ? 1 : 0,
-            }}
-          >
-            {accountLinks.map(({ to, icon: Icon, label }) => {
-              const isActive = location.pathname === to;
-              return (
-                <SidebarMenuItem key={to}>
-                  <SidebarMenuButton asChild isActive={isActive} tooltip={label}>
-                    <Link to={to}>
-                      <Icon className="size-4" />
-                      <span style={{ fontFamily: "var(--font-sidebar)" }}> {label} </span>
-                    </Link>
-                  </SidebarMenuButton>
-                </SidebarMenuItem>
-              );
-            })}
-            <SidebarMenuItem>
-              <SidebarMenuButton
-                className="text-destructive hover:text-destructive"
-                onClick={handleLogout}
-                tooltip="Logout"
-              >
-                <LogOut className="size-4" />
-                <span style={{ fontFamily: "var(--font-sidebar)" }}> Logout </span>
+    <>
+      {/* Expandable account items — slide up from footer */}
+      <div
+        className="flex flex-col gap-1 overflow-hidden transition-all duration-200 ease-in-out"
+        style={{
+          maxHeight: accountOpen ? `${(accountLinks.length + 1) * 40}px` : "0px",
+          opacity: accountOpen ? 1 : 0,
+        }}
+      >
+        {accountLinks.map(({ to, icon: Icon, label }) => {
+          const isActive = location.pathname === to;
+          return (
+            <SidebarMenuItem key={to}>
+              <SidebarMenuButton asChild isActive={isActive} tooltip={label}>
+                <Link to={to}>
+                  <Icon className="size-4" />
+                  <span style={{ fontFamily: "var(--font-sidebar)" }}> {label} </span>
+                </Link>
               </SidebarMenuButton>
             </SidebarMenuItem>
-          </div>
-
-          {/* Account trigger — toggles expansion */}
-          <SidebarMenuItem>
-            <SidebarMenuButton
-              isActive={location.pathname === "/account"}
-              onClick={handleToggleAccount}
-              tooltip="Account"
-            >
-              <User className="size-4" />
-              <span className="flex-1" style={{ fontFamily: "var(--font-sidebar)" }}>
-                Account
-              </span>
-              <ChevronUp
-                className="size-3.5 shrink-0 transition-transform duration-200"
-                style={{ transform: accountOpen ? "rotate(180deg)" : "rotate(0deg)" }}
-              />
-            </SidebarMenuButton>
-          </SidebarMenuItem>
-        </>
-      ) : (
+          );
+        })}
         <SidebarMenuItem>
-          <SidebarMenuButton asChild tooltip="Sign in">
-            <Link to="/login">
-              <LogIn className="size-4" />
-              <span style={{ fontFamily: "var(--font-sidebar)" }}> Sign in </span>
-            </Link>
+          <SidebarMenuButton
+            className="text-destructive hover:text-destructive"
+            onClick={handleLogout}
+            tooltip="Logout"
+          >
+            <LogOut className="size-4" />
+            <span style={{ fontFamily: "var(--font-sidebar)" }}> Logout </span>
           </SidebarMenuButton>
         </SidebarMenuItem>
-      )}
-    </SidebarMenu>
-  );
-};
-const EEUserButton = () => {
-  const { isSignedIn, isLoaded } = useUser();
-  return (
-    <SidebarMenu>
+      </div>
+
+      {/* Account trigger — toggles expansion */}
       <SidebarMenuItem>
-        {isLoaded && isSignedIn ? (
-          <div
-            className="peer/menu-button flex h-8 w-full items-center gap-2 overflow-hidden rounded-md p-2 text-left text-sm outline-none ring-sidebar-ring transition-[width,height,padding] hover:bg-sidebar-accent hover:text-sidebar-accent-foreground group-data-[collapsible=icon]:!size-8 group-data-[collapsible=icon]:!p-0 group-data-[collapsible=icon]:justify-center"
-            data-sidebar="menu-button"
-          >
-            <UserButton
-              appearance={{
-                elements: {
-                  avatarBox: "size-5 shrink-0",
-                  userButtonBox: "flex items-center gap-2 w-full overflow-hidden flex-row-reverse",
-                  userButtonOuterIdentifier:
-                    "truncate text-sm text-sidebar-foreground group-data-[collapsible=icon]:hidden",
-                  userButtonTrigger: "focus:shadow-none w-full flex items-center gap-2 px-0",
-                },
-              }}
-              showName
-            />
-          </div>
-        ) : (
-          <SidebarMenuButton asChild tooltip="Sign in">
-            <Link to="/login">
-              <LogIn className="size-4" />
-              <span style={{ fontFamily: "var(--font-sidebar)" }}>Sign in</span>
-            </Link>
-          </SidebarMenuButton>
-        )}
+        <SidebarMenuButton
+          isActive={location.pathname === "/account"}
+          onClick={handleToggleAccount}
+          tooltip="Account"
+        >
+          <User className="size-4" />
+          <span className="flex-1" style={{ fontFamily: "var(--font-sidebar)" }}>
+            Account
+          </span>
+          <ChevronUp
+            className="size-3.5 shrink-0 transition-transform duration-200"
+            style={{ transform: accountOpen ? "rotate(180deg)" : "rotate(0deg)" }}
+          />
+        </SidebarMenuButton>
       </SidebarMenuItem>
-    </SidebarMenu>
+    </>
   );
 };

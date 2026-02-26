@@ -35,14 +35,14 @@ declare module "@tanstack/react-router" {
 const router = getRouter();
 
 const AuthProvider = ({ children }: { children: React.ReactNode }) => {
-  if (!config.clerkPublishableKey) {
+  if (!config.clerkReady || config.isSelfHosted) {
     return children;
   }
   return (
     <ClerkProvider
       afterSignOutUrl={"/login"}
       appearance={{ theme: shadcn }}
-      publishableKey={config.clerkPublishableKey}
+      publishableKey={config.clerkPublishableKey!}
       signInForceRedirectUrl={"/"}
       signInUrl="/login"
       signUpForceRedirectUrl={"/"}

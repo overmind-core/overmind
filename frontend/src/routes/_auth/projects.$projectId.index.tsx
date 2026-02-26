@@ -4,7 +4,8 @@ import { useQueryClient } from "@tanstack/react-query";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { ArrowLeft, Key, Loader2, Plus, Trash2 } from "lucide-react";
 
-import { CreateApiKeyDialog } from "@/components/CreateApiKeyDialog";
+import apiClient from "@/client";
+import { CreateApiKeyDialog } from "@/components/create-api-key-dialog";
 import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";

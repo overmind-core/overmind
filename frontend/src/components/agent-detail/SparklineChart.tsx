@@ -29,13 +29,7 @@ export function SparklineChart({ buckets }: { buckets: HourlyBucket[] }) {
           const x = padding + (i / Math.max(recent.length - 1, 1)) * (width - padding * 2);
           const y = height - padding - ((b.spanCount ?? 0) / max) * (height - padding * 2);
           return (
-            <circle
-              cx={x}
-              cy={y}
-              fill="var(--accent-warm)"
-              key={b.hour ?? `p-${i}`}
-              r="2.5"
-            />
+            <circle cx={x} cy={y} fill="var(--accent-warm)" key={b.hour ?? `p-${i}`} r="2.5" />
           );
         })}
       </svg>

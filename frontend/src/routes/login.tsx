@@ -3,7 +3,7 @@ import { useState } from "react";
 import { SignIn, useUser } from "@clerk/clerk-react";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { Loader2 } from "lucide-react";
-
+import { ContinueWithGoogle } from "@/components/continue-with-google";
 import apiClient from "@/client";
 import { Separator } from "@/components/ui/separator";
 
@@ -130,6 +130,8 @@ const OSSAuth = () => {
 };
 
 const EEAuth = () => {
+  const { config } = Route.useRouteContext();
+  if (!config.clerkReady) return <ContinueWithGoogle />;
   const { user } = useUser();
   return (
     <>
