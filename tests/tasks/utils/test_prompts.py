@@ -115,25 +115,46 @@ _TOOL_IMPROVEMENT_KWARGS = dict(
 # get_prompt_for_provider
 # ---------------------------------------------------------------------------
 
+
 class TestGetPromptForProvider:
     def test_returns_anthropic_variant(self):
-        d = {"anthropic": "claude-prompt", "openai": "gpt-prompt", "gemini": "gemini-prompt"}
+        d = {
+            "anthropic": "claude-prompt",
+            "openai": "gpt-prompt",
+            "gemini": "gemini-prompt",
+        }
         assert get_prompt_for_provider(d, "anthropic") == "claude-prompt"
 
     def test_returns_openai_variant(self):
-        d = {"anthropic": "claude-prompt", "openai": "gpt-prompt", "gemini": "gemini-prompt"}
+        d = {
+            "anthropic": "claude-prompt",
+            "openai": "gpt-prompt",
+            "gemini": "gemini-prompt",
+        }
         assert get_prompt_for_provider(d, "openai") == "gpt-prompt"
 
     def test_returns_gemini_variant(self):
-        d = {"anthropic": "claude-prompt", "openai": "gpt-prompt", "gemini": "gemini-prompt"}
+        d = {
+            "anthropic": "claude-prompt",
+            "openai": "gpt-prompt",
+            "gemini": "gemini-prompt",
+        }
         assert get_prompt_for_provider(d, "gemini") == "gemini-prompt"
 
     def test_falls_back_to_anthropic_for_unknown_provider(self):
-        d = {"anthropic": "claude-prompt", "openai": "gpt-prompt", "gemini": "gemini-prompt"}
+        d = {
+            "anthropic": "claude-prompt",
+            "openai": "gpt-prompt",
+            "gemini": "gemini-prompt",
+        }
         assert get_prompt_for_provider(d, "some_new_provider") == "claude-prompt"
 
     def test_falls_back_to_anthropic_for_empty_string(self):
-        d = {"anthropic": "claude-prompt", "openai": "gpt-prompt", "gemini": "gemini-prompt"}
+        d = {
+            "anthropic": "claude-prompt",
+            "openai": "gpt-prompt",
+            "gemini": "gemini-prompt",
+        }
         assert get_prompt_for_provider(d, "") == "claude-prompt"
 
     def test_works_with_real_dicts(self):
@@ -151,6 +172,7 @@ class TestGetPromptForProvider:
 # Named variables existence and type
 # ---------------------------------------------------------------------------
 
+
 class TestNamedVariables:
     def test_all_18_are_non_empty_strings(self):
         for prompt in ALL_NAMED:
@@ -160,21 +182,31 @@ class TestNamedVariables:
     def test_no_two_variants_in_same_group_are_identical(self):
         """Anthropic, OpenAI, Gemini variants must differ from each other."""
         groups = [
-            (SUGGESTION_GENERATION_SYSTEM_PROMPT_ANTHROPIC,
-             SUGGESTION_GENERATION_SYSTEM_PROMPT_OPENAI,
-             SUGGESTION_GENERATION_SYSTEM_PROMPT_GEMINI),
-            (SUGGESTION_GENERATION_PROMPT_ANTHROPIC,
-             SUGGESTION_GENERATION_PROMPT_OPENAI,
-             SUGGESTION_GENERATION_PROMPT_GEMINI),
-            (PROMPT_IMPROVEMENT_PROMPT_ANTHROPIC,
-             PROMPT_IMPROVEMENT_PROMPT_OPENAI,
-             PROMPT_IMPROVEMENT_PROMPT_GEMINI),
-            (TOOL_SUGGESTION_GENERATION_PROMPT_ANTHROPIC,
-             TOOL_SUGGESTION_GENERATION_PROMPT_OPENAI,
-             TOOL_SUGGESTION_GENERATION_PROMPT_GEMINI),
-            (TOOL_PROMPT_IMPROVEMENT_PROMPT_ANTHROPIC,
-             TOOL_PROMPT_IMPROVEMENT_PROMPT_OPENAI,
-             TOOL_PROMPT_IMPROVEMENT_PROMPT_GEMINI),
+            (
+                SUGGESTION_GENERATION_SYSTEM_PROMPT_ANTHROPIC,
+                SUGGESTION_GENERATION_SYSTEM_PROMPT_OPENAI,
+                SUGGESTION_GENERATION_SYSTEM_PROMPT_GEMINI,
+            ),
+            (
+                SUGGESTION_GENERATION_PROMPT_ANTHROPIC,
+                SUGGESTION_GENERATION_PROMPT_OPENAI,
+                SUGGESTION_GENERATION_PROMPT_GEMINI,
+            ),
+            (
+                PROMPT_IMPROVEMENT_PROMPT_ANTHROPIC,
+                PROMPT_IMPROVEMENT_PROMPT_OPENAI,
+                PROMPT_IMPROVEMENT_PROMPT_GEMINI,
+            ),
+            (
+                TOOL_SUGGESTION_GENERATION_PROMPT_ANTHROPIC,
+                TOOL_SUGGESTION_GENERATION_PROMPT_OPENAI,
+                TOOL_SUGGESTION_GENERATION_PROMPT_GEMINI,
+            ),
+            (
+                TOOL_PROMPT_IMPROVEMENT_PROMPT_ANTHROPIC,
+                TOOL_PROMPT_IMPROVEMENT_PROMPT_OPENAI,
+                TOOL_PROMPT_IMPROVEMENT_PROMPT_GEMINI,
+            ),
         ]
         for anthropic, openai, gemini in groups:
             assert anthropic != openai
@@ -183,17 +215,36 @@ class TestNamedVariables:
 
     def test_anthropic_named_constants_match_lookup_dicts(self):
         """ANTHROPIC named constants are the same objects stored in the lookup dicts."""
-        assert SUGGESTION_GENERATION_SYSTEM_PROMPT_ANTHROPIC is SUGGESTION_GENERATION_SYSTEM_PROMPTS["anthropic"]
-        assert SUGGESTION_GENERATION_PROMPT_ANTHROPIC is SUGGESTION_GENERATION_PROMPTS["anthropic"]
-        assert PROMPT_IMPROVEMENT_SYSTEM_PROMPT_ANTHROPIC is PROMPT_IMPROVEMENT_SYSTEM_PROMPTS["anthropic"]
-        assert PROMPT_IMPROVEMENT_PROMPT_ANTHROPIC is PROMPT_IMPROVEMENT_PROMPTS["anthropic"]
-        assert TOOL_SUGGESTION_GENERATION_PROMPT_ANTHROPIC is TOOL_SUGGESTION_GENERATION_PROMPTS["anthropic"]
-        assert TOOL_PROMPT_IMPROVEMENT_PROMPT_ANTHROPIC is TOOL_PROMPT_IMPROVEMENT_PROMPTS["anthropic"]
+        assert (
+            SUGGESTION_GENERATION_SYSTEM_PROMPT_ANTHROPIC
+            is SUGGESTION_GENERATION_SYSTEM_PROMPTS["anthropic"]
+        )
+        assert (
+            SUGGESTION_GENERATION_PROMPT_ANTHROPIC
+            is SUGGESTION_GENERATION_PROMPTS["anthropic"]
+        )
+        assert (
+            PROMPT_IMPROVEMENT_SYSTEM_PROMPT_ANTHROPIC
+            is PROMPT_IMPROVEMENT_SYSTEM_PROMPTS["anthropic"]
+        )
+        assert (
+            PROMPT_IMPROVEMENT_PROMPT_ANTHROPIC
+            is PROMPT_IMPROVEMENT_PROMPTS["anthropic"]
+        )
+        assert (
+            TOOL_SUGGESTION_GENERATION_PROMPT_ANTHROPIC
+            is TOOL_SUGGESTION_GENERATION_PROMPTS["anthropic"]
+        )
+        assert (
+            TOOL_PROMPT_IMPROVEMENT_PROMPT_ANTHROPIC
+            is TOOL_PROMPT_IMPROVEMENT_PROMPTS["anthropic"]
+        )
 
 
 # ---------------------------------------------------------------------------
 # Lookup dict structure
 # ---------------------------------------------------------------------------
+
 
 class TestLookupDicts:
     @pytest.mark.parametrize("name,d", ALL_DICTS)
@@ -210,39 +261,88 @@ class TestLookupDicts:
             )
 
     def test_suggestion_generation_system_prompts_references_named_vars(self):
-        assert SUGGESTION_GENERATION_SYSTEM_PROMPTS["anthropic"] is SUGGESTION_GENERATION_SYSTEM_PROMPT_ANTHROPIC
-        assert SUGGESTION_GENERATION_SYSTEM_PROMPTS["openai"] is SUGGESTION_GENERATION_SYSTEM_PROMPT_OPENAI
-        assert SUGGESTION_GENERATION_SYSTEM_PROMPTS["gemini"] is SUGGESTION_GENERATION_SYSTEM_PROMPT_GEMINI
+        assert (
+            SUGGESTION_GENERATION_SYSTEM_PROMPTS["anthropic"]
+            is SUGGESTION_GENERATION_SYSTEM_PROMPT_ANTHROPIC
+        )
+        assert (
+            SUGGESTION_GENERATION_SYSTEM_PROMPTS["openai"]
+            is SUGGESTION_GENERATION_SYSTEM_PROMPT_OPENAI
+        )
+        assert (
+            SUGGESTION_GENERATION_SYSTEM_PROMPTS["gemini"]
+            is SUGGESTION_GENERATION_SYSTEM_PROMPT_GEMINI
+        )
 
     def test_prompt_improvement_system_prompts_references_named_vars(self):
-        assert PROMPT_IMPROVEMENT_SYSTEM_PROMPTS["anthropic"] is PROMPT_IMPROVEMENT_SYSTEM_PROMPT_ANTHROPIC
-        assert PROMPT_IMPROVEMENT_SYSTEM_PROMPTS["openai"] is PROMPT_IMPROVEMENT_SYSTEM_PROMPT_OPENAI
-        assert PROMPT_IMPROVEMENT_SYSTEM_PROMPTS["gemini"] is PROMPT_IMPROVEMENT_SYSTEM_PROMPT_GEMINI
+        assert (
+            PROMPT_IMPROVEMENT_SYSTEM_PROMPTS["anthropic"]
+            is PROMPT_IMPROVEMENT_SYSTEM_PROMPT_ANTHROPIC
+        )
+        assert (
+            PROMPT_IMPROVEMENT_SYSTEM_PROMPTS["openai"]
+            is PROMPT_IMPROVEMENT_SYSTEM_PROMPT_OPENAI
+        )
+        assert (
+            PROMPT_IMPROVEMENT_SYSTEM_PROMPTS["gemini"]
+            is PROMPT_IMPROVEMENT_SYSTEM_PROMPT_GEMINI
+        )
 
     def test_suggestion_generation_prompts_references_named_vars(self):
-        assert SUGGESTION_GENERATION_PROMPTS["anthropic"] is SUGGESTION_GENERATION_PROMPT_ANTHROPIC
-        assert SUGGESTION_GENERATION_PROMPTS["openai"] is SUGGESTION_GENERATION_PROMPT_OPENAI
-        assert SUGGESTION_GENERATION_PROMPTS["gemini"] is SUGGESTION_GENERATION_PROMPT_GEMINI
+        assert (
+            SUGGESTION_GENERATION_PROMPTS["anthropic"]
+            is SUGGESTION_GENERATION_PROMPT_ANTHROPIC
+        )
+        assert (
+            SUGGESTION_GENERATION_PROMPTS["openai"]
+            is SUGGESTION_GENERATION_PROMPT_OPENAI
+        )
+        assert (
+            SUGGESTION_GENERATION_PROMPTS["gemini"]
+            is SUGGESTION_GENERATION_PROMPT_GEMINI
+        )
 
     def test_prompt_improvement_prompts_references_named_vars(self):
-        assert PROMPT_IMPROVEMENT_PROMPTS["anthropic"] is PROMPT_IMPROVEMENT_PROMPT_ANTHROPIC
+        assert (
+            PROMPT_IMPROVEMENT_PROMPTS["anthropic"]
+            is PROMPT_IMPROVEMENT_PROMPT_ANTHROPIC
+        )
         assert PROMPT_IMPROVEMENT_PROMPTS["openai"] is PROMPT_IMPROVEMENT_PROMPT_OPENAI
         assert PROMPT_IMPROVEMENT_PROMPTS["gemini"] is PROMPT_IMPROVEMENT_PROMPT_GEMINI
 
     def test_tool_suggestion_generation_prompts_references_named_vars(self):
-        assert TOOL_SUGGESTION_GENERATION_PROMPTS["anthropic"] is TOOL_SUGGESTION_GENERATION_PROMPT_ANTHROPIC
-        assert TOOL_SUGGESTION_GENERATION_PROMPTS["openai"] is TOOL_SUGGESTION_GENERATION_PROMPT_OPENAI
-        assert TOOL_SUGGESTION_GENERATION_PROMPTS["gemini"] is TOOL_SUGGESTION_GENERATION_PROMPT_GEMINI
+        assert (
+            TOOL_SUGGESTION_GENERATION_PROMPTS["anthropic"]
+            is TOOL_SUGGESTION_GENERATION_PROMPT_ANTHROPIC
+        )
+        assert (
+            TOOL_SUGGESTION_GENERATION_PROMPTS["openai"]
+            is TOOL_SUGGESTION_GENERATION_PROMPT_OPENAI
+        )
+        assert (
+            TOOL_SUGGESTION_GENERATION_PROMPTS["gemini"]
+            is TOOL_SUGGESTION_GENERATION_PROMPT_GEMINI
+        )
 
     def test_tool_prompt_improvement_prompts_references_named_vars(self):
-        assert TOOL_PROMPT_IMPROVEMENT_PROMPTS["anthropic"] is TOOL_PROMPT_IMPROVEMENT_PROMPT_ANTHROPIC
-        assert TOOL_PROMPT_IMPROVEMENT_PROMPTS["openai"] is TOOL_PROMPT_IMPROVEMENT_PROMPT_OPENAI
-        assert TOOL_PROMPT_IMPROVEMENT_PROMPTS["gemini"] is TOOL_PROMPT_IMPROVEMENT_PROMPT_GEMINI
+        assert (
+            TOOL_PROMPT_IMPROVEMENT_PROMPTS["anthropic"]
+            is TOOL_PROMPT_IMPROVEMENT_PROMPT_ANTHROPIC
+        )
+        assert (
+            TOOL_PROMPT_IMPROVEMENT_PROMPTS["openai"]
+            is TOOL_PROMPT_IMPROVEMENT_PROMPT_OPENAI
+        )
+        assert (
+            TOOL_PROMPT_IMPROVEMENT_PROMPTS["gemini"]
+            is TOOL_PROMPT_IMPROVEMENT_PROMPT_GEMINI
+        )
 
 
 # ---------------------------------------------------------------------------
 # Provider-specific structural markers
 # ---------------------------------------------------------------------------
+
 
 class TestStructuralMarkers:
     """Each provider variant must use the expected structural formatting style."""
@@ -286,20 +386,44 @@ class TestStructuralMarkers:
     # --- Gemini: XML-style tags (<context>, <task>, <role>) ---
 
     def test_gemini_suggestion_prompt_uses_xml_structure(self):
-        assert "<context>" in SUGGESTION_GENERATION_PROMPT_GEMINI or "<task>" in SUGGESTION_GENERATION_PROMPT_GEMINI
-        assert "<output_format>" in SUGGESTION_GENERATION_PROMPT_GEMINI or "<task>" in SUGGESTION_GENERATION_PROMPT_GEMINI
+        assert (
+            "<context>" in SUGGESTION_GENERATION_PROMPT_GEMINI
+            or "<task>" in SUGGESTION_GENERATION_PROMPT_GEMINI
+        )
+        assert (
+            "<output_format>" in SUGGESTION_GENERATION_PROMPT_GEMINI
+            or "<task>" in SUGGESTION_GENERATION_PROMPT_GEMINI
+        )
 
     def test_gemini_improvement_prompt_uses_xml_structure(self):
-        assert "<context>" in PROMPT_IMPROVEMENT_PROMPT_GEMINI or "<task>" in PROMPT_IMPROVEMENT_PROMPT_GEMINI
-        assert "<output_format>" in PROMPT_IMPROVEMENT_PROMPT_GEMINI or "<task>" in PROMPT_IMPROVEMENT_PROMPT_GEMINI
+        assert (
+            "<context>" in PROMPT_IMPROVEMENT_PROMPT_GEMINI
+            or "<task>" in PROMPT_IMPROVEMENT_PROMPT_GEMINI
+        )
+        assert (
+            "<output_format>" in PROMPT_IMPROVEMENT_PROMPT_GEMINI
+            or "<task>" in PROMPT_IMPROVEMENT_PROMPT_GEMINI
+        )
 
     def test_gemini_tool_suggestion_prompt_uses_xml_structure(self):
-        assert "<context>" in TOOL_SUGGESTION_GENERATION_PROMPT_GEMINI or "<task>" in TOOL_SUGGESTION_GENERATION_PROMPT_GEMINI
-        assert "<output_format>" in TOOL_SUGGESTION_GENERATION_PROMPT_GEMINI or "<task>" in TOOL_SUGGESTION_GENERATION_PROMPT_GEMINI
+        assert (
+            "<context>" in TOOL_SUGGESTION_GENERATION_PROMPT_GEMINI
+            or "<task>" in TOOL_SUGGESTION_GENERATION_PROMPT_GEMINI
+        )
+        assert (
+            "<output_format>" in TOOL_SUGGESTION_GENERATION_PROMPT_GEMINI
+            or "<task>" in TOOL_SUGGESTION_GENERATION_PROMPT_GEMINI
+        )
 
     def test_gemini_tool_improvement_prompt_uses_xml_structure(self):
-        assert "<context>" in TOOL_PROMPT_IMPROVEMENT_PROMPT_GEMINI or "<task>" in TOOL_PROMPT_IMPROVEMENT_PROMPT_GEMINI
-        assert "<output_format>" in TOOL_PROMPT_IMPROVEMENT_PROMPT_GEMINI or "<task>" in TOOL_PROMPT_IMPROVEMENT_PROMPT_GEMINI
+        assert (
+            "<context>" in TOOL_PROMPT_IMPROVEMENT_PROMPT_GEMINI
+            or "<task>" in TOOL_PROMPT_IMPROVEMENT_PROMPT_GEMINI
+        )
+        assert (
+            "<output_format>" in TOOL_PROMPT_IMPROVEMENT_PROMPT_GEMINI
+            or "<task>" in TOOL_PROMPT_IMPROVEMENT_PROMPT_GEMINI
+        )
 
     def test_gemini_improvement_uses_numbered_instructions(self):
         assert "1. " in PROMPT_IMPROVEMENT_PROMPT_GEMINI
@@ -321,6 +445,7 @@ class TestStructuralMarkers:
 # ---------------------------------------------------------------------------
 # Content integrity
 # ---------------------------------------------------------------------------
+
 
 class TestContentIntegrity:
     """Prompts contain critical content regardless of provider."""
@@ -375,6 +500,7 @@ class TestContentIntegrity:
 # ---------------------------------------------------------------------------
 # Format string rendering (smoke tests)
 # ---------------------------------------------------------------------------
+
 
 class TestFormatStringRendering:
     """All prompts must render without KeyError when given the expected placeholders."""

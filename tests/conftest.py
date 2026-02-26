@@ -22,22 +22,12 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 os.environ.setdefault("DEBUG", "false")
 os.environ.setdefault("SECRET_KEY", "test-secret-key-for-tests")
 
-from urllib.parse import urlparse
-
 from overmind.db.base import Base  # noqa: E402
 from overmind.main import app  # noqa: E402
 
 TEST_DB_NAME = "overmind_test"
-# Host: POSTGRES_HOST env, or parse from DATABASE_URL (Docker), or localhost for local runs
-if "POSTGRES_HOST" in os.environ:
-    _POSTGRES_HOST = os.environ["POSTGRES_HOST"]
-elif "DATABASE_URL" in os.environ:
-    parsed = urlparse(os.environ["DATABASE_URL"].replace("postgresql+asyncpg://", "postgresql://"))
-    _POSTGRES_HOST = parsed.hostname or "localhost"
-else:
-    _POSTGRES_HOST = "localhost"
-ADMIN_DB_URL = f"postgresql+asyncpg://overmind:overmind@{_POSTGRES_HOST}:5432/overmind_core"
-TEST_DB_URL = f"postgresql+asyncpg://overmind:overmind@{_POSTGRES_HOST}:5432/{TEST_DB_NAME}"
+ADMIN_DB_URL = "postgresql+asyncpg://overmind:overmind@postgres:5432/overmind_core"
+TEST_DB_URL = f"postgresql+asyncpg://overmind:overmind@postgres:5432/{TEST_DB_NAME}"
 
 
 # ---------------------------------------------------------------------------
@@ -55,7 +45,7 @@ async def test_engine():
         import asyncpg
 
         conn = await asyncpg.connect(
-            ADMIN_DB_URL.replace("postgresql+asyncpg://", "postgresql://")
+            "postgresql://overmind:overmind@postgres:5432/overmind_core"
         )
         dbs = await conn.fetch(
             "SELECT datname FROM pg_database WHERE datname = $1", TEST_DB_NAME

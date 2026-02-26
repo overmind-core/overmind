@@ -15,7 +15,7 @@ Covers:
 """
 
 import pytest
-from unittest.mock import MagicMock, call
+from unittest.mock import MagicMock
 
 from overmind.tasks.utils.task_lock import acquire_task_lock, with_task_lock
 
@@ -23,6 +23,7 @@ from overmind.tasks.utils.task_lock import acquire_task_lock, with_task_lock
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
+
 
 @pytest.fixture()
 def mock_lock():
@@ -52,6 +53,7 @@ def patch_valkey(monkeypatch, mock_valkey_client):
 # ---------------------------------------------------------------------------
 # acquire_task_lock — context manager
 # ---------------------------------------------------------------------------
+
 
 class TestAcquireTaskLock:
     def test_yields_true_when_lock_acquired(self, mock_lock):
@@ -126,6 +128,7 @@ class TestAcquireTaskLock:
 # with_task_lock — decorator
 # ---------------------------------------------------------------------------
 
+
 class TestWithTaskLock:
     def test_executes_task_when_lock_acquired(self, mock_lock):
         mock_lock.acquire.return_value = True
@@ -160,7 +163,9 @@ class TestWithTaskLock:
         my_task()
         spy.assert_not_called()
 
-    def test_uses_function_name_as_default_lock_name(self, mock_valkey_client, mock_lock):
+    def test_uses_function_name_as_default_lock_name(
+        self, mock_valkey_client, mock_lock
+    ):
         mock_lock.acquire.return_value = True
 
         @with_task_lock()
@@ -171,7 +176,9 @@ class TestWithTaskLock:
         key_arg = mock_valkey_client.lock.call_args[0][0]
         assert "periodic_review_task" in key_arg
 
-    def test_uses_provided_lock_name_over_function_name(self, mock_valkey_client, mock_lock):
+    def test_uses_provided_lock_name_over_function_name(
+        self, mock_valkey_client, mock_lock
+    ):
         mock_lock.acquire.return_value = True
 
         @with_task_lock(lock_name="explicit_lock")
