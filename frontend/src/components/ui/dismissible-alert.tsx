@@ -66,13 +66,17 @@ export function DismissibleAlert({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [message, messageKey]);
 
-  const text = error ? (error.message || fallback) : message;
+  const text = error ? error.message || fallback : message;
 
   if (!visible || !text) return null;
 
   return (
     <div
-      className={cn(alertVariants({ variant }), "flex items-start justify-between gap-2", className)}
+      className={cn(
+        alertVariants({ variant }),
+        "flex items-start justify-between gap-2",
+        className
+      )}
       data-slot="alert"
       role="alert"
     >

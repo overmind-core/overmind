@@ -35,7 +35,6 @@ const STATUS_CONFIG: Record<
   cancelled: { icon: <XCircle className="size-3.5" />, label: "Cancelled", variant: "default" },
   completed: { icon: <CheckCircle className="size-3.5" />, label: "Completed", variant: "success" },
   failed: { icon: <XCircle className="size-3.5" />, label: "Failed", variant: "destructive" },
-  partially_completed: { icon: <AlertTriangle className="size-3.5" />, label: "Partially Completed", variant: "warning" },
   pending: { icon: <Clock className="size-3.5" />, label: "Pending", variant: "warning" },
   running: {
     icon: <Loader2 className="size-3.5 animate-spin" />,

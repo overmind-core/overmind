@@ -1,13 +1,7 @@
 import { useState } from "react";
 
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import {
-  ChevronDown,
-  ChevronUp,
-  MessageSquare,
-  ThumbsDown,
-  ThumbsUp,
-} from "lucide-react";
+import { ChevronDown, ChevronUp, MessageSquare, ThumbsDown, ThumbsUp } from "lucide-react";
 
 import type { SuggestionOut } from "@/api";
 import apiClient from "@/client";
@@ -41,7 +35,8 @@ function DeltaBadge({ pct, lowerIsBetter = false }: { pct: number; lowerIsBetter
         positive ? "bg-green-500/15 text-green-600" : "bg-red-500/15 text-red-500"
       )}
     >
-      {sign}{pct.toFixed(1)}%
+      {sign}
+      {pct.toFixed(1)}%
     </span>
   );
 }
@@ -80,7 +75,6 @@ function MetricCell({
   );
 }
 
-
 export function SuggestionCard({ suggestion }: { suggestion: SuggestionOut }) {
   const queryClient = useQueryClient();
   const [feedbackExpanded, setFeedbackExpanded] = useState(false);
@@ -97,7 +91,10 @@ export function SuggestionCard({ suggestion }: { suggestion: SuggestionOut }) {
   });
 
   const handleVote = (vote: 1 | -1) => {
-    feedbackMutation.mutate({ feedback: feedbackText.trim() || undefined, vote });
+    feedbackMutation.mutate({
+      feedback: feedbackText.trim() || undefined,
+      vote,
+    });
     setFeedbackExpanded(false);
   };
 
@@ -113,18 +110,15 @@ export function SuggestionCard({ suggestion }: { suggestion: SuggestionOut }) {
   const spansTested = scores?.spans_tested;
   const spansScored = scores?.spans_scored;
 
-  const pctDelta = (next: number, prev: number) =>
-    prev !== 0 ? ((next - prev) / prev) * 100 : 0;
+  const pctDelta = (next: number, prev: number) => (prev !== 0 ? ((next - prev) / prev) * 100 : 0);
 
-  const improvementPct = correctnessNew != null && correctnessOld != null
-    ? pctDelta(correctnessNew, correctnessOld)
-    : undefined;
-  const latencyDeltaPct = latencyNew != null && latencyOld != null
-    ? pctDelta(latencyNew, latencyOld)
-    : undefined;
-  const costDeltaPct = costNew != null && costOld != null
-    ? pctDelta(costNew, costOld)
-    : undefined;
+  const improvementPct =
+    correctnessNew != null && correctnessOld != null
+      ? pctDelta(correctnessNew, correctnessOld)
+      : undefined;
+  const latencyDeltaPct =
+    latencyNew != null && latencyOld != null ? pctDelta(latencyNew, latencyOld) : undefined;
+  const costDeltaPct = costNew != null && costOld != null ? pctDelta(costNew, costOld) : undefined;
 
   const hasMetrics = correctnessNew != null || latencyNew != null || costNew != null;
 
@@ -132,7 +126,7 @@ export function SuggestionCard({ suggestion }: { suggestion: SuggestionOut }) {
     <button
       className={cn(
         "border border-border bg-card p-4 transition-colors hover:border-[var(--accent-warm)] text-left w-full",
-        "focus:outline-none focus:ring-2 focus:ring-amber-500/30",
+        "focus:outline-none focus:ring-2 focus:ring-amber-500/30"
       )}
       onClick={() => setExpanded(expanded ? null : suggestion.id)}
       onKeyDown={(e) => e.key === "Enter" && setExpanded(expanded ? null : suggestion.id)}
@@ -180,7 +174,9 @@ export function SuggestionCard({ suggestion }: { suggestion: SuggestionOut }) {
               delta={improvementPct}
               label="Correctness"
               valueNew={`${(correctnessNew * 100).toFixed(1)}%`}
-              valueOld={correctnessOld != null ? `${(correctnessOld * 100).toFixed(1)}%` : undefined}
+              valueOld={
+                correctnessOld != null ? `${(correctnessOld * 100).toFixed(1)}%` : undefined
+              }
             />
           )}
           {latencyNew != null && (
@@ -189,7 +185,9 @@ export function SuggestionCard({ suggestion }: { suggestion: SuggestionOut }) {
               label="Latency"
               lowerIsBetter
               valueNew={`${Math.round(latencyNew).toLocaleString()} ms`}
-              valueOld={latencyOld != null ? `${Math.round(latencyOld).toLocaleString()} ms` : undefined}
+              valueOld={
+                latencyOld != null ? `${Math.round(latencyOld).toLocaleString()} ms` : undefined
+              }
             />
           )}
           {costNew != null && (

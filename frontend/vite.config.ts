@@ -4,6 +4,7 @@ import { tanstackRouter } from "@tanstack/router-plugin/vite";
 import viteReact from "@vitejs/plugin-react";
 import { defineConfig } from "vite";
 import viteTsConfigPaths from "vite-tsconfig-paths";
+import { config as appConfig } from "./src/config";
 
 const config = defineConfig({
   plugins: [
@@ -26,7 +27,7 @@ const config = defineConfig({
       "@": fileURLToPath(new URL("./src", import.meta.url)),
     },
   },
-  server: {
+  server: appConfig.isSelfHosted ? undefined : {
     proxy: {
       "/api": {
         target: "http://api:8000",

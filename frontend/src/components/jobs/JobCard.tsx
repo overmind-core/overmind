@@ -77,7 +77,7 @@ export function JobMetricColumn({
               "inline-flex items-center gap-0.5 rounded-sm px-1.5 py-0.5 text-[0.68rem] font-semibold",
               isGood
                 ? "bg-emerald-500/10 text-emerald-600 dark:bg-emerald-400/10 dark:text-emerald-400"
-                : "bg-red-500/10 text-red-600 dark:bg-red-400/10 dark:text-red-400",
+                : "bg-red-500/10 text-red-600 dark:bg-red-400/10 dark:text-red-400"
             )}
           >
             {isPositive ? "+" : ""}
@@ -174,7 +174,7 @@ function ModelCard({
           {String(model.model ?? model.name ?? "—")}
         </span>
       </div>
-      {!!model.reason && (
+      {model.reason && (
         <p className="text-xs text-muted-foreground leading-relaxed">{String(model.reason)}</p>
       )}
       <div className="flex flex-wrap gap-4">
@@ -208,9 +208,10 @@ export function BacktestRecommendations({ data }: { data: Record<string, unknown
   const verdict = data.verdict as string | undefined;
   const currentModel = data.current_model as Record<string, unknown> | undefined;
 
-  const candidates = CANDIDATE_KEYS
-    .map(({ key, label }) => ({ data: data[key] as Record<string, unknown> | undefined, label }))
-    .filter((c) => c.data && typeof c.data === "object");
+  const candidates = CANDIDATE_KEYS.map(({ key, label }) => ({
+    data: data[key] as Record<string, unknown> | undefined,
+    label,
+  })).filter((c) => c.data && typeof c.data === "object");
 
   return (
     <div className="space-y-3">
@@ -231,12 +232,7 @@ export function BacktestRecommendations({ data }: { data: Record<string, unknown
       {candidates.length > 0 && (
         <div className="grid gap-2 sm:grid-cols-2">
           {candidates.map((c) => (
-            <ModelCard
-              currentModel={currentModel}
-              key={c.label}
-              label={c.label}
-              model={c.data!}
-            />
+            <ModelCard currentModel={currentModel} key={c.label} label={c.label} model={c.data!} />
           ))}
         </div>
       )}
@@ -251,11 +247,11 @@ function RenderJson({ result }: { result: Record<string, unknown> | null | undef
 
   const comparisonTest = result.comparison_test as Record<string, unknown> | undefined;
   const hasComparison =
-    !!comparisonTest && typeof comparisonTest === "object" && !!comparisonTest.metrics;
+    comparisonTest && typeof comparisonTest === "object" && comparisonTest.metrics;
 
   const recommendations = result.recommendations as Record<string, unknown> | undefined;
   const hasRecommendations =
-    !!recommendations && typeof recommendations === "object" && !!recommendations.summary;
+    recommendations && typeof recommendations === "object" && recommendations.summary;
 
   const simpleEntries = Object.entries(result).filter(([k]) => !COMPLEX_KEYS.has(k));
 
@@ -267,8 +263,6 @@ function RenderJson({ result }: { result: Record<string, unknown> | null | undef
             let display: string;
             if (v == null) {
               display = "—";
-            } else if (Array.isArray(v)) {
-              display = String(v.length);
             } else if (typeof v === "object") {
               display = JSON.stringify(v);
               if (display.length > 40) display = `${display.slice(0, 37)}…`;

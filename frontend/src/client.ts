@@ -101,12 +101,12 @@ const apiClient = new OvermindClient(
         post: async (context) => {
           if (context.response.status === 401) {
             localStorage.removeItem("token");
-            // window.location.href = "/login";
+            window.location.href = "/login";
           }
           return undefined;
         },
         pre: async (context) => {
-          const token = localStorage.getItem("token") || (await window.Clerk.session.getToken());
+          const token = config.clerkReady ? (await window.Clerk.session.getToken()) : localStorage.getItem("token");
           if (token) {
             context.init.headers = {
               ...context.init.headers,

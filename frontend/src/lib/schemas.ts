@@ -28,7 +28,7 @@ export const jobsSearchSchema = z.object({
     .optional()
     .default("createdAt"),
   sortDirection: z.enum(["asc", "desc"]).optional().default("desc"),
-  status: z.enum(["all", "running", "completed", "partially_completed", "failed", "pending"]).optional().default("all"),
+  status: z.enum(["all", "running", "completed", "failed", "pending"]).optional().default("all"),
 });
 
 export type JobsSearch = z.infer<typeof jobsSearchSchema>;

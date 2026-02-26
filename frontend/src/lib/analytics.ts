@@ -20,8 +20,7 @@ const RANGE_MS: Record<AnalyticsPreset, number> = {
 
 export function rangeLabel(range: AnalyticsRange): string {
   if (typeof range === "string") return RANGE_LABELS[range];
-  const fmt = (d: Date) =>
-    `${d.getDate()} ${d.toLocaleString("en", { month: "short" })}`;
+  const fmt = (d: Date) => `${d.getDate()} ${d.toLocaleString("en", { month: "short" })}`;
   return `${fmt(range.from)} – ${fmt(range.to)}`;
 }
 
@@ -43,7 +42,7 @@ export function clampBuckets(buckets: HourlyBucket[], range: AnalyticsRange): Ho
 
 export function aggregateBuckets(
   buckets: HourlyBucket[],
-  aggregation: AnalyticsAggregation,
+  aggregation: AnalyticsAggregation
 ): HourlyBucket[] {
   if (aggregation === "hour") return buckets;
 

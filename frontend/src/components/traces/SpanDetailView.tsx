@@ -274,7 +274,7 @@ const ROLE_LABELS: Record<string, string> = {
 };
 
 function MessageRow({ msg }: { msg: ChatMessage }) {
-  const roleLabel = ROLE_LABELS[msg.role ?? ""] ?? (msg.role ?? "Message");
+  const roleLabel = ROLE_LABELS[msg.role ?? ""] ?? msg.role ?? "Message";
   const hasToolCalls = (msg.tool_calls?.length ?? 0) > 0;
 
   return (
@@ -455,9 +455,7 @@ export function SpanDetailView({ span, queryKey }: SpanDetailViewProps) {
               title="Output"
               value={span.outputs}
               badge={
-                span.spanAttributes?.response_type === "tool_calls" ? (
-                  <ToolCallBadge />
-                ) : undefined
+                span.spanAttributes?.response_type === "tool_calls" ? <ToolCallBadge /> : undefined
               }
             />
             {Array.isArray(span.spanAttributes?.available_tools) &&

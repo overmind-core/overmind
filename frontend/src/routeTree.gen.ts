@@ -16,6 +16,7 @@ import { Route as AuthIndexRouteImport } from './routes/_auth/index'
 import { Route as AuthOrganisationsRouteImport } from './routes/_auth/organisations'
 import { Route as AuthOnboardingRouteImport } from './routes/_auth/onboarding'
 import { Route as AuthJobsRouteImport } from './routes/_auth/jobs'
+import { Route as AuthGetStartedRouteImport } from './routes/_auth/get-started'
 import { Route as AuthChatbotsRouteImport } from './routes/_auth/chatbots'
 import { Route as AuthAgentsRouteImport } from './routes/_auth/agents'
 import { Route as AuthAccountRouteImport } from './routes/_auth/account'
@@ -59,6 +60,11 @@ const AuthOnboardingRoute = AuthOnboardingRouteImport.update({
 const AuthJobsRoute = AuthJobsRouteImport.update({
   id: '/jobs',
   path: '/jobs',
+  getParentRoute: () => AuthRoute,
+} as any)
+const AuthGetStartedRoute = AuthGetStartedRouteImport.update({
+  id: '/get-started',
+  path: '/get-started',
   getParentRoute: () => AuthRoute,
 } as any)
 const AuthChatbotsRoute = AuthChatbotsRouteImport.update({
@@ -122,6 +128,7 @@ export interface FileRoutesByFullPath {
   '/account': typeof AuthAccountRoute
   '/agents': typeof AuthAgentsRouteWithChildren
   '/chatbots': typeof AuthChatbotsRoute
+  '/get-started': typeof AuthGetStartedRoute
   '/jobs': typeof AuthJobsRouteWithChildren
   '/onboarding': typeof AuthOnboardingRoute
   '/organisations': typeof AuthOrganisationsRoute
@@ -138,6 +145,7 @@ export interface FileRoutesByTo {
   '/oauth-google-complete': typeof OauthGoogleCompleteRoute
   '/account': typeof AuthAccountRoute
   '/chatbots': typeof AuthChatbotsRoute
+  '/get-started': typeof AuthGetStartedRoute
   '/jobs': typeof AuthJobsRouteWithChildren
   '/onboarding': typeof AuthOnboardingRoute
   '/organisations': typeof AuthOrganisationsRoute
@@ -158,6 +166,7 @@ export interface FileRoutesById {
   '/_auth/account': typeof AuthAccountRoute
   '/_auth/agents': typeof AuthAgentsRouteWithChildren
   '/_auth/chatbots': typeof AuthChatbotsRoute
+  '/_auth/get-started': typeof AuthGetStartedRoute
   '/_auth/jobs': typeof AuthJobsRouteWithChildren
   '/_auth/onboarding': typeof AuthOnboardingRoute
   '/_auth/organisations': typeof AuthOrganisationsRoute
@@ -179,6 +188,7 @@ export interface FileRouteTypes {
     | '/account'
     | '/agents'
     | '/chatbots'
+    | '/get-started'
     | '/jobs'
     | '/onboarding'
     | '/organisations'
@@ -195,6 +205,7 @@ export interface FileRouteTypes {
     | '/oauth-google-complete'
     | '/account'
     | '/chatbots'
+    | '/get-started'
     | '/jobs'
     | '/onboarding'
     | '/organisations'
@@ -214,6 +225,7 @@ export interface FileRouteTypes {
     | '/_auth/account'
     | '/_auth/agents'
     | '/_auth/chatbots'
+    | '/_auth/get-started'
     | '/_auth/jobs'
     | '/_auth/onboarding'
     | '/_auth/organisations'
@@ -282,6 +294,13 @@ declare module '@tanstack/react-router' {
       path: '/jobs'
       fullPath: '/jobs'
       preLoaderRoute: typeof AuthJobsRouteImport
+      parentRoute: typeof AuthRoute
+    }
+    '/_auth/get-started': {
+      id: '/_auth/get-started'
+      path: '/get-started'
+      fullPath: '/get-started'
+      preLoaderRoute: typeof AuthGetStartedRouteImport
       parentRoute: typeof AuthRoute
     }
     '/_auth/chatbots': {
@@ -402,6 +421,7 @@ interface AuthRouteChildren {
   AuthAccountRoute: typeof AuthAccountRoute
   AuthAgentsRoute: typeof AuthAgentsRouteWithChildren
   AuthChatbotsRoute: typeof AuthChatbotsRoute
+  AuthGetStartedRoute: typeof AuthGetStartedRoute
   AuthJobsRoute: typeof AuthJobsRouteWithChildren
   AuthOnboardingRoute: typeof AuthOnboardingRoute
   AuthOrganisationsRoute: typeof AuthOrganisationsRoute
@@ -415,6 +435,7 @@ const AuthRouteChildren: AuthRouteChildren = {
   AuthAccountRoute: AuthAccountRoute,
   AuthAgentsRoute: AuthAgentsRouteWithChildren,
   AuthChatbotsRoute: AuthChatbotsRoute,
+  AuthGetStartedRoute: AuthGetStartedRoute,
   AuthJobsRoute: AuthJobsRouteWithChildren,
   AuthOnboardingRoute: AuthOnboardingRoute,
   AuthOrganisationsRoute: AuthOrganisationsRoute,

@@ -136,7 +136,7 @@ function RootLayout() {
               <Breadcrumb />
               <span className="flex-1" />
               <ThemeToggle />
-              {!config.isSelfHosted && (
+              {(config.clerkReady && !config.isSelfHosted) && (
                 <OrganizationSwitcher
                   createOrganizationMode={"modal"}
                   organizationProfileMode={"modal"}
@@ -155,7 +155,7 @@ function RootLayout() {
 
 function RouteComponent() {
   const { config } = Route.useRouteContext();
-  if (config.isSelfHosted) return <RootLayout />;
+  if (!config.clerkReady || config.isSelfHosted) return <RootLayout />;
   return (
     <>
       <SignedIn>

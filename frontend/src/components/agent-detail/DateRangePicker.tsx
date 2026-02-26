@@ -25,7 +25,7 @@ export function DateRangePicker({
 }) {
   const [open, setOpen] = useState(false);
   const [customFrom, setCustomFrom] = useState(() =>
-    toDateStr(new Date(Date.now() - 7 * 24 * 60 * 60 * 1000)),
+    toDateStr(new Date(Date.now() - 7 * 24 * 60 * 60 * 1000))
   );
   const [customTo, setCustomTo] = useState(() => toDateStr(new Date()));
 
@@ -59,7 +59,7 @@ export function DateRangePicker({
             <button
               className={cn(
                 "px-3 py-2 text-left text-sm transition-colors hover:bg-muted",
-                typeof value === "string" && value === p.key && "bg-muted font-medium",
+                typeof value === "string" && value === p.key && "bg-muted font-medium"
               )}
               key={p.key}
               onClick={() => applyPreset(p.key)}
@@ -69,7 +69,12 @@ export function DateRangePicker({
             </button>
           ))}
           <div className="border-t border-border px-3 py-2.5">
-            <p className={cn("mb-2 text-xs font-medium", isCustom ? "text-foreground" : "text-muted-foreground")}>
+            <p
+              className={cn(
+                "mb-2 text-xs font-medium",
+                isCustom ? "text-foreground" : "text-muted-foreground"
+              )}
+            >
               Custom range
             </p>
             <div className="flex flex-col gap-1.5">
