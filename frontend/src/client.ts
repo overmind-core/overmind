@@ -17,6 +17,7 @@ import {
   TracesApi,
   UsersApi,
 } from "./api";
+import { config } from "./config";
 
 class OvermindClient {
   agents: AgentsApi;
@@ -82,12 +83,19 @@ class OvermindClient {
 
 // In dev mode, use empty string so requests go to /api/... (proxied by Vite to the live backend).
 // In production, use the full URL.
-const baseUrl =
-  import.meta.env.VITE_API_BASE_URL ?? (import.meta.env.DEV ? "" : "https://api.overmindlab.ai");
 
+declare global {
+  interface Window {
+    Clerk: {
+      session: {
+        getToken: () => Promise<string>;
+      };
+    };
+  }
+}
 const apiClient = new OvermindClient(
   new Configuration({
-    basePath: baseUrl,
+    basePath: config.apiUrl,
     middleware: [
       {
         post: async (context) => {
@@ -98,7 +106,7 @@ const apiClient = new OvermindClient(
           return undefined;
         },
         pre: async (context) => {
-          const token = localStorage.getItem("token");
+          const token = localStorage.getItem("token") || (await window.Clerk.session.getToken());
           if (token) {
             context.init.headers = {
               ...context.init.headers,
