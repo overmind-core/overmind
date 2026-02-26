@@ -1,9 +1,6 @@
 """Tests for the auto-evaluation scanner and execution logic."""
 
 import pytest
-from sqlalchemy import select
-
-from overmind.models.jobs import Job
 
 
 @pytest.mark.asyncio
@@ -96,8 +93,6 @@ async def test_scanner_skips_prompt_without_criteria(
         )
     await db_session.commit()
 
-    is_eligible, error, _ = await validate_judge_scoring_eligibility(
-        prompt, db_session
-    )
+    is_eligible, error, _ = await validate_judge_scoring_eligibility(prompt, db_session)
     assert is_eligible is False
     assert "criteria" in error.lower()

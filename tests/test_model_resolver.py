@@ -5,7 +5,6 @@ from overmind.core.model_resolver import (
     TaskType,
     resolve_model,
     get_available_backtest_models,
-    get_available_providers,
 )
 
 

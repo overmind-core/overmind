@@ -65,7 +65,9 @@ async def test_delete_project(seed_user, test_client, auth_headers):
 
 
 @pytest.mark.asyncio
-async def test_create_duplicate_project_returns_409(seed_user, test_client, auth_headers):
+async def test_create_duplicate_project_returns_409(
+    seed_user, test_client, auth_headers
+):
     await test_client.post(
         "/api/v1/iam/projects/",
         headers=auth_headers,

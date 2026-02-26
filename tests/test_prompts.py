@@ -70,8 +70,12 @@ async def test_create_prompt_dedup(seed_user, test_client, auth_headers):
         "project_id": str(project.project_id),
     }
 
-    resp1 = await test_client.post("/api/v1/prompts/", headers=auth_headers, json=payload)
-    resp2 = await test_client.post("/api/v1/prompts/", headers=auth_headers, json=payload)
+    resp1 = await test_client.post(
+        "/api/v1/prompts/", headers=auth_headers, json=payload
+    )
+    resp2 = await test_client.post(
+        "/api/v1/prompts/", headers=auth_headers, json=payload
+    )
 
     assert resp1.status_code == 200
     assert resp2.status_code == 200

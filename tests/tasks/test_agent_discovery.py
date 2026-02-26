@@ -1,7 +1,6 @@
 """Tests for the agent discovery eligibility logic."""
 
 import pytest
-from uuid import uuid4
 
 
 @pytest.mark.asyncio
@@ -29,9 +28,7 @@ async def test_discovery_eligible_with_enough_spans(
 
 
 @pytest.mark.asyncio
-async def test_discovery_ineligible_with_few_spans(
-    seed_user, db_session, span_factory
-):
+async def test_discovery_ineligible_with_few_spans(seed_user, db_session, span_factory):
     """A project with fewer than 10 spans should NOT be eligible."""
     from overmind.tasks.agent_discovery import validate_agent_discovery_eligibility
 

@@ -13,12 +13,17 @@ def test_evaluate_correctness_returns_score(monkeypatch):
 
     monkeypatch.setattr("overmind.config.settings.openai_api_key", "sk-test")
 
-    mock_call = MagicMock(return_value=(fake_response, {
-        "prompt_tokens": 100,
-        "completion_tokens": 50,
-        "response_ms": 200,
-        "response_cost": 0.005,
-    }))
+    mock_call = MagicMock(
+        return_value=(
+            fake_response,
+            {
+                "prompt_tokens": 100,
+                "completion_tokens": 50,
+                "response_ms": 200,
+                "response_cost": 0.005,
+            },
+        )
+    )
     monkeypatch.setattr("overmind.tasks.evaluations.call_llm", mock_call)
 
     result = _evaluate_correctness_with_llm(

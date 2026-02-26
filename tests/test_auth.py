@@ -1,7 +1,6 @@
 """Authentication edge-case tests: missing/invalid/expired credentials."""
 
 import pytest
-from datetime import datetime, timedelta, timezone
 
 
 @pytest.mark.asyncio
@@ -30,7 +29,9 @@ async def test_invalid_api_token_returns_401(test_client, db_session):
 
 
 @pytest.mark.asyncio
-async def test_deactivated_token_returns_401(seed_user, test_client, auth_headers, db_session):
+async def test_deactivated_token_returns_401(
+    seed_user, test_client, auth_headers, db_session
+):
     """A token that has been deactivated should be rejected."""
     _, project, _ = seed_user
 

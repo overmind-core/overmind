@@ -42,11 +42,12 @@ async def test_cleanup_deletes_old_terminal_jobs(
         bind=test_engine, class_=AsyncSession, expire_on_commit=False
     )
 
-    with patch(
-        "overmind.tasks.job_cleanup.get_session_local",
-        return_value=test_session_factory,
-    ), patch(
-        "overmind.tasks.job_cleanup.dispose_engine", new_callable=AsyncMock
+    with (
+        patch(
+            "overmind.tasks.job_cleanup.get_session_local",
+            return_value=test_session_factory,
+        ),
+        patch("overmind.tasks.job_cleanup.dispose_engine", new_callable=AsyncMock),
     ):
         result = await _cleanup_old_jobs()
 
@@ -80,11 +81,12 @@ async def test_cleanup_preserves_user_triggered_jobs(
         bind=test_engine, class_=AsyncSession, expire_on_commit=False
     )
 
-    with patch(
-        "overmind.tasks.job_cleanup.get_session_local",
-        return_value=test_session_factory,
-    ), patch(
-        "overmind.tasks.job_cleanup.dispose_engine", new_callable=AsyncMock
+    with (
+        patch(
+            "overmind.tasks.job_cleanup.get_session_local",
+            return_value=test_session_factory,
+        ),
+        patch("overmind.tasks.job_cleanup.dispose_engine", new_callable=AsyncMock),
     ):
         result = await _cleanup_old_jobs()
 
