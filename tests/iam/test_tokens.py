@@ -1,11 +1,11 @@
 """IAM token CRUD endpoint tests."""
 
 import pytest
+from uuid import uuid4
 
 
-@pytest.mark.asyncio
 async def test_create_token(seed_user, test_client, auth_headers):
-    _, project, _ = seed_user
+    project = seed_user.project
     resp = await test_client.post(
         "/api/v1/iam/tokens/",
         headers=auth_headers,
@@ -22,9 +22,8 @@ async def test_create_token(seed_user, test_client, auth_headers):
     assert data["project_id"] == str(project.project_id)
 
 
-@pytest.mark.asyncio
 async def test_list_tokens(seed_user, test_client, auth_headers):
-    _, project, _ = seed_user
+    project = seed_user.project
     resp = await test_client.get(
         f"/api/v1/iam/tokens/?project_id={project.project_id}",
         headers=auth_headers,
@@ -34,9 +33,8 @@ async def test_list_tokens(seed_user, test_client, auth_headers):
     assert data["total_count"] >= 1
 
 
-@pytest.mark.asyncio
 async def test_update_token(seed_user, test_client, auth_headers, db_session):
-    _, project, _ = seed_user
+    project = seed_user.project
     from overmind.models.iam.tokens import Token
     from sqlalchemy import select
 
@@ -55,10 +53,8 @@ async def test_update_token(seed_user, test_client, auth_headers, db_session):
     assert resp.json()["name"] == "Renamed Token"
 
 
-@pytest.mark.asyncio
 async def test_delete_token(seed_user, test_client, auth_headers):
-    _, project, _ = seed_user
-    # Create one to delete
+    project = seed_user.project
     create_resp = await test_client.post(
         "/api/v1/iam/tokens/",
         headers=auth_headers,
@@ -72,9 +68,8 @@ async def test_delete_token(seed_user, test_client, auth_headers):
     assert resp.status_code == 200
 
 
-@pytest.mark.asyncio
 async def test_create_duplicate_token_returns_409(seed_user, test_client, auth_headers):
-    _, project, _ = seed_user
+    project = seed_user.project
     payload = {"name": "DuplicateMe", "project_id": str(project.project_id)}
     await test_client.post("/api/v1/iam/tokens/", headers=auth_headers, json=payload)
     resp = await test_client.post(
@@ -83,12 +78,11 @@ async def test_create_duplicate_token_returns_409(seed_user, test_client, auth_h
     assert resp.status_code == 409
 
 
-@pytest.mark.asyncio
 async def test_created_token_authenticates_requests(
     seed_user, test_client, auth_headers
 ):
     """A newly created API token should work for authentication."""
-    _, project, _ = seed_user
+    project = seed_user.project
     create_resp = await test_client.post(
         "/api/v1/iam/tokens/",
         headers=auth_headers,
@@ -101,3 +95,22 @@ async def test_created_token_authenticates_requests(
     )
     assert resp.status_code == 200
     assert resp.json()["email"] == "admin"
+
+
+@pytest.mark.parametrize(
+    "payload,expected_status",
+    [
+        ({}, 422),
+        ({"name": "T"}, 422),
+        ({"name": "T", "project_id": "not-a-uuid"}, 422),
+        ({"name": "T", "project_id": str(uuid4())}, 403),
+    ],
+    ids=["empty-body", "missing-project-id", "bad-uuid", "nonexistent-project"],
+)
+async def test_create_token_validation(
+    seed_user, test_client, auth_headers, payload, expected_status
+):
+    resp = await test_client.post(
+        "/api/v1/iam/tokens/", headers=auth_headers, json=payload
+    )
+    assert resp.status_code == expected_status

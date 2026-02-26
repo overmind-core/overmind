@@ -3,39 +3,26 @@
 import pytest
 
 
-@pytest.mark.asyncio
-async def test_no_auth_returns_401(test_client, db_session):
-    """Request without any auth header is rejected."""
-    resp = await test_client.get("/api/v1/iam/users/me")
+@pytest.mark.parametrize(
+    "headers",
+    [
+        {},
+        {"Authorization": "Bearer this.is.not.a.valid.jwt"},
+        {"X-API-Token": "ovr_core_nonexistenttoken123456"},
+    ],
+    ids=["no-auth", "invalid-jwt", "invalid-api-token"],
+)
+async def test_invalid_credentials_return_401(test_client, db_session, headers):
+    resp = await test_client.get("/api/v1/iam/users/me", headers=headers)
     assert resp.status_code == 401
 
 
-@pytest.mark.asyncio
-async def test_invalid_jwt_returns_401(test_client, db_session):
-    resp = await test_client.get(
-        "/api/v1/iam/users/me",
-        headers={"Authorization": "Bearer this.is.not.a.valid.jwt"},
-    )
-    assert resp.status_code == 401
-
-
-@pytest.mark.asyncio
-async def test_invalid_api_token_returns_401(test_client, db_session):
-    resp = await test_client.get(
-        "/api/v1/iam/users/me",
-        headers={"X-API-Token": "ovr_core_nonexistenttoken123456"},
-    )
-    assert resp.status_code == 401
-
-
-@pytest.mark.asyncio
 async def test_deactivated_token_returns_401(
     seed_user, test_client, auth_headers, db_session
 ):
     """A token that has been deactivated should be rejected."""
-    _, project, _ = seed_user
+    project = seed_user.project
 
-    # Create a token then deactivate it
     create_resp = await test_client.post(
         "/api/v1/iam/tokens/",
         headers=auth_headers,

@@ -7,7 +7,12 @@ from fastapi import Request
 from opentelemetry.proto.collector.trace.v1 import trace_service_pb2
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
-from overmind.models.traces import ConversationModel, SpanModel, TraceModel
+from overmind.models.traces import (
+    ConversationModel,
+    RawOtlpRequestModel,
+    SpanModel,
+    TraceModel,
+)
 from datetime import datetime, timezone
 from overmind.tasks.agentic_span_processor import (
     detect_agentic_span,
@@ -200,52 +205,74 @@ async def create_trace(
 
     body = await request.body()
 
-    # The OTel SDK might send data with gzip compression
     content_encoding = request.headers.get("content-encoding", "")
     if "gzip" in content_encoding:
         body = zlib.decompress(body, 16 + zlib.MAX_WBITS)
 
-    trace_request = trace_service_pb2.ExportTraceServiceRequest()
-    trace_request.ParseFromString(body)
-
-    # Transform the data for our database schema
-    spans_data = transform_spans(
-        export_request=trace_request,
+    raw_record = RawOtlpRequestModel(
+        trace_ids=[],
         project_id=project_id,
-        business_id=business_id,
-        custom_attributes_extractor=get_backend_or_langchain_custom_attributes,
-        user_id=user_id,
+        content_encoding=content_encoding or None,
+        raw_body=body,
+        body_size=len(body),
     )
+    db.add(raw_record)
+    await db.flush()
 
-    if not spans_data:
-        logger.info("Received an empty trace request. No data to insert.")
-        return {"message": "Empty request, nothing to process."}
+    try:
+        trace_request = trace_service_pb2.ExportTraceServiceRequest()
+        trace_request.ParseFromString(body)
 
-    trace_models, span_models, conversation = tranform_spans_for_postgres(
-        spans_data=spans_data
-    )
-
-    if conversation:
-        stmt = select(ConversationModel).where(
-            ConversationModel.conversation_id == conversation.conversation_id
+        spans_data = transform_spans(
+            export_request=trace_request,
+            project_id=project_id,
+            business_id=business_id,
+            custom_attributes_extractor=get_backend_or_langchain_custom_attributes,
+            user_id=user_id,
         )
-        result = await db.execute(stmt)
-        if not result.scalar_one_or_none():
-            db.add(conversation)
-            await db.flush()
-        logger.debug("Successfully inserted conversation")
 
-    db.add_all(trace_models)
-    await db.flush()
-    logger.debug("Successfully inserted trace")
+        if not spans_data:
+            logger.info("Received an empty trace request. No data to insert.")
+            await db.commit()
+            return {"message": "Empty request, nothing to process."}
 
-    if span_models:
-        db.add_all(span_models)
-    await db.flush()
-    await db.commit()
-    logger.info(f"Successfully inserted {len(spans_data)} spans")
+        raw_record.trace_ids = list(
+            {s["TraceId"] for s in spans_data if s.get("TraceId")}
+        )
 
-    return {"message": f"Successfully processed {len(spans_data)} spans."}
+        trace_models, span_models, conversation = tranform_spans_for_postgres(
+            spans_data=spans_data
+        )
+
+        if conversation:
+            stmt = select(ConversationModel).where(
+                ConversationModel.conversation_id == conversation.conversation_id
+            )
+            result = await db.execute(stmt)
+            if not result.scalar_one_or_none():
+                db.add(conversation)
+                await db.flush()
+            logger.debug("Successfully inserted conversation")
+
+        db.add_all(trace_models)
+        await db.flush()
+        logger.debug("Successfully inserted trace")
+
+        if span_models:
+            db.add_all(span_models)
+        await db.flush()
+        await db.commit()
+        logger.info(f"Successfully inserted {len(spans_data)} spans")
+
+        return {"message": f"Successfully processed {len(spans_data)} spans."}
+
+    except Exception as e:
+        await db.rollback()
+        raw_record.error = f"{type(e).__name__}: {e}"
+        db.add(raw_record)
+        await db.commit()
+        logger.error(f"Failed to process trace, raw data saved: {e}")
+        raise
 
 
 def _detect_response_type(output_data: Any) -> str | None:

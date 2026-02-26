@@ -17,9 +17,8 @@ def _mock_celery_delay(monkeypatch):
     )
 
 
-@pytest.mark.asyncio
 async def test_create_prompt(seed_user, test_client, auth_headers):
-    _, project, _ = seed_user
+    project = seed_user.project
     resp = await test_client.post(
         "/api/v1/prompts/",
         headers=auth_headers,
@@ -35,10 +34,8 @@ async def test_create_prompt(seed_user, test_client, auth_headers):
     assert data["version"] == 1
 
 
-@pytest.mark.asyncio
 async def test_list_prompts(seed_user, test_client, auth_headers):
-    _, project, _ = seed_user
-    # Create one first
+    project = seed_user.project
     await test_client.post(
         "/api/v1/prompts/",
         headers=auth_headers,
@@ -60,10 +57,9 @@ async def test_list_prompts(seed_user, test_client, auth_headers):
     assert "list-test" in slugs
 
 
-@pytest.mark.asyncio
 async def test_create_prompt_dedup(seed_user, test_client, auth_headers):
     """Creating the same prompt content twice should return the existing version."""
-    _, project, _ = seed_user
+    project = seed_user.project
     payload = {
         "slug": "dedup-test",
         "prompt": "Identical content for dedup testing.",
@@ -81,3 +77,20 @@ async def test_create_prompt_dedup(seed_user, test_client, auth_headers):
     assert resp2.status_code == 200
     assert resp1.json()["prompt_id"] == resp2.json()["prompt_id"]
     assert resp2.json()["is_new"] is False
+
+
+@pytest.mark.parametrize(
+    "payload,expected_status",
+    [
+        ({}, 422),
+        ({"slug": "x", "prompt": "y"}, 422),
+    ],
+    ids=["empty-body", "missing-project-id"],
+)
+async def test_create_prompt_validation(
+    seed_user, test_client, auth_headers, payload, expected_status
+):
+    resp = await test_client.post(
+        "/api/v1/prompts/", headers=auth_headers, json=payload
+    )
+    assert resp.status_code == expected_status

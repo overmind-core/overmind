@@ -9,6 +9,8 @@ from sqlalchemy import (
     DateTime,
     ForeignKey,
     Integer,
+    LargeBinary,
+    Text,
 )
 from sqlalchemy.dialects.postgresql import BIGINT, UUID, JSONB
 
@@ -181,3 +183,21 @@ class BacktestRun(Base):
     celery_task_id = Column(String, nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     completed_at = Column(DateTime(timezone=True), nullable=True)
+
+
+class RawOtlpRequestModel(Base):
+    """
+    Stores the raw protobuf bytes received at the OTLP ingest endpoint
+    before any transformation. Used for debugging failed or suspicious ingestions.
+    """
+
+    __tablename__ = "raw_otlp_requests"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    trace_ids = Column(JSONB, nullable=False, default=list)
+    project_id = Column(UUID(as_uuid=True), nullable=True, index=True)
+    content_encoding = Column(String(50), nullable=True)
+    raw_body = Column(LargeBinary, nullable=False)
+    body_size = Column(Integer, nullable=False)
+    error = Column(Text, nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())

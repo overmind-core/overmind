@@ -1,9 +1,6 @@
 """Health and root endpoint tests."""
 
-import pytest
 
-
-@pytest.mark.asyncio
 async def test_root(test_client):
     from overmind.main import FRONTEND_DIR
 
@@ -15,7 +12,6 @@ async def test_root(test_client):
         assert "message" in resp.json()
 
 
-@pytest.mark.asyncio
 async def test_health(test_client):
     resp = await test_client.get("/health")
     assert resp.status_code == 200
