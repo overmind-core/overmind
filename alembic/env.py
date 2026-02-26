@@ -4,6 +4,7 @@ Core alembic environment.
 Only imports core models (no enterprise). This ensures core migrations
 only cover core tables (users, projects, tokens, traces, spans, etc.).
 """
+
 from logging.config import fileConfig
 from sqlalchemy.engine import Connection
 from alembic import context

@@ -8,8 +8,8 @@ create/drop, mocked Valkey (in-memory dict), and mocked LLM calls.
 import os
 import hashlib
 import time
-from datetime import datetime, timedelta, timezone
-from typing import Any, Dict, List, Optional
+from datetime import datetime
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 from uuid import uuid4
 
@@ -50,7 +50,7 @@ async def test_engine():
             "SELECT datname FROM pg_database WHERE datname = $1", TEST_DB_NAME
         )
         if not dbs:
-            await conn.execute(f'CREATE DATABASE "{TEST_DB_NAME}"')
+            await conn.execute(f'CREATE DATABASE "{TEST_DB_NAME}" TEMPLATE template0')
         await conn.close()
         _db_created = True
     engine = create_async_engine(TEST_DB_URL, pool_pre_ping=True, echo=False)
@@ -83,6 +83,7 @@ async def db_session(test_engine):
 # ---------------------------------------------------------------------------
 # Valkey mock (autouse — no live Valkey needed)
 # ---------------------------------------------------------------------------
+
 
 @pytest_asyncio.fixture(autouse=True)
 async def mock_valkey(monkeypatch):
@@ -139,15 +140,19 @@ async def mock_valkey(monkeypatch):
 # LLM mock
 # ---------------------------------------------------------------------------
 
+
 @pytest_asyncio.fixture()
 async def mock_llm(monkeypatch):
     """Mock call_llm to return a canned response. Override the callback for custom responses."""
-    default_response = ("Mocked LLM response", {
-        "prompt_tokens": 10,
-        "completion_tokens": 5,
-        "response_ms": 100,
-        "response_cost": 0.001,
-    })
+    default_response = (
+        "Mocked LLM response",
+        {
+            "prompt_tokens": 10,
+            "completion_tokens": 5,
+            "response_ms": 100,
+            "response_cost": 0.001,
+        },
+    )
 
     mock = AsyncMock(return_value=default_response)
     monkeypatch.setattr("overmind.core.llms.call_llm", mock)
@@ -157,6 +162,7 @@ async def mock_llm(monkeypatch):
 # ---------------------------------------------------------------------------
 # Celery mock
 # ---------------------------------------------------------------------------
+
 
 @pytest_asyncio.fixture()
 async def mock_celery(monkeypatch):
@@ -179,6 +185,7 @@ async def mock_celery(monkeypatch):
 # ---------------------------------------------------------------------------
 # Test client
 # ---------------------------------------------------------------------------
+
 
 @pytest_asyncio.fixture(scope="function")
 async def test_client(db_session):
@@ -213,6 +220,7 @@ async def test_client(db_session):
 # ---------------------------------------------------------------------------
 # Seed data helpers
 # ---------------------------------------------------------------------------
+
 
 @pytest_asyncio.fixture(scope="function")
 async def seed_user(db_session):
@@ -285,6 +293,7 @@ async def api_token_headers(seed_user):
 # ---------------------------------------------------------------------------
 # Factory fixtures
 # ---------------------------------------------------------------------------
+
 
 @pytest_asyncio.fixture(scope="function")
 async def user_factory(db_session):

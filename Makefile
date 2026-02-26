@@ -34,11 +34,11 @@ revision:
 	docker compose exec api alembic revision --autogenerate -m "$(m)"
 
 test:
-	docker compose run --rm api python -m pytest $(test_args)
+	docker compose run --rm api sh -c "uv pip install --system --no-cache pytest pytest-asyncio pytest-cov python-dotenv && python -m pytest $(test_args)"
 
 lint:
-	poetry run ruff check --fix overmind/
-	poetry run ruff format overmind/
+	poetry run ruff check --fix
+	poetry run ruff format
 
 psql:
 	docker compose exec postgres psql -U overmind -d overmind_core

@@ -84,7 +84,9 @@ async def test_create_duplicate_token_returns_409(seed_user, test_client, auth_h
 
 
 @pytest.mark.asyncio
-async def test_created_token_authenticates_requests(seed_user, test_client, auth_headers):
+async def test_created_token_authenticates_requests(
+    seed_user, test_client, auth_headers
+):
     """A newly created API token should work for authentication."""
     _, project, _ = seed_user
     create_resp = await test_client.post(
