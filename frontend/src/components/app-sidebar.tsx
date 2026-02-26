@@ -1,6 +1,6 @@
 import { useState } from "react";
 
-import { UserButton, useUser } from "@clerk/clerk-react";
+import { useAuth, UserButton, useUser } from "@clerk/clerk-react";
 import { Link, useNavigate, useRouteContext, useRouterState } from "@tanstack/react-router";
 import {
   BarChart3,
@@ -110,7 +110,9 @@ const accountLinks = [
 ];
 
 function useIsSignedIn() {
+  const { config } = useRouteContext({ from: "/_auth" });
   if (typeof window === "undefined") return false;
+  if (config.clerkReady) return useAuth().isSignedIn;
   return !!(localStorage.getItem("token") ?? localStorage.getItem("auth_token"));
 }
 
