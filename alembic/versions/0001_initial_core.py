@@ -54,7 +54,7 @@ def upgrade() -> None:
         sa.Column("name", sa.String, nullable=False),
         sa.Column("slug", sa.String, nullable=False, index=True),
         sa.Column("description", sa.String, nullable=False),
-        sa.Column("organisation_id", UUID(as_uuid=True), nullable=True),
+        sa.Column("organisation_id", sa.String, nullable=True),
         sa.Column("is_active", sa.Boolean, default=True, nullable=False),
         sa.Column("settings", sa.JSON, nullable=True),
         sa.Column(
@@ -81,7 +81,7 @@ def upgrade() -> None:
             sa.ForeignKey("users.user_id"),
             nullable=False,
         ),
-        sa.Column("organisation_id", UUID(as_uuid=True), nullable=True),
+        sa.Column("organisation_id", sa.String, nullable=True),
         sa.Column(
             "project_id",
             UUID(as_uuid=True),

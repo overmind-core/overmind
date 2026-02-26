@@ -37,7 +37,7 @@ class Project(Base):
     slug = Column(String, nullable=False, index=True)
     description = Column(String, nullable=False)
     organisation_id = Column(
-        UUID(as_uuid=True),
+        String,
         nullable=True,
         default=None,
     )
