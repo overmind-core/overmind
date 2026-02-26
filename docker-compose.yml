@@ -92,6 +92,8 @@ services:
     command: sh -c "bun install --frozen-lockfile && bun run dev -- --host 0.0.0.0"
     ports:
       - "5173:5173"
+    env_file:
+      - frontend/.env.oss
     volumes:
       - ./frontend:/frontend
       - frontend_node_modules:/frontend/node_modules
