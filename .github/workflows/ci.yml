@@ -50,6 +50,8 @@ jobs:
         with:
           app-id: ${{ secrets.APP_ID }}
           private-key: ${{ secrets.APP_PRIVATE_KEY }}
+          owner: overmind-core
+          repositories: overmind_backend
 
       - name: Notify enterprise repo
         uses: peter-evans/repository-dispatch@v3
