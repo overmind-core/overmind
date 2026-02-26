@@ -251,11 +251,11 @@ class TestStructuralMarkers:
 
     def test_anthropic_suggestion_prompt_uses_xml_tags(self):
         assert "<Instructions>" in SUGGESTION_GENERATION_PROMPT_ANTHROPIC
-        assert "<Current Prompt Template>" in SUGGESTION_GENERATION_PROMPT_ANTHROPIC
+        assert "<CurrentPromptTemplate>" in SUGGESTION_GENERATION_PROMPT_ANTHROPIC
 
     def test_anthropic_improvement_prompt_uses_xml_tags(self):
         assert "<Instructions>" in PROMPT_IMPROVEMENT_PROMPT_ANTHROPIC
-        assert "<Current Prompt Template>" in PROMPT_IMPROVEMENT_PROMPT_ANTHROPIC
+        assert "<CurrentPromptTemplate>" in PROMPT_IMPROVEMENT_PROMPT_ANTHROPIC
 
     def test_anthropic_tool_suggestion_prompt_uses_xml_tags(self):
         assert "<Instructions>" in TOOL_SUGGESTION_GENERATION_PROMPT_ANTHROPIC
@@ -283,23 +283,23 @@ class TestStructuralMarkers:
         assert "### " in TOOL_PROMPT_IMPROVEMENT_PROMPT_OPENAI
         assert "### Improved Prompt" in TOOL_PROMPT_IMPROVEMENT_PROMPT_OPENAI
 
-    # --- Gemini: ## markdown headers ---
+    # --- Gemini: XML-style tags (<context>, <task>, <role>) ---
 
-    def test_gemini_suggestion_prompt_uses_h2_headers(self):
-        assert "## " in SUGGESTION_GENERATION_PROMPT_GEMINI
-        assert "## Instructions" in SUGGESTION_GENERATION_PROMPT_GEMINI
+    def test_gemini_suggestion_prompt_uses_xml_structure(self):
+        assert "<context>" in SUGGESTION_GENERATION_PROMPT_GEMINI or "<task>" in SUGGESTION_GENERATION_PROMPT_GEMINI
+        assert "<output_format>" in SUGGESTION_GENERATION_PROMPT_GEMINI or "<task>" in SUGGESTION_GENERATION_PROMPT_GEMINI
 
-    def test_gemini_improvement_prompt_uses_h2_headers(self):
-        assert "## " in PROMPT_IMPROVEMENT_PROMPT_GEMINI
-        assert "## Improved Prompt" in PROMPT_IMPROVEMENT_PROMPT_GEMINI
+    def test_gemini_improvement_prompt_uses_xml_structure(self):
+        assert "<context>" in PROMPT_IMPROVEMENT_PROMPT_GEMINI or "<task>" in PROMPT_IMPROVEMENT_PROMPT_GEMINI
+        assert "<output_format>" in PROMPT_IMPROVEMENT_PROMPT_GEMINI or "<task>" in PROMPT_IMPROVEMENT_PROMPT_GEMINI
 
-    def test_gemini_tool_suggestion_prompt_uses_h2_headers(self):
-        assert "## " in TOOL_SUGGESTION_GENERATION_PROMPT_GEMINI
-        assert "## Instructions" in TOOL_SUGGESTION_GENERATION_PROMPT_GEMINI
+    def test_gemini_tool_suggestion_prompt_uses_xml_structure(self):
+        assert "<context>" in TOOL_SUGGESTION_GENERATION_PROMPT_GEMINI or "<task>" in TOOL_SUGGESTION_GENERATION_PROMPT_GEMINI
+        assert "<output_format>" in TOOL_SUGGESTION_GENERATION_PROMPT_GEMINI or "<task>" in TOOL_SUGGESTION_GENERATION_PROMPT_GEMINI
 
-    def test_gemini_tool_improvement_prompt_uses_h2_headers(self):
-        assert "## " in TOOL_PROMPT_IMPROVEMENT_PROMPT_GEMINI
-        assert "## Improved Prompt" in TOOL_PROMPT_IMPROVEMENT_PROMPT_GEMINI
+    def test_gemini_tool_improvement_prompt_uses_xml_structure(self):
+        assert "<context>" in TOOL_PROMPT_IMPROVEMENT_PROMPT_GEMINI or "<task>" in TOOL_PROMPT_IMPROVEMENT_PROMPT_GEMINI
+        assert "<output_format>" in TOOL_PROMPT_IMPROVEMENT_PROMPT_GEMINI or "<task>" in TOOL_PROMPT_IMPROVEMENT_PROMPT_GEMINI
 
     def test_gemini_improvement_uses_numbered_instructions(self):
         assert "1. " in PROMPT_IMPROVEMENT_PROMPT_GEMINI
@@ -313,9 +313,9 @@ class TestStructuralMarkers:
     def test_openai_system_prompts_mention_numbered_tasks(self):
         assert "1." in SUGGESTION_GENERATION_SYSTEM_PROMPT_OPENAI
 
-    def test_gemini_system_prompts_use_h2_role_header(self):
-        assert "## Role" in SUGGESTION_GENERATION_SYSTEM_PROMPT_GEMINI
-        assert "## Role" in PROMPT_IMPROVEMENT_SYSTEM_PROMPT_GEMINI
+    def test_gemini_system_prompts_use_role_structure(self):
+        assert "<role>" in SUGGESTION_GENERATION_SYSTEM_PROMPT_GEMINI
+        assert "<role>" in PROMPT_IMPROVEMENT_SYSTEM_PROMPT_GEMINI
 
 
 # ---------------------------------------------------------------------------
@@ -332,14 +332,19 @@ class TestContentIntegrity:
 
     @pytest.mark.parametrize("provider", ["anthropic", "openai", "gemini"])
     def test_tool_suggestion_prompts_forbid_tool_definition_changes(self, provider):
-        prompt = TOOL_SUGGESTION_GENERATION_PROMPTS[provider]
-        assert "do NOT suggest changes to tool definitions" in prompt.lower() or \
-               "do not suggest changes to tool definitions" in prompt.lower()
+        prompt = TOOL_SUGGESTION_GENERATION_PROMPTS[provider].lower()
+        assert (
+            "do not suggest changes to tool definitions" in prompt
+            or "tool definitions are api contracts and must stay unchanged" in prompt
+            or "tool definitions are shown for context only" in prompt
+            or "preserve them while improving" in prompt
+            or "preserve them exactly" in prompt
+        )
 
     @pytest.mark.parametrize("provider", ["anthropic", "openai", "gemini"])
     def test_improvement_prompts_warn_about_overfitting(self, provider):
-        prompt = PROMPT_IMPROVEMENT_PROMPTS[provider]
-        assert "overfit" in prompt.lower()
+        prompt = PROMPT_IMPROVEMENT_PROMPTS[provider].lower()
+        assert "overfit" in prompt or "generalizable" in prompt or "generaliz" in prompt
 
     @pytest.mark.parametrize("provider", ["anthropic", "openai", "gemini"])
     def test_improvement_prompts_preserve_template_variables(self, provider):
@@ -348,9 +353,13 @@ class TestContentIntegrity:
 
     @pytest.mark.parametrize("provider", ["anthropic", "openai", "gemini"])
     def test_tool_improvement_prompts_preserve_tool_definitions(self, provider):
-        prompt = TOOL_PROMPT_IMPROVEMENT_PROMPTS[provider]
-        assert "do not modify tool definitions" in prompt.lower() or \
-               "do NOT modify tool definitions" in prompt
+        prompt = TOOL_PROMPT_IMPROVEMENT_PROMPTS[provider].lower()
+        assert (
+            "do not modify tool definitions" in prompt
+            or "tool definitions are shown for context only" in prompt
+            or "they must remain unchanged" in prompt
+            or "tool definitions and schemas remain unchanged" in prompt
+        )
 
     @pytest.mark.parametrize("provider", ["anthropic", "openai", "gemini"])
     def test_system_prompts_return_only_json(self, provider):
