@@ -21,7 +21,7 @@ Different model providers respond best to different prompt structures:
     explicit planning/validation steps, self-critique before output
 
 Use get_prompt_for_provider(prompt_dict, provider) to select the right
-variant at call time.  Falls back to "anthropic" if the provider is unknown.
+variant at call time. Falls back to "anthropic" if the provider is unknown.
 """
 
 
