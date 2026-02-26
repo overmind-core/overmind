@@ -1027,7 +1027,7 @@ async def _run_backtesting(
                     job.result = {"error": str(e)}
                     await session.commit()
         except Exception as job_exc:
-            logger.error(f"Failed to update job status to failed: {job_exc}")
+            logger.exception(f"Failed to update job status to failed: {job_exc}")
 
         raise
 
@@ -1313,7 +1313,7 @@ async def _check_and_create_backtesting_job(
             "scored_count": scored_count,
         }
     except Exception as e:
-        logger.error(f"Failed to create backtesting job: {e}")
+        logger.exception(f"Failed to create backtesting job: {e}")
         return None
 
 
@@ -1371,7 +1371,7 @@ async def _check_backtesting_candidates(
                         f"Failed to check/create backtesting job for "
                         f"{prompt.prompt_id}: {exc}"
                     )
-                    logger.error(msg)
+                    logger.exception(msg)
                     errors.append(msg)
 
             summary = {

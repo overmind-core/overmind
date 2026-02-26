@@ -198,7 +198,7 @@ def check_review_triggers_task(self) -> dict[str, Any]:
             )
             return stats
         except Exception as exc:
-            logger.error(f"Failed to check review triggers: {exc}")
+            logger.exception(f"Failed to check review triggers: {exc}")
             raise
         finally:
             await dispose_engine()
@@ -262,7 +262,7 @@ def mark_review_completed_task(
                     ),
                 }
         except Exception as exc:
-            logger.error(f"Failed to mark review as completed: {exc}")
+            logger.exception(f"Failed to mark review as completed: {exc}")
             raise
         finally:
             await dispose_engine()

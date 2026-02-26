@@ -303,7 +303,9 @@ def generate_criteria_task(prompt_id: str) -> dict[str, Any]:
             logger.info(f"Generated criteria for prompt {prompt_id}")
             return result
         except Exception as exc:
-            logger.error(f"Failed to generate criteria for prompt {prompt_id}: {exc}")
+            logger.exception(
+                f"Failed to generate criteria for prompt {prompt_id}: {exc}"
+            )
             raise
         finally:
             # CRITICAL: Dispose of the engine to close all connections
