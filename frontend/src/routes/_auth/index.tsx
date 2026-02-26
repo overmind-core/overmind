@@ -5,7 +5,6 @@ import { Bot, Loader2, RefreshCw } from "lucide-react";
 import { ResponseError } from "@/api";
 import apiClient from "@/client";
 import { AgentGrid } from "@/components/agent-grid";
-import { NoAgentsEmptyState } from "@/components/NoAgentsEmptyState";
 import { QuickstartEmbed } from "@/components/quickstart/quickstart-embed";
 import { Alert } from "@/components/ui/alert";
 import { DismissibleAlert } from "@/components/ui/dismissible-alert";
@@ -16,10 +15,6 @@ export const Route = createFileRoute("/_auth/")({
   component: HomePage,
 });
 
-
-function TracesPlaceholder() {
-  return <QuickstartEmbed />;
-}
 
 function AgentsSection() {
   const queryClient = useQueryClient();
@@ -108,7 +103,7 @@ function AgentsSection() {
       {extractMutation.isSuccess && (
         <Alert variant="success">Template extraction started — results will appear shortly.</Alert>
       )}
-      {agents.length === 0 ? <NoAgentsEmptyState /> : <AgentGrid agents={agents} />}
+      {agents.length === 0 ? <QuickstartEmbed /> : <AgentGrid agents={agents} />}
     </div>
   );
 }
