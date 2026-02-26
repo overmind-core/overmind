@@ -10,11 +10,12 @@ import logging
 from datetime import datetime, timedelta, timezone
 
 from celery import shared_task
-from sqlalchemy import and_, delete
+from sqlalchemy import and_, delete, select
 
 from overmind.api.v1.endpoints.jobs import JobStatus, JobType
 from overmind.db.session import dispose_engine, get_session_local
 from overmind.models.jobs import Job
+from overmind.models.suggestions import Suggestion
 
 logger = logging.getLogger(__name__)
 
@@ -58,12 +59,18 @@ async def _cleanup_old_jobs(
     try:
         AsyncSessionLocal = get_session_local()
         async with AsyncSessionLocal() as session:
+            jobs_with_suggestions = (
+                select(Suggestion.job_id)
+                .where(Suggestion.job_id.is_not(None))
+                .correlate(Job)
+            )
             delete_stmt = delete(Job).where(
                 and_(
                     Job.job_type.in_(types_to_clean),
                     Job.status.in_(TERMINAL_STATUSES),
                     Job.created_at < cutoff,
                     Job.triggered_by_user_id.is_(None),
+                    ~Job.job_id.in_(jobs_with_suggestions),
                 )
             )
             result = await session.execute(delete_stmt)
