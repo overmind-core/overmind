@@ -29,12 +29,18 @@ def upgrade() -> None:
         sa.Column("hashed_password", sa.String, nullable=False),
         sa.Column("is_active", sa.Boolean, default=True, nullable=False),
         sa.Column("is_verified", sa.Boolean, default=False, nullable=False),
-        sa.Column("sign_on_method", sa.String, nullable=False, server_default="password"),
-        sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.func.now()),
+        sa.Column(
+            "sign_on_method", sa.String, nullable=False, server_default="password"
+        ),
+        sa.Column(
+            "created_at", sa.DateTime(timezone=True), server_default=sa.func.now()
+        ),
         sa.Column("updated_at", sa.DateTime(timezone=True)),
         sa.Column("last_login", sa.DateTime(timezone=True), nullable=True),
         sa.Column("avatar_url", sa.String, nullable=True),
-        sa.Column("timezone", sa.String, default="UTC", nullable=False, server_default="UTC"),
+        sa.Column(
+            "timezone", sa.String, default="UTC", nullable=False, server_default="UTC"
+        ),
         sa.CheckConstraint(
             "sign_on_method IN ('password', 'SAML 2.0', 'oauth_google')",
             name="ck_user_sign_on_method",
@@ -51,7 +57,9 @@ def upgrade() -> None:
         sa.Column("organisation_id", UUID(as_uuid=True), nullable=True),
         sa.Column("is_active", sa.Boolean, default=True, nullable=False),
         sa.Column("settings", sa.JSON, nullable=True),
-        sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.func.now()),
+        sa.Column(
+            "created_at", sa.DateTime(timezone=True), server_default=sa.func.now()
+        ),
         sa.Column("updated_at", sa.DateTime(timezone=True)),
         sa.UniqueConstraint(
             "organisation_id",
@@ -67,9 +75,19 @@ def upgrade() -> None:
         sa.Column("token_id", UUID(as_uuid=True), primary_key=True, nullable=False),
         sa.Column("name", sa.String, nullable=False),
         sa.Column("description", sa.String, nullable=True),
-        sa.Column("user_id", UUID(as_uuid=True), sa.ForeignKey("users.user_id"), nullable=False),
+        sa.Column(
+            "user_id",
+            UUID(as_uuid=True),
+            sa.ForeignKey("users.user_id"),
+            nullable=False,
+        ),
         sa.Column("organisation_id", UUID(as_uuid=True), nullable=True),
-        sa.Column("project_id", UUID(as_uuid=True), sa.ForeignKey("projects.project_id"), nullable=False),
+        sa.Column(
+            "project_id",
+            UUID(as_uuid=True),
+            sa.ForeignKey("projects.project_id"),
+            nullable=False,
+        ),
         sa.Column("token_hash", sa.String, nullable=False, unique=True, index=True),
         sa.Column("prefix", sa.String, nullable=False),
         sa.Column("is_active", sa.Boolean, default=True, nullable=False),
@@ -77,7 +95,9 @@ def upgrade() -> None:
         sa.Column("last_used_at", sa.DateTime(timezone=True), nullable=True),
         sa.Column("allowed_ips", sa.JSON, nullable=True),
         sa.Column("rate_limit", sa.JSON, nullable=True),
-        sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.func.now()),
+        sa.Column(
+            "created_at", sa.DateTime(timezone=True), server_default=sa.func.now()
+        ),
         sa.Column("updated_at", sa.DateTime(timezone=True)),
         sa.UniqueConstraint(
             "user_id",
@@ -92,19 +112,47 @@ def upgrade() -> None:
     # --- user_projects (many-to-many) ---
     op.create_table(
         "user_projects",
-        sa.Column("user_id", UUID(as_uuid=True), sa.ForeignKey("users.user_id"), primary_key=True),
-        sa.Column("project_id", UUID(as_uuid=True), sa.ForeignKey("projects.project_id"), primary_key=True),
-        sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.func.now()),
+        sa.Column(
+            "user_id",
+            UUID(as_uuid=True),
+            sa.ForeignKey("users.user_id"),
+            primary_key=True,
+        ),
+        sa.Column(
+            "project_id",
+            UUID(as_uuid=True),
+            sa.ForeignKey("projects.project_id"),
+            primary_key=True,
+        ),
+        sa.Column(
+            "created_at", sa.DateTime(timezone=True), server_default=sa.func.now()
+        ),
         sa.Column("updated_at", sa.DateTime(timezone=True)),
     )
 
     # --- conversations ---
     op.create_table(
         "conversations",
-        sa.Column("conversation_id", UUID(as_uuid=True), primary_key=True, nullable=False),
-        sa.Column("project_id", UUID(as_uuid=True), sa.ForeignKey("projects.project_id"), nullable=False, index=True),
-        sa.Column("user_id", UUID(as_uuid=True), sa.ForeignKey("users.user_id"), nullable=False, index=True),
-        sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.func.now()),
+        sa.Column(
+            "conversation_id", UUID(as_uuid=True), primary_key=True, nullable=False
+        ),
+        sa.Column(
+            "project_id",
+            UUID(as_uuid=True),
+            sa.ForeignKey("projects.project_id"),
+            nullable=False,
+            index=True,
+        ),
+        sa.Column(
+            "user_id",
+            UUID(as_uuid=True),
+            sa.ForeignKey("users.user_id"),
+            nullable=False,
+            index=True,
+        ),
+        sa.Column(
+            "created_at", sa.DateTime(timezone=True), server_default=sa.func.now()
+        ),
     )
 
     # --- traces ---
@@ -123,10 +171,29 @@ def upgrade() -> None:
         sa.Column("output", JSONB, nullable=True),
         sa.Column("metadata_attributes", JSONB, nullable=False),
         sa.Column("feedback_score", JSONB, nullable=False),
-        sa.Column("conversation_id", UUID(as_uuid=True), sa.ForeignKey("conversations.conversation_id"), nullable=True),
-        sa.Column("project_id", UUID(as_uuid=True), sa.ForeignKey("projects.project_id"), nullable=False, index=True),
-        sa.Column("user_id", UUID(as_uuid=True), sa.ForeignKey("users.user_id"), nullable=False, index=True),
-        sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.func.now()),
+        sa.Column(
+            "conversation_id",
+            UUID(as_uuid=True),
+            sa.ForeignKey("conversations.conversation_id"),
+            nullable=True,
+        ),
+        sa.Column(
+            "project_id",
+            UUID(as_uuid=True),
+            sa.ForeignKey("projects.project_id"),
+            nullable=False,
+            index=True,
+        ),
+        sa.Column(
+            "user_id",
+            UUID(as_uuid=True),
+            sa.ForeignKey("users.user_id"),
+            nullable=False,
+            index=True,
+        ),
+        sa.Column(
+            "created_at", sa.DateTime(timezone=True), server_default=sa.func.now()
+        ),
     )
 
     # --- spans ---
@@ -143,8 +210,15 @@ def upgrade() -> None:
         sa.Column("status_code", sa.Integer, nullable=False),
         sa.Column("metadata_attributes", JSONB, nullable=False),
         sa.Column("feedback_score", JSONB, nullable=False),
-        sa.Column("trace_id", UUID(as_uuid=True), sa.ForeignKey("traces.trace_id"), nullable=False),
-        sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.func.now()),
+        sa.Column(
+            "trace_id",
+            UUID(as_uuid=True),
+            sa.ForeignKey("traces.trace_id"),
+            nullable=False,
+        ),
+        sa.Column(
+            "created_at", sa.DateTime(timezone=True), server_default=sa.func.now()
+        ),
         sa.Column("parent_span_id", sa.String(36), nullable=True),
         sa.Column("prompt_id", sa.String, nullable=True),
     )
@@ -156,27 +230,45 @@ def upgrade() -> None:
         sa.Column("hash", sa.String, nullable=False),
         sa.Column("prompt", sa.String, nullable=False),
         sa.Column("display_name", sa.String(255), nullable=True),
-        sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.func.now()),
+        sa.Column(
+            "created_at", sa.DateTime(timezone=True), server_default=sa.func.now()
+        ),
         sa.Column("updated_at", sa.DateTime(timezone=True)),
-        sa.Column("user_id", UUID(as_uuid=True), sa.ForeignKey("users.user_id"), nullable=False),
-        sa.Column("project_id", UUID(as_uuid=True), sa.ForeignKey("projects.project_id"), nullable=False),
+        sa.Column(
+            "user_id",
+            UUID(as_uuid=True),
+            sa.ForeignKey("users.user_id"),
+            nullable=False,
+        ),
+        sa.Column(
+            "project_id",
+            UUID(as_uuid=True),
+            sa.ForeignKey("projects.project_id"),
+            nullable=False,
+        ),
         sa.Column("version", sa.Integer, nullable=False, server_default="1"),
         sa.Column("evaluation_criteria", JSONB, nullable=True),
         sa.Column("improvement_metadata", JSONB, nullable=True),
         sa.Column("agent_description", JSONB, nullable=True),
         sa.Column("tags", JSONB, nullable=True),
-        sa.PrimaryKeyConstraint("slug", "project_id", "version", name="pk_prompt_id_project_version"),
+        sa.PrimaryKeyConstraint(
+            "slug", "project_id", "version", name="pk_prompt_id_project_version"
+        ),
     )
 
     # --- backtest_runs ---
     op.create_table(
         "backtest_runs",
-        sa.Column("backtest_run_id", UUID(as_uuid=True), primary_key=True, nullable=False),
+        sa.Column(
+            "backtest_run_id", UUID(as_uuid=True), primary_key=True, nullable=False
+        ),
         sa.Column("prompt_id", sa.String, nullable=False, index=True),
         sa.Column("models", JSONB, nullable=False),
         sa.Column("status", sa.String, nullable=False, server_default="pending"),
         sa.Column("celery_task_id", sa.String, nullable=True),
-        sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.func.now()),
+        sa.Column(
+            "created_at", sa.DateTime(timezone=True), server_default=sa.func.now()
+        ),
         sa.Column("completed_at", sa.DateTime(timezone=True), nullable=True),
     )
 
@@ -186,13 +278,28 @@ def upgrade() -> None:
         sa.Column("job_id", UUID(as_uuid=True), primary_key=True),
         sa.Column("job_type", sa.String, nullable=False, index=True),
         sa.Column("prompt_slug", sa.String, nullable=True, index=True),
-        sa.Column("project_id", UUID(as_uuid=True), sa.ForeignKey("projects.project_id"), nullable=False, index=True),
+        sa.Column(
+            "project_id",
+            UUID(as_uuid=True),
+            sa.ForeignKey("projects.project_id"),
+            nullable=False,
+            index=True,
+        ),
         sa.Column("status", sa.String, nullable=False, server_default="pending"),
         sa.Column("celery_task_id", sa.String, nullable=True),
         sa.Column("result", JSONB, nullable=True),
-        sa.Column("triggered_by_user_id", UUID(as_uuid=True), sa.ForeignKey("users.user_id"), nullable=True),
-        sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.func.now()),
-        sa.Column("updated_at", sa.DateTime(timezone=True), server_default=sa.func.now()),
+        sa.Column(
+            "triggered_by_user_id",
+            UUID(as_uuid=True),
+            sa.ForeignKey("users.user_id"),
+            nullable=True,
+        ),
+        sa.Column(
+            "created_at", sa.DateTime(timezone=True), server_default=sa.func.now()
+        ),
+        sa.Column(
+            "updated_at", sa.DateTime(timezone=True), server_default=sa.func.now()
+        ),
     )
 
     # --- suggestions ---
@@ -200,8 +307,20 @@ def upgrade() -> None:
         "suggestions",
         sa.Column("suggestion_id", UUID(as_uuid=True), primary_key=True),
         sa.Column("prompt_slug", sa.String, nullable=False, index=True),
-        sa.Column("project_id", UUID(as_uuid=True), sa.ForeignKey("projects.project_id"), nullable=False, index=True),
-        sa.Column("job_id", UUID(as_uuid=True), sa.ForeignKey("jobs.job_id"), nullable=True, index=True),
+        sa.Column(
+            "project_id",
+            UUID(as_uuid=True),
+            sa.ForeignKey("projects.project_id"),
+            nullable=False,
+            index=True,
+        ),
+        sa.Column(
+            "job_id",
+            UUID(as_uuid=True),
+            sa.ForeignKey("jobs.job_id"),
+            nullable=True,
+            index=True,
+        ),
         sa.Column("title", sa.String, nullable=False),
         sa.Column("description", sa.String, nullable=False),
         sa.Column("new_prompt_text", sa.String, nullable=True),
@@ -210,15 +329,28 @@ def upgrade() -> None:
         sa.Column("status", sa.String, nullable=False, server_default="pending"),
         sa.Column("vote", sa.Integer, nullable=False, server_default="0"),
         sa.Column("feedback", sa.String, nullable=True),
-        sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.func.now()),
+        sa.Column(
+            "created_at", sa.DateTime(timezone=True), server_default=sa.func.now()
+        ),
     )
 
     # --- user_onboarding ---
     op.create_table(
         "user_onboarding",
-        sa.Column("onboarding_id", UUID(as_uuid=True), primary_key=True, nullable=False),
-        sa.Column("user_id", UUID(as_uuid=True), sa.ForeignKey("users.user_id"), nullable=False, unique=True, index=True),
-        sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.func.now()),
+        sa.Column(
+            "onboarding_id", UUID(as_uuid=True), primary_key=True, nullable=False
+        ),
+        sa.Column(
+            "user_id",
+            UUID(as_uuid=True),
+            sa.ForeignKey("users.user_id"),
+            nullable=False,
+            unique=True,
+            index=True,
+        ),
+        sa.Column(
+            "created_at", sa.DateTime(timezone=True), server_default=sa.func.now()
+        ),
         sa.Column("step", sa.String, nullable=False),
         sa.Column("status", sa.String, nullable=False),
         sa.Column("priorities", ARRAY(sa.String), nullable=True),

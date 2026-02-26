@@ -37,8 +37,8 @@ test:
 	docker compose run --rm api sh -c "uv pip install --system --no-cache pytest pytest-asyncio pytest-cov python-dotenv && python -m pytest $(test_args)"
 
 lint:
-	poetry run ruff check --fix overmind/ tests/
-	poetry run ruff format overmind/ tests/
+	poetry run ruff check --fix
+	poetry run ruff format
 
 psql:
 	docker compose exec postgres psql -U overmind -d overmind_core
