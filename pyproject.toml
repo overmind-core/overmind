@@ -45,6 +45,7 @@ valkey = "^6.1.1"
 redis = "^7.1.1"
 async-lru = "^2.1.0"
 boto3 = {version = "^1.40.10", optional = true}
+greenlet = "^3.3.2"
 
 [tool.poetry.extras]
 aws = ["boto3"]
