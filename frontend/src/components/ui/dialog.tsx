@@ -36,34 +36,11 @@ function DialogOverlay({
   );
 }
 
-function isInsidePortaledOverlay(target: EventTarget | null): boolean {
-  if (!(target instanceof HTMLElement)) return false;
-  return !!target.closest("[data-slot='select-content']");
-}
-
 function DialogContent({
   className,
   children,
-  onPointerDownOutside,
-  onInteractOutside,
   ...props
 }: React.ComponentProps<typeof DialogPrimitive.Content>) {
-  const handlePointerDownOutside: typeof onPointerDownOutside = (e) => {
-    if (isInsidePortaledOverlay(e.target)) {
-      e.preventDefault();
-      return;
-    }
-    onPointerDownOutside?.(e);
-  };
-
-  const handleInteractOutside: typeof onInteractOutside = (e) => {
-    if (isInsidePortaledOverlay(e.target)) {
-      e.preventDefault();
-      return;
-    }
-    onInteractOutside?.(e);
-  };
-
   return (
     <DialogPortal>
       <DialogOverlay />
@@ -73,8 +50,6 @@ function DialogContent({
           className
         )}
         data-slot="dialog-content"
-        onInteractOutside={handleInteractOutside}
-        onPointerDownOutside={handlePointerDownOutside}
         {...props}
       >
         {children}
