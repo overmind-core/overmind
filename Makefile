@@ -48,3 +48,10 @@ shell:
 
 clean:
 	docker compose down -v
+
+build-frontend:
+	cd frontend && bun install
+	cd frontend && bun run build
+
+deploy-frontend: build-frontend
+	cd frontend && bun run wrangler pages deploy dist
