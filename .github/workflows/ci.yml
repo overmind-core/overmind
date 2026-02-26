@@ -57,4 +57,4 @@ jobs:
           token: ${{ steps.app-token.outputs.token }}
           repository: overmind-core/overmind_backend
           event-type: core-updated
-          client-payload: '{"sha": "${{ github.sha }}", "ref": "${{ github.ref }}", "message": "${{ github.event.head_commit.message }}"}'
+          client-payload: '{"sha": "${{ github.sha }}", "ref": "${{ github.ref }}", "message": ${{ toJSON(github.event.head_commit.message) }}}'
