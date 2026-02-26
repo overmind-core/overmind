@@ -39,6 +39,8 @@ class User(Base):
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
     last_login = Column(DateTime(timezone=True), nullable=True)
 
+    clerk_user_id = Column(String, unique=True, index=True, nullable=True)
+
     avatar_url = Column(String, nullable=True)
     timezone = Column(String, default="UTC", nullable=False)
 

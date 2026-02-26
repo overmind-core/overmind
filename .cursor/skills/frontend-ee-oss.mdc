@@ -1,0 +1,7 @@
+---
+globs: frontend/**/*.ts,frontend/**/*.tsx
+alwaysApply: false
+---
+the frontend has a oss version and an ee verion
+depending on the `config.isSelfHosted` we may want to render different UI for both users,
+mostly Auth, and Organization UI are different everything else is common
