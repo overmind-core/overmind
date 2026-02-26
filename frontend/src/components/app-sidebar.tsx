@@ -84,13 +84,10 @@ export function AppSidebar() {
       </SidebarContent>
 
       <SidebarFooter>
-        {config.isSelfHosted ? <OSSUserButton /> : <EEUserButton />}
-        <SidebarMenu>
-          {isSignedIn ? (
-            <SidebarMenu>
-              <EEUserButton />
-            </SidebarMenu>
-          ) : (
+        {isSignedIn ? (
+          <SidebarMenu>{config.isSelfHosted ? <OSSUserButton /> : <EEUserButton />}</SidebarMenu>
+        ) : (
+          <SidebarMenu>
             <SidebarMenuItem>
               <SidebarMenuButton asChild tooltip="Sign in">
                 <Link to="/login">
@@ -99,8 +96,8 @@ export function AppSidebar() {
                 </Link>
               </SidebarMenuButton>
             </SidebarMenuItem>
-          )}
-        </SidebarMenu>
+          </SidebarMenu>
+        )}
       </SidebarFooter>
     </Sidebar>
   );
@@ -191,34 +188,26 @@ const EEUserButton = () => {
 
 const EEClerkUserButton = () => {
   const { isSignedIn, isLoaded } = useUser();
+  if (!isLoaded || !isSignedIn) return null;
   return (
     <SidebarMenuItem>
-      {isLoaded && isSignedIn ? (
-        <div
-          className="peer/menu-button flex h-8 w-full items-center gap-2 overflow-hidden rounded-md p-2 text-left text-sm outline-none ring-sidebar-ring transition-[width,height,padding] hover:bg-sidebar-accent hover:text-sidebar-accent-foreground group-data-[collapsible=icon]:!size-8 group-data-[collapsible=icon]:!p-0 group-data-[collapsible=icon]:justify-center"
-          data-sidebar="menu-button"
-        >
-          <UserButton
-            appearance={{
-              elements: {
-                avatarBox: "size-5 shrink-0",
-                userButtonBox: "flex items-center gap-2 w-full overflow-hidden flex-row-reverse",
-                userButtonOuterIdentifier:
-                  "truncate text-sm text-sidebar-foreground group-data-[collapsible=icon]:hidden",
-                userButtonTrigger: "focus:shadow-none w-full flex items-center gap-2 px-0",
-              },
-            }}
-            showName
-          />
-        </div>
-      ) : (
-        <SidebarMenuButton asChild tooltip="Sign in">
-          <Link to="/login">
-            <LogIn className="size-4" />
-            <span style={{ fontFamily: "var(--font-sidebar)" }}>Sign in</span>
-          </Link>
-        </SidebarMenuButton>
-      )}
+      <div
+        className="peer/menu-button flex h-8 w-full items-center gap-2 overflow-hidden rounded-md p-2 text-left text-sm outline-none ring-sidebar-ring transition-[width,height,padding] hover:bg-sidebar-accent hover:text-sidebar-accent-foreground group-data-[collapsible=icon]:!size-8 group-data-[collapsible=icon]:!p-0 group-data-[collapsible=icon]:justify-center"
+        data-sidebar="menu-button"
+      >
+        <UserButton
+          appearance={{
+            elements: {
+              avatarBox: "size-5 shrink-0",
+              userButtonBox: "flex items-center gap-2 w-full overflow-hidden flex-row-reverse",
+              userButtonOuterIdentifier:
+                "truncate text-sm text-sidebar-foreground group-data-[collapsible=icon]:hidden",
+              userButtonTrigger: "focus:shadow-none w-full flex items-center gap-2 px-0",
+            },
+          }}
+          showName
+        />
+      </div>
     </SidebarMenuItem>
   );
 };
