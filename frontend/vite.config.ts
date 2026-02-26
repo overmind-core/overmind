@@ -4,7 +4,8 @@ import { tanstackRouter } from "@tanstack/router-plugin/vite";
 import viteReact from "@vitejs/plugin-react";
 import { defineConfig } from "vite";
 import viteTsConfigPaths from "vite-tsconfig-paths";
-import { config as appConfig } from "./src/config";
+
+const isSelfHosted = process.env.VITE_SELF_HOSTED === "true";
 
 const config = defineConfig({
   plugins: [
@@ -27,14 +28,16 @@ const config = defineConfig({
       "@": fileURLToPath(new URL("./src", import.meta.url)),
     },
   },
-  server: appConfig.isSelfHosted ? undefined : {
-    proxy: {
-      "/api": {
-        target: "http://api:8000",
-        changeOrigin: true,
+  server: !isSelfHosted
+    ? undefined
+    : {
+        proxy: {
+          "/api": {
+            target: "http://api:8000",
+            changeOrigin: true,
+          },
+        },
       },
-    },
-  },
 });
 
 export default config;
