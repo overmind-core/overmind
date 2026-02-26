@@ -50,7 +50,7 @@ async def test_engine():
             "SELECT datname FROM pg_database WHERE datname = $1", TEST_DB_NAME
         )
         if not dbs:
-            await conn.execute(f'CREATE DATABASE "{TEST_DB_NAME}"')
+            await conn.execute(f'CREATE DATABASE "{TEST_DB_NAME}" TEMPLATE template0')
         await conn.close()
         _db_created = True
     engine = create_async_engine(TEST_DB_URL, pool_pre_ping=True, echo=False)
