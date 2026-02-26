@@ -5,6 +5,7 @@ import { Loader2 } from "lucide-react";
 
 import apiClient from "@/client";
 import { Button } from "@/components/ui/button";
+import { config } from "@/config";
 import { useProjectsList } from "@/hooks/use-projects";
 import { cn } from "@/lib/utils";
 
@@ -70,20 +71,23 @@ export function APIKeySection({
         },
       });
 
-      const rolesRes = await apiClient.roles.listCoreRolesApiV1IamRolesGet({
-        scope: "project",
-      });
-      const adminRole = rolesRes.roles?.find((r) => r.name === "project_admin");
-      if (!adminRole) throw new Error("Admin role not found");
-      await apiClient.tokenRoles.assignTokenRoleApiV1IamTokensTokenIdRolesPost({
-        assignTokenRoleRequest: {
-          expiresAt: new Date(Date.now() + 1000 * 60 * 60 * 24 * 300),
-          roleId: adminRole.roleId,
-          scopeId: currentProject.projectId,
-          scopeType: "project",
-        },
-        tokenId: tokenResponse.tokenId,
-      });
+      if (!config.isSelfHosted) {
+        const rolesRes = await apiClient.roles.listCoreRolesApiV1IamRolesGet({
+          scope: "project",
+        });
+        const adminRole = rolesRes.roles?.find((r) => r.name === "project_admin");
+        if (!adminRole) throw new Error("Admin role not found");
+        await apiClient.tokenRoles.assignTokenRoleApiV1IamTokensTokenIdRolesPost({
+          assignTokenRoleRequest: {
+            expiresAt: new Date(Date.now() + 1000 * 60 * 60 * 24 * 300),
+            roleId: adminRole.roleId,
+            scopeId: currentProject.projectId,
+            scopeType: "project",
+          },
+          tokenId: tokenResponse.tokenId,
+        });
+      }
+
       localStorage.setItem(`telemetry_api_key_${currentProject.projectId}`, tokenResponse.token);
       return tokenResponse;
     },

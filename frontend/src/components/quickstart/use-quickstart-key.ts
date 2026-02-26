@@ -3,6 +3,7 @@ import { useEffect, useMemo } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import apiClient from "@/client";
+import { config } from "@/config";
 import { useProjectsList } from "@/hooks/use-projects";
 
 const STORAGE_PREFIX = "telemetry_api_key_";
@@ -47,21 +48,23 @@ export function useQuickstartKey(projectId?: string) {
         },
       });
 
-      const rolesRes = await apiClient.roles.listCoreRolesApiV1IamRolesGet({
-        scope: "project",
-      });
-      const adminRole = rolesRes.roles?.find((r) => r.name === "project_admin");
-      if (!adminRole) throw new Error("Admin role not found");
+      if (!config.isSelfHosted) {
+        const rolesRes = await apiClient.roles.listCoreRolesApiV1IamRolesGet({
+          scope: "project",
+        });
+        const adminRole = rolesRes.roles?.find((r) => r.name === "project_admin");
+        if (!adminRole) throw new Error("Admin role not found");
 
-      await apiClient.tokenRoles.assignTokenRoleApiV1IamTokensTokenIdRolesPost({
-        assignTokenRoleRequest: {
-          expiresAt: new Date(Date.now() + 1000 * 60 * 60 * 24 * 300),
-          roleId: adminRole.roleId,
-          scopeId: currentProject.projectId,
-          scopeType: "project",
-        },
-        tokenId: tokenResponse.tokenId,
-      });
+        await apiClient.tokenRoles.assignTokenRoleApiV1IamTokensTokenIdRolesPost({
+          assignTokenRoleRequest: {
+            expiresAt: new Date(Date.now() + 1000 * 60 * 60 * 24 * 300),
+            roleId: adminRole.roleId,
+            scopeId: currentProject.projectId,
+            scopeType: "project",
+          },
+          tokenId: tokenResponse.tokenId,
+        });
+      }
 
       localStorage.setItem(`${STORAGE_PREFIX}${currentProject.projectId}`, tokenResponse.token);
 
