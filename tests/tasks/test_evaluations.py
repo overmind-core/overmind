@@ -5,17 +5,24 @@ import json
 from unittest.mock import MagicMock
 
 
-def test_evaluate_correctness_returns_score(monkeypatch):
+@pytest.mark.parametrize(
+    "llm_response,expect_score",
+    [
+        (json.dumps({"correctness": 0.85}), True),
+        (json.dumps({"correctness": 0.0}), True),
+        (json.dumps({"correctness": 1.0}), True),
+    ],
+    ids=["mid-score", "zero-score", "perfect-score"],
+)
+def test_evaluate_correctness_returns_score(monkeypatch, llm_response, expect_score):
     """The core LLM judge call should parse a correctness score from the response."""
     from overmind.tasks.evaluations import _evaluate_correctness_with_llm
-
-    fake_response = json.dumps({"correctness": 0.85})
 
     monkeypatch.setattr("overmind.config.settings.openai_api_key", "sk-test")
 
     mock_call = MagicMock(
         return_value=(
-            fake_response,
+            llm_response,
             {
                 "prompt_tokens": 100,
                 "completion_tokens": 50,

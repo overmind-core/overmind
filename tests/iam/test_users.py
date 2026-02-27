@@ -3,7 +3,6 @@
 import pytest
 
 
-@pytest.mark.asyncio
 async def test_login_success(seed_user, test_client):
     resp = await test_client.post(
         "/api/v1/iam/users/login",
@@ -16,7 +15,6 @@ async def test_login_success(seed_user, test_client):
     assert data["user"]["email"] == "admin"
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "email,password",
     [
@@ -34,7 +32,6 @@ async def test_login_failure(seed_user, test_client, email, password):
     assert resp.status_code == 401
 
 
-@pytest.mark.asyncio
 async def test_get_me(seed_user, test_client, auth_headers):
     resp = await test_client.get("/api/v1/iam/users/me", headers=auth_headers)
     assert resp.status_code == 200
@@ -43,7 +40,6 @@ async def test_get_me(seed_user, test_client, auth_headers):
     assert data["full_name"] == "Admin"
 
 
-@pytest.mark.asyncio
 async def test_change_password(seed_user, test_client, auth_headers):
     resp = await test_client.put(
         "/api/v1/iam/users/me/password",
@@ -52,14 +48,12 @@ async def test_change_password(seed_user, test_client, auth_headers):
     )
     assert resp.status_code == 200
 
-    # Old password no longer works
     resp = await test_client.post(
         "/api/v1/iam/users/login",
         json={"email": "admin", "password": "admin"},
     )
     assert resp.status_code == 401
 
-    # New password works
     resp = await test_client.post(
         "/api/v1/iam/users/login",
         json={"email": "admin", "password": "newsecure123"},
@@ -67,7 +61,6 @@ async def test_change_password(seed_user, test_client, auth_headers):
     assert resp.status_code == 200
 
 
-@pytest.mark.asyncio
 async def test_change_password_wrong_current(seed_user, test_client, auth_headers):
     resp = await test_client.put(
         "/api/v1/iam/users/me/password",

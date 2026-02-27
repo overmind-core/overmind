@@ -1,9 +1,9 @@
 """IAM project CRUD endpoint tests."""
 
 import pytest
+from uuid import uuid4
 
 
-@pytest.mark.asyncio
 async def test_create_project(seed_user, test_client, auth_headers):
     resp = await test_client.post(
         "/api/v1/iam/projects/",
@@ -16,7 +16,6 @@ async def test_create_project(seed_user, test_client, auth_headers):
     assert data["project_id"]
 
 
-@pytest.mark.asyncio
 async def test_list_projects(seed_user, test_client, auth_headers):
     resp = await test_client.get("/api/v1/iam/projects/", headers=auth_headers)
     assert resp.status_code == 200
@@ -26,9 +25,8 @@ async def test_list_projects(seed_user, test_client, auth_headers):
     assert "Default Project" in slugs
 
 
-@pytest.mark.asyncio
 async def test_get_project(seed_user, test_client, auth_headers):
-    user, project, _ = seed_user
+    project = seed_user.project
     resp = await test_client.get(
         f"/api/v1/iam/projects/{project.project_id}", headers=auth_headers
     )
@@ -36,9 +34,8 @@ async def test_get_project(seed_user, test_client, auth_headers):
     assert resp.json()["name"] == "Default Project"
 
 
-@pytest.mark.asyncio
 async def test_update_project(seed_user, test_client, auth_headers):
-    user, project, _ = seed_user
+    project = seed_user.project
     resp = await test_client.put(
         f"/api/v1/iam/projects/{project.project_id}",
         headers=auth_headers,
@@ -48,23 +45,19 @@ async def test_update_project(seed_user, test_client, auth_headers):
     assert resp.json()["name"] == "Renamed Project"
 
 
-@pytest.mark.asyncio
 async def test_delete_project(seed_user, test_client, auth_headers):
-    # Delete the seeded default project (user is already associated)
-    user, project, _ = seed_user
+    project = seed_user.project
     resp = await test_client.delete(
         f"/api/v1/iam/projects/{project.project_id}", headers=auth_headers
     )
     assert resp.status_code == 200
 
-    # Confirm it's gone
     resp = await test_client.get(
         f"/api/v1/iam/projects/{project.project_id}", headers=auth_headers
     )
     assert resp.status_code == 404
 
 
-@pytest.mark.asyncio
 async def test_create_duplicate_project_returns_409(
     seed_user, test_client, auth_headers
 ):
@@ -79,3 +72,26 @@ async def test_create_duplicate_project_returns_409(
         json={"name": "UniqueProject"},
     )
     assert resp.status_code == 409
+
+
+async def test_get_nonexistent_project(seed_user, test_client, auth_headers):
+    resp = await test_client.get(
+        f"/api/v1/iam/projects/{uuid4()}", headers=auth_headers
+    )
+    assert resp.status_code == 404
+
+
+@pytest.mark.parametrize(
+    "payload,expected_status",
+    [
+        ({}, 422),
+    ],
+    ids=["empty-body"],
+)
+async def test_create_project_validation(
+    seed_user, test_client, auth_headers, payload, expected_status
+):
+    resp = await test_client.post(
+        "/api/v1/iam/projects/", headers=auth_headers, json=payload
+    )
+    assert resp.status_code == expected_status

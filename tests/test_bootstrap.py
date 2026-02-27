@@ -1,10 +1,8 @@
 """Tests for the first-run bootstrap logic."""
 
-import pytest
 from sqlalchemy import select
 
 
-@pytest.mark.asyncio
 async def test_bootstrap_creates_user_project_token(db_session):
     """ensure_default_user creates admin + project + token on empty DB."""
     from overmind.bootstrap import ensure_default_user
@@ -27,7 +25,6 @@ async def test_bootstrap_creates_user_project_token(db_session):
     assert tokens[0].is_active is True
 
 
-@pytest.mark.asyncio
 async def test_bootstrap_is_idempotent(db_session):
     """Calling ensure_default_user twice should not create duplicates."""
     from overmind.bootstrap import ensure_default_user
@@ -40,7 +37,6 @@ async def test_bootstrap_is_idempotent(db_session):
     assert count == 1
 
 
-@pytest.mark.asyncio
 async def test_default_user_can_login(seed_user, test_client):
     """The bootstrapped admin user can log in with default credentials."""
     resp = await test_client.post(

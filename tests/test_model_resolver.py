@@ -16,16 +16,24 @@ def _clear_api_keys(monkeypatch):
     monkeypatch.setattr("overmind.config.settings.gemini_api_key", "")
 
 
-def test_resolve_openai_only(monkeypatch):
-    monkeypatch.setattr("overmind.config.settings.openai_api_key", "sk-test")
-    model = resolve_model(TaskType.JUDGE_SCORING)
-    assert model == "gpt-5-mini"
-
-
-def test_resolve_anthropic_only(monkeypatch):
-    monkeypatch.setattr("overmind.config.settings.anthropic_api_key", "sk-ant-test")
-    model = resolve_model(TaskType.PROMPT_TUNING)
-    assert model == "claude-sonnet-4-6"
+@pytest.mark.parametrize(
+    "key_attr,key_value,task_type,expected_model",
+    [
+        ("openai_api_key", "sk-test", TaskType.JUDGE_SCORING, "gpt-5-mini"),
+        (
+            "anthropic_api_key",
+            "sk-ant-test",
+            TaskType.PROMPT_TUNING,
+            "claude-sonnet-4-6",
+        ),
+    ],
+    ids=["openai-only", "anthropic-only"],
+)
+def test_resolve_single_provider(
+    monkeypatch, key_attr, key_value, task_type, expected_model
+):
+    monkeypatch.setattr(f"overmind.config.settings.{key_attr}", key_value)
+    assert resolve_model(task_type) == expected_model
 
 
 def test_resolve_priority_order_all_keys(monkeypatch):

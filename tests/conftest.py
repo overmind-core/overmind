@@ -8,6 +8,7 @@ create/drop, mocked Valkey (in-memory dict), and mocked LLM calls.
 import os
 import hashlib
 import time
+from dataclasses import dataclass
 from datetime import datetime
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock
@@ -222,9 +223,16 @@ async def test_client(db_session):
 # ---------------------------------------------------------------------------
 
 
+@dataclass
+class SeedData:
+    user: Any
+    project: Any
+    token: str
+
+
 @pytest_asyncio.fixture(scope="function")
-async def seed_user(db_session):
-    """Bootstrap the default admin + project + token. Returns (user, project, plain_token)."""
+async def seed_user(db_session) -> SeedData:
+    """Bootstrap the default admin + project + token."""
     from overmind.models.iam.users import User
     from overmind.models.iam.projects import Project
     from overmind.models.iam.tokens import Token
@@ -268,7 +276,7 @@ async def seed_user(db_session):
     db_session.add(token)
     await db_session.commit()
 
-    return user, project, full_token
+    return SeedData(user=user, project=project, token=full_token)
 
 
 @pytest_asyncio.fixture(scope="function")
@@ -286,8 +294,7 @@ async def auth_headers(seed_user, test_client):
 @pytest_asyncio.fixture(scope="function")
 async def api_token_headers(seed_user):
     """API token auth headers for the seeded token."""
-    _, _, full_token = seed_user
-    return {"X-API-Token": full_token}
+    return {"X-API-Token": seed_user.token}
 
 
 # ---------------------------------------------------------------------------
