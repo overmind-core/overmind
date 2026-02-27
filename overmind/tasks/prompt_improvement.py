@@ -1878,10 +1878,8 @@ async def _execute_prompt_improvement(
                 logger.info(
                     f"Updated job entry to failed for prompt_tuning: {prompt_id}"
                 )
-            except Exception as commit_error:
-                logger.exception(
-                    f"Failed to update job status to failed: {commit_error}"
-                )
+            except Exception:
+                logger.exception("Failed to update job status to failed")
         raise
 
 
