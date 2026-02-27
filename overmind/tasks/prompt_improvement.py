@@ -1878,8 +1878,8 @@ async def _execute_prompt_improvement(
                 logger.info(
                     f"Updated job entry to failed for prompt_tuning: {prompt_id}"
                 )
-            except Exception as commit_error:
-                logger.error(f"Failed to update job status to failed: {commit_error}")
+            except Exception:
+                logger.exception("Failed to update job status to failed")
         raise
 
 
@@ -1936,9 +1936,11 @@ async def _improve_prompt_templates(
                     )
                     if result:
                         job_results.append(result)
-                except Exception as exc:
-                    error_msg = f"Failed to check/create job for prompt {prompt.prompt_id}: {str(exc)}"
-                    logger.error(error_msg)
+                except Exception:
+                    error_msg = (
+                        f"Failed to check/create job for prompt {prompt.prompt_id}"
+                    )
+                    logger.exception(error_msg)
                     errors.append(error_msg)
 
             summary = {

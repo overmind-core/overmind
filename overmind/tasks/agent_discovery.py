@@ -721,9 +721,9 @@ async def _discover_agents(
                                 logger.info(
                                     f"Updated job entry to failed for project {project.project_id}"
                                 )
-                            except Exception as commit_error:
-                                logger.error(
-                                    f"Failed to update job status to failed: {commit_error}"
+                            except Exception:
+                                logger.exception(
+                                    "Failed to update job status to failed"
                                 )
 
                 logger.info(f"Completed agent discovery: {overall_stats}")

@@ -92,11 +92,12 @@ async def _cleanup_stale_running_jobs(session) -> int:
                 cleaned += 1
             # PENDING / STARTED / RETRY → leave as running
         except Exception as exc:
-            logger.debug(
+            logger.warning(
                 "Could not check celery state for job %s (task %s): %s",
                 job.job_id,
                 job.celery_task_id,
                 exc,
+                exc_info=True,
             )
 
     if cleaned:
