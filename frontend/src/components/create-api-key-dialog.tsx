@@ -4,6 +4,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Check, Loader2 } from "lucide-react";
 
 import apiClient from "@/client";
+import { config } from "@/config";
 import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import {
@@ -60,7 +61,7 @@ export function CreateApiKeyDialog({
   const [copied, setCopied] = useState(false);
 
   const { data: rolesData, isLoading: rolesLoading } = useQuery({
-    enabled: open,
+    enabled: open && !config.isSelfHosted,
     queryFn: () => apiClient.roles.listCoreRolesApiV1IamRolesGet({ scope: "project" }),
     queryKey: ["roles", "project"],
   });
@@ -84,7 +85,7 @@ export function CreateApiKeyDialog({
         },
       });
 
-      if (selectedRoleId) {
+      if (!config.isSelfHosted && selectedRoleId) {
         const days = parseInt(expiryDays, 10);
         await apiClient.tokenRoles.assignTokenRoleApiV1IamTokensTokenIdRolesPost({
           assignTokenRoleRequest: {
@@ -171,40 +172,44 @@ export function CreateApiKeyDialog({
                 value={keyDescription}
               />
             </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="key-role">Role</Label>
-              {rolesLoading ? (
-                <Skeleton className="h-9 w-full" />
-              ) : (
-                <Select onValueChange={setSelectedRoleId} value={selectedRoleId}>
-                  <SelectTrigger id="key-role">
-                    <SelectValue placeholder="Select a role" />
+            {!config.isSelfHosted && (
+              <div className="space-y-1.5">
+                <Label htmlFor="key-role">Role</Label>
+                {rolesLoading ? (
+                  <Skeleton className="h-9 w-full" />
+                ) : (
+                  <Select onValueChange={setSelectedRoleId} value={selectedRoleId}>
+                    <SelectTrigger id="key-role">
+                      <SelectValue placeholder="Select a role" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {rolesData?.roles?.map((role) => (
+                        <SelectItem key={role.roleId} value={role.roleId}>
+                          {role.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                )}
+              </div>
+            )}
+            {!config.isSelfHosted && (
+              <div className="space-y-1.5">
+                <Label htmlFor="key-expiry">Expires after</Label>
+                <Select onValueChange={setExpiryDays} value={expiryDays}>
+                  <SelectTrigger id="key-expiry">
+                    <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    {rolesData?.roles?.map((role) => (
-                      <SelectItem key={role.roleId} value={role.roleId}>
-                        {role.name}
+                    {EXPIRY_OPTIONS.map((opt) => (
+                      <SelectItem key={opt.days} value={String(opt.days)}>
+                        {opt.label}
                       </SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
-              )}
-            </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="key-expiry">Expires after</Label>
-              <Select onValueChange={setExpiryDays} value={expiryDays}>
-                <SelectTrigger id="key-expiry">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {EXPIRY_OPTIONS.map((opt) => (
-                    <SelectItem key={opt.days} value={String(opt.days)}>
-                      {opt.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
+              </div>
+            )}
             {createError && <Alert variant="destructive">{createError}</Alert>}
           </div>
         )}
@@ -217,7 +222,7 @@ export function CreateApiKeyDialog({
               <Button onClick={handleClose} variant="outline">
                 Cancel
               </Button>
-              <Button disabled={createPending || rolesLoading} onClick={handleCreate}>
+              <Button disabled={createPending || (!config.isSelfHosted && rolesLoading)} onClick={handleCreate}>
                 {createPending && <Loader2 className="mr-2 size-4 animate-spin" />}
                 Create
               </Button>
