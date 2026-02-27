@@ -410,6 +410,7 @@ TOOL_PROMPT_IMPROVEMENT_PROMPT_ANTHROPIC = """Improve the following prompt templ
 - If tool selection is a problem, add clearer guidance about when to use each tool
 - If answer synthesis is a problem, add instructions about how to present tool results faithfully
 - Keep the prompt generalizable — do not overfit to specific examples
+- Structure the improved prompt for prompt caching: all static content (role, instructions, constraints, tool definitions, examples) must come FIRST; all dynamic template variables must come LAST
 </Instructions>
 
 <scope_constraints>
@@ -437,6 +438,7 @@ Before returning the improved prompt, verify that:
 - All template variables from the original prompt are preserved
 - Tool definitions and schemas remain unchanged
 - The improvements address the provided suggestions without adding unsolicited changes
+- Dynamic template variables appear at the end of the prompt (after all static content)
 </verification>
 
 Respond with ONLY the improved prompt text, with no additional commentary."""
@@ -582,7 +584,11 @@ Implement EXACTLY and ONLY the improvements supported by the suggestions and exa
 Do not add unsolicited features, sections, or instructions beyond what the suggestions call for.
 If a suggestion is ambiguous, choose the simplest valid interpretation.
 Preserve the original prompt's tone, structure, and template variables unless a suggestion explicitly requires changing them.
-</scope_constraints>"""
+</scope_constraints>
+
+<prompt_caching>
+Structure the improved prompt to maximise prompt-cache hits: place all static content (role description, task instructions, constraints, tool definitions, few-shot examples) at the TOP of the prompt; place all dynamic template variables (e.g., {{user_input}}, {{query}}, {{context}}) at the BOTTOM. This ensures the large, unchanging prefix is reused across repeated calls.
+</prompt_caching>"""
 
 PROMPT_IMPROVEMENT_PROMPT_ANTHROPIC = """Improve the following prompt template based on the provided context, suggestions, and example spans.
 
@@ -617,6 +623,7 @@ PROMPT_IMPROVEMENT_PROMPT_ANTHROPIC = """Improve the following prompt template b
 - If the current prompt has template variables (e.g., {{variable_name}}), preserve them exactly
 - If the prompt includes tool definitions or tool schemas, preserve them exactly as they are
 - If improving instructions around tool usage, be specific about when and how to use each tool
+- Structure the improved prompt for prompt caching: all static content (role, instructions, constraints, tool definitions, examples) must come FIRST; all dynamic template variables must come LAST
 </Instructions>
 
 <scope_constraints>
@@ -636,6 +643,7 @@ Before returning the improved prompt, verify that:
 - All template variables from the original prompt are preserved
 - Tool definitions and schemas remain unchanged
 - The improvements address the provided suggestions without adding unsolicited changes
+- Dynamic template variables appear at the end of the prompt (after all static content)
 </verification>
 
 Respond with ONLY the improved prompt text, with no additional commentary."""
@@ -776,7 +784,11 @@ Your task:
 - Do not add unsolicited features, sections, or instructions beyond what the suggestions call for.
 - If a suggestion is ambiguous, choose the simplest valid interpretation.
 - Preserve the original prompt's tone, structure, and template variables unless a suggestion explicitly requires changing them.
-</scope_constraints>"""
+</scope_constraints>
+
+<prompt_caching>
+Structure the improved prompt to maximise prompt-cache hits: place all static content (role description, task instructions, constraints, tool definitions, few-shot examples) at the TOP; place all dynamic template variables (e.g., {user_input}, {query}, {context}) at the BOTTOM. This ensures the large, unchanging prefix is reused across repeated calls.
+</prompt_caching>"""
 
 PROMPT_IMPROVEMENT_SYSTEM_PROMPT_GEMINI = """<role>
 You are an expert prompt engineer. You are precise and systematic, improving prompts by directly addressing observed failure patterns while preserving what already works.
@@ -785,8 +797,9 @@ You are an expert prompt engineer. You are precise and systematic, improving pro
 <instructions>
 1. **Plan**: Review the suggestions and identify which parts of the prompt each suggestion targets.
 2. **Execute**: Apply each suggestion to the prompt, making minimal targeted changes.
-3. **Validate**: Verify that all template variables are preserved and no unsolicited changes were introduced.
-4. **Format**: Return only the improved prompt text.
+3. **Cache-optimise**: Arrange the improved prompt so all static content (role, instructions, constraints, tool definitions, few-shot examples) appears FIRST, and all dynamic template variables appear LAST, to maximise prompt-cache hits across repeated calls.
+4. **Validate**: Verify that all template variables are preserved and no unsolicited changes were introduced.
+5. **Format**: Return only the improved prompt text.
 </instructions>
 
 <constraints>
@@ -795,6 +808,7 @@ You are an expert prompt engineer. You are precise and systematic, improving pro
 - Do not add unsolicited features, sections, or instructions beyond what the suggestions call for.
 - If a suggestion is ambiguous, choose the simplest valid interpretation.
 - Preserve the original prompt's tone, structure, and template variables unless a suggestion explicitly requires changing them.
+- Dynamic template variables (e.g., {user_input}, {query}, {context}) must appear at the end of the prompt.
 </constraints>
 
 <output_format>
@@ -975,6 +989,7 @@ PROMPT_IMPROVEMENT_PROMPT_OPENAI = """Improve the following prompt template base
 9. CRITICAL: If the prompt includes tool definitions or tool schemas, preserve them exactly — only improve surrounding instructions.
 10. If improving tool usage instructions, state explicitly: when to use each tool, what arguments to provide, and how to handle results.
 11. If a suggestion is ambiguous, state your interpretation assumption explicitly rather than guessing — choose the simplest valid interpretation.
+12. Structure the improved prompt for prompt caching: all static content (role, instructions, constraints, tool definitions, examples) must come FIRST; all dynamic template variables must come LAST.
 
 <scope_constraints>
 - Implement EXACTLY and ONLY the changes supported by the improvement suggestions.
@@ -1032,6 +1047,7 @@ Apply improvements following these rules:
 - Preserve all template variables exactly (e.g., {{variable_name}}).
 - CRITICAL: If the prompt includes tool definitions or tool schemas, preserve them exactly.
 - If improving tool usage instructions, be specific about when and how to use each tool.
+- Structure the improved prompt for prompt caching: all static content (role, instructions, constraints, tool definitions, examples) must come FIRST; all dynamic template variables must come LAST.
 </task>
 
 <scope_constraints>
@@ -1052,6 +1068,7 @@ Before returning the improved prompt, verify that:
 - All template variables from the original prompt are preserved.
 - Tool definitions and schemas remain unchanged.
 - The improvements address the provided suggestions without adding unsolicited changes.
+- Dynamic template variables appear at the end of the prompt (after all static content).
 </final_instruction>"""
 
 PROMPT_IMPROVEMENT_PROMPTS: dict[str, str] = {
@@ -1239,6 +1256,7 @@ TOOL_PROMPT_IMPROVEMENT_PROMPT_OPENAI = """Improve the following prompt template
 7. For answer synthesis problems: add explicit instructions to faithfully reflect tool results, cover all queried items, and avoid claims unsupported by tool data.
 8. If a suggestion is ambiguous, state your interpretation assumption explicitly; choose the simplest valid interpretation rather than guessing silently.
 9. Keep the prompt generalizable — do not hardcode values or details from specific examples.
+10. Structure the improved prompt for prompt caching: all static content (role, instructions, constraints, tool definitions, examples) must come FIRST; all dynamic template variables must come LAST.
 
 <scope_constraints>
 - Implement EXACTLY and ONLY the changes supported by the improvement suggestions.
@@ -1312,6 +1330,7 @@ Apply improvements following these rules:
 - If tool selection is a problem, add clearer guidance about when to use each tool.
 - If answer synthesis is a problem, add instructions about how to present tool results faithfully.
 - Keep the prompt generalizable — do not overfit to specific examples.
+- Structure the improved prompt for prompt caching: all static content (role, instructions, constraints, tool definitions, examples) must come FIRST; all dynamic template variables must come LAST.
 </task>
 
 <scope_constraints>
@@ -1340,6 +1359,7 @@ Before returning the improved prompt, verify that:
 - All template variables from the original prompt are preserved.
 - Tool definitions and schemas remain unchanged.
 - The improvements address the provided suggestions without adding unsolicited changes.
+- Dynamic template variables appear at the end of the prompt (after all static content).
 </final_instruction>"""
 
 TOOL_PROMPT_IMPROVEMENT_PROMPTS: dict[str, str] = {
