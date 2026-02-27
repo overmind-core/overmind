@@ -393,9 +393,9 @@ def generate_initial_agent_description_task(prompt_id: str) -> dict[str, Any]:
             result = await _generate_initial_agent_description(prompt_id)
             logger.info(f"Generated initial agent description for prompt {prompt_id}")
             return result
-        except Exception as exc:
+        except Exception:
             logger.exception(
-                f"Failed to generate agent description for prompt {prompt_id}: {exc}"
+                f"Failed to generate agent description for prompt {prompt_id}"
             )
             raise
         finally:
@@ -428,7 +428,7 @@ def update_agent_description_from_feedback_task(
                 f"Updated agent description for prompt {prompt_id} based on feedback"
             )
             return result
-        except Exception as exc:
+        except Exception:
             logger.exception(
                 f"Failed to update agent description for prompt {prompt_id}"
             )
