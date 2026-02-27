@@ -55,3 +55,10 @@ build-frontend:
 
 deploy-frontend: build-frontend
 	cd frontend && bun run wrangler pages deploy dist
+
+generate_api_client:
+	docker run --rm -v $(PWD):/workspace openapitools/openapi-generator-cli:v7.19.0 generate \
+		-i http://host.docker.internal:8000/openapi.json \
+		-g typescript-fetch \
+		-o /workspace/frontend/src/api \
+		--additional-properties=typescriptThreePlus=true

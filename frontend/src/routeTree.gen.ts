@@ -13,11 +13,9 @@ import { Route as OauthGoogleCompleteRouteImport } from './routes/oauth-google-c
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as AuthRouteImport } from './routes/_auth'
 import { Route as AuthIndexRouteImport } from './routes/_auth/index'
-import { Route as AuthOrganisationsRouteImport } from './routes/_auth/organisations'
 import { Route as AuthOnboardingRouteImport } from './routes/_auth/onboarding'
 import { Route as AuthJobsRouteImport } from './routes/_auth/jobs'
 import { Route as AuthGetStartedRouteImport } from './routes/_auth/get-started'
-import { Route as AuthChatbotsRouteImport } from './routes/_auth/chatbots'
 import { Route as AuthAgentsRouteImport } from './routes/_auth/agents'
 import { Route as AuthAccountRouteImport } from './routes/_auth/account'
 import { Route as AuthProjectsIndexRouteImport } from './routes/_auth/projects.index'
@@ -47,11 +45,6 @@ const AuthIndexRoute = AuthIndexRouteImport.update({
   path: '/',
   getParentRoute: () => AuthRoute,
 } as any)
-const AuthOrganisationsRoute = AuthOrganisationsRouteImport.update({
-  id: '/organisations',
-  path: '/organisations',
-  getParentRoute: () => AuthRoute,
-} as any)
 const AuthOnboardingRoute = AuthOnboardingRouteImport.update({
   id: '/onboarding',
   path: '/onboarding',
@@ -65,11 +58,6 @@ const AuthJobsRoute = AuthJobsRouteImport.update({
 const AuthGetStartedRoute = AuthGetStartedRouteImport.update({
   id: '/get-started',
   path: '/get-started',
-  getParentRoute: () => AuthRoute,
-} as any)
-const AuthChatbotsRoute = AuthChatbotsRouteImport.update({
-  id: '/chatbots',
-  path: '/chatbots',
   getParentRoute: () => AuthRoute,
 } as any)
 const AuthAgentsRoute = AuthAgentsRouteImport.update({
@@ -127,11 +115,9 @@ export interface FileRoutesByFullPath {
   '/oauth-google-complete': typeof OauthGoogleCompleteRoute
   '/account': typeof AuthAccountRoute
   '/agents': typeof AuthAgentsRouteWithChildren
-  '/chatbots': typeof AuthChatbotsRoute
   '/get-started': typeof AuthGetStartedRoute
   '/jobs': typeof AuthJobsRouteWithChildren
   '/onboarding': typeof AuthOnboardingRoute
-  '/organisations': typeof AuthOrganisationsRoute
   '/agents/$slug': typeof AuthAgentsSlugRoute
   '/jobs/$jobId': typeof AuthJobsJobIdRoute
   '/agents/': typeof AuthAgentsIndexRoute
@@ -144,11 +130,9 @@ export interface FileRoutesByTo {
   '/login': typeof LoginRoute
   '/oauth-google-complete': typeof OauthGoogleCompleteRoute
   '/account': typeof AuthAccountRoute
-  '/chatbots': typeof AuthChatbotsRoute
   '/get-started': typeof AuthGetStartedRoute
   '/jobs': typeof AuthJobsRouteWithChildren
   '/onboarding': typeof AuthOnboardingRoute
-  '/organisations': typeof AuthOrganisationsRoute
   '/': typeof AuthIndexRoute
   '/agents/$slug': typeof AuthAgentsSlugRoute
   '/jobs/$jobId': typeof AuthJobsJobIdRoute
@@ -165,11 +149,9 @@ export interface FileRoutesById {
   '/oauth-google-complete': typeof OauthGoogleCompleteRoute
   '/_auth/account': typeof AuthAccountRoute
   '/_auth/agents': typeof AuthAgentsRouteWithChildren
-  '/_auth/chatbots': typeof AuthChatbotsRoute
   '/_auth/get-started': typeof AuthGetStartedRoute
   '/_auth/jobs': typeof AuthJobsRouteWithChildren
   '/_auth/onboarding': typeof AuthOnboardingRoute
-  '/_auth/organisations': typeof AuthOrganisationsRoute
   '/_auth/': typeof AuthIndexRoute
   '/_auth/agents/$slug': typeof AuthAgentsSlugRoute
   '/_auth/jobs/$jobId': typeof AuthJobsJobIdRoute
@@ -187,11 +169,9 @@ export interface FileRouteTypes {
     | '/oauth-google-complete'
     | '/account'
     | '/agents'
-    | '/chatbots'
     | '/get-started'
     | '/jobs'
     | '/onboarding'
-    | '/organisations'
     | '/agents/$slug'
     | '/jobs/$jobId'
     | '/agents/'
@@ -204,11 +184,9 @@ export interface FileRouteTypes {
     | '/login'
     | '/oauth-google-complete'
     | '/account'
-    | '/chatbots'
     | '/get-started'
     | '/jobs'
     | '/onboarding'
-    | '/organisations'
     | '/'
     | '/agents/$slug'
     | '/jobs/$jobId'
@@ -224,11 +202,9 @@ export interface FileRouteTypes {
     | '/oauth-google-complete'
     | '/_auth/account'
     | '/_auth/agents'
-    | '/_auth/chatbots'
     | '/_auth/get-started'
     | '/_auth/jobs'
     | '/_auth/onboarding'
-    | '/_auth/organisations'
     | '/_auth/'
     | '/_auth/agents/$slug'
     | '/_auth/jobs/$jobId'
@@ -275,13 +251,6 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthIndexRouteImport
       parentRoute: typeof AuthRoute
     }
-    '/_auth/organisations': {
-      id: '/_auth/organisations'
-      path: '/organisations'
-      fullPath: '/organisations'
-      preLoaderRoute: typeof AuthOrganisationsRouteImport
-      parentRoute: typeof AuthRoute
-    }
     '/_auth/onboarding': {
       id: '/_auth/onboarding'
       path: '/onboarding'
@@ -301,13 +270,6 @@ declare module '@tanstack/react-router' {
       path: '/get-started'
       fullPath: '/get-started'
       preLoaderRoute: typeof AuthGetStartedRouteImport
-      parentRoute: typeof AuthRoute
-    }
-    '/_auth/chatbots': {
-      id: '/_auth/chatbots'
-      path: '/chatbots'
-      fullPath: '/chatbots'
-      preLoaderRoute: typeof AuthChatbotsRouteImport
       parentRoute: typeof AuthRoute
     }
     '/_auth/agents': {
@@ -420,11 +382,9 @@ const AuthProjectsProjectIdTracesRouteWithChildren =
 interface AuthRouteChildren {
   AuthAccountRoute: typeof AuthAccountRoute
   AuthAgentsRoute: typeof AuthAgentsRouteWithChildren
-  AuthChatbotsRoute: typeof AuthChatbotsRoute
   AuthGetStartedRoute: typeof AuthGetStartedRoute
   AuthJobsRoute: typeof AuthJobsRouteWithChildren
   AuthOnboardingRoute: typeof AuthOnboardingRoute
-  AuthOrganisationsRoute: typeof AuthOrganisationsRoute
   AuthIndexRoute: typeof AuthIndexRoute
   AuthProjectsIndexRoute: typeof AuthProjectsIndexRoute
   AuthProjectsProjectIdTracesRoute: typeof AuthProjectsProjectIdTracesRouteWithChildren
@@ -434,11 +394,9 @@ interface AuthRouteChildren {
 const AuthRouteChildren: AuthRouteChildren = {
   AuthAccountRoute: AuthAccountRoute,
   AuthAgentsRoute: AuthAgentsRouteWithChildren,
-  AuthChatbotsRoute: AuthChatbotsRoute,
   AuthGetStartedRoute: AuthGetStartedRoute,
   AuthJobsRoute: AuthJobsRouteWithChildren,
   AuthOnboardingRoute: AuthOnboardingRoute,
-  AuthOrganisationsRoute: AuthOrganisationsRoute,
   AuthIndexRoute: AuthIndexRoute,
   AuthProjectsIndexRoute: AuthProjectsIndexRoute,
   AuthProjectsProjectIdTracesRoute:

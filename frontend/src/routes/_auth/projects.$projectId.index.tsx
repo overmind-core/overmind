@@ -4,7 +4,6 @@ import { useQueryClient } from "@tanstack/react-query";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { ArrowLeft, Key, Loader2, Plus, Trash2 } from "lucide-react";
 
-import apiClient from "@/client";
 import { CreateApiKeyDialog } from "@/components/create-api-key-dialog";
 import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
@@ -96,12 +95,6 @@ function ProjectDetailCard({ projectId }: { projectId: string }) {
                 <TableCell className="text-sm">{data.description}</TableCell>
               </TableRow>
             )}
-            <TableRow>
-              <TableCell className="font-mono text-xs text-muted-foreground">
-                Organisation
-              </TableCell>
-              <TableCell>{data.organisationName}</TableCell>
-            </TableRow>
             <TableRow>
               <TableCell className="font-mono text-xs text-muted-foreground">Members</TableCell>
               <TableCell>{data.memberCount ?? "—"}</TableCell>

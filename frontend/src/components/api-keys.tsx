@@ -7,6 +7,7 @@ import apiClient from "@/client";
 import { Button } from "@/components/ui/button";
 import { config } from "@/config";
 import { useProjectsList } from "@/hooks/use-projects";
+import { useOrganisationId } from "@/hooks/use-query";
 import { cn } from "@/lib/utils";
 
 const quickstartCodeSnippet = (apiKey: string) => `import os
@@ -42,6 +43,7 @@ export function APIKeySection({
 }) {
   const [showCopied, setShowCopied] = useState(false);
   const { data: projectsData, isLoading: isLoading } = useProjectsList();
+  const organisationId = useOrganisationId();
 
   const currentProject = useMemo(() => {
     return projectId
@@ -66,7 +68,7 @@ export function APIKeySection({
         createTokenRequest: {
           description: "API key for telemetry",
           name: `Telemetry API Key - ${new Date().toISOString()}`,
-          organisationId: currentProject.organisationId,
+          organisationId,
           projectId: currentProject.projectId,
         },
       });

@@ -122,9 +122,6 @@ function ProjectsPage() {
         case "description":
           cmp = (a.description ?? "").localeCompare(b.description ?? "");
           break;
-        case "organisationName":
-          cmp = (a.organisationName ?? "").localeCompare(b.organisationName ?? "");
-          break;
         case "createdAt":
         default:
           cmp = (a.createdAt?.getTime() ?? 0) - (b.createdAt?.getTime() ?? 0);
@@ -173,14 +170,6 @@ function ProjectsPage() {
             {show("description") && (
               <SortableHead field="description" label="Description" {...sortProps} />
             )}
-            {show("organisationName") && (
-              <SortableHead
-                className="hidden md:table-cell"
-                field="organisationName"
-                label="Organisation"
-                {...sortProps}
-              />
-            )}
             {show("createdAt") && (
               <SortableHead
                 className="hidden lg:table-cell"
@@ -210,11 +199,6 @@ function ProjectsPage() {
               {show("description") && (
                 <TableCell className="max-w-xs truncate text-sm text-muted-foreground">
                   {project.description || <span className="italic">No description</span>}
-                </TableCell>
-              )}
-              {show("organisationName") && (
-                <TableCell className="hidden text-sm text-muted-foreground md:table-cell">
-                  {project.organisationName}
                 </TableCell>
               )}
               {show("createdAt") && (
