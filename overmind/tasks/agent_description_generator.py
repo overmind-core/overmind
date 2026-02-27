@@ -430,7 +430,7 @@ def update_agent_description_from_feedback_task(
             return result
         except Exception as exc:
             logger.exception(
-                f"Failed to update agent description for prompt {prompt_id}: {exc}"
+                f"Failed to update agent description for prompt {prompt_id}"
             )
             raise
         finally:

@@ -1313,7 +1313,7 @@ async def _check_and_create_backtesting_job(
             "scored_count": scored_count,
         }
     except Exception as e:
-        logger.exception(f"Failed to create backtesting job: {e}")
+        logger.exception(f"Failed to create backtesting job")
         return None
 
 

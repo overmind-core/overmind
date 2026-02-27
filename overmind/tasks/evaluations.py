@@ -454,7 +454,7 @@ def evaluate_spans_task(
                     try:
                         return await _evaluate_span_correctness(span_id=span_id)
                     except BaseException as exc:
-                        logger.exception(f"Failed to evaluate span {span_id}: {exc}")
+                        logger.exception(f"Failed to evaluate span {span_id}")
                         return {"span_id": span_id, "error": str(exc)}
 
             # Fan out all span evaluations concurrently (bounded by semaphore).
