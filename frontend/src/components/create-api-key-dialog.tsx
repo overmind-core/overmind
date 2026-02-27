@@ -193,21 +193,23 @@ export function CreateApiKeyDialog({
                 )}
               </div>
             )}
-            <div className="space-y-1.5">
-              <Label htmlFor="key-expiry">Expires after</Label>
-              <Select onValueChange={setExpiryDays} value={expiryDays}>
-                <SelectTrigger id="key-expiry">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {EXPIRY_OPTIONS.map((opt) => (
-                    <SelectItem key={opt.days} value={String(opt.days)}>
-                      {opt.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
+            {!config.isSelfHosted && (
+              <div className="space-y-1.5">
+                <Label htmlFor="key-expiry">Expires after</Label>
+                <Select onValueChange={setExpiryDays} value={expiryDays}>
+                  <SelectTrigger id="key-expiry">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {EXPIRY_OPTIONS.map((opt) => (
+                      <SelectItem key={opt.days} value={String(opt.days)}>
+                        {opt.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
             {createError && <Alert variant="destructive">{createError}</Alert>}
           </div>
         )}
