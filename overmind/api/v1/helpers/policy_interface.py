@@ -9,14 +9,13 @@ policy configuration without importing SQL models directly.
 """
 
 from typing import Any, Protocol
-from uuid import UUID
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
 
 class OrgPolicyProvider(Protocol):
     async def get_org_policy_version(
-        self, organisation_id: UUID, db: AsyncSession
+        self, organisation_id: str, db: AsyncSession
     ) -> Any | None: ...
 
     async def get_org_llm_policies(
@@ -24,7 +23,7 @@ class OrgPolicyProvider(Protocol):
     ) -> dict[str, list[Any]]: ...
 
     async def get_org_mcp_policy(
-        self, organisation_id: UUID, db: AsyncSession
+        self, organisation_id: str, db: AsyncSession
     ) -> dict | None: ...
 
 
@@ -32,7 +31,7 @@ class NoopOrgPolicyProvider:
     """Core default: no org-level policies configured."""
 
     async def get_org_policy_version(
-        self, organisation_id: UUID, db: AsyncSession
+        self, organisation_id: str, db: AsyncSession
     ) -> Any | None:
         return None
 
@@ -42,6 +41,6 @@ class NoopOrgPolicyProvider:
         return {"input": [], "output": []}
 
     async def get_org_mcp_policy(
-        self, organisation_id: UUID, db: AsyncSession
+        self, organisation_id: str, db: AsyncSession
     ) -> dict | None:
         return None

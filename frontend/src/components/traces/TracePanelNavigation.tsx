@@ -21,7 +21,7 @@ export function TracePanelNavigation() {
             <TraceFlameChart
               height={400}
               onSpanClick={(span) => {
-                const id = span.SpanId ?? span.span_id ?? "";
+                const id = span.spanId ?? span.SpanId ?? span.span_id ?? "";
                 setSelectedSpanId(id);
               }}
               selectedSpanId={selectedSpanId}

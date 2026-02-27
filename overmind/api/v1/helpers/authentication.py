@@ -9,7 +9,7 @@ from typing import Any
 from collections.abc import Callable
 from uuid import UUID
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, inspect as sa_inspect
+from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 import bcrypt
 import secrets
@@ -79,29 +79,13 @@ def generate_token() -> tuple[str, str, str]:
 
 
 def _token_selectinload_options():
-    """Build selectinload options for Token queries.
-
-    Dynamically includes enterprise relationships (organisation) when they
-    have been patched onto the Token model by rbac_extensions.
-    """
-    opts = [selectinload(Token.user), selectinload(Token.project)]
-    mapper = sa_inspect(Token)
-    if "organisation" in mapper.relationships:
-        opts.append(selectinload(Token.organisation))
-    return opts
+    """Build selectinload options for Token queries."""
+    return [selectinload(Token.user), selectinload(Token.project)]
 
 
 def _user_selectinload_options():
-    """Build selectinload options for User queries.
-
-    Dynamically includes enterprise relationships (organisations) when they
-    have been patched onto the User model by rbac_extensions.
-    """
-    opts = [selectinload(User.projects)]
-    mapper = sa_inspect(User)
-    if "organisations" in mapper.relationships:
-        opts.append(selectinload(User.organisations))
-    return opts
+    """Build selectinload options for User queries."""
+    return [selectinload(User.projects)]
 
 
 def serialize_token_to_cache(token_record: Token) -> str:
@@ -202,38 +186,39 @@ class ApiTokenInfo(BaseModel):
 
 
 class AuthenticatedUserOrToken:
-    """Container for authenticated user."""
+    """Container for authenticated user or API token."""
 
-    def __init__(self, user: UserModel, token: TokenModel | None = None):
+    def __init__(
+        self,
+        user: UserModel,
+        token: TokenModel | None = None,
+        clerk_org_id: str | None = None,
+        clerk_org_role: str | None = None,
+    ):
         self.user = user
         self.user_id = user.user_id
         self.email = user.email
         self.is_active = user.is_active
         self.token = token
+        # Clerk org context — set from JWT payload on browser sessions
+        self.clerk_org_id = clerk_org_id
+        self.clerk_org_role = clerk_org_role
 
-    def get_organisation_id(self) -> UUID | None:
-        """Safely extract organisation_id from the authenticated context."""
+    def get_organisation_id(self) -> str | None:
+        """Return the active Clerk organisation_id for this request."""
         if self.token is not None:
             return getattr(self.token, "organisation_id", None)
-        orgs = getattr(self.user, "organisations", None)
-        if orgs:
-            return orgs[0].organisation_id
-        return None
+        return self.clerk_org_id
 
-    async def is_org_member(self, org_id: UUID, db: AsyncSession) -> bool:
-        orgs = getattr(self.user, "organisations", None)
-        if self.token is None:
-            if orgs:
-                return org_id in [org.organisation_id for org in orgs]
-            return False
-        else:
-            return org_id == getattr(self.token, "organisation_id", None)
+    async def is_org_member(self, org_id: str, db: AsyncSession) -> bool:
+        if self.token is not None:
+            return getattr(self.token, "organisation_id", None) == org_id
+        return self.clerk_org_id == org_id
 
     async def is_project_member(self, project_id: UUID, db: AsyncSession) -> bool:
         if self.token is None:
-            return project_id in [project.project_id for project in self.user.projects]
-        else:
-            return project_id == self.token.project_id
+            return project_id in [project.project_id for project in (self.user.projects or [])]
+        return project_id == self.token.project_id
 
 
 async def authenticate_user(username: str, password: str, db: AsyncSession):
@@ -351,6 +336,7 @@ async def _authenticate_with_tokens(
         return AuthenticatedUserOrToken(user=token_model.user, token=token_model)
 
     if jwt_token:
+        # EE: check if jwt is from clerk, and if so populate user model accordingly
         user_model = await validate_jwt_token(jwt_token, db, use_cache=use_cache)
         return AuthenticatedUserOrToken(user=user_model)
 
