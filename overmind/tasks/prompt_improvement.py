@@ -1936,8 +1936,10 @@ async def _improve_prompt_templates(
                     )
                     if result:
                         job_results.append(result)
-                except Exception as exc:
-                    error_msg = f"Failed to check/create job for prompt {prompt.prompt_id}: {str(exc)}"
+                except Exception:
+                    error_msg = (
+                        f"Failed to check/create job for prompt {prompt.prompt_id}"
+                    )
                     logger.exception(error_msg)
                     errors.append(error_msg)
 

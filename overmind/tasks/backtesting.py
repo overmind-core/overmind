@@ -1026,8 +1026,8 @@ async def _run_backtesting(
                     job.status = _JS.FAILED.value
                     job.result = {"error": str(e)}
                     await session.commit()
-        except Exception as job_exc:
-            logger.exception(f"Failed to update job status to failed: {job_exc}")
+        except Exception:
+            logger.exception("Failed to update job status to failed")
 
         raise
 
@@ -1366,10 +1366,9 @@ async def _check_backtesting_candidates(
                     )
                     if res:
                         job_results.append(res)
-                except Exception as exc:
+                except Exception:
                     msg = (
-                        f"Failed to check/create backtesting job for "
-                        f"{prompt.prompt_id}: {exc}"
+                        f"Failed to check/create backtesting job for {prompt.prompt_id}"
                     )
                     logger.exception(msg)
                     errors.append(msg)
