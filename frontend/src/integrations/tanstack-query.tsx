@@ -12,7 +12,11 @@ const queryClient = new QueryClient({
 });
 
 export function getContext() {
-  return { authUser: undefined, config: config, queryClient };
+  return {
+    authUser: undefined,
+    config: config,
+    queryClient,
+  };
 }
 
 export function RootQueryProvider({ children }: { children: React.ReactNode }) {

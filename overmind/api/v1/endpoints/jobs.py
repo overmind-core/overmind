@@ -294,18 +294,36 @@ async def list_jobs(
     user: AuthenticatedUserOrToken = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """List job statuses for the project with optional filters."""
+    """List jobs with optional filters.
+
+    If project_id is provided, verifies access and scopes results to that project.
+    Otherwise returns jobs from all projects in the user's current organisation.
+    """
     if project_id:
-        pid = _uuid.UUID(project_id)
-    elif user.user.projects:
-        pid = user.user.projects[0].project_id
+        try:
+            project_uuid = _uuid.UUID(project_id)
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Invalid project_id format")
+
+        if not await user.is_project_member(project_uuid, db):
+            raise HTTPException(status_code=403, detail="Access denied to this project")
+
+        await sync_running_job_statuses(db, project_uuid)
+        project_ids = [project_uuid]
     else:
-        return []
+        org_id = user.get_organisation_id()
+        user_projects = user.user.projects or []
+        if org_id:
+            project_ids = [
+                p.project_id for p in user_projects if p.organisation_id == org_id
+            ]
+        else:
+            project_ids = [p.project_id for p in user_projects]
 
-    # Sync running jobs with Celery backend first
-    await sync_running_job_statuses(db, pid)
+        if not project_ids:
+            raise HTTPException(status_code=400, detail="No projects found for user")
 
-    conditions = [Job.project_id == pid]
+    conditions = [Job.project_id.in_(project_ids)]
     if job_type:
         conditions.append(Job.job_type == job_type.value)
     if status:
@@ -320,7 +338,6 @@ async def list_jobs(
     )
     jobs = result.scalars().all()
 
-    # Also get total count for pagination
     count_q = await db.execute(select(func.count(Job.job_id)).where(and_(*conditions)))
     total = count_q.scalar() or 0
 
@@ -332,7 +349,7 @@ async def list_jobs(
 
         names_q = await db.execute(
             select(Prompt.slug, Prompt.display_name)
-            .where(and_(Prompt.project_id == pid, Prompt.slug.in_(slugs)))
+            .where(and_(Prompt.project_id.in_(project_ids), Prompt.slug.in_(slugs)))
             .distinct(Prompt.slug)
         )
         for slug, dname in names_q.all():
@@ -440,6 +457,8 @@ async def create_template_extraction(
     """
     if project_id:
         pid = _uuid.UUID(project_id)
+        if not await user.is_project_member(pid, db):
+            raise HTTPException(status_code=403, detail="Access denied to this project")
     elif user.user.projects:
         pid = user.user.projects[0].project_id
     else:
@@ -490,6 +509,14 @@ async def create_prompt_scoring_job(
     For user-triggered jobs, validates eligibility before creating the job.
     Returns 400 error if validation fails with specific reason.
     """
+    try:
+        project_uuid = _uuid.UUID(project_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid project_id format")
+
+    if not await user.is_project_member(project_uuid, db):
+        raise HTTPException(status_code=403, detail="Access denied to this project")
+
     prompt = await find_latest_prompt(prompt_slug, project_id, db)
     if not prompt:
         raise HTTPException(status_code=404, detail="Prompt not found")
@@ -549,6 +576,12 @@ async def create_prompt_tuning_job(
     Returns 400 error if validation fails with specific reason.
     """
     if project_id:
+        try:
+            project_uuid = _uuid.UUID(project_id)
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Invalid project_id format")
+        if not await user.is_project_member(project_uuid, db):
+            raise HTTPException(status_code=403, detail="Access denied to this project")
         pid = project_id
     elif user.user.projects:
         pid = str(user.user.projects[0].project_id)

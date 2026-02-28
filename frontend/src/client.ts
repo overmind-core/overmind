@@ -86,6 +86,7 @@ declare global {
     Clerk: {
       session: {
         getToken: () => Promise<string>;
+        remove: () => Promise<void>;
       };
     };
   }
@@ -97,8 +98,12 @@ const apiClient = new OvermindClient(
       {
         post: async (context) => {
           if (context.response.status === 401) {
-            localStorage.removeItem("token");
-            window.location.href = "/login";
+            if (config.clerkReady) {
+              await window.Clerk.session.remove();
+            } else {
+              localStorage.removeItem("token");
+              window.location.href = "/login";
+            }
           }
           return undefined;
         },

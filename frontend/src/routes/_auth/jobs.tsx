@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 
 import { useQuery } from "@tanstack/react-query";
 import { createFileRoute, Outlet } from "@tanstack/react-router";
@@ -39,6 +39,7 @@ import {
 import { jobsSearchSchema } from "@/lib/schemas";
 import type { JobsSearch } from "@/lib/schemas";
 import { cn, formatDate } from "@/lib/utils";
+import { ProjectSelector } from "@/components/project-selector";
 
 type SortField = NonNullable<JobsSearch["sortBy"]>;
 
@@ -116,6 +117,7 @@ function humanSlug(slug?: string): string {
 }
 
 function JobsPage() {
+  const [selectedProjectId, setSelectedProjectId] = useState<string | undefined>(undefined);
   const navigate = Route.useNavigate();
   const searchParams = Route.useSearch();
   const { job_type, status, page = 1, pageSize = 25, sortBy, sortDirection } = searchParams;
@@ -138,14 +140,17 @@ function JobsPage() {
 
   const { data, isLoading, error } = useQuery({
     queryFn: () => {
-      const params: ListJobsApiV1JobsGetRequest = {};
+      const params: ListJobsApiV1JobsGetRequest = {
+        projectId: selectedProjectId,
+      };
       if (job_type && job_type !== "all") params.jobType = job_type as JobType;
       if (status && status !== "all") params.status = status as JobStatus;
       if (pageSize) params.limit = pageSize;
       if (offset) params.offset = offset;
+
       return apiClient.jobs.listJobsApiV1JobsGet(params);
     },
-    queryKey: ["jobs", job_type, status, page, pageSize],
+    queryKey: ["jobs", job_type, status, page, pageSize, selectedProjectId],
     refetchInterval: 10_000,
   });
 
@@ -180,7 +185,7 @@ function JobsPage() {
   if (isLoading) {
     return (
       <div className="flex h-full flex-col gap-4">
-        <JobsHeader />
+        <JobsHeader {...{ selectedProjectId, setSelectedProjectId }} />
         <div className="flex flex-1 items-center justify-center">
           <Loader2 className="size-8 animate-spin text-muted-foreground" />
         </div>
@@ -190,7 +195,7 @@ function JobsPage() {
   if (error) {
     return (
       <div className="flex h-full flex-col gap-4">
-        <JobsHeader />
+        <JobsHeader {...{ selectedProjectId, setSelectedProjectId }} />
         <Alert variant="destructive">Failed to load jobs: {(error as Error).message}</Alert>
       </div>
     );
@@ -198,7 +203,7 @@ function JobsPage() {
   if (!jobs || jobs.length === 0) {
     return (
       <div className="flex h-full flex-col gap-4">
-        <JobsHeader />
+        <JobsHeader {...{ selectedProjectId, setSelectedProjectId }} />
         <div className="flex flex-1 items-center justify-center rounded-md border border-dashed border-border text-center text-muted-foreground">
           <p>No jobs found. Trigger a job from the home page to see it here.</p>
         </div>
@@ -207,7 +212,7 @@ function JobsPage() {
   }
   return (
     <div className="flex h-full flex-col gap-4">
-      <JobsHeader />
+      <JobsHeader {...{ selectedProjectId, setSelectedProjectId }} />
 
       <div className="min-h-0 flex-1 overflow-hidden rounded-md border border-border">
         <div className="max-h-full overflow-auto">
@@ -309,7 +314,13 @@ function JobsPage() {
   );
 }
 
-const JobsHeader = () => {
+const JobsHeader = (
+  {
+    selectedProjectId,
+    setSelectedProjectId
+  }: { selectedProjectId: string | undefined, setSelectedProjectId: (projectId: string | undefined) => void }
+) => {
+
   const navigate = Route.useNavigate();
   const searchParams = Route.useSearch();
   const { job_type, status } = searchParams;
@@ -338,7 +349,7 @@ const JobsHeader = () => {
 
   return (
     <div className="flex shrink-0 items-center gap-4">
-      <CreateJobDialog />
+      <ProjectSelector selection={selectedProjectId} setSelection={setSelectedProjectId} />
       <Select onValueChange={setTypeFilter} value={typeFilter}>
         <SelectTrigger className="w-[160px]">
           <SelectValue placeholder="Job Type" />

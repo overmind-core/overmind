@@ -1,24 +1,18 @@
-import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
 import { ExternalLink, Key, Loader2, RefreshCw, Search } from "lucide-react";
+import { useMemo, useState } from "react";
 
 import { ResponseError, type AgentOut } from "@/api";
 import apiClient from "@/client";
 import { AgentGrid } from "@/components/agent-grid";
 import { CreateApiKeyDialog } from "@/components/create-api-key-dialog";
-import { useProjectsList } from "@/hooks/use-projects";
+import { ProjectSelector } from "@/components/project-selector";
 import { Alert } from "@/components/ui/alert";
-import { DismissibleAlert } from "@/components/ui/dismissible-alert";
 import { Button } from "@/components/ui/button";
+import { DismissibleAlert } from "@/components/ui/dismissible-alert";
 import { Input } from "@/components/ui/input";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+import { useProjectsList } from "@/hooks/use-projects";
 
 export const Route = createFileRoute("/_auth/agents/")({
   component: AgentsPage,
@@ -65,7 +59,7 @@ function EmptyState({ projectId, organisationId }: EmptyStateProps) {
       {projectId && organisationId && (
         <CreateApiKeyDialog
           defaultRole="project_admin"
-          onCreated={() => {}}
+          onCreated={() => { }}
           onOpenChange={setShowCreateKey}
           open={showCreateKey}
           organisationId={organisationId}
@@ -124,19 +118,9 @@ function AgentsPage() {
     );
   }, [agents, search]);
 
-  const projectFilter = projects.length > 1 && (
-    <Select onValueChange={setSelectedProjectId} value={activeProjectId}>
-      <SelectTrigger size="sm">
-        <SelectValue placeholder="All projects" />
-      </SelectTrigger>
-      <SelectContent>
-        {projects.map((p) => (
-          <SelectItem key={p.projectId} value={p.projectId}>
-            {p.name}
-          </SelectItem>
-        ))}
-      </SelectContent>
-    </Select>
+
+  const projectFilter = (
+    <ProjectSelector selection={activeProjectId} setSelection={setSelectedProjectId} />
   );
 
   if (isLoading) {
