@@ -217,7 +217,9 @@ class AuthenticatedUserOrToken:
 
     async def is_project_member(self, project_id: UUID, db: AsyncSession) -> bool:
         if self.token is None:
-            return project_id in [project.project_id for project in (self.user.projects or [])]
+            return project_id in [
+                project.project_id for project in (self.user.projects or [])
+            ]
         return project_id == self.token.project_id
 
 
