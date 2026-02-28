@@ -66,7 +66,7 @@ class AuthorizationProvider(Protocol):
         user: Any,
         db: AsyncSession,
         required_permissions: list[str],
-        organisation_id: UUID | None = None,
+        organisation_id: str | None = None,
         project_id: UUID | None = None,
         mode: str = "all",
     ) -> Any:
@@ -87,7 +87,7 @@ class NoopAuthorizationProvider:
         user: Any,
         db: AsyncSession,
         required_permissions: list[str],
-        organisation_id: UUID | None = None,
+        organisation_id: str | None = None,
         project_id: UUID | None = None,
         mode: str = "all",
     ) -> None:
