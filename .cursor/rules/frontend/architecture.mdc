@@ -25,7 +25,7 @@ React 19 SPA built with Vite 7, TanStack Router (file-based), TanStack React Que
 | Tables          | TanStack Table 8.x                                                    |
 | Icons           | Lucide React                                                          |
 | Toasts          | Sonner                                                                |
-| Theming         | next-themes (light/dark/system)                                       |
+| Theming         | next-themes (light/dark/system) + custom Shadcn theme tokens          |
 | Package manager | Bun                                                                   |
 
 ## Directory Structure
@@ -94,10 +94,11 @@ Config source: `VITE_API_BASE_URL` env var or proxy fallback.
 
 ## State Management
 
-- **Server state**: TanStack React Query (`staleTime: 60_000`, `retry: 1`)
-- **Router context**: `queryClient`, `authUser`, `config` available via `getContext()`
-- **Local UI state**: React `useState`, `useMemo`
-- **Context providers**: `ThemeProvider`, `TraceDataProvider`, `TraceSelectionProvider`
+- **Server state**: TanStack React Query (`staleTime: 60_000`, `retry: 1`) — all API data lives here; no Redux/Zustand
+- **Router context**: `queryClient`, `authUser`, `config` available via `getContext()` in route `beforeLoad`/`loader`
+- **Local UI state**: React `useState`, `useMemo` — dialogs, selections, toggles, transient form state
+- **Client state across components**: React Context — `TraceDataProvider` (span tree data), `TraceSelectionProvider` (selected span), `ThemeProvider` (active theme)
+- **URL state**: search params via TanStack Router + Zod schemas in `frontend/src/lib/schemas.ts` — filters, pagination, active tabs
 
 ## UI Patterns
 
@@ -147,7 +148,7 @@ Base components in `frontend/src/components/ui/` — built on Radix UI primitive
 - New pages: create route file in `frontend/src/routes/`, TanStack Router auto-generates the route tree
 - After backend API changes: run `make generate_api_client` to regenerate `frontend/src/api/`
 - New UI components: use Radix UI primitives + `cn()` for styling, follow Shadcn patterns in `components/ui/`
-- To add shadcn components: `pnpm dlx shadcn@latest add <component>`
+- To add shadcn components: `bunx shadcn@latest add <component>`
 - Data fetching: use TanStack React Query hooks — see `frontend/src/hooks/` for patterns
 - Search params: define Zod schemas in `frontend/src/lib/schemas.ts`
 - The auth flow differs between self-hosted (localStorage JWT) and enterprise (Clerk) — check `config.ts` for `isSelfHosted` flag
