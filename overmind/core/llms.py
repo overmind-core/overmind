@@ -144,7 +144,8 @@ def call_llm(
         if tools:
             completion_kwargs["tools"] = tools
 
-        completion_kwargs["cache_control"] = {"type": "ephemeral"}
+        if provider == "anthropic":
+            completion_kwargs["cache_control"] = {"type": "ephemeral"}
 
         response = completion(**completion_kwargs, **request_kwargs)
 
