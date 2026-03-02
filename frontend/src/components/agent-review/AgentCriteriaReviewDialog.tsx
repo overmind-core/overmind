@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 
 import { useMutation } from "@tanstack/react-query";
-import { Loader as Loader2, Plus, Delete as Trash2, Cancel as X } from "pixelarticons/react";
+import { Loader as Loader2, Plus, Cancel as Trash2, Cancel as X } from "pixelarticons/react";
 
 import type { AgentOut } from "@/api";
 

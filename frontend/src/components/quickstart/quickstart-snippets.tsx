@@ -4,6 +4,7 @@ import { Check, Copy, ExternalLink, Loader as Loader2, Terminal } from "pixelart
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 import { type Language, LANGUAGES, type Vendor, getSnippet } from "./snippet-data";
@@ -11,7 +12,7 @@ import { useQuickstartKey } from "./use-quickstart-key";
 
 const DOCS_URL = "https://docs.overmindlab.ai/guides/getting-started/";
 
-function CopyButton({ text }: { text: string }) {
+function CopyButton({ text, className }: { text: string; className?: string }) {
   const [copied, setCopied] = useState(false);
 
   const handleCopy = async () => {
@@ -23,7 +24,7 @@ function CopyButton({ text }: { text: string }) {
   return (
     <Button
       aria-label="Copy to clipboard"
-      className="absolute top-2 right-2 size-7 opacity-0 transition-opacity group-hover/code:opacity-100"
+      className={cn("size-7 shrink-0", className)}
       onClick={handleCopy}
       size="icon"
       variant="ghost"
@@ -35,19 +36,24 @@ function CopyButton({ text }: { text: string }) {
 
 function CodeBlock({ children, label }: { children: string; label?: string }) {
   return (
-    <div className="group/code relative">
+    <div className="relative">
       {label && (
-        <div className="flex items-center gap-1.5 rounded-t-md border border-b-0 border-border bg-muted/80 px-3 py-1.5">
-          <Terminal className="size-3.5 text-muted-foreground" />
-          <span className="text-xs font-medium text-muted-foreground">{label}</span>
+        <div className="flex items-center justify-between rounded-t-md border border-b-0 border-border bg-muted/80 px-3 py-1">
+          <div className="flex items-center gap-1.5">
+            <Terminal className="size-3.5 text-muted-foreground" />
+            <span className="text-xs font-medium text-muted-foreground">{label}</span>
+          </div>
+          <CopyButton className="text-muted-foreground hover:text-foreground" text={children} />
         </div>
       )}
       <pre
-        className={`overflow-x-auto border border-border bg-zinc-950 p-4 font-mono text-sm leading-relaxed text-zinc-100 ${label ? "rounded-b-md" : "rounded-md"}`}
+        className={`overflow-x-auto border border-border bg-zinc-950 p-4 pr-10 font-mono text-sm leading-relaxed text-zinc-100 ${label ? "rounded-b-md" : "rounded-md"}`}
       >
         {children}
       </pre>
-      <CopyButton text={children} />
+      {!label && (
+        <CopyButton className="absolute top-2 right-2 text-zinc-400 hover:text-zinc-100" text={children} />
+      )}
     </div>
   );
 }
@@ -103,7 +109,7 @@ function SnippetPanel({
         <p className="mb-2 text-sm font-medium text-foreground">
           2. Replace your import and add your API key
         </p>
-        <CodeBlock>{snippet.codeSnippet(apiKey)}</CodeBlock>
+        <CodeBlock label="Code">{snippet.codeSnippet(apiKey)}</CodeBlock>
       </div>
       <div className="rounded-md border border-border bg-muted/30 px-4 py-3">
         <p className="text-sm font-medium text-foreground">3. Send at least 10 traces</p>

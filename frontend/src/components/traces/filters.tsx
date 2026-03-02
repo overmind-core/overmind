@@ -11,7 +11,7 @@ import {
   PenSquare as Pencil,
   Sparkle as Sun,
   Target,
-  Delete as Trash2,
+  Cancel as Trash2,
 } from "pixelarticons/react";
 
 import { Button } from "@/components/ui/button";

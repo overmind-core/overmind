@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 
 import { useMutation } from "@tanstack/react-query";
-import { ChevronLeft, ChevronRight, Loader as Loader2, PenSquare as Pencil, Plus, Delete as Trash2, Cancel as X } from "pixelarticons/react";
+import { ChevronLeft, ChevronRight, Loader as Loader2, PenSquare as Pencil, Plus, Cancel as Trash2, Cancel as X } from "pixelarticons/react";
 import { toast } from "sonner";
 
 import apiClient from "@/client";
