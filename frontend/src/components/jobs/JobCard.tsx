@@ -13,6 +13,9 @@ const STATUS_ICON: Record<string, React.ReactNode> = {
 };
 
 const JOB_TYPE_LABELS: Record<string, string> = {
+  agent_discovery: "Agent Discovery",
+  judge_scoring: "LLM Judge Scoring",
+  model_backtesting: "Model Backtesting",
   prompt_tuning: "Prompt Tuning",
   scoring: "LLM Judge Scoring",
   template_extraction: "Template Extraction",
@@ -263,6 +266,8 @@ function RenderJson({ result }: { result: Record<string, unknown> | null | undef
             let display: string;
             if (v == null) {
               display = "—";
+            } else if (Array.isArray(v)) {
+              display = String(v.length);
             } else if (typeof v === "object") {
               display = JSON.stringify(v);
               if (display.length > 40) display = `${display.slice(0, 37)}…`;
