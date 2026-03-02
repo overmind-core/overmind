@@ -1,0 +1,147 @@
+---
+description: "LLM calling infrastructure: LiteLLM integration, model resolver, provider selection, and prompt variant system"
+globs:
+  - "overmind/core/llms.py"
+  - "overmind/core/model_resolver.py"
+alwaysApply: false
+---
+
+# LLM Infrastructure
+
+All LLM interactions go through a central calling layer built on LiteLLM, with a model resolver that picks the best available model per task type, and a provider-specific prompt variant system.
+
+## call_llm (`overmind/core/llms.py`)
+
+Central function for all LLM calls in the system.
+
+### Signature
+
+```python
+call_llm(
+    input_text: str,
+    system_prompt: str | None = None,
+    model: str | None = None,
+    response_format: type | None = None,
+    messages: list[dict] | None = None,
+    tools: list[dict] | None = None,
+) -> tuple[str, dict]
+```
+
+### Behavior
+
+1. If `messages` provided → use as-is (full conversation replay for backtesting/tool-calling)
+1. Else → build `[{"role": "system", ...}, {"role": "user", ...}]` from `system_prompt` + `input_text`
+1. Resolve model via `normalize_model_name(model)` or `_get_default_model()`
+1. Map to LiteLLM format: `"{provider}/{model_name}"`
+1. Call `litellm.completion()` with optional `tools`, `response_format`, `cache_control`
+1. If response content is None and `tool_calls` present → serialize as `{"tool_calls": [...]}`
+1. Return `(content.strip(), stats)`
+
+### Stats dict
+
+```python
+{
+    "prompt_tokens": int,
+    "completion_tokens": int,
+    "response_ms": float,
+    "response_cost": float,  # via calculate_llm_usage_cost()
+}
+```
+
+### Related functions
+
+- `normalize_llm_response_output(response)` — converts call_llm output to span format: `[{"role": "assistant", "content": ..., "tool_calls": ...}]`
+- `try_json_parsing(json_data)` — robust JSON parsing with fallback via `json_repair`
+- `normalize_model_name(model_name)` — strips provider prefixes, maps aliases
+
+## Model Resolver (`overmind/core/model_resolver.py`)
+
+### TaskType enum
+
+```python
+class TaskType(str, Enum):
+    JUDGE_SCORING = "judge_scoring"
+    PROMPT_TUNING = "prompt_tuning"
+    CRITERIA_GENERATION = "criteria_generation"
+    AGENT_DESCRIPTION = "agent_description"
+    DEFAULT = "default"
+```
+
+### MODEL_PRIORITY
+
+Priority-ordered `(model, provider)` tuples per task. First model whose provider has an API key wins.
+
+| TaskType            | 1st choice                    | 2nd choice                      | 3rd choice                      |
+| ------------------- | ----------------------------- | ------------------------------- | ------------------------------- |
+| JUDGE_SCORING       | gpt-5-mini (openai)           | gemini-3-flash-preview (gemini) | claude-haiku-4-5 (anthropic)    |
+| PROMPT_TUNING       | claude-sonnet-4-6 (anthropic) | gpt-5.2 (openai)                | gemini-3-pro-preview (gemini)   |
+| CRITERIA_GENERATION | claude-sonnet-4-6 (anthropic) | gpt-5.2 (openai)                | gemini-3-pro-preview (gemini)   |
+| AGENT_DESCRIPTION   | claude-sonnet-4-6 (anthropic) | gpt-5-mini (openai)             | gemini-3-flash-preview (gemini) |
+| DEFAULT             | gpt-5-mini (openai)           | gemini-3-flash-preview (gemini) | claude-haiku-4-5 (anthropic)    |
+
+### Key functions
+
+- `resolve_model(task: TaskType) -> str` — returns model name string
+- `resolve_model_and_provider(task: TaskType) -> tuple[str, str]` — returns `(model, provider)` for provider-specific prompt selection
+- `get_available_providers() -> set[str]` — checks which of `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `GEMINI_API_KEY` are configured
+- `get_available_backtest_models() -> list[str]` — returns `BACKTEST_MODELS_BY_PROVIDER` filtered to available providers
+
+## Provider-Specific Prompt System (`overmind/tasks/utils/prompts.py`)
+
+Prompt improvement uses provider-optimized meta-prompts:
+
+```python
+model, provider = resolve_model_and_provider(TaskType.PROMPT_TUNING)
+prompt_text = get_prompt_for_provider(SUGGESTION_GENERATION_PROMPTS, provider)
+```
+
+### `get_prompt_for_provider(prompt_dict: dict, provider: str) -> str`
+
+Selects the right variant from a dict like `{"anthropic": "...", "openai": "...", "gemini": "..."}`. Falls back to `"anthropic"` for unknown providers.
+
+### Provider-specific dicts
+
+These constants are dicts with provider keys:
+
+- `SUGGESTION_GENERATION_SYSTEM_PROMPTS`
+- `SUGGESTION_GENERATION_PROMPTS`
+- `PROMPT_IMPROVEMENT_SYSTEM_PROMPTS`
+- `PROMPT_IMPROVEMENT_PROMPTS`
+- `TOOL_SUGGESTION_GENERATION_PROMPTS`
+- `TOOL_PROMPT_IMPROVEMENT_PROMPTS`
+
+### Style differences
+
+| Provider  | Style                                                                                                                 |
+| --------- | --------------------------------------------------------------------------------------------------------------------- |
+| Anthropic | XML tags (`<Context>`, `<Instructions>`), content before instructions, scope/verification constraints                 |
+| OpenAI    | Markdown `###` headers, numbered step lists, explicit output anchor (`### Improved Prompt\n`)                         |
+| Gemini    | XML blocks (`<role>`, `<context>`, `<task>`, `<constraints>`), planning/validation steps, self-critique before output |
+
+### Non-provider-specific prompts
+
+These are single strings (not dicts) used across all providers:
+
+- `CORRECTNESS_SYSTEM_PROMPT`, `CORRECTNESS_PROMPT_TEMPLATE`
+- `AGENTIC_CORRECTNESS_*`, `TOOL_CALL_CORRECTNESS_*`, `TOOL_ANSWER_CORRECTNESS_*`
+- `CRITERIA_GENERATION_*`
+- `AGENT_DESCRIPTION_*`
+- `DISPLAY_NAME_USER_PROMPT`
+
+## Provider Configuration
+
+Environment variables in `overmind/config.py`:
+
+- `OPENAI_API_KEY` — enables OpenAI models
+- `ANTHROPIC_API_KEY` — enables Anthropic models
+- `GEMINI_API_KEY` — enables Gemini models
+
+At least one key must be set for AI features to work. The model resolver raises `RuntimeError` if no provider is available for a task.
+
+## When Modifying This Area
+
+- Adding a new LLM provider: add key to `config.py`, add provider check in `get_available_providers()`, add models to `MODEL_PRIORITY` and `BACKTEST_MODELS_BY_PROVIDER`, add prompt variants to all `*_PROMPTS` dicts
+- Adding a new task type: add to `TaskType` enum, add priority list to `MODEL_PRIORITY`
+- `call_llm` always sets `cache_control = {"type": "ephemeral"}` — this enables prompt caching on supported providers
+- The `response_format` parameter enables structured output (Pydantic models) — LiteLLM handles the provider-specific implementation
+- `normalize_model_name` handles provider prefixes (`openai/`, `anthropic/`, etc.) — if LiteLLM naming changes, update this function

@@ -1,0 +1,189 @@
+---
+description: "Criteria generation, agent description generation, and display name generation for discovered agents"
+globs:
+  - "overmind/tasks/criteria_generator.py"
+  - "overmind/tasks/agent_description_generator.py"
+  - "overmind/tasks/prompt_display_name_generator.py"
+  - "overmind/tasks/periodic_reviews.py"
+alwaysApply: false
+---
+
+# Criteria and Description Generation
+
+Three generation tasks that enrich discovered agents with evaluation criteria, natural-language descriptions, and human-readable display names. All are triggered after agent discovery creates a new Prompt.
+
+## Criteria Generator (`overmind/tasks/criteria_generator.py`)
+
+Generates evaluation rules that the LLM judge uses to score span outputs.
+
+### Flow
+
+```
+generate_criteria_task(prompt_id)
+        │
+        ▼
+  Fetch up to 10 spans for the prompt
+  (prefer spans with judge_feedback)
+        │
+        ▼
+  Get project description
+        │
+        ▼
+  Detect agentic spans via detect_agentic_span()
+  ├── Agentic? → append AGENTIC_NOTE_FOR_CRITERIA to prompt
+  └── Not agentic? → standard criteria prompt
+        │
+        ▼
+  Call LLM with CRITERIA_GENERATION_PROMPT
+  (system: CRITERIA_GENERATION_SYSTEM_PROMPT)
+        │
+        ▼
+  Parse JSON response: {"correctness": ["rule1", "rule2", ...]}
+        │
+        ▼
+  Store in prompt.evaluation_criteria
+```
+
+### Key functions
+
+- `generate_criteria_task(prompt_id)` — Celery task entry point
+- `_generate_criteria_for_prompt(prompt_id)` — core logic
+- `ensure_prompt_has_criteria(prompt_id)` — sync check/generate, used by evaluations to ensure criteria exist before scoring
+- `_store_criteria_to_prompt(prompt_id, criteria)` — persist to DB
+
+### Data format
+
+```json
+// prompt.evaluation_criteria
+{
+  "correctness": [
+    "Must provide accurate financial figures",
+    "Must address all parts of the user's query",
+    "Must cite data sources when available",
+    "Must handle edge cases (empty input, ambiguous queries)",
+    "Must not fabricate information"
+  ]
+}
+```
+
+### Model: `TaskType.CRITERIA_GENERATION` — priority: claude-sonnet-4-6 → gpt-5.2 → gemini-3-pro-preview
+
+### Response format: `CriteriaResponse` Pydantic model with `correctness: list[str]`
+
+## Agent Description Generator (`overmind/tasks/agent_description_generator.py`)
+
+Generates a concise natural-language description of what an agent does.
+
+### Flow
+
+```
+generate_initial_agent_description_task(prompt_id)
+        │
+        ▼
+  Fetch up to 10 spans
+  Get project description
+  Format spans as examples (without feedback)
+        │
+        ▼
+  Call LLM with AGENT_DESCRIPTION_GENERATION_PROMPT
+  (system: AGENT_DESCRIPTION_SYSTEM_PROMPT)
+        │
+        ▼
+  Parse JSON: {"description": "This agent..."}
+        │
+        ▼
+  Store in prompt.agent_description
+```
+
+### Update from feedback
+
+```
+update_agent_description_from_feedback_task(prompt_id, span_ids)
+        │
+        ▼
+  No existing description? → generate initial from feedback spans
+  Has description? → call AGENT_DESCRIPTION_UPDATE_FROM_FEEDBACK_PROMPT
+  with current description + feedback examples
+        │
+        ▼
+  Store updated description
+```
+
+### Key functions
+
+- `generate_initial_agent_description_task(prompt_id)` — initial generation
+- `update_agent_description_from_feedback_task(prompt_id, span_ids)` — update with user feedback
+- `_generate_initial_agent_description(prompt_id, span_limit=10)` — core logic
+- `_update_agent_description_from_feedback(prompt_id, span_ids, feedback_override?)` — update logic
+
+### Data format
+
+```json
+// prompt.agent_description
+{
+  "description": "This agent answers financial queries by retrieving real-time market data...",
+  "last_review_span_count": 10,
+  "next_review_span_count": 100,
+  "feedback_history": [
+    {"span_id": "abc-123", "feedback": "positive", "timestamp": "2026-02-15T10:00:00Z"}
+  ]
+}
+```
+
+### Model: `TaskType.AGENT_DESCRIPTION` — priority: claude-sonnet-4-6 → gpt-5-mini → gemini-3-flash-preview
+
+### Response format: `AgentDescriptionResponse` Pydantic model with `description: str`
+
+## Display Name Generator (`overmind/tasks/prompt_display_name_generator.py`)
+
+Generates human-readable display names for discovered prompts.
+
+### Key functions
+
+- `generate_display_name_task(prompt_id)` — Celery task
+- `generate_display_name_for_prompt(prompt, db)` — called directly during agent discovery
+
+Uses `DISPLAY_NAME_USER_PROMPT` with the prompt template text to generate a short display name. Stored in `prompt.display_name`.
+
+## Periodic Reviews (`overmind/tasks/periodic_reviews.py`)
+
+Triggers re-review of agent descriptions at span count thresholds.
+
+- Runs hourly via Celery beat
+- Checks if span count has reached `next_review_span_count` from `prompt.agent_description`
+- Triggers `update_agent_description_from_feedback_task` when threshold reached
+- Updates `last_review_span_count` and `next_review_span_count` for the next cycle
+
+## Trigger Chain
+
+```
+Agent Discovery
+  └── Creates new Prompt
+        ├── generate_criteria_task(prompt_id)
+        ├── generate_initial_agent_description_task(prompt_id)
+        └── generate_display_name_for_prompt(prompt, db)
+
+User reviews agent (UI)
+  └── update_agent_description_from_feedback_task(prompt_id, span_ids)
+        └── May also invalidate criteria → re-trigger prompt improvement
+
+Periodic reviews (hourly)
+  └── check_review_triggers → update_agent_description_from_feedback_task
+```
+
+## Interaction with Prompt Improvement
+
+When criteria or description changes:
+
+- `invalidate_prompt_improvement_metadata(prompt)` is called
+- This rolls back the improvement threshold by one step
+- Prompt improvement re-triggers with the updated criteria/description on its next run
+
+## When Modifying This Area
+
+- Criteria are used by the evaluation system — changing criteria format requires updating `_format_criteria()` in `overmind/tasks/evaluations.py`
+- Agent descriptions are included as context in evaluation and prompt improvement — better descriptions lead to better scoring and tuning
+- The `AGENTIC_NOTE_FOR_CRITERIA` is appended when agentic spans are detected — it adds tool-usage criteria
+- Max 5 criteria rules per prompt — the LLM is instructed to generate "at max 5 specific rules"
+- Judge feedback (from `span.feedback_score.judge_feedback`) is included when generating criteria — this creates a feedback loop where user corrections improve the judge
+- `ensure_prompt_has_criteria` is a blocking check — evaluation waits for criteria to exist
