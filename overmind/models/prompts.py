@@ -1,4 +1,5 @@
 from sqlalchemy import (
+    Boolean,
     Column,
     String,
     DateTime,
@@ -62,6 +63,12 @@ class Prompt(Base):
     # User-defined categorisation tags, e.g. ["HR", "financial"]
     # Stored as a JSON array of strings; shared across all versions of the same slug
     tags = Column(JSONB, nullable=True)
+
+    # Whether this is the currently active (production-stable) version.
+    # Exactly one version per (slug, project_id) is True at any time.
+    # Versions created by the tuning pipeline are inserted with is_active=False
+    # until explicitly accepted or auto-accepted via production span traffic.
+    is_active = Column(Boolean, nullable=False, default=True, server_default="true")
 
     __table_args__ = (
         PrimaryKeyConstraint(

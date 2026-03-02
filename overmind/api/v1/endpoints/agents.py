@@ -236,6 +236,8 @@ class AgentDetailOut(BaseModel):
     name: str
     project_id: str
     latest_version: int
+    active_version: int
+    pending_version: int | None = None
     analytics: AgentAnalytics
     versions: list[PromptVersionOut] = []
     suggestions: list[SuggestionOut] = []
@@ -279,7 +281,53 @@ async def get_agent_detail(
     if not all_versions:
         raise HTTPException(status_code=404, detail="Agent not found")
 
-    latest = all_versions[0]
+    # Determine active version (is_active=True) and pending version (max version if different)
+    active_prompt = next((v for v in all_versions if v.is_active), None)
+    max_prompt = all_versions[0]  # already ordered by version desc
+
+    # Auto-accept: if a pending version exists and has at least one real production span,
+    # flip is_active atomically without waiting for user action.
+    if active_prompt and max_prompt.version != active_prompt.version:
+        real_span_check = await db.execute(
+            select(func.count(SpanModel.span_id)).where(
+                and_(
+                    SpanModel.prompt_id == max_prompt.prompt_id,
+                    SpanModel.exclude_system_spans(),
+                )
+            )
+        )
+        real_span_count = real_span_check.scalar() or 0
+
+        if real_span_count >= 1:
+            # Auto-accept: flip all versions inactive, then make max_prompt active
+            for v in all_versions:
+                v.is_active = False
+            max_prompt.is_active = True
+            # Mark associated pending suggestion as accepted
+            pending_sugg_q = await db.execute(
+                select(Suggestion).where(
+                    and_(
+                        Suggestion.prompt_slug == prompt_slug,
+                        Suggestion.project_id == pid,
+                        Suggestion.new_prompt_version == max_prompt.version,
+                        Suggestion.status == "pending",
+                    )
+                )
+            )
+            sugg = pending_sugg_q.scalar_one_or_none()
+            if sugg:
+                sugg.status = "accepted"
+            await db.commit()
+            active_prompt = max_prompt
+
+    # Fall back to max_prompt if no is_active row found (legacy safety)
+    if not active_prompt:
+        active_prompt = max_prompt
+
+    latest = active_prompt
+    pending_version = (
+        max_prompt.version if max_prompt.version != active_prompt.version else None
+    )
 
     # Build per-version analytics
     version_outs: list[PromptVersionOut] = []
@@ -418,7 +466,9 @@ async def get_agent_detail(
         slug=latest.slug,
         name=detail_display_name,
         project_id=str(pid),
-        latest_version=latest.version,
+        latest_version=max_prompt.version,
+        active_version=active_prompt.version,
+        pending_version=pending_version,
         analytics=analytics,
         versions=version_outs,
         suggestions=suggestions,

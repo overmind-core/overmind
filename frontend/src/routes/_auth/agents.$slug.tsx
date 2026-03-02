@@ -1,23 +1,23 @@
 import { useMemo, useState } from "react";
 
+import { ResponseError } from "@/api";
+import apiClient from "@/client";
+import { Badge } from "@/components/ui/badge";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import {
   Activity,
   ArrowLeft,
+  Check,
   ClipboardCheck,
   FlaskConical,
   Loader2,
   Play,
   Sparkles,
+  X,
 } from "lucide-react";
 import z from "zod";
 
-import { ResponseError } from "@/api";
-import apiClient from "@/client";
-import { AgentCriteriaCard } from "@/components/agent-review/AgentCriteriaCard";
-import { AgentCriteriaReviewDialog } from "@/components/agent-review/AgentCriteriaReviewDialog";
-import { SpanFeedbackDialog } from "@/components/agent-review/SpanFeedbackDialog";
 import { AgentNameEditor } from "@/components/agent-detail/AgentNameEditor";
 import { AgentTagsEditor } from "@/components/agent-detail/AgentTagsEditor";
 import { DateRangePicker } from "@/components/agent-detail/DateRangePicker";
@@ -26,9 +26,12 @@ import { ReportMetricRow } from "@/components/agent-detail/ReportCard";
 import { SparklineChart, SummaryStat } from "@/components/agent-detail/SparklineChart";
 import { SuggestionsTab } from "@/components/agent-detail/SuggestionsTab";
 import { VersionsTab } from "@/components/agent-detail/VersionsTab";
+import { AgentCriteriaCard } from "@/components/agent-review/AgentCriteriaCard";
+import { AgentCriteriaReviewDialog } from "@/components/agent-review/AgentCriteriaReviewDialog";
+import { SpanFeedbackDialog } from "@/components/agent-review/SpanFeedbackDialog";
 import { Alert } from "@/components/ui/alert";
-import { DismissibleAlert } from "@/components/ui/dismissible-alert";
 import { Button } from "@/components/ui/button";
+import { DismissibleAlert } from "@/components/ui/dismissible-alert";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useAgentDetailQuery } from "@/hooks/use-query";
 import {
@@ -37,7 +40,7 @@ import {
   aggregationForRange,
   clampBuckets,
 } from "@/lib/analytics";
-import { cn, formatDate } from "@/lib/utils";
+import { formatDate } from "@/lib/utils";
 
 // ─── Route ───────────────────────────────────────────────────────────────────
 
@@ -147,6 +150,34 @@ function AgentDetailPage() {
     },
   });
 
+  const acceptSuggestionMutation = useMutation({
+    mutationFn: (suggestionId: string) =>
+      apiClient.suggestions
+        .acceptSuggestionApiV1SuggestionsSuggestionIdAcceptPost({ suggestionId })
+        .catch(async (error) => {
+          if (error instanceof ResponseError) {
+            const r = await error.response.json();
+            throw new Error(r.detail ?? "Accept failed");
+          }
+          throw error;
+        }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["agent-detail", slug] }),
+  });
+
+  const dismissSuggestionMutation = useMutation({
+    mutationFn: (suggestionId: string) =>
+      apiClient.suggestions
+        .dismissSuggestionApiV1SuggestionsSuggestionIdDismissPost({ suggestionId })
+        .catch(async (error) => {
+          if (error instanceof ResponseError) {
+            const r = await error.response.json();
+            throw new Error(r.detail ?? "Dismiss failed");
+          }
+          throw error;
+        }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["agent-detail", slug] }),
+  });
+
   const allVersionsSorted = useMemo(() => {
     if (!data?.versions) return [];
     return [...data.versions].sort((a, b) => b.version - a.version);
@@ -182,8 +213,12 @@ function AgentDetailPage() {
   const agent = data;
   const { analytics } = agent;
   const latestVersion = allVersionsSorted[0];
-  const lastEvaluated = latestVersion?.createdAt;
-
+  const lastEvaluated = allVersionsSorted[0]?.createdAt;
+  const pendingSuggestion = agent.pendingVersion != null
+    ? (agent.suggestions ?? []).find(
+      (s) => s.newPromptVersion === agent.pendingVersion && s.status === "pending"
+    ) ?? null
+    : null;
   const agentForReview = {
     slug: agent.slug,
     name: agent.name,
@@ -245,6 +280,114 @@ function AgentDetailPage() {
           </Button>
         </div>
       )}
+
+
+      {/* Pending version banner */}
+      {agent.pendingVersion != null && pendingSuggestion && (
+        <div className="flex items-center justify-between rounded-lg border border-amber-400/60 bg-amber-400/10 px-4 py-3">
+          <div className="flex items-center gap-2 text-sm text-amber-700 dark:text-amber-400">
+            <Sparkles className="size-4 shrink-0" />
+            <span>
+              Version {agent.pendingVersion} is pending acceptance. Stats below reflect{" "}
+              <strong>v{agent.activeVersion}</strong> (currently active in production).
+            </span>
+          </div>
+          <div className="ml-4 flex shrink-0 gap-2">
+            <Button
+              className="border-amber-400/60 text-amber-700 hover:bg-amber-400/20 dark:text-amber-400"
+              disabled={acceptSuggestionMutation.isPending || dismissSuggestionMutation.isPending}
+              onClick={() => pendingSuggestion && acceptSuggestionMutation.mutate(pendingSuggestion.id)}
+              size="sm"
+              variant="outline"
+            >
+              {acceptSuggestionMutation.isPending ? (
+                <Loader2 className="size-3 animate-spin" />
+              ) : (
+                <Check className="size-3" />
+              )}
+              Accept v{agent.pendingVersion}
+            </Button>
+            <Button
+              disabled={acceptSuggestionMutation.isPending || dismissSuggestionMutation.isPending}
+              onClick={() => pendingSuggestion && dismissSuggestionMutation.mutate(pendingSuggestion.id)}
+              size="sm"
+              variant="ghost"
+            >
+              {dismissSuggestionMutation.isPending ? (
+                <Loader2 className="size-3 animate-spin" />
+              ) : (
+                <X className="size-3" />
+              )}
+              Dismiss
+            </Button>
+          </div>
+        </div>
+      )}
+
+      {/* Version row: VERSION N + LATEST + Score/Tune/Backtest */}
+      <div className="flex flex-wrap items-center justify-between gap-4">
+        <div className="flex items-center gap-2">
+          <span className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">
+            Version {agent.activeVersion}
+          </span>
+          <Badge
+            className="bg-emerald-500/15 text-emerald-700 dark:text-emerald-400"
+            variant="secondary"
+          >
+            Active
+          </Badge>
+          {agent.pendingVersion != null && (
+            <Badge className="border-amber-400/60 text-amber-600 dark:text-amber-400" variant="outline">
+              v{agent.pendingVersion} pending
+            </Badge>
+          )}
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <Button
+            disabled={scoreMutation.isPending}
+            onClick={() => scoreMutation.mutate()}
+            size="sm"
+            variant="outline"
+          >
+            {scoreMutation.isPending ? (
+              <Loader2 className="size-3 animate-spin" />
+            ) : (
+              <Play className="size-3" />
+            )}
+            Score
+          </Button>
+          <Button
+            disabled={tuneMutation.isPending}
+            onClick={() => tuneMutation.mutate()}
+            size="sm"
+            variant="outline"
+          >
+            {tuneMutation.isPending ? (
+              <Loader2 className="size-3 animate-spin" />
+            ) : (
+              <Sparkles className="size-3" />
+            )}
+            Tune
+          </Button>
+          <Button
+            disabled={backtestMutation.isPending}
+            onClick={() => {
+              const promptId = allVersionsSorted[0]?.promptId;
+              if (promptId) backtestMutation.mutate(promptId);
+            }}
+            size="sm"
+            variant="outline"
+          >
+            {backtestMutation.isPending ? (
+              <Loader2 className="size-3 animate-spin" />
+            ) : (
+              <FlaskConical className="size-3" />
+            )}
+            Backtest
+          </Button>
+        </div>
+      </div>
+
 
       <DismissibleAlert error={scoreMutation.isError ? scoreMutation.error : null} variant="warning" />
       <DismissibleAlert error={tuneMutation.isError ? tuneMutation.error : null} variant="warning" />
