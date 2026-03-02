@@ -1,8 +1,3 @@
-import { Link } from "@tanstack/react-router";
-import { ArrowRight } from "lucide-react";
-
-import { Button } from "@/components/ui/button";
-
 import { QuickstartSnippets } from "./quickstart-snippets";
 
 export function QuickstartEmbed() {
@@ -18,11 +13,6 @@ export function QuickstartEmbed() {
         <QuickstartSnippets compact />
       </div>
 
-      <Button asChild className="mt-4" size="sm" variant="outline">
-        <Link to="/get-started">
-          View full setup guide <ArrowRight className="ml-1.5 size-3.5" />
-        </Link>
-      </Button>
     </div>
   );
 }

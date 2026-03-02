@@ -1,6 +1,6 @@
 import { useState } from "react";
 
-import { Check, Copy, ExternalLink, Loader2, Terminal } from "lucide-react";
+import { Check, Copy, ExternalLink, Loader as Loader2, Terminal } from "pixelarticons/react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -172,14 +172,15 @@ export function QuickstartSnippets({ compact = false }: { compact?: boolean }) {
                 ))}
               </TabsList>
             </Tabs>
-            <a
-              className="hidden items-center gap-1 text-sm text-muted-foreground transition-colors hover:text-foreground sm:inline-flex"
-              href={DOCS_URL}
-              rel="noopener noreferrer"
-              target="_blank"
-            >
-              Full docs <ExternalLink className="size-3.5" />
-            </a>
+            <Button asChild className="hidden sm:inline-flex" size="sm" variant="outline">
+              <a
+                href={DOCS_URL}
+                rel="noopener noreferrer"
+                target="_blank"
+              >
+                Full Docs <ExternalLink className="ml-1.5 size-3.5" />
+              </a>
+            </Button>
           </div>
 
           <Tabs onValueChange={(v) => setVendor(v as Vendor)} value={vendor}>
@@ -207,16 +208,6 @@ export function QuickstartSnippets({ compact = false }: { compact?: boolean }) {
         </div>
       </div>
 
-      <div className="flex items-center gap-3">
-        <a
-          className="inline-flex items-center gap-1.5 text-sm font-medium text-primary hover:underline"
-          href={DOCS_URL}
-          rel="noopener noreferrer"
-          target="_blank"
-        >
-          Getting Started Guide <ExternalLink className="size-3.5" />
-        </a>
-      </div>
     </div>
   );
 }

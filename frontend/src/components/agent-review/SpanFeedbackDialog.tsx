@@ -3,13 +3,13 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import {
   ThumbsDown,
   ThumbsUp,
-  Loader2,
-  CheckCircle2,
-  AlertCircle,
+  Loader as Loader2,
+  Check as CheckCircle2,
+  WarningDiamond as AlertCircle,
   ChevronLeft,
   ChevronRight,
-  X,
-} from "lucide-react";
+  Cancel as X,
+} from "pixelarticons/react";
 
 import type { AgentOut, SpanForReview } from "@/api";
 import apiClient from "@/client";

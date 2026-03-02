@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { Loader2 } from "lucide-react";
+import { Loader as Loader2 } from "pixelarticons/react";
 
 import apiClient from "@/client";
 import { Button } from "@/components/ui/button";

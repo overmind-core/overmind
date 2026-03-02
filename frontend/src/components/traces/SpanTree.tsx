@@ -1,6 +1,6 @@
 import { useMemo } from "react";
 
-import { ChevronDown, ChevronRight } from "lucide-react";
+import { ChevronDown, ChevronRight } from "pixelarticons/react";
 
 import { cn } from "@/lib/utils";
 import { useTraceData } from "./contexts/TraceDataContext";

@@ -2,7 +2,7 @@ import { useState } from "react";
 
 import { SignIn, useUser } from "@clerk/clerk-react";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
-import { Loader2 } from "lucide-react";
+import { Loader as Loader2 } from "pixelarticons/react";
 import { ContinueWithGoogle } from "@/components/continue-with-google";
 import apiClient from "@/client";
 import { Separator } from "@/components/ui/separator";
@@ -20,16 +20,16 @@ function RouteComponent() {
     <div className="fixed inset-0 bg-black">
       <img
         alt=""
-        className="pointer-events-none absolute inset-0 h-full w-full object-cover"
+        className="pointer-events-none absolute inset-0 h-full w-full animate-fade-in object-cover"
         src="/A2.png"
       />
       <img
         alt=""
-        className="pointer-events-none absolute inset-0 h-full w-full object-cover mix-blend-screen"
+        className="pointer-events-none absolute inset-0 h-full w-full animate-fade-in object-cover mix-blend-screen [animation-delay:200ms]"
         src="/A1.png"
       />
       <div className="relative z-10 flex h-full items-center justify-center">
-        <div className="w-[470px] rounded-lg border border-[#2E2A27] bg-[#1C1917]/90 px-10 py-10 backdrop-blur-sm">
+        <div className="w-[470px] animate-fade-in-up rounded-lg border border-[#2E2A27] bg-[#1C1917]/90 px-10 py-10 backdrop-blur-sm [animation-delay:400ms]">
           <h1
             className="mb-1 text-center text-[2.5rem] leading-tight text-white"
             style={{ fontFamily: '"PP Mondwest", Georgia, serif' }}

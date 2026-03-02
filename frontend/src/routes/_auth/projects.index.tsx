@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { ArrowDown, ArrowUp, ChevronsUpDown, EyeOff, FolderKanban } from "lucide-react";
+import { ArrowDown, ArrowUp, ChevronsVertical as ChevronsUpDown, EyeOff, Folder as FolderKanban } from "pixelarticons/react";
 
 import { CreateProjectDialog } from "@/components/create-project";
 import { Alert } from "@/components/ui/alert";

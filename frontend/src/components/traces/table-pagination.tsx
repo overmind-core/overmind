@@ -1,5 +1,5 @@
 import type { Table } from "@tanstack/react-table";
-import { ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight } from "lucide-react";
+import { ChevronLeft, ChevronLeft2 as ChevronsLeft, ChevronRight, ChevronRight2 as ChevronsRight } from "pixelarticons/react";
 
 import { Button } from "@/components/ui/button";
 import {

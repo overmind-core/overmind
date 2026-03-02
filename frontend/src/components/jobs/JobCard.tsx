@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { CheckCircle, ChevronDown, Clock, Loader2, XCircle } from "lucide-react";
+import { Check as CheckCircle, ChevronDown, Clock, Loader as Loader2, Cancel as XCircle } from "pixelarticons/react";
 
 import type { JobOut } from "@/api";
 import { Badge } from "@/components/ui/badge";
@@ -326,7 +326,6 @@ export function JobCard({ job: j }: { job: JobOut }) {
         <span className="text-xs text-muted-foreground">{formatDate(j.createdAt ?? "")}</span>
         <ChevronDown
           className={cn("size-4 text-muted-foreground transition-transform", open && "rotate-180")}
-          strokeWidth={1.5}
         />
       </button>
       {open && <RenderJson result={j.result} />}

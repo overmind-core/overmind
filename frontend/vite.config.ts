@@ -26,6 +26,9 @@ const config = defineConfig({
   resolve: {
     alias: {
       "@": fileURLToPath(new URL("./src", import.meta.url)),
+      "pixelarticons/react": fileURLToPath(
+        new URL("./node_modules/pixelarticons/react/index.js", import.meta.url),
+      ),
     },
   },
   server: !isSelfHosted
