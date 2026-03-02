@@ -1000,7 +1000,7 @@ async def _run_backtesting(
             )
             backtest_run = result.scalar_one()
             backtest_run.status = "completed"
-            backtest_run.completed_at = datetime.utcnow()
+            backtest_run.completed_at = datetime.now(timezone.utc)
             await session.commit()
             logger.info(f"Marked backtest run {backtest_run_id} as completed")
 
@@ -1017,7 +1017,7 @@ async def _run_backtesting(
             backtest_run = result.scalar_one_or_none()
             if backtest_run:
                 backtest_run.status = "failed"
-                backtest_run.completed_at = datetime.utcnow()
+                backtest_run.completed_at = datetime.now(timezone.utc)
             await session.commit()
 
         try:
