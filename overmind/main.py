@@ -25,6 +25,8 @@ from overmind.celery_app import get_celery_app
 from overmind.bootstrap import ensure_default_user
 from logging import getLogger, Filter
 import logging
+from contextlib import asynccontextmanager
+
 
 FRONTEND_DIR = Path(__file__).resolve().parent.parent / "frontend_dist"
 
@@ -43,8 +45,8 @@ logging.getLogger("uvicorn.access").addFilter(HealthCheckFilter())
 app = FastAPI(title=settings.app_name, debug=settings.debug, redirect_slashes=False)
 
 
-@app.on_event("startup")
-async def startup_event():
+@asynccontextmanager
+async def lifespan(app: FastAPI):
     try:
         logger.info("--- Starting overmind worker startup ---")
 
@@ -74,9 +76,8 @@ async def startup_event():
 
         logger.error(f"Full traceback: {traceback.format_exc()}")
 
+    yield
 
-@app.on_event("shutdown")
-async def shutdown_event():
     try:
         logger.info("--- Server shutting down! ---")
 

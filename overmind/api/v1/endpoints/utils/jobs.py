@@ -4,7 +4,7 @@ Utility functions for the jobs endpoint.
 
 import logging
 import uuid as _uuid
-from datetime import datetime
+from datetime import datetime, timezone
 
 from fastapi import HTTPException
 from sqlalchemy import and_, select
@@ -104,7 +104,7 @@ async def cancel_existing_system_jobs(
             system_job.status = "cancelled"
             system_job.result = {
                 "reason": "Superseded by user-triggered job",
-                "cancelled_at": datetime.utcnow().isoformat(),
+                "cancelled_at": datetime.now(timezone.utc).isoformat(),
             }
             logger.info(
                 f"Cancelled system job {system_job.job_id} - superseded by user-triggered job"
