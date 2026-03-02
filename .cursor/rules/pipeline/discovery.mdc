@@ -2,10 +2,9 @@
 description: "Agent discovery pipeline: auto-discovering LLM agents from trace spans via template extraction"
 globs:
   - "overmind/tasks/agent_discovery.py"
-  - "overmind/core/template_extractor/\*\*"
+  - "overmind/core/template_extractor/**"
 alwaysApply: false
-
-______________________________________________________________________
+---
 
 # Agent Discovery
 

@@ -108,7 +108,7 @@ The `@with_task_lock` decorator uses Valkey distributed locks to prevent concurr
 async def discover_agents(): ...
 ```
 
-Uses Valkey `SET NX` with TTL for atomic lock acquisition. If the lock is already held, the task silently skips.
+Uses Valkey `SET NX` with a **7-day safety TTL** for atomic lock acquisition (`celery:lock:<task_name>` key). The TTL is not the expected task duration — it's a deadlock safeguard in case a worker crashes while holding the lock. If the lock is already held, the task returns `{"status": "skipped", "reason": "previous_task_still_running"}` and exits silently.
 
 ## Job Cleanup (`overmind/tasks/job_cleanup.py`)
 
