@@ -177,7 +177,7 @@ function ModelCard({
           {String(model.model ?? model.name ?? "—")}
         </span>
       </div>
-      {model.reason && (
+      {!!model.reason && (
         <p className="text-xs text-muted-foreground leading-relaxed">{String(model.reason)}</p>
       )}
       <div className="flex flex-wrap gap-4">
@@ -250,11 +250,11 @@ function RenderJson({ result }: { result: Record<string, unknown> | null | undef
 
   const comparisonTest = result.comparison_test as Record<string, unknown> | undefined;
   const hasComparison =
-    comparisonTest && typeof comparisonTest === "object" && comparisonTest.metrics;
+    !!(comparisonTest && typeof comparisonTest === "object" && comparisonTest.metrics);
 
   const recommendations = result.recommendations as Record<string, unknown> | undefined;
   const hasRecommendations =
-    recommendations && typeof recommendations === "object" && recommendations.summary;
+    !!(recommendations && typeof recommendations === "object" && recommendations.summary);
 
   const simpleEntries = Object.entries(result).filter(([k]) => !COMPLEX_KEYS.has(k));
 
