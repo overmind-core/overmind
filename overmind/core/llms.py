@@ -1,7 +1,7 @@
 import re
 from typing import Any
 from openai import OpenAI
-from litellm import completion
+import litellm
 import json
 from overmind.config import settings
 from overmind.core.model_resolver import TaskType, resolve_model
@@ -58,7 +58,7 @@ def normalize_model_name(model_name: str) -> str:
     return model_name  # return as-is if stripping didn't help
 
 
-def get_embedding(input_text: str, system_prompt: str | None = None) -> list[float]:
+def get_embedding(input_text: str) -> list[float]:
     """
     Get an embedding vector for the given input text using OpenAI's embeddings API.
 
@@ -69,25 +69,18 @@ def get_embedding(input_text: str, system_prompt: str | None = None) -> list[flo
     Returns:
         The embedding vector as a list of floats
     """
-    # Use placeholder API key - in production, this should be set via environment variable
-    api_key = "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"
-
-    client = OpenAI(api_key=api_key)
-
     try:
-        response = client.embeddings.create(
-            model="text-embedding-3-small", input=input_text, encoding_format="float"
-        )
+        response = litellm.embedding(model="text-embedding-3-small", input=[input_text])
+        text_embedding = response.data[0]["embedding"]
 
-        embedding = response.data[0].embedding
-        if embedding is None:
+        if text_embedding is None:
             raise Exception("No embedding received from OpenAI")
 
-        return embedding
+        return text_embedding
 
     except Exception as e:
         # In production, you might want to log this error and handle it more gracefully
-        raise Exception(f"Error getting embedding: {str(e)}")
+        raise Exception(f"Error getting embedding: {e}")
 
 
 def call_llm(
@@ -147,7 +140,7 @@ def call_llm(
         if provider == "anthropic":
             completion_kwargs["cache_control"] = {"type": "ephemeral"}
 
-        response = completion(**completion_kwargs, **request_kwargs)
+        response = litellm.completion(**completion_kwargs, **request_kwargs)
 
         content = response.choices[0].message.content
         if content is None:
