@@ -138,3 +138,31 @@ User SDK/Traces ──OTLP──> Trace Ingestion ──> PostgreSQL (traces + s
 - After API changes, regenerate the frontend client: `make generate_api_client`
 - New periodic tasks need a beat schedule entry in `overmind/celery_app.py`
 - Environment variables go in `overmind/config.py` (Pydantic Settings) and `.env.example`
+
+## Keeping These Docs in Sync
+
+**After every code change, update the relevant rule file(s) in `.cursor/rules/`.**
+
+| Changed area                                   | Rule file to update                |
+| ---------------------------------------------- | ---------------------------------- |
+| DB models, JSONB fields, migrations            | `data-models.mdc`                  |
+| Agent discovery, template extractor            | `pipeline/discovery.mdc`           |
+| LLM judge scoring, agentic detection           | `pipeline/evaluation.mdc`          |
+| Prompt improvement, meta-prompts               | `pipeline/prompt-tuning.mdc`       |
+| Model backtesting                              | `pipeline/backtesting.mdc`         |
+| Criteria/description/display-name generation   | `pipeline/criteria.mdc`            |
+| LLM calling, model resolver, providers         | `infrastructure/llm.mdc`           |
+| Job lifecycle, reconciler, Celery beat         | `infrastructure/jobs.mdc`          |
+| OTLP trace ingestion, transformers             | `infrastructure/traces.mdc`        |
+| FastAPI endpoints, auth, routers               | `api/endpoints.mdc`                |
+| Frontend routing, components, API client       | `frontend/architecture.mdc`        |
+| Architecture, stack, data flow                 | `architecture-overview.mdc`        |
+
+Update the relevant rule whenever you:
+- Add or remove a function, class, or module
+- Change a JSONB field schema
+- Add a new job type, task type, or Celery task
+- Change eligibility logic or thresholds
+- Add a new API endpoint or auth method
+- Add a new LLM provider or model
+- Change the pipeline flow or add a new pipeline stage
