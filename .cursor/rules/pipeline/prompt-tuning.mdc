@@ -1,0 +1,126 @@
+---
+description: "Prompt tuning pipeline: automated suggestion generation, prompt improvement, and A/B comparison with provider-specific meta-prompts"
+globs:
+  - "overmind/tasks/prompt_improvement.py"
+  - "overmind/tasks/utils/prompts.py"
+alwaysApply: false
+---
+
+# Prompt Improvement (Prompt Tuning)
+
+Automatically improves prompt templates based on span performance data. Generates suggestions from poor-performing spans, creates an improved prompt, tests it against historical spans, and creates a Suggestion record for user review.
+
+## Pipeline Flow
+
+```
+Periodic (5 min) or Job trigger
+        │
+        ▼
+  For each latest prompt version:
+  ├── Check eligibility (see criteria below)
+  │
+  ├── Fetch spans by score bucket:
+  │   poor (<0.3), below_avg (0.3–0.5), avg (0.5–0.7), good (0.7–0.8), excellent (>=0.8)
+  │
+  ├── Is tool-calling prompt? (any span has response_type metadata)
+  │   ├── YES → _generate_tool_improvement_suggestions()
+  │   │         _improve_tool_prompt_template()
+  │   └── NO  → generate_improvement_suggestions()
+  │              improve_prompt_template()
+  │
+  ├── Dedup check: hash new prompt vs current → skip if identical
+  │
+  ├── Select up to 50 comparison spans (prioritize lower scores)
+  ├── generate_outputs_with_new_prompt() → run new prompt on comparison spans
+  ├── Score new outputs with _evaluate_correctness_with_llm()
+  ├── Compare metrics: avg_correctness, avg_latency, avg_cost
+  │
+  ├── create_comparison_spans() → persist new spans for audit
+  │
+  ├── Any metric improved?
+  │   ├── YES → create_prompt_version() → new Prompt version
+  │   └── NO  → discard, advance threshold
+  │
+  └── Create Suggestion record with comparison scores
+```
+
+## Eligibility Criteria (`validate_prompt_tuning_eligibility`)
+
+All must be true:
+
+1. Prompt used in last 7 days (has recent spans)
+1. Enough scored spans exist
+1. Span count crossed a threshold: **50, 100, 200, 500, 1000**, then every 1000 (`INITIAL_THRESHOLDS`)
+1. Latest prompt version adopted by >= 25% of spans
+1. No existing PENDING/RUNNING prompt tuning job for this prompt
+1. Spans available for analysis (both poor and good examples exist)
+1. Evaluation criteria present on the prompt
+
+## Threshold Mechanics
+
+- `calculate_next_threshold(current_count)` — returns the next value in `[50, 100, 200, 500, 1000, 2000, 3000, ...]`
+- After improvement runs (or is skipped), `improvement_metadata.last_improvement_span_count` is advanced to prevent re-triggering at the same count
+- `invalidate_prompt_improvement_metadata(prompt)` — rolls back the threshold by one step when criteria or description changes, so improvement re-triggers with updated scoring logic
+
+## Two Paths: Text vs Tool-Calling
+
+### Text prompts
+
+- **Suggestions**: `generate_improvement_suggestions()` → uses `SUGGESTION_GENERATION_PROMPTS` (provider-specific dict)
+- **Improvement**: `improve_prompt_template()` → uses `PROMPT_IMPROVEMENT_PROMPTS` (provider-specific dict)
+
+### Tool-calling prompts
+
+Detection: `has_response_type = any span has metadata_attributes.response_type`
+
+- **Suggestions**: `_generate_tool_improvement_suggestions()` → splits poor spans into tool-call vs text spans, uses `TOOL_SUGGESTION_GENERATION_PROMPTS`
+- **Improvement**: `_improve_tool_prompt_template()` → uses `TOOL_PROMPT_IMPROVEMENT_PROMPTS`, preserves tool definitions as read-only context
+
+## Provider-Specific Meta-Prompts
+
+The improvement prompts have variants optimized for each LLM provider:
+
+```python
+model, provider = resolve_model_and_provider(TaskType.PROMPT_TUNING)
+prompt_text = get_prompt_for_provider(SUGGESTION_GENERATION_PROMPTS, provider)
+```
+
+| Provider               | Style                                                                   |
+| ---------------------- | ----------------------------------------------------------------------- |
+| **Anthropic** (Claude) | XML tags, content-before-instructions, scope/verification constraints   |
+| **OpenAI** (GPT)       | Markdown headers, numbered lists, explicit output anchors               |
+| **Gemini**             | XML blocks (`<role>`, `<context>`, `<task>`), planning/validation steps |
+
+Falls back to Anthropic if provider is unknown. Defined in `overmind/tasks/utils/prompts.py`.
+
+## Key Functions
+
+| Function                                                                         | Purpose                                     |
+| -------------------------------------------------------------------------------- | ------------------------------------------- |
+| `generate_improvement_suggestions(poor_spans, prompt, project_desc, agent_desc)` | Generate 3–5 suggestions from poor spans    |
+| `improve_prompt_template(current_prompt, suggestions, span_examples, ...)`       | Apply suggestions to create improved prompt |
+| `generate_outputs_with_new_prompt(new_prompt, old_spans)`                        | Re-run old inputs with new prompt           |
+| `create_comparison_spans(new_prompt, results, session, ...)`                     | Persist re-run results as system spans      |
+| `create_prompt_version(base_prompt, new_text, span_count, spans_used, session)`  | Create new Prompt version (dedup by hash)   |
+| `should_improve_prompt(prompt, scored_span_count)`                               | Check if threshold is crossed               |
+| `is_latest_prompt_adopted(prompt, span_count, session)`                          | Check >= 25% adoption rate                  |
+
+## Entry Points
+
+| Function                     | Trigger                                                        |
+| ---------------------------- | -------------------------------------------------------------- |
+| `improve_prompt_templates`   | Celery beat (300s) — creates PENDING jobs for eligible prompts |
+| `improve_single_prompt_task` | Job reconciler — executes improvement for a single prompt      |
+
+## Model Used
+
+`TaskType.PROMPT_TUNING` — priority: `claude-sonnet-4-6` (Anthropic) → `gpt-5.2` (OpenAI) → `gemini-3-pro-preview` (Gemini).
+
+## When Modifying This Area
+
+- Template variables in prompts (e.g. `{variable_name}`) must be preserved during improvement — the LLM is instructed to keep them
+- Tool definitions are treated as read-only — never modified by the improvement pipeline
+- New prompt versions are deduplicated by hash — if the improved text matches any existing version, no new version is created
+- The comparison span count is capped at 50 spans, prioritizing lower-scoring ones
+- `improvement_metadata.criteria_invalidated` is set when criteria/description changes and cleared after improvement runs — this flag triggers the threshold rollback
+- Adding a new provider requires adding a variant to all `*_PROMPTS` dicts in `overmind/tasks/utils/prompts.py`

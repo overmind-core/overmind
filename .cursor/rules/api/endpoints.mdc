@@ -1,0 +1,136 @@
+---
+description: "API layer conventions: FastAPI endpoints, authentication, router structure, and helper utilities"
+globs:
+  - "overmind/api/**"
+  - "overmind/main.py"
+alwaysApply: false
+---
+
+# API Endpoints
+
+FastAPI REST API layer with JWT and API token authentication, organized into two router groups.
+
+## App Entry Point (`overmind/main.py`)
+
+- Single `FastAPI` instance (no factory pattern)
+- On startup: initializes `ClientCacheManager`, auth providers, Celery app, runs `ensure_default_user()` for first-run bootstrap
+- Serves built frontend SPA from `frontend_dist/` when present (API + SPA on single port)
+- Health check: `GET /health` → `{"status": "healthy"}`
+- CORS: allows all origins (development mode)
+
+## Router Structure (`overmind/api/v1/router.py`)
+
+Two router groups, both mounted at `/api/v1`:
+
+### `core_api_router` — all endpoints require auth
+
+```python
+core_api_router = APIRouter(dependencies=[Depends(get_current_user)])
+```
+
+- `/layers` — policy pipeline execution
+- `/proxy` — OpenAI proxy
+- `/traces` — trace listing/detail
+- `/spans` — span feedback, evaluation
+- `/prompts` — prompt CRUD, criteria management
+- `/backtesting` — backtest model listing, run triggers
+
+### `core_auth_router` — mixed auth (per-endpoint)
+
+- `/suggestions` — suggestion listing, feedback
+- `/agents` — agent listing, detail, metadata
+- `/agent-reviews` — review spans, update descriptions
+- `/jobs` — job CRUD, trigger, status
+- `/onboarding` — onboarding state
+- `/traces` (OTLP) — trace ingestion (separate auth: API token or proxy token)
+- `/iam` — users (login is public), projects, tokens
+
+## Authentication (`overmind/api/v1/helpers/authentication.py`)
+
+### Two auth methods:
+
+1. **API Token**: `X-API-Token` header with prefix `ovr_core_`. Token is SHA-256 hashed and looked up in DB. Cached in Valkey.
+1. **JWT**: `Authorization: Bearer <token>` header. HS256 algorithm, 30-min expiry. Validated and cached in Valkey.
+
+### `AuthenticatedUserOrToken`
+
+The auth dependency returns this object containing:
+
+- `user: UserModel` — the authenticated user
+- `token: TokenModel | None` — set when auth was via API token (contains `project_id`, `organisation_id`)
+- Enterprise fields: `clerk_org_id`, `permissions`
+
+### `get_current_user` dependency
+
+Tries API token first, then JWT bearer token. Returns `AuthenticatedUserOrToken` or raises 401.
+
+### `RBACAuthenticationProvider`
+
+Pluggable auth provider. Core mode uses basic auth (no RBAC permission checking). Enterprise overrides with full RBAC.
+
+## Key Endpoint Groups
+
+### Agents (`overmind/api/v1/endpoints/agents.py`)
+
+- `GET /agents` — list agents with analytics (hourly buckets, job status, suggestions)
+- `GET /agents/{slug}/detail` — agent detail with prompt versions
+- `PUT /agents/{slug}/metadata` — update agent name, tags
+
+### Jobs (`overmind/api/v1/endpoints/jobs.py`)
+
+- `POST /jobs` — create job (validates eligibility first)
+- `GET /jobs` — list with running status sync
+- `POST /jobs/extract-templates` — trigger agent discovery
+- `POST /jobs/{slug}/score` — trigger judge scoring
+- `POST /jobs/{slug}/tune` — trigger prompt tuning
+- `POST /jobs/{job_id}/trigger` — manually trigger pending job
+
+### Traces (`overmind/api/v1/endpoints/traces.py`)
+
+- `GET /traces/trace/{trace_id}` — trace detail with spans
+- `GET /traces/list` — paginated trace list with filters
+
+### Spans (`overmind/api/v1/endpoints/spans.py`)
+
+- `PATCH /spans/{span_id}/feedback` — update span feedback score
+- `POST /spans/evaluate` — trigger evaluation for specific spans
+
+### Prompts (`overmind/api/v1/endpoints/prompts.py`)
+
+- `POST /prompts` — create prompt
+- `GET /prompts` — list prompts
+- `PUT /prompts/criteria` — update evaluation criteria
+- `POST /prompts/criteria/generate` — generate criteria via LLM
+
+### Suggestions (`overmind/api/v1/endpoints/suggestions.py`)
+
+- `GET /suggestions` — list suggestions
+- `POST /suggestions/{id}/feedback` — vote/feedback on suggestion
+
+## Helper Utilities (`overmind/api/v1/endpoints/utils/`)
+
+| File             | Key Functions                                                                                                    |
+| ---------------- | ---------------------------------------------------------------------------------------------------------------- |
+| `jobs.py`        | `get_job_or_404`, `cancel_existing_system_jobs`, `sync_running_job_statuses`, `create_job`, `find_latest_prompt` |
+| `agents.py`      | Agent discovery helpers                                                                                          |
+| `prompts.py`     | `are_criteria_same` — checks if criteria changed                                                                 |
+| `suggestions.py` | `get_suggestion_or_404`                                                                                          |
+
+## OpenAPI Client Generation
+
+The frontend TypeScript client is auto-generated from the API's OpenAPI spec:
+
+```bash
+make generate_api_client
+```
+
+This generates files in `frontend/src/api/` (APIs + models). After any API endpoint or response model change, regenerate the client.
+
+## When Modifying This Area
+
+- New endpoints go in `overmind/api/v1/endpoints/` and must be registered in `overmind/api/v1/router.py` on the appropriate router
+- Endpoints that need per-route auth control go on `core_auth_router`; endpoints that always require auth go on `core_api_router`
+- The `AuthenticatedUserOrToken` object provides project context via `token.project_id` when authed via API token
+- After API changes, regenerate the frontend client (`make generate_api_client`)
+- Enterprise extends the auth system — core uses `NoopAuthorizationProvider` and `NoopOrgPolicyProvider` as placeholders
+- Bootstrap (`overmind/bootstrap.py`) creates a default admin user (admin/admin), project, and API token on first startup

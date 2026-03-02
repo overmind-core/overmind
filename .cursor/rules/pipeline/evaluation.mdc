@@ -1,0 +1,126 @@
+---
+description: "LLM judge scoring system: evaluating span outputs for correctness using different judge types"
+globs:
+  - "overmind/tasks/evaluations.py"
+  - "overmind/tasks/agentic_span_processor.py"
+alwaysApply: false
+---
+
+# Evaluation System (LLM Judge Scoring)
+
+Scores every span's output for correctness (0–1) using an LLM judge. Different judge prompts are selected based on the span's type (plain text, agentic, tool-calling).
+
+## Pipeline Flow
+
+```
+Periodic (5 min) or Job trigger
+        │
+        ▼
+  Find unscored spans (no feedback_score.correctness)
+        │
+        ▼
+  For each span:
+  ├── Load prompt → get evaluation_criteria
+  ├── Get project description, agent description
+  ├── Determine evaluation type (see routing below)
+  ├── Call _evaluate_correctness_with_llm()
+  └── Store result in span.feedback_score["correctness"]
+```
+
+## Entry Points
+
+| Function                     | Trigger            | Purpose                                             |
+| ---------------------------- | ------------------ | --------------------------------------------------- |
+| `evaluate_unscored_spans`    | Celery beat (300s) | Auto-score all unscored spans, creates PENDING jobs |
+| `evaluate_prompt_spans_task` | Job reconciler     | Score spans for a specific prompt (user-triggered)  |
+| `evaluate_spans_task`        | Direct call        | Score specific span IDs                             |
+
+## Evaluation Type Routing
+
+The judge prompt is selected based on `metadata_attributes.response_type` and agentic detection:
+
+```
+span.metadata_attributes.response_type == "tool_calls"?
+  └── YES → TOOL_CALL judge (evaluates tool selection + argument quality)
+
+span.metadata_attributes.response_type == "text" AND is_agentic?
+  └── YES → TOOL_ANSWER judge (evaluates answer faithfulness after tool results)
+
+Legacy agentic (no response_type, but detect_agentic_span() = true)?
+  └── YES → AGENTIC judge (evaluates final output given intermediate steps)
+
+Otherwise:
+  └── PLAIN judge (evaluates plain text correctness)
+```
+
+## Four Judge Types
+
+| Type            | System Prompt                           | User Prompt                               | Criteria Default                |
+| --------------- | --------------------------------------- | ----------------------------------------- | ------------------------------- |
+| **Plain**       | `CORRECTNESS_SYSTEM_PROMPT`             | `CORRECTNESS_PROMPT_TEMPLATE`             | From prompt.evaluation_criteria |
+| **Agentic**     | `AGENTIC_CORRECTNESS_SYSTEM_PROMPT`     | `AGENTIC_CORRECTNESS_PROMPT_TEMPLATE`     | `DEFAULT_AGENTIC_CRITERIA`      |
+| **Tool-call**   | `TOOL_CALL_CORRECTNESS_SYSTEM_PROMPT`   | `TOOL_CALL_CORRECTNESS_PROMPT_TEMPLATE`   | `DEFAULT_TOOL_CALL_CRITERIA`    |
+| **Tool-answer** | `TOOL_ANSWER_CORRECTNESS_SYSTEM_PROMPT` | `TOOL_ANSWER_CORRECTNESS_PROMPT_TEMPLATE` | `DEFAULT_TOOL_ANSWER_CRITERIA`  |
+
+All system prompts instruct the LLM to return `{"correctness": float}` JSON.
+
+## Key Functions
+
+### `_evaluate_correctness_with_llm(input_data, output_data, criteria_text, project_description, agent_description, span_metadata) -> float`
+
+Core scoring function. Dispatches to the appropriate judge type, calls `call_llm()`, parses JSON response, clamps to [0, 1].
+
+### `_get_context_for_span(span) -> tuple[str, str | None, str | None]`
+
+Returns `(criteria_text, project_description, agent_description)` by looking up the span's linked Prompt and Project.
+
+### `_format_criteria(criteria_dict) -> str`
+
+Formats `evaluation_criteria` JSONB into a text list for the judge prompt.
+
+### `validate_judge_scoring_eligibility(prompt, session) -> tuple[bool, str | None, dict | None]`
+
+Checks if a prompt has unscored spans and valid criteria.
+
+## Agentic Span Processor (`overmind/tasks/agentic_span_processor.py`)
+
+Handles detection and preprocessing of multi-turn/tool-calling spans.
+
+### Key functions:
+
+- `detect_agentic_span(input_data, output_data, metadata)` — returns `True` if span contains tool roles, tool_calls, or function_call fields
+- `preprocess_span_for_evaluation(span)` — extracts conversation flow, original query, intermediate steps, and final output for the agentic judge
+- `extract_tool_call_span_for_evaluation(span)` — extracts user query, conversation history, available tools, and model's tool calls for the tool-call judge
+- `extract_tool_answer_span_for_evaluation(span)` — extracts user query, conversation flow with tool results, and final answer for the tool-answer judge
+
+## Data Flow
+
+```
+span.input (JSONB)                    span.metadata_attributes
+  │                                          │
+  ├── messages with role=tool? ──────────────┤── response_type?
+  ├── messages with tool_calls? ─────────────┤── is_agentic?
+  │                                          │
+  └── detect_agentic_span() ────────> routing decision
+                                          │
+                                          ▼
+                                   appropriate judge prompt
+                                          │
+                                          ▼
+                                   call_llm() → {"correctness": 0.85}
+                                          │
+                                          ▼
+                                   span.feedback_score["correctness"] = 0.85
+```
+
+## Model Used
+
+`TaskType.JUDGE_SCORING` — priority: `gpt-5-mini` (OpenAI) → `gemini-3-flash-preview` (Gemini) → `claude-haiku-4-5` (Anthropic).
+
+## When Modifying This Area
+
+- Adding a new evaluation type requires: a new judge prompt pair in `overmind/tasks/utils/prompts.py`, routing logic in `_evaluate_correctness_with_llm`, and possibly a new extractor in `agentic_span_processor.py`
+- The `response_type` metadata is set during trace ingestion — changes there affect which judge is used
+- `ensure_prompt_has_criteria` (from criteria_generator) is called when criteria are missing — evaluation won't proceed without criteria for the plain judge
+- All judge prompts must return `{"correctness": float}` JSON — the system prompt enforces this
+- Scores are stored in `span.feedback_score` which is a JSONB column — other keys like `agent_feedback` and `judge_feedback` coexist there

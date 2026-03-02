@@ -1,0 +1,127 @@
+---
+description: "OTLP trace ingestion: protobuf parsing, span transformation, agentic detection, and raw storage"
+globs:
+  - "overmind/api/v1/endpoints/otlp/**"
+alwaysApply: false
+---
+
+# Trace Ingestion
+
+Ingests OpenTelemetry (OTLP) traces via HTTP/protobuf, transforms them into TraceModel and SpanModel records, detects agentic patterns, and optionally stores raw requests for debugging.
+
+## Endpoints (`overmind/api/v1/endpoints/otlp/api.py`)
+
+| Endpoint                                   | Auth                                              | Purpose                                                                            |
+| ------------------------------------------ | ------------------------------------------------- | ---------------------------------------------------------------------------------- |
+| `POST /api/v1/traces/create`               | API token (`X-API-Token`)                         | User SDK trace ingestion. Project/user derived from token.                         |
+| `POST /api/v1/traces/create-backend-trace` | Proxy token (`Authorization: Bearer PROXY_TOKEN`) | Backend/internal trace ingestion. Project/business extracted from span attributes. |
+| `POST /api/v1/traces/create-chat-trace`    | —                                                 | Deprecated, returns 400                                                            |
+
+### Auth differences
+
+- **`/create`**: Uses standard `get_current_user` → `AuthenticatedUserOrToken`. Project and user come from the API token.
+- **`/create-backend-trace`**: Uses `is_valid_backend_user` from `otlp/auth.py`. Validates the `PROXY_TOKEN`. Project/business IDs come from span attributes (since backend may bundle spans from different projects).
+
+## Transformation Pipeline (`overmind/api/v1/endpoints/otlp/transformers.py`)
+
+```
+HTTP Request (protobuf body, possibly gzip-compressed)
+        │
+        ▼
+  Decompress if Content-Encoding: gzip/deflate
+        │
+        ▼
+  Parse protobuf: trace_service_pb2.ExportTraceServiceRequest
+        │
+        ▼
+  For each resource_span → scope_span → span:
+  ├── Extract trace_id, span_id, operation name
+  ├── Extract timing (start_time_unix_nano, end_time_unix_nano)
+  ├── Parse span attributes into:
+  │   ├── input (messages list from gen_ai.prompt.N.*)
+  │   ├── output (completions from gen_ai.completion.N.*)
+  │   ├── input_params (model, temperature, top_p, max_tokens, etc.)
+  │   ├── output_params (token counts, finish reason)
+  │   └── metadata_attributes (everything else)
+  │
+  ├── Extract tool_calls from span attributes
+  ├── Detect agentic span (detect_agentic_span)
+  ├── Calculate LLM usage cost
+  │
+  ├── Create/find ConversationModel
+  ├── Create TraceModel
+  └── Create SpanModel records
+        │
+        ▼
+  Optionally store RawOtlpRequestModel (raw bytes for debugging)
+```
+
+### Key function: `create_trace(request, project_id, business_id, user_id, db)`
+
+Main entry point called by both endpoints. Handles the full pipeline from raw request to DB records.
+
+## Span Attribute Extraction
+
+OTLP span attributes use OpenTelemetry semantic conventions:
+
+| Attribute pattern                                         | Extracted to                                   |
+| --------------------------------------------------------- | ---------------------------------------------- |
+| `gen_ai.prompt.N.role`, `gen_ai.prompt.N.content`         | `span.input` (messages list)                   |
+| `gen_ai.completion.N.role`, `gen_ai.completion.N.content` | `span.output` (completions list)               |
+| `gen_ai.prompt.N.tool_calls.*`                            | Tool calls in input messages                   |
+| `gen_ai.completion.N.tool_calls.*`                        | Tool calls in output                           |
+| `gen_ai.request.model`                                    | `input_params.model`                           |
+| `gen_ai.request.temperature`                              | `input_params.temperature`                     |
+| `gen_ai.usage.prompt_tokens`                              | `output_params.prompt_tokens`                  |
+| `gen_ai.usage.completion_tokens`                          | `output_params.completion_tokens`              |
+| `llm.tools.N.*`                                           | `metadata_attributes.tools` (tool definitions) |
+| Everything else                                           | `metadata_attributes`                          |
+
+### Tool call extraction
+
+`_extract_tool_calls_from_span_attributes(span_attributes, prefix)` extracts structured tool_call objects from flat OTLP attributes:
+
+```
+gen_ai.prompt.0.tool_calls.0.name → tool_calls[0].function.name
+gen_ai.prompt.0.tool_calls.0.arguments → tool_calls[0].function.arguments
+gen_ai.prompt.0.tool_calls.0.id → tool_calls[0].id
+```
+
+## Agentic Detection at Ingestion
+
+During transformation, `detect_agentic_span()` is called to check if the span contains tool-calling patterns. If detected:
+
+- `metadata_attributes.is_agentic` may be set
+- This affects which LLM judge prompt is used during evaluation
+
+Also, `_get_tools_from_metadata_attributes()` extracts tool definitions from metadata for tool-calling evaluation.
+
+## Response Type Metadata
+
+Spans may have `metadata_attributes.response_type`:
+
+- `"tool_calls"` — the LLM responded with tool calls (no text)
+- `"text"` — the LLM responded with text
+
+This is set during ingestion based on the completion content and drives evaluation judge selection.
+
+## Raw Request Storage
+
+`RawOtlpRequestModel` stores the raw protobuf bytes:
+
+- `raw_body` — the original bytes
+- `body_size` — byte count
+- `content_encoding` — gzip/deflate/none
+- `trace_ids` — extracted trace IDs for cross-reference
+- `error` — error message if transformation failed
+
+Used for debugging failed or suspicious ingestions.
+
+## When Modifying This Area
+
+- New span attributes from OTLP SDKs may need extraction logic in `transformers.py` — check the `gen_ai.*` conventions
+- The `response_type` metadata affects downstream evaluation — adding new types requires updating the judge routing in `evaluations.py`
+- Backend traces (`/create-backend-trace`) don't have a fixed project — project ID comes from span attributes, which means spans in a single request can belong to different projects
+- Tool call extraction uses a sequential index pattern (`tool_calls.0`, `tool_calls.1`, ...) — it stops at the first missing index
+- `calculate_llm_usage_cost()` is called during ingestion to pre-compute cost — the formula lives in `overmind/utils.py`
+- Raw OTLP storage can grow large — it's primarily for debugging and should be monitored
