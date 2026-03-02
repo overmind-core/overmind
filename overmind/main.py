@@ -42,9 +42,6 @@ class HealthCheckFilter(Filter):
 logging.getLogger("uvicorn.access").addFilter(HealthCheckFilter())
 
 
-app = FastAPI(title=settings.app_name, debug=settings.debug, redirect_slashes=False)
-
-
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     try:
@@ -93,6 +90,13 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.error(f"Warning: Error during shutdown: {e}")
 
+
+app = FastAPI(
+    title=settings.app_name,
+    debug=settings.debug,
+    redirect_slashes=False,
+    lifespan=lifespan,
+)
 
 app.add_middleware(
     CORSMiddleware,
