@@ -1,14 +1,11 @@
 import re
 from typing import Any
-from openai import OpenAI
 import litellm
 import json
-from overmind.config import settings
 from overmind.core.model_resolver import TaskType, resolve_model
 from pydantic import BaseModel
 import json_repair
 
-client = OpenAI(api_key=settings.openai_api_key)
 
 SUPPORTED_LLM_MODELS = [
     {"provider": "openai", "model_name": "gpt-5.2"},
@@ -64,7 +61,6 @@ def get_embedding(input_text: str) -> list[float]:
 
     Args:
         input_text: The text to get an embedding for
-        system_prompt: Not used for embeddings (kept for compatibility)
 
     Returns:
         The embedding vector as a list of floats
