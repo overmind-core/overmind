@@ -305,9 +305,37 @@ code {
 
 body {
   letter-spacing: var(--tracking-normal);
+}
+
+*,
+*::before,
+*::after {
   cursor:
-    url("/overmind_cursor.svg") 32 32,
-    auto;
+    url("/overmind_cursor.png") 3 1,
+    auto !important;
+}
+
+a,
+a *,
+button,
+button *,
+[role="button"],
+[role="button"] *,
+[type="button"],
+[type="submit"],
+[type="reset"],
+label[for],
+select,
+option,
+summary,
+[tabindex]:not([tabindex="-1"]),
+input[type="checkbox"],
+input[type="radio"],
+.cursor-pointer,
+.cursor-pointer * {
+  cursor:
+    url("/overmind_cursor_pointer.png") 2 2,
+    pointer !important;
 }
 
 :root {
