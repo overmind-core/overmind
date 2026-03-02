@@ -41,34 +41,6 @@ Your app (with Overmind SDK)
                            System learns, repeats
 ```
 
-### The Optimization Loop
-
-```
-Traces come in
-      │
-      ▼
-Agent detection
-      │
-      ▼
-LLM Judge evaluation
-      │
-      ├──────────────────────┐
-      ▼                      ▼
-Prompt experimentation  Model experimentation
-      │                      │
-      └──────────┬───────────┘
-                 ▼
-        Recommendations
-                 │
-                 ▼
-        User feedback
-        (accept / reject)
-                 │
-                 ▼
-        Refined criteria,
-        repeat the loop
-```
-
 For a detailed walkthrough of each step, see the [How Optimization Works](https://docs.overmindlab.ai/guides/how-it-works) guide.
 
 ## Key Features
@@ -129,12 +101,9 @@ from overmind.clients import OpenAI
 os.environ["OVERMIND_API_KEY"] = "<your-api-token>"
 os.environ["OPENAI_API_KEY"] = "sk-..."
 
-# For self-hosted, point the SDK at your local instance
-os.environ["OVERMIND_TRACES_URL"] = "http://localhost:8000/api/v1/traces/create"
-
 client = OpenAI()
 response = client.chat.completions.create(
-    model="gpt-4o",
+    model="gpt-5-mini",
     messages=[{"role": "user", "content": "Hello!"}],
 )
 ```
