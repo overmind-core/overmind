@@ -36,7 +36,7 @@ from overmind.models.iam.projects import Project
 from overmind.tasks.evaluations import _evaluate_correctness_with_llm, _format_criteria
 from overmind.tasks.agent_discovery import _get_span_input_text_merged
 from overmind.tasks.agentic_span_processor import _safe_parse_json
-from overmind.tasks.task_lock import with_task_lock
+from overmind.tasks.utils.task_lock import with_task_lock
 from overmind.utils import calculate_llm_usage_cost
 
 logger = logging.getLogger(__name__)
@@ -938,7 +938,13 @@ async def _run_backtesting(
         success_count = sum(1 for r in processed_results if r.get("success"))
         error_count = total_items - success_count
 
-        if success_count == 0:
+        verdict = recommendations.get("verdict")
+        if success_count == 0 and total_items == 0 and verdict == "current_is_best":
+            final_status = JobStatus.COMPLETED
+            logger.info(
+                f"Backtesting job {job_id} completed: current model is best, no alternates to test"
+            )
+        elif success_count == 0:
             final_status = JobStatus.FAILED
             logger.error(
                 f"Backtesting job {job_id} failed: 0/{total_items} items succeeded"

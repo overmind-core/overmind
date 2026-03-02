@@ -15,7 +15,7 @@ from overmind.db.session import get_session_local
 from overmind.models.prompts import Prompt
 from overmind.models.traces import SpanModel
 from overmind.models.iam.projects import Project
-from overmind.tasks.task_lock import with_task_lock
+from overmind.tasks.utils.task_lock import with_task_lock
 
 logger = logging.getLogger(__name__)
 

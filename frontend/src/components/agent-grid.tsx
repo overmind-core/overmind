@@ -47,7 +47,13 @@ function MetricRow({
 
 // ─── Agent Card ──────────────────────────────────────────────────────────────
 
-function AgentCard({ agent }: { agent: AgentOut }) {
+function AgentCard({
+  agent,
+  headerAction,
+}: {
+  agent: AgentOut;
+  headerAction?: React.ReactNode;
+}) {
   const { analytics } = agent;
   const populated = hasAnyData(analytics);
 
@@ -67,10 +73,15 @@ function AgentCard({ agent }: { agent: AgentOut }) {
       )}
     >
       <div className="mb-3 flex items-center justify-between gap-2">
-        <h3 className="text-base font-semibold capitalize text-foreground">{agent.name}</h3>
-        <Badge className="shrink-0 bg-muted font-medium text-foreground" variant="secondary">
-          v{agent.version}
-        </Badge>
+        <h3 className="min-w-0 flex-1 truncate text-base font-semibold capitalize text-foreground">
+          {agent.name}
+        </h3>
+        <div className="flex shrink-0 items-center gap-2">
+          {headerAction}
+          <Badge className="bg-muted font-medium text-foreground" variant="secondary">
+            v{agent.version}
+          </Badge>
+        </div>
       </div>
       {(agent.tags ?? []).length > 0 && (
         <div className="mb-3 flex flex-wrap gap-1.5">
@@ -140,26 +151,34 @@ export function AgentGrid({ agents, projectId }: { agents: AgentOut[]; projectId
     <>
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
         {agents.map((agent) => (
-          <div className="relative flex" key={agent.slug}>
+          <div className="flex" key={agent.slug}>
             <Link
               className="flex flex-1"
               params={{ slug: agent.slug }}
               search={projectId ? { projectId } : undefined}
               to="/agents/$slug"
             >
-              <AgentCard agent={agent} />
+              <AgentCard
+                agent={agent}
+                headerAction={
+                  agent.readyForReview ? (
+                    <button
+                      className="flex items-center gap-1.5 rounded-md border border-amber-400/60 bg-amber-400/15 px-2.5 py-1 text-xs font-medium text-amber-700 transition-colors hover:bg-amber-400/30 dark:text-amber-400"
+                      onClick={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        openReview(agent);
+                      }}
+                      title="Review agent description and criteria"
+                      type="button"
+                    >
+                      <ClipboardCheck className="size-3.5 shrink-0" />
+                      Review Pending
+                    </button>
+                  ) : undefined
+                }
+              />
             </Link>
-            {agent.readyForReview && (
-              <button
-                className="absolute right-3 top-3 flex items-center gap-1.5 rounded-md border border-amber-400/60 bg-amber-400/15 px-2.5 py-1 text-xs font-medium text-amber-700 transition-colors hover:bg-amber-400/30 dark:text-amber-400"
-                onClick={() => openReview(agent)}
-                title="Review agent description and criteria"
-                type="button"
-              >
-                <ClipboardCheck className="size-3.5" />
-                Review Pending
-              </button>
-            )}
           </div>
         ))}
       </div>

@@ -11,7 +11,7 @@ from overmind.core.model_resolver import TaskType, resolve_model
 from sqlalchemy import select, and_
 from overmind.models.prompts import Prompt
 from overmind.db.session import get_session_local
-from overmind.tasks.prompts import DISPLAY_NAME_USER_PROMPT
+from overmind.tasks.utils.prompts import DISPLAY_NAME_USER_PROMPT
 
 logger = logging.getLogger(__name__)
 

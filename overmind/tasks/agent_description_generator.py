@@ -20,7 +20,7 @@ from overmind.models.traces import SpanModel
 from overmind.models.iam.projects import Project
 from overmind.core.llms import call_llm, try_json_parsing
 from overmind.core.model_resolver import TaskType, resolve_model
-from overmind.tasks.prompts import (
+from overmind.tasks.utils.prompts import (
     AGENT_DESCRIPTION_SYSTEM_PROMPT,
     AGENT_DESCRIPTION_GENERATION_PROMPT,
     AGENT_DESCRIPTION_UPDATE_FROM_FEEDBACK_PROMPT,

@@ -16,7 +16,7 @@ from overmind.api.v1.endpoints.jobs import JobStatus, JobType
 from overmind.celery_app import celery_app
 from overmind.db.session import get_session_local
 from overmind.models.jobs import Job
-from overmind.tasks.task_lock import with_task_lock
+from overmind.tasks.utils.task_lock import with_task_lock
 
 logger = logging.getLogger(__name__)
 

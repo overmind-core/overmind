@@ -144,6 +144,8 @@ def call_llm(
         if tools:
             completion_kwargs["tools"] = tools
 
+        completion_kwargs["cache_control"] = {"type": "ephemeral"}
+
         response = completion(**completion_kwargs, **request_kwargs)
 
         content = response.choices[0].message.content

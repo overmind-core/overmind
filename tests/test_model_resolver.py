@@ -4,6 +4,7 @@ import pytest
 from overmind.core.model_resolver import (
     TaskType,
     resolve_model,
+    resolve_model_and_provider,
     get_available_backtest_models,
 )
 
@@ -49,6 +50,38 @@ def test_resolve_priority_order_all_keys(monkeypatch):
 def test_resolve_no_keys_raises():
     with pytest.raises(RuntimeError, match="No LLM API key configured"):
         resolve_model(TaskType.DEFAULT)
+
+
+def test_resolve_model_and_provider_returns_tuple(monkeypatch):
+    monkeypatch.setattr("overmind.config.settings.anthropic_api_key", "sk-ant-test")
+    model, provider = resolve_model_and_provider(TaskType.PROMPT_TUNING)
+    assert model == "claude-sonnet-4-6"
+    assert provider == "anthropic"
+
+
+def test_resolve_model_and_provider_openai(monkeypatch):
+    monkeypatch.setattr("overmind.config.settings.openai_api_key", "sk-test")
+    model, provider = resolve_model_and_provider(TaskType.JUDGE_SCORING)
+    assert model == "gpt-5-mini"
+    assert provider == "openai"
+
+
+def test_resolve_model_and_provider_gemini_fallback(monkeypatch):
+    monkeypatch.setattr("overmind.config.settings.gemini_api_key", "gk-test")
+    model, provider = resolve_model_and_provider(TaskType.PROMPT_TUNING)
+    assert model == "gemini-3-pro-preview"
+    assert provider == "gemini"
+
+
+def test_resolve_model_backward_compat(monkeypatch):
+    """resolve_model still returns just the model name string."""
+    monkeypatch.setattr("overmind.config.settings.anthropic_api_key", "sk-ant-test")
+    assert resolve_model(TaskType.PROMPT_TUNING) == "claude-sonnet-4-6"
+
+
+def test_resolve_model_and_provider_no_keys_raises():
+    with pytest.raises(RuntimeError, match="No LLM API key configured"):
+        resolve_model_and_provider(TaskType.DEFAULT)
 
 
 def test_backtest_models_filtered(monkeypatch):
