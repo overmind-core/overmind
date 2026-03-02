@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 
 import { useQuery } from "@tanstack/react-query";
-import { Check, Loader2 } from "lucide-react";
+import { Check, Loader as Loader2 } from "pixelarticons/react";
 
 import apiClient from "@/client";
 import { config } from "@/config";

@@ -2,7 +2,7 @@ import { useState } from "react";
 
 import { Link } from "@tanstack/react-router";
 import { useQueryClient } from "@tanstack/react-query";
-import { Activity, ClipboardCheck, Clock, DollarSign, Target } from "lucide-react";
+import { Analytics as Activity, ClipboardNote as ClipboardCheck, Clock, Money as DollarSign, Target } from "pixelarticons/react";
 
 import { cn } from "@/lib/utils";
 import type { AgentOut, HourlyBucket } from "@/api";
@@ -88,22 +88,22 @@ function AgentCard({ agent }: { agent: AgentOut }) {
 
       <div className="divide-y divide-border/60">
         <MetricRow
-          icon={<Target className="size-3.5" strokeWidth={1.5} />}
+          icon={<Target className="size-3.5" />}
           label="Accuracy"
           value={accuracy}
         />
         <MetricRow
-          icon={<Activity className="size-3.5" strokeWidth={1.5} />}
+          icon={<Activity className="size-3.5" />}
           label="Spans scored"
           value={scored}
         />
         <MetricRow
-          icon={<Clock className="size-3.5" strokeWidth={1.5} />}
+          icon={<Clock className="size-3.5" />}
           label="Avg latency"
           value={latency}
         />
         <MetricRow
-          icon={<DollarSign className="size-3.5" strokeWidth={1.5} />}
+          icon={<DollarSign className="size-3.5" />}
           label="Est. cost"
           value={cost}
         />

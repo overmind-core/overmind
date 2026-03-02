@@ -1,7 +1,7 @@
 import { useState } from "react";
 
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { ChevronDown, ChevronUp, MessageSquare, ThumbsDown, ThumbsUp } from "lucide-react";
+import { ChevronDown, ChevronUp, MessageText as MessageSquare, ThumbsDown, ThumbsUp } from "pixelarticons/react";
 
 import type { SuggestionOut } from "@/api";
 import apiClient from "@/client";

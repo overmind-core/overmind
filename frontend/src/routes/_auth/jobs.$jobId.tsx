@@ -1,6 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { AlertTriangle, ArrowLeft, CheckCircle, Clock, Loader2, XCircle } from "lucide-react";
+import { ArrowLeft, Cancel as XCircle, Check as CheckCircle, Clock, Loader as Loader2, WarningDiamond as AlertTriangle } from "pixelarticons/react";
 
 import apiClient from "@/client";
 import { BacktestRecommendations } from "@/components/jobs/JobCard";

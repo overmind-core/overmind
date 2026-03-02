@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
-import { ExternalLink, Key, Loader2, RefreshCw, Search } from "lucide-react";
+import { ExternalLink, Lock as Key, Loader as Loader2, Reload as RefreshCw, Search } from "pixelarticons/react";
 
 import { ResponseError, type AgentOut } from "@/api";
 import apiClient from "@/client";
@@ -36,7 +36,7 @@ function EmptyState({ projectId, organisationId }: EmptyStateProps) {
     <>
       <div className="flex w-full flex-col items-center py-12 text-center">
         <p className="mb-2 font-display text-4xl font-medium">No agents detected yet</p>
-        <p className="mx-auto mb-4 max-w-sm text-sm text-muted-foreground">
+        <p className="mx-auto mb-4 max-w-sm text-[1.05rem] text-muted-foreground">
           Connect your LLM application and ingest traces, then extract templates to see your agents
           here.
         </p>

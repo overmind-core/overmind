@@ -1,4 +1,4 @@
-import { ChevronLeft, ChevronRight } from "lucide-react";
+import { ChevronLeft, ChevronRight } from "pixelarticons/react";
 
 import { Button } from "@/components/ui/button";
 import {

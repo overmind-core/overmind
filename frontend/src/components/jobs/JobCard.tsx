@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { CheckCircle, ChevronDown, Clock, Loader2, XCircle } from "lucide-react";
+import { Cancel as XCircle, Check as CheckCircle, ChevronDown, Clock, Loader as Loader2 } from "pixelarticons/react";
 
 import type { JobOut } from "@/api";
 import { Badge } from "@/components/ui/badge";

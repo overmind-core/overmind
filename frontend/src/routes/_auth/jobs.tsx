@@ -3,15 +3,15 @@ import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { createFileRoute, Outlet } from "@tanstack/react-router";
 import {
-  AlertTriangle,
   ArrowDown,
   ArrowUp,
-  CheckCircle,
-  ChevronsUpDown,
+  Cancel as XCircle,
+  Check as CheckCircle,
+  ChevronsVertical as ChevronsUpDown,
   Clock,
-  Loader2,
-  XCircle,
-} from "lucide-react";
+  Loader as Loader2,
+  WarningDiamond as AlertTriangle,
+} from "pixelarticons/react";
 
 import type { JobStatus, JobType, ListJobsApiV1JobsGetRequest } from "@/api";
 import apiClient from "@/client";

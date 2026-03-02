@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate } from "@tanstack/react-router";
-import { ArrowLeft, FileText, FolderOpen, Hash, Loader2, Plus, Save } from "lucide-react";
+import { ArrowLeft, FileText, FolderPlus as FolderOpen, Hash, Loader as Loader2, Plus, Download as Save } from "pixelarticons/react";
 
 import { ResponseError } from "@/api";
 import apiClient from "@/client";

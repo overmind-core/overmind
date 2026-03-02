@@ -1,6 +1,6 @@
 import { useState } from "react";
 
-import { Check, Copy, ExternalLink, Loader2, Terminal } from "lucide-react";
+import { Check, Copy, ExternalLink, Loader as Loader2, Terminal } from "pixelarticons/react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";

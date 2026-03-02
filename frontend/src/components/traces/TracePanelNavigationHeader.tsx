@@ -1,6 +1,10 @@
 import { useMemo } from "react";
 
-import { FoldVertical, Timer, UnfoldVertical } from "lucide-react";
+import {
+  ChevronsVertical as FoldVertical,
+  Clock as Timer,
+  ChevronsVertical2 as UnfoldVertical,
+} from "pixelarticons/react";
 
 import { Button } from "@/components/ui/button";
 import { useTraceData } from "./contexts/TraceDataContext";

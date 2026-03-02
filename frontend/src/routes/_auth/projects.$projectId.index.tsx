@@ -2,7 +2,7 @@ import { useState } from "react";
 
 import { useQueryClient } from "@tanstack/react-query";
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { ArrowLeft, Key, Loader2, Plus, Trash2 } from "lucide-react";
+import { ArrowLeft, Delete as Trash2, Loader as Loader2, Lock as Key, Plus } from "pixelarticons/react";
 
 import apiClient from "@/client";
 import { CreateApiKeyDialog } from "@/components/create-api-key-dialog";

@@ -1,7 +1,7 @@
 import React, { useMemo, useState } from "react";
 
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { ThumbsDown, ThumbsUp } from "lucide-react";
+import { ThumbsDown, ThumbsUp } from "pixelarticons/react";
 
 import apiClient from "@/client";
 import { Button } from "@/components/ui/button";

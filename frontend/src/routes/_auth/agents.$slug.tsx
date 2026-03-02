@@ -3,14 +3,14 @@ import { useMemo, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import {
-  Activity,
+  Analytics as Activity,
   ArrowLeft,
-  ClipboardCheck,
-  FlaskConical,
-  Loader2,
+  Clipboard as ClipboardCheck,
+  Loader as Loader2,
   Play,
   Sparkles,
-} from "lucide-react";
+  TestTube as FlaskConical,
+} from "pixelarticons/react";
 import z from "zod";
 
 import { ResponseError } from "@/api";

@@ -1,18 +1,18 @@
 import { useCallback, useId, useState } from "react";
 
 import {
-  AlertCircle,
-  BotIcon,
   Braces,
   ChevronDown,
   Clock,
-  Filter,
-  MessageSquare,
-  Pencil,
-  Sun,
+  Delete as Trash2,
+  MessageText as MessageSquare,
+  PenSquare as Pencil,
+  Robot as BotIcon,
+  SortVertical as Filter,
+  Sparkle as Sun,
   Target,
-  Trash2,
-} from "lucide-react";
+  WarningDiamond as AlertCircle,
+} from "pixelarticons/react";
 
 import { Button } from "@/components/ui/button";
 import {

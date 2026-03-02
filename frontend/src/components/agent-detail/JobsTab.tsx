@@ -1,4 +1,4 @@
-import { Loader2 } from "lucide-react";
+import { Loader as Loader2 } from "pixelarticons/react";
 
 import type { JobOut } from "@/api";
 import { JobCard } from "@/components/jobs/JobCard";

@@ -1,6 +1,6 @@
 import * as ResizablePrimitive from "react-resizable-panels";
 
-import { GripVertical } from "lucide-react";
+import { MoreVertical as GripVertical } from "pixelarticons/react";
 
 import { cn } from "@/lib/utils";
 

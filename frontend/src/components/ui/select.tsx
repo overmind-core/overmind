@@ -1,6 +1,6 @@
 import type * as React from "react";
 
-import { CheckIcon, ChevronDownIcon, ChevronUpIcon } from "lucide-react";
+import { Check as CheckIcon, ChevronDown as ChevronDownIcon, ChevronUp as ChevronUpIcon } from "pixelarticons/react";
 import { Select as SelectPrimitive } from "radix-ui";
 
 import { cn } from "@/lib/utils";

@@ -1,5 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { Building2, Loader2 } from "lucide-react";
+import { BuildingCommunity as Building2, Loader as Loader2 } from "pixelarticons/react";
 
 import { Alert } from "@/components/ui/alert";
 import {

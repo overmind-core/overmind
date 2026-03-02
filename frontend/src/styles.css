@@ -28,11 +28,24 @@
   font-weight: 400;
   font-style: normal;
   font-display: swap;
+  ascent-override: 80%;
+  descent-override: 20%;
+}
+
+@font-face {
+  font-family: "NeueBit Text";
+  src: url("/fonts/NeueBit-Regular.otf") format("opentype");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+  size-adjust: 156%;
+  ascent-override: 80%;
+  descent-override: 20%;
 }
 
 body {
-  --font-sidebar: "Pixelify Sans", system-ui, sans-serif;
-  font-family: "PP Neue Montreal", system-ui, -apple-system, sans-serif;
+  --font-sidebar: "NeueBit", system-ui, sans-serif;
+  font-family: "NeueBit Text", system-ui, -apple-system, sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   @apply m-0;
@@ -56,6 +69,62 @@ code {
   .page-wrapper {
     @apply space-y-6 pb-8;
   }
+
+  .sidebar-label {
+    font-family: var(--font-sidebar);
+    font-weight: 400;
+    font-size: 1.46em;
+    line-height: 1;
+    letter-spacing: 0.05em;
+  }
+
+  [data-active="true"] .sidebar-label {
+    font-weight: 700;
+  }
+
+  [data-sidebar="menu-button"][data-active="true"] {
+    background: rgba(255, 255, 255, 0.12) !important;
+    color: #ffffff !important;
+    border-radius: 0.5rem;
+  }
+
+  [data-sidebar="menu-button"][data-active="true"] svg {
+    color: #ffffff !important;
+  }
+
+  [data-sidebar="menu-button"] {
+    transition: background 150ms ease, color 150ms ease;
+  }
+
+  [data-sidebar="menu-button"]:hover {
+    background: rgba(255, 255, 255, 0.06) !important;
+    border-radius: 0.5rem;
+  }
+
+  .animate-spin {
+    color: var(--foreground) !important;
+  }
+}
+
+/* ─── Login page animations ──────────────────────────────────────────── */
+@keyframes fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes fade-in-up {
+  from { opacity: 0; transform: translateY(12px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.animate-fade-in {
+  opacity: 0;
+  animation: fade-in 800ms ease-out forwards;
+}
+
+.animate-fade-in-up {
+  opacity: 0;
+  animation: fade-in-up 600ms ease-out forwards;
 }
 
 /* ─── Light theme — warm gray frame + white content ─────────────────── */
@@ -92,7 +161,7 @@ code {
   --sidebar-accent-foreground: #1a1a1a;
   --sidebar-border: transparent;
   --sidebar-ring: #c8956a;
-  --font-sans: "PP Neue Montreal", system-ui, -apple-system, sans-serif;
+  --font-sans: "NeueBit Text", system-ui, -apple-system, sans-serif;
   --font-serif: Georgia, serif;
   --font-mono: "Fira Code", monospace;
   --radius: 0.5rem;
@@ -148,7 +217,7 @@ code {
   --sidebar-accent-foreground: #fafafa;
   --sidebar-border: #2a2a2a;
   --sidebar-ring: #c8956a;
-  --font-sans: "PP Neue Montreal", system-ui, -apple-system, sans-serif;
+  --font-sans: "NeueBit Text", system-ui, -apple-system, sans-serif;
   --font-serif: Georgia, serif;
   --font-mono: "Fira Code", monospace;
   --radius: 0.5rem;

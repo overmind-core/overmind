@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { Bot, Loader2, RefreshCw } from "lucide-react";
+import { Loader as Loader2, Reload as RefreshCw, Robot as Bot } from "pixelarticons/react";
 
 import { ResponseError } from "@/api";
 import apiClient from "@/client";

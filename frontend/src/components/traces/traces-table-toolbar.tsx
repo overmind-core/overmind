@@ -1,5 +1,5 @@
 import type { Table } from "@tanstack/react-table";
-import { Search } from "lucide-react";
+import { Search } from "pixelarticons/react";
 
 import { type FilterEntry, TracesFilters } from "@/components/traces/filters";
 import type { SpanRow } from "@/hooks/use-traces";

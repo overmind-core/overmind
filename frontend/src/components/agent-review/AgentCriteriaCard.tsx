@@ -1,7 +1,15 @@
 import { useEffect, useRef, useState } from "react";
 
 import { useMutation } from "@tanstack/react-query";
-import { ChevronLeft, ChevronRight, Loader2, Pencil, Plus, Trash2, X } from "lucide-react";
+import {
+  Cancel as X,
+  ChevronLeft,
+  ChevronRight,
+  Delete as Trash2,
+  Loader as Loader2,
+  PenSquare as Pencil,
+  Plus,
+} from "pixelarticons/react";
 import { toast } from "sonner";
 
 import apiClient from "@/client";

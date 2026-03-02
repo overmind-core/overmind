@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { CalendarDays } from "lucide-react";
+import { Calendar as CalendarDays } from "pixelarticons/react";
 
 import { cn } from "@/lib/utils";
 import { type AnalyticsPreset, type AnalyticsRange, rangeLabel } from "@/lib/analytics";

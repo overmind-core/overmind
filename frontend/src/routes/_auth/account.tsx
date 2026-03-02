@@ -2,7 +2,7 @@ import { useState } from "react";
 
 import { useQuery } from "@tanstack/react-query";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
-import { Calendar, CheckCircle, Loader2, Mail, Trash2, User, XCircle } from "lucide-react";
+import { Calendar, Cancel as XCircle, Check as CheckCircle, Delete as Trash2, Loader as Loader2, Mail, User } from "pixelarticons/react";
 
 import apiClient from "@/client";
 import { Alert } from "@/components/ui/alert";

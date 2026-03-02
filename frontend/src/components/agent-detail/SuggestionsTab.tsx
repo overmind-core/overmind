@@ -1,4 +1,4 @@
-import { Sparkles } from "lucide-react";
+import { Sparkles } from "pixelarticons/react";
 
 import type { SuggestionOut } from "@/api";
 import { SuggestionCard } from "@/components/suggestion-card";

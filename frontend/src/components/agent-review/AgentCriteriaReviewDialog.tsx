@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 
 import { useMutation } from "@tanstack/react-query";
-import { Loader2, Plus, Trash2, X } from "lucide-react";
+import { Cancel as X, Delete as Trash2, Loader as Loader2, Plus } from "pixelarticons/react";
 
 import type { AgentOut } from "@/api";
 
