@@ -1,0 +1,131 @@
+---
+description: "Job orchestration system: reconciler pattern, Celery beat schedule, task locking, and job lifecycle"
+globs:
+  - "overmind/tasks/job_reconciler.py"
+  - "overmind/tasks/job_cleanup.py"
+  - "overmind/api/v1/endpoints/jobs.py"
+  - "overmind/celery_app.py"
+  - "overmind/tasks/utils/task_lock.py"
+alwaysApply: false
+---
+
+# Job System
+
+Orchestrates async ML pipeline tasks via a reconciler pattern: the API creates Job records, a periodic reconciler dispatches them as Celery tasks, and tasks update Job status on completion.
+
+## Job Lifecycle
+
+```
+API / Periodic Task
+  │
+  ▼
+Job(status="pending", result={parameters})
+  │
+  ▼  (every 30s)
+Job Reconciler picks up pending jobs
+  ├── Maps job_type → Celery task name
+  ├── Sends Celery task
+  ├── Sets status="running", stores celery_task_id
+  │
+  ▼
+Celery task executes
+  ├── Updates job.status on completion/failure
+  └── Stores results in job.result
+```
+
+## Job Types and Task Mapping
+
+Defined in `JOB_TYPE_TO_TASK` in `overmind/tasks/job_reconciler.py`:
+
+| job_type            | Celery task                                | Triggered by                                 |
+| ------------------- | ------------------------------------------ | -------------------------------------------- |
+| `agent_discovery`   | `agent_discovery.run_agent_discovery`      | System only (`POST /jobs/extract-templates`) |
+| `judge_scoring`     | `evaluations.evaluate_prompt_spans`        | User (`POST /jobs/{slug}/score`) or periodic |
+| `prompt_tuning`     | `prompt_improvement.improve_single_prompt` | User (`POST /jobs/{slug}/tune`) or periodic  |
+| `model_backtesting` | `backtesting.run_model_backtesting`        | User (`POST /jobs`) or periodic              |
+
+## Job API Endpoints (`overmind/api/v1/endpoints/jobs.py`)
+
+| Endpoint                         | Purpose                                                           |
+| -------------------------------- | ----------------------------------------------------------------- |
+| `POST /jobs`                     | Create job (judge_scoring, prompt_tuning, model_backtesting)      |
+| `GET /jobs`                      | List jobs (filtered by project, syncs running status from Celery) |
+| `GET /jobs/{job_id}`             | Get single job                                                    |
+| `PATCH /jobs/{job_id}`           | Update job (e.g. cancel)                                          |
+| `DELETE /jobs/{job_id}`          | Delete pending job                                                |
+| `POST /jobs/extract-templates`   | Create agent_discovery job                                        |
+| `POST /jobs/{prompt_slug}/score` | Create judge_scoring job for a prompt                             |
+| `POST /jobs/{prompt_slug}/tune`  | Create prompt_tuning job for a prompt                             |
+| `POST /jobs/{job_id}/trigger`    | Manually trigger a pending job                                    |
+
+### Validation
+
+Each job type has a `validate_*_eligibility()` function called before creation:
+
+- `validate_agent_discovery_eligibility(project_id, session)`
+- `validate_judge_scoring_eligibility(prompt, session)`
+- `validate_prompt_tuning_eligibility(prompt, session)`
+- `validate_backtesting_eligibility(prompt, session, models?)`
+
+### Helper functions (`overmind/api/v1/endpoints/utils/jobs.py`)
+
+- `get_job_or_404(job_id, project_id, session)` — fetch or 404
+- `cancel_existing_system_jobs(prompt_slug, job_type, project_id, session)` — cancel pending system jobs before creating user job
+- `sync_running_job_statuses(jobs, celery_app, session)` — reconcile DB status with Celery result backend
+- `create_job(job_type, project_id, prompt_slug, ...)` — create Job record
+- `find_latest_prompt(prompt_slug, project_id, session)` — get latest version of a prompt
+
+## Job Reconciler (`overmind/tasks/job_reconciler.py`)
+
+Runs every 30 seconds via Celery beat.
+
+1. Clean up stale `running` jobs (running > threshold with no Celery task)
+1. Fetch all `pending` jobs ordered by `created_at`
+1. For each pending job:
+   - Look up task name from `JOB_TYPE_TO_TASK`
+   - Build task kwargs from `job.result` (which stores creation parameters)
+   - Send Celery task via `celery_app.send_task()`
+   - Update job: `status="running"`, `celery_task_id=task.id`
+
+## Celery Beat Schedule (`overmind/celery_app.py`)
+
+| Task                                          | Schedule                  | Purpose                          |
+| --------------------------------------------- | ------------------------- | -------------------------------- |
+| `agent_discovery.discover_agents`             | 300s (5 min)              | Discover agents from spans       |
+| `evaluations.evaluate_unscored_spans`         | 300s (5 min)              | Score unscored spans             |
+| `prompt_improvement.improve_prompt_templates` | 300s (5 min)              | Check for prompt improvements    |
+| `backtesting.check_backtesting_candidates`    | 300s (5 min)              | Check for backtesting candidates |
+| `job_reconciler.reconcile_pending_jobs`       | 30s                       | Dispatch pending jobs            |
+| `job_cleanup.cleanup_old_jobs`                | crontab(hour=0, minute=0) | Delete old terminal-state jobs   |
+| `periodic_reviews.check_review_triggers`      | 3600s (1 hr)              | Trigger agent reviews            |
+
+## Task Locking (`overmind/tasks/utils/task_lock.py`)
+
+The `@with_task_lock` decorator uses Valkey distributed locks to prevent concurrent runs of the same periodic task.
+
+```python
+@with_task_lock
+async def discover_agents(): ...
+```
+
+Uses Valkey `SET NX` with TTL for atomic lock acquisition. If the lock is already held, the task silently skips.
+
+## Job Cleanup (`overmind/tasks/job_cleanup.py`)
+
+Runs daily at midnight UTC. Deletes jobs in terminal states (`completed`, `failed`, `cancelled`) older than 24 hours.
+
+## Periodic Task Pattern
+
+Periodic tasks (beat-scheduled) create PENDING jobs for eligible prompts/projects. The reconciler then dispatches those jobs. This two-step pattern ensures:
+
+- Jobs are visible in the UI before execution starts
+- User-triggered and system-triggered jobs use the same execution path
+- Concurrent execution is prevented via both task locks (for periodic tasks) and job status checks (for reconciler)
+
+## When Modifying This Area
+
+- New job types need: an entry in `JOB_TYPE_TO_TASK`, a `validate_*_eligibility()` function, an API endpoint for creation, and the corresponding Celery task
+- The reconciler builds task kwargs from `job.result` — the parameter structure must match what the Celery task expects
+- `sync_running_job_statuses` is called on job list endpoints to reconcile stale running jobs — it checks the Celery result backend
+- New periodic tasks need: a beat schedule entry in `celery_app.py`, and should use `@with_task_lock` to prevent concurrent runs
+- Task autodiscovery requires tasks to be in `overmind/tasks/` — the `celery_app.autodiscover_tasks(["overmind.tasks"])` call finds them

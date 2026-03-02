@@ -1,0 +1,153 @@
+---
+description: "Frontend architecture: React 19 + TanStack Router/Query + Tailwind + Radix UI conventions"
+globs:
+  - "frontend/src/**"
+  - "frontend/package.json"
+  - "frontend/vite.config.ts"
+alwaysApply: false
+---
+
+# Frontend Architecture
+
+React 19 SPA built with Vite 7, TanStack Router (file-based), TanStack React Query for server state, and Radix UI primitives styled with Tailwind CSS 4.
+
+## Tech Stack
+
+| Layer           | Technology                                                            |
+| --------------- | --------------------------------------------------------------------- |
+| Framework       | React 19, Vite 7                                                      |
+| Routing         | TanStack Router 1.x (file-based, code splitting)                      |
+| Data fetching   | TanStack React Query 5.x                                              |
+| Auth            | Clerk (enterprise) / localStorage token (self-hosted)                 |
+| UI primitives   | Radix UI                                                              |
+| Styling         | Tailwind CSS 4, class-variance-authority (CVA), clsx + tailwind-merge |
+| Forms           | TanStack Form + Zod 4                                                 |
+| Tables          | TanStack Table 8.x                                                    |
+| Icons           | Lucide React                                                          |
+| Toasts          | Sonner                                                                |
+| Theming         | next-themes (light/dark/system)                                       |
+| Package manager | Bun                                                                   |
+
+## Directory Structure
+
+```
+frontend/src/
+  api/                     # OpenAPI-generated TypeScript client
+    apis/                  # API classes (AgentsApi, JobsApi, etc.)
+    models/                # Request/response types
+    runtime.ts             # Fetch wrapper, Configuration
+  components/              # React components
+    ui/                    # Shadcn-style base components (Button, Card, Dialog, etc.)
+    agent-detail/          # Agent detail page components
+    agent-review/          # Review flow components
+    charts/                # Chart components
+    jobs/                  # Job-related components (JobCard)
+    quickstart/            # Onboarding snippets
+    traces/                # Trace viewer (flame chart, span tree, detail panels)
+      contexts/            # TraceDataContext, TraceSelectionContext
+      lib/                 # Tree-building utilities
+  hooks/                   # React Query + custom hooks
+  integrations/            # TanStack Query client, PostHog
+  lib/                     # Utils, schemas, formatters, analytics
+  routes/                  # TanStack Router file-based routes
+  types/                   # Custom TypeScript types
+  client.ts                # OvermindClient wrapper
+  config.ts                # Runtime config (apiUrl, clerkReady, isSelfHosted)
+```
+
+## Routing
+
+File-based routing via TanStack Router. Route files live in `frontend/src/routes/`.
+
+### Key routes:
+
+| Path                                   | File                                            | Purpose                                                    |
+| -------------------------------------- | ----------------------------------------------- | ---------------------------------------------------------- |
+| `/`                                    | `_auth/index.tsx`                               | Home — agents grid, quickstart                             |
+| `/login`                               | `login.tsx`                                     | Login page                                                 |
+| `/agents`                              | `_auth/agents.index.tsx`                        | Agents list                                                |
+| `/agents/$slug`                        | `_auth/agents.$slug.tsx`                        | Agent detail (tabs: overview, versions, jobs, suggestions) |
+| `/jobs`                                | `_auth/jobs.tsx`                                | Jobs list                                                  |
+| `/jobs/$jobId`                         | `_auth/jobs.$jobId.tsx`                         | Job detail                                                 |
+| `/projects`                            | `_auth/projects.index.tsx`                      | Projects list                                              |
+| `/projects/$projectId/traces`          | `_auth/projects.$projectId.traces.tsx`          | Traces list                                                |
+| `/projects/$projectId/traces/$traceId` | `_auth/projects.$projectId.traces.$traceId.tsx` | Trace detail                                               |
+
+### Layout:
+
+- `__root.tsx` — ThemeProvider, QueryClientProvider
+- `_auth.tsx` — Authenticated layout with AppSidebar, breadcrumbs, theme toggle
+
+## API Client (`frontend/src/client.ts`)
+
+`OvermindClient` wraps auto-generated API classes with auth middleware:
+
+```
+Configuration({basePath, middleware})
+  ├── pre: Adds Authorization: Bearer <token> header
+  └── post: On 401, clears session → redirect to /login
+```
+
+APIs: `AgentsApi`, `BacktestingApi`, `JobsApi`, `TracesApi`, `ProjectsApi`, `PromptsApi`, `SpansApi`, `SuggestionsApi`, `TokensApi`, `OnboardingApi`, `UsersApi`, `AgentReviewsApi`
+
+Config source: `VITE_API_BASE_URL` env var or proxy fallback.
+
+## State Management
+
+- **Server state**: TanStack React Query (`staleTime: 60_000`, `retry: 1`)
+- **Router context**: `queryClient`, `authUser`, `config` available via `getContext()`
+- **Local UI state**: React `useState`, `useMemo`
+- **Context providers**: `ThemeProvider`, `TraceDataProvider`, `TraceSelectionProvider`
+
+## UI Patterns
+
+### Component library (Shadcn-style)
+
+Base components in `frontend/src/components/ui/` — built on Radix UI primitives:
+
+- `button.tsx` — `Button` with CVA variants (default, destructive, outline, secondary, ghost, link)
+- `card.tsx`, `dialog.tsx`, `sheet.tsx`, `tabs.tsx`, `table.tsx`
+- `dropdown-menu.tsx`, `select.tsx`, `popover.tsx`, `tooltip.tsx`
+- `input.tsx`, `textarea.tsx`, `checkbox.tsx`, `switch.tsx`, `slider.tsx`
+- `badge.tsx`, `skeleton.tsx`, `scroll-area.tsx`, `accordion.tsx`
+- `sidebar.tsx` — app sidebar layout
+- `sonner.tsx` — toast notifications
+
+### Styling conventions
+
+- `cn()` utility from `lib/utils.ts` — merges Tailwind classes via `clsx` + `tailwind-merge`
+- CVA (class-variance-authority) for component variants
+- Tailwind CSS 4 with design tokens in `styles.css` (`--accent-warm`, `--background`, etc.)
+- Dark mode via `next-themes` ThemeProvider
+
+### Key feature components
+
+| Component                       | Purpose                                         |
+| ------------------------------- | ----------------------------------------------- |
+| `agent-grid.tsx`                | Agent cards with analytics sparklines           |
+| `jobs/JobCard.tsx`              | Job detail with status, results, JSON viewer    |
+| `traces/SpanTree.tsx`           | Hierarchical span tree                          |
+| `traces/TraceFlameChart.tsx`    | Flame chart visualization                       |
+| `traces/TraceLayoutDesktop.tsx` | Resizable split layout                          |
+| `agent-detail/*.tsx`            | Agent detail tabs (versions, jobs, suggestions) |
+| `agent-review/*.tsx`            | Criteria review, span feedback dialogs          |
+| `suggestion-card.tsx`           | Suggestion display with vote/feedback           |
+| `app-sidebar.tsx`               | Main navigation sidebar                         |
+
+## Environment Config
+
+| File               | Purpose                                                         |
+| ------------------ | --------------------------------------------------------------- |
+| `.env.oss`         | Self-hosted: `VITE_CLERK_READY=false`, `VITE_SELF_HOSTED=true`  |
+| `.env.development` | Local dev: API at `http://localhost:8000`, Clerk test key       |
+| `.env.production`  | Production: API at `https://api.overmindlab.ai`, Clerk live key |
+
+## When Modifying This Area
+
+- New pages: create route file in `frontend/src/routes/`, TanStack Router auto-generates the route tree
+- After backend API changes: run `make generate_api_client` to regenerate `frontend/src/api/`
+- New UI components: use Radix UI primitives + `cn()` for styling, follow Shadcn patterns in `components/ui/`
+- To add shadcn components: `pnpm dlx shadcn@latest add <component>`
+- Data fetching: use TanStack React Query hooks — see `frontend/src/hooks/` for patterns
+- Search params: define Zod schemas in `frontend/src/lib/schemas.ts`
+- The auth flow differs between self-hosted (localStorage JWT) and enterprise (Clerk) — check `config.ts` for `isSelfHosted` flag

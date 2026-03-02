@@ -1,0 +1,168 @@
+---
+description: "Overmind system architecture, tech stack, service topology, and cross-cutting conventions"
+alwaysApply: true
+---
+
+# Overmind Architecture Overview
+
+Overmind is an observability and continuous-improvement platform for LLM-powered agents. It ingests production traces, auto-discovers agents, scores outputs with an LLM judge, tunes prompts, and backtests alternative models — all from a single Docker Compose stack.
+
+## Tech Stack
+
+| Layer          | Technology                                                        |
+| -------------- | ----------------------------------------------------------------- |
+| Backend API    | FastAPI (async), Python 3.13                                      |
+| Task queue     | Celery 5.6 with prefork pool                                      |
+| Scheduler      | Celery Beat                                                       |
+| Database       | PostgreSQL 17 (async via asyncpg + SQLAlchemy)                    |
+| Cache / Broker | Valkey 8 (Redis-compatible)                                       |
+| LLM gateway    | LiteLLM (OpenAI, Anthropic, Gemini)                               |
+| Frontend       | React 19 + Vite 7 + TanStack Router/Query + Tailwind 4 + Radix UI |
+| Package mgmt   | Poetry (backend), Bun (frontend)                                  |
+| Migrations     | Alembic                                                           |
+
+## Directory Layout
+
+```
+overmind/                   # Backend Python package
+  main.py                   # FastAPI app entry point
+  config.py                 # Pydantic Settings
+  celery_app.py             # Celery + beat schedule
+  bootstrap.py              # Default user/project provisioning
+  utils.py                  # Shared helpers
+  api/v1/                   # REST API layer
+    router.py               # Route assembly
+    endpoints/              # Endpoint modules
+    helpers/                # Auth, responses
+  core/                     # Business logic
+    llms.py                 # LLM calling via LiteLLM
+    model_resolver.py       # Model selection per task type
+    template_extractor/     # Prompt template extraction from traces
+    layers.py, policies.py  # Policy pipeline
+  models/                   # SQLAlchemy + Pydantic models
+    iam/                    # User, Project, Token
+  tasks/                    # Celery tasks (ML pipeline)
+    utils/                  # Shared prompts, task locks
+  db/                       # DB session, Valkey client
+frontend/                   # React SPA
+  src/
+    api/                    # OpenAPI-generated TypeScript client
+    components/             # React components
+    routes/                 # TanStack Router file-based routes
+    hooks/                  # React Query hooks
+    lib/                    # Utils, schemas
+alembic/                    # DB migration scripts
+tests/                      # Pytest test suite
+docker-compose.yml          # Local dev stack
+```
+
+## Service Topology (Docker Compose)
+
+```
+postgres (5432)  <──┐
+valkey   (6379)  <──┤── api (8000) ── FastAPI + Alembic migrations
+                    ├── celery-worker (prefork, concurrency=2)
+                    ├── celery-beat
+frontend (5173) ────┘
+```
+
+All services share env vars via `x-env-common`. API runs `alembic upgrade head` on startup before starting uvicorn.
+
+## Core Data Flow
+
+```
+User SDK/Traces ──OTLP──> Trace Ingestion ──> PostgreSQL (traces + spans)
+                                                      │
+                              ┌────────────────────────┘
+                              ▼
+                     Agent Discovery (5 min)
+                     ├── Template extraction
+                     ├── Prompt record creation
+                     ├── Criteria generation
+                     └── Description generation
+                              │
+                              ▼
+                     LLM Judge Scoring (5 min)
+                     └── Score each span's output (correctness 0–1)
+                              │
+                              ▼
+                     Prompt Improvement (5 min)
+                     └── At span thresholds: suggest + apply prompt improvements
+                              │
+                              ▼
+                     Model Backtesting (5 min)
+                     └── Compare alternative models on historical spans
+```
+
+## Key Conventions
+
+### Database
+
+- Async SQLAlchemy throughout (`asyncpg` driver, `async_sessionmaker`)
+- Pool: `pool_size=5`, `max_overflow=10`, `pool_pre_ping=True`, `pool_recycle=300`
+- Celery workers reset `_engine` and `_AsyncSessionLocal` to `None` on fork (`worker_process_init`) so each process gets its own connections
+- JSONB columns store structured metadata (criteria, improvement history, feedback scores, etc.)
+
+### Celery / Tasks
+
+- `prefork` pool with `concurrency=2`
+- Beat schedule in `overmind/celery_app.py` — all periodic tasks run at fixed intervals (30s–1h)
+- `@with_task_lock` decorator (Valkey distributed locks) prevents concurrent runs of the same periodic task
+- Job reconciler pattern: API creates `Job(status=pending)` → reconciler dispatches Celery task → task updates Job status/result
+
+### LLM Calls
+
+- All LLM calls go through `call_llm()` in `overmind/core/llms.py` which wraps `litellm.completion()`
+- Model selection via `resolve_model(TaskType)` or `resolve_model_and_provider(TaskType)` in `overmind/core/model_resolver.py`
+- Three providers supported: OpenAI, Anthropic, Gemini — at least one API key required
+- Provider-specific meta-prompt variants for prompt improvement (Anthropic=XML, OpenAI=Markdown, Gemini=XML blocks)
+
+### API
+
+- Two router groups: `core_api_router` (all endpoints require auth) and `core_auth_router` (mixed auth per-endpoint)
+- Auth: JWT (`Authorization: Bearer`) or API token (`X-API-Token: ovr_core_...`)
+- Frontend auto-generates TypeScript API client from OpenAPI spec (`make generate_api_client`)
+
+### Frontend
+
+- File-based routing via TanStack Router in `frontend/src/routes/`
+- Server state via TanStack React Query (staleTime: 60s)
+- Shadcn-style UI components in `frontend/src/components/ui/`
+- `cn()` utility for Tailwind class merging (clsx + tailwind-merge)
+
+## When Modifying This Codebase
+
+- New DB models need an Alembic migration (`alembic revision --autogenerate -m "description"`)
+- New Celery tasks must be in `overmind/tasks/` for autodiscovery to work
+- New API endpoints go in `overmind/api/v1/endpoints/` and must be registered in `overmind/api/v1/router.py`
+- After API changes, regenerate the frontend client: `make generate_api_client`
+- New periodic tasks need a beat schedule entry in `overmind/celery_app.py`
+- Environment variables go in `overmind/config.py` (Pydantic Settings) and `.env.example`
+
+## Keeping These Docs in Sync
+
+**After every code change, update the relevant rule file(s) in `.cursor/rules/`.**
+
+| Changed area                                   | Rule file to update                |
+| ---------------------------------------------- | ---------------------------------- |
+| DB models, JSONB fields, migrations            | `data-models.mdc`                  |
+| Agent discovery, template extractor            | `pipeline/discovery.mdc`           |
+| LLM judge scoring, agentic detection           | `pipeline/evaluation.mdc`          |
+| Prompt improvement, meta-prompts               | `pipeline/prompt-tuning.mdc`       |
+| Model backtesting                              | `pipeline/backtesting.mdc`         |
+| Criteria/description/display-name generation   | `pipeline/criteria.mdc`            |
+| LLM calling, model resolver, providers         | `infrastructure/llm.mdc`           |
+| Job lifecycle, reconciler, Celery beat         | `infrastructure/jobs.mdc`          |
+| OTLP trace ingestion, transformers             | `infrastructure/traces.mdc`        |
+| FastAPI endpoints, auth, routers               | `api/endpoints.mdc`                |
+| Frontend routing, components, API client       | `frontend/architecture.mdc`        |
+| Architecture, stack, data flow                 | `architecture-overview.mdc`        |
+
+Update the relevant rule whenever you:
+- Add or remove a function, class, or module
+- Change a JSONB field schema
+- Add a new job type, task type, or Celery task
+- Change eligibility logic or thresholds
+- Add a new API endpoint or auth method
+- Add a new LLM provider or model
+- Change the pipeline flow or add a new pipeline stage
