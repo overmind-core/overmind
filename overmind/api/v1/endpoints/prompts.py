@@ -1,5 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 from sqlalchemy import select, and_, desc
 from sqlalchemy.ext.asyncio import AsyncSession
 from overmind.models.prompts import Prompt
@@ -37,6 +37,8 @@ class PromptResponse(BaseModel):
 
 
 class PromptDetail(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     prompt_id: str
     slug: str
     prompt: str
@@ -48,9 +50,6 @@ class PromptDetail(BaseModel):
     created_at: str
     updated_at: str | None = None
     evaluation_criteria: dict[str, list[str]] | None = None
-
-    class Config:
-        from_attributes = True
 
 
 class UpdateCriteriaRequest(BaseModel):

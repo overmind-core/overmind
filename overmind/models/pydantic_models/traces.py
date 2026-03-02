@@ -1,5 +1,5 @@
 from typing import Any
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 import uuid
 from overmind.utils import calculate_llm_usage_cost, safe_int
 from overmind.models.traces import SpanModel, TraceModel
@@ -19,6 +19,10 @@ def _nonempty(value: Any) -> Any:
 
 
 class SpanResponseModel(BaseModel):
+    model_config = ConfigDict(
+        populate_by_name=True, from_attributes=True, extra="allow"
+    )
+
     user_id: uuid.UUID | None = Field(None, alias="UserId")
     project_id: uuid.UUID | None = Field(None, alias="ProjectId")
     trace_id: uuid.UUID = Field(..., alias="TraceId")
@@ -83,11 +87,6 @@ class SpanResponseModel(BaseModel):
             Events=obj.metadata_attributes.get("events", []),
             Links=obj.metadata_attributes.get("links", []),
         )
-
-    class Config:
-        allow_population_by_field_name = True
-        orm_mode = True
-        extra = "allow"
 
 
 class TraceSpansResponseModel(BaseModel):

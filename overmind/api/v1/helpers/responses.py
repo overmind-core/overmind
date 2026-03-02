@@ -32,7 +32,7 @@ def error_response(
     """Create an error response"""
     response_data = APIResponse(success=False, message=message, errors=errors or [])
 
-    raise HTTPException(status_code=status_code, detail=response_data.dict())
+    raise HTTPException(status_code=status_code, detail=response_data.model_dump())
 
 
 def validation_error_response(

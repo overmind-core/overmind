@@ -119,7 +119,7 @@ async def _list_traces(
     )
     query = stmt.limit(filters.limit).offset(filters.offset)
     result = await db.execute(query)
-    total_count = await db.scalar(select(func.count()).select_from(stmt))
+    total_count = await db.scalar(select(func.count()).select_from(stmt.subquery()))
     res = result.all()
     span_objs, trace_objs = zip(*res) if res else ([], [])
 
