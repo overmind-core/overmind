@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate } from "@tanstack/react-router";
@@ -18,15 +18,9 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
-import { useOrganisationsList } from "@/hooks/use-organisations";
+import { useOrganisationId } from "@/hooks/use-query";
+
 
 function generateProjectSlug(name: string): string {
   return name
@@ -41,13 +35,11 @@ interface CreateProjectFormData {
   name: string;
   slug: string;
   description: string;
-  organisation_id: string;
 }
 
 const initialFormData: CreateProjectFormData = {
   description: "",
   name: "",
-  organisation_id: "",
   slug: "",
 };
 
@@ -59,18 +51,10 @@ function CreateProjectForm({
   onCancel?: () => void;
 }) {
   const queryClient = useQueryClient();
-  const { data: orgsData, isLoading: orgsLoading } = useOrganisationsList();
+  const organisationId = useOrganisationId();
 
   const [formData, setFormData] = useState<CreateProjectFormData>(initialFormData);
 
-  useEffect(() => {
-    if (orgsData?.organisations.length && !formData.organisation_id) {
-      setFormData((prev) => ({
-        ...prev,
-        organisation_id: orgsData.organisations[0].organisationId,
-      }));
-    }
-  }, [orgsData]);
 
   const createMutation = useMutation({
     mutationFn: async (data: CreateProjectFormData) => {
@@ -79,7 +63,7 @@ function CreateProjectForm({
           createProjectRequest: {
             description: data.description,
             name: data.name,
-            organisationId: data.organisation_id,
+            organisationId,
             slug: data.slug,
           },
         });
@@ -114,7 +98,6 @@ function CreateProjectForm({
     if (
       !formData.name.trim() ||
       !formData.slug.trim() ||
-      !formData.organisation_id ||
       !formData.description.trim()
     ) {
       createMutation.reset();
@@ -167,26 +150,6 @@ function CreateProjectForm({
       </div>
 
       <div className="space-y-2">
-        <Label>Organisation</Label>
-        <Select
-          disabled={orgsLoading}
-          onValueChange={(value) => setFormData((prev) => ({ ...prev, organisation_id: value }))}
-          value={formData.organisation_id}
-        >
-          <SelectTrigger className="w-full">
-            <SelectValue placeholder="Select organisation" />
-          </SelectTrigger>
-          <SelectContent>
-            {orgsData?.organisations.map((org) => (
-              <SelectItem key={org.organisationId} value={org.organisationId}>
-                {org.name}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      </div>
-
-      <div className="space-y-2">
         <Label htmlFor="project-description">
           Description
           <span className="ml-1 text-destructive">*</span>
@@ -220,7 +183,7 @@ function CreateProjectForm({
         </Button>
         <Button
           className="gap-2"
-          disabled={loading || !formData.description.trim() || !formData.organisation_id}
+          disabled={loading || !formData.description.trim()}
           type="submit"
         >
           {loading ? <Loader2 className="size-4 animate-spin" /> : <Save className="size-4" />}

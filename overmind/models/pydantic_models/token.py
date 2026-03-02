@@ -5,30 +5,28 @@ Pydantic model for Token entity.
 from pydantic import BaseModel, ConfigDict
 from typing import Any
 from datetime import datetime
-from uuid import UUID
+import uuid
 from .user import UserBaseModel
-from .organisation import OrganisationModel
 from .project import ProjectModel
 
 
 class TokenModel(BaseModel):
     """
     Pydantic model for Token entity used in authentication and authorization.
-    Includes nested relationships for user, organisation, and project.
+    Includes nested relationships for user and project.
     Note: Uses UserBaseModel to avoid loading unnecessary user relationships.
 
-    organisation_id and organisation are optional — they are only set in
-    enterprise mode.
+    organisation_id is optional — set in enterprise mode as a Clerk org_id string.
     """
 
     model_config = ConfigDict(from_attributes=True)
 
-    token_id: UUID
+    token_id: uuid.UUID
     name: str
     description: str | None = None
-    user_id: UUID
-    organisation_id: UUID | None = None
-    project_id: UUID
+    user_id: uuid.UUID
+    organisation_id: str | None = None
+    project_id: uuid.UUID
     token_hash: str
     prefix: str
     is_active: bool
@@ -41,5 +39,4 @@ class TokenModel(BaseModel):
 
     # Relationships
     user: UserBaseModel
-    organisation: OrganisationModel | None = None
     project: ProjectModel

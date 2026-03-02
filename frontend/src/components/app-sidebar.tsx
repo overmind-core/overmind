@@ -6,13 +6,12 @@ import {
   BarChart3,
   Bot,
   Briefcase,
-  Building2,
   ChevronUp,
   Home,
   LogIn,
   LogOut,
   Rocket,
-  User,
+  User
 } from "lucide-react";
 
 import {
@@ -106,7 +105,6 @@ export function AppSidebar() {
 const accountLinks = [
   { icon: Rocket, label: "Getting Started", to: "/get-started" },
   { icon: User, label: "Account", to: "/account" },
-  { icon: Building2, label: "Organisations", to: "/organisations" },
 ];
 
 function useIsSignedIn() {

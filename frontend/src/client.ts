@@ -6,7 +6,6 @@ import {
   JobsApi,
   OauthApi,
   OnboardingApi,
-  OrganisationsApi,
   ProjectsApi,
   PromptsApi,
   RolesApi,
@@ -31,7 +30,6 @@ class OvermindClient {
   tokens: TokensApi;
   roles: RolesApi;
   tokenRoles: TokenRolesApi;
-  organisations: OrganisationsApi;
   onboarding: OnboardingApi;
   users: UsersApi;
   oauth: OauthApi;
@@ -48,7 +46,6 @@ class OvermindClient {
     this.tokens = new TokensApi(config);
     this.roles = new RolesApi(config);
     this.tokenRoles = new TokenRolesApi(config);
-    this.organisations = new OrganisationsApi(config);
     this.onboarding = new OnboardingApi(config);
     this.users = new UsersApi(config);
     this.agentReviews = new AgentReviewsApi(config);
@@ -89,6 +86,7 @@ declare global {
     Clerk: {
       session: {
         getToken: () => Promise<string>;
+        remove: () => Promise<void>;
       };
     };
   }
@@ -100,8 +98,12 @@ const apiClient = new OvermindClient(
       {
         post: async (context) => {
           if (context.response.status === 401) {
-            localStorage.removeItem("token");
-            window.location.href = "/login";
+            if (config.clerkReady) {
+              await window.Clerk.session.remove();
+            } else {
+              localStorage.removeItem("token");
+              window.location.href = "/login";
+            }
           }
           return undefined;
         },

@@ -24,6 +24,7 @@ from overmind.api.v1.helpers.responses import (
     success_response,
 )
 from overmind.db.session import get_db
+from overmind.db.valkey import delete_key
 from overmind.models.iam.projects import Project
 from overmind.models.iam.relationships import user_project_association
 from overmind.models.pydantic_models.core_models import CoreProjectModel
@@ -108,6 +109,9 @@ async def create_project(
         )
     )
     await db.commit()
+    user_id = current_user.user_id
+    cache_key = f"user:{user_id}"
+    await delete_key(cache_key)
 
     return CoreProjectModel.model_validate(project)
 

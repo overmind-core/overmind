@@ -126,6 +126,9 @@ function TracesPage() {
       serverFilter,
       flatten,
     ],
+    refetchInterval: (i) => {
+      return (!i.state.data?.count || i.state.data?.count <= 0) ? 2_000 : 10_000;
+    }
   });
 
   const setSearch = useCallback(

@@ -1,6 +1,6 @@
 from typing import Any
 from pydantic import BaseModel, Field
-from uuid import UUID
+import uuid
 from overmind.utils import calculate_llm_usage_cost, safe_int
 from overmind.models.traces import SpanModel, TraceModel
 
@@ -19,13 +19,9 @@ def _nonempty(value: Any) -> Any:
 
 
 class SpanResponseModel(BaseModel):
-    user_id: UUID | None = Field(None, alias="UserId")
-    project_id: UUID | None = Field(None, alias="ProjectId")
-    business_id: UUID | None = Field(
-        None, alias="BusinessId"
-    )  # org id, not used anymore
-
-    trace_id: UUID = Field(..., alias="TraceId")
+    user_id: uuid.UUID | None = Field(None, alias="UserId")
+    project_id: uuid.UUID | None = Field(None, alias="ProjectId")
+    trace_id: uuid.UUID = Field(..., alias="TraceId")
     span_id: str = Field(..., alias="SpanId")
     parent_span_id: str | None = Field(None, alias="ParentSpanId")
     trace_state: str | None = Field("", alias="TraceState")
@@ -103,7 +99,7 @@ class TraceSpansResponseModel(BaseModel):
 class TraceListResponseModel(BaseModel):
     class TraceListFilterModel(BaseModel):
         # ── Required / structural ────────────────────────────────────────────
-        project_id: UUID
+        project_id: uuid.UUID
         user_id: str | None = None  # set from auth context, not from the request
         start_time_nano: int | None = None
         end_time_nano: int | None = None

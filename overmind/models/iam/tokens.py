@@ -38,7 +38,7 @@ class Token(Base):
 
     user_id = Column(UUID(as_uuid=True), ForeignKey("users.user_id"), nullable=False)
     organisation_id = Column(
-        UUID(as_uuid=True),
+        String,
         nullable=True,
         default=None,
     )

@@ -4,11 +4,10 @@ Pydantic model for User entity.
 
 from pydantic import BaseModel, ConfigDict
 from datetime import datetime
-from uuid import UUID
+import uuid
 
 
 from .project import ProjectModel
-from .organisation import OrganisationModel
 
 
 class UserBaseModel(BaseModel):
@@ -19,7 +18,7 @@ class UserBaseModel(BaseModel):
 
     model_config = ConfigDict(from_attributes=True)
 
-    user_id: UUID
+    user_id: uuid.UUID
     email: str
     full_name: str | None = None
     is_active: bool
@@ -40,4 +39,3 @@ class UserModel(UserBaseModel):
 
     # Relationships - these are loaded when needed via selectinload
     projects: list[ProjectModel] | None = None
-    organisations: list[OrganisationModel] | None = None

@@ -5,12 +5,14 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import apiClient from "@/client";
 import { config } from "@/config";
 import { useProjectsList } from "@/hooks/use-projects";
+import { useOrganisationId } from "@/hooks/use-query";
 
 const STORAGE_PREFIX = "telemetry_api_key_";
 
 export function useQuickstartKey(projectId?: string) {
   const queryClient = useQueryClient();
   const { data: projectsData, isLoading: projectsLoading } = useProjectsList();
+  const organisationId = useOrganisationId();
 
   const currentProject = useMemo(() => {
     if (projectId) {
@@ -43,7 +45,7 @@ export function useQuickstartKey(projectId?: string) {
         createTokenRequest: {
           description: "API key for telemetry",
           name: `Telemetry API Key - ${new Date().toISOString()}`,
-          organisationId: currentProject.organisationId,
+          organisationId,
           projectId: currentProject.projectId,
         },
       });

@@ -7,7 +7,7 @@ core endpoints return these.
 """
 
 from datetime import datetime
-from uuid import UUID
+import uuid
 
 from pydantic import BaseModel, ConfigDict
 
@@ -15,7 +15,7 @@ from pydantic import BaseModel, ConfigDict
 class CoreUserModel(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
-    user_id: UUID
+    user_id: uuid.UUID
     email: str
     full_name: str | None = None
     is_active: bool
@@ -25,7 +25,7 @@ class CoreUserModel(BaseModel):
 class CoreProjectModel(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
-    project_id: UUID
+    project_id: uuid.UUID
     name: str
     slug: str
     description: str | None = None
@@ -37,12 +37,12 @@ class CoreProjectModel(BaseModel):
 class CoreTokenModel(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
-    token_id: UUID
+    token_id: uuid.UUID
     name: str
     description: str | None = None
     prefix: str
-    project_id: UUID
-    user_id: UUID
+    project_id: uuid.UUID
+    user_id: uuid.UUID
     is_active: bool
     expires_at: datetime | None = None
     last_used_at: datetime | None = None

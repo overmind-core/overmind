@@ -2,6 +2,14 @@ import { useQuery } from "@tanstack/react-query";
 
 import apiClient from "@/client";
 
+import { config } from "@/config";
+import { useOrganization } from "@clerk/clerk-react";
+
+
+export const useOrganisationId = () => {
+  return (config.clerkReady) ? (useOrganization().organization?.id ?? "") : "";
+}
+
 export const useOnboardingQuery = () => {
   return useQuery({
     queryFn: () => apiClient.onboarding.getUserOnboardingApiV1OnboardingGet(),
