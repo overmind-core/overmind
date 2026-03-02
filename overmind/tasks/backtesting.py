@@ -57,7 +57,7 @@ _ALL_BACKTEST_MODELS: list[str] = [
     "claude-sonnet-4-6",
     "claude-haiku-4-5",
     # Google Gemini
-    "gemini-3-pro-preview",
+    "gemini-3.1-pro-preview",
     "gemini-3-flash-preview",
     "gemini-2.5-flash-lite",
     "gemini-2.5-flash",
@@ -103,8 +103,8 @@ def _next_backtest_threshold(last_count: int) -> int:
 def _interleave_models_by_provider(models: list[str]) -> list[str]:
     """Reorder models so that consecutive entries target different providers.
 
-    E.g. [gpt-5-mini, gpt-5.2, claude-opus, claude-sonnet, gemini-3-pro, gemini-3-flash]
-      →  [gpt-5-mini, claude-opus, gemini-3-pro, gpt-5.2, claude-sonnet, gemini-3-flash]
+    E.g. [gpt-5-mini, gpt-5.2, claude-opus, claude-sonnet, gemini-3.1-pro, gemini-3-flash]
+      →  [gpt-5-mini, claude-opus, gemini-3.1-pro, gpt-5.2, claude-sonnet, gemini-3-flash]
 
     This spreads load across providers when tasks are processed through a
     concurrency-limited semaphore.
