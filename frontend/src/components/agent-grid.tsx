@@ -73,7 +73,7 @@ function AgentCard({
       )}
     >
       <div className="mb-3 flex items-center justify-between gap-2">
-        <h3 className="min-w-0 flex-1 truncate text-base font-semibold capitalize text-foreground">
+        <h3 className="min-w-0 flex-1 truncate text-xl font-semibold capitalize text-foreground">
           {agent.name}
         </h3>
         <div className="flex shrink-0 items-center gap-2">
