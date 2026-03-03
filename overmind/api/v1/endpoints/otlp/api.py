@@ -15,6 +15,8 @@ router = APIRouter()
 
 
 @router.post("/create")
+@router.post("/")
+@router.post("")
 async def create_trace_endpoint(
     request: Request,
     current_user: AuthenticatedUserOrToken = Depends(get_current_user),
