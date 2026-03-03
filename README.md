@@ -13,6 +13,17 @@ This is the **open-source edition** of [Overmind](https://overmindlab.ai) with a
 
 ## What is Overmind?
 
+Key Features:
+
+- **Trace collection** — every LLM call recorded with full I/O, timing, tokens, and cost
+- **Automatic agent detection** — extracts prompt templates from traces after 10+ calls
+- **LLM judge scoring** — evaluates each trace on quality, cost, and latency with configurable criteria
+- **Prompt experimentation** — generates and tests prompt variations against historical inputs
+- **Model experimentation** — replays traces through alternative models for cost/quality comparison
+- **Actionable suggestions** — surfaces recommendations with before/after impact scores
+- **Feedback loop** — accept, reject, or tweak suggestions; the system refines over time
+- **Full observability** — dashboard with trace browser, flame charts, and agent stats
+
 Overmind sits between your application and LLM providers. It collects execution traces, evaluates them with LLM judges, and recommends better prompts and models to reduce cost, improve quality, and lower latency.
 
 You install the SDK, swap one import, and keep building. Overmind handles the rest:
@@ -44,20 +55,7 @@ Your app (with Overmind SDK)
                            System learns, repeats
 ```
 
-For a detailed walkthrough of each step, see the [How Optimization Works](https://docs.overmindlab.ai/guides/how-it-works) guide.
-
-## Key Features
-
-- **Trace collection** — every LLM call recorded with full I/O, timing, tokens, and cost
-- **Automatic agent detection** — extracts prompt templates from traces after 10+ calls
-- **LLM judge scoring** — evaluates each trace on quality, cost, and latency with configurable criteria
-- **Prompt experimentation** — generates and tests prompt variations against historical inputs
-- **Model experimentation** — replays traces through alternative models for cost/quality comparison
-- **Actionable suggestions** — surfaces recommendations with before/after impact scores
-- **Feedback loop** — accept, reject, or tweak suggestions; the system refines over time
-- **Full observability** — dashboard with trace browser, flame charts, and agent stats
-
-For detailed explanations, see [docs.overmindlab.ai](https://docs.overmindlab.ai).
+For a detailed walkthrough of each step, see the [How Optimization Works](https://docs.overmindlab.ai/guides/how-it-works) guide and [docs.overmindlab.ai](https://docs.overmindlab.ai).
 
 ## Quick Start
 
