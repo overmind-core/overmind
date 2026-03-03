@@ -377,20 +377,18 @@ export const tracesColumns: ColumnDef<SpanRow>[] = [
       return String(getAttr(attrs, "PromptId", "prompt_id", "promptId") ?? "");
     },
     cell: ({ row }) => {
-      const attrs = row.original.spanAttributes;
-      const promptId = getAttr(attrs, "PromptId", "promptId", "prompt_slug", "promptSlug");
-      const value = promptId ? String(promptId) : "";
+      const value = agentIdToHumanReadable(row.original.agentId ?? "");
       if (!value) return <span className="text-muted-foreground">—</span>;
       const display = value.length > 16 ? `${value.slice(0, 12)}…` : value;
       return (
         <TooltipProvider>
           <Tooltip>
             <TooltipTrigger asChild>
-              <span className="font-mono text-xs text-muted-foreground cursor-help truncate max-w-[100px] inline-block">
+              <span className="font-mono text-xs text-muted-foreground cursor-help truncate max-w-[100px] inline-block capitalize">
                 {display}
               </span>
             </TooltipTrigger>
-            <TooltipContent className="font-mono text-xs max-w-md break-all" side="top">
+            <TooltipContent className="font-mono text-xs max-w-md break-all capitalize" side="top">
               {value}
             </TooltipContent>
           </Tooltip>
@@ -402,3 +400,9 @@ export const tracesColumns: ColumnDef<SpanRow>[] = [
     meta: { label: "Agent" },
   },
 ];
+
+const agentIdToHumanReadable = (agentId: string) => {
+  const name = agentId.split("_", 3).at(-1)
+  if (!name) return agentId;
+  return name.replaceAll("-", " ");
+};

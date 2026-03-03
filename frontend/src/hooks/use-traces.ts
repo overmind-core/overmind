@@ -47,6 +47,7 @@ export interface SpanRow {
   events: unknown[];
   links: unknown[];
   traceId: string;
+  agentId: string | null;
   judgeScore?: { rating: "up" | "down"; text: string | null };
   agentScore?: { rating: "up" | "down"; text: string | null };
   feedbackScores?: Record<string, unknown>;
@@ -75,6 +76,7 @@ export const transformSpan = (span: SpanResponseModel): SpanRow => {
     events: span.events ?? [],
     links: span.links ?? [],
     traceId: span.traceId,
+    agentId: span.agentId ?? null,
     judgeScore:
       (feedbackScore?.judge_feedback as { rating: "up" | "down"; text: string | null }) ??
       undefined,
