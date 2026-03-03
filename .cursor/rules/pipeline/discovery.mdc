@@ -1,0 +1,115 @@
+---
+description: "Agent discovery pipeline: auto-discovering LLM agents from trace spans via template extraction"
+globs:
+  - "overmind/tasks/agent_discovery.py"
+  - "overmind/core/template_extractor/**"
+alwaysApply: false
+---
+
+# Agent Discovery
+
+Automatically discovers LLM agents from production trace spans by extracting common prompt templates, creating Prompt records, and triggering downstream generation (criteria, descriptions, display names).
+
+## Pipeline Flow
+
+```
+Periodic (5 min) or Job trigger
+        │
+        ▼
+  For each project:
+        │
+        ▼
+  Get unmapped spans (no prompt_id)
+        │
+        ▼
+  Extract input text via _get_span_input_text_merged()
+  (merges system + user messages only; ignores assistant/tool)
+        │
+        ▼
+  ┌─────┴──────┐
+  │ No existing │───> extract_templates(texts, ExtractionConfig(min_group_size=2))
+  │ prompts?    │     Create Prompt from each template
+  │             │     Map spans → prompts, store variables in input_params
+  └─────┬──────┘
+        │
+  ┌─────┴──────┐
+  │ Existing    │───> Load templates from existing prompts
+  │ prompts?    │     match_string_to_template() for each unmapped span
+  │             │     Unmatched? → extract_templates() → new prompts
+  └─────┬──────┘
+        │
+        ▼
+  After commit, trigger for each NEW prompt:
+  ├── generate_criteria_task(prompt_id)
+  ├── generate_initial_agent_description_task(prompt_id)
+  └── generate_display_name_for_prompt(prompt, db)
+```
+
+## Entry Points
+
+| Function                   | Trigger            | Purpose                                   |
+| -------------------------- | ------------------ | ----------------------------------------- |
+| `discover_agents`          | Celery beat (300s) | Process all projects                      |
+| `run_agent_discovery_task` | Job reconciler     | Process single project for a specific job |
+
+Both are decorated with `@with_task_lock` to prevent concurrent runs.
+
+## Key Functions
+
+### `_map_spans_to_templates(db, project_id, user_id) -> dict`
+
+Core logic. Fetches unmapped spans, runs template extraction or matching, creates Prompt records, maps spans to prompts.
+
+### `_get_span_input_text_merged(span) -> str | None`
+
+Extracts text from span input. For conversational format (list of messages), concatenates only `system` and `user` role messages. This ensures templates capture the prompt structure, not the LLM's responses.
+
+### `_create_prompt_from_template(db, template, project_id, user_id) -> Prompt`
+
+Creates a Prompt record from an extracted template. Generates a slug from the template content hash.
+
+### `validate_agent_discovery_eligibility(project_id, session) -> tuple[bool, str | None, dict | None]`
+
+Checks if a project has unmapped spans eligible for discovery.
+
+## Template Extractor (`overmind/core/template_extractor/`)
+
+A standalone module that groups strings by structural similarity and extracts templates with variable slots.
+
+### Key exports from `__init__.py`:
+
+- `extract_templates(texts, config?) -> ExtractionResult` — groups input strings by common anchors, extracts `Template` objects with `TemplateElement` sequences (fixed text + variable slots)
+- `match_string_to_template(text, template) -> MatchResult | None` — matches a new string against an existing template, extracting variable values
+- `ExtractionConfig` — `min_group_size` (default 2), controls minimum group size for template creation
+- `Template` — has `elements: list[TemplateElement]`, `source_indices`, `variables: dict[str, list[str]]`
+
+### Algorithm:
+
+1. Tokenize all strings
+1. Find candidate groups via common anchor sequences
+1. Build templates from groups, identifying variable slots
+1. Match remaining strings to templates
+
+## Dependencies
+
+```
+agent_discovery
+  ├── template_extractor (extract_templates, match_string_to_template)
+  ├── criteria_generator.generate_criteria_task
+  ├── agent_description_generator.generate_initial_agent_description_task
+  └── prompt_display_name_generator.generate_display_name_for_prompt
+```
+
+## Job Type
+
+- `agent_discovery` — system-only, cannot be created via the standard `POST /jobs` endpoint
+- Created via `POST /jobs/extract-templates` or auto-triggered by the periodic task
+- Reconciler maps to `agent_discovery.run_agent_discovery` Celery task
+
+## When Modifying This Area
+
+- If changing `_get_span_input_text_merged`, be aware it affects which message roles are included in template extraction — adding assistant/tool messages would break template grouping
+- Template extractor is stateless and pure — safe to test in isolation
+- New prompts created by discovery always start at `version=1`
+- After creating prompts, criteria + description + display name generation are triggered asynchronously — failures in those don't block discovery
+- The `ExtractionConfig.min_group_size=2` means at least 2 similar spans are needed before a template is extracted

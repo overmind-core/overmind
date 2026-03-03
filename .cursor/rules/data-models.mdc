@@ -1,0 +1,224 @@
+---
+description: "Database models, relationships, JSONB field formats, and migration conventions for Overmind"
+globs:
+  - "overmind/models/**"
+  - "alembic/**"
+alwaysApply: false
+---
+
+# Data Models
+
+All SQLAlchemy models use async PostgreSQL (`asyncpg`) and live in `overmind/models/`. JSONB columns store structured metadata whose schema is documented below since it is not visible from the ORM definition alone.
+
+## Prompt (`overmind/models/prompts.py`)
+
+The central entity — represents a discovered or user-defined prompt template.
+
+**Primary key**: composite `(slug, project_id, version)`.
+
+| Column                 | Type               | Notes                                                        |
+| ---------------------- | ------------------ | ------------------------------------------------------------ |
+| `slug`                 | String             | Stable identifier across versions                            |
+| `hash`                 | String             | Content hash for deduplication                               |
+| `prompt`               | String             | The prompt template text                                     |
+| `display_name`         | String(255)        | Human-readable name, nullable                                |
+| `version`              | Integer            | Starts at 1, incremented on improvement                      |
+| `user_id`              | UUID FK → users    | Creator                                                      |
+| `project_id`           | UUID FK → projects | Owning project                                               |
+| `tags`                 | JSONB              | `["tag1", "tag2"]` — shared across all versions of same slug |
+| `evaluation_criteria`  | JSONB              | See format below                                             |
+| `improvement_metadata` | JSONB              | See format below                                             |
+| `agent_description`    | JSONB              | See format below                                             |
+
+**`prompt_id` property**: `"{project_id}_{version}_{slug}"` — used as a string key in spans and backtests. Parse with `Prompt.parse_prompt_id(prompt_id) -> (project_id, version, slug)`.
+
+### JSONB: `evaluation_criteria`
+
+```json
+{
+  "correctness": [
+    "Must provide accurate financial data",
+    "Must address all parts of the query",
+    "..."
+  ]
+}
+```
+
+### JSONB: `improvement_metadata`
+
+```json
+{
+  "last_improvement_span_count": 100,
+  "criteria_invalidated": true,
+  "improvement_history": [
+    {
+      "span_count": 50,
+      "new_version": 2,
+      "timestamp": "2026-02-09T10:30:00Z",
+      "spans_used": 45
+    }
+  ]
+}
+```
+
+### JSONB: `agent_description`
+
+```json
+{
+  "description": "This agent answers financial queries...",
+  "last_review_span_count": 10,
+  "next_review_span_count": 100,
+  "feedback_history": [
+    {"span_id": "...", "feedback": "positive", "timestamp": "..."}
+  ]
+}
+```
+
+## SpanModel (`overmind/models/traces.py`)
+
+Individual LLM call or step within a trace.
+
+**Primary key**: `span_id` (String(36)).
+
+| Column                 | Type             | Notes                                                        |
+| ---------------------- | ---------------- | ------------------------------------------------------------ |
+| `span_id`              | String(36) PK    |                                                              |
+| `operation`            | String           | The operation name (e.g. prompt slug, "backtest:gpt-5-mini") |
+| `start_time_unix_nano` | BIGINT           |                                                              |
+| `end_time_unix_nano`   | BIGINT           |                                                              |
+| `input`                | JSONB            | User messages / prompt input                                 |
+| `output`               | JSONB            | Assistant response                                           |
+| `input_params`         | JSONB            | Model params, files, etc.                                    |
+| `output_params`        | JSONB            |                                                              |
+| `status_code`          | Integer          |                                                              |
+| `metadata_attributes`  | JSONB            | See format below                                             |
+| `feedback_score`       | JSONB            | See format below                                             |
+| `trace_id`             | UUID FK → traces | Parent trace                                                 |
+| `parent_span_id`       | String(36)       | For nested spans                                             |
+| `prompt_id`            | String           | Links to Prompt via `prompt_id` property                     |
+
+**System spans**: Operations in `_SYSTEM_OPERATIONS` (`{"prompt_tuning"}`) or matching `_SYSTEM_OPERATION_PREFIXES` (`("backtest:",)`) are excluded from user-facing queries via `SpanModel.exclude_system_spans()`.
+
+### JSONB: `metadata_attributes`
+
+```json
+{
+  "response_type": "tool_calls" | "text",
+  "is_agentic": true,
+  "backtest": true,
+  "model": "gpt-5-mini",
+  "provider": "openai",
+  "tool.name": "search_api"
+}
+```
+
+### JSONB: `feedback_score`
+
+```json
+{
+  "correctness": 0.85,
+  "agent_feedback": {"score": 1, "comment": "Good answer"},
+  "judge_feedback": {"score": 0, "comment": "Incorrect"}
+}
+```
+
+## TraceModel (`overmind/models/traces.py`)
+
+Groups related spans into a single trace.
+
+**Primary key**: `trace_id` (UUID).
+
+| Column                | Type                    | Notes                                    |
+| --------------------- | ----------------------- | ---------------------------------------- |
+| `trace_id`            | UUID PK                 |                                          |
+| `application_name`    | String(255)             | User-provided app name                   |
+| `source`              | String(255)             | "overmind_api", "chrome_extension", etc. |
+| `version`             | String(255)             | Date-based versioning                    |
+| `input` / `output`    | JSONB                   | Top-level I/O                            |
+| `metadata_attributes` | JSONB                   | Resource attributes                      |
+| `feedback_score`      | JSONB                   | Same format as SpanModel                 |
+| `conversation_id`     | UUID FK → conversations | Optional grouping                        |
+| `project_id`          | UUID FK → projects      |                                          |
+| `user_id`             | UUID FK → users         |                                          |
+
+## ConversationModel (`overmind/models/traces.py`)
+
+Groups multiple traces into a conversation.
+
+**Primary key**: `conversation_id` (UUID). Links to `project_id` and `user_id`.
+
+## Job (`overmind/models/jobs.py`)
+
+Tracks async task execution for frontend visibility.
+
+**Primary key**: `job_id` (UUID).
+
+| Column                 | Type               | Notes                                                                                     |
+| ---------------------- | ------------------ | ----------------------------------------------------------------------------------------- |
+| `job_id`               | UUID PK            |                                                                                           |
+| `job_type`             | String             | `agent_discovery` \| `judge_scoring` \| `prompt_tuning` \| `model_backtesting`            |
+| `prompt_slug`          | String             | Nullable — null for project-wide jobs like agent_discovery                                |
+| `project_id`           | UUID FK → projects |                                                                                           |
+| `status`               | String             | `pending` \| `running` \| `completed` \| `partially_completed` \| `failed` \| `cancelled` |
+| `celery_task_id`       | String             | Set when reconciler dispatches                                                            |
+| `result`               | JSONB              | Stores parameters on creation, results on completion                                      |
+| `triggered_by_user_id` | UUID FK → users    | Null for system-triggered jobs                                                            |
+
+## Suggestion (`overmind/models/suggestions.py`)
+
+Improvement suggestions generated by prompt tuning or backtesting.
+
+**Primary key**: `suggestion_id` (UUID).
+
+| Column               | Type               | Notes                                                |
+| -------------------- | ------------------ | ---------------------------------------------------- |
+| `suggestion_id`      | UUID PK            |                                                      |
+| `prompt_slug`        | String             |                                                      |
+| `project_id`         | UUID FK → projects |                                                      |
+| `job_id`             | UUID FK → jobs     |                                                      |
+| `title`              | String             |                                                      |
+| `description`        | String             |                                                      |
+| `new_prompt_text`    | String             | Improved prompt (nullable)                           |
+| `new_prompt_version` | Integer            | Version number if prompt created                     |
+| `scores`             | JSONB              | `{"avg_correctness": 0.85, "scored_spans": 50, ...}` |
+| `status`             | String             | `pending` \| `accepted` \| `dismissed`               |
+| `vote`               | Integer            | `1` (upvote) or `-1` (downvote)                      |
+| `feedback`           | String             | User text feedback                                   |
+
+## BacktestRun (`overmind/models/traces.py`)
+
+Metadata for a backtesting run.
+
+**Primary key**: `backtest_run_id` (UUID).
+
+| Column           | Type   | Notes                                             |
+| ---------------- | ------ | ------------------------------------------------- |
+| `prompt_id`      | String | References Prompt.prompt_id                       |
+| `models`         | JSONB  | List of model names tested                        |
+| `status`         | String | `pending` \| `running` \| `completed` \| `failed` |
+| `celery_task_id` | String |                                                   |
+
+## IAM Models (`overmind/models/iam/`)
+
+| Model                      | File               | Key Fields                                                                             |
+| -------------------------- | ------------------ | -------------------------------------------------------------------------------------- |
+| `User`                     | `users.py`         | `user_id`, `email`, `full_name`, `hashed_password`, `is_active`, `clerk_user_id`       |
+| `Project`                  | `projects.py`      | `project_id`, `name`, `slug`, `description`, `organisation_id`, `settings` (JSONB)     |
+| `Token`                    | `tokens.py`        | `token_id`, `user_id`, `project_id`, `token_hash`, `prefix`, `is_active`, `expires_at` |
+| `user_project_association` | `relationships.py` | Many-to-many: user ↔ project                                                           |
+
+## Migrations
+
+Alembic migrations live in `alembic/versions/`. Key migrations:
+
+- `0001_initial_core.py` — all base tables
+- `0002_add_clerk_user_id_to_users.py` — Clerk SSO support
+- `0003_add_raw_otlp_requests_table.py` — raw OTLP debug storage
+
+## When Modifying Models
+
+- Always create an Alembic migration: `alembic revision --autogenerate -m "description"`
+- JSONB columns have no schema enforcement at DB level — document new fields in this rule
+- The `Prompt` composite PK means queries must include `slug + project_id + version` (or use `prompt_id` string)
+- `SpanModel.exclude_system_spans()` must be updated if new system operation types are added
+- After model changes, regenerate the frontend API client if the API response shape changes

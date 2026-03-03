@@ -1,0 +1,118 @@
+---
+description: "Model backtesting system: comparing alternative LLM models against the current model on historical spans"
+globs:
+  - "overmind/tasks/backtesting.py"
+alwaysApply: false
+---
+
+# Model Backtesting
+
+Compares alternative LLM models against the current model by replaying historical spans, scoring outputs, and generating switch recommendations.
+
+## Pipeline Flow
+
+```
+Periodic (5 min) or Job trigger
+        │
+        ▼
+  For each eligible prompt:
+  ├── Fetch spans (up to 50, via span_count param)
+  ├── Load evaluation criteria
+  ├── Detect current model from span metadata_attributes.model
+  ├── Compute baseline: avg score, avg latency, avg cost
+  │
+  ├── Get alternate models (BACKTEST_MODELS_BY_PROVIDER, exclude current)
+  │
+  ├── Build work items: (model, span, input_text) for each model × span
+  ├── Interleave models by provider to spread API load
+  │
+  ├── For each (model, span) — semaphore limit 5:
+  │   ├── Tool-calling? → replay full conversation + tools
+  │   │   Plain text?   → use extracted input text
+  │   ├── Call _run_model_on_input(model, input_text, messages?, tools?)
+  │   ├── Score output with _evaluate_correctness_with_llm()
+  │   └── Persist result span (operation="backtest:{model_name}")
+  │
+  ├── Aggregate per-model metrics
+  ├── _generate_recommendations()
+  │
+  ├── Verdict == "switch_recommended"?
+  │   └── YES → Create Suggestion record
+  │
+  └── Update Job status + result
+```
+
+## Entry Points
+
+| Function                       | Trigger                                                           |
+| ------------------------------ | ----------------------------------------------------------------- |
+| `check_backtesting_candidates` | Celery beat (300s) — finds eligible prompts, creates PENDING jobs |
+| `run_model_backtesting_task`   | Job reconciler — runs backtest for a single prompt                |
+
+## Eligibility (`validate_backtesting_eligibility`)
+
+- Prompt used recently
+- Enough scored spans
+- No existing PENDING/RUNNING backtesting job
+- At least one alternate model available (configured provider with API key)
+
+## Model Selection
+
+Models come from `BACKTEST_MODELS_BY_PROVIDER` in `overmind/core/model_resolver.py`:
+
+| Provider  | Models                                                                                |
+| --------- | ------------------------------------------------------------------------------------- |
+| OpenAI    | gpt-5-mini, gpt-5.2, gpt-5-nano                                                       |
+| Anthropic | claude-opus-4-6, claude-sonnet-4-6, claude-haiku-4-5                                  |
+| Gemini    | gemini-3-pro-preview, gemini-3-flash-preview, gemini-2.5-flash-lite, gemini-2.5-flash |
+
+Filtered to providers with configured API keys. Current model (detected from span metadata) is excluded.
+
+## Recommendation Logic (`_generate_recommendations`)
+
+1. **Disqualify** models with score drop > 15 percentage points below baseline
+1. **Top performer**: highest avg score among qualified models above baseline
+1. **Fastest**: lowest avg latency among models within 5pp of baseline score
+1. **Cheapest**: lowest avg cost among models within 5pp of baseline score
+1. **Best overall**: highest weighted score = `perf×3 + latency_score×1 + cost_score×1`
+
+### Verdict values:
+
+- `"switch_recommended"` — a better model was found
+- `"current_is_best"` — current model is optimal
+- `"insufficient_data"` — not enough data to decide
+
+## Result Spans
+
+Backtest results are stored as regular SpanModel records with special metadata:
+
+- `operation = "backtest:{model_name}"` (excluded from user-facing queries via `_SYSTEM_OPERATION_PREFIXES`)
+- `metadata_attributes.backtest = True`
+- `metadata_attributes.model = "{model_name}"`
+- `metadata_attributes.provider = "{provider}"`
+
+## Concurrency
+
+- Async semaphore limits concurrent model calls to 5
+- Work items are interleaved by provider (round-robin across models from different providers) to avoid hammering a single API
+
+## Key Functions
+
+| Function                                                            | Purpose                 |
+| ------------------------------------------------------------------- | ----------------------- |
+| `_run_backtesting(prompt_id, models, span_count, ...)`              | Core backtest execution |
+| `_run_model_on_input(model_name, input_text, messages?, tools?)`    | Single model invocation |
+| `_generate_recommendations(current_model, baseline, model_metrics)` | Recommendation logic    |
+| `validate_backtesting_eligibility(prompt, session, models?)`        | Eligibility check       |
+
+## Special Case: "current_is_best" with No Alternates
+
+When `verdict == "current_is_best"` and `total_items == 0` (no alternate models to test), the job completes as `COMPLETED` rather than `FAILED`. This handles the case where all available models are the current model.
+
+## When Modifying This Area
+
+- Adding new models: update `BACKTEST_MODELS_BY_PROVIDER` in `overmind/core/model_resolver.py`
+- The 15pp disqualification threshold and 5pp "within range" threshold are hardcoded in `_generate_recommendations`
+- Tool-calling backtests replay the full conversation (messages + tools) — they don't just send the input text
+- Result spans use `operation="backtest:{model}"` which is filtered by `SpanModel._SYSTEM_OPERATION_PREFIXES` — if you change the prefix format, update the model too
+- The `scored_count_at_creation` parameter is preserved in `job.result` across status updates so the threshold guard works correctly

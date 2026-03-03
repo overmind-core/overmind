@@ -6,6 +6,7 @@ alwaysApply: false
 # Testing Best Practices
 
 ## Stack
+
 - pytest + pytest-asyncio (asyncio_mode = "auto" so no need for @pytest.mark.asyncio)
 - httpx AsyncClient with ASGITransport for endpoint tests
 - Real Postgres (overmind_test DB via docker-compose), mocked Valkey (in-memory dict)
@@ -14,6 +15,7 @@ alwaysApply: false
 ## Principles
 
 ### 1. Parameterized Tests
+
 Always use `@pytest.mark.parametrize` when a test has multiple input/output variations.
 One test function with N parameter sets, not N copy-pasted functions.
 Use `ids=` for readable test output.
@@ -28,20 +30,27 @@ Use `ids=` for readable test output.
     ],
     ids=["empty-body", "empty-slug", "bad-uuid"],
 )
-async def test_create_prompt_validation(seed_user, test_client, auth_headers, payload, expected_status):
-    resp = await test_client.post("/api/v1/prompts/", headers=auth_headers, json=payload)
+async def test_create_prompt_validation(
+    seed_user, test_client, auth_headers, payload, expected_status
+):
+    resp = await test_client.post(
+        "/api/v1/prompts/", headers=auth_headers, json=payload
+    )
     assert resp.status_code == expected_status
 ```
 
 ### 2. High-Level E2E Endpoint Tests
+
 Prefer testing full HTTP endpoints via `test_client` over testing internal functions directly.
 Cover diverse inputs: happy path, edge cases, invalid inputs, auth failures, missing fields, bad UUIDs.
 Only test internal functions directly when the function is pure logic with no HTTP layer (e.g. model resolver, LLM judge scoring).
 
 ### 3. Reusable Fixtures and Factories
+
 All shared fixtures live in `tests/conftest.py`. Subdirectory-specific fixtures go in subdirectory `conftest.py` files (e.g. `tests/tasks/conftest.py`).
 
 Available factories (return async callables with sensible defaults):
+
 - `user_factory` - creates User with auto-generated email
 - `project_factory` - creates Project + user-project association
 - `prompt_factory` - creates Prompt with hash
@@ -53,16 +62,19 @@ Available factories (return async callables with sensible defaults):
 When adding new test infrastructure, always check if a factory or fixture already exists before creating inline setup code.
 
 ### 4. Database Management
+
 - Real Postgres via docker-compose (`overmind_test` database)
 - Tables are dropped and recreated per test for full isolation
 - Valkey is mocked with an autouse in-memory dict fixture (no live Redis needed)
 - Run tests with `make test` or `make test test_args="-v -k test_something"`
 
 ### 5. Celery Mocking
+
 Use the `mock_celery` fixture from conftest.py which patches `get_celery_app()` and captures dispatched tasks into a list.
 For task-specific `.delay()` mocking, patch the individual task object in a file-scoped autouse fixture.
 
 ### 6. Task Test Session Patching
+
 Task tests that call internal async functions (not HTTP endpoints) need to patch `get_session_local` and `dispose_engine`.
 Use the `patch_task_session` fixture from `tests/tasks/conftest.py`:
 
@@ -85,6 +97,7 @@ p1, p2 = patch_task_session(
 Modules with module-level imports (e.g. `job_cleanup.py`) don't need this override.
 
 ### 7. Conventions
+
 - No `@pytest.mark.asyncio` needed (asyncio_mode = "auto")
 - Assertions should be specific - never `assert status in (200, 404)`, pick one expected outcome
 - Use `pytest.raises` with `match=` for exception tests

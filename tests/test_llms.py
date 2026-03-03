@@ -27,7 +27,7 @@ def _make_completion_response(content: str = "Hello") -> MagicMock:
 
 @pytest.fixture()
 def mock_completion():
-    with patch("overmind.core.llms.completion") as m:
+    with patch("litellm.completion") as m:
         m.return_value = _make_completion_response()
         yield m
 
