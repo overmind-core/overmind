@@ -28,8 +28,6 @@ Two router groups, both mounted at `/api/v1`:
 core_api_router = APIRouter(dependencies=[Depends(get_current_user)])
 ```
 
-- `/layers` — policy pipeline execution
-- `/proxy` — OpenAI proxy
 - `/traces` — trace listing/detail
 - `/spans` — span feedback, evaluation
 - `/prompts` — prompt CRUD, criteria management
