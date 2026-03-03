@@ -401,7 +401,7 @@ export const tracesColumns: ColumnDef<SpanRow>[] = [
 ];
 
 const agentIdToHumanReadable = (agentId: string) => {
-  const name = agentId.split("_", 3).at(-1)
-  if (!name) return agentId;
+  const parts = agentId.split("_");
+  const name = parts.length >= 3 ? parts.slice(2).join("_") : agentId;
   return name.replaceAll("-", " ");
 };
