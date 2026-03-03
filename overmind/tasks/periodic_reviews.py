@@ -19,14 +19,14 @@ from overmind.tasks.utils.task_lock import with_task_lock
 
 logger = logging.getLogger(__name__)
 
-# Review thresholds: 10, 50, 100, 200, 500, 1000, then every 1000 after that
-REVIEW_THRESHOLDS = [10, 50, 100, 200, 500, 1000]
+# Review thresholds: 30, 50, 100, 200, 500, 1000, then every 1000 after that
+REVIEW_THRESHOLDS = [30, 50, 100, 200, 500, 1000]
 
 
 def get_next_review_threshold(current_count: int) -> int | None:
     """
     Calculate the next review threshold based on current span count.
-    Sequence: 10, 50, 100, 200, 500, 1000, 2000, 3000, 4000...
+    Sequence: 30, 50, 100, 200, 500, 1000, 2000, 3000, 4000...
 
     Args:
         current_count: Current span count
@@ -76,9 +76,7 @@ async def _should_trigger_review(prompt: Prompt, span_count: int) -> bool:
         return False
 
     agent_desc = prompt.agent_description or {}
-    next_review_count = agent_desc.get(
-        "next_review_span_count", 100
-    )  # Default to first threshold
+    next_review_count = agent_desc.get("next_review_span_count", REVIEW_THRESHOLDS[0])
 
     # Check if we've reached the next threshold
     if span_count >= next_review_count:

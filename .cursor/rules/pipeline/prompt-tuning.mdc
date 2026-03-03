@@ -48,9 +48,10 @@ Periodic (5 min) or Job trigger
 
 All must be true:
 
+1. Initial agent review completed (`agent_description.initial_review_completed == True`) — user has reviewed and aligned the judge
 1. Prompt used in last 7 days (has recent spans)
 1. Enough scored spans exist
-1. Span count crossed a threshold: **50, 100, 200, 500, 1000**, then every 1000 (`INITIAL_THRESHOLDS`)
+1. Span count crossed a threshold: **30, 100, 200, 500, 1000**, then every 1000 (`INITIAL_THRESHOLDS`)
 1. Latest prompt version adopted by >= 25% of spans
 1. No existing PENDING/RUNNING prompt tuning job for this prompt
 1. Spans available for analysis (both poor and good examples exist)
@@ -58,7 +59,7 @@ All must be true:
 
 ## Threshold Mechanics
 
-- `calculate_next_threshold(current_count)` — returns the next value in `[50, 100, 200, 500, 1000, 2000, 3000, ...]`
+- `calculate_next_threshold(current_count)` — returns the next value in `[30, 100, 200, 500, 1000, 2000, 3000, ...]`
 - After improvement runs (or is skipped), `improvement_metadata.last_improvement_span_count` is advanced to prevent re-triggering at the same count
 - `invalidate_prompt_improvement_metadata(prompt)` — rolls back the threshold by one step when criteria or description changes, so improvement re-triggers with updated scoring logic
 

@@ -153,6 +153,8 @@ Triggers re-review of agent descriptions at span count thresholds.
 - Checks if span count has reached `next_review_span_count` from `prompt.agent_description`
 - Triggers `update_agent_description_from_feedback_task` when threshold reached
 - Updates `last_review_span_count` and `next_review_span_count` for the next cycle
+- `REVIEW_THRESHOLDS = [30, 50, 100, 200, 500, 1000]` — initial review badge shown at **30 scored spans**; subsequent reviews follow 50 → 100 → 200 → 500 → 1000 → every +1000
+- `initial_review_due` (computed in `agents.py`) fires when `scored_spans >= REVIEW_THRESHOLDS[0]` (30) and `initial_review_completed` is False
 
 ## Trigger Chain
 

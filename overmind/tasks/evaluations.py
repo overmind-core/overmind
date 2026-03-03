@@ -56,6 +56,10 @@ _MAX_CONCURRENT_EVALUATIONS = 10
 # Minimum unscored spans required before judge scoring is eligible
 MIN_UNSCORED_SPANS_FOR_SCORING = 10
 
+# Maximum scored spans per prompt before the initial agent review is required.
+# Once this cap is reached, scoring pauses until the user completes the review.
+PRE_REVIEW_SCORED_SPAN_CAP = 30
+
 
 def _should_retry_llm_call(retry_state: RetryCallState) -> bool:
     """
@@ -595,7 +599,30 @@ async def validate_judge_scoring_eligibility(
             stats,
         )
 
-    # Check 2: Find unscored spans for this prompt
+    # Check 2: Pre-review scoring cap — pause scoring once PRE_REVIEW_SCORED_SPAN_CAP is
+    # reached so the user reviews and aligns the judge before more spans are evaluated
+    agent_desc = prompt.agent_description or {}
+    if not agent_desc.get("initial_review_completed"):
+        scored_count_q = await session.execute(
+            select(func.count(SpanModel.span_id)).where(
+                and_(
+                    SpanModel.prompt_id == prompt_id,
+                    SpanModel.feedback_score.has_key("correctness"),
+                    SpanModel.exclude_system_spans(),
+                )
+            )
+        )
+        pre_review_scored_count = scored_count_q.scalar() or 0
+        stats["pre_review_scored_count"] = pre_review_scored_count
+
+        if pre_review_scored_count >= PRE_REVIEW_SCORED_SPAN_CAP:
+            return (
+                False,
+                "Scoring is paused — please complete the initial agent review to align the judge before more spans are evaluated.",
+                stats,
+            )
+
+    # Check 3: Find unscored spans for this prompt
     prompt_id_expr = func.concat(
         cast(Prompt.project_id, String),
         "_",
@@ -631,7 +658,7 @@ async def validate_judge_scoring_eligibility(
             stats,
         )
 
-    # Check 3: No existing PENDING/RUNNING judge scoring job
+    # Check 4: No existing PENDING/RUNNING judge scoring job
     existing_job_check = await session.execute(
         select(Job).where(
             and_(

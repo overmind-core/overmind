@@ -83,8 +83,8 @@ _MAX_CONCURRENT_BACKTESTS = 5
 _PERF_TOLERANCE = 0.05  # 5 percentage-point tolerance for speed/cost alternatives
 _PERF_DISQUALIFY = 0.15  # 15pp drop → model is disqualified entirely
 
-# Thresholds at which to re-run backtesting: 50, 100, 200, 500, 1000, 2000...
-_INITIAL_THRESHOLDS = [50, 100, 200, 500, 1000]
+# Thresholds at which to re-run backtesting: 30, 100, 200, 500, 1000, 2000...
+_INITIAL_THRESHOLDS = [30, 100, 200, 500, 1000]
 
 
 def _next_backtest_threshold(last_count: int) -> int:
@@ -1106,7 +1106,16 @@ async def validate_backtesting_eligibility(
     prompt_id = prompt.prompt_id
     stats = {}
 
-    # Check 1: Evaluation criteria exists
+    # Check 1: User has completed the initial agent review (aligned the judge)
+    agent_desc = prompt.agent_description or {}
+    if not agent_desc.get("initial_review_completed"):
+        return (
+            False,
+            "The agent hasn't been reviewed yet. Please complete the initial agent review to align the judge before backtesting can run.",
+            stats,
+        )
+
+    # Check 2: Evaluation criteria exists
     criteria_dict = prompt.evaluation_criteria
     if (
         not criteria_dict
@@ -1119,7 +1128,7 @@ async def validate_backtesting_eligibility(
             stats,
         )
 
-    # Check 2: Prompt used recently (last 7 days)
+    # Check 3: Prompt used recently (last 7 days)
     cutoff = datetime.now(timezone.utc) - timedelta(days=7)
     recent_q = await session.execute(
         select(SpanModel.span_id)
@@ -1139,7 +1148,7 @@ async def validate_backtesting_eligibility(
             stats,
         )
 
-    # Check 3: Minimum scored spans
+    # Check 4: Minimum scored spans
     scored_q = await session.execute(
         select(func.count(SpanModel.span_id)).where(
             and_(
@@ -1159,7 +1168,7 @@ async def validate_backtesting_eligibility(
             stats,
         )
 
-    # Check 4: Threshold-based re-run guard (don't re-run until enough new spans)
+    # Check 5: Threshold-based re-run guard (don't re-run until enough new spans)
     last_count = 0
     last_job_q = await session.execute(
         select(Job.result)
@@ -1191,7 +1200,7 @@ async def validate_backtesting_eligibility(
             stats,
         )
 
-    # Check 5: Minimum available spans (for running the backtest itself)
+    # Check 6: Minimum available spans (for running the backtest itself)
     available_q = await session.execute(
         select(func.count(SpanModel.span_id)).where(
             and_(
@@ -1211,7 +1220,7 @@ async def validate_backtesting_eligibility(
             stats,
         )
 
-    # Check 6: No existing PENDING/RUNNING backtesting job
+    # Check 7: No existing PENDING/RUNNING backtesting job
     existing_q = await session.execute(
         select(Job).where(
             and_(
@@ -1230,7 +1239,7 @@ async def validate_backtesting_eligibility(
             stats,
         )
 
-    # Check 7: At least one model specified (for user-triggered)
+    # Check 8: At least one model specified (for user-triggered)
     if models is not None and len(models) == 0:
         return False, "At least one model must be specified", stats
 
