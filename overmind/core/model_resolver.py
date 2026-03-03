@@ -33,12 +33,12 @@ MODEL_PRIORITY: dict[TaskType, list[tuple[str, str]]] = {
     TaskType.PROMPT_TUNING: [
         ("claude-sonnet-4-6", "anthropic"),
         ("gpt-5.2", "openai"),
-        ("gemini-3-pro-preview", "gemini"),
+        ("gemini-3.1-pro-preview", "gemini"),
     ],
     TaskType.CRITERIA_GENERATION: [
         ("claude-sonnet-4-6", "anthropic"),
         ("gpt-5.2", "openai"),
-        ("gemini-3-pro-preview", "gemini"),
+        ("gemini-3.1-pro-preview", "gemini"),
     ],
     TaskType.AGENT_DESCRIPTION: [
         ("claude-sonnet-4-6", "anthropic"),
@@ -58,7 +58,7 @@ BACKTEST_MODELS_BY_PROVIDER: dict[str, list[str]] = {
     "openai": ["gpt-5-mini", "gpt-5.2", "gpt-5-nano"],
     "anthropic": ["claude-opus-4-6", "claude-sonnet-4-6", "claude-haiku-4-5"],
     "gemini": [
-        "gemini-3-pro-preview",
+        "gemini-3.1-pro-preview",
         "gemini-3-flash-preview",
         "gemini-2.5-flash-lite",
         "gemini-2.5-flash",

@@ -69,7 +69,7 @@ def test_resolve_model_and_provider_openai(monkeypatch):
 def test_resolve_model_and_provider_gemini_fallback(monkeypatch):
     monkeypatch.setattr("overmind.config.settings.gemini_api_key", "gk-test")
     model, provider = resolve_model_and_provider(TaskType.PROMPT_TUNING)
-    assert model == "gemini-3-pro-preview"
+    assert model == "gemini-3.1-pro-preview"
     assert provider == "gemini"
 
 
