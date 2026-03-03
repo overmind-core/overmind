@@ -45,10 +45,14 @@
 
 body {
   --font-sidebar: "NeueBit", system-ui, sans-serif;
-  font-family: "NeueBit Text", system-ui, -apple-system, sans-serif;
+  font-family: "PP Neue Montreal", system-ui, -apple-system, sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   @apply m-0;
+}
+
+h1, h2, h3, h4 {
+  font-family: "NeueBit", system-ui, sans-serif;
 }
 
 code {
@@ -83,13 +87,13 @@ code {
   }
 
   [data-sidebar="menu-button"][data-active="true"] {
-    background: rgba(0, 0, 0, 0.08) !important;
-    color: #000000 !important;
+    background: color-mix(in srgb, var(--foreground) 8%, transparent) !important;
+    color: var(--foreground) !important;
     border-radius: 0.5rem;
   }
 
   [data-sidebar="menu-button"][data-active="true"] svg {
-    color: #000000 !important;
+    color: var(--foreground) !important;
   }
 
   [data-sidebar="menu-button"] {
@@ -97,21 +101,8 @@ code {
   }
 
   [data-sidebar="menu-button"]:hover {
-    background: rgba(0, 0, 0, 0.04) !important;
+    background: color-mix(in srgb, var(--foreground) 4%, transparent) !important;
     border-radius: 0.5rem;
-  }
-
-  :is(.dark) [data-sidebar="menu-button"][data-active="true"] {
-    background: rgba(255, 255, 255, 0.12) !important;
-    color: #ffffff !important;
-  }
-
-  :is(.dark) [data-sidebar="menu-button"][data-active="true"] svg {
-    color: #ffffff !important;
-  }
-
-  :is(.dark) [data-sidebar="menu-button"]:hover {
-    background: rgba(255, 255, 255, 0.06) !important;
   }
 
   .animate-spin {
@@ -174,7 +165,7 @@ code {
   --sidebar-accent-foreground: #1a1a1a;
   --sidebar-border: transparent;
   --sidebar-ring: #c8956a;
-  --font-sans: "NeueBit Text", system-ui, -apple-system, sans-serif;
+  --font-sans: "PP Neue Montreal", system-ui, -apple-system, sans-serif;
   --font-serif: Georgia, serif;
   --font-mono: "Fira Code", monospace;
   --radius: 0.5rem;
@@ -230,7 +221,7 @@ code {
   --sidebar-accent-foreground: #fafafa;
   --sidebar-border: #2a2a2a;
   --sidebar-ring: #c8956a;
-  --font-sans: "NeueBit Text", system-ui, -apple-system, sans-serif;
+  --font-sans: "PP Neue Montreal", system-ui, -apple-system, sans-serif;
   --font-serif: Georgia, serif;
   --font-mono: "Fira Code", monospace;
   --radius: 0.5rem;
@@ -336,6 +327,13 @@ input[type="radio"],
   cursor:
     url("/overmind_cursor_pointer.png") 2 2,
     pointer !important;
+}
+
+.clerk-reset,
+.clerk-reset *,
+.clerk-reset *::before,
+.clerk-reset *::after {
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif !important;
 }
 
 :root {
