@@ -6,7 +6,7 @@ import pytest
 @pytest.mark.parametrize(
     "span_count,expected_eligible",
     [
-        (12, True),
+        (30, True),
         (5, False),
     ],
     ids=["enough-spans", "too-few-spans"],

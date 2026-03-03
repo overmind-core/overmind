@@ -253,6 +253,33 @@ export const tracesColumns: ColumnDef<SpanRow>[] = [
     meta: { label: "Cost" },
   },
   {
+    accessorFn: (row) => {
+      const score = row.feedbackScores?.correctness;
+      return typeof score === "number" ? score : null;
+    },
+    cell: ({ row }) => {
+      const score = row.original.feedbackScores?.correctness;
+      if (typeof score !== "number") return <span className="text-muted-foreground">—</span>;
+      const pct = Math.round(score * 100);
+      const colorClass =
+        score >= 0.7
+          ? "bg-green-100 text-green-800 border-green-200 dark:bg-green-900/30 dark:text-green-400 dark:border-green-800"
+          : score >= 0.4
+            ? "bg-amber-100 text-amber-800 border-amber-200 dark:bg-amber-900/30 dark:text-amber-400 dark:border-amber-800"
+            : "bg-red-100 text-red-800 border-red-200 dark:bg-red-900/30 dark:text-red-400 dark:border-red-800";
+      return (
+        <span
+          className={`inline-flex items-center rounded-full border px-2 py-0.5 text-xs font-medium tabular-nums ${colorClass}`}
+        >
+          {pct}%
+        </span>
+      );
+    },
+    header: ({ column }) => <DataTableColumnHeader column={column} title="Score" />,
+    id: "eval_score",
+    meta: { label: "Score" },
+  },
+  {
     accessorFn: (row) => trimIo(row.inputs, 100),
     cell: ({ row }) => {
       const preview = trimIo(row.original.inputs, 45);

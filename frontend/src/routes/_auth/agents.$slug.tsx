@@ -192,6 +192,10 @@ function AgentDetailPage() {
     analytics: agent.analytics,
   };
 
+  const isPeriodicReview = Boolean(
+    (agent.agentDescription as Record<string, unknown> | null)?.initialReviewCompleted
+  );
+
   return (
     <div className="space-y-5 pb-12">
       {/* Title + Criteria side-by-side */}
@@ -231,8 +235,9 @@ function AgentDetailPage() {
           <div className="flex items-center gap-2 text-sm text-amber-700">
             <ClipboardCheck className="size-4 shrink-0" />
             <span>
-              This agent is ready for initial review — confirm the description, criteria, and span
-              scores.
+              {isPeriodicReview
+                ? "Time for a periodic review — confirm the description, criteria, and updated span scores."
+                : "This agent is ready for initial review — confirm the description, criteria, and span scores."}
             </span>
           </div>
           <Button
@@ -446,6 +451,8 @@ function AgentDetailPage() {
             queryClient.invalidateQueries({ queryKey: ["agent-detail", slug] });
           }}
           projectId={projectId}
+          isPeriodicReview={isPeriodicReview}
+          scoredSpanCount={agent.analytics.scoredSpans}
         />
       )}
     </div>
