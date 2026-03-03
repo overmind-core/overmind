@@ -193,7 +193,7 @@ def transform_spans(
 
 
 def clean_scope_name(name: str) -> str:
-    if name.includes("@traceloop/"):
+    if "@traceloop/" in name:
         return name.replace("@traceloop/", "@overmind/")
     return name
 
