@@ -373,7 +373,7 @@ export const tracesColumns: ColumnDef<SpanRow>[] = [
   },
   {
     accessorFn: (row) => {
-      return String(row.agentId ?? "");
+      return agentIdToHumanReadable(row.agentId ?? "");
     },
     cell: ({ row }) => {
       const value = agentIdToHumanReadable(row.original.agentId ?? "");
