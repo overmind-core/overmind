@@ -2,6 +2,9 @@
 
 # Overmind
 
+[![CI](https://github.com/overmind-core/overmind/actions/workflows/ci.yml/badge.svg)](https://github.com/overmind-core/overmind/actions/workflows/ci.yml)
+[![License: AGPL-3.0](https://img.shields.io/badge/License-AGPL--3.0-blue.svg)](LICENSE)
+
 Open-source platform that automatically optimizes AI agents — better prompts, better models, lower cost. All from a single Docker Compose stack.
 
 This is the **open-source edition** of [Overmind](https://overmindlab.ai) with all key features included. Run it fully locally or deploy to your own infrastructure.
@@ -248,6 +251,7 @@ overmind/
 │   ├── config.py            # Settings (from env vars)
 │   ├── bootstrap.py         # Auto-provision default user/project/token
 │   ├── celery_app.py        # Celery configuration and beat schedule
+│   ├── celery_worker.py     # Celery entry point (used by CLI at runtime)
 │   ├── api/v1/
 │   │   ├── router.py        # Route assembly
 │   │   ├── endpoints/       # API endpoint handlers
