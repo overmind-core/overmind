@@ -180,7 +180,7 @@ def transform_spans(
                     "StatusCode": span.status.code,
                     "StatusMessage": span.status.message,
                     "ResourceAttributes": resource_attributes,
-                    "ScopeName": scope.name,
+                    "ScopeName": clean_scope_name(scope.name),
                     "ScopeVersion": scope.version,
                     "Events": events,
                     "Links": links,
@@ -190,6 +190,12 @@ def transform_spans(
                 spans_to_insert.append(flat_span)
 
     return spans_to_insert
+
+
+def clean_scope_name(name: str) -> str:
+    if name.includes("@traceloop/"):
+        return name.replace("@traceloop/", "@overmind/")
+    return name
 
 
 async def create_trace(
