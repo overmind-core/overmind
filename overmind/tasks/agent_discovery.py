@@ -42,7 +42,7 @@ from overmind.tasks.prompt_display_name_generator import (
 logger = logging.getLogger(__name__)
 
 # Minimum spans required before agent discovery is eligible
-MIN_SPANS_FOR_AGENT_DISCOVERY = 10
+MIN_SPANS_FOR_AGENT_DISCOVERY = 30
 
 
 async def validate_agent_discovery_eligibility(
@@ -66,7 +66,7 @@ async def validate_agent_discovery_eligibility(
     """
     stats = {}
 
-    # Check 1: Project has at least 10 spans
+    # Check 1: Project has at least 30 spans
     total_spans_stmt = (
         select(func.count(SpanModel.span_id))
         .select_from(SpanModel)

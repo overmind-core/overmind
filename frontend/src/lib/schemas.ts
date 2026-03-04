@@ -96,6 +96,7 @@ export const tracesSearchSchema = z.object({
       "model",
       "tokens",
       "cost",
+      "eval_score",
       "judgeScore",
       "estimatedCost",
     ])

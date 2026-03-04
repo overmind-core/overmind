@@ -51,10 +51,16 @@ Periodic (5 min) or Job trigger
 
 ## Eligibility (`validate_backtesting_eligibility`)
 
-- Prompt used recently
-- Enough scored spans
-- No existing PENDING/RUNNING backtesting job
-- At least one alternate model available (configured provider with API key)
+All must be true (in order):
+
+1. Initial agent review completed (`agent_description.initial_review_completed == True`) — user has reviewed and aligned the judge
+1. Evaluation criteria exists (`prompt.evaluation_criteria["correctness"]` non-empty)
+1. Prompt used recently (last 7 days)
+1. Minimum scored spans (`>= MIN_SPANS_FOR_BACKTESTING = 10`)
+1. Threshold re-run guard: `scored_count >= _next_backtest_threshold(last_scored_count)` — sequence **30, 100, 200, 500, 1000**, then every 1000 (`_INITIAL_THRESHOLDS`)
+1. Minimum available spans (`>= 10`)
+1. No existing PENDING/RUNNING backtesting job
+1. At least one model specified (user-triggered only)
 
 ## Model Selection
 

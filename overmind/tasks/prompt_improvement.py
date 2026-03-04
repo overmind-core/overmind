@@ -45,8 +45,8 @@ from overmind.tasks.agentic_span_processor import (
 
 logger = logging.getLogger(__name__)
 
-# Thresholds for prompt improvement: 50, 100, 200, 500, 1000, 2000, 3000...
-INITIAL_THRESHOLDS = [50, 100, 200, 500, 1000]
+# Thresholds for prompt improvement: 30, 100, 200, 500, 1000, 2000, 3000...
+INITIAL_THRESHOLDS = [30, 100, 200, 500, 1000]
 
 
 def _get_tools_from_span(span: SpanModel) -> list[dict[str, Any]]:
@@ -84,7 +84,7 @@ def _format_span_examples_text(spans: list[SpanModel], limit: int = 10) -> str:
 def calculate_next_threshold(current_count: int) -> int:
     """
     Returns the next threshold for prompt improvement.
-    Sequence: 50, 100, 200, 500, 1000, 2000, 3000, 4000...
+    Sequence: 30, 100, 200, 500, 1000, 2000, 3000, 4000...
 
     Args:
         current_count: Current scored span count
@@ -1212,13 +1212,14 @@ async def validate_prompt_tuning_eligibility(
     before creating a job record, so that all eligibility logic lives in one place.
 
     Checks (in order):
-        1. Prompt used recently (last 7 days)
-        2. Minimum scored span count
-        3. Improvement threshold reached
-        4. Latest prompt version adoption >= 25%
-        5. No existing PENDING/RUNNING prompt tuning job
-        6. Spans available for analysis
-        7. Evaluation criteria with correctness defined
+        1. Initial agent review completed (user has reviewed and aligned the judge)
+        2. Prompt used recently (last 7 days)
+        3. Minimum scored span count
+        4. Improvement threshold reached
+        5. Latest prompt version adoption >= 25%
+        6. No existing PENDING/RUNNING prompt tuning job
+        7. Spans available for analysis
+        8. Evaluation criteria with correctness defined
 
     Args:
         prompt: The Prompt to validate
@@ -1233,7 +1234,16 @@ async def validate_prompt_tuning_eligibility(
     prompt_id = prompt.prompt_id
     stats = {}
 
-    # Check 1: Prompt used recently (last 7 days)
+    # Check 1: User has completed the initial agent review (aligned the judge)
+    agent_desc = prompt.agent_description or {}
+    if not agent_desc.get("initial_review_completed"):
+        return (
+            False,
+            "The agent hasn't been reviewed yet. Please complete the initial agent review to align the judge before tuning can run.",
+            stats,
+        )
+
+    # Check 2: Prompt used recently (last 7 days)
     if not await is_prompt_used_recently(prompt_id, session):
         return (
             False,
@@ -1241,7 +1251,7 @@ async def validate_prompt_tuning_eligibility(
             stats,
         )
 
-    # Check 2: Count scored spans (exclude system-generated spans)
+    # Check 3: Count scored spans (exclude system-generated spans)
     count_result = await session.execute(
         select(func.count(SpanModel.span_id)).where(
             and_(
@@ -1254,7 +1264,7 @@ async def validate_prompt_tuning_eligibility(
     scored_count = count_result.scalar() or 0
     stats["scored_count"] = scored_count
 
-    # Check 3: Threshold reached
+    # Check 4: Threshold reached
     if not await should_improve_prompt(prompt, scored_count):
         return (
             False,
@@ -1262,7 +1272,7 @@ async def validate_prompt_tuning_eligibility(
             stats,
         )
 
-    # Check 4: Latest version adopted (≥25%)
+    # Check 5: Latest version adopted (≥25%)
     is_adopted, adoption_stats = await is_latest_prompt_adopted(
         prompt, scored_count, session
     )
@@ -1275,7 +1285,7 @@ async def validate_prompt_tuning_eligibility(
             stats,
         )
 
-    # Check 5: No existing PENDING/RUNNING job
+    # Check 6: No existing PENDING/RUNNING job
     existing_job_check = await session.execute(
         select(Job).where(
             and_(
@@ -1295,7 +1305,7 @@ async def validate_prompt_tuning_eligibility(
             stats,
         )
 
-    # Check 6: Spans available for analysis
+    # Check 7: Spans available for analysis
     span_buckets = await fetch_spans_by_score_buckets(prompt_id, session, per_bucket=15)
     total_spans_fetched = sum(len(spans) for spans in span_buckets.values())
     stats["total_spans_available"] = total_spans_fetched
@@ -1307,7 +1317,7 @@ async def validate_prompt_tuning_eligibility(
             stats,
         )
 
-    # Check 7: Evaluation criteria exists
+    # Check 8: Evaluation criteria exists
     if (
         not prompt.evaluation_criteria
         or "correctness" not in prompt.evaluation_criteria

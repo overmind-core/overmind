@@ -70,7 +70,7 @@ Creates a Prompt record from an extracted template. Generates a slug from the te
 
 ### `validate_agent_discovery_eligibility(project_id, session) -> tuple[bool, str | None, dict | None]`
 
-Checks if a project has unmapped spans eligible for discovery.
+Checks if a project has unmapped spans eligible for discovery. Requires at least `MIN_SPANS_FOR_AGENT_DISCOVERY = 30` total spans before discovery runs.
 
 ## Template Extractor (`overmind/core/template_extractor/`)
 

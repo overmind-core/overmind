@@ -117,6 +117,15 @@ span.input (JSONB)                    span.metadata_attributes
 
 `TaskType.JUDGE_SCORING` — priority: `gpt-5-mini` (OpenAI) → `gemini-3-flash-preview` (Gemini) → `claude-haiku-4-5` (Anthropic).
 
+## Judge Scoring Eligibility (`validate_judge_scoring_eligibility`)
+
+All must be true (in order):
+
+1. Evaluation criteria exists (`prompt.evaluation_criteria["correctness"]` non-empty list)
+2. Pre-review scoring cap: if `initial_review_completed` is False, total scored spans must be `< PRE_REVIEW_SCORED_SPAN_CAP (30)` — scoring pauses until the user completes the initial review
+3. Unscored span count `>= MIN_UNSCORED_SPANS_FOR_SCORING (10)`
+4. No existing PENDING/RUNNING judge scoring job for this prompt
+
 ## When Modifying This Area
 
 - Adding a new evaluation type requires: a new judge prompt pair in `overmind/tasks/utils/prompts.py`, routing logic in `_evaluate_correctness_with_llm`, and possibly a new extractor in `agentic_span_processor.py`

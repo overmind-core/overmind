@@ -209,6 +209,12 @@ function TracesPage() {
           cmp = (a.cost ?? 0) - (b.cost ?? 0);
           break;
         }
+        case "eval_score": {
+          const aScore = typeof a.feedbackScores?.correctness === "number" ? a.feedbackScores.correctness : -1;
+          const bScore = typeof b.feedbackScores?.correctness === "number" ? b.feedbackScores.correctness : -1;
+          cmp = aScore - bScore;
+          break;
+        }
         default:
           cmp = (a.startTimeUnixNano ?? 0) - (b.startTimeUnixNano ?? 0);
       }
@@ -268,7 +274,8 @@ function TracesPage() {
             | "status_message"
             | "model"
             | "tokens"
-            | "cost",
+            | "cost"
+            | "eval_score",
           sortDirection: col.desc ? "desc" : "asc",
         });
     },

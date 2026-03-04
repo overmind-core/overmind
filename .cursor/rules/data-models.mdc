@@ -66,6 +66,7 @@ The central entity — represents a discovered or user-defined prompt template.
 ```json
 {
   "description": "This agent answers financial queries...",
+  "initial_review_completed": true,
   "last_review_span_count": 10,
   "next_review_span_count": 100,
   "feedback_history": [
@@ -73,6 +74,14 @@ The central entity — represents a discovered or user-defined prompt template.
   ]
 }
 ```
+
+| Field | Set by | Meaning |
+| ----- | ------ | ------- |
+| `description` | Agent description generator | Natural-language description of what the agent does |
+| `initial_review_completed` | `POST /agent-reviews/{slug}/mark-initial-review-complete` | User completed the initial review — gates prompt tuning and backtesting |
+| `last_review_span_count` | Periodic reviews task | Span count at the time of last review |
+| `next_review_span_count` | Periodic reviews task | Span count threshold for next scheduled review |
+| `feedback_history` | Agent description generator / review flow | User feedback entries on individual spans |
 
 ## SpanModel (`overmind/models/traces.py`)
 

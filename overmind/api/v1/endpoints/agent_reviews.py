@@ -477,16 +477,19 @@ async def complete_periodic_review(
     if not prompt:
         raise HTTPException(status_code=404, detail="Agent not found")
 
-    # Import and trigger the mark_review_completed task
-    from overmind.tasks.periodic_reviews import mark_review_completed_task
+    # Update the threshold synchronously in this request so the badge
+    # disappears immediately on the next query refresh (no async Celery lag).
+    from overmind.tasks.periodic_reviews import _update_next_review_threshold
 
-    result = mark_review_completed_task.delay(
-        prompt_id=prompt.prompt_id,
-        current_span_count=current_span_count,
+    await _update_next_review_threshold(prompt, current_span_count)
+    await db.commit()
+
+    next_review_threshold = (prompt.agent_description or {}).get(
+        "next_review_span_count"
     )
 
     return {
         "success": True,
         "message": "Periodic review marked as completed",
-        "task_id": result.id,
+        "next_review_threshold": next_review_threshold,
     }

@@ -206,9 +206,13 @@ interface Props {
   onComplete: () => void;
   onClose: () => void;
   projectId?: string;
+  /** True when this is a follow-up periodic review (initial_review_completed already set). */
+  isPeriodicReview?: boolean;
+  /** Current scored span count, required to advance the threshold on periodic review completion. */
+  scoredSpanCount?: number;
 }
 
-export function SpanFeedbackDialog({ agent, onComplete, onClose, projectId }: Props) {
+export function SpanFeedbackDialog({ agent, onComplete, onClose, projectId, isPeriodicReview = false, scoredSpanCount }: Props) {
   const [phase, setPhase] = useState<Phase>("loading");
   const [spans, setSpans] = useState<SpanForReview[]>([]);
   // feedback: spanId → { vote, text }
@@ -353,6 +357,25 @@ export function SpanFeedbackDialog({ agent, onComplete, onClose, projectId }: Pr
 
   // ---- submit --------------------------------------------------------------
 
+  async function completeReview() {
+    if (isPeriodicReview) {
+      await apiClient.agentReviews.completePeriodicReviewApiV1AgentReviewsPromptSlugCompleteReviewPost(
+        {
+          promptSlug: agent.slug,
+          currentSpanCount: scoredSpanCount ?? 0,
+          projectId: projectId,
+        }
+      );
+    } else {
+      await apiClient.agentReviews.markInitialReviewCompleteApiV1AgentReviewsPromptSlugMarkInitialReviewCompletePost(
+        {
+          promptSlug: agent.slug,
+          projectId: projectId,
+        }
+      );
+    }
+  }
+
   async function handleConfirm() {
     if (!allVoted) return;
 
@@ -363,12 +386,7 @@ export function SpanFeedbackDialog({ agent, onComplete, onClose, projectId }: Pr
       setStatusMsg("Saving feedback…");
       await persistFeedback();
       setStatusMsg("Completing review…");
-      await apiClient.agentReviews.markInitialReviewCompleteApiV1AgentReviewsPromptSlugMarkInitialReviewCompletePost(
-        {
-          promptSlug: agent.slug,
-          projectId: projectId,
-        }
-      );
+      await completeReview();
       setPhase("done");
       setTimeout(onComplete, 800);
       return;
@@ -379,12 +397,7 @@ export function SpanFeedbackDialog({ agent, onComplete, onClose, projectId }: Pr
       setStatusMsg("Saving feedback…");
       await persistFeedback();
       setStatusMsg("Completing review…");
-      await apiClient.agentReviews.markInitialReviewCompleteApiV1AgentReviewsPromptSlugMarkInitialReviewCompletePost(
-        {
-          promptSlug: agent.slug,
-          projectId: projectId,
-        }
-      );
+      await completeReview();
       setPhase("thanked");
       return;
     }

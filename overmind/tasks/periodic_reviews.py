@@ -10,6 +10,7 @@ from uuid import UUID
 
 from celery import shared_task
 from sqlalchemy import select, func, and_
+from sqlalchemy.orm.attributes import flag_modified
 
 from overmind.db.session import get_session_local
 from overmind.models.prompts import Prompt
@@ -19,14 +20,14 @@ from overmind.tasks.utils.task_lock import with_task_lock
 
 logger = logging.getLogger(__name__)
 
-# Review thresholds: 10, 50, 100, 200, 500, 1000, then every 1000 after that
-REVIEW_THRESHOLDS = [10, 50, 100, 200, 500, 1000]
+# Review thresholds: 30, 50, 100, 200, 500, 1000, then every 1000 after that
+REVIEW_THRESHOLDS = [30, 50, 100, 200, 500, 1000]
 
 
 def get_next_review_threshold(current_count: int) -> int | None:
     """
     Calculate the next review threshold based on current span count.
-    Sequence: 10, 50, 100, 200, 500, 1000, 2000, 3000, 4000...
+    Sequence: 30, 50, 100, 200, 500, 1000, 2000, 3000, 4000...
 
     Args:
         current_count: Current span count
@@ -76,9 +77,7 @@ async def _should_trigger_review(prompt: Prompt, span_count: int) -> bool:
         return False
 
     agent_desc = prompt.agent_description or {}
-    next_review_count = agent_desc.get(
-        "next_review_span_count", 100
-    )  # Default to first threshold
+    next_review_count = agent_desc.get("next_review_span_count", REVIEW_THRESHOLDS[0])
 
     # Check if we've reached the next threshold
     if span_count >= next_review_count:
@@ -103,10 +102,13 @@ async def _update_next_review_threshold(prompt: Prompt, current_span_count: int)
     # Calculate next threshold
     next_threshold = get_next_review_threshold(current_span_count)
 
-    agent_desc["last_review_span_count"] = current_span_count
-    agent_desc["next_review_span_count"] = next_threshold
-
-    prompt.agent_description = agent_desc
+    # Always create a new dict so SQLAlchemy detects the JSONB column as dirty
+    prompt.agent_description = {
+        **agent_desc,
+        "last_review_span_count": current_span_count,
+        "next_review_span_count": next_threshold,
+    }
+    flag_modified(prompt, "agent_description")
 
     if next_threshold:
         logger.info(
@@ -121,9 +123,17 @@ async def _check_prompts_for_reviews() -> dict[str, Any]:
     """
     Check all prompts across all projects for review thresholds.
 
+    When a threshold is crossed:
+    - Triggers `update_agent_description_from_feedback_task` if feedback spans exist
+    - Advances `next_review_span_count` to the next threshold to prevent re-firing every hour
+
     Returns:
         Dictionary with review trigger statistics
     """
+    from overmind.tasks.agent_description_generator import (
+        update_agent_description_from_feedback_task,
+    )
+
     AsyncSessionLocal = get_session_local()
 
     stats = {
@@ -169,9 +179,42 @@ async def _check_prompts_for_reviews() -> dict[str, Any]:
                     )
 
                     logger.info(
-                        f"Review needed for prompt {prompt.prompt_id} "
-                        f"(slug: {prompt.slug}, spans: {span_count})"
+                        f"Review threshold reached for prompt {prompt.prompt_id} "
+                        f"(slug: {prompt.slug}, spans: {span_count}) — "
+                        f"triggering description update and advancing threshold"
                     )
+
+                    # Trigger automatic background description update if there are
+                    # spans with user feedback to learn from
+                    feedback_spans_result = await session.execute(
+                        select(SpanModel.span_id)
+                        .where(
+                            and_(
+                                SpanModel.prompt_id == prompt.prompt_id,
+                                SpanModel.feedback_score.has_key("judge_feedback"),
+                                SpanModel.exclude_system_spans(),
+                            )
+                        )
+                        .order_by(SpanModel.created_at.desc())
+                        .limit(20)
+                    )
+                    feedback_span_ids = feedback_spans_result.scalars().all()
+
+                    if feedback_span_ids:
+                        update_agent_description_from_feedback_task.delay(
+                            prompt_id=prompt.prompt_id,
+                            span_ids=feedback_span_ids,
+                        )
+                        logger.info(
+                            f"Dispatched description update for prompt {prompt.prompt_id} "
+                            f"with {len(feedback_span_ids)} feedback spans"
+                        )
+
+                    # Advance the threshold so this prompt doesn't re-trigger next hour
+                    await _update_next_review_threshold(prompt, span_count)
+
+        # Commit all threshold updates
+        await session.commit()
 
     return stats
 
