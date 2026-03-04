@@ -22,7 +22,12 @@ from overmind.models.suggestions import Suggestion as SuggestionModel
 from overmind.models.traces import SpanModel
 from overmind.models.jobs import Job
 from overmind.api.v1.endpoints.jobs import JobType, JobStatus
-from overmind.core.llms import call_llm, normalize_llm_response_output, try_json_parsing
+from overmind.core.llms import (
+    call_llm,
+    normalize_llm_response_output,
+    normalize_model_name,
+    try_json_parsing,
+)
 from overmind.core.model_resolver import TaskType, resolve_model_and_provider
 from overmind.tasks.utils.prompts import (
     SUGGESTION_GENERATION_SYSTEM_PROMPTS,
@@ -425,13 +430,14 @@ async def generate_improvement_suggestions(
         logger.info("No poor performing spans to analyze")
         return []
 
-    # Check whether any span uses the new response_type convention
-    has_response_type = any(
-        (span.metadata_attributes or {}).get("response_type")
+    # Route to tool-specific suggestions only when spans include actual
+    # tool_calls (not just text responses that happen to carry response_type).
+    has_tool_call_spans = any(
+        (span.metadata_attributes or {}).get("response_type") == "tool_calls"
         for span in poor_spans[:10]
     )
 
-    if has_response_type:
+    if has_tool_call_spans:
         return await _generate_tool_improvement_suggestions(poor_spans, prompt)
 
     # -----------------------------------------------------------------------
@@ -613,11 +619,12 @@ async def improve_prompt_template(
         s for bucket in span_examples.values() for s in bucket
     ]
 
-    has_response_type = any(
-        (s.metadata_attributes or {}).get("response_type") for s in all_spans
+    has_tool_call_spans = any(
+        (s.metadata_attributes or {}).get("response_type") == "tool_calls"
+        for s in all_spans
     )
 
-    if has_response_type:
+    if has_tool_call_spans:
         return await _improve_tool_prompt_template(
             current_prompt, suggestions, span_examples
         )
@@ -848,6 +855,8 @@ async def create_prompt_version(
         display_name=base_prompt.display_name,
         evaluation_criteria=evaluation_criteria,
         improvement_metadata=improvement_metadata,
+        agent_description=base_prompt.agent_description,
+        tags=base_prompt.tags,
     )
 
     session.add(new_prompt)
@@ -894,8 +903,10 @@ async def generate_outputs_with_new_prompt(
 
     for old_span in old_spans:
         try:
-            # Get the model used by the old span
-            model = old_span.metadata_attributes["gen_ai.response.model"]
+            # Get the model used by the old span, stripping date suffixes
+            # so LiteLLM can resolve it (e.g. gpt-4o-2024-08-06 → gpt-4o)
+            raw_model = old_span.metadata_attributes["gen_ai.response.model"]
+            model = normalize_model_name(raw_model)
 
             # Parse input_params (may be a JSON string or already a dict)
             raw_params = old_span.input_params or {}

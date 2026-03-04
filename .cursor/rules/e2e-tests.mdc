@@ -1,0 +1,80 @@
+---
+description: "E2E test conventions, SDK integration gotchas, and API response formats"
+globs: tests/e2e/**
+alwaysApply: false
+---
+
+# E2E Test Suite
+
+Located in `tests/e2e/` with its own Poetry environment (separate from the backend).
+
+## Testing Philosophy — BE STRICT
+
+E2E tests exist to catch product regressions. Follow these rules:
+
+1. **Assert exact expected values, not ranges.** If we send 30 QA queries, assert `== 30` successes, not `>= 25`. If we expect 2 agents, assert `== 2`, not `>= 1`.
+2. **Never weaken assertions to make tests pass.** If a test fails, the product or test data has a bug — fix the root cause, don't loosen the check.
+3. **Never silently skip.** Use `pytest.skip()` only for genuine precondition gaps (prior stage not run). Never skip because an expected outcome didn't happen — that's a failure.
+4. **Include verbose debug info in assertion messages.** Every `assert` should include the actual value, relevant context (slugs, IDs, response keys), and enough info to diagnose without re-running.
+5. **Use tight timeouts for fast operations.** Agent discovery on 45 spans should finish in < 60s, not 300s. Long timeouts hide hangs.
+6. **No polling for things that should be immediate.** After a job completes, agents/results should be queryable instantly — don't poll with a long timeout.
+7. **Mock agents must produce structurally distinct traces.** The QA and tool agents have deliberately different system prompts, query formats, and vocabulary so the template extractor identifies them as separate templates. If you change a mock agent, verify the template extractor still separates them.
+
+## Test Stage Ordering
+
+Stages 1-4 → review (5) → rescore (6) → tuning (7) → backtesting (8).
+
+**Why review before tuning:** With lenient auto-generated criteria, trivial QA answers score ~1.0 and tuning finds nothing to improve. During review we inject strict criteria (responses must be funny one-liner jokes; plain dry factual statements score 0). Stage 6 re-scores the existing spans under the strict criteria, pulling the average score down. Only then can tuning detect poor-performing spans and generate an improved prompt.
+
+## Mock Agent Design
+
+- **QA agent**: Natural language system prompt + natural language user questions. 30 queries (stage 2). Uses gpt-5-mini (overkill for trivial Q&A).
+- **Tool agent**: Structured `<<FUNCTION_EXECUTOR>>` system prompt with explicit function signatures + structured `calculate:/lookup_fact:` query format. 15 queries. Uses gpt-5-mini.
+- The two agents MUST produce structurally different extracted text (different system prompt vocabulary, different query format) so the template extractor's anchor-based grouping cannot merge them.
+- Changing system prompts or queries invalidates the LLM cache — new responses are fetched and cached automatically on the next run.
+
+## Overmind SDK Integration
+
+- The PyPI `overmind` SDK clients (`OpenAI`, `Anthropic`, `Client`) accept `overmind_api_key` and `overmind_base_url` — **never** `overmind_traces_url`. Extra `**kwargs` pass through to the underlying vendor client (e.g. `http_client`).
+- Tokens prefixed `ovr_core_` auto-resolve to `http://localhost:8000` so `overmind_base_url` is optional for local dev.
+- The SDK calls `overmind.overmind_sdk.init()` once globally; it's idempotent after that.
+
+## API Response Formats
+
+- `GET /api/v1/traces/list` returns `{ traces, count, limit, offset, filters }` — use `count`, not `total`.
+- Trace/span objects use **PascalCase** keys: `TraceId`, `SpanId`, `Inputs`, `Outputs`, `Name`, `StartTimeUnixNano`, etc. (Pydantic aliases from `SpanResponseModel`).
+- `GET /api/v1/traces/trace/{id}` returns `{ trace_id, spans, span_count }` with snake_case top-level keys, but spans themselves are PascalCase.
+- `GET /api/v1/iam/projects/` returns `{ projects: [...], total_count }`.
+- `GET /api/v1/iam/tokens/` returns `{ tokens: [...], total_count }`.
+- `GET /api/v1/agents/` returns `{ data: [...] }` — agents list is under `data` key.
+- `GET /api/v1/backtesting/models` returns a flat list of `{ model_name, ... }` dicts. Model names change over time — never hardcode them.
+
+## Caching Transport
+
+- `CachingTransport` wraps the real httpx transport: checks the on-disk cache first, returns stored response on hit. On miss, forwards to the real API and saves successful (200) responses for next time.
+- Cached responses strip `content-encoding`, `transfer-encoding`, and `content-length` headers to avoid httpx decompression errors when replaying.
+- The client factories set a dummy env var (e.g. `OPENAI_API_KEY=sk-cached-dummy-key`) if the real key is absent, because the SDK constructors validate API key presence even when all calls are served from cache.
+- Cache key = SHA-256(url_path, request_body). Changing system prompts, model, or queries changes the key → old cache entries become dead weight.
+
+## Database Reset
+
+- `make e2e-reset-db` drops all tables, re-runs migrations, **and restarts the API container** so `bootstrap.ensure_default_user` re-provisions the admin user.
+- Without the API restart the admin user won't exist (it's created in the FastAPI lifespan, not in migrations).
+
+## Template Extractor Gotchas
+
+- The extractor's anchor-based grouping (`min_common_anchors=3`) links strings that share 3+ sequential tokens. The `[SYSTEM]` prefix plus common English words can easily bridge unrelated agents.
+- To keep agents separate: use completely different vocabulary in system prompts, and different query formats (natural language vs structured command format).
+- Strict mode splits groups by short (1-2 word) variable values. It does NOT split on long variable values (like entire system prompts), so structurally similar strings with different long system prompts will be merged.
+
+## Stage Skip Logic
+
+- At session start, `shared_state` snapshots which stages are already complete into `_completed_stages`.
+- Only pre-existing completed stages are auto-skipped; mid-session state changes don't cause intra-stage skips.
+- `--e2e-rerun` discards stages from the snapshot and attempts purge before running.
+
+## Known Backend Constraints
+
+- `DELETE /api/v1/iam/projects/{id}` does **not** cascade to traces — returns 500 if traces reference the project. Use `make e2e-reset-db` for a clean slate.
+- Token names must be unique per project; the resumed-session token uses a timestamp suffix.
+- The `extract-templates` (agent discovery) endpoint validates eligibility and returns 400 if there are no unprocessed spans.

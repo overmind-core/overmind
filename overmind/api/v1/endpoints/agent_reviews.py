@@ -9,7 +9,7 @@ from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
-from sqlalchemy import and_, cast, select, Float
+from sqlalchemy import and_, cast, select, update as sa_update, Float
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm.attributes import flag_modified
 
@@ -186,7 +186,9 @@ async def update_agent_description_and_criteria(
 ):
     """
     Update agent description and criteria based on user edits.
-    Triggers re-scoring of 10 randomly sampled spans to preview the impact.
+
+    When criteria change, existing correctness scores on mapped spans are
+    cleared so subsequent scoring re-evaluates them with the new rules.
     """
     # Resolve project
     if project_id:
@@ -235,11 +237,33 @@ async def update_agent_description_and_criteria(
 
         invalidate_prompt_improvement_metadata(prompt)
 
+    cleared_count = 0
+    if criteria_changed:
+        # Clear existing correctness scores so spans are re-evaluated with the
+        # updated criteria.  The JSONB '-' operator removes the key in-place.
+        result = await db.execute(
+            sa_update(SpanModel)
+            .where(
+                and_(
+                    SpanModel.prompt_id == prompt.prompt_id,
+                    SpanModel.feedback_score.has_key("correctness"),
+                )
+            )
+            .values(feedback_score=SpanModel.feedback_score.op("-")("correctness"))
+        )
+        cleared_count = result.rowcount
+        logger.info(
+            "Cleared correctness scores for %d spans (prompt %s) after criteria change",
+            cleared_count,
+            prompt.prompt_id,
+        )
+
     await db.commit()
 
     return {
         "success": True,
         "message": "Agent description and criteria updated.",
+        "scores_cleared": cleared_count,
     }
 
 

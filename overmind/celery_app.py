@@ -89,42 +89,50 @@ if settings.valkey_auth_token:
         "redis_backend_use_ssl": {"ssl_cert_reqs": ssl.CERT_REQUIRED},
     }
 
+_beat_schedule = {
+    "job-reconciler": {
+        "task": "job_reconciler.reconcile_pending_jobs",
+        "schedule": 30.0,  # Every 30 seconds
+    },
+    "job-cleanup": {
+        "task": "job_cleanup.cleanup_old_jobs",
+        "schedule": crontab(hour=0, minute=0),  # Daily at midnight UTC
+    },
+}
+
+if not settings.disable_periodic_tasks:
+    _beat_schedule.update(
+        {
+            "agent-discovery": {
+                "task": "agent_discovery.discover_agents",
+                "schedule": 300.0,  # Every 5 minutes (300 seconds)
+            },
+            "auto-evaluate-unscored-spans": {
+                "task": "evaluations.evaluate_unscored_spans",
+                "schedule": 300.0,  # Every 5 minutes (300 seconds)
+            },
+            # "prompt-improvement": {
+            #     "task": "prompt_improvement.improve_prompt_templates",
+            #     "schedule": 300.0,  # Every 5 minutes (300 seconds)
+            # },
+            # "model-backtesting": {
+            #     "task": "backtesting.check_backtesting_candidates",
+            #     "schedule": 300.0,  # Every 5 minutes (300 seconds)
+            # },
+            "periodic-review-triggers": {
+                "task": "periodic_reviews.check_review_triggers",
+                "schedule": 3600.0,  # Every hour (3600 seconds)
+            },
+        }
+    )
+
 celery_app.conf.update(
     task_serializer=settings.celery_task_serializer,
     result_serializer=settings.celery_result_serializer,
     timezone="UTC",
     enable_utc=True,
     **_ssl_conf,
-    beat_schedule={
-        "agent-discovery": {
-            "task": "agent_discovery.discover_agents",
-            "schedule": 300.0,  # Every 5 minutes (300 seconds)
-        },
-        "auto-evaluate-unscored-spans": {
-            "task": "evaluations.evaluate_unscored_spans",
-            "schedule": 300.0,  # Every 5 minutes (300 seconds)
-        },
-        "prompt-improvement": {
-            "task": "prompt_improvement.improve_prompt_templates",
-            "schedule": 300.0,  # Every 5 minutes (300 seconds)
-        },
-        "model-backtesting": {
-            "task": "backtesting.check_backtesting_candidates",
-            "schedule": 300.0,  # Every 5 minutes (300 seconds)
-        },
-        "job-reconciler": {
-            "task": "job_reconciler.reconcile_pending_jobs",
-            "schedule": 30.0,  # Every 30 seconds
-        },
-        "job-cleanup": {
-            "task": "job_cleanup.cleanup_old_jobs",
-            "schedule": crontab(hour=0, minute=0),  # Daily at midnight UTC
-        },
-        "periodic-review-triggers": {
-            "task": "periodic_reviews.check_review_triggers",
-            "schedule": 3600.0,  # Every hour (3600 seconds)
-        },
-    },
+    beat_schedule=_beat_schedule,
 )
 
 celery_app.autodiscover_tasks(["overmind.tasks"])

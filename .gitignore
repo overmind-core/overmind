@@ -52,6 +52,7 @@ coverage.xml
 *.py,cover
 .hypothesis/
 .pytest_cache/
+tests/e2e/reports/
 
 # Logs
 *.log

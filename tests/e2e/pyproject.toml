@@ -1,0 +1,36 @@
+[tool.poetry]
+name = "overmind-e2e-tests"
+version = "0.1.0"
+description = "End-to-end tests for the Overmind platform"
+package-mode = false
+
+[tool.poetry.dependencies]
+python = "^3.11"
+overmind = ">=0.1.26"
+httpx = ">=0.27"
+pytest = ">=7.4"
+pytest-asyncio = ">=0.21"
+pytest-html = ">=4.0"
+openai = ">=1.0"
+anthropic = ">=0.30"
+google-genai = ">=1.0"
+
+[tool.pytest.ini_options]
+testpaths = ["."]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "session"
+markers = [
+    "e2e: end-to-end test",
+    "stage_onboarding: onboarding and auth setup",
+    "stage_telemetry: trace ingestion via SDK",
+    "stage_discovery: agent template extraction",
+    "stage_eval: LLM judge scoring",
+    "stage_review: agent review flow (strict criteria)",
+    "stage_rescore: second telemetry batch + re-scoring with strict criteria",
+    "stage_tuning: prompt improvement",
+    "stage_backtest: model backtesting",
+]
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"

@@ -37,7 +37,10 @@ from overmind.tasks.utils.prompts import (
     DEFAULT_TOOL_CALL_CRITERIA,
     DEFAULT_TOOL_ANSWER_CRITERIA,
 )
-from overmind.tasks.criteria_generator import ensure_prompt_has_criteria
+from overmind.tasks.criteria_generator import (
+    ensure_prompt_has_criteria,
+    clear_criteria_cache,
+)
 from overmind.tasks.agentic_span_processor import (
     preprocess_span_for_evaluation,
     format_conversation_flow,
@@ -434,6 +437,7 @@ def evaluate_spans_task(
 
     Updates the job status to completed/failed when done.
     """
+    clear_criteria_cache()
 
     async def _run_evaluations():
         from overmind.db.session import dispose_engine
@@ -1015,21 +1019,27 @@ async def _execute_prompt_spans_evaluation(
                     f"Prompt {prompt_slug} (project {project_id}): Randomly selected {len(spans_to_evaluate)}/{len(prompt_spans)} spans to evaluate"
                 )
 
-                # Evaluate each selected span
-                evaluated_count = 0
-                errors = []
+                # Fan out span evaluations concurrently (bounded by semaphore)
+                semaphore = asyncio.Semaphore(_MAX_CONCURRENT_EVALUATIONS)
 
-                for span in spans_to_evaluate:
-                    try:
-                        await _evaluate_span_correctness(span_id=span.span_id)
-                        evaluated_count += 1
-                        logger.info(f"Successfully evaluated span {span.span_id}")
-                    except Exception as exc:
-                        error_msg = (
-                            f"Failed to evaluate span {span.span_id}: {str(exc)}"
-                        )
-                        logger.exception(error_msg)
-                        errors.append(error_msg)
+                async def _evaluate_with_limit(span_id: str) -> dict[str, Any]:
+                    async with semaphore:
+                        try:
+                            return await _evaluate_span_correctness(span_id=span_id)
+                        except BaseException as exc:
+                            logger.exception(f"Failed to evaluate span {span_id}")
+                            return {"span_id": span_id, "error": str(exc)}
+
+                results = await asyncio.gather(
+                    *[_evaluate_with_limit(span.span_id) for span in spans_to_evaluate]
+                )
+
+                evaluated_count = sum(1 for r in results if "error" not in r)
+                errors = [
+                    f"Failed to evaluate span {r['span_id']}: {r['error']}"
+                    for r in results
+                    if "error" in r
+                ]
 
                 # Determine final status based on how many spans were evaluated
                 selected = len(spans_to_evaluate)
@@ -1117,6 +1127,7 @@ def evaluate_prompt_spans_task(
     Returns:
         Dict with evaluation stats
     """
+    clear_criteria_cache()
     return asyncio.run(
         _execute_prompt_spans_evaluation(prompt_id, project_id, prompt_slug, job_id)
     )

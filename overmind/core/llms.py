@@ -22,6 +22,7 @@ SUPPORTED_LLM_MODELS = [
     {"provider": "anthropic", "model_name": "claude-haiku-4-5"},
     {"provider": "gemini", "model_name": "gemini-3.1-pro-preview"},
     {"provider": "gemini", "model_name": "gemini-3-flash-preview"},
+    {"provider": "gemini", "model_name": "gemini-3.1-flash-lite-preview"},
     {"provider": "gemini", "model_name": "gemini-2.5-flash"},
     {"provider": "gemini", "model_name": "gemini-2.5-flash-lite"},
     {"provider": "gemini", "model_name": "gemini-2.5-pro"},

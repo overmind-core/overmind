@@ -29,6 +29,7 @@ class Settings(BaseSettings):
     celery_result_backend: str | None = None
     celery_task_serializer: str = "json"
     celery_result_serializer: str = "json"
+    disable_periodic_tasks: bool = False
 
     overmind_traces_url: str = (
         "http://localhost:8000/api/v1/traces/create-backend-trace"

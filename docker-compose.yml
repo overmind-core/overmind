@@ -12,6 +12,7 @@ x-env-common: &env-common
     - PROXY_TOKEN=${PROXY_TOKEN:-default-proxy-token}
     - OVERMIND_TRACES_URL=http://api:8000/api/v1/traces/create-backend-trace
     - FRONTEND_URL=${FRONTEND_URL:-http://localhost:5173}
+    - DISABLE_PERIODIC_TASKS=${DISABLE_PERIODIC_TASKS:-false}
 
 x-build-common: &build-common
   image: overmind-dev

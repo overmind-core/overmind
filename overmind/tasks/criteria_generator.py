@@ -234,6 +234,16 @@ async def _generate_criteria_for_prompt(prompt_id: str) -> dict[str, Any]:
 _criteria_cache: dict[str, dict[str, list[str]] | None] = {}
 
 
+def clear_criteria_cache() -> None:
+    """Drop all cached criteria so the next lookup reads fresh data from the DB.
+
+    Must be called at the start of each evaluation task because criteria can
+    be updated via the API between task invocations within the same worker
+    process.
+    """
+    _criteria_cache.clear()
+
+
 async def ensure_prompt_has_criteria(prompt_id: str) -> dict[str, list[str]] | None:
     """
     Check if a prompt has evaluation criteria, and generate them if not.

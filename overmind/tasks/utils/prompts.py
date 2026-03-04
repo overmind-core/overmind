@@ -682,7 +682,7 @@ Return JSON in this exact format:
 }}
 """
 
-AGENT_DESCRIPTION_UPDATE_FROM_FEEDBACK_PROMPT = """Based on the following context, examples, and user feedback, update the agent description to serve as EXPLICIT SCORING GUIDANCE for a judge evaluating this agent's responses.
+AGENT_DESCRIPTION_UPDATE_FROM_FEEDBACK_PROMPT = """Based on the following context, examples, and user feedback, update the agent description to clearly communicate what this agent does and what good and bad responses look like.
 
 <Project Context>
 {project_description}
@@ -697,18 +697,17 @@ AGENT_DESCRIPTION_UPDATE_FROM_FEEDBACK_PROMPT = """Based on the following contex
 </Example Interactions with User Feedback>
 
 <Instructions>
-- The updated description will be given directly to a scoring judge — write it as scoring instructions, not just a purpose statement
-- Start with 1 sentence on what this agent does
-- For EVERY thumbs-down (negative) feedback entry: extract the specific failure pattern the user identified and add an explicit "MUST SCORE LOW (0.0 or near 0.0)" rule — be concrete and specific, not vague. Do not soften or generalise the user's intent.
-- For thumbs-up (positive) feedback: briefly reinforce what a correct response looks like
-- If negative feedback says something like "this should fail" or "score is wrong" or "too lenient", treat that as a hard FAIL condition and state it forcefully in the description
-- Total length: 4-6 sentences maximum
-- Do NOT include general platitudes like "responses should be helpful" — only specific, feedback-derived rules
+- Start with 1 sentence summarising what this agent does
+- Add a "Good responses" paragraph: describe the concrete qualities of a strong response, drawn from positive feedback and well-rated examples (e.g. "include supporting context", "acknowledge uncertainty where relevant")
+- Add a "Bad responses" paragraph: describe the concrete failure patterns drawn from negative feedback (e.g. "provide only a bare factual answer with no explanation", "omit caveats on uncertain claims")
+- Be specific — anchor every quality or failure pattern to something observed in the feedback, not generic platitudes
+- Total length: 4-8 sentences maximum
+- Use plain descriptive language ONLY. Do NOT include numeric scores, scoring instructions, or directives like "MUST SCORE LOW". The description should describe behaviour, not prescribe scores.
 </Instructions>
 
 Return JSON in this exact format:
 {{
-  "description": "Agent purpose sentence. CORRECT responses look like: [from positive feedback]. MUST SCORE LOW (0.0): [specific failure pattern from negative feedback]. MUST SCORE LOW (0.0): [additional failure pattern if any]."
+  "description": "What the agent does. Good responses [qualities from positive feedback]. Bad responses [failure patterns from negative feedback]."
 }}
 """
 
