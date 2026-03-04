@@ -31,6 +31,36 @@ export interface ModelInfo {
      * @memberof ModelInfo
      */
     modelName: string;
+    /**
+     * 
+     * @type {boolean}
+     * @memberof ModelInfo
+     */
+    supportsReasoning: boolean;
+    /**
+     * True = effort-based (reasoning_effort), False = budget-token manual, null = no reasoning
+     * @type {boolean | null}
+     * @memberof ModelInfo
+     */
+    adaptiveMode: boolean | null;
+    /**
+     * Valid reasoning_effort levels (empty for manual/no-reasoning models)
+     * @type {Array<string>}
+     * @memberof ModelInfo
+     */
+    reasoningLevels: Array<string>;
+    /**
+     * Valid budget_tokens values for manual reasoning mode
+     * @type {Array<number>}
+     * @memberof ModelInfo
+     */
+    thinkingBudgetTokens: Array<number>;
+    /**
+     * True if reasoning cannot be disabled (e.g. gemini-2.5-pro)
+     * @type {boolean}
+     * @memberof ModelInfo
+     */
+    reasoningRequired: boolean;
 }
 
 /**
@@ -39,6 +69,7 @@ export interface ModelInfo {
 export function instanceOfModelInfo(value: object): value is ModelInfo {
     if (!('provider' in value) || value['provider'] === undefined) return false;
     if (!('modelName' in value) || value['modelName'] === undefined) return false;
+    if (!('supportsReasoning' in value) || value['supportsReasoning'] === undefined) return false;
     return true;
 }
 
@@ -54,6 +85,11 @@ export function ModelInfoFromJSONTyped(json: any, ignoreDiscriminator: boolean):
         
         'provider': json['provider'],
         'modelName': json['model_name'],
+        'supportsReasoning': json['supports_reasoning'] ?? false,
+        'adaptiveMode': json['adaptive_mode'] ?? null,
+        'reasoningLevels': json['reasoning_levels'] ?? [],
+        'thinkingBudgetTokens': json['thinking_budget_tokens'] ?? [],
+        'reasoningRequired': json['reasoning_required'] ?? false,
     };
 }
 
@@ -70,6 +106,11 @@ export function ModelInfoToJSONTyped(value?: ModelInfo | null, ignoreDiscriminat
         
         'provider': value['provider'],
         'model_name': value['modelName'],
+        'supports_reasoning': value['supportsReasoning'],
+        'adaptive_mode': value['adaptiveMode'],
+        'reasoning_levels': value['reasoningLevels'],
+        'thinking_budget_tokens': value['thinkingBudgetTokens'],
+        'reasoning_required': value['reasoningRequired'],
     };
 }
 

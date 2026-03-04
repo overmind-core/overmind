@@ -29,6 +29,11 @@ class ModelInfo(BaseModel):
 
     provider: str
     model_name: str
+    supports_reasoning: bool = False
+    adaptive_mode: bool | None = None
+    reasoning_levels: list[str] = []
+    thinking_budget_tokens: list[int] = []
+    reasoning_required: bool = False
 
 
 class BacktestingRequest(BaseModel):
@@ -60,7 +65,15 @@ async def list_available_models(
     Returns a list of models with their provider and model name.
     """
     return [
-        ModelInfo(provider=model["provider"], model_name=model["model_name"])
+        ModelInfo(
+            provider=model["provider"],
+            model_name=model["model_name"],
+            supports_reasoning=model.get("supports_reasoning", False),
+            adaptive_mode=model.get("adaptive_mode"),
+            reasoning_levels=model.get("reasoning_levels") or [],
+            thinking_budget_tokens=model.get("thinking_budget_tokens") or [],
+            reasoning_required=model.get("reasoning_required", False),
+        )
         for model in SUPPORTED_LLM_MODELS
     ]
 
@@ -90,8 +103,13 @@ async def run_backtesting(
             detail="At least one model must be specified",
         )
 
-    # Validate models
-    invalid_models = [m for m in request.models if m not in SUPPORTED_LLM_MODEL_NAMES]
+    # Validate models — strip reasoning suffix before checking support
+    def _base_model(key: str) -> str:
+        return key.split(":reasoning")[0] if ":reasoning" in key else key
+
+    invalid_models = [
+        m for m in request.models if _base_model(m) not in SUPPORTED_LLM_MODEL_NAMES
+    ]
     if invalid_models:
         raise HTTPException(
             status_code=400,

@@ -6,7 +6,6 @@ import {
   Analytics as Activity,
   ArrowLeft,
   ClipboardNote as ClipboardCheck,
-  TestTube as FlaskConical,
   Loader as Loader2,
   Play,
   Sparkles,
@@ -18,6 +17,7 @@ import apiClient from "@/client";
 import { AgentCriteriaCard } from "@/components/agent-review/AgentCriteriaCard";
 import { AgentCriteriaReviewDialog } from "@/components/agent-review/AgentCriteriaReviewDialog";
 import { SpanFeedbackDialog } from "@/components/agent-review/SpanFeedbackDialog";
+import { BacktestConfigDialog } from "@/components/BacktestConfigDialog";
 import { AgentNameEditor } from "@/components/agent-detail/AgentNameEditor";
 import { AgentTagsEditor } from "@/components/agent-detail/AgentTagsEditor";
 import { DateRangePicker } from "@/components/agent-detail/DateRangePicker";
@@ -107,24 +107,6 @@ function AgentDetailPage() {
     },
   });
 
-  const backtestMutation = useMutation({
-    mutationFn: (promptId: string) =>
-      apiClient.jobs
-        .createJobFromUserApiV1JobsPost({
-          jobCreateRequest: {
-            jobType: "model_backtesting",
-            promptId,
-          },
-        })
-        .catch(async (error) => {
-          if (error instanceof ResponseError) {
-            const r = await error.response.json();
-            throw new Error(r.detail ?? "Backtesting trigger failed");
-          }
-          throw error;
-        }),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["agent-detail", slug] }),
-  });
 
   const updateMetadataMutation = useMutation({
     mutationFn: (req: { name?: string; tags?: string[] }) =>
@@ -258,7 +240,6 @@ function AgentDetailPage() {
         messageKey={tuneSuccessKey}
         variant="success"
       />
-      <DismissibleAlert error={backtestMutation.isError ? backtestMutation.error : null} variant="warning" />
 
       {/* Featured Latest Version Card */}
       {latestVersion && (
@@ -397,18 +378,14 @@ function AgentDetailPage() {
                 <Sparkles className="mr-1.5 size-3.5" />
                 Tune Prompt
               </Button>
-              <Button
-                disabled={backtestMutation.isPending}
-                onClick={() => {
-                  const promptId = allVersionsSorted[0]?.promptId;
-                  if (promptId) backtestMutation.mutate(promptId);
-                }}
-                size="sm"
-                variant="outline"
-              >
-                <FlaskConical className="mr-1.5 size-3.5" />
-                Backtest
-              </Button>
+              {allVersionsSorted[0]?.promptId && (
+                <BacktestConfigDialog
+                  promptId={allVersionsSorted[0].promptId}
+                  onSuccess={() =>
+                    queryClient.invalidateQueries({ queryKey: ["agent-detail", slug] })
+                  }
+                />
+              )}
             </div>
           </div>
           <div className="p-4 md:p-5">

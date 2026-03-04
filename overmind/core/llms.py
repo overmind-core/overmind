@@ -113,7 +113,7 @@ SUPPORTED_LLM_MODELS = [
         "model_name": "gemini-3-flash-preview",
         "supports_reasoning": True,
         "adaptive_mode": True,
-        "reasoning_levels": ["minimal", "low", "medium", "high"],
+        "reasoning_levels": ["low", "medium", "high"],
         "backtesting_preferred": True,
     },
     {
