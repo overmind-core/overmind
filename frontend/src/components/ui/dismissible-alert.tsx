@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 
-import { X } from "lucide-react";
+import { Cancel as X } from "pixelarticons/react";
 import type { VariantProps } from "class-variance-authority";
 
 import { cn } from "@/lib/utils";

@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useNavigate } from "@tanstack/react-router";
-import { BarChart3 } from "lucide-react";
+import { Chart as BarChart3 } from "pixelarticons/react";
 
 import type { PromptVersionOut } from "@/api";
 import { MiniStat } from "@/components/mini-stat";

@@ -1,15 +1,17 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { Bot, Loader2, RefreshCw } from "lucide-react";
+import { Robot as Bot, FolderPlus, Loader as Loader2, Reload as RefreshCw } from "pixelarticons/react";
 
 import { ResponseError } from "@/api";
 import apiClient from "@/client";
 import { AgentGrid } from "@/components/agent-grid";
+import { CreateProjectDialog } from "@/components/create-project";
 import { QuickstartEmbed } from "@/components/quickstart/quickstart-embed";
 import { Alert } from "@/components/ui/alert";
 import { DismissibleAlert } from "@/components/ui/dismissible-alert";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import { useProjectsList } from "@/hooks/use-projects";
 
 export const Route = createFileRoute("/_auth/")({
   component: HomePage,
@@ -67,7 +69,7 @@ function AgentsSection() {
       <div className="flex flex-wrap items-center justify-between gap-4">
         <div className="flex items-center gap-3">
           <Bot className="size-5 shrink-0 text-black dark:text-white" />
-          <h2 className="font-display text-lg font-bold text-black dark:text-white">
+          <h2 className="font-display text-xl font-bold text-black dark:text-white">
             Detected Agents
           </h2>
           {agents.length > 0 && (
@@ -111,6 +113,37 @@ function AgentsSection() {
 }
 
 function HomePage() {
+  const { data: projectsData, isLoading: projectsLoading } = useProjectsList();
+  const projects = projectsData?.projects ?? [];
+
+  if (projectsLoading) {
+    return (
+      <div className="flex min-h-[300px] items-center justify-center">
+        <Loader2 className="size-8 animate-spin text-muted-foreground" />
+      </div>
+    );
+  }
+
+  if (projects.length === 0) {
+    return (
+      <div className="flex min-h-[400px] flex-col items-center justify-center text-center">
+        <FolderPlus className="mb-4 size-12 text-muted-foreground" />
+        <p className="mb-1 font-display text-4xl font-medium">Welcome to Overmind</p>
+        <p className="mx-auto mb-6 max-w-md text-center text-sm text-muted-foreground">
+          Create your first project to get started.
+        </p>
+        <CreateProjectDialog
+          trigger={
+            <Button className="gap-2">
+              <FolderPlus className="size-4" />
+              Create Project
+            </Button>
+          }
+        />
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6 pb-8">
       <AgentsSection />

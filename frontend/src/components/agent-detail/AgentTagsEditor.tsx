@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Plus, X } from "lucide-react";
+import { Plus, Cancel as X } from "pixelarticons/react";
 
 export function AgentTagsEditor({
   initialTags,

@@ -2,7 +2,7 @@ import { useEffect, useRef } from "react";
 
 import { useMutation } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
-import { Loader2 } from "lucide-react";
+import { Loader as Loader2 } from "pixelarticons/react";
 import { z } from "zod";
 
 import apiClient from "@/client";

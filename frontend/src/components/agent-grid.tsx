@@ -2,7 +2,7 @@ import { useState } from "react";
 
 import { Link } from "@tanstack/react-router";
 import { useQueryClient } from "@tanstack/react-query";
-import { Activity, ClipboardCheck, Clock, DollarSign, Target } from "lucide-react";
+import { Analytics as Activity, ClipboardNote as ClipboardCheck, Clock, Money as DollarSign, Target } from "pixelarticons/react";
 
 import { cn } from "@/lib/utils";
 import type { AgentOut, HourlyBucket } from "@/api";
@@ -73,7 +73,7 @@ function AgentCard({
       )}
     >
       <div className="mb-3 flex items-center justify-between gap-2">
-        <h3 className="min-w-0 flex-1 truncate text-base font-semibold capitalize text-foreground">
+        <h3 className="min-w-0 flex-1 truncate text-xl font-semibold capitalize text-foreground">
           {agent.name}
         </h3>
         <div className="flex shrink-0 items-center gap-2">
@@ -82,7 +82,7 @@ function AgentCard({
             v{agent.version}
           </Badge>
         </div>
-      </div>
+      </div>  
       {(agent.tags ?? []).length > 0 && (
         <div className="mb-3 flex flex-wrap gap-1.5">
           {(agent.tags ?? []).map((tag) => (
@@ -99,22 +99,22 @@ function AgentCard({
 
       <div className="divide-y divide-border/60">
         <MetricRow
-          icon={<Target className="size-3.5" strokeWidth={1.5} />}
+          icon={<Target className="size-3.5" />}
           label="Accuracy"
           value={accuracy}
         />
         <MetricRow
-          icon={<Activity className="size-3.5" strokeWidth={1.5} />}
+          icon={<Activity className="size-3.5" />}
           label="Spans scored"
           value={scored}
         />
         <MetricRow
-          icon={<Clock className="size-3.5" strokeWidth={1.5} />}
+          icon={<Clock className="size-3.5" />}
           label="Avg latency"
           value={latency}
         />
         <MetricRow
-          icon={<DollarSign className="size-3.5" strokeWidth={1.5} />}
+          icon={<DollarSign className="size-3.5" />}
           label="Est. cost"
           value={cost}
         />

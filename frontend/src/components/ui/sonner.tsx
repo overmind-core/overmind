@@ -1,10 +1,10 @@
 import {
-  CircleCheckIcon,
-  InfoIcon,
-  Loader2Icon,
-  OctagonXIcon,
-  TriangleAlertIcon,
-} from "lucide-react";
+  Check as CircleCheckIcon,
+  InfoBox as InfoIcon,
+  Loader as Loader2Icon,
+  Cancel as OctagonXIcon,
+  WarningDiamond as TriangleAlertIcon,
+} from "pixelarticons/react";
 import { useTheme } from "next-themes";
 import { Toaster as Sonner, type ToasterProps } from "sonner";
 

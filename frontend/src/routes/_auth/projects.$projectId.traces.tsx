@@ -42,7 +42,6 @@ function getTraceAttr(attrs: Record<string, unknown> | undefined, ...keys: strin
 }
 
 import apiClient from "@/client";
-import { APIKeySection } from "@/components/api-keys";
 import { TracesTablePagination } from "@/components/traces/traces-table-pagination";
 import { TracesTableToolbar } from "@/components/traces/traces-table-toolbar";
 import { spanStatusLabel, transformSpan, type SpanRow } from "@/hooks/use-traces";
@@ -326,17 +325,23 @@ function TracesPage() {
           </div>
         )}
         {!isLoading && projectId && data?.traces.length === 0 && (
-          <div className="flex flex-1 items-center justify-center py-12 text-center text-muted-foreground">
-            No traces found, adjust your filters or set up your API key to start tracing your AI
-            agent with Overmind.
+          <div className="flex flex-1 flex-col items-center justify-center gap-4 py-12 text-center">
+            <p className="text-muted-foreground">
+              No traces found, adjust your filters or set up your API key to start tracing your AI
+              agent with Overmind.
+            </p>
+            <a
+              className="inline-flex items-center rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90"
+              href="https://docs.overmindlab.ai/guides/getting-started/"
+              rel="noopener noreferrer"
+              target="_blank"
+            >
+              Integration Guide
+            </a>
           </div>
         )}
         {!isLoading && filteredAndSorted.length > 0 && <RenderTable table={table} />}
       </div>
-
-      {!isLoading && projectId && data?.traces.length === 0 && (
-        <APIKeySection projectId={projectId} />
-      )}
 
       {showPagination && (
         <TracesTablePagination

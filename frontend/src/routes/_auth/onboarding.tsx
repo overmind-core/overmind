@@ -2,7 +2,7 @@ import { useMemo, useState } from "react";
 
 import { useMutation } from "@tanstack/react-query";
 import { createFileRoute, Navigate, useNavigate } from "@tanstack/react-router";
-import { Loader2, Sparkles } from "lucide-react";
+import { Loader as Loader2, Sparkles } from "pixelarticons/react";
 
 import apiClient from "@/client";
 import { Button } from "@/components/ui/button";

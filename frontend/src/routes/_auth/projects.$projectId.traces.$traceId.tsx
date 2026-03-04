@@ -1,5 +1,5 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { ArrowLeft, Expand, Loader2, Shrink } from "lucide-react";
+import { ArrowLeft, Expand, Loader as Loader2, Proportions as Shrink } from "pixelarticons/react";
 
 import { TraceDataProvider } from "@/components/traces/contexts/TraceDataContext";
 import type { SpanRow } from "@/hooks/use-traces";

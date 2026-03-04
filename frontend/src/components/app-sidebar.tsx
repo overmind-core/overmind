@@ -3,16 +3,16 @@ import { useState } from "react";
 import { useAuth, UserButton, useUser } from "@clerk/clerk-react";
 import { Link, useNavigate, useRouteContext, useRouterState } from "@tanstack/react-router";
 import {
-  BarChart3,
-  Bot,
   Briefcase,
+  Chart,
   ChevronUp,
   Home,
-  LogIn,
-  LogOut,
-  Rocket,
-  User
-} from "lucide-react";
+  Login,
+  Logout,
+  Robot,
+  User,
+  Zap,
+} from "pixelarticons/react";
 
 import {
   Sidebar,
@@ -28,9 +28,9 @@ import {
 
 const navLinks = [
   { icon: Home, label: "Home", to: "/" },
-  { icon: Bot, label: "Agents", to: "/agents" },
+  { icon: Robot, label: "Agents", to: "/agents" },
   { icon: Briefcase, label: "Jobs", to: "/jobs" },
-  { icon: BarChart3, label: "Traces", to: "/projects" },
+  { icon: Chart, label: "Traces", to: "/projects" },
 ];
 
 export function AppSidebar() {
@@ -40,38 +40,32 @@ export function AppSidebar() {
 
   return (
     <Sidebar collapsible="icon">
-      <SidebarHeader className="flex shrink-0 flex-row items-center pt-5">
-        <SidebarMenu>
-          <SidebarMenuItem>
-            <SidebarMenuButton asChild size="default" tooltip="Overmind">
-              <Link className="flex items-center gap-2" to="/">
-                <img
-                  alt="Overmind"
-                  className="size-4 shrink-0 object-contain"
-                  src="/overmind_logo.png"
-                />
-                <span className="font-bold" style={{ fontFamily: "var(--font-sidebar)" }}>
-                  Overmind
-                </span>
-              </Link>
-            </SidebarMenuButton>
-          </SidebarMenuItem>
-        </SidebarMenu>
+      <SidebarHeader className="flex shrink-0 flex-row items-center gap-2 px-4 pt-5">
+        <img
+          alt="Overmind"
+          className="!size-[20px] !min-h-[20px] !min-w-[20px] shrink-0 object-contain"
+          src="/overmind_logo.png"
+        />
+        <img
+          alt="Overmind"
+          className="h-[14px] w-auto shrink-0 object-contain brightness-0 group-data-[collapsible=icon]:hidden dark:brightness-100"
+          src="/overmind_wordmark.png"
+        />
       </SidebarHeader>
 
-      <SidebarContent>
+      <SidebarContent className="px-1 pt-3">
         <SidebarGroup>
           <SidebarGroupContent>
-            <SidebarMenu>
+            <SidebarMenu className="gap-1.5">
               {navLinks.map(({ to, icon: Icon, label }) => {
                 const isActive =
                   location.pathname === to || (to !== "/" && location.pathname.startsWith(to));
                 return (
                   <SidebarMenuItem key={to}>
                     <SidebarMenuButton asChild isActive={isActive} tooltip={label}>
-                      <Link to={to}>
-                        <Icon className="size-4" />
-                        <span style={{ fontFamily: "var(--font-sidebar)" }}>{label}</span>
+                      <Link className="!py-2.5" to={to}>
+                        <Icon className="!size-[17px]" />
+                        <span className="sidebar-label">{label}</span>
                       </Link>
                     </SidebarMenuButton>
                   </SidebarMenuItem>
@@ -82,16 +76,16 @@ export function AppSidebar() {
         </SidebarGroup>
       </SidebarContent>
 
-      <SidebarFooter>
+      <SidebarFooter className="px-1 pt-2">
         {isSignedIn ? (
           <SidebarMenu>{config.isSelfHosted ? <OSSUserButton /> : <EEUserButton />}</SidebarMenu>
         ) : (
           <SidebarMenu>
             <SidebarMenuItem>
               <SidebarMenuButton asChild tooltip="Sign in">
-                <Link to="/login">
-                  <LogIn className="size-4" />
-                  <span style={{ fontFamily: "var(--font-sidebar)" }}>Sign in</span>
+                <Link className="!py-2.5" to="/login">
+                  <Login className="!size-[17px]" />
+                  <span className="sidebar-label">Sign in</span>
                 </Link>
               </SidebarMenuButton>
             </SidebarMenuItem>
@@ -103,7 +97,7 @@ export function AppSidebar() {
 }
 
 const accountLinks = [
-  { icon: Rocket, label: "Getting Started", to: "/get-started" },
+  { icon: Zap, label: "Getting Started", to: "/get-started" },
   { icon: User, label: "Account", to: "/account" },
 ];
 
@@ -133,7 +127,6 @@ const EEUserButton = () => {
   if (config.clerkReady) return <EEClerkUserButton />;
   return (
     <>
-      {/* Expandable account items — slide up from footer */}
       <div
         className="flex flex-col gap-1 overflow-hidden transition-all duration-200 ease-in-out"
         style={{
@@ -147,8 +140,8 @@ const EEUserButton = () => {
             <SidebarMenuItem key={to}>
               <SidebarMenuButton asChild isActive={isActive} tooltip={label}>
                 <Link to={to}>
-                  <Icon className="size-4" />
-                  <span style={{ fontFamily: "var(--font-sidebar)" }}>{label}</span>
+                  <Icon className="!size-[17px]" />
+                  <span className="sidebar-label">{label}</span>
                 </Link>
               </SidebarMenuButton>
             </SidebarMenuItem>
@@ -160,24 +153,21 @@ const EEUserButton = () => {
             onClick={handleLogout}
             tooltip="Logout"
           >
-            <LogOut className="size-4" />
-            <span style={{ fontFamily: "var(--font-sidebar)" }}>Logout</span>
+            <Logout className="!size-[17px]" />
+            <span className="sidebar-label">Logout</span>
           </SidebarMenuButton>
         </SidebarMenuItem>
       </div>
-      {/* Account trigger — toggles expansion */}
       <SidebarMenuItem>
         <SidebarMenuButton
           isActive={location.pathname === "/account"}
           onClick={handleToggleAccount}
           tooltip="Account"
         >
-          <User className="size-4" />
-          <span className="flex-1" style={{ fontFamily: "var(--font-sidebar)" }}>
-            Account
-          </span>
+          <User className="!size-[17px]" />
+          <span className="sidebar-label flex-1">Account</span>
           <ChevronUp
-            className="size-3.5 shrink-0 transition-transform duration-200"
+            className="!size-[15px] shrink-0 transition-transform duration-200"
             style={{ transform: accountOpen ? "rotate(180deg)" : "rotate(0deg)" }}
           />
         </SidebarMenuButton>
@@ -227,7 +217,6 @@ const OSSUserButton = () => {
   };
   return (
     <>
-      {/* Expandable account items — slide up from footer */}
       <div
         className="flex flex-col gap-1 overflow-hidden transition-all duration-200 ease-in-out"
         style={{
@@ -241,8 +230,8 @@ const OSSUserButton = () => {
             <SidebarMenuItem key={to}>
               <SidebarMenuButton asChild isActive={isActive} tooltip={label}>
                 <Link to={to}>
-                  <Icon className="size-4" />
-                  <span style={{ fontFamily: "var(--font-sidebar)" }}> {label} </span>
+                  <Icon className="!size-[17px]" />
+                  <span className="sidebar-label">{label}</span>
                 </Link>
               </SidebarMenuButton>
             </SidebarMenuItem>
@@ -254,25 +243,22 @@ const OSSUserButton = () => {
             onClick={handleLogout}
             tooltip="Logout"
           >
-            <LogOut className="size-4" />
-            <span style={{ fontFamily: "var(--font-sidebar)" }}> Logout </span>
+            <Logout className="!size-[17px]" />
+            <span className="sidebar-label">Logout</span>
           </SidebarMenuButton>
         </SidebarMenuItem>
       </div>
 
-      {/* Account trigger — toggles expansion */}
       <SidebarMenuItem>
         <SidebarMenuButton
           isActive={location.pathname === "/account"}
           onClick={handleToggleAccount}
           tooltip="Account"
         >
-          <User className="size-4" />
-          <span className="flex-1" style={{ fontFamily: "var(--font-sidebar)" }}>
-            Account
-          </span>
+          <User className="!size-[17px]" />
+          <span className="sidebar-label flex-1">Account</span>
           <ChevronUp
-            className="size-3.5 shrink-0 transition-transform duration-200"
+            className="!size-[15px] shrink-0 transition-transform duration-200"
             style={{ transform: accountOpen ? "rotate(180deg)" : "rotate(0deg)" }}
           />
         </SidebarMenuButton>
