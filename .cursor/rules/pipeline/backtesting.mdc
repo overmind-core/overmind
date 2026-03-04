@@ -64,15 +64,11 @@ All must be true (in order):
 
 ## Model Selection
 
-Models come from `BACKTEST_MODELS_BY_PROVIDER` in `overmind/core/model_resolver.py`:
+**System-triggered backtesting** (Celery beat): uses `get_system_backtest_models()` — only models with `backtesting_preferred: True` in `SUPPORTED_LLM_MODELS` (one per provider). For models with reasoning: runs both with `reasoning_effort=medium` and without (`:no-reasoning` variant). Keys like `gpt-5.2`, `gpt-5.2:no-reasoning`.
 
-| Provider  | Models                                                                                |
-| --------- | ------------------------------------------------------------------------------------- |
-| OpenAI    | gpt-5-mini, gpt-5.2, gpt-5-nano                                                       |
-| Anthropic | claude-opus-4-6, claude-sonnet-4-6, claude-haiku-4-5                                  |
-| Gemini    | gemini-3-pro-preview, gemini-3-flash-preview, gemini-2.5-flash-lite, gemini-2.5-flash |
+**User-triggered backtesting**: uses `get_default_backtest_models()` — all models from `BACKTEST_MODELS_BY_PROVIDER` in `overmind/core/model_resolver.py`.
 
-Filtered to providers with configured API keys. Current model (detected from span metadata) is excluded.
+Preferred models (in `overmind/core/llms.py`): gpt-5.2, claude-sonnet-4-6, gemini-3-flash-preview. Filtered to providers with configured API keys. Current model (detected from span metadata) is excluded from recommendations.
 
 ## Recommendation Logic (`_generate_recommendations`)
 
@@ -92,10 +88,10 @@ Filtered to providers with configured API keys. Current model (detected from spa
 
 Backtest results are stored as regular SpanModel records with special metadata:
 
-- `operation = "backtest:{model_name}"` (excluded from user-facing queries via `_SYSTEM_OPERATION_PREFIXES`)
+- `operation = "backtest:{model_name}"` or `backtest:{model_name}:no-reasoning` (excluded from user-facing queries via `_SYSTEM_OPERATION_PREFIXES`)
 - `metadata_attributes.backtest = True`
 - `metadata_attributes.model = "{model_name}"`
-- `metadata_attributes.provider = "{provider}"`
+- `metadata_attributes.reasoning_mode = "medium" | "none"`
 
 ## Concurrency
 
@@ -107,7 +103,7 @@ Backtest results are stored as regular SpanModel records with special metadata:
 | Function                                                            | Purpose                 |
 | ------------------------------------------------------------------- | ----------------------- |
 | `_run_backtesting(prompt_id, models, span_count, ...)`              | Core backtest execution |
-| `_run_model_on_input(model_name, input_text, messages?, tools?)`    | Single model invocation |
+| `_run_model_on_input(model_name, input_text, messages?, tools?, model_key?)` | Single model invocation; model_key controls reasoning (e.g. `gpt-5.2:no-reasoning`) |
 | `_generate_recommendations(current_model, baseline, model_metrics)` | Recommendation logic    |
 | `validate_backtesting_eligibility(prompt, session, models?)`        | Eligibility check       |
 
@@ -117,7 +113,7 @@ When `verdict == "current_is_best"` and `total_items == 0` (no alternate models 
 
 ## When Modifying This Area
 
-- Adding new models: update `BACKTEST_MODELS_BY_PROVIDER` in `overmind/core/model_resolver.py`
+- Adding new models: update `BACKTEST_MODELS_BY_PROVIDER` in `overmind/core/model_resolver.py`; for system backtesting, add `backtesting_preferred: True` to one model per provider in `SUPPORTED_LLM_MODELS`
 - The 15pp disqualification threshold and 5pp "within range" threshold are hardcoded in `_generate_recommendations`
 - Tool-calling backtests replay the full conversation (messages + tools) — they don't just send the input text
 - Result spans use `operation="backtest:{model}"` which is filtered by `SpanModel._SYSTEM_OPERATION_PREFIXES` — if you change the prefix format, update the model too

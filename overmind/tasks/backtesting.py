@@ -27,6 +27,11 @@ from overmind.models.suggestions import Suggestion as SuggestionModel
 from overmind.models.traces import SpanModel, BacktestRun
 from overmind.core.llms import (
     call_llm,
+    get_anthropic_reasoning_mode,
+    get_backtesting_preferred_models,
+    get_thinking_budget_tokens,
+    is_reasoning_required,
+    model_supports_reasoning,
     normalize_llm_response_output,
     LLM_PROVIDER_BY_MODEL,
     normalize_model_name,
@@ -69,6 +74,23 @@ def get_default_backtest_models() -> list[str]:
     return get_available_backtest_models()
 
 
+def get_system_backtest_models() -> list[str]:
+    """Return models for system-triggered backtesting: one preferred per provider.
+
+    For models with reasoning: runs both with reasoning_effort=medium and without.
+    Returns keys like 'gpt-5.2', 'gpt-5.2:no-reasoning' for aggregation.
+    """
+    preferred = get_backtesting_preferred_models()
+    result: list[str] = []
+    for model_name in preferred:
+        result.append(model_name)  # with reasoning (medium)
+        if model_supports_reasoning(model_name) and not is_reasoning_required(
+            model_name
+        ):
+            result.append(f"{model_name}:no-reasoning")
+    return result
+
+
 # Minimum scored spans required before a prompt is eligible for backtesting
 MIN_SPANS_FOR_BACKTESTING = 10
 # Maximum spans to use per model during a backtest run
@@ -100,6 +122,15 @@ def _next_backtest_threshold(last_count: int) -> int:
 # ---------------------------------------------------------------------------
 
 
+def _base_model_from_key(model_key: str) -> str:
+    """Extract base model name from backtest key (handles 'model:no-reasoning')."""
+    return (
+        model_key.split(":no-reasoning")[0]
+        if ":no-reasoning" in model_key
+        else model_key
+    )
+
+
 def _interleave_models_by_provider(models: list[str]) -> list[str]:
     """Reorder models so that consecutive entries target different providers.
 
@@ -107,12 +138,13 @@ def _interleave_models_by_provider(models: list[str]) -> list[str]:
       →  [gpt-5-mini, claude-opus, gemini-3.1-pro, gpt-5.2, claude-sonnet, gemini-3-flash]
 
     This spreads load across providers when tasks are processed through a
-    concurrency-limited semaphore.
+    concurrency-limited semaphore. Handles keys like 'gpt-5.2:no-reasoning'.
     """
     by_provider: dict[str, list[str]] = defaultdict(list)
-    for model in models:
-        provider = LLM_PROVIDER_BY_MODEL.get(model, "unknown")
-        by_provider[provider].append(model)
+    for model_key in models:
+        base = _base_model_from_key(model_key)
+        provider = LLM_PROVIDER_BY_MODEL.get(base, "unknown")
+        by_provider[provider].append(model_key)
 
     result: list[str] = []
     queues = list(by_provider.values())
@@ -219,7 +251,7 @@ def _generate_recommendations(
     # Filter out current model and disqualified models
     candidates: dict[str, dict[str, float]] = {}
     for model, metrics in model_metrics.items():
-        if model == current_model:
+        if _base_model_from_key(model) == current_model:
             continue
         if metrics.get("success_rate", 0) == 0:
             continue
@@ -449,14 +481,44 @@ async def _get_prompt_criteria(prompt_id: str) -> dict[str, list[str]]:
         return criteria_dict
 
 
+def _parse_backtest_model_key(model_key: str) -> tuple[str, str | None, int | None]:
+    """Parse backtest model key into (base_model, reasoning_effort, thinking_budget_tokens).
+
+    Keys like 'gpt-5.2:no-reasoning' → (gpt-5.2, None, None)
+    Keys like 'gpt-5.2' with reasoning → (gpt-5.2, 'medium', None) for adaptive/openai/gemini
+    Keys like 'claude-opus-4-5' with reasoning → (claude-opus-4-5, None, 8000) for manual
+    """
+    base_model = (
+        model_key.split(":no-reasoning")[0]
+        if ":no-reasoning" in model_key
+        else model_key
+    )
+    no_reasoning = ":no-reasoning" in model_key
+
+    if no_reasoning:
+        return base_model, None, None
+
+    mode = get_anthropic_reasoning_mode(base_model)
+    if mode == "manual":
+        budgets = get_thinking_budget_tokens(base_model)
+        return base_model, None, budgets[0] if budgets else None
+    if model_supports_reasoning(base_model):
+        return base_model, "medium", None
+    return base_model, None, None
+
+
 def _run_model_on_input(
     model_name: str,
     input_text: str,
     messages: list[dict[str, Any]] | None = None,
     tools: list[dict[str, Any]] | None = None,
+    *,
+    model_key: str | None = None,
 ) -> dict[str, Any]:
     """Run a single model on an input and collect metrics.
 
+    When ``model_key`` is provided (e.g. 'gpt-5.2' or 'gpt-5.2:no-reasoning'), it
+    controls reasoning_effort/thinking_budget_tokens for system backtesting.
     When ``messages`` is provided it is forwarded directly to ``call_llm``
     so the full conversation (including tool-call and tool-result turns) is
     replayed.  When ``tools`` is provided the tool definitions are forwarded
@@ -465,15 +527,20 @@ def _run_model_on_input(
     This is deliberately *synchronous* so it can be offloaded to a thread
     via ``asyncio.to_thread`` without blocking the event loop.
     """
+    base_model, reasoning_effort, thinking_budget_tokens = (
+        _parse_backtest_model_key(model_key) if model_key else (model_name, None, None)
+    )
     try:
         start_time = time.time()
 
         output, stats = call_llm(
             input_text=input_text,
             system_prompt=None,
-            model=model_name,
+            model=base_model,
             messages=messages,
             tools=tools,
+            reasoning_effort=reasoning_effort,
+            thinking_budget_tokens=thinking_budget_tokens,
         )
         output = normalize_llm_response_output(output)
 
@@ -661,6 +728,7 @@ async def _run_backtesting(
                         input_text,
                         messages=call_messages,
                         tools=call_tools if call_tools else None,
+                        model_key=model_name,
                     )
 
                     # Preserve response_type / is_agentic so the correct judge
@@ -678,7 +746,10 @@ async def _run_backtesting(
                     # Plain / legacy span: existing plain-text behaviour
                     # --------------------------------------------------------
                     model_result = await asyncio.to_thread(
-                        _run_model_on_input, model_name, input_text
+                        _run_model_on_input,
+                        model_name,
+                        input_text,
+                        model_key=model_name,
                     )
 
                     # Strip response_type / is_agentic so we don't route into
@@ -735,6 +806,9 @@ async def _run_backtesting(
                             "backtest_run_id": str(backtest_run_id),
                             "source_span_id": span.span_id,
                             "model": model_name,
+                            "reasoning_mode": (
+                                "none" if ":no-reasoning" in model_name else "medium"
+                            ),
                             "latency_ms": model_result["latency_ms"],
                             "cost": model_result["cost"],
                             "input_tokens": model_result["input_tokens"],
@@ -1306,7 +1380,7 @@ async def _check_and_create_backtesting_job(
             result={
                 "parameters": {
                     "prompt_id": prompt_id,
-                    "models": get_default_backtest_models(),
+                    "models": get_system_backtest_models(),
                     "span_count": span_count,
                     "user_id": "system",
                     "organisation_id": None,

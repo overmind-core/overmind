@@ -4,7 +4,16 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from overmind.core.llms import call_llm
+from overmind.core.llms import (
+    call_llm,
+    get_anthropic_reasoning_mode,
+    get_backtesting_preferred_models,
+    get_reasoning_levels,
+    get_thinking_budget_tokens,
+    is_reasoning_required,
+    model_supports_reasoning,
+    SUPPORTED_LLM_MODELS,
+)
 
 
 def _make_completion_response(content: str = "Hello") -> MagicMock:
@@ -60,3 +69,108 @@ def test_non_anthropic_does_not_set_cache_control(mock_completion, model):
     assert "cache_control" not in positional_kwargs, (
         f"cache_control should NOT be set for non-Anthropic model {model}"
     )
+
+
+def test_all_models_have_reasoning_metadata():
+    """Every model has supports_reasoning; reasoning models have reasoning_levels or thinking_budget_tokens."""
+    for item in SUPPORTED_LLM_MODELS:
+        assert "supports_reasoning" in item
+        assert isinstance(item["supports_reasoning"], bool)
+        if item["supports_reasoning"]:
+            has_levels = "reasoning_levels" in item and item["reasoning_levels"]
+            has_budget = (
+                "thinking_budget_tokens" in item and item["thinking_budget_tokens"]
+            )
+            assert has_levels or has_budget, (
+                f"Model {item['model_name']} needs reasoning_levels or thinking_budget_tokens"
+            )
+
+
+def test_model_supports_reasoning():
+    assert model_supports_reasoning("gpt-5-mini") is True
+    assert model_supports_reasoning("claude-sonnet-4-6") is True
+    assert model_supports_reasoning("gemini-3-flash-preview") is True
+    assert model_supports_reasoning("gemini-2.5-flash-lite") is False
+
+
+def test_get_reasoning_levels():
+    assert get_reasoning_levels("gpt-5-mini") == ["low", "medium", "high"]
+    assert get_reasoning_levels("gemini-3.1-pro-preview") == ["low", "medium", "high"]
+    assert get_reasoning_levels("claude-opus-4-6") == [
+        "low",
+        "medium",
+        "high",
+        "max",
+    ]
+    assert (
+        get_reasoning_levels("claude-opus-4-5") == []
+    )  # manual mode: no reasoning_effort
+    assert get_reasoning_levels("gemini-2.5-flash-lite") == []  # no thinking support
+
+
+def test_get_thinking_budget_tokens():
+    assert get_thinking_budget_tokens("claude-opus-4-5") == [8000]
+    assert get_thinking_budget_tokens("claude-sonnet-4-5") == [8000]
+    assert get_thinking_budget_tokens("claude-haiku-4-5") == [8000]
+    assert get_thinking_budget_tokens("claude-opus-4-6") == []  # adaptive mode
+    assert get_thinking_budget_tokens("gpt-5-mini") == []
+
+
+def test_is_reasoning_required():
+    assert is_reasoning_required("gemini-2.5-pro") is True
+    assert is_reasoning_required("gpt-5-mini") is False
+    assert is_reasoning_required("gemini-2.5-flash") is False
+
+
+def test_get_anthropic_reasoning_mode():
+    assert get_anthropic_reasoning_mode("claude-opus-4-6") == "adaptive"
+    assert get_anthropic_reasoning_mode("claude-sonnet-4-6") == "adaptive"
+    assert get_anthropic_reasoning_mode("claude-opus-4-5") == "manual"
+    assert get_anthropic_reasoning_mode("claude-haiku-4-5") == "manual"
+    assert get_anthropic_reasoning_mode("gpt-5-mini") is None
+
+
+def test_call_llm_passes_reasoning_effort_when_supported(mock_completion):
+    call_llm("hello", model="gpt-5-mini", reasoning_effort="low")
+
+    positional_kwargs = mock_completion.call_args.kwargs
+    assert positional_kwargs.get("reasoning_effort") == "low"
+
+
+def test_call_llm_passes_thinking_budget_tokens_for_manual_mode(mock_completion):
+    call_llm("hello", model="claude-opus-4-5", thinking_budget_tokens=8000)
+
+    positional_kwargs = mock_completion.call_args.kwargs
+    assert positional_kwargs.get("thinking") == {
+        "type": "enabled",
+        "budget_tokens": 8000,
+    }
+    assert "reasoning_effort" not in positional_kwargs
+
+
+def test_call_llm_uses_default_reasoning_effort_when_required(mock_completion):
+    call_llm("hello", model="gemini-2.5-pro")
+
+    positional_kwargs = mock_completion.call_args.kwargs
+    assert positional_kwargs.get("reasoning_effort") == "medium"
+
+
+def test_get_backtesting_preferred_models(monkeypatch):
+    monkeypatch.setattr("overmind.config.settings.openai_api_key", "sk-test")
+    monkeypatch.setattr("overmind.config.settings.anthropic_api_key", "sk-ant")
+    monkeypatch.setattr("overmind.config.settings.gemini_api_key", "gk-test")
+    preferred = get_backtesting_preferred_models()
+    assert "gpt-5.2" in preferred
+    assert "claude-sonnet-4-6" in preferred
+    assert "gemini-3-flash-preview" in preferred
+    assert len(preferred) == 3
+
+
+def test_call_llm_includes_reasoning_content_in_stats_when_present(mock_completion):
+    mock_completion.return_value = _make_completion_response("Hi")
+    msg = mock_completion.return_value.choices[0].message
+    msg.reasoning_content = "Let me think about this..."
+
+    content, stats = call_llm("hello", model="gpt-5-mini", reasoning_effort="low")
+
+    assert stats.get("reasoning_content") == "Let me think about this..."
