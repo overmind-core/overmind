@@ -11,8 +11,10 @@ import {
   type SortingState,
   type VisibilityState,
 } from "@tanstack/react-table";
+import { ExternalLink, Lock as Key } from "pixelarticons/react";
 import { toast } from "sonner";
 
+import { CreateApiKeyDialog } from "@/components/create-api-key-dialog";
 import {
   filtersToBackendQuery,
   parseFiltersFromSearchParams,
@@ -21,6 +23,7 @@ import {
 import { tracesColumns } from "@/components/traces/traces-columns";
 
 import { Alert } from "@/components/ui/alert";
+import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent } from "@/components/ui/sheet";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
@@ -44,6 +47,7 @@ function getTraceAttr(attrs: Record<string, unknown> | undefined, ...keys: strin
 import apiClient from "@/client";
 import { TracesTablePagination } from "@/components/traces/traces-table-pagination";
 import { TracesTableToolbar } from "@/components/traces/traces-table-toolbar";
+import { useProjectsList } from "@/hooks/use-projects";
 import { spanStatusLabel, transformSpan, type SpanRow } from "@/hooks/use-traces";
 import { getTimeRangeStartTimestamp } from "@/lib/formatters";
 import { tracesSearchSchema } from "@/lib/schemas";
@@ -325,20 +329,7 @@ function TracesPage() {
           </div>
         )}
         {!isLoading && projectId && data?.traces.length === 0 && (
-          <div className="flex flex-1 flex-col items-center justify-center gap-4 py-12 text-center">
-            <p className="text-muted-foreground">
-              No traces found, adjust your filters or set up your API key to start tracing your AI
-              agent with Overmind.
-            </p>
-            <a
-              className="inline-flex items-center rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90"
-              href="https://docs.overmindlab.ai/guides/getting-started/"
-              rel="noopener noreferrer"
-              target="_blank"
-            >
-              Integration Guide
-            </a>
-          </div>
+          <TracesEmptyState projectId={projectId} />
         )}
         {!isLoading && filteredAndSorted.length > 0 && <RenderTable table={table} />}
       </div>
@@ -367,6 +358,56 @@ function TracesPage() {
         </SheetContent>
       </Sheet>
     </div>
+  );
+}
+
+function TracesEmptyState({ projectId }: { projectId: string }) {
+  const [showCreateKey, setShowCreateKey] = useState(false);
+  const { data: projectsData } = useProjectsList();
+  const organisationId = projectsData?.projects?.find(
+    (p) => p.projectId === projectId
+  )?.organisationId;
+
+  return (
+    <>
+      <div className="flex flex-1 flex-col items-center justify-center py-12 text-center">
+        <p className="mb-2 font-display text-4xl font-medium">No traces found</p>
+        <p className="mx-auto mb-4 max-w-sm text-[1.05rem] text-muted-foreground">
+          Adjust your filters or connect your LLM application to start sending traces to Overmind.
+        </p>
+        <div className="flex items-center gap-3">
+          <a
+            className="inline-flex items-center rounded-lg bg-black px-4 py-2 text-sm font-semibold text-white hover:bg-black/80 dark:bg-white dark:text-black dark:hover:bg-white/80"
+            href="https://docs.overmindlab.ai/"
+            rel="noopener noreferrer"
+            target="_blank"
+          >
+            Integration Guide <ExternalLink className="ml-1.5 size-4" />
+          </a>
+          {organisationId && (
+            <Button
+              aria-label="Create API Key"
+              onClick={() => setShowCreateKey(true)}
+              variant="outline"
+            >
+              <Key className="mr-1.5 size-4" />
+              Create API Key
+            </Button>
+          )}
+        </div>
+      </div>
+
+      {organisationId && (
+        <CreateApiKeyDialog
+          defaultRole="project_admin"
+          onCreated={() => {}}
+          onOpenChange={setShowCreateKey}
+          open={showCreateKey}
+          organisationId={organisationId}
+          projectId={projectId}
+        />
+      )}
+    </>
   );
 }
 
