@@ -152,6 +152,12 @@ export interface SpanResponseModel {
      * @memberof SpanResponseModel
      */
     links?: Array<any>;
+    /**
+     * 
+     * @type {string}
+     * @memberof SpanResponseModel
+     */
+    agentId?: string | null;
 }
 
 /**
@@ -200,6 +206,7 @@ export function SpanResponseModelFromJSONTyped(json: any, ignoreDiscriminator: b
         'scopeVersion': json['ScopeVersion'] == null ? undefined : json['ScopeVersion'],
         'events': json['Events'] == null ? undefined : json['Events'],
         'links': json['Links'] == null ? undefined : json['Links'],
+        'agentId': json['AgentId'] == null ? undefined : json['AgentId'],
     };
 }
 
@@ -237,6 +244,7 @@ export function SpanResponseModelToJSONTyped(value?: SpanResponseModel | null, i
         'ScopeVersion': value['scopeVersion'],
         'Events': value['events'],
         'Links': value['links'],
+        'AgentId': value['agentId'],
     };
 }
 

@@ -44,6 +44,7 @@ class SpanResponseModel(BaseModel):
     scope_version: str | None = Field("", alias="ScopeVersion")
     events: list = Field(default_factory=list, alias="Events")
     links: list = Field(default_factory=list, alias="Links")
+    agent_id: str | None = Field(None, alias="AgentId")
 
     @classmethod
     def from_orm_obj(
@@ -86,6 +87,7 @@ class SpanResponseModel(BaseModel):
             ScopeVersion=trace_obj.version if trace_obj else "",
             Events=obj.metadata_attributes.get("events", []),
             Links=obj.metadata_attributes.get("links", []),
+            AgentId=obj.prompt_id,
         )
 
 
