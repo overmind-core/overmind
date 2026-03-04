@@ -77,17 +77,27 @@ def get_default_backtest_models() -> list[str]:
 def get_system_backtest_models() -> list[str]:
     """Return models for system-triggered backtesting: one preferred per provider.
 
-    For models with reasoning: runs both with reasoning_effort=medium and without.
-    Returns keys like 'gpt-5.2', 'gpt-5.2:no-reasoning' for aggregation.
+    For models with reasoning: runs both without reasoning (base key) and with
+    reasoning at medium effort (key suffixed ':reasoning-medium' or ':reasoning'
+    for manual-budget-token-only models).
+
+    Key format:
+      '{model}'                  — no reasoning
+      '{model}:reasoning-medium' — reasoning_effort=medium (adaptive / OpenAI / Gemini)
+      '{model}:reasoning'        — thinking enabled, no effort level (Anthropic manual)
     """
     preferred = get_backtesting_preferred_models()
     result: list[str] = []
     for model_name in preferred:
-        result.append(model_name)  # with reasoning (medium)
+        result.append(model_name)  # no reasoning
         if model_supports_reasoning(model_name) and not is_reasoning_required(
             model_name
         ):
-            result.append(f"{model_name}:no-reasoning")
+            mode = get_anthropic_reasoning_mode(model_name)
+            if mode == "manual":
+                result.append(f"{model_name}:reasoning")
+            else:
+                result.append(f"{model_name}:reasoning-medium")
     return result
 
 
@@ -123,12 +133,24 @@ def _next_backtest_threshold(last_count: int) -> int:
 
 
 def _base_model_from_key(model_key: str) -> str:
-    """Extract base model name from backtest key (handles 'model:no-reasoning')."""
-    return (
-        model_key.split(":no-reasoning")[0]
-        if ":no-reasoning" in model_key
-        else model_key
-    )
+    """Extract base model name from a backtest key.
+
+    Handles keys like 'gpt-5.2:reasoning-medium', 'claude-opus-4-5:reasoning'.
+    """
+    return model_key.split(":reasoning")[0] if ":reasoning" in model_key else model_key
+
+
+def _reasoning_mode_from_key(model_key: str) -> str | None:
+    """Derive the reasoning_mode label from a backtest model key.
+
+    Returns the effort level (e.g. 'medium'), 'enabled' for manual budget-token
+    mode, or None when no reasoning is used.
+    """
+    if ":reasoning" not in model_key:
+        return None
+    if ":reasoning-" in model_key:
+        return model_key.split(":reasoning-", 1)[1]
+    return "enabled"
 
 
 def _interleave_models_by_provider(models: list[str]) -> list[str]:
@@ -138,7 +160,7 @@ def _interleave_models_by_provider(models: list[str]) -> list[str]:
       →  [gpt-5-mini, claude-opus, gemini-3.1-pro, gpt-5.2, claude-sonnet, gemini-3-flash]
 
     This spreads load across providers when tasks are processed through a
-    concurrency-limited semaphore. Handles keys like 'gpt-5.2:no-reasoning'.
+    concurrency-limited semaphore. Handles keys like 'gpt-5.2:reasoning-medium'.
     """
     by_provider: dict[str, list[str]] = defaultdict(list)
     for model_key in models:
@@ -482,28 +504,30 @@ async def _get_prompt_criteria(prompt_id: str) -> dict[str, list[str]]:
 
 
 def _parse_backtest_model_key(model_key: str) -> tuple[str, str | None, int | None]:
-    """Parse backtest model key into (base_model, reasoning_effort, thinking_budget_tokens).
+    """Parse a backtest model key into (base_model, reasoning_effort, thinking_budget_tokens).
 
-    Keys like 'gpt-5.2:no-reasoning' → (gpt-5.2, None, None)
-    Keys like 'gpt-5.2' with reasoning → (gpt-5.2, 'medium', None) for adaptive/openai/gemini
-    Keys like 'claude-opus-4-5' with reasoning → (claude-opus-4-5, None, 8000) for manual
+    Key formats:
+      'gpt-5.2'                   → (gpt-5.2, None, None)        — no reasoning
+      'gpt-5.2:reasoning-medium'  → (gpt-5.2, 'medium', None)    — effort-based reasoning
+      'gpt-5.2:reasoning-low'     → (gpt-5.2, 'low', None)
+      'claude-opus-4-5:reasoning' → (claude-opus-4-5, None, 8000) — manual budget-token mode
     """
     base_model = (
-        model_key.split(":no-reasoning")[0]
-        if ":no-reasoning" in model_key
-        else model_key
+        model_key.split(":reasoning")[0] if ":reasoning" in model_key else model_key
     )
-    no_reasoning = ":no-reasoning" in model_key
 
-    if no_reasoning:
+    if ":reasoning" not in model_key:
         return base_model, None, None
 
+    if ":reasoning-" in model_key:
+        effort = model_key.split(":reasoning-", 1)[1]
+        return base_model, effort, None
+
+    # ':reasoning' suffix without an effort level → manual Anthropic budget-token mode
     mode = get_anthropic_reasoning_mode(base_model)
     if mode == "manual":
         budgets = get_thinking_budget_tokens(base_model)
         return base_model, None, budgets[0] if budgets else None
-    if model_supports_reasoning(base_model):
-        return base_model, "medium", None
     return base_model, None, None
 
 
@@ -517,8 +541,8 @@ def _run_model_on_input(
 ) -> dict[str, Any]:
     """Run a single model on an input and collect metrics.
 
-    When ``model_key`` is provided (e.g. 'gpt-5.2' or 'gpt-5.2:no-reasoning'), it
-    controls reasoning_effort/thinking_budget_tokens for system backtesting.
+    When ``model_key`` is provided (e.g. 'gpt-5.2:reasoning-medium' or plain
+    'gpt-5.2' for no reasoning), it controls reasoning_effort/thinking_budget_tokens.
     When ``messages`` is provided it is forwarded directly to ``call_llm``
     so the full conversation (including tool-call and tool-result turns) is
     replayed.  When ``tools`` is provided the tool definitions are forwarded
@@ -805,10 +829,8 @@ async def _run_backtesting(
                             "backtest": True,
                             "backtest_run_id": str(backtest_run_id),
                             "source_span_id": span.span_id,
-                            "model": model_name,
-                            "reasoning_mode": (
-                                "none" if ":no-reasoning" in model_name else "medium"
-                            ),
+                            "model": _base_model_from_key(model_name),
+                            "reasoning_mode": _reasoning_mode_from_key(model_name),
                             "latency_ms": model_result["latency_ms"],
                             "cost": model_result["cost"],
                             "input_tokens": model_result["input_tokens"],

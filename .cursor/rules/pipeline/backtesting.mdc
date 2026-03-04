@@ -64,7 +64,10 @@ All must be true (in order):
 
 ## Model Selection
 
-**System-triggered backtesting** (Celery beat): uses `get_system_backtest_models()` — only models with `backtesting_preferred: True` in `SUPPORTED_LLM_MODELS` (one per provider). For models with reasoning: runs both with `reasoning_effort=medium` and without (`:no-reasoning` variant). Keys like `gpt-5.2`, `gpt-5.2:no-reasoning`.
+**System-triggered backtesting** (Celery beat): uses `get_system_backtest_models()` — only models with `backtesting_preferred: True` in `SUPPORTED_LLM_MODELS` (one per provider). For models with reasoning: runs both without reasoning (base key) and with reasoning. Key format:
+- `{model}` — no reasoning
+- `{model}:reasoning-{effort}` — effort-based reasoning (adaptive / OpenAI / Gemini), e.g. `gpt-5.2:reasoning-medium`
+- `{model}:reasoning` — manual Anthropic budget-token mode (no effort level)
 
 **User-triggered backtesting**: uses `get_default_backtest_models()` — all models from `BACKTEST_MODELS_BY_PROVIDER` in `overmind/core/model_resolver.py`.
 
@@ -88,10 +91,10 @@ Preferred models (in `overmind/core/llms.py`): gpt-5.2, claude-sonnet-4-6, gemin
 
 Backtest results are stored as regular SpanModel records with special metadata:
 
-- `operation = "backtest:{model_name}"` or `backtest:{model_name}:no-reasoning` (excluded from user-facing queries via `_SYSTEM_OPERATION_PREFIXES`)
+- `operation = "backtest:{model_key}"` where `model_key` uses the format above (excluded from user-facing queries via `_SYSTEM_OPERATION_PREFIXES`)
 - `metadata_attributes.backtest = True`
-- `metadata_attributes.model = "{model_name}"`
-- `metadata_attributes.reasoning_mode = "medium" | "none"`
+- `metadata_attributes.model = "{base_model_name}"` (always the bare model name, no suffix)
+- `metadata_attributes.reasoning_mode = "{effort}" | "enabled" | None` — effort level string, `"enabled"` for manual budget-token mode, or `None` when no reasoning
 
 ## Concurrency
 
@@ -103,7 +106,7 @@ Backtest results are stored as regular SpanModel records with special metadata:
 | Function                                                            | Purpose                 |
 | ------------------------------------------------------------------- | ----------------------- |
 | `_run_backtesting(prompt_id, models, span_count, ...)`              | Core backtest execution |
-| `_run_model_on_input(model_name, input_text, messages?, tools?, model_key?)` | Single model invocation; model_key controls reasoning (e.g. `gpt-5.2:no-reasoning`) |
+| `_run_model_on_input(model_name, input_text, messages?, tools?, model_key?)` | Single model invocation; model_key controls reasoning (e.g. `gpt-5.2:reasoning-medium`) |
 | `_generate_recommendations(current_model, baseline, model_metrics)` | Recommendation logic    |
 | `validate_backtesting_eligibility(prompt, session, models?)`        | Eligibility check       |
 
