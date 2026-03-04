@@ -57,16 +57,15 @@ call_llm(
 
 All supported models have `supports_reasoning` and `reasoning_levels` in `SUPPORTED_LLM_MODELS`. See [LiteLLM reasoning_content](https://docs.litellm.ai/docs/reasoning_content).
 
-- `model_supports_reasoning(model_name)` — returns True if model supports `reasoning_effort`
-- `get_reasoning_levels(model_name)` — returns valid reasoning_effort levels; manual mode returns `[]`
-- `get_thinking_budget_tokens(model_name)` — returns valid budget_tokens for Anthropic manual mode
-- `get_anthropic_reasoning_mode(model_name)` — returns `"adaptive"` | `"manual"` for Anthropic, None otherwise
+- `model_supports_reasoning(model_name)` — returns True if model supports any reasoning
+- `is_adaptive_mode(model_name)` — returns `True` (effort-based), `False` (budget-token manual), `None` (no reasoning)
+- `get_reasoning_levels(model_name)` — returns valid `reasoning_effort` levels; `[]` for manual/no-reasoning models
+- `get_thinking_budget_tokens(model_name)` — returns valid `budget_tokens` for manual mode (`adaptive_mode=False`); `[]` otherwise
 - `is_reasoning_required(model_name)` — returns True if reasoning cannot be disabled (e.g. gemini-2.5-pro)
-- OpenAI (gpt-5*, gpt-4.1): `reasoning_effort` via Responses API
-- Anthropic: [adaptive vs manual thinking](https://platform.claude.com/docs/en/build-with-claude/adaptive-thinking#adaptive-vs-manual-vs-disabled-thinking)
-  - Opus 4.6, Sonnet 4.6: **adaptive** — use `reasoning_effort`; manual/budget_tokens deprecated
-  - Opus 4.5, Sonnet 4.5, Haiku 4.5: **manual** — use `thinking_budget_tokens`; no reasoning_effort
-- Gemini: `reasoning_effort` maps to `thinking_level` (3+) or `thinking_budget` (2.5); gemini-2.5-pro requires reasoning (cannot disable), defaults to "medium" when not specified
+- `adaptive_mode=True` (effort-based): OpenAI gpt-5*, Anthropic Opus/Sonnet 4.6, Gemini 3.x+, gemini-2.5-pro
+- `adaptive_mode=False` (budget-token manual): Anthropic Opus/Sonnet/Haiku 4.5, gemini-2.5-flash
+- Anthropic: [adaptive vs manual thinking](https://platform.claude.com/docs/en/build-with-claude/adaptive-thinking#adaptive-vs-manual-vs-disabled-thinking); Opus 4.6/Sonnet 4.6 use adaptive; 4.5 models use manual
+- Gemini: 3.x models use `reasoning_effort`; 2.5-flash uses `thinking_budget_tokens`; gemini-2.5-pro requires reasoning (defaults to "medium" when not specified)
 
 ### Related functions
 

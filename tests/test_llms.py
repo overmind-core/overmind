@@ -6,10 +6,10 @@ import pytest
 
 from overmind.core.llms import (
     call_llm,
-    get_anthropic_reasoning_mode,
     get_backtesting_preferred_models,
     get_reasoning_levels,
     get_thinking_budget_tokens,
+    is_adaptive_mode,
     is_reasoning_required,
     model_supports_reasoning,
     SUPPORTED_LLM_MODELS,
@@ -72,18 +72,23 @@ def test_non_anthropic_does_not_set_cache_control(mock_completion, model):
 
 
 def test_all_models_have_reasoning_metadata():
-    """Every model has supports_reasoning; reasoning models have reasoning_levels or thinking_budget_tokens."""
+    """Every model has supports_reasoning; reasoning models have adaptive_mode + levels or budget_tokens."""
     for item in SUPPORTED_LLM_MODELS:
         assert "supports_reasoning" in item
         assert isinstance(item["supports_reasoning"], bool)
         if item["supports_reasoning"]:
-            has_levels = "reasoning_levels" in item and item["reasoning_levels"]
-            has_budget = (
-                "thinking_budget_tokens" in item and item["thinking_budget_tokens"]
+            assert "adaptive_mode" in item, (
+                f"Model {item['model_name']} missing adaptive_mode"
             )
-            assert has_levels or has_budget, (
-                f"Model {item['model_name']} needs reasoning_levels or thinking_budget_tokens"
-            )
+            assert isinstance(item["adaptive_mode"], bool)
+            if item["adaptive_mode"]:
+                assert "reasoning_levels" in item and item["reasoning_levels"], (
+                    f"Adaptive model {item['model_name']} needs reasoning_levels"
+                )
+            else:
+                assert (
+                    "thinking_budget_tokens" in item and item["thinking_budget_tokens"]
+                ), f"Manual model {item['model_name']} needs thinking_budget_tokens"
 
 
 def test_model_supports_reasoning():
@@ -112,7 +117,8 @@ def test_get_thinking_budget_tokens():
     assert get_thinking_budget_tokens("claude-opus-4-5") == [8000]
     assert get_thinking_budget_tokens("claude-sonnet-4-5") == [8000]
     assert get_thinking_budget_tokens("claude-haiku-4-5") == [8000]
-    assert get_thinking_budget_tokens("claude-opus-4-6") == []  # adaptive mode
+    assert get_thinking_budget_tokens("gemini-2.5-flash") == [8000]
+    assert get_thinking_budget_tokens("claude-opus-4-6") == []  # adaptive_mode=True
     assert get_thinking_budget_tokens("gpt-5-mini") == []
 
 
@@ -122,12 +128,15 @@ def test_is_reasoning_required():
     assert is_reasoning_required("gemini-2.5-flash") is False
 
 
-def test_get_anthropic_reasoning_mode():
-    assert get_anthropic_reasoning_mode("claude-opus-4-6") == "adaptive"
-    assert get_anthropic_reasoning_mode("claude-sonnet-4-6") == "adaptive"
-    assert get_anthropic_reasoning_mode("claude-opus-4-5") == "manual"
-    assert get_anthropic_reasoning_mode("claude-haiku-4-5") == "manual"
-    assert get_anthropic_reasoning_mode("gpt-5-mini") is None
+def test_is_adaptive_mode():
+    assert is_adaptive_mode("claude-opus-4-6") is True
+    assert is_adaptive_mode("claude-sonnet-4-6") is True
+    assert is_adaptive_mode("gpt-5-mini") is True
+    assert is_adaptive_mode("gemini-3-flash-preview") is True
+    assert is_adaptive_mode("claude-opus-4-5") is False
+    assert is_adaptive_mode("claude-haiku-4-5") is False
+    assert is_adaptive_mode("gemini-2.5-flash") is False
+    assert is_adaptive_mode("gpt-4.1") is None  # supports_reasoning=False
 
 
 def test_call_llm_passes_reasoning_effort_when_supported(mock_completion):
@@ -137,8 +146,9 @@ def test_call_llm_passes_reasoning_effort_when_supported(mock_completion):
     assert positional_kwargs.get("reasoning_effort") == "low"
 
 
-def test_call_llm_passes_thinking_budget_tokens_for_manual_mode(mock_completion):
-    call_llm("hello", model="claude-opus-4-5", thinking_budget_tokens=8000)
+@pytest.mark.parametrize("model", ["claude-opus-4-5", "gemini-2.5-flash"])
+def test_call_llm_passes_thinking_budget_tokens_for_manual_mode(mock_completion, model):
+    call_llm("hello", model=model, thinking_budget_tokens=8000)
 
     positional_kwargs = mock_completion.call_args.kwargs
     assert positional_kwargs.get("thinking") == {

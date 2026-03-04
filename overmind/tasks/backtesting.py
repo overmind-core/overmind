@@ -27,9 +27,9 @@ from overmind.models.suggestions import Suggestion as SuggestionModel
 from overmind.models.traces import SpanModel, BacktestRun
 from overmind.core.llms import (
     call_llm,
-    get_anthropic_reasoning_mode,
     get_backtesting_preferred_models,
     get_thinking_budget_tokens,
+    is_adaptive_mode,
     is_reasoning_required,
     model_supports_reasoning,
     normalize_llm_response_output,
@@ -93,8 +93,7 @@ def get_system_backtest_models() -> list[str]:
         if model_supports_reasoning(model_name) and not is_reasoning_required(
             model_name
         ):
-            mode = get_anthropic_reasoning_mode(model_name)
-            if mode == "manual":
+            if is_adaptive_mode(model_name) is False:
                 result.append(f"{model_name}:reasoning")
             else:
                 result.append(f"{model_name}:reasoning-medium")
@@ -523,9 +522,8 @@ def _parse_backtest_model_key(model_key: str) -> tuple[str, str | None, int | No
         effort = model_key.split(":reasoning-", 1)[1]
         return base_model, effort, None
 
-    # ':reasoning' suffix without an effort level → manual Anthropic budget-token mode
-    mode = get_anthropic_reasoning_mode(base_model)
-    if mode == "manual":
+    # ':reasoning' suffix without an effort level → manual budget-token mode (adaptive_mode=False)
+    if is_adaptive_mode(base_model) is False:
         budgets = get_thinking_budget_tokens(base_model)
         return base_model, None, budgets[0] if budgets else None
     return base_model, None, None
