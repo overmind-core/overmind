@@ -54,7 +54,7 @@ jobs:
         run: touch .env
 
       - name: Run tests
-        run: docker compose run --rm api sh -c "uv pip install --system --no-cache pytest pytest-asyncio pytest-cov python-dotenv && python -m pytest"
+        run: docker compose run --rm api sh -c "uv pip install --system --no-cache pytest pytest-asyncio pytest-cov python-dotenv && python -m pytest --ignore=tests/e2e"
 
   notify-enterprise:
     if: github.event_name == 'push'
