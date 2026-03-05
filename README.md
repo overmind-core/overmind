@@ -4,14 +4,31 @@
 
 [![CI](https://github.com/overmind-core/overmind/actions/workflows/ci.yml/badge.svg)](https://github.com/overmind-core/overmind/actions/workflows/ci.yml)
 [![License: AGPL-3.0](https://img.shields.io/badge/License-AGPL--3.0-blue.svg)](LICENSE)
+[![PyPI version](https://img.shields.io/pypi/v/overmind.svg)](https://pypi.org/project/overmind/)
+[![PyPI downloads](https://img.shields.io/pypi/dm/overmind.svg)](https://pypi.org/project/overmind/)
+[![npm version](https://img.shields.io/npm/v/@overmind-lab/trace-sdk.svg)](https://www.npmjs.com/package/@overmind-lab/trace-sdk)
+[![npm downloads](https://img.shields.io/npm/dm/@overmind-lab/trace-sdk.svg)](https://www.npmjs.com/package/@overmind-lab/trace-sdk)
 
-Open-source platform that automatically optimizes AI agents — better prompts, better models, lower cost. All from a single Docker Compose stack.
+**Performance infrastructure for AI agents.** Overmind is an open-source platform for AI agent execution tracing, LLM observability, and continuous model improvement from production data. It sits between your application and LLM providers — collecting execution traces, evaluating them automatically, and recommending better prompts and models to reduce cost, improve quality, and lower latency.
 
-This is the **open-source edition** of [Overmind](https://overmindlab.ai) with all key features included. Run it fully locally or deploy to your own infrastructure.
+Built for engineering teams running AI agents in production. Deployable as a single Docker Compose stack. Compatible with OpenAI, Anthropic, Google, and any OpenTelemetry-instrumented system.
+
+**Key results from production deployments:**
+- Up to 66% reduction in LLM inference costs
+- Up to 25% improvement in agent task performance
+- First traces flowing in under 5 minutes from SDK install
 
 <img width="3022" height="1724" alt="image" src="https://github.com/user-attachments/assets/000aa5f2-df9f-4cb6-88e8-3a0fdf6777a5" />
 
 ## What is Overmind?
+
+Overmind is performance infrastructure for AI agents. It provides three core capabilities:
+
+1. **Execution tracing** — every LLM call recorded with full I/O, timing, tokens, and cost, compatible with OpenTelemetry distributed tracing standards
+2. **Production observability** — LLM judge scoring evaluates each trace on quality, cost, and latency; surfaces actionable recommendations with before/after impact scores
+3. **Continuous model improvement** — replays traces through alternative models and prompt variations; enables RL fine-tuning on production data so agents improve over time
+
+Overmind is model-agnostic, framework-agnostic, and designed for zero latency impact on production systems. It is not a security tool or a compliance layer — it is infrastructure for making AI agents faster, cheaper, and more accurate.
 
 Key Features:
 
@@ -341,6 +358,26 @@ make lint             # Lint and format code
 make psql             # Open a psql shell to the database
 make clean            # Stop services and delete all data volumes
 ```
+
+## Frequently Asked Questions
+
+**What is Overmind used for?**
+Overmind is used for AI agent execution tracing, LLM production monitoring, prompt optimisation, model backtesting, and continuous fine-tuning of language models on real production data. It is designed for engineering teams running AI agents in production environments.
+
+**How is Overmind different from LangSmith or Helicone?**
+LangSmith and Helicone are observability tools — they show you what your agents did. Overmind closes the loop: it collects traces, evaluates them, generates and backtests improvements against your real production history, and enables RL fine-tuning so your models get better over time. It is also fully open-source and self-hostable.
+
+**Does Overmind work with LangChain, CrewAI, or AutoGPT?**
+Yes. Overmind is framework-agnostic. Any system that makes LLM calls via OpenAI, Anthropic, or Google APIs can be instrumented with the Python or JavaScript SDK in minutes. For frameworks not covered by the native SDKs, any OpenTelemetry-compatible instrumentation works via the OTLP endpoint.
+
+**Can I self-host Overmind?**
+Yes. The full platform runs on a single Docker Compose stack with no external dependencies beyond your LLM API keys. There is also a managed cloud edition at [overmindlab.ai](https://overmindlab.ai).
+
+**What LLM providers does Overmind support?**
+OpenAI, Anthropic, and Google Gemini are supported natively. Any provider reachable via OpenTelemetry distributed tracing can be integrated via the OTLP endpoint.
+
+**How long does it take to get first traces flowing?**
+Under 5 minutes from SDK install to first trace appearing in the dashboard.
 
 ## Contributing
 
