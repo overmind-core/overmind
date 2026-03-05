@@ -39,7 +39,9 @@ class ConversationModel(Base):
         nullable=False,
         index=True,
     )
-    user_id = Column(UUID(as_uuid=True), ForeignKey("users.user_id"), nullable=False, index=True)
+    user_id = Column(
+        UUID(as_uuid=True), ForeignKey("users.user_id"), nullable=False, index=True
+    )
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
 
@@ -55,9 +57,15 @@ class TraceModel(Base):
         default=uuid.uuid4,
     )
 
-    application_name = Column(String(255), nullable=False)  # optional name which user can pass
-    source = Column(String(255), nullable=False)  # overmind_api, chrome_extension, etc, maybe enum?
-    version = Column(String(255), nullable=False)  # stripe like date based versioning, possibly enum
+    application_name = Column(
+        String(255), nullable=False
+    )  # optional name which user can pass
+    source = Column(
+        String(255), nullable=False
+    )  # overmind_api, chrome_extension, etc, maybe enum?
+    version = Column(
+        String(255), nullable=False
+    )  # stripe like date based versioning, possibly enum
     start_time_unix_nano = Column(BIGINT, nullable=False)
     end_time_unix_nano = Column(BIGINT, nullable=False)
 
@@ -72,17 +80,23 @@ class TraceModel(Base):
     input = Column(JSONB, nullable=False, default=dict)
     output = Column(JSONB, nullable=True)
 
-    metadata_attributes = Column(JSONB, nullable=False, default=dict)  # ResourceAttributes
+    metadata_attributes = Column(
+        JSONB, nullable=False, default=dict
+    )  # ResourceAttributes
     feedback_score = Column(JSONB, nullable=False, default=dict)
 
-    conversation_id = Column(UUID(as_uuid=True), ForeignKey("conversations.conversation_id"), nullable=True)
+    conversation_id = Column(
+        UUID(as_uuid=True), ForeignKey("conversations.conversation_id"), nullable=True
+    )
     project_id = Column(
         UUID(as_uuid=True),
         ForeignKey("projects.project_id"),
         nullable=False,
         index=True,
     )
-    user_id = Column(UUID(as_uuid=True), ForeignKey("users.user_id"), nullable=False, index=True)
+    user_id = Column(
+        UUID(as_uuid=True), ForeignKey("users.user_id"), nullable=False, index=True
+    )
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
 
@@ -115,7 +129,9 @@ class SpanModel(Base):
             ~cls.operation.like("prompt_tuning"),
         )
 
-    start_time_unix_nano = Column(BIGINT, nullable=False)  # postgres stores mico seconds precision timestamp
+    start_time_unix_nano = Column(
+        BIGINT, nullable=False
+    )  # postgres stores mico seconds precision timestamp
     end_time_unix_nano = Column(BIGINT, nullable=False)
 
     input_params = Column(JSONB, nullable=False, default=dict)
@@ -126,14 +142,18 @@ class SpanModel(Base):
 
     status_code = Column(Integer, nullable=False)
 
-    metadata_attributes = Column(JSONB, nullable=False, default=dict)  # SpanAttributes, tool.name, tool.platform etc
+    metadata_attributes = Column(
+        JSONB, nullable=False, default=dict
+    )  # SpanAttributes, tool.name, tool.platform etc
 
     feedback_score = Column(JSONB, nullable=False, default=dict)
 
     trace_id = Column(UUID(as_uuid=True), nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
-    parent_span_id = Column(String(36), nullable=True)  # just to not break the UI for now
+    parent_span_id = Column(
+        String(36), nullable=True
+    )  # just to not break the UI for now
 
     prompt_id = Column(String, nullable=True)
 
@@ -157,7 +177,9 @@ class BacktestRun(Base):
     )
     prompt_id = Column(String, nullable=False, index=True)
     models = Column(JSONB, nullable=False)  # List of model names tested
-    status = Column(String, nullable=False, default="pending")  # pending | running | completed | failed
+    status = Column(
+        String, nullable=False, default="pending"
+    )  # pending | running | completed | failed
     celery_task_id = Column(String, nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     completed_at = Column(DateTime(timezone=True), nullable=True)
