@@ -654,7 +654,7 @@ async def validate_judge_scoring_eligibility(
     if unscored_count < MIN_UNSCORED_SPANS_FOR_SCORING:
         return (
             False,
-            "Not enough requests have been collected yet. Keep using your application and try again later.",
+            f"Judge scoring requires at least {MIN_UNSCORED_SPANS_FOR_SCORING} unscored requests, but only {unscored_count} are available.",
             stats,
         )
 

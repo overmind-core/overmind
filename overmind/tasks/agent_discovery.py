@@ -81,7 +81,7 @@ async def validate_agent_discovery_eligibility(
     if total_count < MIN_SPANS_FOR_AGENT_DISCOVERY:
         return (
             False,
-            "Not enough request data has been collected yet. Keep using your application and try again later.",
+            f"Agent discovery requires at least {MIN_SPANS_FOR_AGENT_DISCOVERY} spans, but only {total_count} have been collected.",
             stats,
         )
 
@@ -124,7 +124,7 @@ async def validate_agent_discovery_eligibility(
     if unmapped_with_input_count == 0:
         return (
             False,
-            "Not enough request data with usable content has been collected yet. Keep using your application and try again later.",
+            f"Found {unmapped_count} unmapped span(s), but none contain usable input content.",
             stats,
         )
 

@@ -1164,7 +1164,7 @@ async def validate_backtesting_eligibility(
     if scored_count < MIN_SPANS_FOR_BACKTESTING:
         return (
             False,
-            "Not enough evaluated requests have been collected yet to run backtesting. Keep using your application and try again later.",
+            f"Backtesting requires at least {MIN_SPANS_FOR_BACKTESTING} evaluated requests, but only {scored_count} have been scored.",
             stats,
         )
 
@@ -1196,7 +1196,7 @@ async def validate_backtesting_eligibility(
     if scored_count < next_threshold:
         return (
             False,
-            "Not enough new requests have been collected since the last backtest. Continue using your application — backtesting will run automatically when ready.",
+            f"{scored_count} evaluated request(s) collected so far — backtesting will run automatically once {next_threshold} are reached.",
             stats,
         )
 
@@ -1216,7 +1216,7 @@ async def validate_backtesting_eligibility(
     if available_span_count < MIN_SPANS_FOR_BACKTESTING:
         return (
             False,
-            "Not enough request data is available for backtesting yet. Keep using your application and try again later.",
+            f"Backtesting requires at least {MIN_SPANS_FOR_BACKTESTING} requests with input data, but only {available_span_count} are available.",
             stats,
         )
 
