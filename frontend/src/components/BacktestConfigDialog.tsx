@@ -369,7 +369,9 @@ export function BacktestConfigDialog({ promptId, onSuccess, recommendations }: B
     let baseModel: string;
     let variantToRemove: string;
     if (key.includes(":reasoning-")) {
-      [baseModel, variantToRemove] = key.split(":reasoning-") as [string, string];
+      const parts = key.split(":reasoning-");
+      baseModel = parts[0] ?? "";
+      variantToRemove = parts[1] ?? "";
     } else if (key.includes(":reasoning")) {
       baseModel = key.split(":reasoning")[0]!;
       variantToRemove = "on";

@@ -12,7 +12,7 @@ characteristics, and the actual cost/latency observed in production spans.
 import asyncio
 import logging
 from datetime import datetime, timezone
-from typing import Any
+from typing import Any, Literal
 from uuid import UUID
 
 from celery import shared_task
@@ -163,8 +163,8 @@ def _format_available_models(span_stats: dict[str, Any] | None) -> str:
             or span_stats.get("avg_output_tokens", 0)
         )
     )
-    avg_in = int(span_stats["avg_input_tokens"]) if has_tokens else 0
-    avg_out = int(span_stats["avg_output_tokens"]) if has_tokens else 0
+    avg_in = int(span_stats.get("avg_input_tokens", 0)) if has_tokens else 0
+    avg_out = int(span_stats.get("avg_output_tokens", 0)) if has_tokens else 0
 
     lines: list[str] = []
     for provider, models in BACKTEST_MODELS_BY_PROVIDER.items():
@@ -235,9 +235,7 @@ def _format_span_stats(span_stats: dict[str, Any]) -> str:
 class _ModelRecommendation(BaseModel):
     model: str
     provider: str
-    category: str = Field(
-        description="One of: best_overall, most_capable, fastest, cheapest"
-    )
+    category: Literal["best_overall", "most_capable", "fastest", "cheapest"]
     reasoning_effort: str | None = Field(
         default=None,
         description=(
