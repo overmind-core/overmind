@@ -19,7 +19,7 @@ from tenacity import (
 )
 from overmind.db.session import get_session_local
 from overmind.models.traces import SpanModel
-from overmind.models.prompts import Prompt
+from overmind.models.prompts import Prompt, PROMPT_STATUS_ACTIVE
 from overmind.models.jobs import Job
 from overmind.api.v1.endpoints.jobs import JobType, JobStatus
 from overmind.core.llms import call_llm, try_json_parsing
@@ -832,7 +832,7 @@ async def _auto_evaluate_unscored_spans(
                             and_(
                                 Prompt.project_id == project_id,
                                 Prompt.slug == prompt_slug,
-                                Prompt.is_active.is_(True),
+                                Prompt.status == PROMPT_STATUS_ACTIVE,
                             )
                         )
                     )

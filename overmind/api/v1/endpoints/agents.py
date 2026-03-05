@@ -19,6 +19,8 @@ from overmind.api.v1.endpoints.jobs import JobOut
 from overmind.api.v1.endpoints.utils.agents import (
     humanise_slug,
     get_analytics_for_prompt,
+    get_active_prompts_for_project,
+    get_pending_version_by_slug,
     get_latest_prompts_for_project,
 )
 from overmind.tasks.periodic_reviews import REVIEW_THRESHOLDS
@@ -29,7 +31,12 @@ from overmind.api.v1.helpers.authentication import (
 )
 from overmind.db.session import get_db
 from overmind.models.jobs import Job
-from overmind.models.prompts import Prompt
+from overmind.models.prompts import (
+    Prompt,
+    PROMPT_STATUS_ACTIVE,
+    PROMPT_STATUS_PENDING,
+    PROMPT_STATUS_SUPERSEDED,
+)
 from overmind.models.suggestions import Suggestion
 from overmind.models.traces import SpanModel
 
@@ -122,17 +129,11 @@ async def list_agents(
     # Reconcile stale 'running' job statuses with Celery backend
     await sync_running_job_statuses(db, pid)
 
-    prompts = await get_latest_prompts_for_project(pid, db)
+    # Only active versions — one per slug, guaranteed by DISTINCT ON
+    prompts = await get_active_prompts_for_project(pid, db)
 
-    # Pre-fetch max version per slug so we can flag agents with newer pending versions
-    max_ver_q = await db.execute(
-        select(Prompt.slug, func.max(Prompt.version).label("max_ver"))
-        .where(Prompt.project_id == pid)
-        .group_by(Prompt.slug)
-    )
-    max_version_by_slug: dict[str, int] = {
-        row[0]: row[1] for row in max_ver_q.all()
-    }
+    # Fetch the latest pending version per slug in a single query (for the "vN available" badge)
+    pending_version_by_slug = await get_pending_version_by_slug(pid, db)
 
     agents: list[AgentOut] = []
     for prompt in prompts:
@@ -181,22 +182,15 @@ async def list_agents(
             .limit(5)
         )
         agent_display_name = prompt.display_name or humanise_slug(prompt.slug)
-        jobs = [
-            JobOut.from_model(j, prompt_display_name=agent_display_name)
-            for j in jobs_q.scalars().all()
-        ]
+        jobs = [JobOut.from_model(j, prompt_display_name=agent_display_name) for j in jobs_q.scalars().all()]
 
         agent_desc = prompt.agent_description or {}
-        next_review_span_count = agent_desc.get(
-            "next_review_span_count", REVIEW_THRESHOLDS[0]
-        )
+        next_review_span_count = agent_desc.get("next_review_span_count", REVIEW_THRESHOLDS[0])
         initial_review_due = (
-            not agent_desc.get("initial_review_completed")
-            and analytics.scored_spans >= REVIEW_THRESHOLDS[0]
+            not agent_desc.get("initial_review_completed") and analytics.scored_spans >= REVIEW_THRESHOLDS[0]
         )
         periodic_review_due = (
-            bool(agent_desc.get("initial_review_completed"))
-            and analytics.scored_spans >= next_review_span_count
+            bool(agent_desc.get("initial_review_completed")) and analytics.scored_spans >= next_review_span_count
         )
         ready_for_review = bool(
             agent_desc.get("description")
@@ -204,14 +198,13 @@ async def list_agents(
             and (initial_review_due or periodic_review_due)
         )
 
-        max_ver = max_version_by_slug.get(prompt.slug)
         agents.append(
             AgentOut(
                 slug=prompt.slug,
                 name=agent_display_name,
                 prompt_id=prompt.prompt_id,
                 version=prompt.version,
-                latest_version=max_ver if max_ver and max_ver > prompt.version else None,
+                latest_version=pending_version_by_slug.get(prompt.slug),
                 analytics=analytics,
                 suggestions=suggestions,
                 jobs=jobs,
@@ -234,6 +227,8 @@ class PromptVersionOut(BaseModel):
     version: int
     prompt_text: str
     hash: str
+    # Lifecycle status: active | pending | superseded | rejected
+    status: str = PROMPT_STATUS_ACTIVE
     evaluation_criteria: dict[str, Any] | None = None
     improvement_metadata: dict[str, Any] | None = None
     created_at: str | None = None
@@ -294,13 +289,13 @@ async def get_agent_detail(
     if not all_versions:
         raise HTTPException(status_code=404, detail="Agent not found")
 
-    # Determine active version (is_active=True) and pending version (max version if different)
-    active_prompt = next((v for v in all_versions if v.is_active), None)
+    # Determine active version and pending version (highest version that is 'pending')
+    active_prompt = next((v for v in all_versions if v.status == PROMPT_STATUS_ACTIVE), None)
     max_prompt = all_versions[0]  # already ordered by version desc
 
     # Auto-accept: if a pending version exists and has at least one real production span,
-    # flip is_active atomically without waiting for user action.
-    if active_prompt and max_prompt.version != active_prompt.version:
+    # activate it atomically without waiting for user action.
+    if active_prompt and max_prompt.status == PROMPT_STATUS_PENDING:
         real_span_check = await db.execute(
             select(func.count(SpanModel.span_id)).where(
                 and_(
@@ -312,10 +307,10 @@ async def get_agent_detail(
         real_span_count = real_span_check.scalar() or 0
 
         if real_span_count >= 1:
-            # Auto-accept: flip all versions inactive, then make max_prompt active
             for v in all_versions:
-                v.is_active = False
-            max_prompt.is_active = True
+                if v.version != max_prompt.version and v.status != "rejected":
+                    v.status = PROMPT_STATUS_SUPERSEDED
+            max_prompt.status = PROMPT_STATUS_ACTIVE
             # Mark associated pending suggestion as accepted
             pending_sugg_q = await db.execute(
                 select(Suggestion).where(
@@ -333,14 +328,12 @@ async def get_agent_detail(
             await db.commit()
             active_prompt = max_prompt
 
-    # Fall back to max_prompt if no is_active row found (legacy safety)
+    # Fall back to max_prompt if no active row found (legacy safety)
     if not active_prompt:
         active_prompt = max_prompt
 
     latest = active_prompt
-    pending_version = (
-        max_prompt.version if max_prompt.version != active_prompt.version else None
-    )
+    pending_version = max_prompt.version if max_prompt.version != active_prompt.version else None
 
     # Build per-version analytics
     version_outs: list[PromptVersionOut] = []
@@ -371,18 +364,11 @@ async def get_agent_detail(
         )
         scored_row = scored_q.one()
         scored_spans = scored_row[0] or 0
-        avg_score = (
-            round(float(scored_row[1]), 4) if scored_row[1] is not None else None
-        )
+        avg_score = round(float(scored_row[1]), 4) if scored_row[1] is not None else None
 
         # Avg latency
         lat_q = await db.execute(
-            select(
-                func.avg(
-                    (SpanModel.end_time_unix_nano - SpanModel.start_time_unix_nano)
-                    / 1_000_000.0
-                )
-            ).where(
+            select(func.avg((SpanModel.end_time_unix_nano - SpanModel.start_time_unix_nano) / 1_000_000.0)).where(
                 and_(
                     SpanModel.prompt_id == v.prompt_id,
                     SpanModel.exclude_system_spans(),
@@ -400,6 +386,7 @@ async def get_agent_detail(
                 version=v.version,
                 prompt_text=v.prompt,
                 hash=v.hash,
+                status=v.status,
                 evaluation_criteria=v.evaluation_criteria,
                 improvement_metadata=v.improvement_metadata,
                 created_at=v.created_at.isoformat() if v.created_at else None,
@@ -417,9 +404,7 @@ async def get_agent_detail(
     # Suggestions
     sugg_q = await db.execute(
         select(Suggestion)
-        .where(
-            and_(Suggestion.prompt_slug == prompt_slug, Suggestion.project_id == pid)
-        )
+        .where(and_(Suggestion.prompt_slug == prompt_slug, Suggestion.project_id == pid))
         .order_by(Suggestion.created_at.desc())
         .limit(20)
     )
@@ -452,27 +437,18 @@ async def get_agent_detail(
         .limit(20)
     )
     detail_display_name = latest.display_name or humanise_slug(latest.slug)
-    jobs = [
-        JobOut.from_model(j, prompt_display_name=detail_display_name)
-        for j in jobs_q.scalars().all()
-    ]
+    jobs = [JobOut.from_model(j, prompt_display_name=detail_display_name) for j in jobs_q.scalars().all()]
 
     agent_desc = latest.agent_description or {}
-    next_review_span_count = agent_desc.get(
-        "next_review_span_count", REVIEW_THRESHOLDS[0]
-    )
+    next_review_span_count = agent_desc.get("next_review_span_count", REVIEW_THRESHOLDS[0])
     initial_review_due = (
-        not agent_desc.get("initial_review_completed")
-        and analytics.scored_spans >= REVIEW_THRESHOLDS[0]
+        not agent_desc.get("initial_review_completed") and analytics.scored_spans >= REVIEW_THRESHOLDS[0]
     )
     periodic_review_due = (
-        bool(agent_desc.get("initial_review_completed"))
-        and analytics.scored_spans >= next_review_span_count
+        bool(agent_desc.get("initial_review_completed")) and analytics.scored_spans >= next_review_span_count
     )
     ready_for_review = bool(
-        agent_desc.get("description")
-        and latest.evaluation_criteria
-        and (initial_review_due or periodic_review_due)
+        agent_desc.get("description") and latest.evaluation_criteria and (initial_review_due or periodic_review_due)
     )
 
     return AgentDetailOut(
@@ -533,13 +509,9 @@ async def update_agent_metadata(
     if request.name is not None:
         name_stripped = request.name.strip()
         if len(name_stripped) < 3:
-            raise HTTPException(
-                status_code=400, detail="Name must be at least 3 characters long"
-            )
+            raise HTTPException(status_code=400, detail="Name must be at least 3 characters long")
         if len(name_stripped) > 255:
-            raise HTTPException(
-                status_code=400, detail="Name must be no more than 255 characters"
-            )
+            raise HTTPException(status_code=400, detail="Name must be no more than 255 characters")
     else:
         name_stripped = None
 
@@ -547,21 +519,15 @@ async def update_agent_metadata(
     if request.tags is not None:
         cleaned_tags = [t.strip() for t in request.tags if t.strip()]
         if len(cleaned_tags) > 20:
-            raise HTTPException(
-                status_code=400, detail="Maximum 20 tags allowed per agent"
-            )
+            raise HTTPException(status_code=400, detail="Maximum 20 tags allowed per agent")
         for tag in cleaned_tags:
             if len(tag) > 50:
-                raise HTTPException(
-                    status_code=400, detail=f"Tag '{tag}' exceeds 50 character limit"
-                )
+                raise HTTPException(status_code=400, detail=f"Tag '{tag}' exceeds 50 character limit")
     else:
         cleaned_tags = None
 
     # Fetch all versions of this slug in the project
-    versions_q = await db.execute(
-        select(Prompt).where(and_(Prompt.slug == prompt_slug, Prompt.project_id == pid))
-    )
+    versions_q = await db.execute(select(Prompt).where(and_(Prompt.slug == prompt_slug, Prompt.project_id == pid)))
     all_versions = versions_q.scalars().all()
 
     if not all_versions:
@@ -633,9 +599,7 @@ async def accept_prompt_version(
     if not await user.is_project_member(pid, db):
         raise HTTPException(status_code=403, detail="Access denied to this project")
 
-    versions_q = await db.execute(
-        select(Prompt).where(and_(Prompt.slug == prompt_slug, Prompt.project_id == pid))
-    )
+    versions_q = await db.execute(select(Prompt).where(and_(Prompt.slug == prompt_slug, Prompt.project_id == pid)))
     all_versions = versions_q.scalars().all()
 
     if not all_versions:
@@ -649,8 +613,9 @@ async def accept_prompt_version(
         )
 
     for v in all_versions:
-        v.is_active = False
-    target.is_active = True
+        if v.version != target.version and v.status != "rejected":
+            v.status = PROMPT_STATUS_SUPERSEDED
+    target.status = PROMPT_STATUS_ACTIVE
 
     # Also accept any pending suggestion targeting this version
     pending_sugg_q = await db.execute(

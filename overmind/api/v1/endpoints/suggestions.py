@@ -13,7 +13,12 @@ from overmind.api.v1.helpers.authentication import (
     get_current_user,
 )
 from overmind.db.session import get_db
-from overmind.models.prompts import Prompt
+from overmind.models.prompts import (
+    Prompt,
+    PROMPT_STATUS_ACTIVE,
+    PROMPT_STATUS_SUPERSEDED,
+    PROMPT_STATUS_REJECTED,
+)
 from overmind.models.traces import SpanModel
 
 router = APIRouter()
@@ -204,8 +209,6 @@ async def accept_suggestion(
         )
     )
     all_versions = all_versions_q.scalars().all()
-    for v in all_versions:
-        v.is_active = False
 
     # Activate the accepted version
     target = next(
@@ -213,7 +216,11 @@ async def accept_suggestion(
     )
     if not target:
         raise HTTPException(status_code=404, detail="Target prompt version not found")
-    target.is_active = True
+
+    for v in all_versions:
+        if v.version != target.version and v.status != PROMPT_STATUS_REJECTED:
+            v.status = PROMPT_STATUS_SUPERSEDED
+    target.status = PROMPT_STATUS_ACTIVE
 
     suggestion.status = "accepted"
     await db.commit()
@@ -249,6 +256,23 @@ async def dismiss_suggestion(
 
     suggestion = await get_suggestion_or_404(sid, user, db)
     suggestion.status = "dismissed"
+
+    # Also mark the associated prompt version as rejected so it is excluded
+    # from future pipeline runs and clearly labelled in the UI.
+    if suggestion.new_prompt_version is not None:
+        prompt_q = await db.execute(
+            select(Prompt).where(
+                and_(
+                    Prompt.slug == suggestion.prompt_slug,
+                    Prompt.project_id == suggestion.project_id,
+                    Prompt.version == suggestion.new_prompt_version,
+                )
+            )
+        )
+        prompt_version = prompt_q.scalar_one_or_none()
+        if prompt_version and prompt_version.status == "pending":
+            prompt_version.status = PROMPT_STATUS_REJECTED
+
     await db.commit()
     await db.refresh(suggestion)
 

@@ -6,7 +6,28 @@ import type { PromptVersionOut } from "@/api";
 import { MiniStat } from "@/components/mini-stat";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { formatDate } from "@/lib/utils";
+import { cn, formatDate } from "@/lib/utils";
+
+function VersionStatusBadge({ status }: { status?: string }) {
+  if (!status || status === "active") {
+    return (
+      <Badge className="bg-emerald-500/15 text-emerald-700 dark:text-emerald-400" variant="secondary">
+        Active
+      </Badge>
+    );
+  }
+  const map: Record<string, { label: string; className: string }> = {
+    pending:    { label: "Pending",    className: "border-amber-400/60 text-amber-700 dark:text-amber-400" },
+    superseded: { label: "Superseded", className: "text-muted-foreground" },
+    rejected:   { label: "Rejected",   className: "border-red-400/60 text-red-600 dark:text-red-400" },
+  };
+  const cfg = map[status] ?? { label: status, className: "text-muted-foreground" };
+  return (
+    <Badge className={cn(cfg.className)} variant="outline">
+      {cfg.label}
+    </Badge>
+  );
+}
 
 export function VersionsTab({
   agentName,
@@ -42,6 +63,7 @@ export function VersionsTab({
                     <span className="font-bold capitalize">{agentName}</span>
                     <Badge variant="outline">v{v.version}</Badge>
                     <Badge variant="secondary">{v.slug}</Badge>
+                    <VersionStatusBadge status={v.status} />
                   </div>
                   <p className="mt-0.5 text-xs text-muted-foreground">
                     {formatDate(v.createdAt ?? "")}

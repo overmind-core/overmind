@@ -74,7 +74,7 @@ Checks if a project has unmapped spans eligible for discovery. Requires at least
 
 ### `_auto_accept_pending_versions(db, project_id) -> None`
 
-Called at the end of `_map_spans_to_templates`. For each prompt slug with a pending version (non-active, higher version number), checks if at least one real production span has been mapped to it. If so, flips `is_active` to the new version and marks the associated suggestion as accepted.
+Called at the end of `_map_spans_to_templates`. For each prompt slug with a version whose `status='pending'`, checks if at least one real production span has been mapped to it. If so, sets that version's `status` to `'active'`, marks all other non-rejected versions as `'superseded'`, and marks the associated suggestion as accepted.
 
 ## Template Extractor (`overmind/core/template_extractor/`)
 

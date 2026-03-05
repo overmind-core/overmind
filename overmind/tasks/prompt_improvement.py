@@ -16,7 +16,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import select, and_, func, cast, Float
 
 from overmind.db.session import get_session_local
-from overmind.models.prompts import Prompt
+from overmind.models.prompts import Prompt, PROMPT_STATUS_PENDING
 from overmind.models.iam.projects import Project
 from overmind.models.suggestions import Suggestion as SuggestionModel
 from overmind.models.traces import SpanModel
@@ -849,7 +849,7 @@ async def create_prompt_version(
         evaluation_criteria=evaluation_criteria,
         improvement_metadata=improvement_metadata,
         tags=base_prompt.tags,
-        is_active=False,  # tuning-created versions await acceptance
+        status=PROMPT_STATUS_PENDING,  # tuning-created versions await acceptance
     )
 
     session.add(new_prompt)

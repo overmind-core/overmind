@@ -19,7 +19,12 @@ from sqlalchemy.orm import selectinload
 from overmind.celery_app import celery_app
 from overmind.db.session import get_session_local
 from overmind.models.traces import SpanModel, TraceModel
-from overmind.models.prompts import Prompt
+from overmind.models.prompts import (
+    Prompt,
+    PROMPT_STATUS_ACTIVE,
+    PROMPT_STATUS_PENDING,
+    PROMPT_STATUS_SUPERSEDED,
+)
 from overmind.models.iam.projects import Project
 from overmind.models.jobs import Job
 from overmind.api.v1.endpoints.jobs import JobType, JobStatus
@@ -351,7 +356,7 @@ async def _get_existing_templates(
     stmt = (
         select(Prompt)
         .where(Prompt.project_id == project_id)
-        .order_by(Prompt.is_active.desc(), Prompt.version.desc())
+        .order_by(Prompt.version.desc())
     )
     result = await db.execute(stmt)
     prompts = result.scalars().all()
@@ -591,10 +596,12 @@ async def _auto_accept_pending_versions(
             .order_by(Prompt.version.desc())
         )
         all_versions = versions_q.scalars().all()
-        active_prompt = next((v for v in all_versions if v.is_active), None)
+        active_prompt = next((v for v in all_versions if v.status == PROMPT_STATUS_ACTIVE), None)
         max_prompt = all_versions[0]
 
         if not active_prompt or max_prompt.version == active_prompt.version:
+            continue
+        if max_prompt.status != PROMPT_STATUS_PENDING:
             continue
 
         # Check for real production spans on the pending (max) version
@@ -610,8 +617,9 @@ async def _auto_accept_pending_versions(
 
         if real_span_count >= 1:
             for v in all_versions:
-                v.is_active = False
-            max_prompt.is_active = True
+                if v.version != max_prompt.version and v.status != "rejected":
+                    v.status = PROMPT_STATUS_SUPERSEDED
+            max_prompt.status = PROMPT_STATUS_ACTIVE
 
             pending_sugg_q = await db.execute(
                 select(SuggestionModel).where(

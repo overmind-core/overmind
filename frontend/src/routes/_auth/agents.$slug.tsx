@@ -244,19 +244,18 @@ function AgentDetailPage() {
 
   const agent = data;
   const { analytics } = agent;
-  const activeVersion = allVersionsSorted.find((v) => v.version === agent.activeVersion) ?? allVersionsSorted[0];
-  const latestVersion = allVersionsSorted[0] ?? null;
-  const hasNewerVersion = latestVersion != null && activeVersion != null && latestVersion.version > activeVersion.version;
-  const pendingVersionData = agent.pendingVersion != null
-    ? allVersionsSorted.find((v) => v.version === agent.pendingVersion) ?? null
-    : hasNewerVersion ? latestVersion : null;
+  // Use status field from each version when available; fall back to version number comparison
+  const activeVersion = allVersionsSorted.find((v) => v.status === "active")
+    ?? allVersionsSorted.find((v) => v.version === agent.activeVersion)
+    ?? allVersionsSorted[0];
+  const pendingVersionData = allVersionsSorted.find((v) => v.status === "pending") ?? null;
   const lastEvaluated = activeVersion?.createdAt;
-  const pendingSuggestion = agent.pendingVersion != null
+  const pendingVersionNumber = pendingVersionData?.version ?? null;
+  const pendingSuggestion = pendingVersionNumber != null
     ? (agent.suggestions ?? []).find(
-      (s) => s.newPromptVersion === agent.pendingVersion && s.status === "pending"
+      (s) => s.newPromptVersion === pendingVersionNumber && s.status === "pending"
     ) ?? null
     : null;
-  const pendingVersionNumber = agent.pendingVersion ?? (hasNewerVersion ? latestVersion.version : null);
 
   const agentForReview = {
     slug: agent.slug,
