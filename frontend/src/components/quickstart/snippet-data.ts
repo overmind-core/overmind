@@ -33,8 +33,8 @@ export const LANGUAGES: LanguageConfig[] = [
     label: "JavaScript / TypeScript",
     vendors: [
       { id: "openai", label: "OpenAI" },
-      { id: "anthropic", label: "Anthropic", comingSoon: true },
-      { id: "gemini", label: "Google Gemini", comingSoon: true },
+      { id: "anthropic", label: "Anthropic" },
+      { id: "gemini", label: "Google Gemini" },
     ],
   },
 ];
@@ -114,6 +114,63 @@ const response = await openai.chat.completions.create({
   model: "gpt-5-mini",
   messages: [{ role: "user", content: "Explain quantum computing" }],
 });
+
+await overmindClient.shutdown();`,
+  },
+  anthropic: {
+    installCommand: "npm install @overmind-lab/trace-sdk @anthropic-ai/sdk",
+    codeSnippet: (apiKey) => `import * as Anthropic from "@anthropic-ai/sdk";
+import { OvermindClient } from "@overmind-lab/trace-sdk";
+
+const overmindClient = new OvermindClient({
+  apiKey: "${apiKey}",
+  appName: "my app",
+});
+
+overmindClient.initTracing({
+  enableBatching: false,
+  enabledProviders: { anthropic: Anthropic },
+  instrumentations: [],
+});
+
+const client = new Anthropic.default({ apiKey: process.env.ANTHROPIC_API_KEY });
+
+const message = await client.messages.create({
+  model: "claude-sonnet-4-20250514",
+  max_tokens: 1024,
+  messages: [{ role: "user", content: "Explain quantum computing" }],
+});
+
+console.log(message.content[0].text);
+
+await overmindClient.shutdown();`,
+  },
+  gemini: {
+    installCommand: "npm install @overmind-lab/trace-sdk @google/genai",
+    codeSnippet: (apiKey) => `import * as GoogleGenAI from "@google/genai";
+import { OvermindClient } from "@overmind-lab/trace-sdk";
+
+const overmindClient = new OvermindClient({
+  apiKey: "${apiKey}",
+  appName: "my app",
+});
+
+overmindClient.initTracing({
+  enableBatching: false,
+  enabledProviders: { googleGenAI: GoogleGenAI },
+  instrumentations: [],
+});
+
+const client = new GoogleGenAI.GoogleGenAI({
+  apiKey: process.env.GEMINI_API_KEY,
+});
+
+const response = await client.models.generateContent({
+  model: "gemini-2.0-flash",
+  contents: "Explain quantum computing",
+});
+
+console.log(response.text);
 
 await overmindClient.shutdown();`,
   },
