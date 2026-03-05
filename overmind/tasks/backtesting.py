@@ -52,21 +52,6 @@ logger = logging.getLogger(__name__)
 # have an API key configured.  The full list is kept for reference /
 # documentation and for callers that pass an explicit list.
 # ---------------------------------------------------------------------------
-_ALL_BACKTEST_MODELS: list[str] = [
-    # OpenAI
-    "gpt-5-mini",
-    "gpt-5.2",
-    "gpt-5-nano",
-    # Anthropic
-    "claude-opus-4-6",
-    "claude-sonnet-4-6",
-    "claude-haiku-4-5",
-    # Google Gemini
-    "gemini-3.1-pro-preview",
-    "gemini-3-flash-preview",
-    "gemini-2.5-flash-lite",
-    "gemini-2.5-flash",
-]
 
 
 def get_default_backtest_models() -> list[str]:

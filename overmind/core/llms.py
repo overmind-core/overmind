@@ -29,6 +29,7 @@ SUPPORTED_LLM_MODELS = [
         "reasoning_levels": ["low", "medium", "high"],
         "backtesting_preferred": True,
         "is_new": True,
+        "description": "OpenAI's most capable balanced model with strong reasoning. Excels at complex multi-step tasks, code generation, and nuanced analysis.",
     },
     {
         "provider": "openai",
@@ -36,6 +37,7 @@ SUPPORTED_LLM_MODELS = [
         "supports_reasoning": True,
         "adaptive_mode": True,
         "reasoning_levels": ["low", "medium", "high"],
+        "description": "Fast and cost-effective OpenAI model with reasoning support. Great for straightforward tasks, Q&A, and moderate-complexity workflows.",
     },
     {
         "provider": "openai",
@@ -43,6 +45,7 @@ SUPPORTED_LLM_MODELS = [
         "supports_reasoning": True,
         "adaptive_mode": True,
         "reasoning_levels": ["low", "medium", "high"],
+        "description": "Ultra-fast, cheapest OpenAI model. Best for simple classification, extraction, or high-volume tasks where cost matters most.",
     },
     {
         "provider": "openai",
@@ -51,6 +54,7 @@ SUPPORTED_LLM_MODELS = [
         "adaptive_mode": True,
         "reasoning_levels": ["low", "medium", "high"],
         "is_new": True,
+        "description": "OpenAI's smallest 5.2-generation model. Ultra-cheap with strong capability for structured extraction, classification, and simple QA.",
     },
     {
         "provider": "openai",
@@ -59,6 +63,7 @@ SUPPORTED_LLM_MODELS = [
         "adaptive_mode": True,
         "reasoning_levels": ["low", "medium", "high"],
         "is_new": True,
+        "description": "OpenAI's most advanced 5.2 model. Highest capability for expert-level reasoning, complex code, and demanding analysis tasks.",
     },
     {
         "provider": "openai",
@@ -66,9 +71,15 @@ SUPPORTED_LLM_MODELS = [
         "supports_reasoning": True,
         "adaptive_mode": True,
         "reasoning_levels": ["low", "medium", "high"],
+        "description": "OpenAI balanced model with broad capability and reasoning support. Good general-purpose choice for moderate to complex tasks.",
     },
     # GPT-4 family
-    {"provider": "openai", "model_name": "gpt-4.1", "supports_reasoning": False},
+    {
+        "provider": "openai",
+        "model_name": "gpt-4.1",
+        "supports_reasoning": False,
+        "description": "Proven OpenAI model without reasoning. Reliable for instruction-following, classification, and established production workloads.",
+    },
     # ── Anthropic ────────────────────────────────────────────────────────────
     # Claude 4.6: adaptive thinking (effort) — is_new=True; "max" is Opus 4.6 only
     {
@@ -78,6 +89,7 @@ SUPPORTED_LLM_MODELS = [
         "adaptive_mode": True,
         "reasoning_levels": ["low", "medium", "high", "max"],
         "is_new": True,
+        "description": "Anthropic's most powerful model. Best for the most demanding tasks requiring deep reasoning, creative writing, or exhaustive analysis.",
     },
     {
         "provider": "anthropic",
@@ -87,6 +99,7 @@ SUPPORTED_LLM_MODELS = [
         "reasoning_levels": ["low", "medium", "high"],
         "backtesting_preferred": True,
         "is_new": True,
+        "description": "Anthropic's best balanced model with adaptive reasoning. Excellent for complex reasoning, structured outputs, and nuanced language tasks.",
     },
     # Claude 4.5: manual thinking (budget_tokens) only; no reasoning_effort
     {
@@ -95,6 +108,7 @@ SUPPORTED_LLM_MODELS = [
         "supports_reasoning": True,
         "adaptive_mode": False,
         "thinking_budget_tokens": [8000],
+        "description": "Anthropic's most powerful 4.5-generation model with manual thinking. Best for complex reasoning in stable production workloads.",
     },
     {
         "provider": "anthropic",
@@ -102,6 +116,7 @@ SUPPORTED_LLM_MODELS = [
         "supports_reasoning": True,
         "adaptive_mode": False,
         "thinking_budget_tokens": [8000],
+        "description": "Anthropic's balanced 4.5-generation model with manual thinking. Strong reasoning capability for complex and structured tasks.",
     },
     {
         "provider": "anthropic",
@@ -109,6 +124,7 @@ SUPPORTED_LLM_MODELS = [
         "supports_reasoning": True,
         "adaptive_mode": False,
         "thinking_budget_tokens": [8000],
+        "description": "Anthropic's fastest and cheapest model. Ideal for simple tasks, high-throughput pipelines, and latency-sensitive interactive use cases.",
     },
     # ── Gemini ───────────────────────────────────────────────────────────────
     # Gemini 3 family: is_new=True
@@ -119,6 +135,7 @@ SUPPORTED_LLM_MODELS = [
         "adaptive_mode": True,
         "reasoning_levels": ["low", "medium", "high"],
         "is_new": True,
+        "description": "Google's most capable Gemini model. Excellent for complex reasoning, large-context tasks, and advanced analysis.",
     },
     {
         "provider": "gemini",
@@ -128,6 +145,7 @@ SUPPORTED_LLM_MODELS = [
         "reasoning_levels": ["low", "medium", "high"],
         "backtesting_preferred": True,
         "is_new": True,
+        "description": "Google's best balanced fast model with reasoning. Strong at multi-modal tasks, structured extraction, and real-time applications.",
     },
     # Gemini 2.5 family
     {
@@ -141,12 +159,14 @@ SUPPORTED_LLM_MODELS = [
         "model_name": "gemini-2.5-flash",
         "supports_reasoning": True,
         "adaptive_mode": False,
-        "thinking_budget_tokens": [8000],
+        "thinking_budget_tokens": [-1],  # -1 = dynamic (model decides budget)
+        "description": "Fast Gemini model with dynamic reasoning support. Good balance of speed and capability for moderate-complexity tasks.",
     },
     {
         "provider": "gemini",
         "model_name": "gemini-2.5-flash-lite",
         "supports_reasoning": False,
+        "description": "Google's fastest and cheapest Gemini model. Suited for high-volume simple tasks where speed and cost are priorities.",
     },
     {
         "provider": "gemini",
@@ -155,6 +175,7 @@ SUPPORTED_LLM_MODELS = [
         "adaptive_mode": True,
         "reasoning_levels": ["low", "medium", "high"],
         "reasoning_required": True,
+        "description": "Google's most capable Gemini 2.5 model with always-on reasoning. Best for complex multi-step tasks requiring deep analysis.",
     },  # cannot disable reasoning
 ]
 SUPPORTED_LLM_MODEL_NAMES = {item["model_name"] for item in SUPPORTED_LLM_MODELS}
@@ -171,6 +192,39 @@ REASONING_SUPPORT_BY_MODEL = {
     }
     for item in SUPPORTED_LLM_MODELS
 }
+
+
+def get_model_description(model_name: str) -> str:
+    """Return the human-readable capability description for a model."""
+    for item in SUPPORTED_LLM_MODELS:
+        if item["model_name"] == model_name:
+            return item.get("description", "")
+    return ""
+
+
+def get_model_reasoning_info(model_name: str) -> dict:
+    """Return reasoning capability metadata for a model.
+
+    Keys:
+        supports_reasoning  – bool
+        adaptive_mode       – True (effort-based) | False (budget-token) | None (no reasoning)
+        reasoning_levels    – list of valid effort strings, e.g. ["low","medium","high"]
+        reasoning_required  – bool; True means reasoning cannot be disabled
+    """
+    for item in SUPPORTED_LLM_MODELS:
+        if item["model_name"] == model_name:
+            return {
+                "supports_reasoning": item.get("supports_reasoning", False),
+                "adaptive_mode": item.get("adaptive_mode"),
+                "reasoning_levels": item.get("reasoning_levels") or [],
+                "reasoning_required": item.get("reasoning_required", False),
+            }
+    return {
+        "supports_reasoning": False,
+        "adaptive_mode": None,
+        "reasoning_levels": [],
+        "reasoning_required": False,
+    }
 
 
 def model_supports_reasoning(model_name: str) -> bool:

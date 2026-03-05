@@ -114,6 +114,12 @@ export interface AgentDetailOut {
      * @memberof AgentDetailOut
      */
     tags?: Array<string>;
+    /**
+     * LLM-generated model recommendations for backtesting
+     * @type {{ [key: string]: any; }}
+     * @memberof AgentDetailOut
+     */
+    backtestModelSuggestions?: { [key: string]: any; } | null;
 }
 
 /**
@@ -149,6 +155,7 @@ export function AgentDetailOutFromJSONTyped(json: any, ignoreDiscriminator: bool
         'agentDescription': json['agent_description'] == null ? undefined : json['agent_description'],
         'readyForReview': json['ready_for_review'] == null ? undefined : json['ready_for_review'],
         'tags': json['tags'] == null ? undefined : json['tags'],
+        'backtestModelSuggestions': json['backtest_model_suggestions'] == null ? undefined : json['backtest_model_suggestions'],
     };
 }
 
@@ -174,6 +181,7 @@ export function AgentDetailOutToJSONTyped(value?: AgentDetailOut | null, ignoreD
         'agent_description': value['agentDescription'],
         'ready_for_review': value['readyForReview'],
         'tags': value['tags'],
+        'backtest_model_suggestions': value['backtestModelSuggestions'],
     };
 }
 

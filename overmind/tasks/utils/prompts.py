@@ -223,7 +223,7 @@ A correct tool-calling response:
 - Uses correct argument values grounded in the user's query
   (e.g., correct entity names, correct enum values, no hallucinated values)
 - Does not omit required parameters
-- Covers all items from the user's request — the correct number and
+- Covers all items from the user's request  -  the correct number and
   structure of calls depends on the tool's schema (some tools accept
   batch inputs in a single call; others require one call per item)
 
@@ -245,7 +245,7 @@ Penalize for:
 2. Review the available tools to understand what is possible
 3. Check if the model selected the right tool(s) for this query
 4. Verify that arguments are well-formed and match the user's intent
-5. Check completeness — did the model make all necessary calls?
+5. Check completeness  -  did the model make all necessary calls?
 6. Score from 0 to 1 based on tool selection and argument quality
 </Instructions>
 """
@@ -340,7 +340,7 @@ If the examples above are lengthy or numerous:
 <Instructions>
 - Identify patterns: are failures mostly in tool selection, argument quality, or answer synthesis?
 - Generate 3-5 specific, actionable suggestions to improve the prompt template
-- Focus ONLY on improving the system/user prompt text — tool definitions are API contracts and must stay unchanged
+- Focus ONLY on improving the system/user prompt text  -  tool definitions are API contracts and must stay unchanged
 - If tool selection is poor, suggest clearer instructions about WHEN to use each tool
 - If arguments are poor, suggest adding constraints or examples for HOW to call tools correctly
 - If final answers are poor despite good tool results, suggest formatting and synthesis instructions
@@ -357,7 +357,7 @@ When suggesting tool-usage improvements, consider:
 </tool_calling_best_practices>
 
 <output_verbosity>
-Each suggestion: 1–2 sentences — state the problem briefly, then the fix.
+Each suggestion: 1–2 sentences  -  state the problem briefly, then the fix.
 Prefer compact, actionable bullets over long narrative paragraphs.
 </output_verbosity>
 
@@ -402,14 +402,14 @@ TOOL_PROMPT_IMPROVEMENT_PROMPT_ANTHROPIC = """Improve the following prompt templ
 
 <Instructions>
 - Improve ONLY the system and user prompt text
-- Tool definitions are shown for context only — they must remain unchanged
+- Tool definitions are shown for context only  -  they must remain unchanged
 - If the current prompt has template variables (e.g., {{variable_name}}), preserve them exactly
 - Use good examples to understand what works well and preserve those strengths
 - Address issues evident in poor tool-call examples (tool selection and argument problems)
 - Address issues evident in poor text examples (answer synthesis and faithfulness problems)
 - If tool selection is a problem, add clearer guidance about when to use each tool
 - If answer synthesis is a problem, add instructions about how to present tool results faithfully
-- Keep the prompt generalizable — do not overfit to specific examples
+- Keep the prompt generalizable  -  do not overfit to specific examples
 - Structure the improved prompt for prompt caching: all static content (role, instructions, constraints, tool definitions, examples) must come FIRST; all dynamic template variables must come LAST
 </Instructions>
 
@@ -429,7 +429,7 @@ When improving tool-usage instructions, consider adding:
 </tool_calling_best_practices>
 
 <output_verbosity>
-Keep the improved prompt concise — prefer compact bullets and short sections over long narrative paragraphs.
+Keep the improved prompt concise  -  prefer compact bullets and short sections over long narrative paragraphs.
 If adding constraints, use crisp 1–2 sentence rules.
 </output_verbosity>
 
@@ -509,7 +509,7 @@ Remember: Tool calls are intermediary steps. Evaluate the final output's correct
 SUGGESTION_GENERATION_SYSTEM_PROMPT_ANTHROPIC = """You are an expert prompt engineer analyzing LLM performance. Your task is to identify patterns in poor-performing outputs and generate specific, actionable suggestions for improving the prompt template. Precise, well-targeted suggestions lead to measurable quality gains in downstream prompts, so focus on high-impact issues.
 
 <output_constraints>
-Return ONLY valid JSON — no explanation, no markdown fencing.
+Return ONLY valid JSON  -  no explanation, no markdown fencing.
 Each suggestion should be 1–2 sentences: state the problem briefly, then the fix.
 Provide 3–5 suggestions; prefer fewer, higher-impact suggestions over many small ones.
 </output_constraints>"""
@@ -555,11 +555,11 @@ If the examples above are lengthy or numerous:
 
 <uncertainty_and_ambiguity>
 If failure patterns are ambiguous or could stem from multiple root causes, explicitly state the most likely interpretation and label your assumption.
-Anchor claims in the provided examples — use language like "Based on the provided examples…" rather than absolute claims.
+Anchor claims in the provided examples  -  use language like "Based on the provided examples…" rather than absolute claims.
 </uncertainty_and_ambiguity>
 
 <output_verbosity>
-Each suggestion: 1–2 sentences — state the problem briefly, then the fix.
+Each suggestion: 1–2 sentences  -  state the problem briefly, then the fix.
 Prefer compact, actionable bullets over long narrative paragraphs.
 </output_verbosity>
 
@@ -575,7 +575,7 @@ Return JSON in this exact format:
 PROMPT_IMPROVEMENT_SYSTEM_PROMPT_ANTHROPIC = """You are an expert prompt engineer. Your task is to improve a prompt template based on suggestions and example performance data. A well-improved prompt directly addresses observed failure patterns while preserving what already works, leading to measurable quality gains.
 
 <output_constraints>
-Return ONLY the improved prompt text — no commentary, no markdown code fences, no preamble.
+Return ONLY the improved prompt text  -  no commentary, no markdown code fences, no preamble.
 Respond directly with the prompt content without introductory phrases like "Here is…" or "Based on…".
 </output_constraints>
 
@@ -619,7 +619,7 @@ PROMPT_IMPROVEMENT_PROMPT_ANTHROPIC = """Improve the following prompt template b
 - Address issues evident in poor examples
 - Make the prompt more clear, specific, and actionable
 - Ensure improvements align with the project domain and agent purpose
-- Avoid overfitting to the specific examples — keep the prompt generalizable
+- Avoid overfitting to the specific examples  -  keep the prompt generalizable
 - If the current prompt has template variables (e.g., {{variable_name}}), preserve them exactly
 - If the prompt includes tool definitions or tool schemas, preserve them exactly as they are
 - If improving instructions around tool usage, be specific about when and how to use each tool
@@ -634,7 +634,7 @@ Preserve the original prompt's structure unless a suggestion explicitly calls fo
 </scope_constraints>
 
 <output_verbosity>
-Keep the improved prompt concise — prefer compact bullets and short sections over long narrative paragraphs.
+Keep the improved prompt concise  -  prefer compact bullets and short sections over long narrative paragraphs.
 If adding constraints or instructions, use crisp 1–2 sentence rules.
 </output_verbosity>
 
@@ -730,13 +730,13 @@ Display name:"""
 SUGGESTION_GENERATION_SYSTEM_PROMPT_OPENAI = """You are an expert prompt engineer analyzing LLM performance.
 
 Your task:
-1. Diagnose failure patterns in poor-performing outputs — classify each as: missing context, vague instructions, formatting gap, tool-guidance gap, or scope drift
+1. Diagnose failure patterns in poor-performing outputs  -  classify each as: missing context, vague instructions, formatting gap, tool-guidance gap, or scope drift
 2. Generate specific, actionable suggestions for improving the prompt template
 
 <output_constraints>
-- Return ONLY valid JSON — no explanation, no markdown fencing.
-- Each suggestion: 1–2 sentences — state the problem briefly, then the fix.
-- Do not restate the problem context — go straight to actionable improvements.
+- Return ONLY valid JSON  -  no explanation, no markdown fencing.
+- Each suggestion: 1–2 sentences  -  state the problem briefly, then the fix.
+- Do not restate the problem context  -  go straight to actionable improvements.
 - 3–5 suggestions maximum; prefer fewer, higher-impact suggestions over many small ones.
 </output_constraints>"""
 
@@ -746,16 +746,16 @@ You are an expert prompt engineer analyzing LLM performance. You are precise, an
 
 <instructions>
 1. **Analyze**: Identify patterns in poor-performing outputs by comparing them against the prompt template and agent purpose.
-2. **Diagnose**: Determine root causes — distinguish between prompt ambiguity, missing constraints, and unclear instructions.
+2. **Diagnose**: Determine root causes  -  distinguish between prompt ambiguity, missing constraints, and unclear instructions.
 3. **Suggest**: Generate specific, actionable suggestions that directly address the diagnosed issues.
 4. **Validate**: Before returning, verify each suggestion is grounded in the provided examples and not generic advice.
 </instructions>
 
 <constraints>
-- Return ONLY valid JSON — no explanation, no markdown fencing.
-- Each suggestion: 1–2 sentences — state the problem briefly, then the fix.
+- Return ONLY valid JSON  -  no explanation, no markdown fencing.
+- Each suggestion: 1–2 sentences  -  state the problem briefly, then the fix.
 - Provide 3–5 suggestions; prefer fewer, higher-impact suggestions over many small ones.
-- Anchor claims in the provided examples — use language like "Based on the provided examples…" rather than absolute claims.
+- Anchor claims in the provided examples  -  use language like "Based on the provided examples…" rather than absolute claims.
 </constraints>
 
 <output_format>
@@ -776,7 +776,7 @@ PROMPT_IMPROVEMENT_SYSTEM_PROMPT_OPENAI = """You are an expert prompt engineer.
 
 Your task:
 - Improve the given prompt template using the provided suggestions and performance data
-- Return ONLY the improved prompt text — no commentary, no markdown code fences, no preamble
+- Return ONLY the improved prompt text  -  no commentary, no markdown code fences, no preamble
 
 <scope_constraints>
 - Implement EXACTLY and ONLY the improvements supported by the suggestions and examples.
@@ -802,7 +802,7 @@ You are an expert prompt engineer. You are precise and systematic, improving pro
 </instructions>
 
 <constraints>
-- Return ONLY the improved prompt text — no explanation, preamble, headers, or markdown formatting around the prompt.
+- Return ONLY the improved prompt text  -  no explanation, preamble, headers, or markdown formatting around the prompt.
 - Implement EXACTLY and ONLY the improvements supported by the suggestions and examples.
 - Do not add unsolicited features, sections, or instructions beyond what the suggestions call for.
 - If a suggestion is ambiguous, choose the simplest valid interpretation.
@@ -848,13 +848,13 @@ If the examples above are lengthy or numerous:
 </long_context_handling>
 
 ### Instructions
-1. Review the project context and agent purpose first — understand the domain before analyzing failures.
+1. Review the project context and agent purpose first  -  understand the domain before analyzing failures.
 2. Classify each failure into one of: missing context, vague instructions, formatting gap, scope drift, tool-guidance gap, or hallucination/grounding issue.
-3. Identify the 3–5 most common failure patterns across examples — group similar failures together.
+3. Identify the 3–5 most common failure patterns across examples  -  group similar failures together.
 4. For each pattern, generate one specific, actionable suggestion that directly addresses that root cause.
-5. Be concrete and domain-specific — name the exact instruction or section in the prompt that needs changing.
+5. Be concrete and domain-specific  -  name the exact instruction or section in the prompt that needs changing.
 6. Do not suggest changes that are not evidenced by at least one example; do not expand problem scope beyond what the data shows.
-7. If examples show tool usage, assess whether failures stem from poor tool selection, bad arguments, or weak answer synthesis — address each separately.
+7. If examples show tool usage, assess whether failures stem from poor tool selection, bad arguments, or weak answer synthesis  -  address each separately.
 8. If tool definitions exist in the prompt, preserve them; only suggest changes to surrounding instructions.
 
 <uncertainty_and_ambiguity>
@@ -864,7 +864,7 @@ If the examples above are lengthy or numerous:
 </uncertainty_and_ambiguity>
 
 <output_verbosity>
-- Each suggestion: 1–2 sentences — state the problem briefly, then the fix.
+- Each suggestion: 1–2 sentences  -  state the problem briefly, then the fix.
 - Do not rephrase the user's request or restate the full context.
 - Prefer compact, actionable bullets over long narrative paragraphs.
 </output_verbosity>
@@ -913,7 +913,7 @@ Based on the context above, generate 3–5 specific, actionable suggestions to i
 Before generating suggestions:
 1. Parse the agent's core purpose and constraints from the project and agent context.
 2. Identify the most common failure patterns in the poor-performing examples.
-3. Determine root causes — are failures due to prompt ambiguity, missing constraints, or unclear instructions?
+3. Determine root causes  -  are failures due to prompt ambiguity, missing constraints, or unclear instructions?
 
 Then generate suggestions following these rules:
 - Consider the project context and agent purpose when analyzing issues.
@@ -927,11 +927,11 @@ Then generate suggestions following these rules:
 
 <uncertainty_and_ambiguity>
 If failure patterns are ambiguous or could stem from multiple root causes, explicitly state the most likely interpretation and label your assumption.
-Anchor claims in the provided examples — use language like "Based on the provided examples…" rather than absolute claims.
+Anchor claims in the provided examples  -  use language like "Based on the provided examples…" rather than absolute claims.
 </uncertainty_and_ambiguity>
 
 <output_format>
-Each suggestion: 1–2 sentences — state the problem briefly, then the fix.
+Each suggestion: 1–2 sentences  -  state the problem briefly, then the fix.
 Prefer compact, actionable bullets over long narrative paragraphs.
 
 Return JSON in this exact format:
@@ -978,16 +978,16 @@ PROMPT_IMPROVEMENT_PROMPT_OPENAI = """Improve the following prompt template base
 
 ### Instructions
 1. Review the project and agent context to understand the domain before making any changes.
-2. Study good examples to identify what the current prompt handles well — preserve those sections unchanged.
-3. For each improvement suggestion, apply the minimum change needed — no scope expansion beyond what the suggestion requires.
+2. Study good examples to identify what the current prompt handles well  -  preserve those sections unchanged.
+3. For each improvement suggestion, apply the minimum change needed  -  no scope expansion beyond what the suggestion requires.
 4. Study poor examples to confirm each suggestion is still needed; skip any suggestion already addressed by the current prompt.
-5. Make instructions clear, specific, and actionable for the target domain — prefer numbered steps over prose.
-6. Implement EXACTLY what the suggestions ask — do not add unrequested features, structure, or embellishments.
-7. Keep the prompt generalizable — do not hardcode details from specific examples.
+5. Make instructions clear, specific, and actionable for the target domain  -  prefer numbered steps over prose.
+6. Implement EXACTLY what the suggestions ask  -  do not add unrequested features, structure, or embellishments.
+7. Keep the prompt generalizable  -  do not hardcode details from specific examples.
 8. Preserve all template variables exactly as they appear (e.g., {{variable_name}}).
-9. CRITICAL: If the prompt includes tool definitions or tool schemas, preserve them exactly — only improve surrounding instructions.
+9. CRITICAL: If the prompt includes tool definitions or tool schemas, preserve them exactly  -  only improve surrounding instructions.
 10. If improving tool usage instructions, state explicitly: when to use each tool, what arguments to provide, and how to handle results.
-11. If a suggestion is ambiguous, state your interpretation assumption explicitly rather than guessing — choose the simplest valid interpretation.
+11. If a suggestion is ambiguous, state your interpretation assumption explicitly rather than guessing  -  choose the simplest valid interpretation.
 12. Structure the improved prompt for prompt caching: all static content (role, instructions, constraints, tool definitions, examples) must come FIRST; all dynamic template variables must come LAST.
 
 <scope_constraints>
@@ -998,7 +998,7 @@ PROMPT_IMPROVEMENT_PROMPT_OPENAI = """Improve the following prompt template base
 </scope_constraints>
 
 <output_verbosity>
-- Keep the improved prompt concise — avoid long narrative paragraphs; prefer compact bullets and short sections.
+- Keep the improved prompt concise  -  avoid long narrative paragraphs; prefer compact bullets and short sections.
 - Do not add redundant restatements of the user's request.
 - If adding constraints or instructions, use crisp 1–2 sentence rules.
 </output_verbosity>
@@ -1035,14 +1035,14 @@ Based on the context above, improve the prompt template by applying the provided
 
 Before making changes:
 1. Review the suggestions and identify which parts of the prompt each targets.
-2. Study the good examples to understand what works well — preserve those strengths.
-3. Study the poor examples to understand what fails — address those weaknesses.
+2. Study the good examples to understand what works well  -  preserve those strengths.
+3. Study the poor examples to understand what fails  -  address those weaknesses.
 
 Apply improvements following these rules:
 - Consider the project context and agent purpose when improving the prompt.
 - Make the prompt more clear, specific, and actionable.
 - Ensure improvements align with the project domain and agent purpose.
-- Avoid overfitting to specific examples — keep the prompt generalizable.
+- Avoid overfitting to specific examples  -  keep the prompt generalizable.
 - Preserve all template variables exactly (e.g., {{variable_name}}).
 - CRITICAL: If the prompt includes tool definitions or tool schemas, preserve them exactly.
 - If improving tool usage instructions, be specific about when and how to use each tool.
@@ -1057,7 +1057,7 @@ Apply improvements following these rules:
 </scope_constraints>
 
 <output_format>
-Keep the improved prompt concise — prefer compact bullets and short sections over long narrative paragraphs.
+Keep the improved prompt concise  -  prefer compact bullets and short sections over long narrative paragraphs.
 If adding constraints or instructions, use crisp 1–2 sentence rules.
 Return ONLY the improved prompt text with no additional commentary.
 </output_format>
@@ -1085,7 +1085,7 @@ TOOL_SUGGESTION_GENERATION_PROMPT_OPENAI = """Analyze the following poor-perform
 ### Current Prompt Template
 {current_prompt}
 
-### Available Tools (read-only — do NOT suggest changes to tool definitions)
+### Available Tools (read-only  -  do NOT suggest changes to tool definitions)
 {tool_definitions}
 
 ### Poor Performing Tool-Call Spans
@@ -1105,17 +1105,17 @@ If the examples above are lengthy or numerous:
 </long_context_handling>
 
 ### Instructions
-1. Diagnose the failure type first — classify each failure as: wrong tool selected, bad arguments, missing tool call, answer hallucination, answer incompleteness, or synthesis error.
-2. Identify whether failures are concentrated in tool-call spans, text spans, or both — address each failure type separately.
-3. Generate 3–5 specific, actionable suggestions — each addressing a distinct failure class with a concrete fix.
-4. Scope suggestions to the system/user prompt text ONLY — do NOT suggest changes to tool definitions (they are API contracts).
+1. Diagnose the failure type first  -  classify each failure as: wrong tool selected, bad arguments, missing tool call, answer hallucination, answer incompleteness, or synthesis error.
+2. Identify whether failures are concentrated in tool-call spans, text spans, or both  -  address each failure type separately.
+3. Generate 3–5 specific, actionable suggestions  -  each addressing a distinct failure class with a concrete fix.
+4. Scope suggestions to the system/user prompt text ONLY  -  do NOT suggest changes to tool definitions (they are API contracts).
 5. Do not expand the problem surface area beyond what the examples demonstrate.
 6. For tool selection failures: suggest crisp WHEN-to-use criteria (1–2 sentences per tool) that distinguish between similar tools with concrete conditions.
 7. For argument failures: suggest explicit format constraints, value grounding rules, or schema reminders for the specific arguments that fail.
 8. If the prompt lacks parallelism guidance, suggest adding an instruction to parallelize independent read operations to reduce latency.
 9. For answer synthesis failures: suggest instructions to faithfully reflect tool results, cover all queried items, and require the model to briefly restate what changed and where after any write/update tool call.
 10. If failure causes are ambiguous, state your interpretation as an explicit assumption within the suggestion rather than guessing silently.
-11. If examples include user feedback, treat it as ground truth — prioritize those failure patterns above inferred ones.
+11. If examples include user feedback, treat it as ground truth  -  prioritize those failure patterns above inferred ones.
 
 <tool_calling_best_practices>
 When suggesting tool-usage improvements, consider:
@@ -1126,7 +1126,7 @@ When suggesting tool-usage improvements, consider:
 </tool_calling_best_practices>
 
 <output_verbosity>
-- Each suggestion: 1–2 sentences — state the problem briefly, then the fix.
+- Each suggestion: 1–2 sentences  -  state the problem briefly, then the fix.
 - Do not rephrase the full context. Prefer compact, actionable bullets.
 </output_verbosity>
 
@@ -1178,7 +1178,7 @@ Before generating suggestions:
 3. Prioritize suggestions by impact.
 
 Then generate suggestions following these rules:
-- Focus ONLY on improving the system/user prompt text — tool definitions are API contracts and must stay unchanged.
+- Focus ONLY on improving the system/user prompt text  -  tool definitions are API contracts and must stay unchanged.
 - If tool selection is poor, suggest clearer instructions about WHEN to use each tool.
 - If arguments are poor, suggest adding constraints or examples for HOW to call tools correctly.
 - If final answers are poor despite good tool results, suggest formatting and synthesis instructions.
@@ -1195,7 +1195,7 @@ When suggesting tool-usage improvements, consider:
 </tool_calling_best_practices>
 
 <output_format>
-Each suggestion: 1–2 sentences — state the problem briefly, then the fix.
+Each suggestion: 1–2 sentences  -  state the problem briefly, then the fix.
 Prefer compact, actionable bullets over long narrative paragraphs.
 
 Return JSON in this exact format:
@@ -1227,7 +1227,7 @@ TOOL_PROMPT_IMPROVEMENT_PROMPT_OPENAI = """Improve the following prompt template
 ### Current Prompt Template
 {current_prompt}
 
-### Available Tools (read-only context — do NOT modify tool definitions)
+### Available Tools (read-only context  -  do NOT modify tool definitions)
 {tool_definitions}
 
 ### Improvement Suggestions
@@ -1246,15 +1246,15 @@ TOOL_PROMPT_IMPROVEMENT_PROMPT_OPENAI = """Improve the following prompt template
 {poor_text_examples}
 
 ### Instructions
-1. Improve ONLY the system and user prompt text — do NOT modify tool definitions (shown for context only).
+1. Improve ONLY the system and user prompt text  -  do NOT modify tool definitions (shown for context only).
 2. Preserve all template variables exactly as they appear (e.g., {{variable_name}}).
-3. Study good examples first — identify what the current prompt handles correctly and preserve those sections unchanged.
+3. Study good examples first  -  identify what the current prompt handles correctly and preserve those sections unchanged.
 4. Apply each improvement suggestion using the minimum change needed; do not expand scope beyond what the suggestion requires.
 5. For tool selection problems: add clear WHEN-to-use criteria for each tool, with concrete conditions that distinguish between similar tools.
-6. For argument problems: add explicit grounding rules — values must come from the user query or prior tool results, never invented.
+6. For argument problems: add explicit grounding rules  -  values must come from the user query or prior tool results, never invented.
 7. For answer synthesis problems: add explicit instructions to faithfully reflect tool results, cover all queried items, and avoid claims unsupported by tool data.
 8. If a suggestion is ambiguous, state your interpretation assumption explicitly; choose the simplest valid interpretation rather than guessing silently.
-9. Keep the prompt generalizable — do not hardcode values or details from specific examples.
+9. Keep the prompt generalizable  -  do not hardcode values or details from specific examples.
 10. Structure the improved prompt for prompt caching: all static content (role, instructions, constraints, tool definitions, examples) must come FIRST; all dynamic template variables must come LAST.
 
 <scope_constraints>
@@ -1273,7 +1273,7 @@ When improving tool-usage instructions, consider adding:
 </tool_calling_best_practices>
 
 <output_verbosity>
-- Keep the improved prompt concise — prefer compact bullets and short sections over long narrative paragraphs.
+- Keep the improved prompt concise  -  prefer compact bullets and short sections over long narrative paragraphs.
 - If adding constraints, use crisp 1–2 sentence rules.
 </output_verbosity>
 
@@ -1317,18 +1317,18 @@ Based on the context above, improve the prompt template by applying the provided
 
 Before making changes:
 1. Review the suggestions and identify which parts of the prompt each targets.
-2. Study the good examples to understand what works well — preserve those strengths.
+2. Study the good examples to understand what works well  -  preserve those strengths.
 3. Classify the poor examples into tool-call issues (selection/arguments) and text issues (synthesis/faithfulness).
 
 Apply improvements following these rules:
 - Improve ONLY the system and user prompt text.
-- Tool definitions are shown for context only — they must remain unchanged.
+- Tool definitions are shown for context only  -  they must remain unchanged.
 - Preserve all template variables exactly (e.g., {{variable_name}}).
 - Address issues evident in poor tool-call examples (tool selection and argument problems).
 - Address issues evident in poor text examples (answer synthesis and faithfulness problems).
 - If tool selection is a problem, add clearer guidance about when to use each tool.
 - If answer synthesis is a problem, add instructions about how to present tool results faithfully.
-- Keep the prompt generalizable — do not overfit to specific examples.
+- Keep the prompt generalizable  -  do not overfit to specific examples.
 - Structure the improved prompt for prompt caching: all static content (role, instructions, constraints, tool definitions, examples) must come FIRST; all dynamic template variables must come LAST.
 </task>
 
@@ -1348,7 +1348,7 @@ When improving tool-usage instructions, consider adding:
 </tool_calling_best_practices>
 
 <output_format>
-Keep the improved prompt concise — prefer compact bullets and short sections over long narrative paragraphs.
+Keep the improved prompt concise  -  prefer compact bullets and short sections over long narrative paragraphs.
 If adding constraints, use crisp 1–2 sentence rules.
 Return ONLY the improved prompt text with no additional commentary.
 </output_format>
@@ -1376,17 +1376,21 @@ def get_prompt_for_provider(prompt_dict: dict, provider: str) -> str:
 # ============================================================================
 # MODEL SUGGESTIONS PROMPTS
 # Used to generate proactive model recommendations based on agent description.
-# Generated immediately after agent description creation — before backtesting
-# runs — so users can see which models to try without waiting for a job.
+# Generated immediately after agent description creation  -  before backtesting
+# runs  -  so users can see which models to try without waiting for a job.
 # ============================================================================
 
-MODEL_SUGGESTIONS_SYSTEM_PROMPT = """You are an expert AI model advisor helping engineering teams choose the best LLM for their production workloads. Given a description of what an AI agent does, you analyze its requirements and recommend the most suitable models. Return ONLY valid JSON."""
+MODEL_SUGGESTIONS_SYSTEM_PROMPT = """You are an expert AI model advisor helping engineering teams choose the best LLM for their production workloads. Given a description of what an AI agent does and its real production usage data, you analyze its requirements and recommend the most suitable models. Return ONLY valid JSON."""
 
-MODEL_SUGGESTIONS_GENERATION_PROMPT = """Based on the agent description below, recommend the best models from the available options for this specific use case.
+MODEL_SUGGESTIONS_GENERATION_PROMPT = """Based on the agent description and production usage data below, recommend the best models from the available options for this specific use case.
 
 <AgentDescription>
 {agent_description}
 </AgentDescription>
+
+<CurrentUsageStats>
+{current_usage_stats}
+</CurrentUsageStats>
 
 <AvailableModels>
 {available_models}
@@ -1398,15 +1402,30 @@ MODEL_SUGGESTIONS_GENERATION_PROMPT = """Based on the agent description below, r
   * Latency sensitivity (interactive/real-time vs. batch processing)
   * Output type (structured JSON, free-form text, code, tool-calling)
   * Volume expectations (high-throughput vs. occasional usage)
+- Use CurrentUsageStats to ground recommendations in real production data:
+  * Compare projected costs in AvailableModels against the current avg cost/call
+  * Factor in current latency when assessing whether a faster model is needed
+  * If no usage data is available, rely on the agent description alone
 - Match each model's strengths to the agent's specific requirements
-- Provide 2-3 recommendations across meaningful trade-off categories:
-  * "best_overall" — best balance of capability, speed, and cost for this agent (always include)
-  * "most_capable" — highest reasoning/accuracy for complex tasks (only include if agent tasks are clearly complex and this differs from best_overall)
-  * "fastest" — lowest latency option (only include if agent is in a real-time/interactive path)
-  * "cheapest" — most cost-efficient for high-volume usage (only include if this differs meaningfully from best_overall)
+- Provide 3-4 recommendations (no more, no fewer than 3) across meaningful trade-off categories:
+  * "best_overall"  -  best balance of capability, speed, and cost for this agent (always include)
+  * "most_capable"  -  highest reasoning/accuracy for complex tasks (only if tasks are clearly complex and differs from best_overall)
+  * "fastest"  -  lowest latency option (only if agent is in a real-time/interactive path)
+  * "cheapest"  -  most cost-efficient option (only if projected cost is meaningfully lower than current and differs from best_overall)
 - Only recommend models from the AvailableModels list
 - Never recommend the same model twice across categories
-- Be specific about WHY each model fits THIS agent — avoid generic statements
+
+Reasoning effort guidance (set "reasoning_effort" for each recommendation):
+- Check the model's "reasoning" line in AvailableModels to know what is supported
+- Set reasoning_effort to null if: the model has no reasoning, the task is simple/fast, or latency/cost is the primary concern
+- For adaptive models (effort levels: low/medium/high/max): choose the level matching task complexity
+  * low  -  simple tasks, structured extraction, straightforward Q&A
+  * medium  -  moderate reasoning, multi-step workflows, analysis
+  * high  -  deep reasoning, complex problem-solving, nuanced analysis
+  * max  -  only for claude-opus-4-6 on the most demanding tasks
+- For budget-token models (effort: on): set to "on" to enable reasoning, or null to disable
+- For reasoning-required models: always set reasoning_effort to a valid effort level
+- Be specific about WHY each model + reasoning setting fits THIS agent
 </Instructions>
 
 Return JSON in this exact format:
@@ -1416,9 +1435,9 @@ Return JSON in this exact format:
       "model": "model-name",
       "provider": "provider-name",
       "category": "best_overall",
-      "reason": "Specific reason tied to this agent's tasks and requirements"
+      "reasoning_effort": "medium",
+      "reason": "Specific reason tied to this agent's tasks and requirements, referencing cost/latency data and reasoning setting where relevant"
     }}
-  ],
-  "summary": "1-2 sentence overview of why these models were chosen for this agent"
+  ]
 }}
 """

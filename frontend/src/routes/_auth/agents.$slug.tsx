@@ -17,7 +17,7 @@ import apiClient from "@/client";
 import { AgentCriteriaCard } from "@/components/agent-review/AgentCriteriaCard";
 import { AgentCriteriaReviewDialog } from "@/components/agent-review/AgentCriteriaReviewDialog";
 import { SpanFeedbackDialog } from "@/components/agent-review/SpanFeedbackDialog";
-import { BacktestConfigDialog } from "@/components/BacktestConfigDialog";
+import { BacktestConfigDialog, type ModelSuggestion } from "@/components/BacktestConfigDialog";
 import { AgentNameEditor } from "@/components/agent-detail/AgentNameEditor";
 import { AgentTagsEditor } from "@/components/agent-detail/AgentTagsEditor";
 import { DateRangePicker } from "@/components/agent-detail/DateRangePicker";
@@ -37,7 +37,7 @@ import {
   aggregationForRange,
   clampBuckets,
 } from "@/lib/analytics";
-import { cn, formatDate } from "@/lib/utils";
+import { formatDate } from "@/lib/utils";
 
 // ─── Route ───────────────────────────────────────────────────────────────────
 
@@ -383,6 +383,9 @@ function AgentDetailPage() {
                   promptId={allVersionsSorted[0].promptId}
                   onSuccess={() =>
                     queryClient.invalidateQueries({ queryKey: ["agent-detail", slug] })
+                  }
+                  recommendations={
+                    (agent.backtestModelSuggestions?.recommendations as ModelSuggestion[] | undefined)
                   }
                 />
               )}
