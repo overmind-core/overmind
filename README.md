@@ -2,7 +2,6 @@
 
 # Overmind
 
-[![CI](https://github.com/overmind-core/overmind/actions/workflows/ci.yml/badge.svg)](https://github.com/overmind-core/overmind/actions/workflows/ci.yml)
 [![License: AGPL-3.0](https://img.shields.io/badge/License-AGPL--3.0-blue.svg)](LICENSE)
 [![PyPI version](https://img.shields.io/pypi/v/overmind.svg)](https://pypi.org/project/overmind/)
 [![PyPI downloads](https://img.shields.io/pypi/dm/overmind.svg)](https://pypi.org/project/overmind/)
