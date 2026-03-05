@@ -7,6 +7,7 @@ from overmind.tasks import backtesting  # noqa: F401
 
 from overmind.tasks import agent_description_generator  # noqa: F401
 from overmind.tasks import periodic_reviews  # noqa: F401
+from overmind.tasks import telemetry  # noqa: F401
 
 __all__ = [
     "evaluations",
@@ -17,4 +18,5 @@ __all__ = [
     "backtesting",
     "agent_description_generator",
     "periodic_reviews",
+    "telemetry",
 ]
