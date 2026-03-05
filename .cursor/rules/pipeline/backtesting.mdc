@@ -9,6 +9,15 @@ alwaysApply: false
 
 Compares alternative LLM models against the current model by replaying historical spans, scoring outputs, and generating switch recommendations.
 
+## Two Layers of Model Recommendations
+
+| Layer | When | Source | Where stored |
+| ----- | ---- | ------ | ------------ |
+| **Early suggestions** | Immediately after agent description creation | LLM-reasoned (based on agent description alone) | `prompt.backtest_model_suggestions` JSONB |
+| **Backtesting results** | After threshold spans accumulate (30+) | Empirical (actual span replay + scoring) | `Suggestion` table (type: model backtest) |
+
+Early suggestions (`overmind/tasks/model_suggestions_generator.py`) are generated before the first backtesting job ever runs, giving users model guidance as soon as the agent is discovered. Backtesting later provides data-driven validation of those suggestions.
+
 ## Pipeline Flow
 
 ```
@@ -116,8 +125,9 @@ When `verdict == "current_is_best"` and `total_items == 0` (no alternate models 
 
 ## When Modifying This Area
 
-- Adding new models: update `BACKTEST_MODELS_BY_PROVIDER` in `overmind/core/model_resolver.py`; for system backtesting, add `backtesting_preferred: True` to one model per provider in `SUPPORTED_LLM_MODELS`
+- Adding new models: update `BACKTEST_MODELS_BY_PROVIDER` in `overmind/core/model_resolver.py`; for system backtesting, add `backtesting_preferred: True` to one model per provider in `SUPPORTED_LLM_MODELS`; also update `_MODEL_DESCRIPTIONS` in `overmind/tasks/model_suggestions_generator.py` so early suggestions include the new model
 - The 15pp disqualification threshold and 5pp "within range" threshold are hardcoded in `_generate_recommendations`
 - Tool-calling backtests replay the full conversation (messages + tools) — they don't just send the input text
 - Result spans use `operation="backtest:{model}"` which is filtered by `SpanModel._SYSTEM_OPERATION_PREFIXES` — if you change the prefix format, update the model too
 - The `scored_count_at_creation` parameter is preserved in `job.result` across status updates so the threshold guard works correctly
+- Early model suggestions (`prompt.backtest_model_suggestions`) are separate from backtesting `Suggestion` records — they live on the Prompt model and are generated from the agent description alone, not from span data

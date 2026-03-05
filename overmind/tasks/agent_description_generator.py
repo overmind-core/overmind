@@ -25,6 +25,7 @@ from overmind.tasks.utils.prompts import (
     AGENT_DESCRIPTION_GENERATION_PROMPT,
     AGENT_DESCRIPTION_UPDATE_FROM_FEEDBACK_PROMPT,
 )
+from overmind.tasks.model_suggestions_generator import generate_model_suggestions_task
 
 logger = logging.getLogger(__name__)
 
@@ -205,6 +206,11 @@ async def _generate_initial_agent_description(
             f"Successfully stored initial agent description for prompt {prompt_id}. "
             f"Description: {description[:100]}..."
         )
+
+        # Dispatch model suggestions immediately after description is persisted so
+        # users can see recommended models before any backtesting job is triggered.
+        logger.info(f"Triggering model suggestions generation for prompt {prompt_id}")
+        generate_model_suggestions_task.delay(prompt_id=prompt_id)
 
         return {
             "prompt_id": prompt_id,

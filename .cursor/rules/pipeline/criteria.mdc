@@ -163,6 +163,7 @@ Agent Discovery
   └── Creates new Prompt
         ├── generate_criteria_task(prompt_id)
         ├── generate_initial_agent_description_task(prompt_id)
+        │     └── On success: generate_model_suggestions_task(prompt_id)
         └── generate_display_name_for_prompt(prompt, db)
 
 User reviews agent (UI)
@@ -172,6 +173,47 @@ User reviews agent (UI)
 Periodic reviews (hourly)
   └── check_review_triggers → update_agent_description_from_feedback_task
 ```
+
+## Model Suggestions Generator (`overmind/tasks/model_suggestions_generator.py`)
+
+Generates LLM-based model recommendations immediately after agent description creation.
+
+### Why early recommendations matter
+
+Backtesting jobs are only triggered at span-count thresholds (30+). Until then, users have no model guidance. The model suggestions generator fills this gap by using the agent description to reason about which models are likely best suited — without running actual spans.
+
+### Flow
+
+```
+generate_model_suggestions_task(prompt_id)
+        │
+        ▼
+  Fetch prompt + agent description
+        │
+        ▼
+  Build available_models list (filtered to configured providers)
+  using _MODEL_DESCRIPTIONS dict + BACKTEST_MODELS_BY_PROVIDER
+        │
+        ▼
+  Call LLM with MODEL_SUGGESTIONS_GENERATION_PROMPT
+  (system: MODEL_SUGGESTIONS_SYSTEM_PROMPT)
+        │
+        ▼
+  Parse JSON: {"recommendations": [...], "summary": "..."}
+        │
+        ▼
+  Store in prompt.model_suggestions
+```
+
+### Key functions
+
+- `generate_model_suggestions_task(prompt_id)` — Celery task entry point
+- `_generate_model_suggestions(prompt_id)` — core async logic; stores result in `prompt.backtest_model_suggestions`
+- `_format_available_models()` — builds model list from `BACKTEST_MODELS_BY_PROVIDER` filtered to configured providers
+
+### Model used: `TaskType.AGENT_DESCRIPTION` — same priority as description generation
+
+### Prompts: `MODEL_SUGGESTIONS_SYSTEM_PROMPT`, `MODEL_SUGGESTIONS_GENERATION_PROMPT` in `overmind/tasks/utils/prompts.py`
 
 ## Interaction with Prompt Improvement
 

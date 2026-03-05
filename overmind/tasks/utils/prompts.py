@@ -1371,3 +1371,54 @@ TOOL_PROMPT_IMPROVEMENT_PROMPTS: dict[str, str] = {
 def get_prompt_for_provider(prompt_dict: dict, provider: str) -> str:
     """Return the prompt variant for *provider*, defaulting to 'anthropic'."""
     return prompt_dict.get(provider, prompt_dict["anthropic"])
+
+
+# ============================================================================
+# MODEL SUGGESTIONS PROMPTS
+# Used to generate proactive model recommendations based on agent description.
+# Generated immediately after agent description creation — before backtesting
+# runs — so users can see which models to try without waiting for a job.
+# ============================================================================
+
+MODEL_SUGGESTIONS_SYSTEM_PROMPT = """You are an expert AI model advisor helping engineering teams choose the best LLM for their production workloads. Given a description of what an AI agent does, you analyze its requirements and recommend the most suitable models. Return ONLY valid JSON."""
+
+MODEL_SUGGESTIONS_GENERATION_PROMPT = """Based on the agent description below, recommend the best models from the available options for this specific use case.
+
+<AgentDescription>
+{agent_description}
+</AgentDescription>
+
+<AvailableModels>
+{available_models}
+</AvailableModels>
+
+<Instructions>
+- Read the agent description carefully to identify:
+  * Task complexity (simple lookup vs. deep reasoning vs. multi-step planning)
+  * Latency sensitivity (interactive/real-time vs. batch processing)
+  * Output type (structured JSON, free-form text, code, tool-calling)
+  * Volume expectations (high-throughput vs. occasional usage)
+- Match each model's strengths to the agent's specific requirements
+- Provide 2-3 recommendations across meaningful trade-off categories:
+  * "best_overall" — best balance of capability, speed, and cost for this agent (always include)
+  * "most_capable" — highest reasoning/accuracy for complex tasks (only include if agent tasks are clearly complex and this differs from best_overall)
+  * "fastest" — lowest latency option (only include if agent is in a real-time/interactive path)
+  * "cheapest" — most cost-efficient for high-volume usage (only include if this differs meaningfully from best_overall)
+- Only recommend models from the AvailableModels list
+- Never recommend the same model twice across categories
+- Be specific about WHY each model fits THIS agent — avoid generic statements
+</Instructions>
+
+Return JSON in this exact format:
+{{
+  "recommendations": [
+    {{
+      "model": "model-name",
+      "provider": "provider-name",
+      "category": "best_overall",
+      "reason": "Specific reason tied to this agent's tasks and requirements"
+    }}
+  ],
+  "summary": "1-2 sentence overview of why these models were chosen for this agent"
+}}
+"""
