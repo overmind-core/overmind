@@ -78,7 +78,7 @@ function ComingSoonPlaceholder({ vendor }: { vendor: string }) {
     </div>
   );
 }
-
+const minTraces = 30;
 function SnippetPanel({
   apiKey,
   language,
@@ -112,9 +112,9 @@ function SnippetPanel({
         <CodeBlock label="Code">{snippet.codeSnippet(apiKey)}</CodeBlock>
       </div>
       <div className="rounded-md border border-border bg-muted/30 px-4 py-3">
-        <p className="text-sm font-medium text-foreground">3. Send at least 10 traces</p>
+        <p className="text-sm font-medium text-foreground">3. Send at least {minTraces} traces</p>
         <p className="mt-1 text-sm text-muted-foreground">
-          Run your application normally. Once Overmind collects 10+ traces, it automatically
+          Run your application normally. Once Overmind collects {minTraces}+ traces, it automatically
           extracts prompt templates, creates Agents, and starts optimizing.
         </p>
       </div>
