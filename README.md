@@ -8,6 +8,7 @@
 [![PyPI downloads](https://img.shields.io/pypi/dm/overmind.svg)](https://pypi.org/project/overmind/)
 [![npm version](https://img.shields.io/npm/v/@overmind-lab/trace-sdk.svg)](https://www.npmjs.com/package/@overmind-lab/trace-sdk)
 [![npm downloads](https://img.shields.io/npm/dm/@overmind-lab/trace-sdk.svg)](https://www.npmjs.com/package/@overmind-lab/trace-sdk)
+[![Discord](https://img.shields.io/discord/WZJhx85CVK?label=Discord&logo=discord&logoColor=white)](https://discord.gg/WZJhx85CVK)
 
 **Performance infrastructure for AI agents.** Overmind is an open-source platform for AI agent execution tracing, LLM observability, and continuous model improvement from production data. It sits between your application and LLM providers — collecting execution traces, evaluating them automatically, and recommending better prompts and models to reduce cost, improve quality, and lower latency.
 
