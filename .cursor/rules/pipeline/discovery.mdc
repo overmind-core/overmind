@@ -72,10 +72,6 @@ Creates a Prompt record from an extracted template. Generates a slug from the te
 
 Checks if a project has unmapped spans eligible for discovery. Requires at least `MIN_SPANS_FOR_AGENT_DISCOVERY = 30` total spans before discovery runs.
 
-### `_auto_accept_pending_versions(db, project_id) -> None`
-
-Called at the end of `_map_spans_to_templates`. For each prompt slug with a version whose `status='pending'`, checks if at least one real production span has been mapped to it. If so, sets that version's `status` to `'active'`, marks all other non-rejected versions as `'superseded'`, and marks the associated suggestion as accepted.
-
 ## Template Extractor (`overmind/core/template_extractor/`)
 
 A standalone module that groups strings by structural similarity and extracts templates with variable slots.
@@ -117,6 +113,3 @@ agent_discovery
 - New prompts created by discovery always start at `version=1`
 - After creating prompts, criteria + description + display name generation are triggered asynchronously — failures in those don't block discovery
 - The `ExtractionConfig.min_group_size=2` means at least 2 similar spans are needed before a template is extracted
-- `_get_existing_templates()` loads **all** prompt versions (sorted active-first) so spans get matched to whichever version's template they actually use — this enables auto-accept when production spans match a pending version
-- `_auto_accept_pending_versions()` runs after span mapping — for each slug with a pending (non-active) version, if at least one real production span matches it, the version is auto-accepted and its suggestion is marked accepted
-- Active versions sort first in template matching so they win tie-breaks when both old and new templates could match a span

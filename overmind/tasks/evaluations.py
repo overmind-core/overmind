@@ -19,7 +19,7 @@ from tenacity import (
 )
 from overmind.db.session import get_session_local
 from overmind.models.traces import SpanModel
-from overmind.models.prompts import Prompt, PROMPT_STATUS_ACTIVE
+from overmind.models.prompts import Prompt
 from overmind.models.jobs import Job
 from overmind.api.v1.endpoints.jobs import JobType, JobStatus
 from overmind.core.llms import call_llm, try_json_parsing
@@ -825,31 +825,19 @@ async def _auto_evaluate_unscored_spans(
 
             for (project_id, prompt_slug), prompt_spans in spans_by_prompt.items():
                 try:
-                    # Get the active prompt version for eligibility validation.
-                    # Prefer is_active=True; fall back to max version for legacy data.
-                    active_result = await db.execute(
-                        select(Prompt).where(
+                    # Get the latest prompt version first so we can validate
+                    prompt_result = await db.execute(
+                        select(Prompt)
+                        .where(
                             and_(
                                 Prompt.project_id == project_id,
                                 Prompt.slug == prompt_slug,
-                                Prompt.status == PROMPT_STATUS_ACTIVE,
                             )
                         )
+                        .order_by(Prompt.version.desc())
+                        .limit(1)
                     )
-                    prompt = active_result.scalar_one_or_none()
-                    if not prompt:
-                        prompt_result = await db.execute(
-                            select(Prompt)
-                            .where(
-                                and_(
-                                    Prompt.project_id == project_id,
-                                    Prompt.slug == prompt_slug,
-                                )
-                            )
-                            .order_by(Prompt.version.desc())
-                            .limit(1)
-                        )
-                        prompt = prompt_result.scalar_one_or_none()
+                    prompt = prompt_result.scalar_one_or_none()
 
                     if not prompt:
                         logger.warning(

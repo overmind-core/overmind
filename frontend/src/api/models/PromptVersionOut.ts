@@ -50,12 +50,6 @@ export interface PromptVersionOut {
      */
     hash: string;
     /**
-     * Lifecycle status: active | pending | superseded | rejected
-     * @type {string}
-     * @memberof PromptVersionOut
-     */
-    status?: string;
-    /**
      * 
      * @type {{ [key: string]: any; }}
      * @memberof PromptVersionOut
@@ -126,7 +120,6 @@ export function PromptVersionOutFromJSONTyped(json: any, ignoreDiscriminator: bo
         'version': json['version'],
         'promptText': json['prompt_text'],
         'hash': json['hash'],
-        'status': json['status'] == null ? undefined : json['status'],
         'evaluationCriteria': json['evaluation_criteria'] == null ? undefined : json['evaluation_criteria'],
         'improvementMetadata': json['improvement_metadata'] == null ? undefined : json['improvement_metadata'],
         'createdAt': json['created_at'] == null ? undefined : json['created_at'],
@@ -153,7 +146,6 @@ export function PromptVersionOutToJSONTyped(value?: PromptVersionOut | null, ign
         'version': value['version'],
         'prompt_text': value['promptText'],
         'hash': value['hash'],
-        'status': value['status'],
         'evaluation_criteria': value['evaluationCriteria'],
         'improvement_metadata': value['improvementMetadata'],
         'created_at': value['createdAt'],

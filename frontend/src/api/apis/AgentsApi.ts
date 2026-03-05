@@ -49,17 +49,6 @@ export interface UpdateAgentMetadataApiV1AgentsPromptSlugMetadataPutRequest {
     projectId?: string | null;
 }
 
-export interface AcceptPromptVersionApiV1AgentsPromptSlugAcceptVersionPostRequest {
-    promptSlug: string;
-    acceptVersionRequest: { version: number };
-    projectId?: string | null;
-}
-
-export interface AcceptVersionResponse {
-    slug: string;
-    activeVersion: number;
-}
-
 /**
  * 
  */
@@ -206,57 +195,6 @@ export class AgentsApi extends runtime.BaseAPI {
      */
     async updateAgentMetadataApiV1AgentsPromptSlugMetadataPut(requestParameters: UpdateAgentMetadataApiV1AgentsPromptSlugMetadataPutRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<UpdateAgentMetadataResponse> {
         const response = await this.updateAgentMetadataApiV1AgentsPromptSlugMetadataPutRaw(requestParameters, initOverrides);
-        return await response.value();
-    }
-
-    /**
-     * Directly activate a specific prompt version for an agent.
-     * Accept Prompt Version
-     */
-    async acceptPromptVersionApiV1AgentsPromptSlugAcceptVersionPostRaw(requestParameters: AcceptPromptVersionApiV1AgentsPromptSlugAcceptVersionPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<AcceptVersionResponse>> {
-        if (requestParameters['promptSlug'] == null) {
-            throw new runtime.RequiredError(
-                'promptSlug',
-                'Required parameter "promptSlug" was null or undefined when calling acceptPromptVersionApiV1AgentsPromptSlugAcceptVersionPost().'
-            );
-        }
-
-        const queryParameters: any = {};
-
-        if (requestParameters['projectId'] != null) {
-            queryParameters['project_id'] = requestParameters['projectId'];
-        }
-
-        const headerParameters: runtime.HTTPHeaders = {};
-        headerParameters['Content-Type'] = 'application/json';
-
-        if (this.configuration && this.configuration.accessToken) {
-            headerParameters["Authorization"] = await this.configuration.accessToken("OAuth2PasswordBearer", []);
-        }
-
-        let urlPath = `/api/v1/agents/{prompt_slug}/accept-version`;
-        urlPath = urlPath.replace(`{${"prompt_slug"}}`, encodeURIComponent(String(requestParameters['promptSlug'])));
-
-        const response = await this.request({
-            path: urlPath,
-            method: 'POST',
-            headers: headerParameters,
-            query: queryParameters,
-            body: { version: requestParameters['acceptVersionRequest'].version },
-        }, initOverrides);
-
-        return new runtime.JSONApiResponse(response, (jsonValue) => ({
-            slug: jsonValue['slug'],
-            activeVersion: jsonValue['active_version'],
-        }));
-    }
-
-    /**
-     * Directly activate a specific prompt version for an agent.
-     * Accept Prompt Version
-     */
-    async acceptPromptVersionApiV1AgentsPromptSlugAcceptVersionPost(requestParameters: AcceptPromptVersionApiV1AgentsPromptSlugAcceptVersionPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<AcceptVersionResponse> {
-        const response = await this.acceptPromptVersionApiV1AgentsPromptSlugAcceptVersionPostRaw(requestParameters, initOverrides);
         return await response.value();
     }
 

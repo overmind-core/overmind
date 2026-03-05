@@ -7,8 +7,7 @@ import logging
 from sqlalchemy import and_, cast, func, select, Float
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from sqlalchemy import case
-from overmind.models.prompts import Prompt, PROMPT_STATUS_ACTIVE, PROMPT_STATUS_PENDING
+from overmind.models.prompts import Prompt
 from overmind.models.traces import SpanModel
 from overmind.utils import calculate_llm_usage_cost
 
@@ -179,48 +178,35 @@ async def get_analytics_for_prompt(
     }
 
 
-async def get_active_prompts_for_project(project_id, db: AsyncSession) -> list[Prompt]:
-    """
-    Return exactly one prompt per slug: the row with status='active'.
-
-    Uses DISTINCT ON (slug) so the DB enforces one row per slug. Active rows
-    sort first; if no active row exists for a slug (legacy data), the highest
-    version wins as a fallback.
-    """
-    stmt = (
-        select(Prompt)
-        .distinct(Prompt.slug)
-        .where(Prompt.project_id == project_id)
-        .order_by(
-            Prompt.slug,
-            case((Prompt.status == PROMPT_STATUS_ACTIVE, 0), else_=1),
-            Prompt.version.desc(),
-        )
-    )
-    result = await db.execute(stmt)
-    return list(result.scalars().all())
-
-
-async def get_pending_version_by_slug(project_id, db: AsyncSession) -> dict[str, int]:
-    """
-    Return a mapping of slug → latest pending version number for the project.
-    Only slugs that have at least one pending version are included.
-    """
-    stmt = (
-        select(Prompt.slug, Prompt.version)
-        .distinct(Prompt.slug)
-        .where(
-            and_(
-                Prompt.project_id == project_id,
-                Prompt.status == PROMPT_STATUS_PENDING,
-            )
-        )
-        .order_by(Prompt.slug, Prompt.version.desc())
-    )
-    result = await db.execute(stmt)
-    return {row[0]: row[1] for row in result.all()}
-
-
-# Keep old name as alias for callers outside this module (tasks, etc.)
 async def get_latest_prompts_for_project(project_id, db: AsyncSession) -> list[Prompt]:
-    return await get_active_prompts_for_project(project_id, db)
+    """
+    Return the latest version of each prompt slug in a project.
+
+    Args:
+        project_id: The project UUID
+        db: Database session
+
+    Returns:
+        List of Prompt objects representing the latest version of each prompt slug
+    """
+    subq = (
+        select(
+            Prompt.project_id,
+            Prompt.slug,
+            func.max(Prompt.version).label("max_version"),
+        )
+        .where(Prompt.project_id == project_id)
+        .group_by(Prompt.project_id, Prompt.slug)
+        .subquery()
+    )
+    result = await db.execute(
+        select(Prompt).join(
+            subq,
+            and_(
+                Prompt.project_id == subq.c.project_id,
+                Prompt.slug == subq.c.slug,
+                Prompt.version == subq.c.max_version,
+            ),
+        )
+    )
+    return list(result.scalars().all())
