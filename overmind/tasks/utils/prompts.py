@@ -359,6 +359,7 @@ When suggesting tool-usage improvements, consider:
 <output_verbosity>
 Each suggestion: 1–2 sentences  -  state the problem briefly, then the fix.
 Prefer compact, actionable bullets over long narrative paragraphs.
+Do not use em dashes (—) in any generated text; use a hyphen (-) or colon (:) instead.
 </output_verbosity>
 
 Return JSON in this exact format:
@@ -431,6 +432,7 @@ When improving tool-usage instructions, consider adding:
 <output_verbosity>
 Keep the improved prompt concise  -  prefer compact bullets and short sections over long narrative paragraphs.
 If adding constraints, use crisp 1–2 sentence rules.
+Do not use em dashes (—) in the improved prompt; use a hyphen (-) or colon (:) instead.
 </output_verbosity>
 
 <verification>
@@ -448,7 +450,7 @@ Respond with ONLY the improved prompt text, with no additional commentary."""
 # CRITERIA GENERATION PROMPTS
 # ============================================================================
 
-CRITERIA_GENERATION_SYSTEM_PROMPT = """You are an expert in evaluating LLM outputs. Your task is to generate evaluation criteria based on example inputs and outputs. Return ONLY valid JSON."""
+CRITERIA_GENERATION_SYSTEM_PROMPT = """You are an expert in evaluating LLM outputs. Your task is to generate evaluation criteria based on example inputs and outputs. Return ONLY valid JSON. Do not use em dashes (—) in any generated text; use a hyphen (-) or colon (:) instead."""
 
 CRITERIA_GENERATION_PROMPT = """Based on the following context and example LLM interactions, generate evaluation criteria rules for assessing the "correctness" of future outputs.
 
@@ -512,6 +514,7 @@ SUGGESTION_GENERATION_SYSTEM_PROMPT_ANTHROPIC = """You are an expert prompt engi
 Return ONLY valid JSON  -  no explanation, no markdown fencing.
 Each suggestion should be 1–2 sentences: state the problem briefly, then the fix.
 Provide 3–5 suggestions; prefer fewer, higher-impact suggestions over many small ones.
+Do not use em dashes (—) in any generated text; use a hyphen (-) or colon (:) instead.
 </output_constraints>"""
 
 SUGGESTION_GENERATION_PROMPT_ANTHROPIC = """Analyze the following poor-performing LLM interactions (correctness score < 0.5) and identify common issues.
@@ -577,6 +580,7 @@ PROMPT_IMPROVEMENT_SYSTEM_PROMPT_ANTHROPIC = """You are an expert prompt enginee
 <output_constraints>
 Return ONLY the improved prompt text  -  no commentary, no markdown code fences, no preamble.
 Respond directly with the prompt content without introductory phrases like "Here is…" or "Based on…".
+Do not use em dashes (—) in the improved prompt; use a hyphen (-) or colon (:) instead.
 </output_constraints>
 
 <scope_constraints>
@@ -653,7 +657,7 @@ Respond with ONLY the improved prompt text, with no additional commentary."""
 # AGENT DESCRIPTION GENERATION PROMPTS
 # ============================================================================
 
-AGENT_DESCRIPTION_SYSTEM_PROMPT = """You are an expert in analyzing AI agent behavior. Your task is to generate a concise description of what an agent does based on example interactions. Return ONLY valid JSON."""
+AGENT_DESCRIPTION_SYSTEM_PROMPT = """You are an expert in analyzing AI agent behavior. Your task is to generate a concise description of what an agent does based on example interactions. Return ONLY valid JSON. Do not use em dashes (—) in any generated text; use a hyphen (-) or colon (:) instead."""
 
 AGENT_DESCRIPTION_GENERATION_PROMPT = """Based on the following context and example interactions, generate a concise 1-2 sentence description of what this agent does.
 
@@ -738,6 +742,7 @@ Your task:
 - Each suggestion: 1–2 sentences  -  state the problem briefly, then the fix.
 - Do not restate the problem context  -  go straight to actionable improvements.
 - 3–5 suggestions maximum; prefer fewer, higher-impact suggestions over many small ones.
+- Do not use em dashes (—) in any generated text; use a hyphen (-) or colon (:) instead.
 </output_constraints>"""
 
 SUGGESTION_GENERATION_SYSTEM_PROMPT_GEMINI = """<role>
@@ -756,6 +761,7 @@ You are an expert prompt engineer analyzing LLM performance. You are precise, an
 - Each suggestion: 1–2 sentences  -  state the problem briefly, then the fix.
 - Provide 3–5 suggestions; prefer fewer, higher-impact suggestions over many small ones.
 - Anchor claims in the provided examples  -  use language like "Based on the provided examples…" rather than absolute claims.
+- Do not use em dashes (—) in any generated text; use a hyphen (-) or colon (:) instead.
 </constraints>
 
 <output_format>
@@ -777,6 +783,7 @@ PROMPT_IMPROVEMENT_SYSTEM_PROMPT_OPENAI = """You are an expert prompt engineer.
 Your task:
 - Improve the given prompt template using the provided suggestions and performance data
 - Return ONLY the improved prompt text  -  no commentary, no markdown code fences, no preamble
+- Do not use em dashes (—) in the improved prompt; use a hyphen (-) or colon (:) instead
 
 <scope_constraints>
 - Implement EXACTLY and ONLY the improvements supported by the suggestions and examples.
@@ -808,6 +815,7 @@ You are an expert prompt engineer. You are precise and systematic, improving pro
 - If a suggestion is ambiguous, choose the simplest valid interpretation.
 - Preserve the original prompt's tone, structure, and template variables unless a suggestion explicitly requires changing them.
 - Dynamic template variables (e.g., {user_input}, {query}, {context}) must appear at the end of the prompt.
+- Do not use em dashes (—) in the improved prompt; use a hyphen (-) or colon (:) instead.
 </constraints>
 
 <output_format>
@@ -1128,6 +1136,7 @@ When suggesting tool-usage improvements, consider:
 <output_verbosity>
 - Each suggestion: 1–2 sentences  -  state the problem briefly, then the fix.
 - Do not rephrase the full context. Prefer compact, actionable bullets.
+- Do not use em dashes (—) in any generated text; use a hyphen (-) or colon (:) instead.
 </output_verbosity>
 
 Return JSON in this exact format:
@@ -1197,6 +1206,7 @@ When suggesting tool-usage improvements, consider:
 <output_format>
 Each suggestion: 1–2 sentences  -  state the problem briefly, then the fix.
 Prefer compact, actionable bullets over long narrative paragraphs.
+Do not use em dashes (—) in any generated text; use a hyphen (-) or colon (:) instead.
 
 Return JSON in this exact format:
 {{
@@ -1275,6 +1285,7 @@ When improving tool-usage instructions, consider adding:
 <output_verbosity>
 - Keep the improved prompt concise  -  prefer compact bullets and short sections over long narrative paragraphs.
 - If adding constraints, use crisp 1–2 sentence rules.
+- Do not use em dashes (—) in the improved prompt; use a hyphen (-) or colon (:) instead.
 </output_verbosity>
 
 ### Improved Prompt
@@ -1380,7 +1391,7 @@ def get_prompt_for_provider(prompt_dict: dict, provider: str) -> str:
 # runs  -  so users can see which models to try without waiting for a job.
 # ============================================================================
 
-MODEL_SUGGESTIONS_SYSTEM_PROMPT = """You are an expert AI model advisor helping engineering teams choose the best LLM for their production workloads. Given a description of what an AI agent does and its real production usage data, you analyze its requirements and recommend the most suitable models. Return ONLY valid JSON."""
+MODEL_SUGGESTIONS_SYSTEM_PROMPT = """You are an expert AI model advisor helping engineering teams choose the best LLM for their production workloads. Given a description of what an AI agent does and its real production usage data, you analyze its requirements and recommend the most suitable models. Return ONLY valid JSON. Do not use em dashes (—) in any generated text; use a hyphen (-) or colon (:) instead."""
 
 MODEL_SUGGESTIONS_GENERATION_PROMPT = """Based on the agent description and production usage data below, recommend the best models from the available options for this specific use case.
 

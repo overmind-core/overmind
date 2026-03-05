@@ -364,6 +364,15 @@ def call_llm(
         if system_prompt:
             messages.append({"role": "system", "content": system_prompt})
         messages.append({"role": "user", "content": input_text})
+    else:
+        # Strip system/user messages with null content — these come from spans
+        # where the original agent sent no system prompt (null content is invalid
+        # for non-assistant roles; assistant null content is valid with tool_calls).
+        messages = [
+            m
+            for m in messages
+            if not (m.get("content") is None and m.get("role") in ("system", "user"))
+        ]
 
     try:
         selected_model_name = (
