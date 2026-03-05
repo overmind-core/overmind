@@ -73,6 +73,18 @@ export interface AgentDetailOut {
      */
     latestVersion: number;
     /**
+     * The version number currently marked as active (is_active=True in DB)
+     * @type {number}
+     * @memberof AgentDetailOut
+     */
+    activeVersion: number;
+    /**
+     * Set when a new tuning-generated version is pending acceptance; null otherwise
+     * @type {number}
+     * @memberof AgentDetailOut
+     */
+    pendingVersion?: number | null;
+    /**
      * 
      * @type {AgentAnalytics}
      * @memberof AgentDetailOut
@@ -124,6 +136,7 @@ export function instanceOfAgentDetailOut(value: object): value is AgentDetailOut
     if (!('name' in value) || value['name'] === undefined) return false;
     if (!('projectId' in value) || value['projectId'] === undefined) return false;
     if (!('latestVersion' in value) || value['latestVersion'] === undefined) return false;
+    if (!('activeVersion' in value) || value['activeVersion'] === undefined) return false;
     if (!('analytics' in value) || value['analytics'] === undefined) return false;
     return true;
 }
@@ -142,6 +155,8 @@ export function AgentDetailOutFromJSONTyped(json: any, ignoreDiscriminator: bool
         'name': json['name'],
         'projectId': json['project_id'],
         'latestVersion': json['latest_version'],
+        'activeVersion': json['active_version'],
+        'pendingVersion': json['pending_version'] == null ? undefined : json['pending_version'],
         'analytics': AgentAnalyticsFromJSON(json['analytics']),
         'versions': json['versions'] == null ? undefined : ((json['versions'] as Array<any>).map(PromptVersionOutFromJSON)),
         'suggestions': json['suggestions'] == null ? undefined : ((json['suggestions'] as Array<any>).map(SuggestionOutFromJSON)),
@@ -167,6 +182,8 @@ export function AgentDetailOutToJSONTyped(value?: AgentDetailOut | null, ignoreD
         'name': value['name'],
         'project_id': value['projectId'],
         'latest_version': value['latestVersion'],
+        'active_version': value['activeVersion'],
+        'pending_version': value['pendingVersion'],
         'analytics': AgentAnalyticsToJSON(value['analytics']),
         'versions': value['versions'] == null ? undefined : ((value['versions'] as Array<any>).map(PromptVersionOutToJSON)),
         'suggestions': value['suggestions'] == null ? undefined : ((value['suggestions'] as Array<any>).map(SuggestionOutToJSON)),

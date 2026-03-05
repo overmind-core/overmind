@@ -19,7 +19,8 @@ from overmind.api.v1.endpoints.jobs import JobOut
 from overmind.api.v1.endpoints.utils.agents import (
     humanise_slug,
     get_analytics_for_prompt,
-    get_latest_prompts_for_project,
+    get_active_prompts_for_project,
+    get_pending_version_by_slug,
 )
 from overmind.tasks.periodic_reviews import REVIEW_THRESHOLDS
 from overmind.api.v1.endpoints.utils.jobs import sync_running_job_statuses
@@ -29,7 +30,12 @@ from overmind.api.v1.helpers.authentication import (
 )
 from overmind.db.session import get_db
 from overmind.models.jobs import Job
-from overmind.models.prompts import Prompt
+from overmind.models.prompts import (
+    Prompt,
+    PROMPT_STATUS_ACTIVE,
+    PROMPT_STATUS_PENDING,
+    PROMPT_STATUS_SUPERSEDED,
+)
 from overmind.models.suggestions import Suggestion
 from overmind.models.traces import SpanModel
 
@@ -77,6 +83,7 @@ class AgentOut(BaseModel):
     name: str  # display name (slug humanised)
     prompt_id: str
     version: int
+    latest_version: int | None = None
     analytics: AgentAnalytics
     suggestions: list[SuggestionOut] = []
     jobs: list[JobOut] = []
@@ -121,7 +128,11 @@ async def list_agents(
     # Reconcile stale 'running' job statuses with Celery backend
     await sync_running_job_statuses(db, pid)
 
-    prompts = await get_latest_prompts_for_project(pid, db)
+    # Only active versions — one per slug, guaranteed by DISTINCT ON
+    prompts = await get_active_prompts_for_project(pid, db)
+
+    # Fetch the latest pending version per slug in a single query (for the "vN available" badge)
+    pending_version_by_slug = await get_pending_version_by_slug(pid, db)
 
     agents: list[AgentOut] = []
     for prompt in prompts:
@@ -199,6 +210,7 @@ async def list_agents(
                 name=agent_display_name,
                 prompt_id=prompt.prompt_id,
                 version=prompt.version,
+                latest_version=pending_version_by_slug.get(prompt.slug),
                 analytics=analytics,
                 suggestions=suggestions,
                 jobs=jobs,
@@ -221,6 +233,8 @@ class PromptVersionOut(BaseModel):
     version: int
     prompt_text: str
     hash: str
+    # Lifecycle status: active | pending | superseded | rejected
+    status: str = PROMPT_STATUS_ACTIVE
     evaluation_criteria: dict[str, Any] | None = None
     improvement_metadata: dict[str, Any] | None = None
     created_at: str | None = None
@@ -236,6 +250,8 @@ class AgentDetailOut(BaseModel):
     name: str
     project_id: str
     latest_version: int
+    active_version: int
+    pending_version: int | None = None
     analytics: AgentAnalytics
     versions: list[PromptVersionOut] = []
     suggestions: list[SuggestionOut] = []
@@ -279,7 +295,55 @@ async def get_agent_detail(
     if not all_versions:
         raise HTTPException(status_code=404, detail="Agent not found")
 
-    latest = all_versions[0]
+    # Determine active version and pending version (highest version that is 'pending')
+    active_prompt = next(
+        (v for v in all_versions if v.status == PROMPT_STATUS_ACTIVE), None
+    )
+    max_prompt = all_versions[0]  # already ordered by version desc
+
+    # Auto-accept: if a pending version exists and has at least one real production span,
+    # activate it atomically without waiting for user action.
+    if active_prompt and max_prompt.status == PROMPT_STATUS_PENDING:
+        real_span_check = await db.execute(
+            select(func.count(SpanModel.span_id)).where(
+                and_(
+                    SpanModel.prompt_id == max_prompt.prompt_id,
+                    SpanModel.exclude_system_spans(),
+                )
+            )
+        )
+        real_span_count = real_span_check.scalar() or 0
+
+        if real_span_count >= 1:
+            for v in all_versions:
+                if v.version != max_prompt.version and v.status != "rejected":
+                    v.status = PROMPT_STATUS_SUPERSEDED
+            max_prompt.status = PROMPT_STATUS_ACTIVE
+            # Mark associated pending suggestion as accepted
+            pending_sugg_q = await db.execute(
+                select(Suggestion).where(
+                    and_(
+                        Suggestion.prompt_slug == prompt_slug,
+                        Suggestion.project_id == pid,
+                        Suggestion.new_prompt_version == max_prompt.version,
+                        Suggestion.status == "pending",
+                    )
+                )
+            )
+            sugg = pending_sugg_q.scalar_one_or_none()
+            if sugg:
+                sugg.status = "accepted"
+            await db.commit()
+            active_prompt = max_prompt
+
+    # Fall back to max_prompt if no active row found (legacy safety)
+    if not active_prompt:
+        active_prompt = max_prompt
+
+    latest = active_prompt
+    pending_version = (
+        max_prompt.version if max_prompt.version != active_prompt.version else None
+    )
 
     # Build per-version analytics
     version_outs: list[PromptVersionOut] = []
@@ -339,6 +403,7 @@ async def get_agent_detail(
                 version=v.version,
                 prompt_text=v.prompt,
                 hash=v.hash,
+                status=v.status,
                 evaluation_criteria=v.evaluation_criteria,
                 improvement_metadata=v.improvement_metadata,
                 created_at=v.created_at.isoformat() if v.created_at else None,
@@ -418,7 +483,9 @@ async def get_agent_detail(
         slug=latest.slug,
         name=detail_display_name,
         project_id=str(pid),
-        latest_version=latest.version,
+        latest_version=active_prompt.version,
+        active_version=active_prompt.version,
+        pending_version=pending_version,
         analytics=analytics,
         versions=version_outs,
         suggestions=suggestions,
@@ -529,3 +596,82 @@ async def update_agent_metadata(
         name=final_name,
         tags=final_tags,
     )
+
+
+# ---------------------------------------------------------------------------
+# Accept a specific prompt version
+# ---------------------------------------------------------------------------
+
+
+class AcceptVersionRequest(BaseModel):
+    version: int
+
+
+class AcceptVersionResponse(BaseModel):
+    slug: str
+    active_version: int
+
+
+@router.post("/{prompt_slug}/accept-version", response_model=AcceptVersionResponse)
+async def accept_prompt_version(
+    prompt_slug: str,
+    request: AcceptVersionRequest,
+    project_id: str | None = Query(None),
+    user: AuthenticatedUserOrToken = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Directly activate a specific prompt version for an agent.
+
+    Atomically flips ``is_active``: the requested version becomes active and
+    all other versions of the same slug+project become inactive.  If there is a
+    pending suggestion that targets this version it is also marked as accepted.
+    """
+    if project_id:
+        pid = _uuid.UUID(project_id)
+    elif user.user.projects:
+        pid = user.user.projects[0].project_id
+    else:
+        raise HTTPException(status_code=400, detail="No project found for user")
+
+    if not await user.is_project_member(pid, db):
+        raise HTTPException(status_code=403, detail="Access denied to this project")
+
+    versions_q = await db.execute(
+        select(Prompt).where(and_(Prompt.slug == prompt_slug, Prompt.project_id == pid))
+    )
+    all_versions = versions_q.scalars().all()
+
+    if not all_versions:
+        raise HTTPException(status_code=404, detail="Agent not found")
+
+    target = next((v for v in all_versions if v.version == request.version), None)
+    if not target:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Version {request.version} not found for agent '{prompt_slug}'",
+        )
+
+    for v in all_versions:
+        if v.version != target.version and v.status != "rejected":
+            v.status = PROMPT_STATUS_SUPERSEDED
+    target.status = PROMPT_STATUS_ACTIVE
+
+    # Also accept any pending suggestion targeting this version
+    pending_sugg_q = await db.execute(
+        select(Suggestion).where(
+            and_(
+                Suggestion.prompt_slug == prompt_slug,
+                Suggestion.project_id == pid,
+                Suggestion.new_prompt_version == request.version,
+                Suggestion.status == "pending",
+            )
+        )
+    )
+    sugg = pending_sugg_q.scalar_one_or_none()
+    if sugg:
+        sugg.status = "accepted"
+
+    await db.commit()
+
+    return AcceptVersionResponse(slug=prompt_slug, active_version=request.version)
