@@ -37,10 +37,7 @@ from overmind.tasks.utils.prompts import (
     DEFAULT_TOOL_CALL_CRITERIA,
     DEFAULT_TOOL_ANSWER_CRITERIA,
 )
-from overmind.tasks.criteria_generator import (
-    ensure_prompt_has_criteria,
-    clear_criteria_cache,
-)
+from overmind.tasks.criteria_generator import ensure_prompt_has_criteria
 from overmind.tasks.agentic_span_processor import (
     preprocess_span_for_evaluation,
     format_conversation_flow,
@@ -280,6 +277,7 @@ async def _store_span_score(span_id: str, correctness: float) -> bool:
 
 async def _get_context_for_span(
     span: SpanModel,
+    criteria_by_prompt: dict[str, dict[str, list[str]] | None] | None = None,
 ) -> tuple[str, str | None, str | None]:
     """
     Get evaluation criteria, project description, and agent description for a span.
@@ -289,6 +287,10 @@ async def _get_context_for_span(
     - "text" + is_agentic spans → DEFAULT_TOOL_ANSWER_CRITERIA
     - legacy agentic spans → DEFAULT_AGENTIC_CRITERIA (with tool addendum)
     - plain spans → generic correctness criteria
+
+    When *criteria_by_prompt* is supplied, criteria are looked up there first
+    (and stored back on miss) so a batch of spans sharing the same prompt only
+    hits the DB once.
     """
     from overmind.models.iam.projects import Project
 
@@ -311,7 +313,14 @@ async def _get_context_for_span(
     base_criteria = None
 
     if span.prompt_id:
-        criteria_dict = await ensure_prompt_has_criteria(span.prompt_id)
+        # Use pre-fetched criteria when available, falling back to DB
+        if criteria_by_prompt is not None and span.prompt_id in criteria_by_prompt:
+            criteria_dict = criteria_by_prompt[span.prompt_id]
+        else:
+            criteria_dict = await ensure_prompt_has_criteria(span.prompt_id)
+            if criteria_by_prompt is not None:
+                criteria_by_prompt[span.prompt_id] = criteria_dict
+
         if criteria_dict and "correctness" in criteria_dict:
             rules = criteria_dict["correctness"]
             base_criteria = _format_criteria(rules)
@@ -378,6 +387,7 @@ async def _get_context_for_span(
 
 async def _evaluate_span_correctness(
     span_id: str,
+    criteria_by_prompt: dict[str, dict[str, list[str]] | None] | None = None,
 ) -> dict[str, Any]:
     """Evaluate a single span's correctness using LLM."""
     AsyncSessionLocal = get_session_local()
@@ -398,7 +408,7 @@ async def _evaluate_span_correctness(
         evaluation_criteria,
         project_description,
         agent_description,
-    ) = await _get_context_for_span(span)
+    ) = await _get_context_for_span(span, criteria_by_prompt=criteria_by_prompt)
 
     # Evaluate correctness - run sync LLM call (with retries) in a thread
     # so it doesn't block the event loop and other spans can progress concurrently
@@ -437,7 +447,6 @@ def evaluate_spans_task(
 
     Updates the job status to completed/failed when done.
     """
-    clear_criteria_cache()
 
     async def _run_evaluations():
         from overmind.db.session import dispose_engine
@@ -455,12 +464,18 @@ def evaluate_spans_task(
                 job.status = "running"
                 await session.commit()
 
+            # Local criteria lookup shared across all spans in this batch —
+            # populated on first access per prompt_id, avoids repeated DB hits.
+            criteria_by_prompt: dict[str, dict[str, list[str]] | None] = {}
             semaphore = asyncio.Semaphore(_MAX_CONCURRENT_EVALUATIONS)
 
             async def _evaluate_with_limit(span_id: str) -> dict[str, Any]:
                 async with semaphore:
                     try:
-                        return await _evaluate_span_correctness(span_id=span_id)
+                        return await _evaluate_span_correctness(
+                            span_id=span_id,
+                            criteria_by_prompt=criteria_by_prompt,
+                        )
                     except BaseException as exc:
                         logger.exception(f"Failed to evaluate span {span_id}")
                         return {"span_id": span_id, "error": str(exc)}
@@ -1019,13 +1034,23 @@ async def _execute_prompt_spans_evaluation(
                     f"Prompt {prompt_slug} (project {project_id}): Randomly selected {len(spans_to_evaluate)}/{len(prompt_spans)} spans to evaluate"
                 )
 
+                # Pre-fetch criteria once for this prompt so every span
+                # in the batch reuses it without hitting the DB again.
+                criteria_by_prompt: dict[str, dict[str, list[str]] | None] = {}
+                criteria_by_prompt[prompt_id] = await ensure_prompt_has_criteria(
+                    prompt_id
+                )
+
                 # Fan out span evaluations concurrently (bounded by semaphore)
                 semaphore = asyncio.Semaphore(_MAX_CONCURRENT_EVALUATIONS)
 
                 async def _evaluate_with_limit(span_id: str) -> dict[str, Any]:
                     async with semaphore:
                         try:
-                            return await _evaluate_span_correctness(span_id=span_id)
+                            return await _evaluate_span_correctness(
+                                span_id=span_id,
+                                criteria_by_prompt=criteria_by_prompt,
+                            )
                         except BaseException as exc:
                             logger.exception(f"Failed to evaluate span {span_id}")
                             return {"span_id": span_id, "error": str(exc)}
@@ -1127,7 +1152,6 @@ def evaluate_prompt_spans_task(
     Returns:
         Dict with evaluation stats
     """
-    clear_criteria_cache()
     return asyncio.run(
         _execute_prompt_spans_evaluation(prompt_id, project_id, prompt_slug, job_id)
     )

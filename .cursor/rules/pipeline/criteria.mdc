@@ -48,7 +48,7 @@ generate_criteria_task(prompt_id)
 
 - `generate_criteria_task(prompt_id)` — Celery task entry point
 - `_generate_criteria_for_prompt(prompt_id)` — core logic
-- `ensure_prompt_has_criteria(prompt_id)` — sync check/generate, used by evaluations to ensure criteria exist before scoring
+- `ensure_prompt_has_criteria(prompt_id)` — async check/generate, always reads from DB (no module-level cache); callers in `evaluations.py` pass a local `criteria_by_prompt` dict to avoid redundant DB hits within a single batch
 - `_store_criteria_to_prompt(prompt_id, criteria)` — persist to DB
 
 ### Data format
@@ -188,4 +188,4 @@ When criteria or description changes:
 - The `AGENTIC_NOTE_FOR_CRITERIA` is appended when agentic spans are detected — it adds tool-usage criteria
 - Max 5 criteria rules per prompt — the LLM is instructed to generate "at max 5 specific rules"
 - Judge feedback (from `span.feedback_score.judge_feedback`) is included when generating criteria — this creates a feedback loop where user corrections improve the judge
-- `ensure_prompt_has_criteria` is a blocking check — evaluation waits for criteria to exist
+- `ensure_prompt_has_criteria` is an async check — evaluation waits for criteria to exist; no module-level cache, callers supply a local `criteria_by_prompt` dict for batch deduplication
