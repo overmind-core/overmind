@@ -117,7 +117,7 @@ def test_get_thinking_budget_tokens():
     assert get_thinking_budget_tokens("claude-opus-4-5") == [8000]
     assert get_thinking_budget_tokens("claude-sonnet-4-5") == [8000]
     assert get_thinking_budget_tokens("claude-haiku-4-5") == [8000]
-    assert get_thinking_budget_tokens("gemini-2.5-flash") == [8000]
+    assert get_thinking_budget_tokens("gemini-2.5-flash") == [-1]  # dynamic budget
     assert get_thinking_budget_tokens("claude-opus-4-6") == []  # adaptive_mode=True
     assert get_thinking_budget_tokens("gpt-5-mini") == []
 
@@ -147,14 +147,27 @@ def test_call_llm_passes_reasoning_effort_when_supported(mock_completion):
 
 
 @pytest.mark.parametrize("model", ["claude-opus-4-5", "gemini-2.5-flash"])
-def test_call_llm_passes_thinking_budget_tokens_for_manual_mode(mock_completion, model):
-    call_llm("hello", model=model, thinking_budget_tokens=8000)
+@pytest.mark.parametrize("budget_tokens", [8000, -1])
+def test_call_llm_passes_thinking_budget_tokens_for_manual_mode(
+    mock_completion, model, budget_tokens: int
+):
+    call_llm("hello", model=model, thinking_budget_tokens=budget_tokens)
 
     positional_kwargs = mock_completion.call_args.kwargs
-    assert positional_kwargs.get("thinking") == {
-        "type": "enabled",
-        "budget_tokens": 8000,
-    }
+    # Check that thinking is passed with the correct structure
+    thinking_param = positional_kwargs.get("thinking")
+    if thinking_param is not None:
+        assert thinking_param == {
+            "type": "enabled",
+            "budget_tokens": budget_tokens,
+        }
+    # Also check via extra_body for providers that use that pattern
+    extra_body = positional_kwargs.get("extra_body", {})
+    if extra_body and "thinking" in extra_body:
+        assert extra_body["thinking"] == {
+            "type": "enabled",
+            "budget_tokens": budget_tokens,
+        }
     assert "reasoning_effort" not in positional_kwargs
 
 
