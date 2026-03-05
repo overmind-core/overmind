@@ -1,7 +1,7 @@
 """add model_suggestions to prompts
 
-Revision ID: 0004_add_model_suggestions
-Revises: 0003_add_raw_otlp_requests_table
+Revision ID: 0005_add_model_suggestions
+Revises: 0004_add_status_to_prompt
 Create Date: 2026-03-05 00:00:00.000000
 
 """
@@ -11,8 +11,8 @@ import sqlalchemy as sa
 from sqlalchemy.dialects.postgresql import JSONB
 
 
-revision = "0004_add_model_suggestions"
-down_revision = "0003_add_raw_otlp_requests_table"
+revision = "0005_add_model_suggestions"
+down_revision = "0004_add_status_to_prompt"
 branch_labels = None
 depends_on = None
 
