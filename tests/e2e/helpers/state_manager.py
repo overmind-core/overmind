@@ -52,7 +52,7 @@ def check_onboarding(client: OvermindAPIClient, **_: Any) -> bool:
     if not project:
         return False
     tokens = client.list_tokens(project["project_id"])
-    return any(t.get("name") in ("e2e-token", "e2e-token-resumed") for t in tokens)
+    return any(t.get("name", "").startswith("e2e-token") for t in tokens)
 
 
 def check_telemetry(
@@ -225,6 +225,7 @@ STAGE_REGISTRY: dict[str, dict] = {
     "telemetry": {"check": check_telemetry, "purge": purge_telemetry},
     "discovery": {"check": check_discovery, "purge": purge_discovery},
     "eval": {"check": check_evaluations, "purge": purge_evaluations},
+    # purge_review is a no-op: review state lives on the prompt; use --e2e-clean for full reset
     "review": {"check": check_review, "purge": purge_review},
     "rescore": {"check": check_rescore, "purge": purge_rescore},
     "tuning": {"check": check_tuning, "purge": purge_tuning},

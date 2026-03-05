@@ -17,6 +17,7 @@ google-genai = ">=1.0"
 
 [tool.pytest.ini_options]
 testpaths = ["."]
+addopts = "--html=reports/report.html --self-contained-html --junitxml=reports/junit.xml"
 asyncio_mode = "auto"
 asyncio_default_fixture_loop_scope = "session"
 markers = [

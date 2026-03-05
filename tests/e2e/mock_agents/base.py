@@ -105,6 +105,7 @@ class BaseMockAgent:
 
     SYSTEM_PROMPT: str = ""
     QUERIES: list[str] = []
+    # Cached responses for these models live under tests/e2e/cache/<provider>/
     MODEL: str = "gemini-3.1-flash-lite-preview"
     TOOLS: list[dict[str, Any]] | None = None
 

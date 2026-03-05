@@ -7,7 +7,7 @@ from __future__ import annotations
 import logging
 import os
 import sys
-from datetime import datetime
+import time
 from pathlib import Path
 
 import pytest
@@ -28,17 +28,9 @@ from helpers.state_manager import (  # noqa: E402
 
 logger = logging.getLogger(__name__)
 
-# ---------------------------------------------------------------------------
-# HTML report (auto-generated with timestamp)
-# ---------------------------------------------------------------------------
 
-
-@pytest.hookimpl(tryfirst=True)
 def pytest_configure(config: pytest.Config):
-    if not getattr(config.option, "htmlpath", None):
-        REPORTS_DIR.mkdir(exist_ok=True)
-        ts = datetime.now().strftime("%Y%m%d_%H%M%S")
-        config.option.htmlpath = str(REPORTS_DIR / f"report_{ts}.html")
+    REPORTS_DIR.mkdir(exist_ok=True)
 
 
 # ---------------------------------------------------------------------------
@@ -139,9 +131,7 @@ def shared_state(
 
         # The plain-text token is only returned on creation, not from list.
         # Create a fresh token so the mock agents can authenticate.
-        import time as _time
-
-        token_name = f"e2e-token-{int(_time.time())}"
+        token_name = f"e2e-token-{int(time.time())}"
         try:
             token_data = overmind_client.create_token(pid, name=token_name)
             state["api_token"] = token_data["token"]
@@ -167,8 +157,8 @@ def shared_state(
         try:
             if entry["check"](overmind_client, **check_kwargs):
                 state["_completed_stages"].add(stage_name)
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("Stage check '%s' failed: %s", stage_name, exc)
 
     logger.info("Stages already completed: %s", state["_completed_stages"] or "none")
     return state
@@ -230,8 +220,9 @@ def _build_check_kwargs(shared_state: dict, stage_name: str) -> dict:
         kwargs["project_id"] = pid
 
     slugs = shared_state.get("prompt_slugs", {})
-    if stage_name in ("eval", "review", "rescore", "tuning", "backtest") and slugs:
-        first_slug = next(iter(slugs))
-        kwargs["prompt_slug"] = first_slug
+    if stage_name in ("review", "rescore") and shared_state.get("qa_agent_slug"):
+        kwargs["prompt_slug"] = shared_state["qa_agent_slug"]
+    elif stage_name in ("eval", "tuning", "backtest") and slugs:
+        kwargs["prompt_slug"] = next(iter(slugs))
 
     return kwargs

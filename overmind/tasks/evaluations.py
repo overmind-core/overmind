@@ -487,7 +487,7 @@ def evaluate_spans_task(
                             span_id=span_id,
                             criteria_by_prompt=criteria_by_prompt,
                         )
-                    except BaseException as exc:
+                    except Exception as exc:
                         logger.exception(f"Failed to evaluate span {span_id}")
                         return {"span_id": span_id, "error": str(exc)}
 
@@ -1062,7 +1062,7 @@ async def _execute_prompt_spans_evaluation(
                                 span_id=span_id,
                                 criteria_by_prompt=criteria_by_prompt,
                             )
-                        except BaseException as exc:
+                        except Exception as exc:
                             logger.exception(f"Failed to evaluate span {span_id}")
                             return {"span_id": span_id, "error": str(exc)}
 

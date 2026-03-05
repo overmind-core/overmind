@@ -49,6 +49,8 @@ QUERIES = [
 assert len(QUERIES) == 30, f"Expected 30 queries, got {len(QUERIES)}"
 
 
+# Responses for these models are cached under tests/e2e/cache/<provider>/;
+# running without the cache files will make real API calls.
 PROVIDER_MODELS = {
     "openai": "gpt-5-mini",
     "anthropic": "claude-haiku-4-5",

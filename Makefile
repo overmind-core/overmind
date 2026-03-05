@@ -60,18 +60,21 @@ e2e:
 	@DISABLE_PERIODIC_TASKS=true docker compose up -d --force-recreate --no-deps celery-beat
 	@rc=0; (cd tests/e2e && poetry run pytest -x -v --tb=short $(test_args)) || rc=$$?; \
 		docker compose up -d --force-recreate --no-deps celery-beat; \
+		echo ""; echo "Reports: tests/e2e/reports/report.html, tests/e2e/reports/junit.xml"; \
 		exit $$rc
 
 e2e-rerun:
 	@DISABLE_PERIODIC_TASKS=true docker compose up -d --force-recreate --no-deps celery-beat
 	@rc=0; (cd tests/e2e && poetry run pytest --e2e-rerun -x -v --tb=short $(test_args)) || rc=$$?; \
 		docker compose up -d --force-recreate --no-deps celery-beat; \
+		echo ""; echo "Reports: tests/e2e/reports/report.html, tests/e2e/reports/junit.xml"; \
 		exit $$rc
 
 e2e-clean:
 	@DISABLE_PERIODIC_TASKS=true docker compose up -d --force-recreate --no-deps celery-beat
 	@rc=0; (cd tests/e2e && poetry run pytest --e2e-clean -x -v --tb=short $(test_args)) || rc=$$?; \
 		docker compose up -d --force-recreate --no-deps celery-beat; \
+		echo ""; echo "Reports: tests/e2e/reports/report.html, tests/e2e/reports/junit.xml"; \
 		exit $$rc
 
 e2e-reset-db:
