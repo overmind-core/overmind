@@ -570,9 +570,7 @@ async def _map_spans_to_templates(
     return stats
 
 
-async def _auto_accept_pending_versions(
-    db: AsyncSession, project_id: UUID
-) -> None:
+async def _auto_accept_pending_versions(db: AsyncSession, project_id: UUID) -> None:
     """
     For each prompt slug in the project, check if a pending (non-active) version
     has at least one real production span.  If so, flip ``is_active`` to that
@@ -596,7 +594,9 @@ async def _auto_accept_pending_versions(
             .order_by(Prompt.version.desc())
         )
         all_versions = versions_q.scalars().all()
-        active_prompt = next((v for v in all_versions if v.status == PROMPT_STATUS_ACTIVE), None)
+        active_prompt = next(
+            (v for v in all_versions if v.status == PROMPT_STATUS_ACTIVE), None
+        )
         max_prompt = all_versions[0]
 
         if not active_prompt or max_prompt.version == active_prompt.version:

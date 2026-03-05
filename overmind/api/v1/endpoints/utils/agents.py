@@ -82,7 +82,12 @@ async def get_analytics_for_prompt(
 
     # ---- avg latency (ms) ----
     latency_q = await db.execute(
-        select(func.avg((SpanModel.end_time_unix_nano - SpanModel.start_time_unix_nano) / 1_000_000.0)).where(
+        select(
+            func.avg(
+                (SpanModel.end_time_unix_nano - SpanModel.start_time_unix_nano)
+                / 1_000_000.0
+            )
+        ).where(
             and_(
                 SpanModel.prompt_id == prompt_id,
                 SpanModel.exclude_system_spans(),
@@ -124,8 +129,13 @@ async def get_analytics_for_prompt(
         select(
             func.date_trunc("hour", SpanModel.created_at).label("hour"),
             func.count(SpanModel.span_id).label("cnt"),
-            func.avg(cast(SpanModel.feedback_score["correctness"], Float)).label("avg_score"),
-            func.avg((SpanModel.end_time_unix_nano - SpanModel.start_time_unix_nano) / 1_000_000.0).label("avg_lat"),
+            func.avg(cast(SpanModel.feedback_score["correctness"], Float)).label(
+                "avg_score"
+            ),
+            func.avg(
+                (SpanModel.end_time_unix_nano - SpanModel.start_time_unix_nano)
+                / 1_000_000.0
+            ).label("avg_lat"),
         )
         .where(
             and_(

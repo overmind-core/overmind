@@ -1942,9 +1942,7 @@ async def _improve_prompt_templates(
             from overmind.models.iam.projects import Project as ProjectModel
 
             proj_result = await session.execute(
-                select(ProjectModel.project_id).where(
-                    ProjectModel.is_active.is_(True)
-                )
+                select(ProjectModel.project_id).where(ProjectModel.is_active.is_(True))
             )
             project_ids = [row[0] for row in proj_result.all()]
 
