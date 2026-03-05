@@ -825,19 +825,31 @@ async def _auto_evaluate_unscored_spans(
 
             for (project_id, prompt_slug), prompt_spans in spans_by_prompt.items():
                 try:
-                    # Get the latest prompt version first so we can validate
-                    prompt_result = await db.execute(
-                        select(Prompt)
-                        .where(
+                    # Get the active prompt version for eligibility validation.
+                    # Prefer is_active=True; fall back to max version for legacy data.
+                    active_result = await db.execute(
+                        select(Prompt).where(
                             and_(
                                 Prompt.project_id == project_id,
                                 Prompt.slug == prompt_slug,
+                                Prompt.is_active.is_(True),
                             )
                         )
-                        .order_by(Prompt.version.desc())
-                        .limit(1)
                     )
-                    prompt = prompt_result.scalar_one_or_none()
+                    prompt = active_result.scalar_one_or_none()
+                    if not prompt:
+                        prompt_result = await db.execute(
+                            select(Prompt)
+                            .where(
+                                and_(
+                                    Prompt.project_id == project_id,
+                                    Prompt.slug == prompt_slug,
+                                )
+                            )
+                            .order_by(Prompt.version.desc())
+                            .limit(1)
+                        )
+                        prompt = prompt_result.scalar_one_or_none()
 
                     if not prompt:
                         logger.warning(

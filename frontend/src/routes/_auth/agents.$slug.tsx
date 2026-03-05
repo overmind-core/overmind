@@ -1,8 +1,17 @@
 import { useMemo, useState } from "react";
 
+import type { PromptVersionOut, SuggestionOut } from "@/api";
 import { ResponseError } from "@/api";
 import apiClient from "@/client";
 import { Badge } from "@/components/ui/badge";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import {
@@ -60,6 +69,7 @@ function AgentDetailPage() {
   const queryClient = useQueryClient();
   const { tab, projectId } = Route.useSearch();
   const navigate = Route.useNavigate();
+  const [showNewVersionDialog, setShowNewVersionDialog] = useState(true);
   const setTab = (v: string) =>
     navigate({
       replace: true,
@@ -179,6 +189,27 @@ function AgentDetailPage() {
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["agent-detail", slug] }),
   });
 
+  const acceptVersionMutation = useMutation({
+    mutationFn: (version: number) =>
+      apiClient.agents
+        .acceptPromptVersionApiV1AgentsPromptSlugAcceptVersionPost({
+          promptSlug: slug,
+          acceptVersionRequest: { version },
+          projectId,
+        })
+        .catch(async (error) => {
+          if (error instanceof ResponseError) {
+            const r = await error.response.json();
+            throw new Error(r.detail ?? "Accept version failed");
+          }
+          throw error;
+        }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["agent-detail", slug] });
+      queryClient.invalidateQueries({ queryKey: ["agents"] });
+    },
+  });
+
   const allVersionsSorted = useMemo(() => {
     if (!data?.versions) return [];
     return [...data.versions].sort((a, b) => b.version - a.version);
@@ -213,18 +244,25 @@ function AgentDetailPage() {
 
   const agent = data;
   const { analytics } = agent;
-  const latestVersion = allVersionsSorted[0];
-  const lastEvaluated = allVersionsSorted[0]?.createdAt;
+  const activeVersion = allVersionsSorted.find((v) => v.version === agent.activeVersion) ?? allVersionsSorted[0];
+  const latestVersion = allVersionsSorted[0] ?? null;
+  const hasNewerVersion = latestVersion != null && activeVersion != null && latestVersion.version > activeVersion.version;
+  const pendingVersionData = agent.pendingVersion != null
+    ? allVersionsSorted.find((v) => v.version === agent.pendingVersion) ?? null
+    : hasNewerVersion ? latestVersion : null;
+  const lastEvaluated = activeVersion?.createdAt;
   const pendingSuggestion = agent.pendingVersion != null
     ? (agent.suggestions ?? []).find(
       (s) => s.newPromptVersion === agent.pendingVersion && s.status === "pending"
     ) ?? null
     : null;
+  const pendingVersionNumber = agent.pendingVersion ?? (hasNewerVersion ? latestVersion.version : null);
+
   const agentForReview = {
     slug: agent.slug,
     name: agent.name,
-    promptId: allVersionsSorted[0]?.promptId ?? "",
-    version: agent.latestVersion,
+    promptId: activeVersion?.promptId ?? "",
+    version: agent.activeVersion,
     analytics: agent.analytics,
   };
 
@@ -261,7 +299,7 @@ function AgentDetailPage() {
         <AgentCriteriaCard
           agentSlug={agent.slug}
           projectId={projectId}
-          promptId={allVersionsSorted[0]?.promptId ?? ""}
+          promptId={activeVersion?.promptId ?? ""}
         />
       </div>
 
@@ -288,46 +326,30 @@ function AgentDetailPage() {
       )}
 
 
-      {/* Pending version banner */}
-      {agent.pendingVersion != null && pendingSuggestion && (
-        <div className="flex items-center justify-between rounded-lg border border-amber-400/60 bg-amber-400/10 px-4 py-3">
-          <div className="flex items-center gap-2 text-sm text-amber-700 dark:text-amber-400">
-            <Sparkles className="size-4 shrink-0" />
-            <span>
-              Version {agent.pendingVersion} is pending acceptance. Stats below reflect{" "}
-              <strong>v{agent.activeVersion}</strong> (currently active in production).
-            </span>
-          </div>
-          <div className="ml-4 flex shrink-0 gap-2">
-            <Button
-              className="border-amber-400/60 text-amber-700 hover:bg-amber-400/20 dark:text-amber-400"
-              disabled={acceptSuggestionMutation.isPending || dismissSuggestionMutation.isPending}
-              onClick={() => pendingSuggestion && acceptSuggestionMutation.mutate(pendingSuggestion.id)}
-              size="sm"
-              variant="outline"
-            >
-              {acceptSuggestionMutation.isPending ? (
-                <Loader2 className="size-3 animate-spin" />
-              ) : (
-                <Check className="size-3" />
-              )}
-              Accept v{agent.pendingVersion}
-            </Button>
-            <Button
-              disabled={acceptSuggestionMutation.isPending || dismissSuggestionMutation.isPending}
-              onClick={() => pendingSuggestion && dismissSuggestionMutation.mutate(pendingSuggestion.id)}
-              size="sm"
-              variant="ghost"
-            >
-              {dismissSuggestionMutation.isPending ? (
-                <Loader2 className="size-3 animate-spin" />
-              ) : (
-                <X className="size-3" />
-              )}
-              Dismiss
-            </Button>
-          </div>
-        </div>
+      {/* New version available banner */}
+      {pendingVersionData && pendingVersionNumber != null && showNewVersionDialog && (
+        <NewVersionBanner
+          pendingVersion={pendingVersionNumber}
+          pendingVersionData={pendingVersionData}
+          suggestion={pendingSuggestion}
+          isAccepting={acceptSuggestionMutation.isPending || acceptVersionMutation.isPending}
+          isDismissing={dismissSuggestionMutation.isPending}
+          onAccept={() => {
+            if (pendingSuggestion) {
+              acceptSuggestionMutation.mutate(pendingSuggestion.id);
+            } else {
+              acceptVersionMutation.mutate(pendingVersionNumber);
+            }
+          }}
+          onDismiss={() => {
+            if (pendingSuggestion) {
+              dismissSuggestionMutation.mutate(pendingSuggestion.id);
+            } else {
+              setShowNewVersionDialog(false);
+            }
+          }}
+          onClose={() => setShowNewVersionDialog(false)}
+        />
       )}
 
       {/* Version row: VERSION N + LATEST + Score/Tune/Backtest */}
@@ -378,7 +400,7 @@ function AgentDetailPage() {
           <Button
             disabled={backtestMutation.isPending}
             onClick={() => {
-              const promptId = allVersionsSorted[0]?.promptId;
+              const promptId = activeVersion?.promptId;
               if (promptId) backtestMutation.mutate(promptId);
             }}
             size="sm"
@@ -404,17 +426,17 @@ function AgentDetailPage() {
       />
       <DismissibleAlert error={backtestMutation.isError ? backtestMutation.error : null} variant="warning" />
 
-      {/* Featured Latest Version Card */}
-      {latestVersion && (
+      {/* Featured Active Version Card */}
+      {activeVersion && (
         <div className="overflow-hidden rounded-lg border border-border/60 bg-card shadow-sm">
           <div className="flex items-center justify-between border-b border-border/40 px-5 py-3">
             <div className="flex items-center gap-3">
               <span className="text-[0.72rem] font-bold uppercase tracking-widest text-foreground">
-                Version {latestVersion.version}
+                Version {activeVersion.version}
               </span>
-              <span className="rounded bg-foreground px-2 py-0.5 text-[0.65rem] font-bold uppercase tracking-wider text-card">
-                Latest
-              </span>
+              <Badge className="bg-emerald-500/15 text-emerald-700 dark:text-emerald-400" variant="secondary">
+                Active
+              </Badge>
             </div>
             <Button
               onClick={() => {
@@ -447,30 +469,30 @@ function AgentDetailPage() {
               <div className="space-y-3">
                 <ReportMetricRow
                   label="Accuracy"
-                  progress={latestVersion.avgScore != null ? latestVersion.avgScore * 100 : 0}
-                  value={latestVersion.avgScore != null ? `${(latestVersion.avgScore * 100).toFixed(0)}%` : "—"}
+                  progress={activeVersion.avgScore != null ? activeVersion.avgScore * 100 : 0}
+                  value={activeVersion.avgScore != null ? `${(activeVersion.avgScore * 100).toFixed(0)}%` : "—"}
                 />
                 <ReportMetricRow
                   label="Scored"
                   progress={
-                    (latestVersion.totalSpans ?? 0) > 0
-                      ? ((latestVersion.scoredSpans ?? 0) / (latestVersion.totalSpans ?? 1)) * 100
+                    (activeVersion.totalSpans ?? 0) > 0
+                      ? ((activeVersion.scoredSpans ?? 0) / (activeVersion.totalSpans ?? 1)) * 100
                       : 0
                   }
                   value={
-                    (latestVersion.totalSpans ?? 0) > 0
-                      ? `${(((latestVersion.scoredSpans ?? 0) / (latestVersion.totalSpans ?? 1)) * 100).toFixed(0)}%`
+                    (activeVersion.totalSpans ?? 0) > 0
+                      ? `${(((activeVersion.scoredSpans ?? 0) / (activeVersion.totalSpans ?? 1)) * 100).toFixed(0)}%`
                       : "—"
                   }
                 />
                 <ReportMetricRow
                   label="Latency"
                   progress={
-                    latestVersion.avgLatencyMs != null
-                      ? Math.min(100, (latestVersion.avgLatencyMs / 10000) * 100)
+                    activeVersion.avgLatencyMs != null
+                      ? Math.min(100, (activeVersion.avgLatencyMs / 10000) * 100)
                       : 0
                   }
-                  value={latestVersion.avgLatencyMs != null ? `${latestVersion.avgLatencyMs.toFixed(0)} ms` : "—"}
+                  value={activeVersion.avgLatencyMs != null ? `${activeVersion.avgLatencyMs.toFixed(0)} ms` : "—"}
                 />
               </div>
             </div>
@@ -544,7 +566,7 @@ function AgentDetailPage() {
               <Button
                 disabled={backtestMutation.isPending}
                 onClick={() => {
-                  const promptId = allVersionsSorted[0]?.promptId;
+                  const promptId = activeVersion?.promptId;
                   if (promptId) backtestMutation.mutate(promptId);
                 }}
                 size="sm"
@@ -599,6 +621,173 @@ function AgentDetailPage() {
           scoredSpanCount={agent.analytics.scoredSpans}
         />
       )}
+    </div>
+  );
+}
+
+// ─── New Version Banner + Dialog ──────────────────────────────────────────────
+
+function NewVersionBanner({
+  pendingVersion,
+  pendingVersionData,
+  suggestion,
+  isAccepting,
+  isDismissing,
+  onAccept,
+  onDismiss,
+  onClose,
+}: {
+  pendingVersion: number;
+  pendingVersionData: PromptVersionOut;
+  suggestion: SuggestionOut | null;
+  isAccepting: boolean;
+  isDismissing: boolean;
+  onAccept: () => void;
+  onDismiss: () => void;
+  onClose: () => void;
+}) {
+  const [dialogOpen, setDialogOpen] = useState(false);
+  const scores = suggestion?.scores as Record<string, number> | null | undefined;
+
+  return (
+    <>
+      <div className="flex items-center justify-between rounded-lg border border-amber-400/60 bg-amber-400/10 px-4 py-3">
+        <div className="flex items-center gap-2 text-sm text-amber-700 dark:text-amber-400">
+          <Sparkles className="size-4 shrink-0" />
+          <span>
+            A new prompt version <strong>v{pendingVersion}</strong> is available.
+            {suggestion?.description ? ` ${suggestion.description}` : ""}
+          </span>
+        </div>
+        <div className="ml-4 flex shrink-0 gap-2">
+          <Button
+            className="border-amber-400/60 text-amber-700 hover:bg-amber-400/20 dark:text-amber-400"
+            onClick={() => setDialogOpen(true)}
+            size="sm"
+            variant="outline"
+          >
+            Review
+          </Button>
+          <Button onClick={onClose} size="sm" variant="ghost">
+            <X className="size-3" />
+          </Button>
+        </div>
+      </div>
+
+      <Dialog onOpenChange={setDialogOpen} open={dialogOpen}>
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle>New Version Available — v{pendingVersion}</DialogTitle>
+            {suggestion?.title && (
+              <DialogDescription>{suggestion.title}</DialogDescription>
+            )}
+          </DialogHeader>
+
+          <div className="space-y-4 py-2">
+            {suggestion?.description && (
+              <p className="text-sm text-muted-foreground">{suggestion.description}</p>
+            )}
+
+            {!suggestion && (
+              <p className="text-sm text-muted-foreground">
+                A newer prompt template (v{pendingVersion}) has been generated.
+                Accept it to make it the active version.
+              </p>
+            )}
+
+            {scores && (
+              <div className="grid grid-cols-2 gap-3">
+                {scores.avg_correctness_old != null && scores.avg_correctness_new != null && (
+                  <ComparisonStat
+                    label="Correctness"
+                    oldValue={`${(scores.avg_correctness_old * 100).toFixed(1)}%`}
+                    newValue={`${(scores.avg_correctness_new * 100).toFixed(1)}%`}
+                    improved={scores.avg_correctness_new > scores.avg_correctness_old}
+                  />
+                )}
+                {scores.avg_latency_ms_old != null && scores.avg_latency_ms_new != null && (
+                  <ComparisonStat
+                    label="Latency"
+                    oldValue={`${scores.avg_latency_ms_old.toFixed(0)} ms`}
+                    newValue={`${scores.avg_latency_ms_new.toFixed(0)} ms`}
+                    improved={scores.avg_latency_ms_new < scores.avg_latency_ms_old}
+                  />
+                )}
+                {scores.total_cost_old != null && scores.total_cost_new != null && (
+                  <ComparisonStat
+                    label="Cost"
+                    oldValue={`$${scores.total_cost_old.toFixed(4)}`}
+                    newValue={`$${scores.total_cost_new.toFixed(4)}`}
+                    improved={scores.total_cost_new < scores.total_cost_old}
+                  />
+                )}
+                {scores.spans_tested != null && (
+                  <div className="rounded-md border border-border/60 p-3">
+                    <p className="text-xs text-muted-foreground">Spans Tested</p>
+                    <p className="text-sm font-semibold">{scores.spans_tested}</p>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {pendingVersionData.totalSpans != null && pendingVersionData.totalSpans > 0 && (
+              <p className="text-xs text-muted-foreground">
+                v{pendingVersion} already has {pendingVersionData.totalSpans} production span(s) —
+                it will be auto-accepted once confirmed by the system.
+              </p>
+            )}
+          </div>
+
+          <DialogFooter>
+            <Button
+              disabled={isAccepting || isDismissing}
+              onClick={() => {
+                onDismiss();
+                setDialogOpen(false);
+              }}
+              variant="outline"
+            >
+              {isDismissing ? <Loader2 className="size-3 animate-spin" /> : <X className="size-3" />}
+              Dismiss
+            </Button>
+            <Button
+              disabled={isAccepting || isDismissing}
+              onClick={() => {
+                onAccept();
+                setDialogOpen(false);
+              }}
+            >
+              {isAccepting ? <Loader2 className="size-3 animate-spin" /> : <Check className="size-3" />}
+              Accept v{pendingVersion}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </>
+  );
+}
+
+function ComparisonStat({
+  label,
+  oldValue,
+  newValue,
+  improved,
+}: {
+  label: string;
+  oldValue: string;
+  newValue: string;
+  improved: boolean;
+}) {
+  return (
+    <div className="rounded-md border border-border/60 p-3">
+      <p className="text-xs text-muted-foreground">{label}</p>
+      <div className="mt-1 flex items-center gap-2 text-sm">
+        <span className="text-muted-foreground">{oldValue}</span>
+        <span className="text-muted-foreground">→</span>
+        <span className={improved ? "font-semibold text-emerald-600 dark:text-emerald-400" : "font-semibold text-red-600 dark:text-red-400"}>
+          {newValue}
+        </span>
+      </div>
     </div>
   );
 }
