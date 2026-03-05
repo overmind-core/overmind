@@ -16,7 +16,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import select, and_, func, cast, Float
 
 from overmind.db.session import get_session_local
-from overmind.models.prompts import Prompt
+from overmind.models.prompts import Prompt, PROMPT_STATUS_PENDING
 from overmind.models.iam.projects import Project
 from overmind.models.suggestions import Suggestion as SuggestionModel
 from overmind.models.traces import SpanModel
@@ -848,6 +848,8 @@ async def create_prompt_version(
         display_name=base_prompt.display_name,
         evaluation_criteria=evaluation_criteria,
         improvement_metadata=improvement_metadata,
+        tags=base_prompt.tags,
+        status=PROMPT_STATUS_PENDING,  # tuning-created versions await acceptance
     )
 
     session.add(new_prompt)
@@ -1929,31 +1931,28 @@ async def _improve_prompt_templates(
     try:
         AsyncSessionLocal = get_session_local()
         async with AsyncSessionLocal() as session:
-            # Get all latest prompt versions per (project_id, slug)
-            subquery = (
-                select(
-                    Prompt.project_id,
-                    Prompt.slug,
-                    func.max(Prompt.version).label("max_version"),
-                )
-                .group_by(Prompt.project_id, Prompt.slug)
-                .subquery()
+            # Get the active prompt version per (project_id, slug).
+            # We use is_active=True so that periodic tuning only runs against
+            # the version the user has accepted (or the original v1).
+            # New versions created by tuning start with is_active=False and
+            # are excluded until explicitly accepted or auto-accepted.
+            from overmind.api.v1.endpoints.utils.agents import (
+                get_latest_prompts_for_project,
             )
+            from overmind.models.iam.projects import Project as ProjectModel
 
-            result = await session.execute(
-                select(Prompt).join(
-                    subquery,
-                    and_(
-                        Prompt.project_id == subquery.c.project_id,
-                        Prompt.slug == subquery.c.slug,
-                        Prompt.version == subquery.c.max_version,
-                    ),
-                )
+            proj_result = await session.execute(
+                select(ProjectModel.project_id).where(ProjectModel.is_active.is_(True))
             )
+            project_ids = [row[0] for row in proj_result.all()]
 
-            latest_prompts = result.scalars().all()
+            latest_prompts: list[Prompt] = []
+            for pid in project_ids:
+                latest_prompts.extend(
+                    await get_latest_prompts_for_project(pid, session)
+                )
 
-            logger.info(f"Found {len(latest_prompts)} latest prompt versions to check")
+            logger.info(f"Found {len(latest_prompts)} active prompt versions to check")
 
             job_results = []
             errors = []

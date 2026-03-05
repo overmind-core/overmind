@@ -10,6 +10,16 @@ from sqlalchemy.sql import func
 from overmind.db.base import Base
 from sqlalchemy.dialects.postgresql import UUID, JSONB
 
+# Prompt version lifecycle statuses:
+#   active     — currently serving production traffic; exactly one per (slug, project)
+#   pending    — AI-generated candidate awaiting user review / acceptance
+#   superseded — was previously active but replaced by a newer accepted version
+#   rejected   — user explicitly dismissed this candidate
+PROMPT_STATUS_ACTIVE = "active"
+PROMPT_STATUS_PENDING = "pending"
+PROMPT_STATUS_SUPERSEDED = "superseded"
+PROMPT_STATUS_REJECTED = "rejected"
+
 
 class Prompt(Base):
     __tablename__ = "prompts"
@@ -62,6 +72,15 @@ class Prompt(Base):
     # User-defined categorisation tags, e.g. ["HR", "financial"]
     # Stored as a JSON array of strings; shared across all versions of the same slug
     tags = Column(JSONB, nullable=True)
+
+    # Version lifecycle status. See PROMPT_STATUS_* constants above.
+    # Exactly one version per (slug, project_id) has status='active' at any time.
+    status = Column(
+        String(20),
+        nullable=False,
+        default=PROMPT_STATUS_ACTIVE,
+        server_default=PROMPT_STATUS_ACTIVE,
+    )
 
     __table_args__ = (
         PrimaryKeyConstraint(
