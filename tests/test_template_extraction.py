@@ -92,7 +92,9 @@ TEMPLATE_DEFS: list[TemplateDef] = [
             "  3. Return raw function output without modification\n\n"
             "CONSTRAINT: Freeform text generation is strictly prohibited."
         ),
-        user_fn=lambda: f"calculate: {fake.random_int(1, 999)} * {fake.random_int(1, 999)}",
+        user_fn=lambda: (
+            f"calculate: {fake.random_int(1, 999)} * {fake.random_int(1, 999)}"
+        ),
         format="gemini",
     ),
     # 3. Customer support — system prompt with company context
@@ -106,7 +108,9 @@ TEMPLATE_DEFS: list[TemplateDef] = [
             "  - Escalate billing disputes to the finance team\n"
             "  - Offer a callback for unresolved technical issues"
         ),
-        user_fn=lambda: f"My {fake.word()} is not working since {fake.date_this_month()}. Order #{fake.random_int(10000, 99999)}.",
+        user_fn=lambda: (
+            f"My {fake.word()} is not working since {fake.date_this_month()}. Order #{fake.random_int(10000, 99999)}."
+        ),
         format="openai",
     ),
     # 4. Code reviewer — long system prompt with review checklist
@@ -121,7 +125,9 @@ TEMPLATE_DEFS: list[TemplateDef] = [
             "  [x] Style — naming conventions, dead code, comments?\n"
             "Output a structured JSON report with severity levels."
         ),
-        user_fn=lambda: f"def {fake.word()}({fake.word()}):\n    return {fake.word()}.{fake.word()}({fake.random_int(1, 100)})",
+        user_fn=lambda: (
+            f"def {fake.word()}({fake.word()}):\n    return {fake.word()}.{fake.word()}({fake.random_int(1, 100)})"
+        ),
         format="openai",
     ),
     # 5. Translator — short template, Gemini format

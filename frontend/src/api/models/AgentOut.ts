@@ -66,6 +66,12 @@ export interface AgentOut {
      */
     version: number;
     /**
+     * Set when a newer version exists but is not yet active; null/undefined otherwise
+     * @type {number}
+     * @memberof AgentOut
+     */
+    latestVersion?: number | null;
+    /**
      * 
      * @type {AgentAnalytics}
      * @memberof AgentOut
@@ -123,6 +129,7 @@ export function AgentOutFromJSONTyped(json: any, ignoreDiscriminator: boolean): 
         'name': json['name'],
         'promptId': json['prompt_id'],
         'version': json['version'],
+        'latestVersion': json['latest_version'] == null ? undefined : json['latest_version'],
         'analytics': AgentAnalyticsFromJSON(json['analytics']),
         'suggestions': json['suggestions'] == null ? undefined : ((json['suggestions'] as Array<any>).map(SuggestionOutFromJSON)),
         'jobs': json['jobs'] == null ? undefined : ((json['jobs'] as Array<any>).map(JobOutFromJSON)),
@@ -146,6 +153,7 @@ export function AgentOutToJSONTyped(value?: AgentOut | null, ignoreDiscriminator
         'name': value['name'],
         'prompt_id': value['promptId'],
         'version': value['version'],
+        'latest_version': value['latestVersion'],
         'analytics': AgentAnalyticsToJSON(value['analytics']),
         'suggestions': value['suggestions'] == null ? undefined : ((value['suggestions'] as Array<any>).map(SuggestionOutToJSON)),
         'jobs': value['jobs'] == null ? undefined : ((value['jobs'] as Array<any>).map(JobOutToJSON)),
