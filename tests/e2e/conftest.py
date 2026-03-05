@@ -95,6 +95,22 @@ def e2e_mode(request: pytest.FixtureRequest) -> str:
     return "default"
 
 
+def _restore_qa_agent_slug(
+    client: OvermindAPIClient, project_id: str, state: dict
+) -> None:
+    """Identify the QA agent by checking prompt text for FUNCTION_EXECUTOR."""
+    for slug in state["prompt_slugs"]:
+        try:
+            detail = client.get_agent_detail(slug, project_id)
+            versions = detail.get("versions", [])
+            prompt_text = versions[0].get("prompt_text", "") if versions else ""
+            if "FUNCTION_EXECUTOR" not in (prompt_text or ""):
+                state["qa_agent_slug"] = slug
+                return
+        except Exception:
+            continue
+
+
 @pytest.fixture(scope="session")
 def shared_state(
     overmind_client: OvermindAPIClient,
@@ -139,6 +155,8 @@ def shared_state(
             for agent in agents.get("data", []):
                 slug = agent["slug"]
                 state["prompt_slugs"][slug] = agent["prompt_id"]
+            if state["prompt_slugs"]:
+                _restore_qa_agent_slug(overmind_client, pid, state)
         except Exception:
             pass
 

@@ -81,9 +81,24 @@ QUERIES = [
     "calculate: hypotenuse, sides 3 and 4",
     "lookup_fact: boiling point of ethanol",
     "calculate: 25 cubed",
+    "calculate: 365 times 24",
+    "lookup_fact: distance from Earth to Mars",
+    "calculate: 20% discount on $149.99",
+    "calculate: sum of first 50 natural numbers",
+    "calculate: convert 72 Fahrenheit to Celsius",
+    "lookup_fact: atomic number of gold",
+    "calculate: compound interest on $1000 at 5% for 3 years",
+    "calculate: perimeter of rectangle, length=12, width=7",
+    "lookup_fact: year the Berlin Wall fell",
+    "calculate: 256 divided by 0.25",
+    "calculate: volume of sphere, radius=3",
+    "lookup_fact: chemical formula of table salt",
+    "calculate: 13 squared plus 14 squared",
+    "calculate: 10% sales tax on $67.30",
+    "lookup_fact: wavelength of red light in nanometers",
 ]
 
-assert len(QUERIES) == 15, f"Expected 15 queries, got {len(QUERIES)}"
+assert len(QUERIES) == 30, f"Expected 30 queries, got {len(QUERIES)}"
 
 PROVIDER_MODELS = {
     "openai": "gpt-5-mini",

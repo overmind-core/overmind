@@ -32,34 +32,16 @@ logger = logging.getLogger(__name__)
 pytestmark = [pytest.mark.e2e, pytest.mark.stage_tuning]
 
 
-def _pick_primary_agent(
-    client: OvermindAPIClient, project_id: str, prompt_slugs: dict
-) -> str:
-    """Pick the agent with the most mapped spans (the QA agent)."""
-    best_slug = None
-    best_count = -1
-    for slug in prompt_slugs:
-        detail = client.get_agent_detail(slug, project_id)
-        total = detail.get("analytics", {}).get("total_spans", 0)
-        if total > best_count:
-            best_count = total
-            best_slug = slug
-    assert best_slug, f"No agent with spans found. Slugs: {list(prompt_slugs.keys())}"
-    logger.info("Selected agent '%s' (%d spans) for tuning", best_slug, best_count)
-    return best_slug
-
-
 def test_trigger_prompt_tuning(
     overmind_client: OvermindAPIClient,
     shared_state: dict,
 ):
-    """Trigger prompt tuning for the primary agent (QA agent)."""
+    """Trigger prompt tuning for the QA agent."""
     project_id = shared_state.get("project_id")
-    prompt_slugs = shared_state.get("prompt_slugs", {})
     assert project_id, "Run stage 1 first"
-    assert prompt_slugs, "Run stage 3 first"
 
-    slug = _pick_primary_agent(overmind_client, project_id, prompt_slugs)
+    slug = shared_state.get("qa_agent_slug")
+    assert slug, "QA agent slug not set — run stage 3 first"
 
     try:
         job = overmind_client.trigger_tuning(slug, project_id)

@@ -16,7 +16,7 @@ E2E tests exist to catch product regressions. Follow these rules:
 2. **Never weaken assertions to make tests pass.** If a test fails, the product or test data has a bug — fix the root cause, don't loosen the check.
 3. **Never silently skip.** Use `pytest.skip()` only for genuine precondition gaps (prior stage not run). Never skip because an expected outcome didn't happen — that's a failure.
 4. **Include verbose debug info in assertion messages.** Every `assert` should include the actual value, relevant context (slugs, IDs, response keys), and enough info to diagnose without re-running.
-5. **Use tight timeouts for fast operations.** Agent discovery on 45 spans should finish in < 60s, not 300s. Long timeouts hide hangs.
+5. **Use tight timeouts for fast operations.** Agent discovery on 60 spans should finish in < 120s, not 300s. Long timeouts hide hangs.
 6. **No polling for things that should be immediate.** After a job completes, agents/results should be queryable instantly — don't poll with a long timeout.
 7. **Mock agents must produce structurally distinct traces.** The QA and tool agents have deliberately different system prompts, query formats, and vocabulary so the template extractor identifies them as separate templates. If you change a mock agent, verify the template extractor still separates them.
 
@@ -29,7 +29,8 @@ Stages 1-4 → review (5) → rescore (6) → tuning (7) → backtesting (8).
 ## Mock Agent Design
 
 - **QA agent**: Natural language system prompt + natural language user questions. 30 queries (stage 2). Uses gpt-5-mini (overkill for trivial Q&A).
-- **Tool agent**: Structured `<<FUNCTION_EXECUTOR>>` system prompt with explicit function signatures + structured `calculate:/lookup_fact:` query format. 15 queries. Uses gpt-5-mini.
+- **Tool agent**: Structured `<<FUNCTION_EXECUTOR>>` system prompt with explicit function signatures + structured `calculate:/lookup_fact:` query format. 30 queries. Uses gpt-5-mini.
+- Both agents produce 30 spans each (60 total). Since they have the same span count, downstream tests identify the QA agent by checking that the prompt text does NOT contain `FUNCTION_EXECUTOR`. The QA agent slug is stored in `shared_state["qa_agent_slug"]` during discovery (stage 3).
 - The two agents MUST produce structurally different extracted text (different system prompt vocabulary, different query format) so the template extractor's anchor-based grouping cannot merge them.
 - Changing system prompts or queries invalidates the LLM cache — new responses are fetched and cached automatically on the next run.
 

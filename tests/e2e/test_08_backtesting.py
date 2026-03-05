@@ -27,23 +27,6 @@ logger = logging.getLogger(__name__)
 pytestmark = [pytest.mark.e2e, pytest.mark.stage_backtest]
 
 
-def _pick_primary_agent(
-    client: OvermindAPIClient, project_id: str, prompt_slugs: dict
-) -> str:
-    """Pick the agent with the most mapped spans (the QA agent)."""
-    best_slug = None
-    best_count = -1
-    for slug in prompt_slugs:
-        detail = client.get_agent_detail(slug, project_id)
-        total = detail.get("analytics", {}).get("total_spans", 0)
-        if total > best_count:
-            best_count = total
-            best_slug = slug
-    assert best_slug, f"No agent with spans found. Slugs: {list(prompt_slugs.keys())}"
-    logger.info("Selected agent '%s' (%d spans) for backtesting", best_slug, best_count)
-    return best_slug
-
-
 BACKTEST_MODELS = [
     "gpt-5-nano",  # the cheapest version so it should prevail
     "gemini-3.1-flash-lite-preview",  # Gemini — cheapest
@@ -68,16 +51,16 @@ def test_trigger_backtesting(
     overmind_client: OvermindAPIClient,
     shared_state: dict,
 ):
-    """Trigger backtesting for the first discovered agent with cheaper models."""
+    """Trigger backtesting for the QA agent with cheaper models."""
     project_id = shared_state.get("project_id")
     prompt_slugs = shared_state.get("prompt_slugs", {})
     assert project_id, "Run stage 1 first"
-    assert prompt_slugs, "Run stage 3 first"
 
     cheaper = shared_state.get("backtest_models")
     assert cheaper, "Run test_get_available_models first"
 
-    slug = _pick_primary_agent(overmind_client, project_id, prompt_slugs)
+    slug = shared_state.get("qa_agent_slug")
+    assert slug, "QA agent slug not set — run stage 3 first"
     prompt_id = prompt_slugs[slug]
 
     try:

@@ -7,7 +7,7 @@ query formats so the template extractor MUST identify them as two distinct
 prompt templates.  If only 1 (or 0) templates are found, that is a product
 bug in the template extractor.
 
-Requires 30+ spans in the project (from stage 2).
+Requires 60 spans in the project (30 QA + 30 tool, from stage 2).
 """
 
 import pytest
@@ -26,7 +26,7 @@ def test_trigger_agent_discovery(
 ):
     """Trigger agent discovery and wait for the job to complete.
 
-    Agent discovery at this scale (45 spans) should finish within 60 seconds.
+    Agent discovery at this scale (60 spans) should finish within 120 seconds.
     """
     project_id = shared_state.get("project_id")
     assert project_id, "Run stage 1 first"
@@ -90,7 +90,12 @@ def test_spans_mapped_to_agents(
     overmind_client: OvermindAPIClient,
     shared_state: dict,
 ):
-    """Verify that spans are mapped to discovered prompts and counts are sane."""
+    """Verify that spans are mapped to discovered prompts and counts are sane.
+
+    Also identifies and stores the QA agent slug for downstream tests.
+    Both agents have 30 spans, so we distinguish them by prompt text:
+    the tool agent's template contains 'FUNCTION_EXECUTOR'.
+    """
     project_id = shared_state.get("project_id")
     prompt_slugs = shared_state.get("prompt_slugs", {})
     assert project_id
@@ -99,6 +104,7 @@ def test_spans_mapped_to_agents(
     )
 
     total_mapped_spans = 0
+    qa_slug = None
     for slug in prompt_slugs:
         detail = overmind_client.get_agent_detail(slug, project_id)
         total_spans = detail.get("analytics", {}).get("total_spans", 0)
@@ -107,7 +113,18 @@ def test_spans_mapped_to_agents(
         )
         total_mapped_spans += total_spans
 
-    assert total_mapped_spans >= 30, (
-        f"Expected at least 30 total mapped spans across all agents, "
+        versions = detail.get("versions", [])
+        prompt_text = versions[0].get("prompt_text", "") if versions else ""
+        if "FUNCTION_EXECUTOR" not in (prompt_text or ""):
+            qa_slug = slug
+
+    assert total_mapped_spans >= 60, (
+        f"Expected at least 60 total mapped spans across all agents, "
         f"got {total_mapped_spans}"
     )
+
+    assert qa_slug, (
+        f"Could not identify QA agent — no agent without 'FUNCTION_EXECUTOR' "
+        f"in prompt text. Slugs: {list(prompt_slugs.keys())}"
+    )
+    shared_state["qa_agent_slug"] = qa_slug

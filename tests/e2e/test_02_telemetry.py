@@ -3,10 +3,10 @@ Stage 2: Telemetry reception — send traces via the Overmind SDK, verify
 they appear in the API.
 
 Parametrized by LLM provider (openai, anthropic, gemini). Each variant
-runs a QA agent (30 spans) and a tool agent (15 spans) through the
+runs a QA agent (30 spans) and a tool agent (30 spans) through the
 Overmind SDK with cached httpx transport.
 
-Expected totals after this stage: 45 traces, 45 spans.
+Expected totals after this stage: 60 traces, 60 spans.
 """
 
 import time
@@ -22,7 +22,7 @@ from mock_agents.tool_agent import ToolAgent
 pytestmark = [pytest.mark.e2e, pytest.mark.stage_telemetry]
 
 EXPECTED_QA_QUERIES = 30
-EXPECTED_TOOL_QUERIES = 15
+EXPECTED_TOOL_QUERIES = 30
 EXPECTED_TOTAL_TRACES = EXPECTED_QA_QUERIES + EXPECTED_TOOL_QUERIES
 
 
