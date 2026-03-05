@@ -464,9 +464,20 @@ def evaluate_spans_task(
                 job.status = "running"
                 await session.commit()
 
-            # Local criteria lookup shared across all spans in this batch —
-            # populated on first access per prompt_id, avoids repeated DB hits.
+            # Pre-fetch criteria for every unique prompt in this batch so
+            # the concurrent fan-out never races on cache misses.
+            async with AsyncSessionLocal() as session:
+                rows = await session.execute(
+                    select(SpanModel.prompt_id)
+                    .where(SpanModel.span_id.in_(span_ids))
+                    .distinct()
+                )
+                unique_prompt_ids = {r for (r,) in rows.all() if r is not None}
+
             criteria_by_prompt: dict[str, dict[str, list[str]] | None] = {}
+            for pid in unique_prompt_ids:
+                criteria_by_prompt[pid] = await ensure_prompt_has_criteria(pid)
+
             semaphore = asyncio.Semaphore(_MAX_CONCURRENT_EVALUATIONS)
 
             async def _evaluate_with_limit(span_id: str) -> dict[str, Any]:
