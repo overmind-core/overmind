@@ -83,7 +83,7 @@ interface ModelRowProps {
 }
 
 function ModelRow({ model, config, onChange }: ModelRowProps) {
-  const { modelName, supportsReasoning, adaptiveMode, reasoningLevels, reasoningRequired } = model;
+  const { modelName, supportsReasoning, adaptiveMode, reasoningLevels, reasoningRequired, isNew } = model;
 
   return (
     <div className="flex items-start gap-3 rounded-md px-2 py-2 hover:bg-muted/40 transition-colors">
@@ -98,6 +98,11 @@ function ModelRow({ model, config, onChange }: ModelRowProps) {
           <label htmlFor={`base-${modelName}`} className="text-sm font-medium cursor-pointer">
             {modelName}
           </label>
+          {isNew && (
+            <Badge className="text-xs px-1.5 py-0 bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border-emerald-500/20 hover:bg-emerald-500/15">
+              New
+            </Badge>
+          )}
           {reasoningRequired && (
             <Badge variant="secondary" className="text-xs">reasoning always on</Badge>
           )}

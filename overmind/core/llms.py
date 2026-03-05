@@ -19,6 +19,8 @@ import json_repair
 #   - Opus 4.5, Sonnet 4.5, Haiku 4.5: manual mode only (thinking.type="enabled", budget_tokens)
 # Gemini: reasoning_effort maps to thinking_level (3+) or thinking_budget (2.5); 3.x adds "minimal"
 SUPPORTED_LLM_MODELS = [
+    # ── OpenAI ──────────────────────────────────────────────────────────────
+    # GPT-5 family (is_new=True): latest generation
     {
         "provider": "openai",
         "model_name": "gpt-5.2",
@@ -26,6 +28,7 @@ SUPPORTED_LLM_MODELS = [
         "adaptive_mode": True,
         "reasoning_levels": ["low", "medium", "high"],
         "backtesting_preferred": True,
+        "is_new": True,
     },
     {
         "provider": "openai",
@@ -47,6 +50,7 @@ SUPPORTED_LLM_MODELS = [
         "supports_reasoning": True,
         "adaptive_mode": True,
         "reasoning_levels": ["low", "medium", "high"],
+        "is_new": True,
     },
     {
         "provider": "openai",
@@ -54,6 +58,7 @@ SUPPORTED_LLM_MODELS = [
         "supports_reasoning": True,
         "adaptive_mode": True,
         "reasoning_levels": ["low", "medium", "high"],
+        "is_new": True,
     },
     {
         "provider": "openai",
@@ -62,14 +67,17 @@ SUPPORTED_LLM_MODELS = [
         "adaptive_mode": True,
         "reasoning_levels": ["low", "medium", "high"],
     },
+    # GPT-4 family
     {"provider": "openai", "model_name": "gpt-4.1", "supports_reasoning": False},
-    # Opus 4.6, Sonnet 4.6: adaptive thinking (effort); "max" is Opus 4.6 only
+    # ── Anthropic ────────────────────────────────────────────────────────────
+    # Claude 4.6: adaptive thinking (effort) — is_new=True; "max" is Opus 4.6 only
     {
         "provider": "anthropic",
         "model_name": "claude-opus-4-6",
         "supports_reasoning": True,
         "adaptive_mode": True,
         "reasoning_levels": ["low", "medium", "high", "max"],
+        "is_new": True,
     },
     {
         "provider": "anthropic",
@@ -78,8 +86,9 @@ SUPPORTED_LLM_MODELS = [
         "adaptive_mode": True,
         "reasoning_levels": ["low", "medium", "high"],
         "backtesting_preferred": True,
+        "is_new": True,
     },
-    # Opus 4.5, Sonnet 4.5, Haiku 4.5: manual thinking (budget_tokens) only; no reasoning_effort
+    # Claude 4.5: manual thinking (budget_tokens) only; no reasoning_effort
     {
         "provider": "anthropic",
         "model_name": "claude-opus-4-5",
@@ -101,12 +110,15 @@ SUPPORTED_LLM_MODELS = [
         "adaptive_mode": False,
         "thinking_budget_tokens": [8000],
     },
+    # ── Gemini ───────────────────────────────────────────────────────────────
+    # Gemini 3 family: is_new=True
     {
         "provider": "gemini",
         "model_name": "gemini-3.1-pro-preview",
         "supports_reasoning": True,
         "adaptive_mode": True,
         "reasoning_levels": ["low", "medium", "high"],
+        "is_new": True,
     },
     {
         "provider": "gemini",
@@ -115,7 +127,9 @@ SUPPORTED_LLM_MODELS = [
         "adaptive_mode": True,
         "reasoning_levels": ["low", "medium", "high"],
         "backtesting_preferred": True,
+        "is_new": True,
     },
+    # Gemini 2.5 family
     {
         "provider": "gemini",
         "model_name": "gemini-3.1-flash-lite-preview",

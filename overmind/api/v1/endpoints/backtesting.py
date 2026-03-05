@@ -34,6 +34,7 @@ class ModelInfo(BaseModel):
     reasoning_levels: list[str] = []
     thinking_budget_tokens: list[int] = []
     reasoning_required: bool = False
+    is_new: bool = False
 
 
 class BacktestingRequest(BaseModel):
@@ -73,6 +74,7 @@ async def list_available_models(
             reasoning_levels=model.get("reasoning_levels") or [],
             thinking_budget_tokens=model.get("thinking_budget_tokens") or [],
             reasoning_required=model.get("reasoning_required", False),
+            is_new=model.get("is_new", False),
         )
         for model in SUPPORTED_LLM_MODELS
     ]

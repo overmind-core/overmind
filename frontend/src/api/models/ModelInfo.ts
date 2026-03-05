@@ -61,6 +61,12 @@ export interface ModelInfo {
      * @memberof ModelInfo
      */
     reasoningRequired: boolean;
+    /**
+     * True if this model is from the latest generation (shown as a "New" tag in the UI)
+     * @type {boolean}
+     * @memberof ModelInfo
+     */
+    isNew: boolean;
 }
 
 /**
@@ -90,6 +96,7 @@ export function ModelInfoFromJSONTyped(json: any, ignoreDiscriminator: boolean):
         'reasoningLevels': json['reasoning_levels'] ?? [],
         'thinkingBudgetTokens': json['thinking_budget_tokens'] ?? [],
         'reasoningRequired': json['reasoning_required'] ?? false,
+        'isNew': json['is_new'] ?? false,
     };
 }
 
@@ -111,6 +118,7 @@ export function ModelInfoToJSONTyped(value?: ModelInfo | null, ignoreDiscriminat
         'reasoning_levels': value['reasoningLevels'],
         'thinking_budget_tokens': value['thinkingBudgetTokens'],
         'reasoning_required': value['reasoningRequired'],
+        'is_new': value['isNew'],
     };
 }
 
