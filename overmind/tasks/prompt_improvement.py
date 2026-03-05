@@ -1313,7 +1313,7 @@ async def validate_prompt_tuning_eligibility(
     if total_spans_fetched == 0:
         return (
             False,
-            "Not enough request data is available for analysis yet. Keep using your application and try again later.",
+            "No scored spans are available across any score bucket. Ensure requests have been evaluated before running tuning.",
             stats,
         )
 
