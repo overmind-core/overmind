@@ -156,7 +156,9 @@ SUPPORTED_LLM_MODELS = [
         "provider": "gemini",
         "model_name": "gemini-3.1-flash-lite-preview",
         "supports_reasoning": True,
+        "adaptive_mode": True,
         "reasoning_levels": ["low", "medium", "high"],
+        "description": "Google's fastest and cheapest Gemini model. Suited for high-volume simple tasks where speed and cost are priorities.",
     },
     {
         "provider": "gemini",
