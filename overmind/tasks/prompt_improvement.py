@@ -857,7 +857,6 @@ async def create_prompt_version(
         improvement_metadata=improvement_metadata,
         agent_description=base_prompt.agent_description,
         tags=base_prompt.tags,
-        status=PROMPT_STATUS_PENDING,  # tuning-created versions await acceptance
     )
 
     session.add(new_prompt)
