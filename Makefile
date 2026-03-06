@@ -34,7 +34,8 @@ revision:
 	docker compose exec api alembic revision --autogenerate -m "$(m)"
 
 test:
-	docker compose run --rm api sh -c "poetry install --with test && python -m pytest $(test_args)"
+	docker compose build api
+	docker compose run --rm api sh -c "uv pip install --system --group test && python -m pytest $(test_args)"
 
 lint:
 	poetry run ruff check --fix
