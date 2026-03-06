@@ -1344,27 +1344,31 @@ async def _check_backtesting_candidates(
     try:
         AsyncSessionLocal = get_session_local()
         async with AsyncSessionLocal() as session:
-            # Get the active prompt version per (project_id, slug).
-            # Periodic backtesting only runs against the version the user has
-            # accepted (is_active=True), not pending tuning candidates.
-            from overmind.api.v1.endpoints.utils.agents import (
-                get_latest_prompts_for_project,
-            )
-            from overmind.models.iam.projects import Project as ProjectModel
-
-            proj_result = await session.execute(
-                select(ProjectModel.project_id).where(ProjectModel.is_active.is_(True))
-            )
-            project_ids = [row[0] for row in proj_result.all()]
-
-            latest_prompts: list[Prompt] = []
-            for pid in project_ids:
-                latest_prompts.extend(
-                    await get_latest_prompts_for_project(pid, session)
+            # Get latest version of each prompt slug
+            subquery = (
+                select(
+                    Prompt.project_id,
+                    Prompt.slug,
+                    func.max(Prompt.version).label("max_version"),
                 )
+                .group_by(Prompt.project_id, Prompt.slug)
+                .subquery()
+            )
+
+            result = await session.execute(
+                select(Prompt).join(
+                    subquery,
+                    and_(
+                        Prompt.project_id == subquery.c.project_id,
+                        Prompt.slug == subquery.c.slug,
+                        Prompt.version == subquery.c.max_version,
+                    ),
+                )
+            )
+            latest_prompts = result.scalars().all()
 
             logger.info(
-                f"Backtesting check: found {len(latest_prompts)} active prompts to evaluate"
+                f"Backtesting check: found {len(latest_prompts)} prompts to evaluate"
             )
 
             job_results: list[dict[str, Any]] = []

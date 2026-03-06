@@ -16,7 +16,7 @@ Automatically improves prompt templates based on span performance data. Generate
 Periodic (5 min) or Job trigger
         │
         ▼
-  For each active prompt version (status='active'):
+  For each latest prompt version:
   ├── Check eligibility (see criteria below)
   │
   ├── Fetch spans by score bucket:
@@ -125,5 +125,3 @@ Falls back to Anthropic if provider is unknown. Defined in `overmind/tasks/utils
 - The comparison span count is capped at 50 spans, prioritizing lower-scoring ones
 - `improvement_metadata.criteria_invalidated` is set when criteria/description changes and cleared after improvement runs — this flag triggers the threshold rollback
 - Adding a new provider requires adding a variant to all `*_PROMPTS` dicts in `overmind/tasks/utils/prompts.py`
-- Periodic task uses `get_active_prompts_for_project()` to select the **active** version per slug (`status='active'`), NOT `max(version)` — pending versions created by tuning are excluded until accepted or auto-accepted
-- New prompt versions are created with `status='pending'` — they remain pending until the user accepts or production spans trigger auto-acceptance in agent discovery
