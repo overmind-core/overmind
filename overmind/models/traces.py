@@ -148,7 +148,7 @@ class SpanModel(Base):
 
     feedback_score = Column(JSONB, nullable=False, default=dict)
 
-    trace_id = Column(UUID(as_uuid=True), ForeignKey("traces.trace_id"), nullable=False)
+    trace_id = Column(UUID(as_uuid=True), nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
     parent_span_id = Column(
