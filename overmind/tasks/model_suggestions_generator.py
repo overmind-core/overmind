@@ -334,11 +334,15 @@ async def _generate_model_suggestions(prompt_id: str) -> dict[str, Any]:
             current_usage_stats=current_usage_stats,
         )
 
-        response, _ = call_llm(
+        response, stats = call_llm(
             prompt_text,
             system_prompt=MODEL_SUGGESTIONS_SYSTEM_PROMPT,
             model=resolve_model(TaskType.AGENT_DESCRIPTION),
             response_format=_ModelSuggestionsResponse,
+        )
+        logger.debug(
+            f"Model suggestions generated for prompt {prompt_id}: "
+            f"latency={stats['response_ms']}ms, cost=${stats['response_cost']:.6f}"
         )
 
         result_data = try_json_parsing(response)

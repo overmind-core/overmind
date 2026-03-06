@@ -145,28 +145,24 @@ def test_call_llm_passes_reasoning_effort_when_supported(mock_completion):
     assert positional_kwargs.get("reasoning_effort") == "low"
 
 
-@pytest.mark.parametrize("model", ["claude-opus-4-5", "gemini-2.5-flash"])
-@pytest.mark.parametrize("budget_tokens", [8000, -1])
+@pytest.mark.parametrize(
+    "model,budget_tokens",
+    [
+        ("claude-opus-4-5", 8000),  # Anthropic 4.5: only [8000]
+        ("gemini-2.5-flash", -1),  # Gemini 2.5 Flash: only [-1] (dynamic)
+    ],
+)
 def test_call_llm_passes_thinking_budget_tokens_for_manual_mode(
     mock_completion, model, budget_tokens: int
 ):
     call_llm("hello", model=model, thinking_budget_tokens=budget_tokens)
 
     positional_kwargs = mock_completion.call_args.kwargs
-    # Check that thinking is passed with the correct structure
     thinking_param = positional_kwargs.get("thinking")
-    if thinking_param is not None:
-        assert thinking_param == {
-            "type": "enabled",
-            "budget_tokens": budget_tokens,
-        }
-    # Also check via extra_body for providers that use that pattern
-    extra_body = positional_kwargs.get("extra_body", {})
-    if extra_body and "thinking" in extra_body:
-        assert extra_body["thinking"] == {
-            "type": "enabled",
-            "budget_tokens": budget_tokens,
-        }
+    assert thinking_param is not None, (
+        f"Expected thinking param to be set for {model} with budget_tokens={budget_tokens}"
+    )
+    assert thinking_param == {"type": "enabled", "budget_tokens": budget_tokens}
     assert "reasoning_effort" not in positional_kwargs
 
 

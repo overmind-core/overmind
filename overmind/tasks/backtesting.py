@@ -11,7 +11,6 @@ import asyncio
 import logging
 import time
 import uuid
-import uuid as uuid_module
 from collections import Counter, defaultdict
 from datetime import datetime, timedelta, timezone
 from typing import Any
@@ -97,6 +96,12 @@ MAX_SPANS_FOR_BACKTESTING = 50
 # Matches the evaluations.py pattern – bounded by a shared asyncio.Semaphore
 # so we don't overwhelm LLM provider rate-limits.
 _MAX_CONCURRENT_BACKTESTS = 5
+
+# Per-call timeout for LLM invocations inside _process_item.  A hung provider
+# connection would otherwise hold a semaphore slot indefinitely, stalling the
+# entire backtest job.  asyncio.wait_for raises TimeoutError on expiry;
+# asyncio.gather(return_exceptions=True) records it as a per-item failure.
+_LLM_CALL_TIMEOUT_S = 120
 
 # Performance thresholds for model recommendations
 _PERF_TOLERANCE = 0.05  # 5 percentage-point tolerance for speed/cost alternatives
@@ -732,13 +737,16 @@ async def _run_backtesting(
                         "available_tools"
                     ) or []
 
-                    model_result = await asyncio.to_thread(
-                        _run_model_on_input,
-                        model_name,
-                        input_text,
-                        messages=call_messages,
-                        tools=call_tools if call_tools else None,
-                        model_key=model_name,
+                    model_result = await asyncio.wait_for(
+                        asyncio.to_thread(
+                            _run_model_on_input,
+                            model_name,
+                            input_text,
+                            messages=call_messages,
+                            tools=call_tools if call_tools else None,
+                            model_key=model_name,
+                        ),
+                        timeout=_LLM_CALL_TIMEOUT_S,
                     )
 
                     # Preserve response_type / is_agentic so the correct judge
@@ -755,11 +763,14 @@ async def _run_backtesting(
                     # --------------------------------------------------------
                     # Plain / legacy span: existing plain-text behaviour
                     # --------------------------------------------------------
-                    model_result = await asyncio.to_thread(
-                        _run_model_on_input,
-                        model_name,
-                        input_text,
-                        model_key=model_name,
+                    model_result = await asyncio.wait_for(
+                        asyncio.to_thread(
+                            _run_model_on_input,
+                            model_name,
+                            input_text,
+                            model_key=model_name,
+                        ),
+                        timeout=_LLM_CALL_TIMEOUT_S,
                     )
 
                     # Strip response_type / is_agentic so we don't route into
@@ -787,14 +798,17 @@ async def _run_backtesting(
                 # Sync correctness eval → offload to thread
                 eval_score = 0.0
                 if model_result["success"] and model_result.get("output"):
-                    eval_score = await asyncio.to_thread(
-                        _evaluate_correctness_with_llm,
-                        input_data=eval_input_data,
-                        output_data=output_data,
-                        criteria_text=criteria_text,
-                        project_description=project_description,
-                        agent_description=agent_description,
-                        span_metadata=backtest_metadata,
+                    eval_score = await asyncio.wait_for(
+                        asyncio.to_thread(
+                            _evaluate_correctness_with_llm,
+                            input_data=eval_input_data,
+                            output_data=output_data,
+                            criteria_text=criteria_text,
+                            project_description=project_description,
+                            agent_description=agent_description,
+                            span_metadata=backtest_metadata,
+                        ),
+                        timeout=_LLM_CALL_TIMEOUT_S,
                     )
 
                 # Persist result span
@@ -1175,7 +1189,20 @@ async def validate_backtesting_eligibility(
     Args:
         prompt: The Prompt to validate
         session: Database session
-        models: Optional list of models to test (for user-triggered validation)
+        models: Optional list of models to test.  Pass a list (even empty) for
+            user-triggered calls; leave as ``None`` for system-triggered calls.
+            The distinction controls which checks are applied:
+
+            ``models is None``  → **system-triggered** (Celery beat).
+                All checks run, including the span-count threshold re-run guard
+                (Check 5), which prevents the scheduler from running redundant
+                jobs before enough new data has arrived.
+
+            ``models is not None`` → **user-triggered** (API).
+                Check 5 is skipped.  Users explicitly choosing a different model
+                selection should not be blocked by the scheduler's throttle — the
+                threshold guard exists to prevent wasteful automated reruns, not
+                to restrict manual exploration.
 
     Returns:
         Tuple of (is_eligible, error_message, stats)
@@ -1250,37 +1277,41 @@ async def validate_backtesting_eligibility(
             stats,
         )
 
-    # Check 5: Threshold-based re-run guard (don't re-run until enough new spans)
-    last_count = 0
-    last_job_q = await session.execute(
-        select(Job.result)
-        .where(
-            and_(
-                Job.project_id == prompt.project_id,
-                Job.prompt_slug == prompt.slug,
-                Job.job_type == JobType.MODEL_BACKTESTING.value,
-                Job.status == JobStatus.COMPLETED.value,
+    # Check 5: Threshold-based re-run guard (system-triggered only)
+    # Skipped for user-triggered calls (models is not None) — users explicitly
+    # choosing a new model selection should not be blocked by the scheduler's
+    # throttle.  See docstring for the full rationale.
+    if models is None:
+        last_count = 0
+        last_job_q = await session.execute(
+            select(Job.result)
+            .where(
+                and_(
+                    Job.project_id == prompt.project_id,
+                    Job.prompt_slug == prompt.slug,
+                    Job.job_type == JobType.MODEL_BACKTESTING.value,
+                    Job.status == JobStatus.COMPLETED.value,
+                )
             )
+            .order_by(Job.created_at.desc())
+            .limit(1)
         )
-        .order_by(Job.created_at.desc())
-        .limit(1)
-    )
-    last_job_result = last_job_q.scalar_one_or_none()
-    if last_job_result and isinstance(last_job_result, dict):
-        last_count = last_job_result.get("parameters", {}).get(
-            "scored_count_at_creation", 0
-        )
+        last_job_result = last_job_q.scalar_one_or_none()
+        if last_job_result and isinstance(last_job_result, dict):
+            last_count = last_job_result.get("parameters", {}).get(
+                "scored_count_at_creation", 0
+            )
 
-    next_threshold = _next_backtest_threshold(last_count)
-    stats["last_scored_count"] = last_count
-    stats["next_threshold"] = next_threshold
+        next_threshold = _next_backtest_threshold(last_count)
+        stats["last_scored_count"] = last_count
+        stats["next_threshold"] = next_threshold
 
-    if scored_count < next_threshold:
-        return (
-            False,
-            f"{scored_count} evaluated request(s) collected so far — backtesting will run automatically once {next_threshold} are reached.",
-            stats,
-        )
+        if scored_count < next_threshold:
+            return (
+                False,
+                f"{scored_count} evaluated request(s) collected so far — backtesting will run automatically once {next_threshold} are reached.",
+                stats,
+            )
 
     # Check 6: Minimum available spans (for running the backtest itself)
     available_q = await session.execute(
@@ -1378,7 +1409,7 @@ async def _check_and_create_backtesting_job(
 
     try:
         job = Job(
-            job_id=uuid_module.uuid4(),
+            job_id=uuid.uuid4(),
             job_type=JobType.MODEL_BACKTESTING.value,
             project_id=prompt.project_id,
             prompt_slug=prompt.slug,

@@ -1,5 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy import and_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from overmind.api.v1.endpoints.jobs import (
@@ -38,11 +38,14 @@ class ModelInfo(BaseModel):
     is_new: bool = False
 
 
+MAX_MODEL_VARIANTS = 10
+
+
 class BacktestingRequest(BaseModel):
     """Request to run model backtesting."""
 
     prompt_id: str
-    models: list[str]  # List of model names to test
+    models: list[str] = Field(min_length=1, max_length=MAX_MODEL_VARIANTS)
     max_spans: int | None = 50  # Maximum number of spans to test (default 50)
     min_spans: int | None = 10  # Minimum number of spans required (default 10)
 
@@ -99,13 +102,6 @@ async def run_backtesting(
 
     The backtesting runs as a background task and returns a job_id for tracking.
     """
-    # Validate request
-    if not request.models:
-        raise HTTPException(
-            status_code=400,
-            detail="At least one model must be specified",
-        )
-
     # Validate models — strip reasoning suffix before checking support
     invalid_models = [
         m
@@ -200,6 +196,7 @@ async def run_backtesting(
                 "span_count": span_count,
                 "user_id": str(current_user.user_id),
                 "organisation_id": str(organisation_id) if organisation_id else None,
+                "scored_count_at_creation": validation_stats.get("scored_count", 0),
             },
             "validation_stats": validation_stats,
         },
