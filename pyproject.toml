@@ -59,6 +59,7 @@ python-dotenv = "^1.2.1"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+collect_ignore_glob = ["tests/e2e/*"]
 asyncio_mode = "auto"
 asyncio_default_fixture_loop_scope = "function"
 

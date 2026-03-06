@@ -1,0 +1,15 @@
+{
+  "status_code": 200,
+  "headers": {
+    "content-type": "application/json; charset=UTF-8",
+    "vary": "Origin, X-Origin, Referer",
+    "date": "Wed, 04 Mar 2026 18:15:23 GMT",
+    "server": "scaffolding on HTTPServer2",
+    "x-xss-protection": "0",
+    "x-frame-options": "SAMEORIGIN",
+    "x-content-type-options": "nosniff",
+    "server-timing": "gfet4t7; dur=552",
+    "alt-svc": "h3=\":443\"; ma=2592000,h3-29=\":443\"; ma=2592000"
+  },
+  "body": "{\n  \"candidates\": [\n    {\n      \"content\": {\n        \"parts\": [\n          {\n            \"text\": \"William Shakespeare wrote *Romeo and Juliet*.\",\n            \"thoughtSignature\": \"EjQKMgG+Pvb7Yqqx07tIjLlPtd7lLZeH1M2W0VqIgT1rR3H42+yThPmeO/6qQhbMx/q4nujQ\"\n          }\n        ],\n        \"role\": \"model\"\n      },\n      \"finishReason\": \"STOP\",\n      \"index\": 0\n    }\n  ],\n  \"usageMetadata\": {\n    \"promptTokenCount\": 30,\n    \"candidatesTokenCount\": 8,\n    \"totalTokenCount\": 38,\n    \"promptTokensDetails\": [\n      {\n        \"modality\": \"TEXT\",\n        \"tokenCount\": 30\n      }\n    ]\n  },\n  \"modelVersion\": \"gemini-3.1-flash-lite-preview\",\n  \"responseId\": \"u3aoabuSJqmdkdUPvOHikQk\"\n}\n"
+}

@@ -1,4 +1,4 @@
-.PHONY: run stop logs migrate revision test lint psql
+.PHONY: run stop logs migrate revision test lint psql e2e e2e-rerun e2e-clean e2e-reset-db
 
 OPEN_CMD := $(shell command -v xdg-open 2>/dev/null || command -v open 2>/dev/null)
 
@@ -55,6 +55,40 @@ build-frontend:
 
 deploy-frontend: build-frontend
 	cd frontend && bun run wrangler pages deploy dist
+
+e2e:
+	@DISABLE_PERIODIC_TASKS=true docker compose up -d --force-recreate --no-deps celery-beat
+	@rc=0; (cd tests/e2e && poetry run pytest -x -v --tb=short $(test_args)) || rc=$$?; \
+		docker compose up -d --force-recreate --no-deps celery-beat; \
+		echo ""; echo "Reports: tests/e2e/reports/report.html, tests/e2e/reports/junit.xml"; \
+		exit $$rc
+
+e2e-rerun:
+	@DISABLE_PERIODIC_TASKS=true docker compose up -d --force-recreate --no-deps celery-beat
+	@rc=0; (cd tests/e2e && poetry run pytest --e2e-rerun -x -v --tb=short $(test_args)) || rc=$$?; \
+		docker compose up -d --force-recreate --no-deps celery-beat; \
+		echo ""; echo "Reports: tests/e2e/reports/report.html, tests/e2e/reports/junit.xml"; \
+		exit $$rc
+
+e2e-clean:
+	@DISABLE_PERIODIC_TASKS=true docker compose up -d --force-recreate --no-deps celery-beat
+	@rc=0; (cd tests/e2e && poetry run pytest --e2e-clean -x -v --tb=short $(test_args)) || rc=$$?; \
+		docker compose up -d --force-recreate --no-deps celery-beat; \
+		echo ""; echo "Reports: tests/e2e/reports/report.html, tests/e2e/reports/junit.xml"; \
+		exit $$rc
+
+e2e-reset-db:
+	@echo "Dropping all tables (keeping LLM cache and containers)…"
+	docker compose exec postgres psql -U overmind -d overmind_core \
+		-c "DROP SCHEMA public CASCADE; CREATE SCHEMA public; GRANT ALL ON SCHEMA public TO overmind;"
+	@echo "Re-running migrations…"
+	docker compose exec api alembic upgrade head
+	@echo "Restarting API + Celery workers (picks up fresh .env)…"
+	docker compose restart api celery-worker celery-beat
+	@echo "Waiting for API health check…"
+	@until curl -sf http://localhost:8000/health >/dev/null 2>&1; do sleep 2; done
+	@echo "DB reset complete. Run 'make e2e' to re-run tests from scratch."
+
 
 generate_api_client:
 	docker run --rm -v $(PWD):/workspace openapitools/openapi-generator-cli:v7.19.0 generate \

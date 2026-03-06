@@ -231,14 +231,9 @@ async def _generate_criteria_for_prompt(prompt_id: str) -> dict[str, Any]:
     }
 
 
-_criteria_cache: dict[str, dict[str, list[str]] | None] = {}
-
-
 async def ensure_prompt_has_criteria(prompt_id: str) -> dict[str, list[str]] | None:
     """
     Check if a prompt has evaluation criteria, and generate them if not.
-    Results are cached in a plain dict to avoid alru_cache's event-loop affinity
-    (Celery tasks create a new loop on each invocation via asyncio.run).
 
     Args:
         prompt_id: String ID of the prompt (format: {project_id}_{version}_{slug})
@@ -246,8 +241,6 @@ async def ensure_prompt_has_criteria(prompt_id: str) -> dict[str, list[str]] | N
     Returns:
         The evaluation criteria (existing or newly generated)
     """
-    if prompt_id in _criteria_cache:
-        return _criteria_cache[prompt_id]
     AsyncSessionLocal = get_session_local()
     async with AsyncSessionLocal() as session:
         try:
@@ -270,17 +263,12 @@ async def ensure_prompt_has_criteria(prompt_id: str) -> dict[str, list[str]] | N
         if prompt is None:
             raise ValueError(f"Prompt not found: {prompt_id}")
 
-        # If criteria already exists, return it
         if prompt.evaluation_criteria:
-            _criteria_cache[prompt_id] = prompt.evaluation_criteria
             return prompt.evaluation_criteria
 
-        # Otherwise, trigger generation task
         logger.info(f"No criteria found for prompt {prompt_id}, generating...")
         result = await _generate_criteria_for_prompt(prompt_id)
-        criteria = result.get("criteria")
-        _criteria_cache[prompt_id] = criteria
-        return criteria
+        return result.get("criteria")
 
 
 @shared_task(name="criteria_generator.generate_criteria")

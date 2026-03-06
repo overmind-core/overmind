@@ -1,0 +1,15 @@
+{
+  "status_code": 200,
+  "headers": {
+    "content-type": "application/json; charset=UTF-8",
+    "vary": "Origin, X-Origin, Referer",
+    "date": "Thu, 05 Mar 2026 10:41:18 GMT",
+    "server": "scaffolding on HTTPServer2",
+    "x-xss-protection": "0",
+    "x-frame-options": "SAMEORIGIN",
+    "x-content-type-options": "nosniff",
+    "server-timing": "gfet4t7; dur=748",
+    "alt-svc": "h3=\":443\"; ma=2592000,h3-29=\":443\"; ma=2592000"
+  },
+  "body": "{\n  \"candidates\": [\n    {\n      \"content\": {\n        \"parts\": [\n          {\n            \"text\": \"calculate(\\\"2 * (12 + 7)\\\")\",\n            \"thoughtSignature\": \"EjQKMgG+Pvb7Bddstb6ENTXH+7H6QcVBz0bZFzyPBdmEl0ScI17ApjreVKFOhgc9+XrYeV7A\"\n          }\n        ],\n        \"role\": \"model\"\n      },\n      \"finishReason\": \"STOP\",\n      \"index\": 0\n    }\n  ],\n  \"usageMetadata\": {\n    \"promptTokenCount\": 113,\n    \"candidatesTokenCount\": 11,\n    \"totalTokenCount\": 124,\n    \"promptTokensDetails\": [\n      {\n        \"modality\": \"TEXT\",\n        \"tokenCount\": 113\n      }\n    ]\n  },\n  \"modelVersion\": \"gemini-3.1-flash-lite-preview\",\n  \"responseId\": \"zl2paaLPMoaSxN8PobaxgQo\"\n}\n"
+}

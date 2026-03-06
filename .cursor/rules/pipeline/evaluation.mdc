@@ -70,9 +70,9 @@ All system prompts instruct the LLM to return `{"correctness": float}` JSON.
 
 Core scoring function. Dispatches to the appropriate judge type, calls `call_llm()`, parses JSON response, clamps to [0, 1].
 
-### `_get_context_for_span(span) -> tuple[str, str | None, str | None]`
+### `_get_context_for_span(span, criteria_by_prompt=None) -> tuple[str, str | None, str | None]`
 
-Returns `(criteria_text, project_description, agent_description)` by looking up the span's linked Prompt and Project.
+Returns `(criteria_text, project_description, agent_description)` by looking up the span's linked Prompt and Project. When `criteria_by_prompt` dict is supplied, criteria are looked up / stored there so a batch of spans sharing the same prompt only hits the DB once.
 
 ### `_format_criteria(criteria_dict) -> str`
 
@@ -130,6 +130,6 @@ All must be true (in order):
 
 - Adding a new evaluation type requires: a new judge prompt pair in `overmind/tasks/utils/prompts.py`, routing logic in `_evaluate_correctness_with_llm`, and possibly a new extractor in `agentic_span_processor.py`
 - The `response_type` metadata is set during trace ingestion — changes there affect which judge is used
-- `ensure_prompt_has_criteria` (from criteria_generator) is called when criteria are missing — evaluation won't proceed without criteria for the plain judge
+- `ensure_prompt_has_criteria` (from criteria_generator) is called when criteria are missing — evaluation won't proceed without criteria for the plain judge. No module-level cache; orchestrators pass a local `criteria_by_prompt` dict for per-batch deduplication.
 - All judge prompts must return `{"correctness": float}` JSON — the system prompt enforces this
 - Scores are stored in `span.feedback_score` which is a JSONB column — other keys like `agent_feedback` and `judge_feedback` coexist there

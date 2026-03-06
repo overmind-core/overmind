@@ -123,8 +123,10 @@ class ExtractionConfig:
     """Configuration for template extraction."""
 
     min_similarity: float = 0.3  # Minimum Jaccard similarity for candidate grouping
-    min_group_size: int = 2  # Minimum strings to form a template
-    min_anchor_tokens: int = 1  # Minimum anchor tokens required
+    min_group_size: int = (
+        25  # Minimum strings to form a template (assumes 30+ spans per agent)
+    )
+    min_anchor_tokens: int = 3  # Minimum anchor tokens required
     skip_whitespace_in_similarity: bool = True
     skip_whitespace_in_anchors: bool = True
     # Use anchor-based grouping in addition to similarity-based
@@ -132,7 +134,8 @@ class ExtractionConfig:
     min_common_anchors: int = 3  # For anchor-based grouping
     # Strict mode: treat consistent variable values as part of template
     # This separates "the order" vs "an order" into different templates
-    strict_mode: bool = True
+    # Disabled by default to prevent fragmentation on short templates
+    strict_mode: bool = False
     # Performance options
     use_parallel: bool = True  # Use parallel processing for grouping
     n_jobs: int | None = None  # Number of parallel workers (None = auto)
@@ -464,8 +467,42 @@ def _iterative_grouping(
             use_parallel=config.use_parallel,
             n_jobs=config.n_jobs,
         )
-        # Merge groups from both strategies
-        all_initial_groups = _merge_overlapping_groups(sim_groups + anchor_groups)
+
+        # Anchor groups with very generic tokens (e.g. "a", ".", "User")
+        # can bridge structurally unrelated strings.  Only use an anchor
+        # group when its anchors cover a meaningful fraction of member
+        # tokens; otherwise, similarity groups are more reliable.
+        sim_covered: set[int] = set()
+        for g in sim_groups:
+            sim_covered |= g
+
+        filtered_anchor_groups: list[set[int]] = []
+        for ag in anchor_groups:
+            uncovered = ag - sim_covered
+            if uncovered:
+                # Anchor group has uncovered members — keep for those
+                filtered_anchor_groups.append(ag)
+            else:
+                # Every member is already in a similarity group.
+                # Check anchor coverage: if the anchors are too sparse
+                # relative to string length, the anchor group is spurious.
+                ag_list = list(ag)
+                token_seqs = [token_values(token_lists[i]) for i in ag_list]
+                anchors = compute_anchors_for_group(
+                    token_seqs, skip_whitespace=config.skip_whitespace_in_anchors
+                )
+                avg_tokens = (
+                    sum(len(s) for s in token_seqs) / len(token_seqs)
+                    if token_seqs
+                    else 0
+                )
+                coverage = len(anchors) / avg_tokens if avg_tokens > 0 else 0
+                if coverage >= 0.15:
+                    filtered_anchor_groups.append(ag)
+
+        all_initial_groups = _merge_overlapping_groups(
+            sim_groups + filtered_anchor_groups
+        )
     else:
         all_initial_groups = sim_groups
 

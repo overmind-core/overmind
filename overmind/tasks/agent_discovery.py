@@ -169,6 +169,30 @@ def _sanitize_for_jsonb(obj):
     return obj
 
 
+def _unwrap_content_parts(content: str) -> str:
+    """Unwrap Gemini-style content-parts JSON if present.
+
+    Gemini traces store message content as a JSON string like:
+        [{"type": "text", "text": "...actual prompt..."}]
+    This wrapper adds shared JSON tokens that confuse the template extractor
+    into merging structurally different agents. Strip it down to plain text.
+    """
+    try:
+        inner = json.loads(content)
+    except (json.JSONDecodeError, TypeError, ValueError):
+        return content
+
+    if isinstance(inner, list) and inner:
+        text_parts = []
+        for part in inner:
+            if isinstance(part, dict) and part.get("type") == "text":
+                text_parts.append(part.get("text", ""))
+        if text_parts:
+            return "\n".join(text_parts)
+
+    return content
+
+
 def _get_span_input_text_merged(span: SpanModel) -> str | None:
     """
     Extract the input text from a span for template matching.
@@ -220,20 +244,21 @@ def _get_span_input_text_merged(span: SpanModel) -> str | None:
             if role in ("user", "system"):
                 content = item.get("content")
                 if content:
-                    # Add role prefix for clarity in template
+                    content = _unwrap_content_parts(str(content))
                     role_prefix = f"[{role.upper()}] " if role == "system" else ""
-                    parts.append(role_prefix + str(content))
+                    parts.append(role_prefix + content)
             # Skip assistant and tool roles - they're not part of the prompt template
             elif role in ("assistant", "tool"):
                 continue
             # For items without role, check for content
             elif "content" in item:
-                parts.append(str(item["content"]))
+                content = _unwrap_content_parts(str(item["content"]))
+                parts.append(content)
 
         return "\n".join(parts) if parts else None
     elif isinstance(parsed, dict) and "content" in parsed:
         # Simple dict format
-        return str(parsed["content"])
+        return _unwrap_content_parts(str(parsed["content"]))
 
     return None
 

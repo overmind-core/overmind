@@ -72,7 +72,7 @@ All must be true:
 
 ### Tool-calling prompts
 
-Detection: `has_response_type = any span has metadata_attributes.response_type`
+Detection: `has_tool_call_spans = any span has metadata_attributes.response_type == "tool_calls"`
 
 - **Suggestions**: `_generate_tool_improvement_suggestions()` → splits poor spans into tool-call vs text spans, uses `TOOL_SUGGESTION_GENERATION_PROMPTS`
 - **Improvement**: `_improve_tool_prompt_template()` → uses `TOOL_PROMPT_IMPROVEMENT_PROMPTS`, preserves tool definitions as read-only context
@@ -102,7 +102,7 @@ Falls back to Anthropic if provider is unknown. Defined in `overmind/tasks/utils
 | `improve_prompt_template(current_prompt, suggestions, span_examples, ...)`       | Apply suggestions to create improved prompt |
 | `generate_outputs_with_new_prompt(new_prompt, old_spans)`                        | Re-run old inputs with new prompt           |
 | `create_comparison_spans(new_prompt, results, session, ...)`                     | Persist re-run results as system spans      |
-| `create_prompt_version(base_prompt, new_text, span_count, spans_used, session)`  | Create new Prompt version (dedup by hash)   |
+| `create_prompt_version(base_prompt, new_text, span_count, spans_used, session)`  | Create new Prompt version (dedup by hash). Copies `evaluation_criteria`, `display_name`, `agent_description`, and `tags` from the base prompt. |
 | `should_improve_prompt(prompt, scored_span_count)`                               | Check if threshold is crossed               |
 | `is_latest_prompt_adopted(prompt, span_count, session)`                          | Check >= 25% adoption rate                  |
 

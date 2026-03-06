@@ -62,7 +62,7 @@ Core logic. Fetches unmapped spans, runs template extraction or matching, create
 
 ### `_get_span_input_text_merged(span) -> str | None`
 
-Extracts text from span input. For conversational format (list of messages), concatenates only `system` and `user` role messages. This ensures templates capture the prompt structure, not the LLM's responses.
+Extracts text from span input. For conversational format (list of messages), concatenates only `system` and `user` role messages. This ensures templates capture the prompt structure, not the LLM's responses. Content strings in Gemini parts format (`[{"type": "text", "text": "..."}]`) are automatically unwrapped by `_unwrap_content_parts()` to prevent the JSON envelope from polluting template anchors.
 
 ### `_create_prompt_from_template(db, template, project_id, user_id) -> Prompt`
 
@@ -86,9 +86,12 @@ A standalone module that groups strings by structural similarity and extracts te
 ### Algorithm:
 
 1. Tokenize all strings
-1. Find candidate groups via common anchor sequences
-1. Build templates from groups, identifying variable slots
-1. Match remaining strings to templates
+2. Find candidate groups via Jaccard similarity
+3. Find anchor-based groups (shared token subsequences)
+4. Merge — but anchor groups that are fully covered by similarity groups are dropped if their anchor coverage ratio is below 15% (prevents generic tokens like `a`, `.`, `User` from bridging unrelated agents)
+5. Refine by anchor structure, optionally split by variable patterns (strict mode)
+6. Build templates from groups, identifying variable slots
+7. Match remaining strings to templates
 
 ## Dependencies
 
@@ -109,6 +112,8 @@ agent_discovery
 ## When Modifying This Area
 
 - If changing `_get_span_input_text_merged`, be aware it affects which message roles are included in template extraction — adding assistant/tool messages would break template grouping
+- `_unwrap_content_parts()` strips Gemini-style `[{"type": "text", "text": "..."}]` JSON wrappers from content strings — without this, the shared JSON tokens create spurious anchors that merge unrelated agents
+- The extractor's anchor coverage check (15% threshold) prevents generic tokens from bridging unrelated groups when similarity grouping already separates them correctly
 - Template extractor is stateless and pure — safe to test in isolation
 - New prompts created by discovery always start at `version=1`
 - After creating prompts, criteria + description + display name generation are triggered asynchronously — failures in those don't block discovery

@@ -277,6 +277,7 @@ async def _store_span_score(span_id: str, correctness: float) -> bool:
 
 async def _get_context_for_span(
     span: SpanModel,
+    criteria_by_prompt: dict[str, dict[str, list[str]] | None] | None = None,
 ) -> tuple[str, str | None, str | None]:
     """
     Get evaluation criteria, project description, and agent description for a span.
@@ -286,6 +287,10 @@ async def _get_context_for_span(
     - "text" + is_agentic spans → DEFAULT_TOOL_ANSWER_CRITERIA
     - legacy agentic spans → DEFAULT_AGENTIC_CRITERIA (with tool addendum)
     - plain spans → generic correctness criteria
+
+    When *criteria_by_prompt* is supplied, criteria are looked up there first
+    (and stored back on miss) so a batch of spans sharing the same prompt only
+    hits the DB once.
     """
     from overmind.models.iam.projects import Project
 
@@ -308,7 +313,14 @@ async def _get_context_for_span(
     base_criteria = None
 
     if span.prompt_id:
-        criteria_dict = await ensure_prompt_has_criteria(span.prompt_id)
+        # Use pre-fetched criteria when available, falling back to DB
+        if criteria_by_prompt is not None and span.prompt_id in criteria_by_prompt:
+            criteria_dict = criteria_by_prompt[span.prompt_id]
+        else:
+            criteria_dict = await ensure_prompt_has_criteria(span.prompt_id)
+            if criteria_by_prompt is not None:
+                criteria_by_prompt[span.prompt_id] = criteria_dict
+
         if criteria_dict and "correctness" in criteria_dict:
             rules = criteria_dict["correctness"]
             base_criteria = _format_criteria(rules)
@@ -375,6 +387,7 @@ async def _get_context_for_span(
 
 async def _evaluate_span_correctness(
     span_id: str,
+    criteria_by_prompt: dict[str, dict[str, list[str]] | None] | None = None,
 ) -> dict[str, Any]:
     """Evaluate a single span's correctness using LLM."""
     AsyncSessionLocal = get_session_local()
@@ -395,7 +408,7 @@ async def _evaluate_span_correctness(
         evaluation_criteria,
         project_description,
         agent_description,
-    ) = await _get_context_for_span(span)
+    ) = await _get_context_for_span(span, criteria_by_prompt=criteria_by_prompt)
 
     # Evaluate correctness - run sync LLM call (with retries) in a thread
     # so it doesn't block the event loop and other spans can progress concurrently
@@ -451,13 +464,30 @@ def evaluate_spans_task(
                 job.status = "running"
                 await session.commit()
 
+            # Pre-fetch criteria for every unique prompt in this batch so
+            # the concurrent fan-out never races on cache misses.
+            async with AsyncSessionLocal() as session:
+                rows = await session.execute(
+                    select(SpanModel.prompt_id)
+                    .where(SpanModel.span_id.in_(span_ids))
+                    .distinct()
+                )
+                unique_prompt_ids = {r for (r,) in rows.all() if r is not None}
+
+            criteria_by_prompt: dict[str, dict[str, list[str]] | None] = {}
+            for pid in unique_prompt_ids:
+                criteria_by_prompt[pid] = await ensure_prompt_has_criteria(pid)
+
             semaphore = asyncio.Semaphore(_MAX_CONCURRENT_EVALUATIONS)
 
             async def _evaluate_with_limit(span_id: str) -> dict[str, Any]:
                 async with semaphore:
                     try:
-                        return await _evaluate_span_correctness(span_id=span_id)
-                    except BaseException as exc:
+                        return await _evaluate_span_correctness(
+                            span_id=span_id,
+                            criteria_by_prompt=criteria_by_prompt,
+                        )
+                    except Exception as exc:
                         logger.exception(f"Failed to evaluate span {span_id}")
                         return {"span_id": span_id, "error": str(exc)}
 
@@ -1015,21 +1045,37 @@ async def _execute_prompt_spans_evaluation(
                     f"Prompt {prompt_slug} (project {project_id}): Randomly selected {len(spans_to_evaluate)}/{len(prompt_spans)} spans to evaluate"
                 )
 
-                # Evaluate each selected span
-                evaluated_count = 0
-                errors = []
+                # Pre-fetch criteria once for this prompt so every span
+                # in the batch reuses it without hitting the DB again.
+                criteria_by_prompt: dict[str, dict[str, list[str]] | None] = {}
+                criteria_by_prompt[prompt_id] = await ensure_prompt_has_criteria(
+                    prompt_id
+                )
 
-                for span in spans_to_evaluate:
-                    try:
-                        await _evaluate_span_correctness(span_id=span.span_id)
-                        evaluated_count += 1
-                        logger.info(f"Successfully evaluated span {span.span_id}")
-                    except Exception as exc:
-                        error_msg = (
-                            f"Failed to evaluate span {span.span_id}: {str(exc)}"
-                        )
-                        logger.exception(error_msg)
-                        errors.append(error_msg)
+                # Fan out span evaluations concurrently (bounded by semaphore)
+                semaphore = asyncio.Semaphore(_MAX_CONCURRENT_EVALUATIONS)
+
+                async def _evaluate_with_limit(span_id: str) -> dict[str, Any]:
+                    async with semaphore:
+                        try:
+                            return await _evaluate_span_correctness(
+                                span_id=span_id,
+                                criteria_by_prompt=criteria_by_prompt,
+                            )
+                        except Exception as exc:
+                            logger.exception(f"Failed to evaluate span {span_id}")
+                            return {"span_id": span_id, "error": str(exc)}
+
+                results = await asyncio.gather(
+                    *[_evaluate_with_limit(span.span_id) for span in spans_to_evaluate]
+                )
+
+                evaluated_count = sum(1 for r in results if "error" not in r)
+                errors = [
+                    f"Failed to evaluate span {r['span_id']}: {r['error']}"
+                    for r in results
+                    if "error" in r
+                ]
 
                 # Determine final status based on how many spans were evaluated
                 selected = len(spans_to_evaluate)

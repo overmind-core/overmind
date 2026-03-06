@@ -24,7 +24,7 @@ jobs:
           cache: 'pip'
 
       - name: Install ruff
-        run: pip install ruff
+        run: pip install 'ruff>=0.12.0,<0.13'
 
       - name: Run ruff linter
         run: ruff check .
@@ -54,7 +54,7 @@ jobs:
         run: touch .env
 
       - name: Run tests
-        run: docker compose run --rm api sh -c "uv pip install --system --no-cache pytest pytest-asyncio pytest-cov python-dotenv && python -m pytest"
+        run: docker compose run --rm api sh -c "uv pip install --system --no-cache pytest pytest-asyncio pytest-cov python-dotenv && python -m pytest --ignore=tests/e2e"
 
   notify-enterprise:
     if: github.event_name == 'push'

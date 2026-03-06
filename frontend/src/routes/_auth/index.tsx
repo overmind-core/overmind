@@ -18,13 +18,14 @@ export const Route = createFileRoute("/_auth/")({
 });
 
 
-function AgentsSection() {
+function AgentsSection({ projectId }: { projectId?: string }) {
   const queryClient = useQueryClient();
 
   const { data, isLoading, error } = useQuery({
-    queryFn: () => apiClient.agents.listAgentsApiV1AgentsGet(),
-    queryKey: ["agents"],
+    queryFn: () => apiClient.agents.listAgentsApiV1AgentsGet({ projectId }),
+    queryKey: ["agents", projectId],
     refetchInterval: 15_000,
+    enabled: !!projectId,
   });
 
   const extractMutation = useMutation({
@@ -146,7 +147,7 @@ function HomePage() {
 
   return (
     <div className="space-y-6 pb-8">
-      <AgentsSection />
+      <AgentsSection projectId={projects[0]?.projectId} />
     </div>
   );
 }
