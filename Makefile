@@ -37,6 +37,10 @@ test:
 	docker compose build api
 	docker compose run --rm api sh -c "uv pip install --system --group test && python -m pytest $(test_args)"
 
+test-no-e2e:
+	docker compose build api
+	docker compose run --rm api sh -c "uv pip install --system --group test && python -m pytest --ignore=tests/e2e $(test_args)"
+
 lint:
 	poetry run ruff check --fix
 	poetry run ruff format
