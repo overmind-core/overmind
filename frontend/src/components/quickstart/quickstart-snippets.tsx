@@ -107,7 +107,7 @@ function SnippetPanel({
       </div>
       <div>
         <p className="mb-2 text-sm font-medium text-foreground">
-          2. Replace your import and add your API key
+          2. Add one init call — your existing client code stays the same
         </p>
         <CodeBlock label="Code">{snippet.codeSnippet(apiKey)}</CodeBlock>
       </div>
