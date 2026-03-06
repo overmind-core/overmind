@@ -18,6 +18,10 @@ permissions:
   id-token: write   # Required for OIDC
   contents: write    # Required for checkout and deployment manifest changes
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   deploy-frontend:
     if: github.event_name == 'push' || github.event.pull_request.draft == false
