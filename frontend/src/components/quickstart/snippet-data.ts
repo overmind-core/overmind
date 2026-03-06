@@ -1,5 +1,5 @@
 export type Language = "python" | "javascript";
-export type Vendor = "openai" | "anthropic" | "gemini";
+export type Vendor = "openai" | "anthropic" | "gemini" | "agno";
 
 export interface VendorConfig {
   id: Vendor;
@@ -26,6 +26,7 @@ export const LANGUAGES: LanguageConfig[] = [
       { id: "openai", label: "OpenAI" },
       { id: "anthropic", label: "Anthropic" },
       { id: "gemini", label: "Google Gemini" },
+      { id: "agno", label: "Agno" },
     ],
   },
   {
@@ -35,6 +36,7 @@ export const LANGUAGES: LanguageConfig[] = [
       { id: "openai", label: "OpenAI" },
       { id: "anthropic", label: "Anthropic" },
       { id: "gemini", label: "Google Gemini" },
+      { id: "agno", label: "Agno", comingSoon: true },
     ],
   },
 ];
@@ -42,32 +44,36 @@ export const LANGUAGES: LanguageConfig[] = [
 const PYTHON_SNIPPETS: Record<Vendor, SnippetData> = {
   openai: {
     installCommand: "pip install overmind openai",
-    codeSnippet: (apiKey) => `import os
-from overmind.clients import OpenAI
+    codeSnippet: (apiKey) => `import overmind
+from openai import OpenAI
 
-os.environ["OVERMIND_API_KEY"] = "${apiKey}"
-os.environ["OPENAI_API_KEY"] = "sk-proj-..."
+overmind.init(
+    overmind_api_key="${apiKey}",
+    service_name="my-service",
+)
 
 client = OpenAI()
 
 response = client.chat.completions.create(
-    model="gpt-5-mini",
+    model="gpt-4o",
     messages=[{"role": "user", "content": "Explain quantum computing"}],
 )
 print(response.choices[0].message.content)`,
   },
   anthropic: {
     installCommand: "pip install overmind anthropic",
-    codeSnippet: (apiKey) => `import os
-from overmind.clients import Anthropic
+    codeSnippet: (apiKey) => `import overmind
+import anthropic
 
-os.environ["OVERMIND_API_KEY"] = "${apiKey}"
-os.environ["ANTHROPIC_API_KEY"] = "sk-ant-..."
+overmind.init(
+    overmind_api_key="${apiKey}",
+    service_name="my-service",
+)
 
-client = Anthropic()
+client = anthropic.Anthropic()
 
 message = client.messages.create(
-    model="claude-sonnet-4-20250514",
+    model="claude-opus-4-5",
     max_tokens=1024,
     messages=[{"role": "user", "content": "Explain quantum computing"}],
 )
@@ -75,19 +81,39 @@ print(message.content[0].text)`,
   },
   gemini: {
     installCommand: "pip install overmind google-genai",
-    codeSnippet: (apiKey) => `import os
-from overmind.clients.google import Client as GoogleClient
+    codeSnippet: (apiKey) => `import overmind
+from google import genai
 
-os.environ["OVERMIND_API_KEY"] = "${apiKey}"
-os.environ["GEMINI_API_KEY"] = "..."
+overmind.init(
+    overmind_api_key="${apiKey}",
+    service_name="my-service",
+)
 
-client = GoogleClient()
+client = genai.Client()
 
 response = client.models.generate_content(
     model="gemini-2.0-flash",
     contents="Explain quantum computing",
 )
 print(response.text)`,
+  },
+  agno: {
+    installCommand: "pip install overmind agno openai",
+    codeSnippet: (apiKey) => `import overmind
+from agno.agent import Agent
+from agno.models.openai import OpenAIChat
+
+overmind.init(
+    overmind_api_key="${apiKey}",
+    service_name="my-service",
+)
+
+agent = Agent(
+    model=OpenAIChat(id="gpt-4o"),
+    instructions="You are a helpful assistant.",
+    markdown=True,
+)
+agent.print_response("Explain quantum computing")`,
   },
 };
 
