@@ -6,7 +6,6 @@ import pytest
 
 from overmind.core.llms import (
     call_llm,
-    get_backtesting_preferred_models,
     get_reasoning_levels,
     get_thinking_budget_tokens,
     is_adaptive_mode,
@@ -176,17 +175,6 @@ def test_call_llm_uses_default_reasoning_effort_when_required(mock_completion):
 
     positional_kwargs = mock_completion.call_args.kwargs
     assert positional_kwargs.get("reasoning_effort") == "medium"
-
-
-def test_get_backtesting_preferred_models(monkeypatch):
-    monkeypatch.setattr("overmind.config.settings.openai_api_key", "sk-test")
-    monkeypatch.setattr("overmind.config.settings.anthropic_api_key", "sk-ant")
-    monkeypatch.setattr("overmind.config.settings.gemini_api_key", "gk-test")
-    preferred = get_backtesting_preferred_models()
-    assert "gpt-5.2" in preferred
-    assert "claude-sonnet-4-6" in preferred
-    assert "gemini-3-flash-preview" in preferred
-    assert len(preferred) == 3
 
 
 def test_call_llm_includes_reasoning_content_in_stats_when_present(mock_completion):

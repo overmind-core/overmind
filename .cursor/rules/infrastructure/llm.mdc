@@ -165,4 +165,3 @@ At least one key must be set for AI features to work. The model resolver raises 
 - The `response_format` parameter takes a Pydantic `BaseModel` subclass for structured output — LiteLLM handles the provider-specific implementation
 - `normalize_model_name` strips date suffixes (e.g. `-2025-08-07`); it does **not** handle provider prefixes — the provider is looked up from `LLM_PROVIDER_BY_MODEL` and the LiteLLM format `"{provider}/{model}"` is constructed inside `call_llm`
 - New models in `SUPPORTED_LLM_MODELS` must include `supports_reasoning` and `reasoning_levels`; see existing entries and [LiteLLM reasoning_content](https://docs.litellm.ai/docs/reasoning_content)
-- `backtesting_preferred: True` marks models for system-triggered backtesting (one per provider); `get_backtesting_preferred_models()` returns them filtered by available API keys

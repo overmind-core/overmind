@@ -4,7 +4,6 @@ import litellm
 import json
 from overmind.core.model_resolver import (
     TaskType,
-    get_available_providers,
     resolve_model,
 )
 from pydantic import BaseModel
@@ -27,7 +26,6 @@ SUPPORTED_LLM_MODELS = [
         "supports_reasoning": True,
         "adaptive_mode": True,
         "reasoning_levels": ["low", "medium", "high"],
-        "backtesting_preferred": True,
         "is_new": True,
         "description": "OpenAI's most capable balanced model with strong reasoning. Excels at complex multi-step tasks, code generation, and nuanced analysis.",
     },
@@ -97,7 +95,6 @@ SUPPORTED_LLM_MODELS = [
         "supports_reasoning": True,
         "adaptive_mode": True,
         "reasoning_levels": ["low", "medium", "high"],
-        "backtesting_preferred": True,
         "is_new": True,
         "description": "Anthropic's best balanced model with adaptive reasoning. Excellent for complex reasoning, structured outputs, and nuanced language tasks.",
     },
@@ -152,7 +149,6 @@ SUPPORTED_LLM_MODELS = [
         "supports_reasoning": True,
         "adaptive_mode": True,
         "reasoning_levels": ["low", "medium", "high"],
-        "backtesting_preferred": True,
         "description": "Google's best balanced fast model with reasoning. Strong at multi-modal tasks, structured extraction, and real-time applications.",
     },
     # Gemini 2.5 family
@@ -269,16 +265,6 @@ def is_reasoning_required(model_name: str) -> bool:
     """Return True if the model requires reasoning (cannot disable)."""
     info = REASONING_SUPPORT_BY_MODEL.get(normalize_model_name(model_name))
     return info.get("reasoning_required", False) if info else False
-
-
-def get_backtesting_preferred_models() -> list[str]:
-    """Return backtesting_preferred models filtered to providers with API keys."""
-    available = get_available_providers()
-    return [
-        item["model_name"]
-        for item in SUPPORTED_LLM_MODELS
-        if item.get("backtesting_preferred") and item["provider"] in available
-    ]
 
 
 def _get_default_model() -> str:

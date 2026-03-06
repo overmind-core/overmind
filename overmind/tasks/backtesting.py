@@ -27,11 +27,8 @@ from overmind.models.suggestions import Suggestion as SuggestionModel
 from overmind.models.traces import SpanModel, BacktestRun
 from overmind.core.llms import (
     call_llm,
-    get_backtesting_preferred_models,
     get_thinking_budget_tokens,
     is_adaptive_mode,
-    is_reasoning_required,
-    model_supports_reasoning,
     normalize_llm_response_output,
     LLM_PROVIDER_BY_MODEL,
     normalize_model_name,
@@ -59,30 +56,36 @@ def get_default_backtest_models() -> list[str]:
     return get_available_backtest_models()
 
 
-def get_system_backtest_models() -> list[str]:
-    """Return models for system-triggered backtesting: one preferred per provider.
+def _models_from_suggestions(prompt: "Prompt") -> list[str]:
+    """Derive model keys from ``prompt.backtest_model_suggestions``.
 
-    For models with reasoning: runs both without reasoning (base key) and with
-    reasoning at medium effort (key suffixed ':reasoning-medium' or ':reasoning'
-    for manual-budget-token-only models).
+    Each recommendation's ``reasoning_effort`` field controls the key suffix:
+      None        → '{model}'                  (no reasoning)
+      'on'        → '{model}:reasoning'         (budget-token manual mode)
+      'low'|...   → '{model}:reasoning-{effort}' (adaptive / effort-based)
 
-    Key format:
-      '{model}'                  — no reasoning
-      '{model}:reasoning-medium' — reasoning_effort=medium (adaptive / OpenAI / Gemini)
-      '{model}:reasoning'        — thinking enabled, no effort level (Anthropic manual)
+    Returns an empty list when no suggestions are stored yet.
     """
-    preferred = get_backtesting_preferred_models()
-    result: list[str] = []
-    for model_name in preferred:
-        result.append(model_name)  # no reasoning
-        if model_supports_reasoning(model_name) and not is_reasoning_required(
-            model_name
-        ):
-            if is_adaptive_mode(model_name) is False:
-                result.append(f"{model_name}:reasoning")
-            else:
-                result.append(f"{model_name}:reasoning-medium")
-    return result
+    suggestions = prompt.backtest_model_suggestions
+    if not suggestions:
+        return []
+    models: list[str] = []
+    seen: set[str] = set()
+    for rec in suggestions.get("recommendations", []):
+        model_name = rec.get("model")
+        if not model_name:
+            continue
+        effort = rec.get("reasoning_effort")
+        if effort is None:
+            key = model_name
+        elif effort == "on":
+            key = f"{model_name}:reasoning"
+        else:
+            key = f"{model_name}:reasoning-{effort}"
+        if key not in seen:
+            models.append(key)
+            seen.add(key)
+    return models
 
 
 # Minimum scored spans required before a prompt is eligible for backtesting
@@ -1385,7 +1388,7 @@ async def _check_and_create_backtesting_job(
             result={
                 "parameters": {
                     "prompt_id": prompt_id,
-                    "models": get_system_backtest_models(),
+                    "models": _models_from_suggestions(prompt),
                     "span_count": span_count,
                     "user_id": "system",
                     "organisation_id": None,

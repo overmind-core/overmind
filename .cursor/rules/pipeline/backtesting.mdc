@@ -73,14 +73,14 @@ All must be true (in order):
 
 ## Model Selection
 
-**System-triggered backtesting** (Celery beat): uses `get_system_backtest_models()` — only models with `backtesting_preferred: True` in `SUPPORTED_LLM_MODELS` (one per provider). For models with reasoning: runs both without reasoning (base key) and with reasoning. Key format:
-- `{model}` — no reasoning
-- `{model}:reasoning-{effort}` — effort-based reasoning (adaptive / OpenAI / Gemini), e.g. `gpt-5.2:reasoning-medium`
-- `{model}:reasoning` — manual Anthropic budget-token mode (no effort level)
+**System-triggered backtesting** (Celery beat): uses `_models_from_suggestions(prompt)` — reads `prompt.backtest_model_suggestions.recommendations` and converts each entry to a model key using its `reasoning_effort` field. Key format:
+- `reasoning_effort=None` → `{model}` — no reasoning
+- `reasoning_effort='on'` → `{model}:reasoning` — manual Anthropic budget-token mode
+- `reasoning_effort='low'|'medium'|...` → `{model}:reasoning-{effort}` — effort-based (adaptive / OpenAI / Gemini)
 
-**User-triggered backtesting**: uses `get_default_backtest_models()` — all models from `BACKTEST_MODELS_BY_PROVIDER` in `overmind/core/model_resolver.py`.
+If no suggestions are stored yet, an empty model list is used (job is still created but will complete with no alternates).
 
-Preferred models (in `overmind/core/llms.py`): gpt-5.2, claude-sonnet-4-6, gemini-3-flash-preview. Filtered to providers with configured API keys. Current model (detected from span metadata) is excluded from recommendations.
+**User-triggered backtesting**: uses `get_default_backtest_models()` — all models from `BACKTEST_MODELS_BY_PROVIDER` in `overmind/core/model_resolver.py`. Current model (detected from span metadata) is excluded from recommendations.
 
 ## Recommendation Logic (`_generate_recommendations`)
 
@@ -125,7 +125,7 @@ When `verdict == "current_is_best"` and `total_items == 0` (no alternate models 
 
 ## When Modifying This Area
 
-- Adding new models: update `BACKTEST_MODELS_BY_PROVIDER` in `overmind/core/model_resolver.py`; for system backtesting, add `backtesting_preferred: True` to one model per provider in `SUPPORTED_LLM_MODELS`; also update `_MODEL_DESCRIPTIONS` in `overmind/tasks/model_suggestions_generator.py` so early suggestions include the new model
+- Adding new models: update `BACKTEST_MODELS_BY_PROVIDER` in `overmind/core/model_resolver.py`; also update `_MODEL_DESCRIPTIONS` in `overmind/tasks/model_suggestions_generator.py` so the LLM can recommend the new model in early suggestions (system-triggered backtesting now follows those suggestions)
 - The 15pp disqualification threshold and 5pp "within range" threshold are hardcoded in `_generate_recommendations`
 - Tool-calling backtests replay the full conversation (messages + tools) — they don't just send the input text
 - Result spans use `operation="backtest:{model}"` which is filtered by `SpanModel._SYSTEM_OPERATION_PREFIXES` — if you change the prefix format, update the model too
