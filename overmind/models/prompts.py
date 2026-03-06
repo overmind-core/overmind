@@ -59,6 +59,23 @@ class Prompt(Base):
     # }
     agent_description = Column(JSONB, nullable=True)
 
+    # LLM-generated model recommendations based on agent description.
+    # Generated immediately after agent description creation so users can see
+    # suggestions before backtesting jobs are triggered.
+    # Format: {
+    #   "generated_at": "2026-03-05T10:00:00Z",
+    #   "recommendations": [
+    #     {
+    #       "model": "claude-sonnet-4-6",
+    #       "provider": "anthropic",
+    #       "category": "best_overall",
+    #       "reason": "Excels at nuanced reasoning..."
+    #     }
+    #   ],
+    #   "summary": "Based on the agent's tasks..."
+    # }
+    backtest_model_suggestions = Column(JSONB, nullable=True)
+
     # User-defined categorisation tags, e.g. ["HR", "financial"]
     # Stored as a JSON array of strings; shared across all versions of the same slug
     tags = Column(JSONB, nullable=True)

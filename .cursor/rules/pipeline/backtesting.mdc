@@ -9,6 +9,15 @@ alwaysApply: false
 
 Compares alternative LLM models against the current model by replaying historical spans, scoring outputs, and generating switch recommendations.
 
+## Two Layers of Model Recommendations
+
+| Layer | When | Source | Where stored |
+| ----- | ---- | ------ | ------------ |
+| **Early suggestions** | Immediately after agent description creation | LLM-reasoned (based on agent description alone) | `prompt.backtest_model_suggestions` JSONB |
+| **Backtesting results** | After threshold spans accumulate (30+) | Empirical (actual span replay + scoring) | `Suggestion` table (type: model backtest) |
+
+Early suggestions (`overmind/tasks/model_suggestions_generator.py`) are generated before the first backtesting job ever runs, giving users model guidance as soon as the agent is discovered. Backtesting later provides data-driven validation of those suggestions.
+
 ## Pipeline Flow
 
 ```
@@ -64,15 +73,14 @@ All must be true (in order):
 
 ## Model Selection
 
-Models come from `BACKTEST_MODELS_BY_PROVIDER` in `overmind/core/model_resolver.py`:
+**System-triggered backtesting** (Celery beat): uses `_models_from_suggestions(prompt)` — reads `prompt.backtest_model_suggestions.recommendations` and converts each entry to a model key using its `reasoning_effort` field. Key format:
+- `reasoning_effort=None` → `{model}` — no reasoning
+- `reasoning_effort='on'` → `{model}:reasoning` — manual Anthropic budget-token mode
+- `reasoning_effort='low'|'medium'|...` → `{model}:reasoning-{effort}` — effort-based (adaptive / OpenAI / Gemini)
 
-| Provider  | Models                                                                                |
-| --------- | ------------------------------------------------------------------------------------- |
-| OpenAI    | gpt-5-mini, gpt-5.2, gpt-5-nano                                                       |
-| Anthropic | claude-opus-4-6, claude-sonnet-4-6, claude-haiku-4-5                                  |
-| Gemini    | gemini-3-pro-preview, gemini-3-flash-preview, gemini-2.5-flash-lite, gemini-2.5-flash |
+If no suggestions are stored yet, an empty model list is used (job is still created but will complete with no alternates).
 
-Filtered to providers with configured API keys. Current model (detected from span metadata) is excluded.
+**User-triggered backtesting**: uses `get_default_backtest_models()` — all models from `BACKTEST_MODELS_BY_PROVIDER` in `overmind/core/model_resolver.py`. Current model (detected from span metadata) is excluded from recommendations.
 
 ## Recommendation Logic (`_generate_recommendations`)
 
@@ -92,10 +100,10 @@ Filtered to providers with configured API keys. Current model (detected from spa
 
 Backtest results are stored as regular SpanModel records with special metadata:
 
-- `operation = "backtest:{model_name}"` (excluded from user-facing queries via `_SYSTEM_OPERATION_PREFIXES`)
+- `operation = "backtest:{model_key}"` where `model_key` uses the format above (excluded from user-facing queries via `_SYSTEM_OPERATION_PREFIXES`)
 - `metadata_attributes.backtest = True`
-- `metadata_attributes.model = "{model_name}"`
-- `metadata_attributes.provider = "{provider}"`
+- `metadata_attributes.model = "{base_model_name}"` (always the bare model name, no suffix)
+- `metadata_attributes.reasoning_mode = "{effort}" | "enabled" | None` — effort level string, `"enabled"` for manual budget-token mode, or `None` when no reasoning
 
 ## Concurrency
 
@@ -107,7 +115,7 @@ Backtest results are stored as regular SpanModel records with special metadata:
 | Function                                                            | Purpose                 |
 | ------------------------------------------------------------------- | ----------------------- |
 | `_run_backtesting(prompt_id, models, span_count, ...)`              | Core backtest execution |
-| `_run_model_on_input(model_name, input_text, messages?, tools?)`    | Single model invocation |
+| `_run_model_on_input(model_name, input_text, messages?, tools?, model_key?)` | Single model invocation; model_key controls reasoning (e.g. `gpt-5.2:reasoning-medium`) |
 | `_generate_recommendations(current_model, baseline, model_metrics)` | Recommendation logic    |
 | `validate_backtesting_eligibility(prompt, session, models?)`        | Eligibility check       |
 
@@ -117,8 +125,9 @@ When `verdict == "current_is_best"` and `total_items == 0` (no alternate models 
 
 ## When Modifying This Area
 
-- Adding new models: update `BACKTEST_MODELS_BY_PROVIDER` in `overmind/core/model_resolver.py`
+- Adding new models: update `BACKTEST_MODELS_BY_PROVIDER` in `overmind/core/model_resolver.py`; also update `_MODEL_DESCRIPTIONS` in `overmind/tasks/model_suggestions_generator.py` so the LLM can recommend the new model in early suggestions (system-triggered backtesting now follows those suggestions)
 - The 15pp disqualification threshold and 5pp "within range" threshold are hardcoded in `_generate_recommendations`
 - Tool-calling backtests replay the full conversation (messages + tools) — they don't just send the input text
 - Result spans use `operation="backtest:{model}"` which is filtered by `SpanModel._SYSTEM_OPERATION_PREFIXES` — if you change the prefix format, update the model too
 - The `scored_count_at_creation` parameter is preserved in `job.result` across status updates so the threshold guard works correctly
+- Early model suggestions (`prompt.backtest_model_suggestions`) are separate from backtesting `Suggestion` records — they live on the Prompt model and are generated from the agent description alone, not from span data

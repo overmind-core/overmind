@@ -1,5 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy import and_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from overmind.api.v1.endpoints.jobs import (
@@ -11,6 +11,7 @@ from overmind.api.v1.helpers.authentication import (
     get_current_user,
 )
 from overmind.core.llms import SUPPORTED_LLM_MODELS, SUPPORTED_LLM_MODEL_NAMES
+from overmind.tasks.backtesting import _base_model_from_key
 from overmind.api.v1.endpoints.utils.jobs import (
     cancel_existing_system_jobs,
     create_job,
@@ -29,13 +30,22 @@ class ModelInfo(BaseModel):
 
     provider: str
     model_name: str
+    supports_reasoning: bool = False
+    adaptive_mode: bool | None = None
+    reasoning_levels: list[str] = []
+    thinking_budget_tokens: list[int] = []
+    reasoning_required: bool = False
+    is_new: bool = False
+
+
+MAX_MODEL_VARIANTS = 10
 
 
 class BacktestingRequest(BaseModel):
     """Request to run model backtesting."""
 
     prompt_id: str
-    models: list[str]  # List of model names to test
+    models: list[str] = Field(min_length=1, max_length=MAX_MODEL_VARIANTS)
     max_spans: int | None = 50  # Maximum number of spans to test (default 50)
     min_spans: int | None = 10  # Minimum number of spans required (default 10)
 
@@ -60,7 +70,16 @@ async def list_available_models(
     Returns a list of models with their provider and model name.
     """
     return [
-        ModelInfo(provider=model["provider"], model_name=model["model_name"])
+        ModelInfo(
+            provider=model["provider"],
+            model_name=model["model_name"],
+            supports_reasoning=model.get("supports_reasoning", False),
+            adaptive_mode=model.get("adaptive_mode"),
+            reasoning_levels=model.get("reasoning_levels") or [],
+            thinking_budget_tokens=model.get("thinking_budget_tokens") or [],
+            reasoning_required=model.get("reasoning_required", False),
+            is_new=model.get("is_new", False),
+        )
         for model in SUPPORTED_LLM_MODELS
     ]
 
@@ -83,15 +102,12 @@ async def run_backtesting(
 
     The backtesting runs as a background task and returns a job_id for tracking.
     """
-    # Validate request
-    if not request.models:
-        raise HTTPException(
-            status_code=400,
-            detail="At least one model must be specified",
-        )
-
-    # Validate models
-    invalid_models = [m for m in request.models if m not in SUPPORTED_LLM_MODEL_NAMES]
+    # Validate models — strip reasoning suffix before checking support
+    invalid_models = [
+        m
+        for m in request.models
+        if _base_model_from_key(m) not in SUPPORTED_LLM_MODEL_NAMES
+    ]
     if invalid_models:
         raise HTTPException(
             status_code=400,
@@ -180,6 +196,7 @@ async def run_backtesting(
                 "span_count": span_count,
                 "user_id": str(current_user.user_id),
                 "organisation_id": str(organisation_id) if organisation_id else None,
+                "scored_count_at_creation": validation_stats.get("scored_count", 0),
             },
             "validation_stats": validation_stats,
         },

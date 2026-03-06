@@ -243,6 +243,7 @@ class AgentDetailOut(BaseModel):
     agent_description: dict[str, Any] | None = None
     ready_for_review: bool = False
     tags: list[str] = []
+    backtest_model_suggestions: dict[str, Any] | None = None
 
 
 @router.get("/{prompt_slug}/detail", response_model=AgentDetailOut)
@@ -426,6 +427,7 @@ async def get_agent_detail(
         agent_description=latest.agent_description,
         ready_for_review=ready_for_review,
         tags=latest.tags or [],
+        backtest_model_suggestions=latest.backtest_model_suggestions,
     )
 
 

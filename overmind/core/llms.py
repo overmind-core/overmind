@@ -2,35 +2,263 @@ import re
 from typing import Any
 import litellm
 import json
-from overmind.core.model_resolver import TaskType, resolve_model
+from overmind.core.model_resolver import (
+    TaskType,
+    resolve_model,
+)
 from pydantic import BaseModel
 import json_repair
 
 
+# Reasoning support: https://docs.litellm.ai/docs/reasoning_content
+# adaptive_mode=True  → uses reasoning_effort parameter (OpenAI, Anthropic Opus/Sonnet 4.6, Gemini 3.x+)
+# adaptive_mode=False → uses thinking_budget_tokens only (Anthropic Opus/Sonnet/Haiku 4.5, Gemini 2.5 Flash)
+# Anthropic adaptive: https://platform.claude.com/docs/en/build-with-claude/adaptive-thinking
+#   - Opus 4.6, Sonnet 4.6: adaptive mode (thinking.type="adaptive") + effort; manual/budget_tokens deprecated
+#   - Opus 4.5, Sonnet 4.5, Haiku 4.5: manual mode only (thinking.type="enabled", budget_tokens)
+# Gemini: reasoning_effort maps to thinking_level (3+) or thinking_budget (2.5); 3.x adds "minimal"
 SUPPORTED_LLM_MODELS = [
-    {"provider": "openai", "model_name": "gpt-5.2"},
-    {"provider": "openai", "model_name": "gpt-5-mini"},
-    {"provider": "openai", "model_name": "gpt-5-nano"},
-    {"provider": "openai", "model_name": "gpt-5.2-nano"},
-    {"provider": "openai", "model_name": "gpt-5.2-pro"},
-    {"provider": "openai", "model_name": "gpt-5"},
-    {"provider": "openai", "model_name": "gpt-4.1"},
-    {"provider": "anthropic", "model_name": "claude-opus-4-6"},
-    {"provider": "anthropic", "model_name": "claude-opus-4-5"},
-    {"provider": "anthropic", "model_name": "claude-sonnet-4-6"},
-    {"provider": "anthropic", "model_name": "claude-sonnet-4-5"},
-    {"provider": "anthropic", "model_name": "claude-haiku-4-5"},
-    {"provider": "gemini", "model_name": "gemini-3.1-pro-preview"},
-    {"provider": "gemini", "model_name": "gemini-3-flash-preview"},
-    {"provider": "gemini", "model_name": "gemini-3.1-flash-lite-preview"},
-    {"provider": "gemini", "model_name": "gemini-2.5-flash"},
-    {"provider": "gemini", "model_name": "gemini-2.5-flash-lite"},
-    {"provider": "gemini", "model_name": "gemini-2.5-pro"},
+    # ── OpenAI ──────────────────────────────────────────────────────────────
+    # GPT-5 family (is_new=True): latest generation
+    {
+        "provider": "openai",
+        "model_name": "gpt-5.2",
+        "supports_reasoning": True,
+        "adaptive_mode": True,
+        "reasoning_levels": ["low", "medium", "high"],
+        "is_new": True,
+        "description": "OpenAI's most capable balanced model with strong reasoning. Excels at complex multi-step tasks, code generation, and nuanced analysis.",
+    },
+    {
+        "provider": "openai",
+        "model_name": "gpt-5-mini",
+        "supports_reasoning": True,
+        "adaptive_mode": True,
+        "reasoning_levels": ["low", "medium", "high"],
+        "description": "Fast and cost-effective OpenAI model with reasoning support. Great for straightforward tasks, Q&A, and moderate-complexity workflows.",
+    },
+    {
+        "provider": "openai",
+        "model_name": "gpt-5-nano",
+        "supports_reasoning": True,
+        "adaptive_mode": True,
+        "reasoning_levels": ["low", "medium", "high"],
+        "description": "Ultra-fast, cheapest OpenAI model. Best for simple classification, extraction, or high-volume tasks where cost matters most.",
+    },
+    {
+        "provider": "openai",
+        "model_name": "gpt-5.2-nano",
+        "supports_reasoning": True,
+        "adaptive_mode": True,
+        "reasoning_levels": ["low", "medium", "high"],
+        "is_new": True,
+        "description": "OpenAI's smallest 5.2-generation model. Ultra-cheap with strong capability for structured extraction, classification, and simple QA.",
+    },
+    {
+        "provider": "openai",
+        "model_name": "gpt-5.2-pro",
+        "supports_reasoning": True,
+        "adaptive_mode": True,
+        "reasoning_levels": ["low", "medium", "high"],
+        "is_new": True,
+        "description": "OpenAI's most advanced 5.2 model. Highest capability for expert-level reasoning, complex code, and demanding analysis tasks.",
+    },
+    {
+        "provider": "openai",
+        "model_name": "gpt-5",
+        "supports_reasoning": True,
+        "adaptive_mode": True,
+        "reasoning_levels": ["low", "medium", "high"],
+        "description": "OpenAI balanced model with broad capability and reasoning support. Good general-purpose choice for moderate to complex tasks.",
+    },
+    # GPT-4 family
+    {
+        "provider": "openai",
+        "model_name": "gpt-4.1",
+        "supports_reasoning": False,
+        "description": "Proven OpenAI model without reasoning. Reliable for instruction-following, classification, and established production workloads.",
+    },
+    # ── Anthropic ────────────────────────────────────────────────────────────
+    # Claude 4.6: adaptive thinking (effort) — is_new=True; "max" is Opus 4.6 only
+    {
+        "provider": "anthropic",
+        "model_name": "claude-opus-4-6",
+        "supports_reasoning": True,
+        "adaptive_mode": True,
+        "reasoning_levels": ["low", "medium", "high", "max"],
+        "is_new": True,
+        "description": "Anthropic's most powerful model. Best for the most demanding tasks requiring deep reasoning, creative writing, or exhaustive analysis.",
+    },
+    {
+        "provider": "anthropic",
+        "model_name": "claude-sonnet-4-6",
+        "supports_reasoning": True,
+        "adaptive_mode": True,
+        "reasoning_levels": ["low", "medium", "high"],
+        "is_new": True,
+        "description": "Anthropic's best balanced model with adaptive reasoning. Excellent for complex reasoning, structured outputs, and nuanced language tasks.",
+    },
+    # Claude 4.5: manual thinking (budget_tokens) only; no reasoning_effort
+    {
+        "provider": "anthropic",
+        "model_name": "claude-opus-4-5",
+        "supports_reasoning": True,
+        "adaptive_mode": False,
+        "thinking_budget_tokens": [8000],
+        "description": "Anthropic's most powerful 4.5-generation model with manual thinking. Best for complex reasoning in stable production workloads.",
+    },
+    {
+        "provider": "anthropic",
+        "model_name": "claude-sonnet-4-5",
+        "supports_reasoning": True,
+        "adaptive_mode": False,
+        "thinking_budget_tokens": [8000],
+        "description": "Anthropic's balanced 4.5-generation model with manual thinking. Strong reasoning capability for complex and structured tasks.",
+    },
+    {
+        "provider": "anthropic",
+        "model_name": "claude-haiku-4-5",
+        "supports_reasoning": True,
+        "adaptive_mode": False,
+        "thinking_budget_tokens": [8000],
+        "description": "Anthropic's fastest and cheapest model. Ideal for simple tasks, high-throughput pipelines, and latency-sensitive interactive use cases.",
+    },
+    # ── Gemini ───────────────────────────────────────────────────────────────
+    # Gemini 3 family: is_new=True
+    {
+        "provider": "gemini",
+        "model_name": "gemini-3.1-pro-preview",
+        "supports_reasoning": True,
+        "adaptive_mode": True,
+        "reasoning_levels": ["low", "medium", "high"],
+        "is_new": True,
+        "description": "Google's most capable Gemini model. Excellent for complex reasoning, large-context tasks, and advanced analysis.",
+    },
+    {
+        "provider": "gemini",
+        "model_name": "gemini-3.1-flash-lite-preview",
+        "supports_reasoning": True,
+        "adaptive_mode": True,
+        "reasoning_levels": ["low", "medium", "high"],
+        "is_new": True,
+        "description": "Google's fastest and cheapest Gemini model. Suited for high-volume simple tasks where speed and cost are priorities.",
+    },
+    {
+        "provider": "gemini",
+        "model_name": "gemini-3-flash-preview",
+        "supports_reasoning": True,
+        "adaptive_mode": True,
+        "reasoning_levels": ["low", "medium", "high"],
+        "description": "Google's best balanced fast model with reasoning. Strong at multi-modal tasks, structured extraction, and real-time applications.",
+    },
+    # Gemini 2.5 family
+    {
+        "provider": "gemini",
+        "model_name": "gemini-2.5-flash",
+        "supports_reasoning": True,
+        "adaptive_mode": False,
+        "thinking_budget_tokens": [-1],  # -1 = dynamic (model decides budget)
+        "description": "Fast Gemini model with dynamic reasoning support. Good balance of speed and capability for moderate-complexity tasks.",
+    },
+    {
+        "provider": "gemini",
+        "model_name": "gemini-2.5-flash-lite",
+        "supports_reasoning": False,
+        "description": "Google's fastest and cheapest Gemini model. Suited for high-volume simple tasks where speed and cost are priorities.",
+    },
+    {
+        "provider": "gemini",
+        "model_name": "gemini-2.5-pro",
+        "supports_reasoning": True,
+        "adaptive_mode": True,
+        "reasoning_levels": ["low", "medium", "high"],
+        "reasoning_required": True,
+        "description": "Google's most capable Gemini 2.5 model with always-on reasoning. Best for complex multi-step tasks requiring deep analysis.",
+    },  # cannot disable reasoning
 ]
 SUPPORTED_LLM_MODEL_NAMES = {item["model_name"] for item in SUPPORTED_LLM_MODELS}
 LLM_PROVIDER_BY_MODEL = {
     item["model_name"]: item["provider"] for item in SUPPORTED_LLM_MODELS
 }
+REASONING_SUPPORT_BY_MODEL = {
+    item["model_name"]: {
+        "supports_reasoning": item["supports_reasoning"],
+        "adaptive_mode": item.get("adaptive_mode"),
+        "reasoning_levels": item.get("reasoning_levels"),
+        "thinking_budget_tokens": item.get("thinking_budget_tokens"),
+        "reasoning_required": item.get("reasoning_required", False),
+    }
+    for item in SUPPORTED_LLM_MODELS
+}
+
+
+def get_model_description(model_name: str) -> str:
+    """Return the human-readable capability description for a model."""
+    for item in SUPPORTED_LLM_MODELS:
+        if item["model_name"] == model_name:
+            return item.get("description", "")
+    return ""
+
+
+def get_model_reasoning_info(model_name: str) -> dict:
+    """Return reasoning capability metadata for a model.
+
+    Keys:
+        supports_reasoning  – bool
+        adaptive_mode       – True (effort-based) | False (budget-token) | None (no reasoning)
+        reasoning_levels    – list of valid effort strings, e.g. ["low","medium","high"]
+        reasoning_required  – bool; True means reasoning cannot be disabled
+    """
+    for item in SUPPORTED_LLM_MODELS:
+        if item["model_name"] == model_name:
+            return {
+                "supports_reasoning": item.get("supports_reasoning", False),
+                "adaptive_mode": item.get("adaptive_mode"),
+                "reasoning_levels": item.get("reasoning_levels") or [],
+                "reasoning_required": item.get("reasoning_required", False),
+            }
+    return {
+        "supports_reasoning": False,
+        "adaptive_mode": None,
+        "reasoning_levels": [],
+        "reasoning_required": False,
+    }
+
+
+def model_supports_reasoning(model_name: str) -> bool:
+    """Return True if the model supports reasoning/reasoning_effort."""
+    info = REASONING_SUPPORT_BY_MODEL.get(normalize_model_name(model_name))
+    return info["supports_reasoning"] if info else False
+
+
+def get_reasoning_levels(model_name: str) -> list[str]:
+    """Return valid reasoning_effort levels for the model, or [] if unsupported."""
+    info = REASONING_SUPPORT_BY_MODEL.get(normalize_model_name(model_name))
+    if not info or not info["supports_reasoning"]:
+        return []
+    levels = info.get("reasoning_levels")
+    return list(levels) if levels else []
+
+
+def get_thinking_budget_tokens(model_name: str) -> list[int]:
+    """Return valid thinking budget_tokens for manual reasoning mode (adaptive_mode=False), or [] otherwise."""
+    info = REASONING_SUPPORT_BY_MODEL.get(normalize_model_name(model_name))
+    if not info or info.get("adaptive_mode") is not False:
+        return []
+    budgets = info.get("thinking_budget_tokens")
+    return list(budgets) if budgets else []
+
+
+def is_adaptive_mode(model_name: str) -> bool | None:
+    """Return True for effort-based reasoning, False for budget-token manual mode, None if no reasoning."""
+    info = REASONING_SUPPORT_BY_MODEL.get(normalize_model_name(model_name))
+    return info.get("adaptive_mode") if info else None
+
+
+def is_reasoning_required(model_name: str) -> bool:
+    """Return True if the model requires reasoning (cannot disable)."""
+    info = REASONING_SUPPORT_BY_MODEL.get(normalize_model_name(model_name))
+    return info.get("reasoning_required", False) if info else False
 
 
 def _get_default_model() -> str:
@@ -88,6 +316,8 @@ def call_llm(
     request_kwargs: dict = {},
     messages: list[dict[str, Any]] | None = None,
     tools: list[dict[str, Any]] | None = None,
+    reasoning_effort: str | None = None,
+    thinking_budget_tokens: int | None = None,
 ) -> tuple[str, dict]:
     """
     Call an LLM and return the response along with usage metrics.
@@ -101,18 +331,36 @@ def call_llm(
     with tool calls instead of plain text, the tool calls are serialised to a
     JSON string and returned as the content.
 
+    When ``reasoning_effort`` is provided and the model has ``adaptive_mode=True``
+    (OpenAI, Anthropic Opus/Sonnet 4.6, Gemini 3.x+), it is passed to LiteLLM.
+    For models with ``adaptive_mode=False`` (Anthropic Opus/Sonnet/Haiku 4.5,
+    Gemini 2.5 Flash): use ``thinking_budget_tokens`` instead; these models pass
+    thinking={"type":"enabled","budget_tokens":N}. For Anthropic with tools,
+    LiteLLM's modify_params workaround is enabled to handle missing
+    thinking_blocks in multi-turn tool calls.
+
     Returns:
         tuple: (content, stats_dict) where stats_dict contains:
             - prompt_tokens: int
             - completion_tokens: int
             - response_ms: float
             - response_cost: float
+            - reasoning_content: str | None (if model returned reasoning)
     """
     if messages is None:
         messages = []
         if system_prompt:
             messages.append({"role": "system", "content": system_prompt})
         messages.append({"role": "user", "content": input_text})
+    else:
+        # Strip system/user messages with null content — these come from spans
+        # where the original agent sent no system prompt (null content is invalid
+        # for non-assistant roles; assistant null content is valid with tool_calls).
+        messages = [
+            m
+            for m in messages
+            if not (m.get("content") is None and m.get("role") in ("system", "user"))
+        ]
 
     try:
         selected_model_name = (
@@ -137,7 +385,37 @@ def call_llm(
         if provider == "anthropic":
             completion_kwargs["cache_control"] = {"type": "ephemeral"}
 
-        response = litellm.completion(**completion_kwargs, **request_kwargs)
+        prev_modify_params: bool | None = None
+        adaptive = is_adaptive_mode(selected_model_name)
+        effective_reasoning_effort = reasoning_effort
+        if effective_reasoning_effort is None and is_reasoning_required(
+            selected_model_name
+        ):
+            effective_reasoning_effort = "medium"
+
+        if adaptive is False and thinking_budget_tokens is not None:
+            budgets = get_thinking_budget_tokens(selected_model_name)
+            if thinking_budget_tokens in budgets:
+                completion_kwargs["thinking"] = {
+                    "type": "enabled",
+                    "budget_tokens": thinking_budget_tokens,
+                }
+                if provider == "anthropic" and tools:
+                    prev_modify_params = getattr(litellm, "modify_params", False)
+                    litellm.modify_params = True
+        elif effective_reasoning_effort and adaptive is True:
+            levels = get_reasoning_levels(selected_model_name)
+            if levels and effective_reasoning_effort in levels:
+                completion_kwargs["reasoning_effort"] = effective_reasoning_effort
+                if provider == "anthropic" and tools:
+                    prev_modify_params = getattr(litellm, "modify_params", False)
+                    litellm.modify_params = True
+
+        try:
+            response = litellm.completion(**completion_kwargs, **request_kwargs)
+        finally:
+            if prev_modify_params is not None:
+                litellm.modify_params = prev_modify_params
 
         content = response.choices[0].message.content
         if content is None:
@@ -151,12 +429,17 @@ def call_llm(
                 raise Exception("No content or tool calls received from LLM")
 
         # Extract usage metrics
-        stats = {
+        stats: dict = {
             "prompt_tokens": response.usage.prompt_tokens,
             "completion_tokens": response.usage.completion_tokens,
             "response_ms": response._response_ms,
             "response_cost": response._hidden_params["response_cost"],
         }
+        reasoning_content = getattr(
+            response.choices[0].message, "reasoning_content", None
+        )
+        if reasoning_content:
+            stats["reasoning_content"] = reasoning_content
 
         return content.strip(), stats
 

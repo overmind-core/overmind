@@ -24,6 +24,8 @@ call_llm(
     response_format: type | None = None,
     messages: list[dict] | None = None,
     tools: list[dict] | None = None,
+    reasoning_effort: str | None = None,
+    thinking_budget_tokens: int | None = None,
 ) -> tuple[str, dict]
 ```
 
@@ -33,9 +35,11 @@ call_llm(
 1. Else → build `[{"role": "system", ...}, {"role": "user", ...}]` from `system_prompt` + `input_text`
 1. Resolve model via `normalize_model_name(model)` or `_get_default_model()`
 1. Map to LiteLLM format: `"{provider}/{model_name}"`
-1. Call `litellm.completion()` with optional `tools`, `response_format`, `cache_control`
+1. Call `litellm.completion()` with optional `tools`, `response_format`, `cache_control`, `reasoning_effort`, `thinking`
+1. Anthropic manual mode: use `thinking_budget_tokens` → `thinking={"type":"enabled","budget_tokens":N}`; no reasoning_effort
+1. Anthropic adaptive / OpenAI / Gemini: use `reasoning_effort`; for Anthropic + tools, enable `litellm.modify_params` workaround for thinking_blocks
 1. If response content is None and `tool_calls` present → serialize as `{"tool_calls": [...]}`
-1. Return `(content.strip(), stats)`
+1. Return `(content.strip(), stats)`; stats may include `reasoning_content` when model returns it
 
 ### Stats dict
 
@@ -45,8 +49,23 @@ call_llm(
     "completion_tokens": int,
     "response_ms": float,
     "response_cost": float,  # via calculate_llm_usage_cost()
+    "reasoning_content": str | None,  # when model returns reasoning (LiteLLM reasoning_content)
 }
 ```
+
+### Reasoning support
+
+All supported models have `supports_reasoning` and `reasoning_levels` in `SUPPORTED_LLM_MODELS`. See [LiteLLM reasoning_content](https://docs.litellm.ai/docs/reasoning_content).
+
+- `model_supports_reasoning(model_name)` — returns True if model supports any reasoning
+- `is_adaptive_mode(model_name)` — returns `True` (effort-based), `False` (budget-token manual), `None` (no reasoning)
+- `get_reasoning_levels(model_name)` — returns valid `reasoning_effort` levels; `[]` for manual/no-reasoning models
+- `get_thinking_budget_tokens(model_name)` — returns valid `budget_tokens` for manual mode (`adaptive_mode=False`); `[]` otherwise
+- `is_reasoning_required(model_name)` — returns True if reasoning cannot be disabled (e.g. gemini-2.5-pro)
+- `adaptive_mode=True` (effort-based): OpenAI gpt-5*, Anthropic Opus/Sonnet 4.6, Gemini 3.x+, gemini-2.5-pro
+- `adaptive_mode=False` (budget-token manual): Anthropic Opus/Sonnet/Haiku 4.5, gemini-2.5-flash
+- Anthropic: [adaptive vs manual thinking](https://platform.claude.com/docs/en/build-with-claude/adaptive-thinking#adaptive-vs-manual-vs-disabled-thinking); Opus 4.6/Sonnet 4.6 use adaptive; 4.5 models use manual
+- Gemini: 3.x models use `reasoning_effort`; 2.5-flash uses `thinking_budget_tokens`; gemini-2.5-pro requires reasoning (defaults to "medium" when not specified)
 
 ### Related functions
 
@@ -145,3 +164,4 @@ At least one key must be set for AI features to work. The model resolver raises 
 - `call_llm` sets `cache_control = {"type": "ephemeral"}` only for Anthropic — other providers do not receive this parameter
 - The `response_format` parameter takes a Pydantic `BaseModel` subclass for structured output — LiteLLM handles the provider-specific implementation
 - `normalize_model_name` strips date suffixes (e.g. `-2025-08-07`); it does **not** handle provider prefixes — the provider is looked up from `LLM_PROVIDER_BY_MODEL` and the LiteLLM format `"{provider}/{model}"` is constructed inside `call_llm`
+- New models in `SUPPORTED_LLM_MODELS` must include `supports_reasoning` and `reasoning_levels`; see existing entries and [LiteLLM reasoning_content](https://docs.litellm.ai/docs/reasoning_content)

@@ -11,7 +11,6 @@ import asyncio
 import logging
 import time
 import uuid
-import uuid as uuid_module
 from collections import Counter, defaultdict
 from datetime import datetime, timedelta, timezone
 from typing import Any
@@ -27,6 +26,8 @@ from overmind.models.suggestions import Suggestion as SuggestionModel
 from overmind.models.traces import SpanModel, BacktestRun
 from overmind.core.llms import (
     call_llm,
+    get_thinking_budget_tokens,
+    is_adaptive_mode,
     normalize_llm_response_output,
     LLM_PROVIDER_BY_MODEL,
     normalize_model_name,
@@ -47,26 +48,43 @@ logger = logging.getLogger(__name__)
 # have an API key configured.  The full list is kept for reference /
 # documentation and for callers that pass an explicit list.
 # ---------------------------------------------------------------------------
-_ALL_BACKTEST_MODELS: list[str] = [
-    # OpenAI
-    "gpt-5-mini",
-    "gpt-5.2",
-    "gpt-5-nano",
-    # Anthropic
-    "claude-opus-4-6",
-    "claude-sonnet-4-6",
-    "claude-haiku-4-5",
-    # Google Gemini
-    "gemini-3.1-pro-preview",
-    "gemini-3-flash-preview",
-    "gemini-2.5-flash-lite",
-    "gemini-2.5-flash",
-]
 
 
 def get_default_backtest_models() -> list[str]:
     """Return backtest models filtered to providers with available API keys."""
     return get_available_backtest_models()
+
+
+def _models_from_suggestions(prompt: "Prompt") -> list[str]:
+    """Derive model keys from ``prompt.backtest_model_suggestions``.
+
+    Each recommendation's ``reasoning_effort`` field controls the key suffix:
+      None        → '{model}'                  (no reasoning)
+      'on'        → '{model}:reasoning'         (budget-token manual mode)
+      'low'|...   → '{model}:reasoning-{effort}' (adaptive / effort-based)
+
+    Returns an empty list when no suggestions are stored yet.
+    """
+    suggestions = prompt.backtest_model_suggestions
+    if not suggestions:
+        return []
+    models: list[str] = []
+    seen: set[str] = set()
+    for rec in suggestions.get("recommendations", []):
+        model_name = rec.get("model")
+        if not model_name:
+            continue
+        effort = rec.get("reasoning_effort")
+        if effort is None:
+            key = model_name
+        elif effort == "on":
+            key = f"{model_name}:reasoning"
+        else:
+            key = f"{model_name}:reasoning-{effort}"
+        if key not in seen:
+            models.append(key)
+            seen.add(key)
+    return models
 
 
 # Minimum scored spans required before a prompt is eligible for backtesting
@@ -78,6 +96,12 @@ MAX_SPANS_FOR_BACKTESTING = 50
 # Matches the evaluations.py pattern – bounded by a shared asyncio.Semaphore
 # so we don't overwhelm LLM provider rate-limits.
 _MAX_CONCURRENT_BACKTESTS = 5
+
+# Per-call timeout for LLM invocations inside _process_item.  A hung provider
+# connection would otherwise hold a semaphore slot indefinitely, stalling the
+# entire backtest job.  asyncio.wait_for raises TimeoutError on expiry;
+# asyncio.gather(return_exceptions=True) records it as a per-item failure.
+_LLM_CALL_TIMEOUT_S = 120
 
 # Performance thresholds for model recommendations
 _PERF_TOLERANCE = 0.05  # 5 percentage-point tolerance for speed/cost alternatives
@@ -100,6 +124,27 @@ def _next_backtest_threshold(last_count: int) -> int:
 # ---------------------------------------------------------------------------
 
 
+def _base_model_from_key(model_key: str) -> str:
+    """Extract base model name from a backtest key.
+
+    Handles keys like 'gpt-5.2:reasoning-medium', 'claude-opus-4-5:reasoning'.
+    """
+    return model_key.split(":reasoning")[0] if ":reasoning" in model_key else model_key
+
+
+def _reasoning_mode_from_key(model_key: str) -> str | None:
+    """Derive the reasoning_mode label from a backtest model key.
+
+    Returns the effort level (e.g. 'medium'), 'enabled' for manual budget-token
+    mode, or None when no reasoning is used.
+    """
+    if ":reasoning" not in model_key:
+        return None
+    if ":reasoning-" in model_key:
+        return model_key.split(":reasoning-", 1)[1]
+    return "enabled"
+
+
 def _interleave_models_by_provider(models: list[str]) -> list[str]:
     """Reorder models so that consecutive entries target different providers.
 
@@ -107,12 +152,13 @@ def _interleave_models_by_provider(models: list[str]) -> list[str]:
       →  [gpt-5-mini, claude-opus, gemini-3.1-pro, gpt-5.2, claude-sonnet, gemini-3-flash]
 
     This spreads load across providers when tasks are processed through a
-    concurrency-limited semaphore.
+    concurrency-limited semaphore. Handles keys like 'gpt-5.2:reasoning-medium'.
     """
     by_provider: dict[str, list[str]] = defaultdict(list)
-    for model in models:
-        provider = LLM_PROVIDER_BY_MODEL.get(model, "unknown")
-        by_provider[provider].append(model)
+    for model_key in models:
+        base = _base_model_from_key(model_key)
+        provider = LLM_PROVIDER_BY_MODEL.get(base, "unknown")
+        by_provider[provider].append(model_key)
 
     result: list[str] = []
     queues = list(by_provider.values())
@@ -219,7 +265,7 @@ def _generate_recommendations(
     # Filter out current model and disqualified models
     candidates: dict[str, dict[str, float]] = {}
     for model, metrics in model_metrics.items():
-        if model == current_model:
+        if _base_model_from_key(model) == current_model:
             continue
         if metrics.get("success_rate", 0) == 0:
             continue
@@ -449,14 +495,45 @@ async def _get_prompt_criteria(prompt_id: str) -> dict[str, list[str]]:
         return criteria_dict
 
 
+def _parse_backtest_model_key(model_key: str) -> tuple[str, str | None, int | None]:
+    """Parse a backtest model key into (base_model, reasoning_effort, thinking_budget_tokens).
+
+    Key formats:
+      'gpt-5.2'                   → (gpt-5.2, None, None)        — no reasoning
+      'gpt-5.2:reasoning-medium'  → (gpt-5.2, 'medium', None)    — effort-based reasoning
+      'gpt-5.2:reasoning-low'     → (gpt-5.2, 'low', None)
+      'claude-opus-4-5:reasoning' → (claude-opus-4-5, None, 8000) — manual budget-token mode
+    """
+    base_model = (
+        model_key.split(":reasoning")[0] if ":reasoning" in model_key else model_key
+    )
+
+    if ":reasoning" not in model_key:
+        return base_model, None, None
+
+    if ":reasoning-" in model_key:
+        effort = model_key.split(":reasoning-", 1)[1]
+        return base_model, effort, None
+
+    # ':reasoning' suffix without an effort level → manual budget-token mode (adaptive_mode=False)
+    if is_adaptive_mode(base_model) is False:
+        budgets = get_thinking_budget_tokens(base_model)
+        return base_model, None, budgets[0] if budgets else None
+    return base_model, None, None
+
+
 def _run_model_on_input(
     model_name: str,
     input_text: str,
     messages: list[dict[str, Any]] | None = None,
     tools: list[dict[str, Any]] | None = None,
+    *,
+    model_key: str | None = None,
 ) -> dict[str, Any]:
     """Run a single model on an input and collect metrics.
 
+    When ``model_key`` is provided (e.g. 'gpt-5.2:reasoning-medium' or plain
+    'gpt-5.2' for no reasoning), it controls reasoning_effort/thinking_budget_tokens.
     When ``messages`` is provided it is forwarded directly to ``call_llm``
     so the full conversation (including tool-call and tool-result turns) is
     replayed.  When ``tools`` is provided the tool definitions are forwarded
@@ -465,15 +542,20 @@ def _run_model_on_input(
     This is deliberately *synchronous* so it can be offloaded to a thread
     via ``asyncio.to_thread`` without blocking the event loop.
     """
+    base_model, reasoning_effort, thinking_budget_tokens = (
+        _parse_backtest_model_key(model_key) if model_key else (model_name, None, None)
+    )
     try:
         start_time = time.time()
 
         output, stats = call_llm(
             input_text=input_text,
             system_prompt=None,
-            model=model_name,
+            model=base_model,
             messages=messages,
             tools=tools,
+            reasoning_effort=reasoning_effort,
+            thinking_budget_tokens=thinking_budget_tokens,
         )
         output = normalize_llm_response_output(output)
 
@@ -655,12 +737,16 @@ async def _run_backtesting(
                         "available_tools"
                     ) or []
 
-                    model_result = await asyncio.to_thread(
-                        _run_model_on_input,
-                        model_name,
-                        input_text,
-                        messages=call_messages,
-                        tools=call_tools if call_tools else None,
+                    model_result = await asyncio.wait_for(
+                        asyncio.to_thread(
+                            _run_model_on_input,
+                            model_name,
+                            input_text,
+                            messages=call_messages,
+                            tools=call_tools if call_tools else None,
+                            model_key=model_name,
+                        ),
+                        timeout=_LLM_CALL_TIMEOUT_S,
                     )
 
                     # Preserve response_type / is_agentic so the correct judge
@@ -677,8 +763,14 @@ async def _run_backtesting(
                     # --------------------------------------------------------
                     # Plain / legacy span: existing plain-text behaviour
                     # --------------------------------------------------------
-                    model_result = await asyncio.to_thread(
-                        _run_model_on_input, model_name, input_text
+                    model_result = await asyncio.wait_for(
+                        asyncio.to_thread(
+                            _run_model_on_input,
+                            model_name,
+                            input_text,
+                            model_key=model_name,
+                        ),
+                        timeout=_LLM_CALL_TIMEOUT_S,
                     )
 
                     # Strip response_type / is_agentic so we don't route into
@@ -706,14 +798,17 @@ async def _run_backtesting(
                 # Sync correctness eval → offload to thread
                 eval_score = 0.0
                 if model_result["success"] and model_result.get("output"):
-                    eval_score = await asyncio.to_thread(
-                        _evaluate_correctness_with_llm,
-                        input_data=eval_input_data,
-                        output_data=output_data,
-                        criteria_text=criteria_text,
-                        project_description=project_description,
-                        agent_description=agent_description,
-                        span_metadata=backtest_metadata,
+                    eval_score = await asyncio.wait_for(
+                        asyncio.to_thread(
+                            _evaluate_correctness_with_llm,
+                            input_data=eval_input_data,
+                            output_data=output_data,
+                            criteria_text=criteria_text,
+                            project_description=project_description,
+                            agent_description=agent_description,
+                            span_metadata=backtest_metadata,
+                        ),
+                        timeout=_LLM_CALL_TIMEOUT_S,
                     )
 
                 # Persist result span
@@ -734,7 +829,8 @@ async def _run_backtesting(
                             "backtest": True,
                             "backtest_run_id": str(backtest_run_id),
                             "source_span_id": span.span_id,
-                            "model": model_name,
+                            "model": _base_model_from_key(model_name),
+                            "reasoning_mode": _reasoning_mode_from_key(model_name),
                             "latency_ms": model_result["latency_ms"],
                             "cost": model_result["cost"],
                             "input_tokens": model_result["input_tokens"],
@@ -1093,7 +1189,20 @@ async def validate_backtesting_eligibility(
     Args:
         prompt: The Prompt to validate
         session: Database session
-        models: Optional list of models to test (for user-triggered validation)
+        models: Optional list of models to test.  Pass a list (even empty) for
+            user-triggered calls; leave as ``None`` for system-triggered calls.
+            The distinction controls which checks are applied:
+
+            ``models is None``  → **system-triggered** (Celery beat).
+                All checks run, including the span-count threshold re-run guard
+                (Check 5), which prevents the scheduler from running redundant
+                jobs before enough new data has arrived.
+
+            ``models is not None`` → **user-triggered** (API).
+                Check 5 is skipped.  Users explicitly choosing a different model
+                selection should not be blocked by the scheduler's throttle — the
+                threshold guard exists to prevent wasteful automated reruns, not
+                to restrict manual exploration.
 
     Returns:
         Tuple of (is_eligible, error_message, stats)
@@ -1168,37 +1277,41 @@ async def validate_backtesting_eligibility(
             stats,
         )
 
-    # Check 5: Threshold-based re-run guard (don't re-run until enough new spans)
-    last_count = 0
-    last_job_q = await session.execute(
-        select(Job.result)
-        .where(
-            and_(
-                Job.project_id == prompt.project_id,
-                Job.prompt_slug == prompt.slug,
-                Job.job_type == JobType.MODEL_BACKTESTING.value,
-                Job.status == JobStatus.COMPLETED.value,
+    # Check 5: Threshold-based re-run guard (system-triggered only)
+    # Skipped for user-triggered calls (models is not None) — users explicitly
+    # choosing a new model selection should not be blocked by the scheduler's
+    # throttle.  See docstring for the full rationale.
+    if models is None:
+        last_count = 0
+        last_job_q = await session.execute(
+            select(Job.result)
+            .where(
+                and_(
+                    Job.project_id == prompt.project_id,
+                    Job.prompt_slug == prompt.slug,
+                    Job.job_type == JobType.MODEL_BACKTESTING.value,
+                    Job.status == JobStatus.COMPLETED.value,
+                )
             )
+            .order_by(Job.created_at.desc())
+            .limit(1)
         )
-        .order_by(Job.created_at.desc())
-        .limit(1)
-    )
-    last_job_result = last_job_q.scalar_one_or_none()
-    if last_job_result and isinstance(last_job_result, dict):
-        last_count = last_job_result.get("parameters", {}).get(
-            "scored_count_at_creation", 0
-        )
+        last_job_result = last_job_q.scalar_one_or_none()
+        if last_job_result and isinstance(last_job_result, dict):
+            last_count = last_job_result.get("parameters", {}).get(
+                "scored_count_at_creation", 0
+            )
 
-    next_threshold = _next_backtest_threshold(last_count)
-    stats["last_scored_count"] = last_count
-    stats["next_threshold"] = next_threshold
+        next_threshold = _next_backtest_threshold(last_count)
+        stats["last_scored_count"] = last_count
+        stats["next_threshold"] = next_threshold
 
-    if scored_count < next_threshold:
-        return (
-            False,
-            f"{scored_count} evaluated request(s) collected so far — backtesting will run automatically once {next_threshold} are reached.",
-            stats,
-        )
+        if scored_count < next_threshold:
+            return (
+                False,
+                f"{scored_count} evaluated request(s) collected so far — backtesting will run automatically once {next_threshold} are reached.",
+                stats,
+            )
 
     # Check 6: Minimum available spans (for running the backtest itself)
     available_q = await session.execute(
@@ -1296,7 +1409,7 @@ async def _check_and_create_backtesting_job(
 
     try:
         job = Job(
-            job_id=uuid_module.uuid4(),
+            job_id=uuid.uuid4(),
             job_type=JobType.MODEL_BACKTESTING.value,
             project_id=prompt.project_id,
             prompt_slug=prompt.slug,
@@ -1306,7 +1419,7 @@ async def _check_and_create_backtesting_job(
             result={
                 "parameters": {
                     "prompt_id": prompt_id,
-                    "models": get_default_backtest_models(),
+                    "models": _models_from_suggestions(prompt),
                     "span_count": span_count,
                     "user_id": "system",
                     "organisation_id": None,

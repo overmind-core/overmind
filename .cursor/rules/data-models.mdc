@@ -29,6 +29,7 @@ The central entity — represents a discovered or user-defined prompt template.
 | `evaluation_criteria`  | JSONB              | See format below                                             |
 | `improvement_metadata` | JSONB              | See format below                                             |
 | `agent_description`    | JSONB              | See format below                                             |
+| `backtest_model_suggestions` | JSONB         | See format below — LLM-generated model recommendations       |
 
 **`prompt_id` property**: `"{project_id}_{version}_{slug}"` — used as a string key in spans and backtests. Parse with `Prompt.parse_prompt_id(prompt_id) -> (project_id, version, slug)`.
 
@@ -82,6 +83,38 @@ The central entity — represents a discovered or user-defined prompt template.
 | `last_review_span_count` | Periodic reviews task | Span count at the time of last review |
 | `next_review_span_count` | Periodic reviews task | Span count threshold for next scheduled review |
 | `feedback_history` | Agent description generator / review flow | User feedback entries on individual spans |
+
+### JSONB: `backtest_model_suggestions`
+
+LLM-generated model recommendations produced immediately after initial agent description creation. Available to users before any backtesting job runs.
+
+```json
+{
+  "generated_at": "2026-03-05T10:00:00Z",
+  "recommendations": [
+    {
+      "model": "claude-sonnet-4-6",
+      "provider": "anthropic",
+      "category": "best_overall",
+      "reason": "Excels at complex reasoning and structured outputs — well-suited for this agent's financial analysis tasks"
+    },
+    {
+      "model": "gpt-5-mini",
+      "provider": "openai",
+      "category": "fastest",
+      "reason": "Low latency makes it ideal for interactive queries in this agent's real-time path"
+    }
+  ],
+  "summary": "Claude Sonnet 4.6 provides the best balance for this agent's complex analytical tasks, while GPT-5-mini offers a faster alternative for simpler queries."
+}
+```
+
+| Field | Set by | Meaning |
+| ----- | ------ | ------- |
+| `generated_at` | `model_suggestions_generator` | ISO timestamp of when suggestions were generated |
+| `recommendations` | LLM via `MODEL_SUGGESTIONS_GENERATION_PROMPT` | 2–3 model recommendations across trade-off categories |
+| `recommendations[].category` | LLM | One of: `best_overall`, `most_capable`, `fastest`, `cheapest` |
+| `summary` | LLM | 1–2 sentence overview of the recommendations |
 
 ## SpanModel (`overmind/models/traces.py`)
 
