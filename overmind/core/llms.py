@@ -139,12 +139,20 @@ SUPPORTED_LLM_MODELS = [
     },
     {
         "provider": "gemini",
+        "model_name": "gemini-3.1-flash-lite-preview",
+        "supports_reasoning": True,
+        "adaptive_mode": True,
+        "reasoning_levels": ["low", "medium", "high"],
+        "is_new": True,
+        "description": "Google's fastest and cheapest Gemini model. Suited for high-volume simple tasks where speed and cost are priorities.",
+    },
+    {
+        "provider": "gemini",
         "model_name": "gemini-3-flash-preview",
         "supports_reasoning": True,
         "adaptive_mode": True,
         "reasoning_levels": ["low", "medium", "high"],
         "backtesting_preferred": True,
-        "is_new": True,
         "description": "Google's best balanced fast model with reasoning. Strong at multi-modal tasks, structured extraction, and real-time applications.",
     },
     # Gemini 2.5 family

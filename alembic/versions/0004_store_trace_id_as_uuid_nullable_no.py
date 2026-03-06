@@ -1,22 +1,20 @@
 """store trace_id as uuid nullable, no foreign key
 
-Revision ID: 0005
-Revises: 0004_add_status_to_prompt
+Revision ID: 0004
+Revises: 0003_add_raw_otlp_requests_table
 Create Date: 2026-03-05 17:59:19.006502
 
 """
-
-from typing import Sequence, Union
 
 from alembic import op
 import sqlalchemy as sa
 
 
 # revision identifiers, used by Alembic.
-revision: str = "0005"
-down_revision: Union[str, None] = "0004_add_status_to_prompt"
-branch_labels: Union[str, Sequence[str], None] = None
-depends_on: Union[str, Sequence[str], None] = None
+revision = "0004"
+down_revision = "0003_add_raw_otlp_requests_table"
+branch_labels = None
+depends_on = None
 
 
 def upgrade() -> None:

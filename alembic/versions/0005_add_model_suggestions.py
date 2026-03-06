@@ -1,7 +1,7 @@
 """add model_suggestions to prompts
 
 Revision ID: 0005_add_model_suggestions
-Revises: 0004_add_status_to_prompt
+Revises: 0004
 Create Date: 2026-03-05 00:00:00.000000
 
 """
@@ -12,7 +12,7 @@ from sqlalchemy.dialects.postgresql import JSONB
 
 
 revision = "0005_add_model_suggestions"
-down_revision = "0004_add_status_to_prompt"
+down_revision = "0004"
 branch_labels = None
 depends_on = None
 
