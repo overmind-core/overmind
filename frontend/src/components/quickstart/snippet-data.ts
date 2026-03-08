@@ -55,7 +55,7 @@ init(
 client = OpenAI()
 
 response = client.chat.completions.create(
-    model="gpt-4o",
+    model="gpt-5-mini",
     messages=[{"role": "user", "content": "Explain quantum computing"}],
 )
 print(response.choices[0].message.content)`,
@@ -109,7 +109,7 @@ init(
 )
 
 agent = Agent(
-    model=OpenAIChat(id="gpt-4o"),
+    model=OpenAIChat(id="gpt-5-mini"),
     instructions="You are a helpful assistant.",
     markdown=True,
 )
