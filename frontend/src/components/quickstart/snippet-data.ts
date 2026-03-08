@@ -26,7 +26,7 @@ export const LANGUAGES: LanguageConfig[] = [
       { id: "openai", label: "OpenAI" },
       { id: "anthropic", label: "Anthropic" },
       { id: "gemini", label: "Google Gemini" },
-      { id: "agno", label: "Agno" },
+      { id: "agno", label: "Agno", comingSoon: true },
     ],
   },
   {
