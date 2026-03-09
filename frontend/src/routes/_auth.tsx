@@ -7,6 +7,7 @@ import {
   ArrowBarRight as PanelLeftOpen,
 } from "pixelarticons/react";
 
+import { JOB_TYPE_LABELS } from "@/lib/jobs";
 import { AppSidebar } from "../components/app-sidebar";
 import { ThemeToggle } from "../components/theme-toggle";
 import { Button } from "../components/ui/button";
@@ -21,15 +22,6 @@ export const Route = createFileRoute("/_auth")({
 type Crumb = { label: string; path: string };
 
 const DYNAMIC_PARENTS = new Set(["agents", "projects", "jobs"]);
-
-const JOB_TYPE_LABELS: Record<string, string> = {
-  agent_discovery: "Agent Discovery",
-  judge_scoring: "LLM Judge Scoring",
-  model_backtesting: "Model Backtesting",
-  prompt_tuning: "Prompt Tuning",
-  scoring: "LLM Judge Scoring", // legacy alias for judge_scoring (create-job-dialog uses "scoring")
-  template_extraction: "Template Extraction",
-};
 
 function prettifySegment(seg: string): string {
   return decodeURIComponent(seg).replace(/[-_]/g, " ");

@@ -28,6 +28,7 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { Skeleton } from "@/components/ui/skeleton";
+import { useAuthContext } from "@/contexts/auth-context";
 import { formatDate } from "@/lib/utils";
 
 export const Route = createFileRoute("/_auth/account")({
@@ -36,6 +37,7 @@ export const Route = createFileRoute("/_auth/account")({
 
 function AccountPage() {
   const navigate = useNavigate();
+  const { refreshAuth } = useAuthContext();
   const [deactivating, setDeactivating] = useState(false);
   const [deactivateError, setDeactivateError] = useState("");
 
@@ -56,6 +58,7 @@ function AccountPage() {
       localStorage.removeItem("token");
       localStorage.removeItem("auth_token");
       localStorage.removeItem("auth_user");
+      refreshAuth?.();
       navigate({ to: "/login" });
     } catch (err) {
       const msg =

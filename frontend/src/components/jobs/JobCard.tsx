@@ -10,6 +10,7 @@ import {
 
 import type { JobOut } from "@/api";
 import { Badge } from "@/components/ui/badge";
+import { JOB_TYPE_LABELS } from "@/lib/jobs";
 import { cn, formatDate } from "@/lib/utils";
 
 const STATUS_ICON: Record<string, React.ReactNode> = {
@@ -17,15 +18,6 @@ const STATUS_ICON: Record<string, React.ReactNode> = {
   failed: <XCircle className="size-4 text-destructive" />,
   pending: <Clock className="size-4 text-amber-500" />,
   running: <Loader2 className="size-4 animate-spin text-blue-500" />,
-};
-
-const JOB_TYPE_LABELS: Record<string, string> = {
-  agent_discovery: "Agent Discovery",
-  judge_scoring: "LLM Judge Scoring",
-  model_backtesting: "Model Backtesting",
-  prompt_tuning: "Prompt Tuning",
-  scoring: "LLM Judge Scoring",
-  template_extraction: "Template Extraction",
 };
 
 function getVariantByStatus(status: string) {
