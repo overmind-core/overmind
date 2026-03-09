@@ -35,7 +35,10 @@ def create_openai_client(
     """Create an Overmind-wrapped OpenAI client with caching transport."""
     import os
 
-    from overmind.clients import OpenAI
+    from openai import OpenAI
+    from overmind_sdk import init
+
+    init(overmind_api_key=api_token, overmind_base_url=base_url)
 
     if not os.environ.get("OPENAI_API_KEY"):
         os.environ["OPENAI_API_KEY"] = "sk-cached-dummy-key"
@@ -43,11 +46,7 @@ def create_openai_client(
     real_transport = httpx.HTTPTransport()
     transport = CachingTransport(real_transport, cache, "openai")
     http_client = httpx.Client(transport=transport)
-    return OpenAI(
-        overmind_api_key=api_token,
-        overmind_base_url=base_url,
-        http_client=http_client,
-    )
+    return OpenAI(http_client=http_client)
 
 
 def create_anthropic_client(
@@ -58,7 +57,10 @@ def create_anthropic_client(
     """Create an Overmind-wrapped Anthropic client with caching transport."""
     import os
 
-    from overmind.clients import Anthropic
+    from overmind_sdk import Anthropic
+    from overmind_sdk import init
+
+    init(overmind_api_key=api_token, overmind_base_url=base_url)
 
     if not os.environ.get("ANTHROPIC_API_KEY"):
         os.environ["ANTHROPIC_API_KEY"] = "sk-ant-cached-dummy-key"
@@ -66,11 +68,7 @@ def create_anthropic_client(
     real_transport = httpx.HTTPTransport()
     transport = CachingTransport(real_transport, cache, "anthropic")
     http_client = httpx.Client(transport=transport)
-    return Anthropic(
-        overmind_api_key=api_token,
-        overmind_base_url=base_url,
-        http_client=http_client,
-    )
+    return Anthropic(http_client=http_client)
 
 
 def create_gemini_client(
@@ -81,7 +79,10 @@ def create_gemini_client(
     """Create an Overmind-wrapped Gemini client with caching transport."""
     import os
 
-    from overmind.clients.google import Client as GoogleClient
+    from google import genai
+    from overmind_sdk import init
+
+    init(overmind_api_key=api_token, overmind_base_url=base_url)
 
     if not os.environ.get("GOOGLE_API_KEY") and not os.environ.get("GEMINI_API_KEY"):
         os.environ["GOOGLE_API_KEY"] = "gemini-cached-dummy-key"
@@ -89,11 +90,7 @@ def create_gemini_client(
     real_transport = httpx.HTTPTransport()
     transport = CachingTransport(real_transport, cache, "gemini")
     http_client = httpx.Client(transport=transport)
-    return GoogleClient(
-        overmind_api_key=api_token,
-        overmind_base_url=base_url,
-        http_options={"httpx_client": http_client},
-    )
+    return genai.Client(http_options={"httpx_client": http_client})
 
 
 class BaseMockAgent:
