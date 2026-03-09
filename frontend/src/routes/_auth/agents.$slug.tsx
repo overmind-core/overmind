@@ -1,5 +1,17 @@
 import { useMemo, useState } from "react";
 
+import type { PromptVersionOut, SuggestionOut } from "@/api";
+import { ResponseError } from "@/api";
+import apiClient from "@/client";
+import { Badge } from "@/components/ui/badge";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import {
@@ -9,15 +21,12 @@ import {
   Loader as Loader2,
   Play,
   Sparkles,
+  Check,
+  Cancel as X,
 } from "pixelarticons/react";
+
 import z from "zod";
 
-import { ResponseError } from "@/api";
-import apiClient from "@/client";
-import { AgentCriteriaCard } from "@/components/agent-review/AgentCriteriaCard";
-import { AgentCriteriaReviewDialog } from "@/components/agent-review/AgentCriteriaReviewDialog";
-import { SpanFeedbackDialog } from "@/components/agent-review/SpanFeedbackDialog";
-import { BacktestConfigDialog, type ModelSuggestion } from "@/components/BacktestConfigDialog";
 import { AgentNameEditor } from "@/components/agent-detail/AgentNameEditor";
 import { AgentTagsEditor } from "@/components/agent-detail/AgentTagsEditor";
 import { DateRangePicker } from "@/components/agent-detail/DateRangePicker";
@@ -26,9 +35,13 @@ import { ReportMetricRow } from "@/components/agent-detail/ReportCard";
 import { SparklineChart, SummaryStat } from "@/components/agent-detail/SparklineChart";
 import { SuggestionsTab } from "@/components/agent-detail/SuggestionsTab";
 import { VersionsTab } from "@/components/agent-detail/VersionsTab";
+import { AgentCriteriaCard } from "@/components/agent-review/AgentCriteriaCard";
+import { AgentCriteriaReviewDialog } from "@/components/agent-review/AgentCriteriaReviewDialog";
+import { SpanFeedbackDialog } from "@/components/agent-review/SpanFeedbackDialog";
+import { BacktestConfigDialog, type ModelSuggestion } from "@/components/BacktestConfigDialog";
 import { Alert } from "@/components/ui/alert";
-import { DismissibleAlert } from "@/components/ui/dismissible-alert";
 import { Button } from "@/components/ui/button";
+import { DismissibleAlert } from "@/components/ui/dismissible-alert";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useAgentDetailQuery } from "@/hooks/use-query";
 import {
@@ -38,6 +51,19 @@ import {
   clampBuckets,
 } from "@/lib/analytics";
 import { formatDate } from "@/lib/utils";
+
+// ─── Helpers ─────────────────────────────────────────────────────────────────
+
+/** Extract a human-readable message from a FastAPI error response.
+ *  Handles both 400 (detail is string) and 422 (detail is validation array). */
+function extractApiError(detail: unknown, fallback: string): string {
+  if (typeof detail === "string") return detail;
+  if (Array.isArray(detail)) {
+    const msgs = detail.map((d) => (typeof d === "object" && d?.msg ? d.msg : String(d)));
+    return msgs.join("; ") || fallback;
+  }
+  return fallback;
+}
 
 // ─── Route ───────────────────────────────────────────────────────────────────
 
@@ -78,7 +104,7 @@ function AgentDetailPage() {
         .catch(async (error) => {
           if (error instanceof ResponseError) {
             const r = await error.response.json();
-            throw new Error(r.detail ?? "Scoring trigger failed");
+            throw new Error(extractApiError(r.detail, "Scoring trigger failed"));
           }
           throw error;
         }),
@@ -97,7 +123,7 @@ function AgentDetailPage() {
         .catch(async (error) => {
           if (error instanceof ResponseError) {
             const r = await error.response.json();
-            throw new Error(r.detail ?? "Tuning trigger failed");
+            throw new Error(extractApiError(r.detail, "Tuning trigger failed"));
           }
           throw error;
         }),
@@ -119,11 +145,54 @@ function AgentDetailPage() {
         .catch(async (error) => {
           if (error instanceof ResponseError) {
             const r = await error.response.json();
-            throw new Error(r.detail ?? "Update failed");
+            throw new Error(extractApiError(r.detail, "Update failed"));
           }
           throw error;
         }),
     onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["agent-detail", slug] });
+      queryClient.invalidateQueries({ queryKey: ["agents"] });
+    },
+  });
+
+  const [acceptDialogVersion, setAcceptDialogVersion] = useState<PromptVersionOut | null>(null);
+  const [dismissDialogVersion, setDismissDialogVersion] = useState<PromptVersionOut | null>(null);
+
+  const acceptVersionMutation = useMutation({
+    mutationFn: (version: number) =>
+      apiClient.agents
+        .acceptPromptVersionApiV1AgentsPromptSlugAcceptVersionPost({
+          promptSlug: slug,
+          acceptVersionRequest: { version },
+          projectId,
+        })
+        .catch(async (error) => {
+          if (error instanceof ResponseError) {
+            const r = await error.response.json();
+            throw new Error(extractApiError(r.detail, "Accept failed"));
+          }
+          throw error;
+        }),
+    onSuccess: () => {
+      setAcceptDialogVersion(null);
+      queryClient.invalidateQueries({ queryKey: ["agent-detail", slug] });
+      queryClient.invalidateQueries({ queryKey: ["agents"] });
+    },
+  });
+
+  const dismissVersionMutation = useMutation({
+    mutationFn: (suggestionId: string) =>
+      apiClient.suggestions
+        .dismissSuggestionApiV1SuggestionsSuggestionIdDismissPost({ suggestionId })
+        .catch(async (error) => {
+          if (error instanceof ResponseError) {
+            const r = await error.response.json();
+            throw new Error(extractApiError(r.detail, "Dismiss failed"));
+          }
+          throw error;
+        }),
+    onSuccess: () => {
+      setDismissDialogVersion(null);
       queryClient.invalidateQueries({ queryKey: ["agent-detail", slug] });
       queryClient.invalidateQueries({ queryKey: ["agents"] });
     },
@@ -232,6 +301,48 @@ function AgentDetailPage() {
           </Button>
         </div>
       )}
+
+      {/* Pending version banner */}
+      {agent.pendingVersion != null && (() => {
+        const pendingV = allVersionsSorted.find((v) => v.version === agent.pendingVersion);
+        const pendingSuggestion = (agent.suggestions ?? []).find(
+          (s: SuggestionOut) => s.newPromptVersion === agent.pendingVersion && s.status === "pending"
+        );
+        return pendingV ? (
+          <div className="flex items-center justify-between rounded-lg border border-amber-400/60 bg-amber-400/10 px-4 py-3">
+            <div className="flex items-center gap-2 text-sm text-amber-700 dark:text-amber-400">
+              <Sparkles className="size-4 shrink-0" />
+              <span>
+                A new prompt version <Badge variant="outline">v{pendingV.version}</Badge> is available for review.
+              </span>
+            </div>
+            <div className="flex items-center gap-2">
+              <Button
+                className="border-emerald-500/60 text-emerald-700 hover:bg-emerald-500/20 dark:text-emerald-400"
+                disabled={acceptVersionMutation.isPending}
+                onClick={() => setAcceptDialogVersion(pendingV)}
+                size="sm"
+                variant="outline"
+              >
+                <Check className="mr-1.5 size-3.5" />
+                Accept
+              </Button>
+              {pendingSuggestion && (
+                <Button
+                  className="border-red-400/60 text-red-600 hover:bg-red-400/20 dark:text-red-400"
+                  disabled={dismissVersionMutation.isPending}
+                  onClick={() => setDismissDialogVersion(pendingV)}
+                  size="sm"
+                  variant="outline"
+                >
+                  <X className="mr-1.5 size-3.5" />
+                  Dismiss
+                </Button>
+              )}
+            </div>
+          </div>
+        ) : null;
+      })()}
 
       <DismissibleAlert error={scoreMutation.isError ? scoreMutation.error : null} variant="warning" />
       <DismissibleAlert error={tuneMutation.isError ? tuneMutation.error : null} variant="warning" />
@@ -435,6 +546,66 @@ function AgentDetailPage() {
           scoredSpanCount={agent.analytics.scoredSpans}
         />
       )}
+
+      {/* Accept version confirmation dialog */}
+      <Dialog onOpenChange={(open) => { if (!open) setAcceptDialogVersion(null); }} open={!!acceptDialogVersion}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Accept Version {acceptDialogVersion?.version}?</DialogTitle>
+            <DialogDescription>
+              This will make version {acceptDialogVersion?.version} the active prompt for this agent.
+              The current active version will be marked as superseded.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button onClick={() => setAcceptDialogVersion(null)} variant="outline">
+              Cancel
+            </Button>
+            <Button
+              disabled={acceptVersionMutation.isPending}
+              onClick={() => {
+                if (acceptDialogVersion) {
+                  acceptVersionMutation.mutate(acceptDialogVersion.version);
+                }
+              }}
+            >
+              {acceptVersionMutation.isPending ? "Accepting..." : "Accept"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Dismiss version confirmation dialog */}
+      <Dialog onOpenChange={(open) => { if (!open) setDismissDialogVersion(null); }} open={!!dismissDialogVersion}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Dismiss Version {dismissDialogVersion?.version}?</DialogTitle>
+            <DialogDescription>
+              This will reject the suggested prompt version.
+              The current active version will remain unchanged.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button onClick={() => setDismissDialogVersion(null)} variant="outline">
+              Cancel
+            </Button>
+            <Button
+              disabled={dismissVersionMutation.isPending}
+              onClick={() => {
+                const pendingSuggestion = (agent.suggestions ?? []).find(
+                  (s: SuggestionOut) => s.newPromptVersion === dismissDialogVersion?.version && s.status === "pending"
+                );
+                if (pendingSuggestion) {
+                  dismissVersionMutation.mutate(pendingSuggestion.id);
+                }
+              }}
+              variant="destructive"
+            >
+              {dismissVersionMutation.isPending ? "Dismissing..." : "Dismiss"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

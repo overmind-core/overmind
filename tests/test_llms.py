@@ -11,6 +11,7 @@ from overmind.core.llms import (
     is_adaptive_mode,
     is_reasoning_required,
     model_supports_reasoning,
+    normalize_model_name,
     SUPPORTED_LLM_MODELS,
 )
 
@@ -181,3 +182,43 @@ def test_call_llm_includes_reasoning_content_in_stats_when_present(mock_completi
     content, stats = call_llm("hello", model="gpt-5-mini", reasoning_effort="low")
 
     assert stats.get("reasoning_content") == "Let me think about this..."
+
+
+class TestNormalizeModelName:
+    """Tests for normalize_model_name date stripping."""
+
+    def test_hyphenated_date_suffix(self):
+        assert normalize_model_name("gpt-5-mini-2025-08-07") == "gpt-5-mini"
+
+    def test_compact_date_suffix_returns_as_is_when_base_not_supported(self):
+        result = normalize_model_name("claude-sonnet-4-20250514")
+        assert result == "claude-sonnet-4-20250514"
+
+    def test_already_supported_name(self):
+        assert normalize_model_name("claude-sonnet-4-6") == "claude-sonnet-4-6"
+
+    def test_unknown_model_returned_as_is(self):
+        assert normalize_model_name("totally-unknown-model") == "totally-unknown-model"
+
+    def test_gemini_no_date(self):
+        assert (
+            normalize_model_name("gemini-3-flash-preview") == "gemini-3-flash-preview"
+        )
+
+
+class TestCallLlmProviderInference:
+    """call_llm allows passthrough of non-curated models from known providers."""
+
+    def test_anthropic_model_not_in_supported_list(self, mock_completion):
+        call_llm("hello", model="claude-sonnet-4-20250514")
+        model_arg = mock_completion.call_args.kwargs["model"]
+        assert model_arg == "anthropic/claude-sonnet-4-20250514"
+
+    def test_openai_model_not_in_supported_list(self, mock_completion):
+        call_llm("hello", model="gpt-4o-2024-08-06")
+        model_arg = mock_completion.call_args.kwargs["model"]
+        assert model_arg == "openai/gpt-4o-2024-08-06"
+
+    def test_completely_unknown_model_raises(self, mock_completion):
+        with pytest.raises(Exception, match="Unsupported model"):
+            call_llm("hello", model="llama-3-70b")

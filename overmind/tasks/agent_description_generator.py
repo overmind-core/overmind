@@ -380,6 +380,46 @@ async def _update_agent_description_from_feedback(
         }
 
 
+async def ensure_prompt_has_description(prompt_id: str) -> dict[str, Any] | None:
+    """
+    Check if a prompt has an agent description, and generate one if not.
+
+    Args:
+        prompt_id: String ID of the prompt (format: {project_id}_{version}_{slug})
+
+    Returns:
+        The agent_description dict (existing or newly generated), or None on failure.
+    """
+    AsyncSessionLocal = get_session_local()
+    async with AsyncSessionLocal() as session:
+        try:
+            project_id_str, version, slug = Prompt.parse_prompt_id(prompt_id)
+            project_uuid = UUID(project_id_str)
+        except (ValueError, TypeError) as e:
+            raise ValueError(f"Invalid prompt_id format: {str(e)}")
+
+        result = await session.execute(
+            select(Prompt).where(
+                and_(
+                    Prompt.project_id == project_uuid,
+                    Prompt.version == version,
+                    Prompt.slug == slug,
+                )
+            )
+        )
+        prompt = result.scalar_one_or_none()
+
+        if prompt is None:
+            raise ValueError(f"Prompt not found: {prompt_id}")
+
+        if prompt.agent_description and prompt.agent_description.get("description"):
+            return prompt.agent_description
+
+        logger.info(f"No description found for prompt {prompt_id}, generating...")
+        gen_result = await _generate_initial_agent_description(prompt_id)
+        return {"description": gen_result.get("description", "")}
+
+
 @shared_task(name="agent_description_generator.generate_initial_description")
 def generate_initial_agent_description_task(prompt_id: str) -> dict[str, Any]:
     """

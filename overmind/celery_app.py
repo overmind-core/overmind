@@ -131,6 +131,7 @@ celery_app.conf.update(
     result_serializer=settings.celery_result_serializer,
     timezone="UTC",
     enable_utc=True,
+    task_track_started=True,
     **_ssl_conf,
     beat_schedule=_beat_schedule,
 )

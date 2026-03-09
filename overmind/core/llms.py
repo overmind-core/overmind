@@ -266,17 +266,38 @@ def _get_default_model() -> str:
     return resolve_model(TaskType.DEFAULT)
 
 
-# Pattern to strip date suffixes like "-2025-08-07" from versioned model names
-_DATE_SUFFIX_RE = re.compile(r"-\d{4}-\d{2}-\d{2}$")
+# Pattern to strip date suffixes from versioned model names.
+# Matches both hyphenated (e.g. "-2025-08-07") and compact (e.g. "-20250514") formats.
+_DATE_SUFFIX_RE = re.compile(r"-\d{4}-\d{2}-\d{2}$|-\d{8}$")
+
+# Prefix → LiteLLM provider for models not in the curated SUPPORTED list.
+# Used by call_llm to allow passthrough of any model from a known provider
+# (e.g. replaying spans with older model versions that LiteLLM supports).
+_PROVIDER_BY_PREFIX: list[tuple[str, str]] = [
+    ("claude-", "anthropic"),
+    ("gpt-", "openai"),
+    ("o1-", "openai"),
+    ("o3-", "openai"),
+    ("o4-", "openai"),
+    ("gemini-", "gemini"),
+]
+
+
+def _infer_provider(model_name: str) -> str | None:
+    """Infer the LiteLLM provider from a model name prefix."""
+    for prefix, provider in _PROVIDER_BY_PREFIX:
+        if model_name.startswith(prefix):
+            return provider
+    return None
 
 
 def normalize_model_name(model_name: str) -> str:
-    """Strip date-version suffix (e.g. '-2025-08-07') from a model name.
+    """Strip date-version suffix (e.g. '-2025-08-07' or '-20250514') from a model name.
 
     Span metadata often stores the fully-qualified model name returned by the
-    provider (e.g. ``gpt-5-mini-2025-08-07``).  This helper maps it back to
-    the base name (``gpt-5-mini``) so it can be looked up in
-    ``SUPPORTED_LLM_MODEL_NAMES``.
+    provider (e.g. ``gpt-5-mini-2025-08-07`` or ``claude-sonnet-4-20250514``).
+    This helper strips the date suffix and returns the base name if it exists
+    in ``SUPPORTED_LLM_MODEL_NAMES``; otherwise returns the original unchanged.
     """
     base = _DATE_SUFFIX_RE.sub("", model_name)
     if base in SUPPORTED_LLM_MODEL_NAMES:
@@ -366,10 +387,13 @@ def call_llm(
         selected_model_name = (
             normalize_model_name(model) if model else _get_default_model()
         )
-        if selected_model_name not in SUPPORTED_LLM_MODEL_NAMES:
-            raise ValueError(f"Unsupported model: {selected_model_name}")
 
         provider = LLM_PROVIDER_BY_MODEL.get(selected_model_name)
+        if provider is None:
+            provider = _infer_provider(selected_model_name)
+            if provider is None:
+                raise ValueError(f"Unsupported model: {selected_model_name}")
+
         selected_model = f"{provider}/{selected_model_name}"
 
         completion_kwargs: dict = {

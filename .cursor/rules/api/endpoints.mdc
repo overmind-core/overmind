@@ -79,7 +79,7 @@ Pluggable auth provider. Core mode uses basic auth (no RBAC permission checking)
 - `POST /jobs` — create job (validates eligibility first)
 - `GET /jobs` — list with running status sync
 - `POST /jobs/extract-templates` — trigger agent discovery
-- `POST /jobs/{slug}/score` — trigger judge scoring
+- `POST /jobs/{slug}/score` — trigger judge scoring (auto-generates missing criteria and description before validation)
 - `POST /jobs/{slug}/tune` — trigger prompt tuning
 - `POST /jobs/{job_id}/trigger` — manually trigger pending job
 

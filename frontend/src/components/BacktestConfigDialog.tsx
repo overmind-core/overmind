@@ -394,7 +394,14 @@ export function BacktestConfigDialog({ promptId, onSuccess, recommendations }: B
         .catch(async (error) => {
           if (error instanceof ResponseError) {
             const r = await error.response.json();
-            throw new Error(r.detail ?? "Backtesting trigger failed");
+            const detail = r.detail;
+            const message =
+              typeof detail === "string"
+                ? detail
+                : Array.isArray(detail)
+                  ? detail.map((d: { msg?: string }) => d.msg ?? String(d)).join("; ")
+                  : "Backtesting trigger failed";
+            throw new Error(message);
           }
           throw error;
         }),

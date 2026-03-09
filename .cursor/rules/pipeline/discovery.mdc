@@ -26,16 +26,21 @@ Periodic (5 min) or Job trigger
   (merges system + user messages only; ignores assistant/tool)
         │
         ▼
+  Pre-group by system prompt via _group_by_system_prompt()
+  (Jaccard similarity ≥0.85 on system-prompt tokens; no-system → fallback group)
+        │
+        ▼
   ┌─────┴──────┐
-  │ No existing │───> extract_templates(texts, ExtractionConfig(min_group_size=2))
-  │ prompts?    │     Create Prompt from each template
+  │ No existing │───> Per system-prompt group:
+  │ prompts?    │       extract_templates(texts, ExtractionConfig(min_group_size=2))
+  │             │     Create Prompt from each template
   │             │     Map spans → prompts, store variables in input_params
   └─────┬──────┘
         │
   ┌─────┴──────┐
   │ Existing    │───> Load templates from existing prompts
   │ prompts?    │     match_string_to_template() for each unmapped span
-  │             │     Unmatched? → extract_templates() → new prompts
+  │             │     Unmatched? → pre-group by system prompt → extract_templates() per group → new prompts
   └─────┬──────┘
         │
         ▼
@@ -64,6 +69,14 @@ Core logic. Fetches unmapped spans, runs template extraction or matching, create
 
 Extracts text from span input. For conversational format (list of messages), concatenates only `system` and `user` role messages. This ensures templates capture the prompt structure, not the LLM's responses. Content strings in Gemini parts format (`[{"type": "text", "text": "..."}]`) are automatically unwrapped by `_unwrap_content_parts()` to prevent the JSON envelope from polluting template anchors.
 
+### `_get_system_prompt_text(span) -> str | None`
+
+Extracts only the system-role message text from a span's input. Used by `_group_by_system_prompt` for pre-grouping. Returns `None` if no system messages found (e.g., single user message format).
+
+### `_group_by_system_prompt(span_texts, similarity_threshold=0.85) -> list[list[...]]`
+
+Partitions `(span, merged_text)` pairs into groups sharing the same (or very similar) system prompt. Uses Jaccard similarity on system-prompt tokens with connected components (BFS). Spans without a system prompt go into a single fallback group. This prevents the template extractor from merging structurally different agents that share domain vocabulary or pass content between pipeline steps.
+
 ### `_create_prompt_from_template(db, template, project_id, user_id) -> Prompt`
 
 Creates a Prompt record from an extracted template. Generates a slug from the template content hash.
@@ -71,6 +84,10 @@ Creates a Prompt record from an extracted template. Generates a slug from the te
 ### `validate_agent_discovery_eligibility(project_id, session) -> tuple[bool, str | None, dict | None]`
 
 Checks if a project has unmapped spans eligible for discovery. Requires at least `MIN_SPANS_FOR_AGENT_DISCOVERY = 30` total spans before discovery runs.
+
+### `_auto_accept_pending_versions(db, project_id) -> None`
+
+Called at the end of `_map_spans_to_templates`. For each prompt slug with a version whose `status='pending'`, checks if at least one real production span has been mapped to it. If so, sets that version's `status` to `'active'`, marks all other non-rejected versions as `'superseded'`, and marks the associated suggestion as accepted.
 
 ## Template Extractor (`overmind/core/template_extractor/`)
 
@@ -112,9 +129,15 @@ agent_discovery
 ## When Modifying This Area
 
 - If changing `_get_span_input_text_merged`, be aware it affects which message roles are included in template extraction — adding assistant/tool messages would break template grouping
+- `_get_system_prompt_text()` must stay consistent with `_get_span_input_text_merged()` — both parse `span.input` the same way; if the input format changes, update both
+- `_group_by_system_prompt()` runs **before** `extract_templates()` in both code paths (first-run and unmatched-spans). If you bypass it, agents with shared domain vocabulary or passed-through content between pipeline steps may be incorrectly merged
+- The 0.85 Jaccard threshold for system-prompt grouping tolerates minor variable substitutions (1-2 short words) while keeping structurally different prompts apart
 - `_unwrap_content_parts()` strips Gemini-style `[{"type": "text", "text": "..."}]` JSON wrappers from content strings — without this, the shared JSON tokens create spurious anchors that merge unrelated agents
 - The extractor's anchor coverage check (15% threshold) prevents generic tokens from bridging unrelated groups when similarity grouping already separates them correctly
 - Template extractor is stateless and pure — safe to test in isolation
 - New prompts created by discovery always start at `version=1`
 - After creating prompts, criteria + description + display name generation are triggered asynchronously — failures in those don't block discovery
 - The `ExtractionConfig.min_group_size=2` means at least 2 similar spans are needed before a template is extracted
+- `_get_existing_templates()` loads **all** prompt versions (sorted by version desc) so spans get matched to whichever version's template they actually use — this enables auto-accept when production spans match a pending version
+- `_auto_accept_pending_versions()` runs after span mapping — for each slug with a pending (non-active) version, if at least one real production span matches it, the version is auto-accepted and its suggestion is marked accepted
+- Active versions sort first in template matching so they win tie-breaks when both old and new templates could match a span

@@ -13,7 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from overmind.api.v1.helpers.authentication import AuthenticatedUserOrToken
 from overmind.celery_app import celery_app
 from overmind.models.jobs import Job
-from overmind.models.prompts import Prompt
+from overmind.models.prompts import Prompt, PROMPT_STATUS_ACTIVE
 
 logger = logging.getLogger(__name__)
 
@@ -228,7 +228,8 @@ async def create_job(
 
 async def find_latest_prompt(slug: str, project_id, db: AsyncSession) -> Prompt | None:
     """
-    Find the latest version of a prompt by slug and project.
+    Find the best prompt version for a slug: prefer the active version,
+    fall back to the highest version for legacy data without status.
 
     Args:
         slug: Prompt slug
@@ -236,12 +237,17 @@ async def find_latest_prompt(slug: str, project_id, db: AsyncSession) -> Prompt 
         db: Database session
 
     Returns:
-        Latest Prompt object or None if not found
+        Prompt object or None if not found
     """
+    from sqlalchemy import case
+
     result = await db.execute(
         select(Prompt)
         .where(and_(Prompt.slug == slug, Prompt.project_id == project_id))
-        .order_by(Prompt.version.desc())
+        .order_by(
+            case((Prompt.status == PROMPT_STATUS_ACTIVE, 0), else_=1),
+            Prompt.version.desc(),
+        )
         .limit(1)
     )
     return result.scalar_one_or_none()

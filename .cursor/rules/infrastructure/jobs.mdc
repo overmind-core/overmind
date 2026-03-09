@@ -54,7 +54,7 @@ Defined in `JOB_TYPE_TO_TASK` in `overmind/tasks/job_reconciler.py`:
 | `PATCH /jobs/{job_id}`           | Update job (e.g. cancel)                                          |
 | `DELETE /jobs/{job_id}`          | Delete pending job                                                |
 | `POST /jobs/extract-templates`   | Create agent_discovery job                                        |
-| `POST /jobs/{prompt_slug}/score` | Create judge_scoring job for a prompt                             |
+| `POST /jobs/{prompt_slug}/score` | Create judge_scoring job for a prompt (auto-generates missing criteria/description) |
 | `POST /jobs/{prompt_slug}/tune`  | Create prompt_tuning job for a prompt                             |
 | `POST /jobs/{job_id}/trigger`    | Manually trigger a pending job                                    |
 
@@ -66,6 +66,10 @@ Each job type has a `validate_*_eligibility()` function called before creation:
 - `validate_judge_scoring_eligibility(prompt, session)`
 - `validate_prompt_tuning_eligibility(prompt, session)`
 - `validate_backtesting_eligibility(prompt, session, models?)`
+
+### Auto-generation on manual scoring
+
+`POST /jobs/{slug}/score` auto-generates missing criteria and description before running `validate_judge_scoring_eligibility`. This recovers from failed fire-and-forget Celery tasks that agent discovery dispatches via `.delay()`. Uses `ensure_prompt_has_criteria()` and `ensure_prompt_has_description()` synchronously, then re-fetches the prompt so validation sees the updated data.
 
 ### Helper functions (`overmind/api/v1/endpoints/utils/jobs.py`)
 
@@ -79,7 +83,7 @@ Each job type has a `validate_*_eligibility()` function called before creation:
 
 Runs every 30 seconds via Celery beat.
 
-1. Clean up stale `running` jobs (running > threshold with no Celery task)
+1. Clean up stale `running` jobs: reconciles DB status with Celery result backend. For SUCCESS/FAILURE/REVOKED tasks, updates job status and preserves `job.result.parameters`. For tasks stuck in PENDING > 30 min (worker crashed), marks as FAILED.
 1. Fetch all `pending` jobs ordered by `created_at`
 1. For each pending job:
    - Look up task name from `JOB_TYPE_TO_TASK`
@@ -129,3 +133,5 @@ Periodic tasks (beat-scheduled) create PENDING jobs for eligible prompts/project
 - `sync_running_job_statuses` is called on job list endpoints to reconcile stale running jobs — it checks the Celery result backend
 - New periodic tasks need: a beat schedule entry in `celery_app.py`, and should use `@with_task_lock` to prevent concurrent runs
 - Task autodiscovery requires tasks to be in `overmind/tasks/` — the `celery_app.autodiscover_tasks(["overmind.tasks"])` call finds them
+- `task_track_started=True` is enabled so Celery transitions tasks to STARTED state when the worker begins processing. Without this, long-running tasks (backtesting ~10min, prompt tuning ~20min) would appear as PENDING and be falsely killed by the stale-job cleanup.
+- The stale-job cleanup always preserves `job.result.parameters` when overwriting results — this protects threshold data (e.g. `scored_count_at_creation`) from being wiped during race conditions

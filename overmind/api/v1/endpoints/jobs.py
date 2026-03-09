@@ -499,7 +499,7 @@ async def create_template_extraction(
 @router.post("/{prompt_slug}/score", response_model=JobOut)
 async def create_prompt_scoring_job(
     prompt_slug: str,
-    project_id: str,
+    project_id: str | None = Query(None),
     user: AuthenticatedUserOrToken = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
@@ -509,21 +509,61 @@ async def create_prompt_scoring_job(
     For user-triggered jobs, validates eligibility before creating the job.
     Returns 400 error if validation fails with specific reason.
     """
-    try:
-        project_uuid = _uuid.UUID(project_id)
-    except ValueError:
-        raise HTTPException(status_code=400, detail="Invalid project_id format")
+    if project_id:
+        try:
+            project_uuid = _uuid.UUID(project_id)
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Invalid project_id format")
+        if not await user.is_project_member(project_uuid, db):
+            raise HTTPException(status_code=403, detail="Access denied to this project")
+        pid = project_id
+    elif user.user.projects:
+        pid = str(user.user.projects[0].project_id)
+        project_uuid = user.user.projects[0].project_id
+    else:
+        raise HTTPException(status_code=400, detail="No project found for user")
 
-    if not await user.is_project_member(project_uuid, db):
-        raise HTTPException(status_code=403, detail="Access denied to this project")
-
-    prompt = await find_latest_prompt(prompt_slug, project_id, db)
+    prompt = await find_latest_prompt(prompt_slug, pid, db)
     if not prompt:
         raise HTTPException(status_code=404, detail="Prompt not found")
 
-    await get_check_pending_job_count(
-        db, str(project_id), prompt_slug, JobType.JUDGE_SCORING
-    )
+    await get_check_pending_job_count(db, pid, prompt_slug, JobType.JUDGE_SCORING)
+
+    # Auto-generate missing criteria and description so user-triggered scoring
+    # isn't permanently blocked by a failed fire-and-forget discovery task.
+    needs_refresh = False
+    criteria = prompt.evaluation_criteria
+    if (
+        not criteria
+        or not isinstance(criteria, dict)
+        or "correctness" not in criteria
+        or not criteria["correctness"]
+    ):
+        from overmind.tasks.criteria_generator import ensure_prompt_has_criteria
+
+        logger.info(
+            f"Auto-generating missing criteria for {prompt.prompt_id} before scoring"
+        )
+        await ensure_prompt_has_criteria(prompt.prompt_id)
+        needs_refresh = True
+
+    agent_desc = prompt.agent_description
+    if not agent_desc or not agent_desc.get("description"):
+        from overmind.tasks.agent_description_generator import (
+            ensure_prompt_has_description,
+        )
+
+        logger.info(
+            f"Auto-generating missing description for {prompt.prompt_id} before scoring"
+        )
+        await ensure_prompt_has_description(prompt.prompt_id)
+        needs_refresh = True
+
+    if needs_refresh:
+        db.expire_all()
+        prompt = await find_latest_prompt(prompt_slug, pid, db)
+        if not prompt:
+            raise HTTPException(status_code=404, detail="Prompt not found")
 
     # Run validation checks for user-triggered judge scoring jobs
     from overmind.tasks.evaluations import validate_judge_scoring_eligibility
@@ -547,7 +587,7 @@ async def create_prompt_scoring_job(
     job = await create_job(
         db,
         job_type=JobType.JUDGE_SCORING.value,
-        project_id=project_id,
+        project_id=pid,
         prompt_slug=prompt_slug,
         user_id=user.user_id,
         result={

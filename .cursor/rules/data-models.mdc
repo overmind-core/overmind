@@ -26,6 +26,7 @@ The central entity — represents a discovered or user-defined prompt template.
 | `user_id`              | UUID FK → users    | Creator                                                      |
 | `project_id`           | UUID FK → projects | Owning project                                               |
 | `tags`                 | JSONB              | `["tag1", "tag2"]` — shared across all versions of same slug |
+| `status`               | String(20)         | Version lifecycle: `active` \| `pending` \| `superseded` \| `rejected`. Exactly one version per (slug, project_id) is `active` at any time. New tuning-generated versions start as `pending`; accepting one sets it to `active` and previous active to `superseded`; dismissing sets it to `rejected`. |
 | `evaluation_criteria`  | JSONB              | See format below                                             |
 | `improvement_metadata` | JSONB              | See format below                                             |
 | `agent_description`    | JSONB              | See format below                                             |

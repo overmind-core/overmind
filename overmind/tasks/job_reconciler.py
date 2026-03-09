@@ -7,6 +7,7 @@ by dispatching the appropriate Celery tasks.
 
 import asyncio
 import logging
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from celery import shared_task
@@ -59,6 +60,7 @@ async def _cleanup_stale_running_jobs(session) -> int:
 
             if celery_state == "SUCCESS":
                 task_result = async_result.result
+                existing_params = (job.result or {}).get("parameters", {})
                 # Check if the task was skipped due to lock contention
                 if (
                     isinstance(task_result, dict)
@@ -68,29 +70,56 @@ async def _cleanup_stale_running_jobs(session) -> int:
                     job.result = {
                         "error": "Task was skipped because another instance was already running",
                         "celery_result": task_result,
+                        "parameters": existing_params,
                     }
                     logger.info(
                         f"Cleaned up ghost RUNNING job {job.job_id}: task was lock-skipped"
                     )
                 else:
-                    job.status = JobStatus.COMPLETED.value
-                    job.result = (
+                    new_result = (
                         task_result
                         if isinstance(task_result, dict)
                         else {"raw": str(task_result)}
                     )
+                    if existing_params and "parameters" not in new_result:
+                        new_result["parameters"] = existing_params
+                    job.status = JobStatus.COMPLETED.value
+                    job.result = new_result
                     logger.info(
                         f"Cleaned up stale RUNNING job {job.job_id}: task completed"
                     )
                 cleaned += 1
             elif celery_state in ("FAILURE", "REVOKED"):
+                existing_params = (job.result or {}).get("parameters", {})
                 job.status = JobStatus.FAILED.value
-                job.result = {"error": str(async_result.result)}
+                job.result = {
+                    "error": str(async_result.result),
+                    "parameters": existing_params,
+                }
                 logger.info(
                     f"Cleaned up stale RUNNING job {job.job_id}: task {celery_state.lower()}"
                 )
                 cleaned += 1
-            # PENDING / STARTED / RETRY → leave as running
+            elif celery_state in ("PENDING",) and job.updated_at:
+                age = datetime.now(timezone.utc) - job.updated_at
+                if age > timedelta(minutes=30):
+                    existing_params = (job.result or {}).get("parameters", {})
+                    job.status = JobStatus.FAILED.value
+                    job.result = {
+                        "error": (
+                            "Task presumed dead: Celery reports PENDING "
+                            f"after {int(age.total_seconds())}s — "
+                            "worker likely crashed during execution"
+                        ),
+                        "parameters": existing_params,
+                    }
+                    logger.info(
+                        "Cleaned up stale RUNNING job %s: task stuck in PENDING for %s",
+                        job.job_id,
+                        age,
+                    )
+                    cleaned += 1
+            # STARTED / RETRY → leave as running
         except Exception as exc:
             logger.warning(
                 "Could not check celery state for job %s (task %s): %s",

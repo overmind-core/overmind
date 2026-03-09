@@ -124,7 +124,7 @@ def _next_backtest_threshold(last_count: int) -> int:
 # ---------------------------------------------------------------------------
 
 
-def _base_model_from_key(model_key: str) -> str:
+def base_model_from_key(model_key: str) -> str:
     """Extract base model name from a backtest key.
 
     Handles keys like 'gpt-5.2:reasoning-medium', 'claude-opus-4-5:reasoning'.
@@ -156,7 +156,7 @@ def _interleave_models_by_provider(models: list[str]) -> list[str]:
     """
     by_provider: dict[str, list[str]] = defaultdict(list)
     for model_key in models:
-        base = _base_model_from_key(model_key)
+        base = base_model_from_key(model_key)
         provider = LLM_PROVIDER_BY_MODEL.get(base, "unknown")
         by_provider[provider].append(model_key)
 
@@ -265,7 +265,7 @@ def _generate_recommendations(
     # Filter out current model and disqualified models
     candidates: dict[str, dict[str, float]] = {}
     for model, metrics in model_metrics.items():
-        if _base_model_from_key(model) == current_model:
+        if base_model_from_key(model) == current_model:
             continue
         if metrics.get("success_rate", 0) == 0:
             continue
@@ -829,7 +829,7 @@ async def _run_backtesting(
                             "backtest": True,
                             "backtest_run_id": str(backtest_run_id),
                             "source_span_id": span.span_id,
-                            "model": _base_model_from_key(model_name),
+                            "model": base_model_from_key(model_name),
                             "reasoning_mode": _reasoning_mode_from_key(model_name),
                             "latency_ms": model_result["latency_ms"],
                             "cost": model_result["cost"],
@@ -1068,15 +1068,20 @@ async def _run_backtesting(
                     # so validate_backtesting_eligibility can read it and advance
                     # the threshold guard on the next scheduler run.
                     existing_params = (job.result or {}).get("parameters", {})
+                    per_model_summary = {
+                        name: metrics for name, metrics in model_agg_metrics.items()
+                    }
                     job.result = {
                         "backtest_run_id": str(backtest_run_id),
                         "prompt_id": prompt_id,
                         "current_model": current_model,
                         "models_tested": len(models),
+                        "models_list": models,
                         "spans_tested": len(spans),
                         "spans_succeeded": success_count,
                         "spans_failed": error_count,
                         "recommendations": recommendations,
+                        "model_metrics": per_model_summary,
                         "suggestion_id": results.get("suggestion_id"),
                         "parameters": existing_params,
                     }
@@ -1457,31 +1462,24 @@ async def _check_backtesting_candidates(
     try:
         AsyncSessionLocal = get_session_local()
         async with AsyncSessionLocal() as session:
-            # Get latest version of each prompt slug
-            subquery = (
-                select(
-                    Prompt.project_id,
-                    Prompt.slug,
-                    func.max(Prompt.version).label("max_version"),
-                )
-                .group_by(Prompt.project_id, Prompt.slug)
-                .subquery()
+            from overmind.api.v1.endpoints.utils.agents import (
+                get_latest_prompts_for_project,
             )
+            from overmind.models.iam.projects import Project as ProjectModel
 
-            result = await session.execute(
-                select(Prompt).join(
-                    subquery,
-                    and_(
-                        Prompt.project_id == subquery.c.project_id,
-                        Prompt.slug == subquery.c.slug,
-                        Prompt.version == subquery.c.max_version,
-                    ),
-                )
+            proj_result = await session.execute(
+                select(ProjectModel.project_id).where(ProjectModel.is_active.is_(True))
             )
-            latest_prompts = result.scalars().all()
+            project_ids = [row[0] for row in proj_result.all()]
+
+            latest_prompts: list[Prompt] = []
+            for pid in project_ids:
+                latest_prompts.extend(
+                    await get_latest_prompts_for_project(pid, session)
+                )
 
             logger.info(
-                f"Backtesting check: found {len(latest_prompts)} prompts to evaluate"
+                f"Backtesting check: found {len(latest_prompts)} active prompts to evaluate"
             )
 
             job_results: list[dict[str, Any]] = []

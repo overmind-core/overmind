@@ -81,6 +81,8 @@ e2e-reset-db:
 	@echo "Dropping all tables (keeping LLM cache and containers)…"
 	docker compose exec postgres psql -U overmind -d overmind_core \
 		-c "DROP SCHEMA public CASCADE; CREATE SCHEMA public; GRANT ALL ON SCHEMA public TO overmind;"
+	@echo "Flushing Valkey cache…"
+	docker compose exec valkey valkey-cli FLUSHDB
 	@echo "Re-running migrations…"
 	docker compose exec api alembic upgrade head
 	@echo "Restarting API + Celery workers (picks up fresh .env)…"

@@ -71,7 +71,8 @@ All supported models have `supports_reasoning` and `reasoning_levels` in `SUPPOR
 
 - `normalize_llm_response_output(response)` — converts call_llm output to span format: `[{"role": "assistant", "content": ..., "tool_calls": ...}]`
 - `try_json_parsing(json_data)` — robust JSON parsing with fallback via `json_repair`
-- `normalize_model_name(model_name)` — strips date-version suffixes (e.g. `gpt-5-mini-2025-08-07` → `gpt-5-mini`); returns the stripped name only if it exists in `SUPPORTED_LLM_MODEL_NAMES`, otherwise returns the original unchanged
+- `normalize_model_name(model_name)` — strips date-version suffixes in both hyphenated (`-2025-08-07`) and compact (`-20250514`) formats; returns the stripped name only if it exists in `SUPPORTED_LLM_MODEL_NAMES`, otherwise returns the original unchanged
+- `_infer_provider(model_name)` — infers LiteLLM provider from model name prefix (`claude-` → anthropic, `gpt-`/`o1-`/`o3-`/`o4-` → openai, `gemini-` → gemini); used as fallback when model is not in the curated `SUPPORTED_LLM_MODEL_NAMES` list
 
 ## Model Resolver (`overmind/core/model_resolver.py`)
 
@@ -163,5 +164,5 @@ At least one key must be set for AI features to work. The model resolver raises 
 - Adding a new task type: add to `TaskType` enum, add priority list to `MODEL_PRIORITY`
 - `call_llm` sets `cache_control = {"type": "ephemeral"}` only for Anthropic — other providers do not receive this parameter
 - The `response_format` parameter takes a Pydantic `BaseModel` subclass for structured output — LiteLLM handles the provider-specific implementation
-- `normalize_model_name` strips date suffixes (e.g. `-2025-08-07`); it does **not** handle provider prefixes — the provider is looked up from `LLM_PROVIDER_BY_MODEL` and the LiteLLM format `"{provider}/{model}"` is constructed inside `call_llm`
+- `normalize_model_name` strips date suffixes in both `-YYYY-MM-DD` and `-YYYYMMDD` formats; `call_llm` first tries `LLM_PROVIDER_BY_MODEL` for curated models, then falls back to `_infer_provider` (prefix-based) for passthrough models (e.g. replaying spans with older model versions). Only models from unknown providers are rejected.
 - New models in `SUPPORTED_LLM_MODELS` must include `supports_reasoning` and `reasoning_levels`; see existing entries and [LiteLLM reasoning_content](https://docs.litellm.ai/docs/reasoning_content)

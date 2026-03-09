@@ -3,7 +3,7 @@ import uuid as _uuid
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
-from sqlalchemy import select
+from sqlalchemy import and_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from typing import Any
 
@@ -13,7 +13,12 @@ from overmind.api.v1.helpers.authentication import (
     get_current_user,
 )
 from overmind.db.session import get_db
-from overmind.models.prompts import Prompt
+from overmind.models.prompts import (
+    Prompt,
+    PROMPT_STATUS_ACTIVE,
+    PROMPT_STATUS_SUPERSEDED,
+    PROMPT_STATUS_REJECTED,
+)
 from overmind.models.traces import SpanModel
 
 router = APIRouter()
@@ -151,6 +156,118 @@ async def add_suggestion_feedback(
     # Add feedback
     suggestion.vote = data.vote
     suggestion.feedback = data.feedback
+
+    await db.commit()
+    await db.refresh(suggestion)
+
+    return SuggestionDetailOut(
+        id=str(suggestion.suggestion_id),
+        title=suggestion.title,
+        description=suggestion.description,
+        status=suggestion.status,
+        vote=suggestion.vote,
+        feedback=suggestion.feedback,
+        prompt_slug=suggestion.prompt_slug,
+        new_prompt_version=suggestion.new_prompt_version,
+        scores=suggestion.scores,
+        created_at=suggestion.created_at.isoformat() if suggestion.created_at else None,
+    )
+
+
+@router.post("/{suggestion_id}/accept", response_model=SuggestionDetailOut)
+async def accept_suggestion(
+    suggestion_id: str,
+    user: AuthenticatedUserOrToken = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Accept a prompt version suggestion.
+
+    Atomically flips status: the suggested new version becomes active,
+    all other versions of the same slug+project become superseded.
+    Sets suggestion status to 'accepted'.
+    """
+    try:
+        sid = _uuid.UUID(suggestion_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid suggestion_id format")
+
+    suggestion = await get_suggestion_or_404(sid, user, db)
+
+    if suggestion.new_prompt_version is None:
+        raise HTTPException(
+            status_code=400, detail="Suggestion has no associated prompt version"
+        )
+
+    all_versions_q = await db.execute(
+        select(Prompt).where(
+            and_(
+                Prompt.slug == suggestion.prompt_slug,
+                Prompt.project_id == suggestion.project_id,
+            )
+        )
+    )
+    all_versions = all_versions_q.scalars().all()
+
+    target = next(
+        (v for v in all_versions if v.version == suggestion.new_prompt_version), None
+    )
+    if not target:
+        raise HTTPException(status_code=404, detail="Target prompt version not found")
+
+    for v in all_versions:
+        if v.version != target.version and v.status != PROMPT_STATUS_REJECTED:
+            v.status = PROMPT_STATUS_SUPERSEDED
+    target.status = PROMPT_STATUS_ACTIVE
+
+    suggestion.status = "accepted"
+    await db.commit()
+    await db.refresh(suggestion)
+
+    return SuggestionDetailOut(
+        id=str(suggestion.suggestion_id),
+        title=suggestion.title,
+        description=suggestion.description,
+        status=suggestion.status,
+        vote=suggestion.vote,
+        feedback=suggestion.feedback,
+        prompt_slug=suggestion.prompt_slug,
+        new_prompt_version=suggestion.new_prompt_version,
+        scores=suggestion.scores,
+        created_at=suggestion.created_at.isoformat() if suggestion.created_at else None,
+    )
+
+
+@router.post("/{suggestion_id}/dismiss", response_model=SuggestionDetailOut)
+async def dismiss_suggestion(
+    suggestion_id: str,
+    user: AuthenticatedUserOrToken = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Dismiss a suggestion. The currently active version remains unchanged.
+    """
+    try:
+        sid = _uuid.UUID(suggestion_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid suggestion_id format")
+
+    suggestion = await get_suggestion_or_404(sid, user, db)
+    suggestion.status = "dismissed"
+
+    if suggestion.new_prompt_version is not None:
+        prompt_q = await db.execute(
+            select(Prompt).where(
+                and_(
+                    Prompt.slug == suggestion.prompt_slug,
+                    Prompt.project_id == suggestion.project_id,
+                    Prompt.version == suggestion.new_prompt_version,
+                )
+            )
+        )
+        prompt_version = prompt_q.scalar_one_or_none()
+        if prompt_version and prompt_version.status == "pending":
+            prompt_version.status = PROMPT_STATUS_REJECTED
 
     await db.commit()
     await db.refresh(suggestion)

@@ -113,6 +113,7 @@ update_agent_description_from_feedback_task(prompt_id, span_ids)
 
 - `generate_initial_agent_description_task(prompt_id)` — initial generation
 - `update_agent_description_from_feedback_task(prompt_id, span_ids)` — update with user feedback
+- `ensure_prompt_has_description(prompt_id)` — async check/generate, analogous to `ensure_prompt_has_criteria`; used by the manual scoring endpoint to recover from failed fire-and-forget description tasks
 - `_generate_initial_agent_description(prompt_id, span_limit=10)` — core logic
 - `_update_agent_description_from_feedback(prompt_id, span_ids, feedback_override?)` — update logic
 

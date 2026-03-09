@@ -11,7 +11,7 @@ from overmind.api.v1.helpers.authentication import (
     get_current_user,
 )
 from overmind.core.llms import SUPPORTED_LLM_MODELS, SUPPORTED_LLM_MODEL_NAMES
-from overmind.tasks.backtesting import _base_model_from_key
+from overmind.tasks.backtesting import base_model_from_key
 from overmind.api.v1.endpoints.utils.jobs import (
     cancel_existing_system_jobs,
     create_job,
@@ -106,7 +106,7 @@ async def run_backtesting(
     invalid_models = [
         m
         for m in request.models
-        if _base_model_from_key(m) not in SUPPORTED_LLM_MODEL_NAMES
+        if base_model_from_key(m) not in SUPPORTED_LLM_MODEL_NAMES
     ]
     if invalid_models:
         raise HTTPException(
