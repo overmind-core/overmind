@@ -5,9 +5,11 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { ThumbsDown, ThumbsUp } from "pixelarticons/react";
 
 import apiClient from "@/client";
+import { BlockActions } from "@/components/ui/block-actions";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
+import { isLikelyMarkdown, MarkdownContent } from "@/components/ui/markdown";
 import {
   Table,
   TableBody,
@@ -20,6 +22,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import type { SpanRow } from "@/hooks/use-traces";
 import { spanStatusLabel } from "@/hooks/use-traces";
+import type { ChatMessage, ToolCallItem } from "@/types/chat";
 
 function formatAttributeValue(value: unknown): string {
   if (value === null || value === undefined) return "—";
@@ -63,7 +66,7 @@ function AttributesTable({
                 {key === "PromptId" ? "AgentId" : key}
               </TableCell>
               <TableCell className="text-xs">
-                <pre className="wrap-break-word whitespace-pre-wrap rounded bg-muted/30 px-2 py-1.5 font-mono text-xs">
+                <pre className="break-words whitespace-pre-wrap rounded bg-muted/30 px-2 py-1.5 font-mono text-xs">
                   {formatAttributeValue(value)}
                 </pre>
               </TableCell>
@@ -74,12 +77,6 @@ function AttributesTable({
     </div>
   );
 }
-
-type ToolCallItem = {
-  id?: string;
-  type?: string;
-  function?: { name?: string; arguments?: string };
-};
 
 type ToolParameterSchema = {
   type?: string;
@@ -108,36 +105,6 @@ type ToolDefinition = {
   parameters?: ToolFunctionDef["parameters"];
 };
 
-type ChatMessage = {
-  role?: string;
-  content?: string | null;
-  tool_calls?: ToolCallItem[];
-  tool_call_id?: string;
-};
-
-function _extractToolNamesFromOutput(outputs: unknown): string[] {
-  try {
-    const parsed = typeof outputs === "string" ? JSON.parse(outputs) : outputs;
-    const names: string[] = [];
-    const collect = (toolCalls: unknown[]) => {
-      for (const tc of toolCalls) {
-        const name = (tc as ToolCallItem)?.function?.name;
-        if (name) names.push(name);
-      }
-    };
-    if (Array.isArray(parsed)) {
-      for (const msg of parsed) {
-        if (Array.isArray(msg?.tool_calls)) collect(msg.tool_calls);
-      }
-    } else if (Array.isArray((parsed as ChatMessage)?.tool_calls)) {
-      collect((parsed as ChatMessage).tool_calls!);
-    }
-    return [...new Set(names)];
-  } catch {
-    return [];
-  }
-}
-
 function ToolCallBadge() {
   return (
     <span className="inline-flex items-center rounded-full border border-violet-300 bg-violet-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-violet-700 dark:border-violet-700 dark:bg-violet-900/30 dark:text-violet-400">
@@ -162,7 +129,7 @@ function ToolCallBlock({ tc }: { tc: ToolCallItem }) {
         {tc.function?.name ?? "tool"}
       </span>
       {prettyArgs && (
-        <pre className="mt-1 whitespace-pre-wrap wrap-break-word text-muted-foreground">
+        <pre className="mt-1 whitespace-pre-wrap break-words text-muted-foreground">
           {prettyArgs}
         </pre>
       )}
@@ -277,19 +244,40 @@ const ROLE_LABELS: Record<string, string> = {
 function MessageRow({ msg }: { msg: ChatMessage }) {
   const roleLabel = ROLE_LABELS[msg.role ?? ""] ?? msg.role ?? "Message";
   const hasToolCalls = (msg.tool_calls?.length ?? 0) > 0;
+  const text = msg.content ?? "";
+  const isTool = msg.role === "tool";
+  const canMarkdown =
+    !isTool && typeof text === "string" && text.length > 0 && isLikelyMarkdown(text);
+  const [mode, setMode] = useState<"raw" | "markdown">(canMarkdown ? "markdown" : "raw");
 
   return (
     <div>
-      <div className="mb-1.5 flex items-center gap-2">
-        <span className="font-semibold text-muted-foreground">{roleLabel}</span>
-        {hasToolCalls && (
-          <span className="inline-flex items-center rounded-full border border-violet-300 bg-violet-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-violet-700 dark:border-violet-700 dark:bg-violet-900/30 dark:text-violet-400">
-            tool call
-          </span>
+      <div className="mb-1.5 flex items-center justify-between gap-2">
+        <div className="flex items-center gap-2">
+          <span className="font-semibold text-muted-foreground">{roleLabel}</span>
+          {hasToolCalls && (
+            <span className="inline-flex items-center rounded-full border border-violet-300 bg-violet-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-violet-700 dark:border-violet-700 dark:bg-violet-900/30 dark:text-violet-400">
+              tool call
+            </span>
+          )}
+        </div>
+        {text.length > 0 && (
+          <BlockActions
+            mode={mode}
+            onToggleMode={() => setMode((m) => (m === "raw" ? "markdown" : "raw"))}
+            showToggle={canMarkdown}
+            text={text}
+          />
         )}
       </div>
-      {msg.content != null && msg.content !== "" && (
-        <div className="whitespace-pre-wrap wrap-break-word">{msg.content}</div>
+      {text !== "" && (
+        <div className="break-words">
+          {mode === "markdown" && canMarkdown ? (
+            <MarkdownContent compact>{text}</MarkdownContent>
+          ) : (
+            <div className="whitespace-pre-wrap text-xs">{text}</div>
+          )}
+        </div>
       )}
       {msg.tool_calls?.map((tc, tcIdx) => (
         <ToolCallBlock key={tcIdx} tc={tc} />
@@ -308,17 +296,38 @@ function JsonBlock({
   badge?: React.ReactNode;
 }) {
   const parsedValue = useMemo(() => {
+    if (typeof value !== "string") return value;
     try {
-      return JSON.parse(value as string);
+      return JSON.parse(value);
     } catch {
       return value;
     }
   }, [value]);
 
+  const rawJson = useMemo(
+    () => (typeof parsedValue === "string" ? parsedValue : JSON.stringify(parsedValue, null, 2)),
+    [parsedValue]
+  );
+
+  const canMarkdown =
+    typeof parsedValue === "string" && parsedValue.length > 0 && isLikelyMarkdown(parsedValue);
+
+  const [mode, setMode] = useState<"raw" | "markdown">(canMarkdown ? "markdown" : "raw");
+
   const header = (
-    <div className="border-b border-border bg-muted/50 px-3 py-2 flex items-center gap-2">
-      <span className="text-xs font-semibold uppercase text-muted-foreground">{title}</span>
-      {badge}
+    <div className="border-b border-border bg-muted/50 px-3 py-2 flex items-center justify-between gap-2">
+      <div className="flex items-center gap-2">
+        <span className="text-xs font-semibold uppercase text-muted-foreground">{title}</span>
+        {badge}
+      </div>
+      {!Array.isArray(parsedValue) && rawJson && (
+        <BlockActions
+          mode={mode}
+          onToggleMode={() => setMode((m) => (m === "raw" ? "markdown" : "raw"))}
+          showToggle={canMarkdown}
+          text={rawJson}
+        />
+      )}
     </div>
   );
 
@@ -326,7 +335,13 @@ function JsonBlock({
     return (
       <div className="overflow-hidden rounded-md border border-border">
         {header}
-        <div className="max-h-64 overflow-auto p-3 text-xs font-mono space-y-4">{parsedValue}</div>
+        <div className="p-3">
+          {mode === "markdown" && canMarkdown ? (
+            <MarkdownContent compact>{parsedValue}</MarkdownContent>
+          ) : (
+            <pre className="whitespace-pre-wrap break-words font-mono text-xs">{parsedValue}</pre>
+          )}
+        </div>
       </div>
     );
   }
@@ -335,7 +350,7 @@ function JsonBlock({
       return (
         <div className="overflow-hidden rounded-md border border-border">
           {header}
-          <pre className="max-h-64 overflow-auto p-3 text-xs font-mono whitespace-pre-wrap wrap-break-word">
+          <pre className="p-3 text-xs font-mono whitespace-pre-wrap break-words">
             {JSON.stringify(parsedValue, null, 2)}
           </pre>
         </div>
@@ -348,7 +363,7 @@ function JsonBlock({
   return (
     <div className="overflow-hidden rounded-md border border-border">
       {header}
-      <div className="max-h-64 overflow-auto p-3 text-xs font-mono divide-y divide-border/40">
+      <div className="p-3 text-xs font-mono divide-y divide-border/40">
         {(parsedValue as ChatMessage[]).map((msg, idx) => (
           <div className="py-3 first:pt-1" key={idx}>
             <MessageRow msg={msg} />
@@ -363,6 +378,7 @@ function FeedbackTextInput({
   feedbackMutation,
   feedbackType,
   initialText,
+  rating,
 }: {
   feedbackMutation: {
     mutate: (vars: {
@@ -374,6 +390,7 @@ function FeedbackTextInput({
   };
   feedbackType: "judge" | "agent";
   initialText?: string | null;
+  rating: "up" | "down";
 }) {
   const [text, setText] = useState(initialText ?? "");
   return (
@@ -389,7 +406,7 @@ function FeedbackTextInput({
         disabled={feedbackMutation.isPending || !text.trim()}
         onClick={() => {
           setText("");
-          feedbackMutation.mutate({ feedbackType, rating: "up", text: text.trim() || undefined });
+          feedbackMutation.mutate({ feedbackType, rating, text: text.trim() || undefined });
         }}
         size="sm"
       >
@@ -543,6 +560,7 @@ export function SpanDetailView({ span, queryKey }: SpanDetailViewProps) {
                     feedbackMutation={feedbackMutation}
                     feedbackType="agent"
                     initialText={agentFeedback?.text}
+                    rating={agentFeedback?.rating ?? "up"}
                   />
                 </div>
               </div>

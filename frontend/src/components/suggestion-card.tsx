@@ -264,7 +264,7 @@ export function SuggestionCard({ suggestion }: { suggestion: SuggestionOut }) {
         {expanded === suggestion.id && suggestion.newPromptText && (
           <div className="mt-4 space-y-2">
             <p className="text-sm font-semibold">New Prompt Text</p>
-            <pre className="max-h-[300px] overflow-y-auto rounded-lg border border-green-500/30 bg-green-500/10 p-3 font-mono text-xs leading-relaxed whitespace-pre-wrap wrap-break-word">
+            <pre className="max-h-[300px] overflow-y-auto rounded-lg border border-green-500/30 bg-green-500/10 p-3 font-mono text-xs leading-relaxed whitespace-pre-wrap break-words">
               {suggestion.newPromptText}
             </pre>
           </div>

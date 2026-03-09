@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import {
   WarningDiamond as AlertCircle,
@@ -14,6 +14,7 @@ import {
 import type { AgentOut, SpanForReview } from "@/api";
 import apiClient from "@/client";
 import { Badge } from "@/components/ui/badge";
+import { BlockActions } from "@/components/ui/block-actions";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -23,8 +24,10 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { isLikelyMarkdown, MarkdownContent } from "@/components/ui/markdown";
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
+import type { ChatMessage, ToolCallItem } from "@/types/chat";
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -44,18 +47,6 @@ type FeedbackEntry = { vote: Vote; text: string };
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
-
-type ToolCallItem = {
-  id?: string;
-  function?: { name?: string; arguments?: string };
-};
-
-type ChatMessage = {
-  role: string;
-  content?: string | null;
-  tool_calls?: ToolCallItem[];
-  tool_call_id?: string;
-};
 
 function parseChatMessages(value: unknown): ChatMessage[] | null {
   try {
@@ -101,23 +92,84 @@ function ScoreChip({ score }: { score: number | null }) {
 // ---------------------------------------------------------------------------
 
 function ToolCallBubble({ tc }: { tc: ToolCallItem }) {
-  const prettyArgs = (() => {
+  const prettyArgs = useMemo(() => {
     if (!tc.function?.arguments) return "";
     try {
       return JSON.stringify(JSON.parse(tc.function.arguments), null, 2);
     } catch {
       return tc.function.arguments;
     }
-  })();
+  }, [tc.function?.arguments]);
 
   return (
     <div className="rounded-lg border border-border/60 bg-muted/50 px-3 py-2 font-mono text-xs">
       <span className="font-semibold text-foreground">{tc.function?.name ?? "tool"}</span>
       {tc.id && <span className="ml-2 text-muted-foreground/60">({tc.id.slice(0, 12)}…)</span>}
       {prettyArgs && (
-        <pre className="mt-1 whitespace-pre-wrap wrap-break-word text-muted-foreground">
+        <pre className="mt-1 whitespace-pre-wrap break-words text-muted-foreground">
           {prettyArgs}
         </pre>
+      )}
+    </div>
+  );
+}
+
+function MessageBubble({ m }: { m: ChatMessage }) {
+  const isUser = m.role === "user";
+  const isSystem = m.role === "system";
+  const isTool = m.role === "tool";
+  const hasToolCalls = (m.tool_calls?.length ?? 0) > 0;
+  const content = m.content ?? "";
+  const canMarkdown = !isTool && content.length > 0 && isLikelyMarkdown(content);
+  const [mode, setMode] = useState<"raw" | "markdown">(canMarkdown ? "markdown" : "raw");
+
+  const roleLabel = isTool
+    ? `tool${m.tool_call_id ? ` · ${m.tool_call_id.slice(0, 12)}…` : ""}`
+    : m.role;
+
+  return (
+    <div className={cn("flex flex-col gap-1", isUser ? "items-end" : "items-start")}>
+      <div className={cn("flex items-center gap-1", isUser ? "flex-row-reverse" : "flex-row")}>
+        <span className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">
+          {roleLabel}
+        </span>
+        {content.length > 0 && (
+          <BlockActions
+            mode={mode}
+            onToggleMode={() => setMode((prev) => (prev === "raw" ? "markdown" : "raw"))}
+            showToggle={canMarkdown}
+            text={content}
+          />
+        )}
+      </div>
+      {/* Tool calls emitted by the assistant */}
+      {hasToolCalls && (
+        <div className="max-w-[85%] space-y-1.5">
+          {m.tool_calls!.map((tc, tcIdx) => (
+            <ToolCallBubble key={tcIdx} tc={tc} />
+          ))}
+        </div>
+      )}
+      {/* Regular text content */}
+      {content !== "" && (
+        <div
+          className={cn(
+            "max-w-[85%] rounded-xl px-3.5 py-2.5 text-sm leading-relaxed",
+            isUser
+              ? "bg-primary/10 text-foreground"
+              : isSystem
+                ? "bg-muted/50 text-muted-foreground italic"
+                : isTool
+                  ? "bg-amber-500/10 font-mono text-xs text-foreground"
+                  : "bg-muted text-foreground"
+          )}
+        >
+          {isTool || mode === "raw" ? (
+            <span className="whitespace-pre-wrap">{content}</span>
+          ) : (
+            <MarkdownContent>{content}</MarkdownContent>
+          )}
+        </div>
       )}
     </div>
   );
@@ -126,49 +178,9 @@ function ToolCallBubble({ tc }: { tc: ToolCallItem }) {
 function ChatBubbles({ messages }: { messages: ChatMessage[] }) {
   return (
     <div className="space-y-2.5">
-      {messages.map((m, i) => {
-        const isUser = m.role === "user";
-        const isSystem = m.role === "system";
-        const isTool = m.role === "tool";
-        const hasToolCalls = (m.tool_calls?.length ?? 0) > 0;
-
-        const roleLabel = isTool
-          ? `tool${m.tool_call_id ? ` · ${m.tool_call_id.slice(0, 12)}…` : ""}`
-          : m.role;
-
-        return (
-          <div className={cn("flex flex-col gap-1", isUser ? "items-end" : "items-start")} key={i}>
-            <span className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">
-              {roleLabel}
-            </span>
-            {/* Tool calls emitted by the assistant */}
-            {hasToolCalls && (
-              <div className="max-w-[85%] space-y-1.5">
-                {m.tool_calls!.map((tc, tcIdx) => (
-                  <ToolCallBubble key={tcIdx} tc={tc} />
-                ))}
-              </div>
-            )}
-            {/* Regular text content (may coexist with tool_calls in some models) */}
-            {m.content != null && m.content !== "" && (
-              <div
-                className={cn(
-                  "max-w-[85%] rounded-xl px-3.5 py-2.5 text-sm leading-relaxed",
-                  isUser
-                    ? "bg-primary/10 text-foreground"
-                    : isSystem
-                      ? "bg-muted/50 text-muted-foreground italic"
-                      : isTool
-                        ? "bg-amber-500/10 font-mono text-xs text-foreground"
-                        : "bg-muted text-foreground"
-                )}
-              >
-                {m.content}
-              </div>
-            )}
-          </div>
-        );
-      })}
+      {messages.map((m, i) => (
+        <MessageBubble key={i} m={m} />
+      ))}
     </div>
   );
 }
@@ -179,16 +191,35 @@ function ChatBubbles({ messages }: { messages: ChatMessage[] }) {
 
 function SpanSection({ label, value }: { label: string; value: unknown }) {
   const messages = parseChatMessages(value);
+  const plain = formatPlain(value);
+  const canMarkdown =
+    !messages && typeof value === "string" && plain.length > 0 && isLikelyMarkdown(plain);
+  const [mode, setMode] = useState<"raw" | "markdown">(canMarkdown ? "markdown" : "raw");
+
   return (
     <div>
-      <p className="mb-2 text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">
-        {label}
-      </p>
+      <div className="mb-2 flex items-center justify-between gap-2">
+        <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">
+          {label}
+        </p>
+        {!messages && (
+          <BlockActions
+            mode={mode}
+            onToggleMode={() => setMode((prev) => (prev === "raw" ? "markdown" : "raw"))}
+            showToggle={canMarkdown}
+            text={plain}
+          />
+        )}
+      </div>
       {messages ? (
         <ChatBubbles messages={messages} />
+      ) : mode === "markdown" && canMarkdown ? (
+        <div className="rounded-xl bg-muted/50 px-4 py-3 leading-relaxed text-foreground">
+          <MarkdownContent>{plain}</MarkdownContent>
+        </div>
       ) : (
-        <pre className="whitespace-pre-wrap wrap-break-word rounded-xl bg-muted/50 px-4 py-3 font-mono text-xs leading-relaxed text-foreground">
-          {formatPlain(value)}
+        <pre className="whitespace-pre-wrap break-words rounded-xl bg-muted/50 px-4 py-3 font-mono text-xs leading-relaxed text-foreground">
+          {plain}
         </pre>
       )}
     </div>
@@ -235,6 +266,12 @@ export function SpanFeedbackDialog({
   const [fetchError, setFetchError] = useState<string | null>(null);
 
   const fixedSpanIdsRef = useRef<string[]>([]);
+  const mountedRef = useRef(true);
+  useEffect(() => {
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
 
   const loadSpans = useCallback(async () => {
     setPhase("loading");
@@ -388,94 +425,112 @@ export function SpanFeedbackDialog({
 
     setPhase("refreshing");
 
-    if (allPositive) {
-      // All scores look correct — persist votes then close.
-      setStatusMsg("Saving feedback…");
-      await persistFeedback();
-      setStatusMsg("Completing review…");
-      await completeReview();
-      setPhase("done");
-      setTimeout(onComplete, 800);
-      return;
-    }
-
-    if (iteration >= MAX_ITERATIONS - 1) {
-      // Final iteration — persist votes then close.
-      setStatusMsg("Saving feedback…");
-      await persistFeedback();
-      setStatusMsg("Completing review…");
-      await completeReview();
-      setPhase("thanked");
-      return;
-    }
-
-    // Intermediate iteration — pass feedback inline to avoid writing stale
-    // judge_feedback to the DB before the session is complete.
-    const negativeSpans = spans.filter((s) => feedback[s.spanId]?.vote === "down");
-    const negativeSpanIds = negativeSpans.map((s) => s.spanId);
-    const inlineFeedback = Object.fromEntries(
-      negativeSpans.map((s) => [s.spanId, { rating: "down", text: feedback[s.spanId]?.text ?? "" }])
-    );
-
-    setStatusMsg("Updating agent description based on feedback…");
-    await apiClient.agentReviews.syncRefreshDescriptionApiV1AgentReviewsPromptSlugSyncRefreshDescriptionPost(
-      {
-        projectId: projectId,
-        promptSlug: agent.slug,
-        syncRefreshDescriptionRequest: {
-          feedback: inlineFeedback,
-          spanIds: negativeSpanIds,
-        },
-      }
-    );
-
-    setStatusMsg("Re-scoring spans…");
-    const evalResult = await apiClient.spans.evaluateSpansApiV1SpansEvaluatePost({
-      requestBody: negativeSpanIds,
-    });
-
-    setStatusMsg("Waiting for scores to update…");
-    const jobId = (evalResult as { job_id?: string }).job_id;
-    if (jobId) {
-      const deadline = Date.now() + JOB_POLL_TIMEOUT_MS;
-      while (Date.now() < deadline) {
-        await new Promise((resolve) => setTimeout(resolve, JOB_POLL_INTERVAL_MS));
-        try {
-          const job = await apiClient.jobs.getJobApiV1JobsJobIdGet({ jobId });
-          if (job.status === "completed" || job.status === "failed") break;
-        } catch {
-          // ignore transient errors
-        }
-      }
-    }
-
-    setStatusMsg("Loading updated spans…");
     try {
-      const refreshed =
-        await apiClient.agentReviews.getSpansForReviewApiV1AgentReviewsPromptSlugReviewSpansGet({
+      if (allPositive) {
+        // All scores look correct — persist votes then close.
+        setStatusMsg("Saving feedback…");
+        await persistFeedback();
+        setStatusMsg("Completing review…");
+        await completeReview();
+        setPhase("done");
+        setTimeout(onComplete, 800);
+        return;
+      }
+
+      if (iteration >= MAX_ITERATIONS - 1) {
+        // Final iteration — persist votes then close.
+        setStatusMsg("Saving feedback…");
+        await persistFeedback();
+        setStatusMsg("Completing review…");
+        await completeReview();
+        setPhase("thanked");
+        return;
+      }
+
+      // Intermediate iteration — pass feedback inline to avoid writing stale
+      // judge_feedback to the DB before the session is complete.
+      const negativeSpans = spans.filter((s) => feedback[s.spanId]?.vote === "down");
+      const negativeSpanIds = negativeSpans.map((s) => s.spanId);
+      const inlineFeedback = Object.fromEntries(
+        negativeSpans.map((s) => [
+          s.spanId,
+          { rating: "down", text: feedback[s.spanId]?.text ?? "" },
+        ])
+      );
+
+      setStatusMsg("Updating agent description based on feedback…");
+      await apiClient.agentReviews.syncRefreshDescriptionApiV1AgentReviewsPromptSlugSyncRefreshDescriptionPost(
+        {
           projectId: projectId,
           promptSlug: agent.slug,
+          syncRefreshDescriptionRequest: {
+            feedback: inlineFeedback,
+            spanIds: negativeSpanIds,
+          },
+        }
+      );
+
+      if (!mountedRef.current) return;
+      setStatusMsg("Re-scoring spans…");
+      const evalResult = await apiClient.spans.evaluateSpansApiV1SpansEvaluatePost({
+        requestBody: negativeSpanIds,
+      });
+
+      if (!mountedRef.current) return;
+      setStatusMsg("Waiting for scores to update…");
+      const jobId = (evalResult as { job_id?: string }).job_id;
+      if (jobId) {
+        const deadline = Date.now() + JOB_POLL_TIMEOUT_MS;
+        while (Date.now() < deadline && mountedRef.current) {
+          await new Promise((resolve) => setTimeout(resolve, JOB_POLL_INTERVAL_MS));
+          if (!mountedRef.current) return;
+          try {
+            const job = await apiClient.jobs.getJobApiV1JobsJobIdGet({ jobId });
+            if (job.status === "completed" || job.status === "failed") break;
+          } catch {
+            // ignore transient poll errors
+          }
+        }
+      }
+
+      if (!mountedRef.current) return;
+      setStatusMsg("Loading updated spans…");
+      try {
+        const refreshed =
+          await apiClient.agentReviews.getSpansForReviewApiV1AgentReviewsPromptSlugReviewSpansGet({
+            projectId: projectId,
+            promptSlug: agent.slug,
+          });
+
+        if (!mountedRef.current) return;
+        const refreshedAll = [...refreshed.worstSpans, ...refreshed.bestSpans];
+        const byId = new Map(refreshedAll.map((s) => [s.spanId, s]));
+        const ordered = fixedSpanIdsRef.current.flatMap((id) => {
+          const span = byId.get(id);
+          return span ? [span] : [];
         });
+        setSpans(ordered.length > 0 ? ordered : refreshedAll);
+      } catch {
+        // keep existing spans
+      }
 
-      const refreshedAll = [...refreshed.worstSpans, ...refreshed.bestSpans];
-      const byId = new Map(refreshedAll.map((s) => [s.spanId, s]));
-      const ordered = fixedSpanIdsRef.current.map((id) => byId.get(id) ?? refreshedAll[0]);
-      setSpans(ordered.filter(Boolean));
+      if (!mountedRef.current) return;
+      setIteration((i) => i + 1);
+      setCurrentIdx(0);
+      const fresh: Record<string, FeedbackEntry | null> = {};
+      fixedSpanIdsRef.current.forEach((id) => {
+        fresh[id] = null;
+      });
+      setFeedback(fresh);
+      setPendingDownId(null);
+      setPendingTexts({});
+      setPhase("reviewing");
+      setStatusMsg("");
     } catch {
-      // keep existing spans
+      if (!mountedRef.current) return;
+      setPhase("error");
+      setStatusMsg("");
     }
-
-    setIteration((i) => i + 1);
-    setCurrentIdx(0);
-    const fresh: Record<string, FeedbackEntry | null> = {};
-    fixedSpanIdsRef.current.forEach((id) => {
-      fresh[id] = null;
-    });
-    setFeedback(fresh);
-    setPendingDownId(null);
-    setPendingTexts({});
-    setPhase("reviewing");
-    setStatusMsg("");
   }
 
   // ---- render --------------------------------------------------------------
@@ -483,9 +538,9 @@ export function SpanFeedbackDialog({
   return (
     <Dialog open>
       <DialogContent
-        className="flex max-h-[92vh] w-full max-w-6xl flex-col gap-0 overflow-hidden p-0"
-        onEscapeKeyDown={(e) => e.preventDefault()}
-        onInteractOutside={(e) => e.preventDefault()}
+        className="flex max-h-[95vh] w-full max-w-6xl flex-col gap-0 overflow-hidden p-0"
+        onEscapeKeyDown={onClose}
+        onInteractOutside={onClose}
       >
         {/* Header */}
         <DialogHeader className="shrink-0 border-b border-border px-6 py-4">
@@ -736,7 +791,7 @@ export function SpanFeedbackDialog({
                 )}
 
                 {/* Span content */}
-                <div className="space-y-5 overflow-y-auto" style={{ maxHeight: 380 }}>
+                <div className="space-y-5">
                   <SpanSection label="Input" value={currentSpan.input} />
                   <SpanSection label="Output" value={currentSpan.output} />
                 </div>
