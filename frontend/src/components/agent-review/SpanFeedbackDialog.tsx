@@ -30,6 +30,7 @@ import {
 import { isLikelyMarkdown, MarkdownContent } from "@/components/ui/markdown";
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
+import type { ChatMessage, ToolCallItem } from "@/types/chat";
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -49,18 +50,6 @@ type FeedbackEntry = { vote: Vote; text: string };
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
-
-type ToolCallItem = {
-  id?: string;
-  function?: { name?: string; arguments?: string };
-};
-
-type ChatMessage = {
-  role: string;
-  content?: string | null;
-  tool_calls?: ToolCallItem[];
-  tool_call_id?: string;
-};
 
 function parseChatMessages(value: unknown): ChatMessage[] | null {
   try {
@@ -161,7 +150,7 @@ function MessageBubble({ m }: { m: ChatMessage }) {
             {canMarkdown && (
               <button
                 className="flex items-center gap-1 rounded px-1 py-0.5 text-[10px] font-medium text-muted-foreground/60 transition-colors hover:bg-muted hover:text-foreground"
-                onClick={() => setMode((m) => (m === "raw" ? "markdown" : "raw"))}
+                onClick={() => setMode((prev) => (prev === "raw" ? "markdown" : "raw"))}
                 title={mode === "raw" ? "Render markdown" : "View raw"}
                 type="button"
               >
@@ -255,7 +244,7 @@ function SpanSection({ label, value }: { label: string; value: unknown }) {
             {canMarkdown && (
               <button
                 className="flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-                onClick={() => setMode((m) => (m === "raw" ? "markdown" : "raw"))}
+                onClick={() => setMode((prev) => (prev === "raw" ? "markdown" : "raw"))}
                 title={mode === "raw" ? "Render markdown" : "View raw"}
                 type="button"
               >

@@ -21,6 +21,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import type { SpanRow } from "@/hooks/use-traces";
 import { spanStatusLabel } from "@/hooks/use-traces";
+import type { ChatMessage, ToolCallItem } from "@/types/chat";
 
 function formatAttributeValue(value: unknown): string {
   if (value === null || value === undefined) return "—";
@@ -132,12 +133,6 @@ function AttributesTable({
   );
 }
 
-type ToolCallItem = {
-  id?: string;
-  type?: string;
-  function?: { name?: string; arguments?: string };
-};
-
 type ToolParameterSchema = {
   type?: string;
   description?: string;
@@ -164,36 +159,6 @@ type ToolDefinition = {
   description?: string;
   parameters?: ToolFunctionDef["parameters"];
 };
-
-type ChatMessage = {
-  role?: string;
-  content?: string | null;
-  tool_calls?: ToolCallItem[];
-  tool_call_id?: string;
-};
-
-function _extractToolNamesFromOutput(outputs: unknown): string[] {
-  try {
-    const parsed = typeof outputs === "string" ? JSON.parse(outputs) : outputs;
-    const names: string[] = [];
-    const collect = (toolCalls: unknown[]) => {
-      for (const tc of toolCalls) {
-        const name = (tc as ToolCallItem)?.function?.name;
-        if (name) names.push(name);
-      }
-    };
-    if (Array.isArray(parsed)) {
-      for (const msg of parsed) {
-        if (Array.isArray(msg?.tool_calls)) collect(msg.tool_calls);
-      }
-    } else if (Array.isArray((parsed as ChatMessage)?.tool_calls)) {
-      collect((parsed as ChatMessage).tool_calls!);
-    }
-    return [...new Set(names)];
-  } catch {
-    return [];
-  }
-}
 
 function ToolCallBadge() {
   return (
@@ -386,8 +351,9 @@ function JsonBlock({
   badge?: React.ReactNode;
 }) {
   const parsedValue = useMemo(() => {
+    if (typeof value !== "string") return value;
     try {
-      return JSON.parse(value as string);
+      return JSON.parse(value);
     } catch {
       return value;
     }
