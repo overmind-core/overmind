@@ -21,7 +21,9 @@ class Settings(BaseSettings):
     proxy_token: str = "default-proxy-token"
 
     # Postgres (docker-compose service)
-    database_url: str = "postgresql+asyncpg://overmind:overmind@postgres:5432/overmind_core"
+    database_url: str = (
+        "postgresql+asyncpg://overmind:overmind@postgres:5432/overmind_core"
+    )
 
     # Valkey settings
     valkey_host: str = "valkey"
@@ -36,7 +38,9 @@ class Settings(BaseSettings):
     celery_result_serializer: str = "json"
     disable_periodic_tasks: bool = False
 
-    overmind_traces_url: str = "http://localhost:8000/api/v1/traces/create-backend-trace"
+    overmind_traces_url: str = (
+        "http://localhost:8000/api/v1/traces/create-backend-trace"
+    )
     frontend_url: str = "http://localhost:5173"
     nerpa_base_url: str = ""
 
