@@ -37,9 +37,3 @@ repos:
         entry: make lint-format
         language: system
         types_or: [python, pyi]
-
-      - id: frontend-lint-format
-        name: frontend lint-format
-        entry: bash -c 'cd frontend && bun run lint-format'
-        language: system
-        files: ^frontend/
