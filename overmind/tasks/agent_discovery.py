@@ -349,8 +349,10 @@ async def _create_prompt_from_template(
     )
 
     db.add(new_prompt)
-    await db.commit()
-    await db.refresh(new_prompt)
+    # Use flush (not commit) so callers control transaction boundaries.
+    # All PK fields (slug, project_id, version) are set in Python so
+    # prompt_id is available immediately without a round-trip refresh.
+    await db.flush()
 
     return new_prompt
 
