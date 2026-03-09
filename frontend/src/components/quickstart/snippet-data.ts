@@ -43,11 +43,11 @@ export const LANGUAGES: LanguageConfig[] = [
 
 const PYTHON_SNIPPETS: Record<Vendor, SnippetData> = {
   openai: {
-    installCommand: "pip install overmind openai",
-    codeSnippet: (apiKey) => `import overmind
+    installCommand: "pip install overmind-sdk openai",
+    codeSnippet: (apiKey) => `from overmind_sdk import init
 from openai import OpenAI
 
-overmind.init(
+init(
     overmind_api_key="${apiKey}",
     service_name="my-service",
 )
@@ -55,17 +55,17 @@ overmind.init(
 client = OpenAI()
 
 response = client.chat.completions.create(
-    model="gpt-4o",
+    model="gpt-5-mini",
     messages=[{"role": "user", "content": "Explain quantum computing"}],
 )
 print(response.choices[0].message.content)`,
   },
   anthropic: {
-    installCommand: "pip install overmind anthropic",
-    codeSnippet: (apiKey) => `import overmind
+    installCommand: "pip install overmind-sdk anthropic",
+    codeSnippet: (apiKey) => `from overmind_sdk import init
 import anthropic
 
-overmind.init(
+init(
     overmind_api_key="${apiKey}",
     service_name="my-service",
 )
@@ -80,11 +80,11 @@ message = client.messages.create(
 print(message.content[0].text)`,
   },
   gemini: {
-    installCommand: "pip install overmind google-genai",
-    codeSnippet: (apiKey) => `import overmind
+    installCommand: "pip install overmind-sdk google-genai",
+    codeSnippet: (apiKey) => `from overmind_sdk import init
 from google import genai
 
-overmind.init(
+init(
     overmind_api_key="${apiKey}",
     service_name="my-service",
 )
@@ -98,18 +98,18 @@ response = client.models.generate_content(
 print(response.text)`,
   },
   agno: {
-    installCommand: "pip install overmind agno openai",
-    codeSnippet: (apiKey) => `import overmind
+    installCommand: "pip install overmind-sdk agno openai",
+    codeSnippet: (apiKey) => `from overmind_sdk import init
 from agno.agent import Agent
 from agno.models.openai import OpenAIChat
 
-overmind.init(
+init(
     overmind_api_key="${apiKey}",
     service_name="my-service",
 )
 
 agent = Agent(
-    model=OpenAIChat(id="gpt-4o"),
+    model=OpenAIChat(id="gpt-5-mini"),
     instructions="You are a helpful assistant.",
     markdown=True,
 )
