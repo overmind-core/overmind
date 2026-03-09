@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import ReactMarkdown from "react-markdown";
 
 import {
   WarningDiamond as AlertCircle,
@@ -28,6 +27,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { isLikelyMarkdown, MarkdownContent } from "@/components/ui/markdown";
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
 
@@ -135,9 +135,7 @@ function MessageBubble({ m }: { m: ChatMessage }) {
   const hasToolCalls = (m.tool_calls?.length ?? 0) > 0;
   const content = m.content ?? "";
   const canMarkdown = !isTool && content.length > 0 && isLikelyMarkdown(content);
-  const [mode, setMode] = useState<"raw" | "markdown">(
-    canMarkdown && isLikelyMarkdown(content) ? "markdown" : "raw"
-  );
+  const [mode, setMode] = useState<"raw" | "markdown">(canMarkdown ? "markdown" : "raw");
   const [copied, setCopied] = useState(false);
 
   const roleLabel = isTool
@@ -229,85 +227,15 @@ function ChatBubbles({ messages }: { messages: ChatMessage[] }) {
 }
 
 // ---------------------------------------------------------------------------
-// MarkdownContent
-// ---------------------------------------------------------------------------
-
-function MarkdownContent({ children }: { children: string }) {
-  return (
-    <ReactMarkdown
-      components={{
-        a: ({ href, children }) => (
-          <a
-            className="text-primary underline underline-offset-2 hover:text-primary/80"
-            href={href}
-            rel="noopener noreferrer"
-            target="_blank"
-          >
-            {children}
-          </a>
-        ),
-        blockquote: ({ children }) => (
-          <blockquote className="mb-2 border-l-2 border-muted-foreground/40 pl-3 text-muted-foreground last:mb-0">
-            {children}
-          </blockquote>
-        ),
-        code: ({ children, className }) => {
-          const isBlock = className?.includes("language-");
-          return isBlock ? (
-            <code className="block overflow-x-auto rounded bg-muted px-3 py-2 font-mono text-xs">
-              {children}
-            </code>
-          ) : (
-            <code className="rounded bg-muted px-1 py-0.5 font-mono text-xs">{children}</code>
-          );
-        },
-        em: ({ children }) => <em className="italic">{children}</em>,
-        h1: ({ children }) => (
-          <h1 className="mb-2 mt-4 border-b border-border/50 pb-1 text-sm font-bold first:mt-0">
-            {children}
-          </h1>
-        ),
-        h2: ({ children }) => (
-          <h2 className="mb-1.5 mt-3 text-sm font-semibold first:mt-0">{children}</h2>
-        ),
-        h3: ({ children }) => (
-          <h3 className="mb-1 mt-2 text-xs font-semibold uppercase tracking-wide text-foreground/70 first:mt-0">
-            {children}
-          </h3>
-        ),
-        hr: () => <hr className="my-2 border-border" />,
-        li: ({ children }) => <li className="mb-0.5">{children}</li>,
-        ol: ({ children }) => <ol className="mb-2 list-decimal pl-4 last:mb-0">{children}</ol>,
-        p: ({ children }) => <p className="mb-2 last:mb-0">{children}</p>,
-        pre: ({ children }) => (
-          <pre className="mb-2 overflow-x-auto rounded-lg bg-muted/70 px-3 py-2 last:mb-0">
-            {children}
-          </pre>
-        ),
-        strong: ({ children }) => <strong className="font-semibold">{children}</strong>,
-        ul: ({ children }) => <ul className="mb-2 list-disc pl-4 last:mb-0">{children}</ul>,
-      }}
-    >
-      {children}
-    </ReactMarkdown>
-  );
-}
-
-// ---------------------------------------------------------------------------
 // SpanSection
 // ---------------------------------------------------------------------------
-
-function isLikelyMarkdown(text: string): boolean {
-  return /^#{1,6}\s|^\s*[-*+]\s|\*\*|__|\[.+\]\(|^```|^>/m.test(text);
-}
 
 function SpanSection({ label, value }: { label: string; value: unknown }) {
   const messages = parseChatMessages(value);
   const plain = formatPlain(value);
   const canMarkdown =
     !messages && typeof value === "string" && plain.length > 0 && isLikelyMarkdown(plain);
-  const [mode, setMode] = useState<"raw" | "markdown">(
-    canMarkdown && isLikelyMarkdown(plain) ? "markdown" : "raw"
+  const [mode, setMode] = useState<"raw" | "markdown">(canMarkdown ? "markdown" : "raw"
   );
   const [copied, setCopied] = useState(false);
 
