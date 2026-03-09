@@ -21,9 +21,7 @@ class Settings(BaseSettings):
     proxy_token: str = "default-proxy-token"
 
     # Postgres (docker-compose service)
-    database_url: str = (
-        "postgresql+asyncpg://overmind:overmind@postgres:5432/overmind_core"
-    )
+    database_url: str = "postgresql+asyncpg://overmind:overmind@postgres:5432/overmind_core"
 
     # Valkey settings
     valkey_host: str = "valkey"
@@ -38,9 +36,7 @@ class Settings(BaseSettings):
     celery_result_serializer: str = "json"
     disable_periodic_tasks: bool = False
 
-    overmind_traces_url: str = (
-        "http://localhost:8000/api/v1/traces/create-backend-trace"
-    )
+    overmind_traces_url: str = "http://localhost:8000/api/v1/traces/create-backend-trace"
     frontend_url: str = "http://localhost:5173"
     nerpa_base_url: str = ""
 
@@ -64,7 +60,7 @@ class Settings(BaseSettings):
     # Anonymous usage telemetry (opt-out via OVERMIND_ANALYTICS_ENABLED=false)
     # Sends aggregate feature-usage flags and a scale bucket to PostHog.
     # No trace content, prompts, user emails, or PII is ever collected.
-    overmind_analytics_enabled: bool = True
+    overmind_analytics_enabled: bool = False
     # Write-only PostHog project API key — baked in at release build time.
     # Operators cannot use this to read data back from PostHog.
     posthog_api_key: str = "phc_XrIVhixaz5sOqrdzpRwwqlvKXilmcy3PWPgdk0pemZa"
