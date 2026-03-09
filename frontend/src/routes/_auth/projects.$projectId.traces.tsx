@@ -7,8 +7,8 @@ import {
   getCoreRowModel,
   getFilteredRowModel,
   getSortedRowModel,
-  useReactTable,
   type SortingState,
+  useReactTable,
   type VisibilityState,
 } from "@tanstack/react-table";
 import { ExternalLink, Lock as Key } from "pixelarticons/react";
@@ -21,7 +21,6 @@ import {
   serializeFiltersToSearchParams,
 } from "@/components/traces/filters";
 import { tracesColumns } from "@/components/traces/traces-columns";
-
 import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent } from "@/components/ui/sheet";
@@ -44,14 +43,15 @@ function getTraceAttr(attrs: Record<string, unknown> | undefined, ...keys: strin
   return undefined;
 }
 
+import { useQuery } from "@tanstack/react-query";
+
 import apiClient from "@/client";
 import { TracesTablePagination } from "@/components/traces/traces-table-pagination";
 import { TracesTableToolbar } from "@/components/traces/traces-table-toolbar";
 import { useProjectsList } from "@/hooks/use-projects";
-import { spanStatusLabel, transformSpan, type SpanRow } from "@/hooks/use-traces";
+import { type SpanRow, spanStatusLabel, transformSpan } from "@/hooks/use-traces";
 import { getTimeRangeStartTimestamp } from "@/lib/formatters";
 import { tracesSearchSchema } from "@/lib/schemas";
-import { useQuery } from "@tanstack/react-query";
 
 export const Route = createFileRoute("/_auth/projects/$projectId/traces")({
   component: TracesPage,
@@ -104,12 +104,12 @@ function TracesPage() {
   const { data, isLoading, error } = useQuery({
     queryFn: async () => {
       const data = await apiClient.traces.listTracesApiV1TracesListGet({
-        query: serverFilter.length > 0 ? serverFilter : undefined,
         limit: pageSize,
         offset,
         projectId,
         promptSlug,
         promptVersion,
+        query: serverFilter.length > 0 ? serverFilter : undefined,
         rootOnly: !flatten,
         startTimestamp: new Date(getTimeRangeStartTimestamp(timeRange)),
       });
@@ -130,8 +130,8 @@ function TracesPage() {
       flatten,
     ],
     refetchInterval: (i) => {
-      return (!i.state.data?.count || i.state.data?.count <= 0) ? 2_000 : 10_000;
-    }
+      return !i.state.data?.count || i.state.data?.count <= 0 ? 2_000 : 10_000;
+    },
   });
 
   const setSearch = useCallback(
@@ -213,8 +213,10 @@ function TracesPage() {
           break;
         }
         case "eval_score": {
-          const aScore = typeof a.feedbackScores?.correctness === "number" ? a.feedbackScores.correctness : -1;
-          const bScore = typeof b.feedbackScores?.correctness === "number" ? b.feedbackScores.correctness : -1;
+          const aScore =
+            typeof a.feedbackScores?.correctness === "number" ? a.feedbackScores.correctness : -1;
+          const bScore =
+            typeof b.feedbackScores?.correctness === "number" ? b.feedbackScores.correctness : -1;
           cmp = aScore - bScore;
           break;
         }
@@ -336,21 +338,21 @@ function TracesPage() {
 
       {showPagination && (
         <TracesTablePagination
+          count={data?.count ?? 0}
           onPageChange={(p) => setSearch({ page: p })}
           onPageSizeChange={(s) => setSearch({ page: 1, pageSize: s })}
           page={page}
           pageSize={pageSize}
-          count={data?.count ?? 0}
         />
       )}
 
       <Sheet modal={false} onOpenChange={handleDrawerClose} open={!!traceId}>
         <SheetContent
           className={`flex w-full flex-col overflow-hidden border-l ${detailExpanded ? "sm:max-w-[90vw]" : "sm:max-w-[70vw]"}`}
+          onInteractOutside={(e) => e.preventDefault()}
           showCloseButton={false}
           showOverlay={false}
           side="right"
-          onInteractOutside={(e) => e.preventDefault()}
         >
           <div className="-m-4 flex flex-1 flex-col overflow-y-auto p-8">
             <Outlet />
@@ -432,9 +434,9 @@ const RenderTable = ({ table }: { table: TableType<SpanRow> }) => {
   const handleTraceClick = (id: string) => {
     navigate({
       params: { projectId, traceId: id },
+      resetScroll: false,
       search: { ...search },
       to: "/projects/$projectId/traces/$traceId",
-      resetScroll: false,
     });
   };
   return (

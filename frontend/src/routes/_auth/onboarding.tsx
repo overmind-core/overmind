@@ -37,9 +37,7 @@ function OnboardingPage() {
         <div className="mb-3 inline-flex items-center justify-center rounded-full bg-primary/10 p-3">
           <Sparkles className="size-6 text-primary" />
         </div>
-        <h1 className="text-2xl font-bold tracking-tight">
-          Welcome to Overmind
-        </h1>
+        <h1 className="text-2xl font-bold tracking-tight">Welcome to Overmind</h1>
         <p className="mt-2 text-muted-foreground">
           Tell us about your AI agent so we can tailor the experience for you.
         </p>
@@ -54,10 +52,7 @@ function ProjectDescriptionForm() {
   const [description, setDescription] = useState("");
   const { data: projectsData, isLoading: projectsLoading } = useProjectsList();
 
-  const defaultProject = useMemo(
-    () => projectsData?.projects?.[0],
-    [projectsData],
-  );
+  const defaultProject = useMemo(() => projectsData?.projects?.[0], [projectsData]);
 
   const submitMutation = useMutation({
     mutationFn: async () => {
@@ -82,8 +77,7 @@ function ProjectDescriptionForm() {
     },
   });
 
-  const canSubmit =
-    !projectsLoading && !submitMutation.isPending && description.trim().length > 0;
+  const canSubmit = !projectsLoading && !submitMutation.isPending && description.trim().length > 0;
 
   return (
     <Card>
@@ -114,13 +108,8 @@ function ProjectDescriptionForm() {
           >
             Skip
           </Button>
-          <Button
-            disabled={!canSubmit}
-            onClick={() => submitMutation.mutate()}
-          >
-            {submitMutation.isPending && (
-              <Loader2 className="mr-2 size-4 animate-spin" />
-            )}
+          <Button disabled={!canSubmit} onClick={() => submitMutation.mutate()}>
+            {submitMutation.isPending && <Loader2 className="mr-2 size-4 animate-spin" />}
             Continue
           </Button>
         </div>

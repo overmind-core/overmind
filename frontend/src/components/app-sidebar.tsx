@@ -1,6 +1,6 @@
 import { useState } from "react";
 
-import { useAuth, UserButton, useUser } from "@clerk/clerk-react";
+import { UserButton, useAuth, useUser } from "@clerk/clerk-react";
 import { Link, useNavigate, useRouteContext, useRouterState } from "@tanstack/react-router";
 import {
   Briefcase,
@@ -104,6 +104,7 @@ const accountLinks = [
 function useIsSignedIn() {
   const { config } = useRouteContext({ from: "/_auth" });
   if (typeof window === "undefined") return false;
+  // biome-ignore lint/correctness/useHookAtTopLevel: Clerk vs self-hosted auth; useAuth only valid when clerkReady
   if (config.clerkReady) return useAuth().isSignedIn;
   return !!(localStorage.getItem("token") ?? localStorage.getItem("auth_token"));
 }

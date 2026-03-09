@@ -42,7 +42,7 @@ export function APIKeySection({
   projectId?: string;
 }) {
   const [showCopied, setShowCopied] = useState(false);
-  const { data: projectsData, isLoading: isLoading } = useProjectsList();
+  const { data: projectsData, isLoading } = useProjectsList();
   const organisationId = useOrganisationId();
 
   const currentProject = useMemo(() => {

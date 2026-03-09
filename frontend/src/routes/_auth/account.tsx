@@ -2,7 +2,15 @@ import { useState } from "react";
 
 import { useQuery } from "@tanstack/react-query";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
-import { Calendar, Check as CheckCircle, Loader as Loader2, Mail, Cancel as Trash2, User, Cancel as XCircle } from "pixelarticons/react";
+import {
+  Calendar,
+  Check as CheckCircle,
+  Loader as Loader2,
+  Mail,
+  Cancel as Trash2,
+  User,
+  Cancel as XCircle,
+} from "pixelarticons/react";
 
 import apiClient from "@/client";
 import { Alert } from "@/components/ui/alert";

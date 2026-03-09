@@ -7,7 +7,10 @@ import {
 } from "@/components/ui/select";
 import { useProjectsList } from "@/hooks/use-projects";
 
-export function ProjectSelector({ selection, setSelection }: {
+export function ProjectSelector({
+  selection,
+  setSelection,
+}: {
   selection: string | undefined;
   setSelection: (projectId: string | undefined) => void;
 }) {

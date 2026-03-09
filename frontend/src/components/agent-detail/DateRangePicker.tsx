@@ -1,10 +1,11 @@
 import { useState } from "react";
+
 import { Calendar as CalendarDays } from "pixelarticons/react";
 
-import { cn } from "@/lib/utils";
-import { type AnalyticsPreset, type AnalyticsRange, rangeLabel } from "@/lib/analytics";
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { type AnalyticsPreset, type AnalyticsRange, rangeLabel } from "@/lib/analytics";
+import { cn } from "@/lib/utils";
 
 const PRESETS: { key: AnalyticsPreset; label: string }[] = [
   { key: "past24h", label: "Last 24 hours" },

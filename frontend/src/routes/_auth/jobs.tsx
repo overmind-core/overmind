@@ -15,7 +15,7 @@ import {
 
 import type { JobStatus, JobType, ListJobsApiV1JobsGetRequest } from "@/api";
 import apiClient from "@/client";
-import { CreateJobDialog } from "@/components/create-job-dialog";
+import { ProjectSelector } from "@/components/project-selector";
 import { TracesTablePagination } from "@/components/traces/traces-table-pagination";
 import { Alert } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
@@ -35,11 +35,9 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-
-import { jobsSearchSchema } from "@/lib/schemas";
 import type { JobsSearch } from "@/lib/schemas";
+import { jobsSearchSchema } from "@/lib/schemas";
 import { cn, formatDate } from "@/lib/utils";
-import { ProjectSelector } from "@/components/project-selector";
 
 type SortField = NonNullable<JobsSearch["sortBy"]>;
 
@@ -107,8 +105,8 @@ const STATUS_CONFIG: Record<
 const JOB_TYPE_LABELS: Record<string, string> = {
   agent_discovery: "Agent Discovery",
   judge_scoring: "LLM Judge Scoring",
-  prompt_tuning: "Prompt Tuning",
   model_backtesting: "Model Backtesting",
+  prompt_tuning: "Prompt Tuning",
 };
 
 function humanSlug(slug?: string): string {
@@ -174,7 +172,6 @@ function JobsPage() {
         case "triggeredBy":
           cmp = (a.triggeredBy ?? "").localeCompare(b.triggeredBy ?? "");
           break;
-        case "createdAt":
         default:
           cmp = new Date(a.createdAt ?? 0).getTime() - new Date(b.createdAt ?? 0).getTime();
       }
@@ -314,13 +311,13 @@ function JobsPage() {
   );
 }
 
-const JobsHeader = (
-  {
-    selectedProjectId,
-    setSelectedProjectId
-  }: { selectedProjectId: string | undefined, setSelectedProjectId: (projectId: string | undefined) => void }
-) => {
-
+const JobsHeader = ({
+  selectedProjectId,
+  setSelectedProjectId,
+}: {
+  selectedProjectId: string | undefined;
+  setSelectedProjectId: (projectId: string | undefined) => void;
+}) => {
   const navigate = Route.useNavigate();
   const searchParams = Route.useSearch();
   const { job_type, status } = searchParams;

@@ -1,8 +1,8 @@
 import { useQuery } from "@tanstack/react-query";
 
+import type { SpanResponseModel } from "@/api";
 import apiClient from "@/client";
 import { getTimeRangeStartTimestamp } from "@/lib/formatters";
-import type { SpanResponseModel } from "@/api";
 
 type TimeRange = "all" | "past5m" | "past1h" | "past24h" | "past7d" | "past30d";
 
@@ -59,32 +59,32 @@ export const transformSpan = (span: SpanResponseModel): SpanRow => {
     | Record<string, unknown>
     | undefined;
   return {
-    spanId: span.spanId,
-    parentSpanId: span.parentSpanId ?? null,
-    name: span.name ?? "",
-    scopeName: span.scopeName ?? "",
-    statusCode: span.statusCode,
-    durationNano: span.durationNano,
-    startTimeUnixNano: span.startTimeUnixNano,
-    endTimeUnixNano: span.endTimeUnixNano,
-    spanAttributes: span.spanAttributes ?? {},
-    resourceAttributes: span.resourceAttributes ?? {},
-    inputs: span.inputs ?? null,
-    outputs: span.outputs ?? null,
-    policyOutcome: span.policyOutcome ?? null,
-    scopeVersion: span.scopeVersion ?? null,
-    events: span.events ?? [],
-    links: span.links ?? [],
-    traceId: span.traceId,
     agentId: span.agentId ?? null,
-    judgeScore:
-      (feedbackScore?.judge_feedback as { rating: "up" | "down"; text: string | null }) ??
-      undefined,
     agentScore:
       (feedbackScore?.agent_feedback as { rating: "up" | "down"; text: string | null }) ??
       undefined,
-    feedbackScores: feedbackScore,
     cost: (span.spanAttributes?.cost as number | undefined) ?? 0,
+    durationNano: span.durationNano,
+    endTimeUnixNano: span.endTimeUnixNano,
+    events: span.events ?? [],
+    feedbackScores: feedbackScore,
+    inputs: span.inputs ?? null,
+    judgeScore:
+      (feedbackScore?.judge_feedback as { rating: "up" | "down"; text: string | null }) ??
+      undefined,
+    links: span.links ?? [],
+    name: span.name ?? "",
+    outputs: span.outputs ?? null,
+    parentSpanId: span.parentSpanId ?? null,
+    policyOutcome: span.policyOutcome ?? null,
+    resourceAttributes: span.resourceAttributes ?? {},
+    scopeName: span.scopeName ?? "",
+    scopeVersion: span.scopeVersion ?? null,
+    spanAttributes: span.spanAttributes ?? {},
+    spanId: span.spanId,
+    startTimeUnixNano: span.startTimeUnixNano,
+    statusCode: span.statusCode,
+    traceId: span.traceId,
   };
 };
 

@@ -1,14 +1,13 @@
+import { useOrganization } from "@clerk/clerk-react";
 import { useQuery } from "@tanstack/react-query";
 
 import apiClient from "@/client";
-
 import { config } from "@/config";
-import { useOrganization } from "@clerk/clerk-react";
-
 
 export const useOrganisationId = () => {
-  return (config.clerkReady) ? (useOrganization().organization?.id ?? "") : "";
-}
+  // biome-ignore lint/correctness/useHookAtTopLevel: useOrganization only valid when Clerk is enabled
+  return config.clerkReady ? (useOrganization().organization?.id ?? "") : "";
+};
 
 export const useOnboardingQuery = () => {
   return useQuery({
@@ -21,8 +20,8 @@ export const useAgentDetailQuery = (slug: string, projectId?: string) => {
   return useQuery({
     queryFn: () =>
       apiClient.agents.getAgentDetailApiV1AgentsPromptSlugDetailGet({
-        promptSlug: slug,
         projectId,
+        promptSlug: slug,
       }),
     queryKey: ["agent-detail", slug, projectId],
     refetchInterval: 15_000,

@@ -1,7 +1,11 @@
 import { OrganizationSwitcher, RedirectToSignUp, SignedIn, SignedOut } from "@clerk/clerk-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { createFileRoute, Link, Outlet, useRouterState } from "@tanstack/react-router";
-import { ArrowBarLeft as PanelLeftClose, ArrowBarRight as PanelLeftOpen, ChevronRight } from "pixelarticons/react";
+import {
+  ChevronRight,
+  ArrowBarLeft as PanelLeftClose,
+  ArrowBarRight as PanelLeftOpen,
+} from "pixelarticons/react";
 
 import { AppSidebar } from "../components/app-sidebar";
 import { ThemeToggle } from "../components/theme-toggle";
@@ -83,11 +87,7 @@ function SidebarToggle() {
       size="icon"
       variant="ghost"
     >
-      {isCollapsed ? (
-        <PanelLeftOpen className="size-4" />
-      ) : (
-        <PanelLeftClose className="size-4" />
-      )}
+      {isCollapsed ? <PanelLeftOpen className="size-4" /> : <PanelLeftClose className="size-4" />}
     </Button>
   );
 }
@@ -98,14 +98,20 @@ function Breadcrumb() {
   const crumbs = useBreadcrumbs();
 
   return (
-    <nav aria-label="Breadcrumb" className="flex h-7 items-stretch gap-1.5 text-[1.18rem] leading-none" style={{ fontFamily: "var(--font-sidebar)" }}>
+    <nav
+      aria-label="Breadcrumb"
+      className="flex h-7 items-stretch gap-1.5 text-[1.18rem] leading-none"
+      style={{ fontFamily: "var(--font-sidebar)" }}
+    >
       {crumbs.map((crumb, i) => {
         const isLast = i === crumbs.length - 1;
         return (
           <span className="inline-flex items-center gap-1.5" key={crumb.path}>
             {i > 0 && <ChevronRight className="size-3.5 text-muted-foreground" />}
             {isLast ? (
-              <span className="inline-flex items-center font-bold capitalize text-foreground">{crumb.label}</span>
+              <span className="inline-flex items-center font-bold capitalize text-foreground">
+                {crumb.label}
+              </span>
             ) : (
               <Link
                 className="inline-flex items-center capitalize text-muted-foreground transition-colors hover:text-foreground"
@@ -136,7 +142,7 @@ function RootLayout() {
               <Breadcrumb />
               <span className="flex-1" />
               <ThemeToggle />
-              {(config.clerkReady && !config.isSelfHosted) && (
+              {config.clerkReady && !config.isSelfHosted && (
                 <OrganizationSwitcher
                   createOrganizationMode={"modal"}
                   organizationProfileMode={"modal"}

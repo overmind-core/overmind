@@ -1,5 +1,12 @@
 import { useState } from "react";
-import { Check as CheckCircle, ChevronDown, Clock, Loader as Loader2, Cancel as XCircle } from "pixelarticons/react";
+
+import {
+  Check as CheckCircle,
+  ChevronDown,
+  Clock,
+  Loader as Loader2,
+  Cancel as XCircle,
+} from "pixelarticons/react";
 
 import type { JobOut } from "@/api";
 import { Badge } from "@/components/ui/badge";
@@ -249,12 +256,18 @@ function RenderJson({ result }: { result: Record<string, unknown> | null | undef
   if (!result || Object.keys(result).length < 1) return null;
 
   const comparisonTest = result.comparison_test as Record<string, unknown> | undefined;
-  const hasComparison =
-    !!(comparisonTest && typeof comparisonTest === "object" && comparisonTest.metrics);
+  const hasComparison = !!(
+    comparisonTest &&
+    typeof comparisonTest === "object" &&
+    comparisonTest.metrics
+  );
 
   const recommendations = result.recommendations as Record<string, unknown> | undefined;
-  const hasRecommendations =
-    !!(recommendations && typeof recommendations === "object" && recommendations.summary);
+  const hasRecommendations = !!(
+    recommendations &&
+    typeof recommendations === "object" &&
+    recommendations.summary
+  );
 
   const simpleEntries = Object.entries(result).filter(([k]) => !COMPLEX_KEYS.has(k));
 

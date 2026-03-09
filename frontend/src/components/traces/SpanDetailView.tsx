@@ -1,4 +1,5 @@
-import React, { useMemo, useState } from "react";
+import type React from "react";
+import { useMemo, useState } from "react";
 
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { ThumbsDown, ThumbsUp } from "pixelarticons/react";
@@ -114,7 +115,7 @@ type ChatMessage = {
   tool_call_id?: string;
 };
 
-function extractToolNamesFromOutput(outputs: unknown): string[] {
+function _extractToolNamesFromOutput(outputs: unknown): string[] {
   try {
     const parsed = typeof outputs === "string" ? JSON.parse(outputs) : outputs;
     const names: string[] = [];
@@ -267,10 +268,10 @@ function AvailableToolsBlock({ tools }: { tools: ToolDefinition[] }) {
 }
 
 const ROLE_LABELS: Record<string, string> = {
-  user: "User",
   assistant: "Assistant",
   system: "System",
   tool: "Tool",
+  user: "User",
 };
 
 function MessageRow({ msg }: { msg: ChatMessage }) {
@@ -349,7 +350,7 @@ function JsonBlock({
       {header}
       <div className="max-h-64 overflow-auto p-3 text-xs font-mono divide-y divide-border/40">
         {(parsedValue as ChatMessage[]).map((msg, idx) => (
-          <div key={idx} className="py-3 first:pt-1">
+          <div className="py-3 first:pt-1" key={idx}>
             <MessageRow msg={msg} />
           </div>
         ))}
@@ -452,11 +453,11 @@ export function SpanDetailView({ span, queryKey }: SpanDetailViewProps) {
           <TabsContent className="space-y-4 mt-4" value="data">
             <JsonBlock title="Input" value={span.inputs} />
             <JsonBlock
-              title="Output"
-              value={span.outputs}
               badge={
                 span.spanAttributes?.response_type === "tool_calls" ? <ToolCallBadge /> : undefined
               }
+              title="Output"
+              value={span.outputs}
             />
             {Array.isArray(span.spanAttributes?.available_tools) &&
               (span.spanAttributes.available_tools as ToolDefinition[]).length > 0 && (

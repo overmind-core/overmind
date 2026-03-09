@@ -15,7 +15,13 @@ function Table({ className, ...props }: React.ComponentProps<"table">) {
 }
 
 function TableHeader({ className, ...props }: React.ComponentProps<"thead">) {
-  return <thead className={cn("sticky top-0 z-10 bg-card [&_tr]:border-b", className)} data-slot="table-header" {...props} />;
+  return (
+    <thead
+      className={cn("sticky top-0 z-10 bg-card [&_tr]:border-b", className)}
+      data-slot="table-header"
+      {...props}
+    />
+  );
 }
 
 function TableBody({ className, ...props }: React.ComponentProps<"tbody">) {

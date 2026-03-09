@@ -1,9 +1,16 @@
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { createFileRoute } from "@tanstack/react-router";
-import { ExternalLink, Lock as Key, Loader as Loader2, Reload as RefreshCw, Search } from "pixelarticons/react";
 import { useMemo, useState } from "react";
 
-import { ResponseError, type AgentOut } from "@/api";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { createFileRoute } from "@tanstack/react-router";
+import {
+  ExternalLink,
+  Lock as Key,
+  Loader as Loader2,
+  Reload as RefreshCw,
+  Search,
+} from "pixelarticons/react";
+
+import { type AgentOut, ResponseError } from "@/api";
 import apiClient from "@/client";
 import { AgentGrid } from "@/components/agent-grid";
 import { CreateApiKeyDialog } from "@/components/create-api-key-dialog";
@@ -59,7 +66,7 @@ function EmptyState({ projectId, organisationId }: EmptyStateProps) {
       {projectId && organisationId && (
         <CreateApiKeyDialog
           defaultRole="project_admin"
-          onCreated={() => { }}
+          onCreated={() => {}}
           onOpenChange={setShowCreateKey}
           open={showCreateKey}
           organisationId={organisationId}
@@ -82,6 +89,7 @@ function AgentsPage() {
   const activeProject = projects.find((p) => p.projectId === activeProjectId);
 
   const { data, isLoading, error } = useQuery<{ data: AgentOut[] }>({
+    enabled: !!activeProjectId,
     queryFn: async () => {
       const res = await apiClient.agents.listAgentsApiV1AgentsGet({
         projectId: activeProjectId,
@@ -90,7 +98,6 @@ function AgentsPage() {
     },
     queryKey: ["agents", activeProjectId],
     refetchInterval: 15_000,
-    enabled: !!activeProjectId,
   });
 
   const extractMutation = useMutation({
@@ -117,7 +124,6 @@ function AgentsPage() {
         a.name.toLowerCase().includes(q) || (a.tags ?? []).some((t) => t.toLowerCase().includes(q))
     );
   }, [agents, search]);
-
 
   const projectFilter = (
     <ProjectSelector selection={activeProjectId} setSelection={setSelectedProjectId} />

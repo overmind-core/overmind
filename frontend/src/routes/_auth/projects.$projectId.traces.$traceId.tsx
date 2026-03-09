@@ -2,13 +2,13 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import { ArrowLeft, Expand, Loader as Loader2, Proportions as Shrink } from "pixelarticons/react";
 
 import { TraceDataProvider } from "@/components/traces/contexts/TraceDataContext";
-import type { SpanRow } from "@/hooks/use-traces";
 import { TraceSelectionProvider } from "@/components/traces/contexts/TraceSelectionContext";
 import { TraceLayoutDesktop } from "@/components/traces/TraceLayoutDesktop";
 import { TracePanelDetail } from "@/components/traces/TracePanelDetail";
 import { TracePanelNavigation } from "@/components/traces/TracePanelNavigation";
 import { Button } from "@/components/ui/button";
 import { useProjectsList } from "@/hooks/use-projects";
+import type { SpanRow } from "@/hooks/use-traces";
 import { useTraceDetail } from "@/hooks/use-traces";
 import { tracesSearchSchema } from "@/lib/schemas";
 
@@ -43,7 +43,7 @@ function TraceDetailPage() {
           {/* Header - Langfuse-style: breadcrumb, back, expand */}
           <div className="flex shrink-0 items-center gap-2 border-b border-border px-4 py-3">
             <Button asChild size="sm" variant="ghost">
-              <Link search={(prev) => prev} to=".." resetScroll={false}>
+              <Link resetScroll={false} search={(prev) => prev} to="..">
                 <ArrowLeft className="size-4" />
               </Link>
             </Button>

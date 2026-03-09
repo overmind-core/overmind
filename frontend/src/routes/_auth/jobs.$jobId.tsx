@@ -1,9 +1,17 @@
 import { useQuery } from "@tanstack/react-query";
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { WarningDiamond as AlertTriangle, ArrowLeft, Check as CheckCircle, Clock, Loader as Loader2, Cancel as XCircle } from "pixelarticons/react";
+import {
+  WarningDiamond as AlertTriangle,
+  ArrowLeft,
+  Check as CheckCircle,
+  Clock,
+  Loader as Loader2,
+  Cancel as XCircle,
+} from "pixelarticons/react";
 
 import apiClient from "@/client";
 import { BacktestRecommendations } from "@/components/jobs/JobCard";
+import { SheetWrapper } from "@/components/sheet-wrapper";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import {
@@ -14,7 +22,6 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { SheetWrapper } from "@/components/sheet-wrapper";
 
 export const Route = createFileRoute("/_auth/jobs/$jobId")({
   component: () => (

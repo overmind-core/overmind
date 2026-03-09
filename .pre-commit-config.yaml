@@ -32,8 +32,14 @@ repos:
 
   - repo: local
     hooks:
-      - id: make-lint
-        name: make lint
-        entry: make lint
+      - id: make-lint-format
+        name: make lint-format
+        entry: make lint-format
         language: system
         types_or: [python, pyi]
+
+      - id: frontend-lint-format
+        name: frontend lint-format
+        entry: bash -c 'cd frontend && bun run lint-format'
+        language: system
+        files: ^frontend/

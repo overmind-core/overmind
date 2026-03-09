@@ -12,7 +12,6 @@ export function QuickstartEmbed() {
       <div className="w-full max-w-2xl">
         <QuickstartSnippets compact />
       </div>
-
     </div>
   );
 }

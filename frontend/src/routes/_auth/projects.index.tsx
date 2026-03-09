@@ -1,7 +1,13 @@
 import { useMemo, useState } from "react";
 
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { ArrowDown, ArrowUp, ChevronsVertical as ChevronsUpDown, EyeOff, Folder as FolderKanban } from "pixelarticons/react";
+import {
+  ArrowDown,
+  ArrowUp,
+  ChevronsVertical as ChevronsUpDown,
+  EyeOff,
+  Folder as FolderKanban,
+} from "pixelarticons/react";
 
 import { CreateProjectDialog } from "@/components/create-project";
 import { Alert } from "@/components/ui/alert";
@@ -18,8 +24,8 @@ import {
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { useProjectsList } from "@/hooks/use-projects";
 import { formatTimestamp } from "@/lib/formatters";
-import { projectsSearchSchema } from "@/lib/schemas";
 import type { ProjectsSearch } from "@/lib/schemas";
+import { projectsSearchSchema } from "@/lib/schemas";
 
 export const Route = createFileRoute("/_auth/projects/")({
   component: ProjectsPage,
@@ -49,12 +55,7 @@ function SortableHead({
   return (
     <TableHead className={className}>
       <div className="group flex items-center gap-0.5">
-        <Button
-          className="-ml-3 h-8 gap-1"
-          onClick={() => onSort(field)}
-          size="sm"
-          variant="ghost"
-        >
+        <Button className="-ml-3 h-8 gap-1" onClick={() => onSort(field)} size="sm" variant="ghost">
           {label}
           {isActive ? (
             sortDirection === "asc" ? (
@@ -122,7 +123,6 @@ function ProjectsPage() {
         case "description":
           cmp = (a.description ?? "").localeCompare(b.description ?? "");
           break;
-        case "createdAt":
         default:
           cmp = (a.createdAt?.getTime() ?? 0) - (b.createdAt?.getTime() ?? 0);
       }

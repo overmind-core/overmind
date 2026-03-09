@@ -1,3 +1,4 @@
+import { useTheme } from "next-themes";
 import {
   Check as CircleCheckIcon,
   InfoBox as InfoIcon,
@@ -5,7 +6,6 @@ import {
   Cancel as OctagonXIcon,
   WarningDiamond as TriangleAlertIcon,
 } from "pixelarticons/react";
-import { useTheme } from "next-themes";
 import { Toaster as Sonner, type ToasterProps } from "sonner";
 
 const Toaster = ({ ...props }: ToasterProps) => {

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+
 import { Check, Loader as Loader2, Cancel as X } from "pixelarticons/react";
 
-import { cn } from "@/lib/utils";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 
 export function AgentNameEditor({
@@ -63,16 +63,16 @@ export function AgentNameEditor({
   if (editing) {
     return (
       <div
-        ref={containerRef}
         className="inline-flex items-center gap-0 rounded-lg border border-border bg-muted/50 transition-colors"
+        ref={containerRef}
       >
         <input
-          ref={inputRef}
           className="h-10 min-w-[200px] rounded-lg border-none bg-transparent px-3 font-display text-2xl font-bold capitalize tracking-tight focus:outline-none"
           disabled={isSaving}
           maxLength={255}
           onChange={(e) => setValue(e.target.value)}
           onKeyDown={handleKeyDown}
+          ref={inputRef}
           value={value}
         />
         <div className="flex items-center gap-1 pr-2">

@@ -1,4 +1,4 @@
-.PHONY: run stop logs migrate revision test lint psql e2e e2e-rerun e2e-clean e2e-reset-db
+.PHONY: run stop logs migrate revision test lint-format psql e2e e2e-rerun e2e-clean e2e-reset-db
 
 OPEN_CMD := $(shell command -v xdg-open 2>/dev/null || command -v open 2>/dev/null)
 
@@ -41,9 +41,10 @@ test-no-e2e:
 	docker compose build api
 	docker compose run --rm api sh -c "uv pip install --system --group test && python -m pytest --ignore=tests/e2e $(test_args)"
 
-lint:
+lint-format:
 	poetry run ruff check --fix
 	poetry run ruff format
+	cd frontend && bun run lint-format
 
 psql:
 	docker compose exec postgres psql -U overmind -d overmind_core

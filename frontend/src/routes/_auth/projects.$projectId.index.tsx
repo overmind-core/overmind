@@ -2,7 +2,13 @@ import { useState } from "react";
 
 import { useQueryClient } from "@tanstack/react-query";
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { ArrowLeft, Lock as Key, Loader as Loader2, Plus, Cancel as Trash2 } from "pixelarticons/react";
+import {
+  ArrowLeft,
+  Lock as Key,
+  Loader as Loader2,
+  Plus,
+  Cancel as Trash2,
+} from "pixelarticons/react";
 
 import { CreateApiKeyDialog } from "@/components/create-api-key-dialog";
 import { Alert } from "@/components/ui/alert";

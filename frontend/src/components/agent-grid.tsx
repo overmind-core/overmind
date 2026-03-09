@@ -1,14 +1,20 @@
 import { useState } from "react";
 
-import { Link } from "@tanstack/react-router";
 import { useQueryClient } from "@tanstack/react-query";
-import { Analytics as Activity, ClipboardNote as ClipboardCheck, Clock, Money as DollarSign, Target } from "pixelarticons/react";
+import { Link } from "@tanstack/react-router";
+import {
+  Analytics as Activity,
+  ClipboardNote as ClipboardCheck,
+  Clock,
+  Money as DollarSign,
+  Target,
+} from "pixelarticons/react";
 
-import { cn } from "@/lib/utils";
 import type { AgentOut, HourlyBucket } from "@/api";
-import { Badge } from "@/components/ui/badge";
 import { AgentCriteriaReviewDialog } from "@/components/agent-review/AgentCriteriaReviewDialog";
 import { SpanFeedbackDialog } from "@/components/agent-review/SpanFeedbackDialog";
+import { Badge } from "@/components/ui/badge";
+import { cn } from "@/lib/utils";
 
 export type { AgentOut, HourlyBucket };
 
@@ -47,13 +53,7 @@ function MetricRow({
 
 // ─── Agent Card ──────────────────────────────────────────────────────────────
 
-function AgentCard({
-  agent,
-  headerAction,
-}: {
-  agent: AgentOut;
-  headerAction?: React.ReactNode;
-}) {
+function AgentCard({ agent, headerAction }: { agent: AgentOut; headerAction?: React.ReactNode }) {
   const { analytics } = agent;
   const populated = hasAnyData(analytics);
 
@@ -82,7 +82,7 @@ function AgentCard({
             v{agent.version}
           </Badge>
         </div>
-      </div>  
+      </div>
       {(agent.tags ?? []).length > 0 && (
         <div className="mb-3 flex flex-wrap gap-1.5">
           {(agent.tags ?? []).map((tag) => (
@@ -98,26 +98,10 @@ function AgentCard({
       {(agent.tags ?? []).length === 0 && <div className="mb-3" />}
 
       <div className="divide-y divide-border/60">
-        <MetricRow
-          icon={<Target className="size-3.5" />}
-          label="Accuracy"
-          value={accuracy}
-        />
-        <MetricRow
-          icon={<Activity className="size-3.5" />}
-          label="Spans scored"
-          value={scored}
-        />
-        <MetricRow
-          icon={<Clock className="size-3.5" />}
-          label="Avg latency"
-          value={latency}
-        />
-        <MetricRow
-          icon={<DollarSign className="size-3.5" />}
-          label="Est. cost"
-          value={cost}
-        />
+        <MetricRow icon={<Target className="size-3.5" />} label="Accuracy" value={accuracy} />
+        <MetricRow icon={<Activity className="size-3.5" />} label="Spans scored" value={scored} />
+        <MetricRow icon={<Clock className="size-3.5" />} label="Avg latency" value={latency} />
+        <MetricRow icon={<DollarSign className="size-3.5" />} label="Est. cost" value={cost} />
       </div>
     </div>
   );

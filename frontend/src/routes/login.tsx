@@ -3,8 +3,9 @@ import { useState } from "react";
 import { SignIn, useUser } from "@clerk/clerk-react";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { Loader as Loader2 } from "pixelarticons/react";
-import { ContinueWithGoogle } from "@/components/continue-with-google";
+
 import apiClient from "@/client";
+import { ContinueWithGoogle } from "@/components/continue-with-google";
 import { Separator } from "@/components/ui/separator";
 
 export const Route = createFileRoute("/login")({
@@ -132,6 +133,7 @@ const OSSAuth = () => {
 const EEAuth = () => {
   const { config } = Route.useRouteContext();
   if (!config.clerkReady) return <ContinueWithGoogle />;
+  // biome-ignore lint/correctness/useHookAtTopLevel: useUser only valid when Clerk is enabled
   const { user } = useUser();
   return (
     <>

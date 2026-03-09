@@ -1,13 +1,13 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import {
-  ThumbsDown,
-  ThumbsUp,
-  Loader as Loader2,
-  Check as CheckCircle2,
   WarningDiamond as AlertCircle,
+  Check as CheckCircle2,
   ChevronLeft,
   ChevronRight,
+  Loader as Loader2,
+  ThumbsDown,
+  ThumbsUp,
   Cancel as X,
 } from "pixelarticons/react";
 
@@ -137,7 +137,7 @@ function ChatBubbles({ messages }: { messages: ChatMessage[] }) {
           : m.role;
 
         return (
-          <div key={i} className={cn("flex flex-col gap-1", isUser ? "items-end" : "items-start")}>
+          <div className={cn("flex flex-col gap-1", isUser ? "items-end" : "items-start")} key={i}>
             <span className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">
               {roleLabel}
             </span>
@@ -212,7 +212,14 @@ interface Props {
   scoredSpanCount?: number;
 }
 
-export function SpanFeedbackDialog({ agent, onComplete, onClose, projectId, isPeriodicReview = false, scoredSpanCount }: Props) {
+export function SpanFeedbackDialog({
+  agent,
+  onComplete,
+  onClose,
+  projectId,
+  isPeriodicReview = false,
+  scoredSpanCount,
+}: Props) {
   const [phase, setPhase] = useState<Phase>("loading");
   const [spans, setSpans] = useState<SpanForReview[]>([]);
   // feedback: spanId → { vote, text }
@@ -237,8 +244,8 @@ export function SpanFeedbackDialog({ agent, onComplete, onClose, projectId, isPe
     try {
       const data =
         await apiClient.agentReviews.getSpansForReviewApiV1AgentReviewsPromptSlugReviewSpansGet({
-          promptSlug: agent.slug,
           projectId: projectId,
+          promptSlug: agent.slug,
         });
       const allSpans = [...data.worstSpans, ...data.bestSpans];
       if (allSpans.length === 0) {
@@ -269,7 +276,7 @@ export function SpanFeedbackDialog({ agent, onComplete, onClose, projectId, isPe
 
   function voteUp(spanId: string) {
     if (pendingDownId === spanId) setPendingDownId(null);
-    setFeedback((prev) => ({ ...prev, [spanId]: { vote: "up", text: "" } }));
+    setFeedback((prev) => ({ ...prev, [spanId]: { text: "", vote: "up" } }));
   }
 
   function startVoteDown(spanId: string) {
@@ -283,7 +290,7 @@ export function SpanFeedbackDialog({ agent, onComplete, onClose, projectId, isPe
   function confirmVoteDown(spanId: string) {
     const text = (pendingTexts[spanId] ?? "").trim();
     if (!text) return;
-    setFeedback((prev) => ({ ...prev, [spanId]: { vote: "down", text } }));
+    setFeedback((prev) => ({ ...prev, [spanId]: { text, vote: "down" } }));
     setPendingDownId(null);
   }
 
@@ -325,7 +332,7 @@ export function SpanFeedbackDialog({ agent, onComplete, onClose, projectId, isPe
     if (pendingDownId) {
       const text = (pendingTexts[pendingDownId] ?? "").trim();
       if (text) {
-        setFeedback((prev) => ({ ...prev, [pendingDownId]: { vote: "down", text } }));
+        setFeedback((prev) => ({ ...prev, [pendingDownId]: { text, vote: "down" } }));
       } else {
         setFeedback((prev) => {
           if (prev[pendingDownId]?.vote === "down") return prev;
@@ -344,12 +351,12 @@ export function SpanFeedbackDialog({ agent, onComplete, onClose, projectId, isPe
       spans.map((s) => {
         const entry = feedback[s.spanId]!;
         return apiClient.spans.submitSpanFeedbackApiV1SpansSpanIdFeedbackPatch({
-          spanId: s.spanId,
           spanFeedbackRequest: {
             feedbackType: "judge",
             rating: entry.vote,
             text: entry.text || undefined,
           },
+          spanId: s.spanId,
         });
       })
     );
@@ -361,16 +368,16 @@ export function SpanFeedbackDialog({ agent, onComplete, onClose, projectId, isPe
     if (isPeriodicReview) {
       await apiClient.agentReviews.completePeriodicReviewApiV1AgentReviewsPromptSlugCompleteReviewPost(
         {
-          promptSlug: agent.slug,
           currentSpanCount: scoredSpanCount ?? 0,
           projectId: projectId,
+          promptSlug: agent.slug,
         }
       );
     } else {
       await apiClient.agentReviews.markInitialReviewCompleteApiV1AgentReviewsPromptSlugMarkInitialReviewCompletePost(
         {
-          promptSlug: agent.slug,
           projectId: projectId,
+          promptSlug: agent.slug,
         }
       );
     }
@@ -413,12 +420,12 @@ export function SpanFeedbackDialog({ agent, onComplete, onClose, projectId, isPe
     setStatusMsg("Updating agent description based on feedback…");
     await apiClient.agentReviews.syncRefreshDescriptionApiV1AgentReviewsPromptSlugSyncRefreshDescriptionPost(
       {
+        projectId: projectId,
         promptSlug: agent.slug,
         syncRefreshDescriptionRequest: {
-          spanIds: negativeSpanIds,
           feedback: inlineFeedback,
+          spanIds: negativeSpanIds,
         },
-        projectId: projectId,
       }
     );
 
@@ -446,8 +453,8 @@ export function SpanFeedbackDialog({ agent, onComplete, onClose, projectId, isPe
     try {
       const refreshed =
         await apiClient.agentReviews.getSpansForReviewApiV1AgentReviewsPromptSlugReviewSpansGet({
-          promptSlug: agent.slug,
           projectId: projectId,
+          promptSlug: agent.slug,
         });
 
       const refreshedAll = [...refreshed.worstSpans, ...refreshed.bestSpans];
@@ -477,8 +484,8 @@ export function SpanFeedbackDialog({ agent, onComplete, onClose, projectId, isPe
     <Dialog open>
       <DialogContent
         className="flex max-h-[92vh] w-full max-w-6xl flex-col gap-0 overflow-hidden p-0"
-        onInteractOutside={(e) => e.preventDefault()}
         onEscapeKeyDown={(e) => e.preventDefault()}
+        onInteractOutside={(e) => e.preventDefault()}
       >
         {/* Header */}
         <DialogHeader className="shrink-0 border-b border-border px-6 py-4">
@@ -595,10 +602,6 @@ export function SpanFeedbackDialog({ agent, onComplete, onClose, projectId, isPe
                     const entry = feedback[s.spanId];
                     return (
                       <button
-                        key={s.spanId}
-                        onClick={() => goTo(i)}
-                        title={`Span ${i + 1}`}
-                        type="button"
                         className={cn(
                           "size-2.5 rounded-full border transition-all",
                           i === currentIdx
@@ -609,6 +612,10 @@ export function SpanFeedbackDialog({ agent, onComplete, onClose, projectId, isPe
                                 ? "border-destructive bg-destructive"
                                 : "border-muted-foreground/40 bg-transparent"
                         )}
+                        key={s.spanId}
+                        onClick={() => goTo(i)}
+                        title={`Span ${i + 1}`}
+                        type="button"
                       />
                     );
                   })}
@@ -617,20 +624,20 @@ export function SpanFeedbackDialog({ agent, onComplete, onClose, projectId, isPe
                 {/* Arrow buttons */}
                 <div className="flex gap-1">
                   <Button
+                    className="size-8"
                     disabled={currentIdx === 0}
                     onClick={() => goTo(currentIdx - 1)}
                     size="icon"
                     variant="outline"
-                    className="size-8"
                   >
                     <ChevronLeft className="size-4" />
                   </Button>
                   <Button
+                    className="size-8"
                     disabled={currentIdx === spans.length - 1}
                     onClick={() => goTo(currentIdx + 1)}
                     size="icon"
                     variant="outline"
-                    className="size-8"
                   >
                     <ChevronRight className="size-4" />
                   </Button>
@@ -652,29 +659,29 @@ export function SpanFeedbackDialog({ agent, onComplete, onClose, projectId, isPe
 
                   <div className="flex gap-2">
                     <button
-                      type="button"
-                      onClick={() => voteUp(currentSpan.spanId)}
-                      title="Score looks right"
                       className={cn(
                         "flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium transition-colors",
                         effectiveVote === "up"
                           ? "bg-emerald-500/20 text-emerald-700"
                           : "border border-border text-muted-foreground hover:border-emerald-400/60 hover:bg-emerald-500/10 hover:text-emerald-700"
                       )}
+                      onClick={() => voteUp(currentSpan.spanId)}
+                      title="Score looks right"
+                      type="button"
                     >
                       <ThumbsUp className="size-4" />
                       Looks right
                     </button>
                     <button
-                      type="button"
-                      onClick={() => startVoteDown(currentSpan.spanId)}
-                      title="Score is wrong"
                       className={cn(
                         "flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium transition-colors",
                         effectiveVote === "down"
                           ? "bg-destructive/20 text-destructive"
                           : "border border-border text-muted-foreground hover:border-destructive/40 hover:bg-destructive/10 hover:text-destructive"
                       )}
+                      onClick={() => startVoteDown(currentSpan.spanId)}
+                      title="Score is wrong"
+                      type="button"
                     >
                       <ThumbsDown className="size-4" />
                       Wrong score
@@ -692,8 +699,6 @@ export function SpanFeedbackDialog({ agent, onComplete, onClose, projectId, isPe
                     <Textarea
                       autoFocus
                       className="min-h-[72px] resize-none text-sm"
-                      placeholder="e.g. The output is actually correct, the judge is being too strict…"
-                      value={pendingTexts[currentSpan.spanId] ?? ""}
                       onChange={(e) =>
                         setPendingTexts((prev) => ({
                           ...prev,
@@ -707,20 +712,22 @@ export function SpanFeedbackDialog({ agent, onComplete, onClose, projectId, isPe
                         }
                         if (e.key === "Escape") cancelVoteDown(currentSpan.spanId);
                       }}
+                      placeholder="e.g. The output is actually correct, the judge is being too strict…"
+                      value={pendingTexts[currentSpan.spanId] ?? ""}
                     />
                     <div className="flex justify-end gap-2">
                       <Button
+                        onClick={() => cancelVoteDown(currentSpan.spanId)}
                         size="sm"
                         variant="ghost"
-                        onClick={() => cancelVoteDown(currentSpan.spanId)}
                       >
                         Cancel
                       </Button>
                       <Button
-                        size="sm"
-                        variant="destructive"
                         disabled={!(pendingTexts[currentSpan.spanId] ?? "").trim()}
                         onClick={() => confirmVoteDown(currentSpan.spanId)}
+                        size="sm"
+                        variant="destructive"
                       >
                         Confirm
                       </Button>
@@ -740,9 +747,9 @@ export function SpanFeedbackDialog({ agent, onComplete, onClose, projectId, isPe
                 <p className="text-center text-xs text-muted-foreground">
                   Rated — use{" "}
                   <button
-                    type="button"
                     className="underline underline-offset-2 hover:text-foreground"
                     onClick={() => goTo(currentIdx + 1)}
+                    type="button"
                   >
                     next arrow
                   </button>{" "}

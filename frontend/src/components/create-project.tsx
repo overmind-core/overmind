@@ -2,7 +2,15 @@ import { useState } from "react";
 
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate } from "@tanstack/react-router";
-import { ArrowLeft, FileText, FolderPlus as FolderOpen, Hash, Loader as Loader2, Plus, Download as Save } from "pixelarticons/react";
+import {
+  ArrowLeft,
+  FileText,
+  FolderPlus as FolderOpen,
+  Hash,
+  Loader as Loader2,
+  Plus,
+  Download as Save,
+} from "pixelarticons/react";
 
 import { ResponseError } from "@/api";
 import apiClient from "@/client";
@@ -20,7 +28,6 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { useOrganisationId } from "@/hooks/use-query";
-
 
 function generateProjectSlug(name: string): string {
   return name
@@ -54,7 +61,6 @@ function CreateProjectForm({
   const organisationId = useOrganisationId();
 
   const [formData, setFormData] = useState<CreateProjectFormData>(initialFormData);
-
 
   const createMutation = useMutation({
     mutationFn: async (data: CreateProjectFormData) => {
@@ -95,11 +101,7 @@ function CreateProjectForm({
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
 
-    if (
-      !formData.name.trim() ||
-      !formData.slug.trim() ||
-      !formData.description.trim()
-    ) {
+    if (!formData.name.trim() || !formData.slug.trim() || !formData.description.trim()) {
       createMutation.reset();
       return;
     }
@@ -181,11 +183,7 @@ function CreateProjectForm({
         <Button disabled={loading} onClick={onCancel} type="button" variant="outline">
           Cancel
         </Button>
-        <Button
-          className="gap-2"
-          disabled={loading || !formData.description.trim()}
-          type="submit"
-        >
+        <Button className="gap-2" disabled={loading || !formData.description.trim()} type="submit">
           {loading ? <Loader2 className="size-4 animate-spin" /> : <Save className="size-4" />}
           {loading ? "Creating..." : "Create Project"}
         </Button>

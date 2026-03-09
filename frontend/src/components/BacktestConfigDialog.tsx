@@ -4,7 +4,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Check, ChevronDown, FlaskConical, Info, Loader2, X } from "lucide-react";
 import { toast } from "sonner";
 
-import { ResponseError, type ModelInfo } from "@/api";
+import { type ModelInfo, ResponseError } from "@/api";
 import apiClient from "@/client";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -38,16 +38,16 @@ export type ModelSuggestion = {
 
 const CATEGORY_LABELS: Record<string, string> = {
   best_overall: "Best overall",
-  most_capable: "Most capable",
-  fastest: "Fastest",
   cheapest: "Cheapest",
+  fastest: "Fastest",
+  most_capable: "Most capable",
 };
 
 const CATEGORY_CLASSES: Record<string, string> = {
   best_overall: "bg-emerald-500 text-white",
-  most_capable: "bg-violet-500 text-white",
-  fastest: "bg-sky-500 text-white",
   cheapest: "bg-amber-500 text-white",
+  fastest: "bg-sky-500 text-white",
+  most_capable: "bg-violet-500 text-white",
 };
 
 type ModelConfig = {
@@ -69,7 +69,10 @@ function modelKeysForConfig(model: ModelInfo, config: ModelConfig): string[] {
     const seen = new Set<string>();
     for (const variant of config.selectedVariants) {
       const key = `${modelName}:reasoning-${variant}`;
-      if (!seen.has(key)) { keys.push(key); seen.add(key); }
+      if (!seen.has(key)) {
+        keys.push(key);
+        seen.add(key);
+      }
     }
     return keys;
   }
@@ -96,9 +99,9 @@ function modelKeysForConfig(model: ModelInfo, config: ModelConfig): string[] {
 }
 
 const PROVIDER_LABELS: Record<string, string> = {
-  openai: "OpenAI",
   anthropic: "Anthropic",
   gemini: "Gemini",
+  openai: "OpenAI",
 };
 
 const PROVIDER_ORDER = ["openai", "anthropic", "gemini"];
@@ -120,14 +123,18 @@ interface VariantPickerProps {
   recommendedVariants?: Set<string>;
 }
 
-function VariantPicker({ options, selected, onChange, atMax, recommendedVariants }: VariantPickerProps) {
+function VariantPicker({
+  options,
+  selected,
+  onChange,
+  atMax,
+  recommendedVariants: _recommendedVariants,
+}: VariantPickerProps) {
   function toggle(value: string) {
     const isActive = selected.includes(value);
     if (!isActive && atMax) return;
     onChange(isActive ? selected.filter((v) => v !== value) : [...selected, value]);
   }
-
-  const hasRecommended = options.some(({ value }) => recommendedVariants?.has(value));
 
   const triggerLabel =
     selected.length === 0
@@ -140,13 +147,13 @@ function VariantPicker({ options, selected, onChange, atMax, recommendedVariants
     <Popover>
       <PopoverTrigger asChild>
         <button
-          type="button"
           className={cn(
             "flex h-7 w-[158px] shrink-0 items-center justify-between gap-1 rounded-md border px-2.5",
             "border-input bg-background text-xs transition-colors",
             "hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring",
-            selected.length === 0 ? "text-muted-foreground" : "text-foreground",
+            selected.length === 0 ? "text-muted-foreground" : "text-foreground"
           )}
+          type="button"
         >
           <span className="truncate">{triggerLabel}</span>
           <ChevronDown className="size-3 shrink-0 opacity-50" />
@@ -157,25 +164,22 @@ function VariantPicker({ options, selected, onChange, atMax, recommendedVariants
         {options.map(({ value, label }) => {
           const isActive = selected.includes(value);
           const disabled = !isActive && atMax;
-          const isRecommended = recommendedVariants?.has(value) ?? false;
           return (
             <button
-              key={value}
-              type="button"
-              onClick={() => toggle(value)}
-              disabled={disabled}
               className={cn(
                 "flex w-full items-center gap-2.5 rounded px-2 py-1.5 text-xs transition-colors text-left",
                 "hover:bg-accent hover:text-accent-foreground",
-                disabled && "cursor-not-allowed opacity-40",
+                disabled && "cursor-not-allowed opacity-40"
               )}
+              disabled={disabled}
+              key={value}
+              onClick={() => toggle(value)}
+              type="button"
             >
               <div
                 className={cn(
                   "flex size-3.5 shrink-0 items-center justify-center rounded-sm border transition-colors",
-                  isActive
-                    ? "border-primary bg-primary text-primary-foreground"
-                    : "border-input",
+                  isActive ? "border-primary bg-primary text-primary-foreground" : "border-input"
                 )}
               >
                 {isActive && <Check className="size-2.5" />}
@@ -212,15 +216,14 @@ function RecommendationBadges({ suggestions }: { suggestions: ModelSuggestion[] 
             <Info className="size-3" />
           </Badge>
         </TooltipTrigger>
-        <TooltipContent side="top" className="max-w-72 text-xs leading-snug p-3">
+        <TooltipContent className="max-w-72 text-xs leading-snug p-3" side="top">
           <div className="space-y-2">
             {suggestions.map((s) => (
               <div key={s.category}>
                 <span
                   className={cn(
                     "inline-block font-medium rounded px-1 py-0.5 mb-0.5",
-                    CATEGORY_CLASSES[s.category] ??
-                      "bg-muted text-muted-foreground",
+                    CATEGORY_CLASSES[s.category] ?? "bg-muted text-muted-foreground"
                   )}
                 >
                   {CATEGORY_LABELS[s.category] ?? s.category}
@@ -236,25 +239,26 @@ function RecommendationBadges({ suggestions }: { suggestions: ModelSuggestion[] 
 }
 
 function ModelRow({ model, config, onChange, totalKeys, suggestions = [] }: ModelRowProps) {
-  const { modelName, supportsReasoning, adaptiveMode, reasoningLevels, reasoningRequired, isNew } = model;
+  const { modelName, supportsReasoning, adaptiveMode, reasoningLevels, reasoningRequired, isNew } =
+    model;
   const atMax = totalKeys >= MAX_MODEL_VARIANTS;
 
   const variantOptions = useMemo(() => {
     if (!supportsReasoning) return [];
     const levels = adaptiveMode === false ? ["on"] : (reasoningLevels ?? []);
     if (reasoningRequired) {
-      return levels.map((l) => ({ value: l, label: capLabel(l) }));
+      return levels.map((l) => ({ label: capLabel(l), value: l }));
     }
     return [
-      { value: "base", label: "Base (no reasoning)" },
-      ...levels.map((l) => ({ value: l, label: capLabel(l) })),
+      { label: "Base (no reasoning)", value: "base" },
+      ...levels.map((l) => ({ label: capLabel(l), value: l })),
     ];
   }, [supportsReasoning, reasoningRequired, adaptiveMode, reasoningLevels]);
 
   // Map each suggestion's reasoning_effort to the corresponding variant value
   const recommendedVariants = useMemo(
     () => new Set(suggestions.map((s) => s.reasoning_effort ?? "base")),
-    [suggestions],
+    [suggestions]
   );
 
   // Only truly non-reasoning models use a plain checkbox
@@ -263,15 +267,15 @@ function ModelRow({ model, config, onChange, totalKeys, suggestions = [] }: Mode
     return (
       <div className="flex items-center gap-3 rounded-md px-2 py-2.5 hover:bg-muted/40 transition-colors">
         <Checkbox
-          id={`base-${modelName}`}
           checked={isChecked}
-          onCheckedChange={(v) => onChange({ selectedVariants: v ? ["base"] : [] })}
-          disabled={!isChecked && atMax}
           className="shrink-0"
+          disabled={!isChecked && atMax}
+          id={`base-${modelName}`}
+          onCheckedChange={(v) => onChange({ selectedVariants: v ? ["base"] : [] })}
         />
         <label
-          htmlFor={`base-${modelName}`}
           className="flex-1 min-w-0 flex items-center gap-2 flex-wrap cursor-pointer"
+          htmlFor={`base-${modelName}`}
         >
           <span className="text-sm font-medium">{modelName}</span>
           {isNew && (
@@ -280,7 +284,7 @@ function ModelRow({ model, config, onChange, totalKeys, suggestions = [] }: Mode
             </Badge>
           )}
           {reasoningRequired && (
-            <Badge variant="outline" className="text-xs text-muted-foreground">
+            <Badge className="text-xs text-muted-foreground" variant="outline">
               reasoning always on
             </Badge>
           )}
@@ -301,18 +305,18 @@ function ModelRow({ model, config, onChange, totalKeys, suggestions = [] }: Mode
           </Badge>
         )}
         {reasoningRequired && (
-          <Badge variant="outline" className="text-xs text-muted-foreground">
+          <Badge className="text-xs text-muted-foreground" variant="outline">
             reasoning always on
           </Badge>
         )}
         <RecommendationBadges suggestions={suggestions} />
       </div>
       <VariantPicker
-        options={variantOptions}
-        selected={config.selectedVariants}
-        onChange={(variants) => onChange({ selectedVariants: variants })}
         atMax={atMax}
+        onChange={(variants) => onChange({ selectedVariants: variants })}
+        options={variantOptions}
         recommendedVariants={recommendedVariants}
+        selected={config.selectedVariants}
       />
     </div>
   );
@@ -328,16 +332,20 @@ interface BacktestConfigDialogProps {
   recommendations?: ModelSuggestion[];
 }
 
-export function BacktestConfigDialog({ promptId, onSuccess, recommendations }: BacktestConfigDialogProps) {
+export function BacktestConfigDialog({
+  promptId,
+  onSuccess,
+  recommendations,
+}: BacktestConfigDialogProps) {
   const [open, setOpen] = useState(false);
   const [configs, setConfigs] = useState<Record<string, ModelConfig>>({});
   const queryClient = useQueryClient();
 
   const { data: models = [], isLoading } = useQuery({
-    queryKey: ["backtesting-models"],
-    queryFn: () => apiClient.backtesting.listAvailableModelsApiV1BacktestingModelsGet({}),
-    staleTime: 5 * 60 * 1000,
     enabled: open,
+    queryFn: () => apiClient.backtesting.listAvailableModelsApiV1BacktestingModelsGet({}),
+    queryKey: ["backtesting-models"],
+    staleTime: 5 * 60 * 1000,
   });
 
   const modelsByProvider = useMemo(() => {
@@ -389,7 +397,7 @@ export function BacktestConfigDialog({ promptId, onSuccess, recommendations }: B
     mutationFn: () =>
       apiClient.backtesting
         .runBacktestingApiV1BacktestingRunPost({
-          backtestingRequest: { promptId, models: allModelKeys },
+          backtestingRequest: { models: allModelKeys, promptId },
         })
         .catch(async (error) => {
           if (error instanceof ResponseError) {
@@ -398,14 +406,14 @@ export function BacktestConfigDialog({ promptId, onSuccess, recommendations }: B
           }
           throw error;
         }),
+    onError: (error: Error) => {
+      toast.error(error.message);
+    },
     onSuccess: () => {
       setOpen(false);
       setConfigs({});
       queryClient.invalidateQueries({ queryKey: ["agent-detail"] });
       onSuccess();
-    },
-    onError: (error: Error) => {
-      toast.error(error.message);
     },
   });
 
@@ -420,7 +428,7 @@ export function BacktestConfigDialog({ promptId, onSuccess, recommendations }: B
   const atMax = allModelKeys.length >= MAX_MODEL_VARIANTS;
 
   return (
-    <Dialog open={open} onOpenChange={handleOpenChange}>
+    <Dialog onOpenChange={handleOpenChange} open={open}>
       <DialogTrigger asChild>
         <Button size="sm" variant="outline">
           <FlaskConical className="mr-1.5 size-3.5" />
@@ -432,7 +440,8 @@ export function BacktestConfigDialog({ promptId, onSuccess, recommendations }: B
         <DialogHeader className="px-6 pt-6 pb-4 shrink-0">
           <DialogTitle>Configure Backtesting</DialogTitle>
           <DialogDescription>
-            Select models and reasoning effort levels to compare. Each combination runs as a separate variant.
+            Select models and reasoning effort levels to compare. Each combination runs as a
+            separate variant.
           </DialogDescription>
         </DialogHeader>
 
@@ -452,12 +461,12 @@ export function BacktestConfigDialog({ promptId, onSuccess, recommendations }: B
                   <div className="divide-y divide-border/40">
                     {modelsByProvider[provider].map((model) => (
                       <ModelRow
+                        config={configs[model.modelName] ?? DEFAULT_CONFIG}
                         key={model.modelName}
                         model={model}
-                        config={configs[model.modelName] ?? DEFAULT_CONFIG}
                         onChange={(update) => updateConfig(model.modelName, update)}
-                        totalKeys={allModelKeys.length}
                         suggestions={recommendations?.filter((r) => r.model === model.modelName)}
+                        totalKeys={allModelKeys.length}
                       />
                     ))}
                   </div>
@@ -470,7 +479,12 @@ export function BacktestConfigDialog({ promptId, onSuccess, recommendations }: B
         {/* Selected summary */}
         <div className="px-6 py-3 border-t bg-muted/20 shrink-0">
           <div className="flex items-center justify-between mb-2">
-            <p className={cn("text-xs", atMax ? "text-amber-500 font-medium" : "text-muted-foreground")}>
+            <p
+              className={cn(
+                "text-xs",
+                atMax ? "text-amber-500 font-medium" : "text-muted-foreground"
+              )}
+            >
               {allModelKeys.length === 0
                 ? "No variants selected"
                 : atMax
@@ -482,16 +496,16 @@ export function BacktestConfigDialog({ promptId, onSuccess, recommendations }: B
             <div className="flex flex-wrap gap-1.5">
               {allModelKeys.map((key) => (
                 <Badge
+                  className="font-mono text-xs pl-2 pr-1 flex items-center gap-1"
                   key={key}
                   variant="secondary"
-                  className="font-mono text-xs pl-2 pr-1 flex items-center gap-1"
                 >
                   {key}
                   <button
-                    type="button"
-                    onClick={() => removeKey(key)}
-                    className="rounded-full p-0.5 hover:bg-foreground/15 transition-colors"
                     aria-label={`Remove ${key}`}
+                    className="rounded-full p-0.5 hover:bg-foreground/15 transition-colors"
+                    onClick={() => removeKey(key)}
+                    type="button"
                   >
                     <X className="size-2.5" />
                   </button>
@@ -502,7 +516,7 @@ export function BacktestConfigDialog({ promptId, onSuccess, recommendations }: B
         </div>
 
         <DialogFooter className="px-6 py-4 border-t shrink-0">
-          <Button variant="outline" onClick={() => handleOpenChange(false)}>
+          <Button onClick={() => handleOpenChange(false)} variant="outline">
             Cancel
           </Button>
           <Button

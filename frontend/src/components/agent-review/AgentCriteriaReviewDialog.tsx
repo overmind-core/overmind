@@ -4,14 +4,8 @@ import { useMutation } from "@tanstack/react-query";
 import { Loader as Loader2, Plus, Cancel as Trash2, Cancel as X } from "pixelarticons/react";
 
 import type { AgentOut } from "@/api";
-
-function sortedStringArrayEqual(a: string[], b: string[]): boolean {
-  if (a.length !== b.length) return false;
-  const sa = [...a].sort();
-  const sb = [...b].sort();
-  return sa.every((v, i) => v === sb[i]);
-}
 import apiClient from "@/client";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -24,7 +18,13 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { Badge } from "@/components/ui/badge";
+
+function sortedStringArrayEqual(a: string[], b: string[]): boolean {
+  if (a.length !== b.length) return false;
+  const sa = [...a].sort();
+  const sb = [...b].sort();
+  return sa.every((v, i) => v === sb[i]);
+}
 
 interface Props {
   agent: AgentOut;
@@ -47,8 +47,8 @@ export function AgentCriteriaReviewDialog({ agent, onConfirm, onClose, projectId
     setFetchError(null);
     apiClient.agentReviews
       .getSpansForReviewApiV1AgentReviewsPromptSlugReviewSpansGet({
-        promptSlug: agent.slug,
         projectId: projectId,
+        promptSlug: agent.slug,
       })
       .then((e) => {
         setDescription(e.agentDescription ?? "");
@@ -58,7 +58,7 @@ export function AgentCriteriaReviewDialog({ agent, onConfirm, onClose, projectId
       })
       .catch((err: Error) => setFetchError(err.message))
       .finally(() => setIsLoading(false));
-  }, [agent.slug]);
+  }, [agent.slug, projectId]);
 
   const updateMutation = useMutation({
     mutationFn: async () => {
@@ -67,12 +67,12 @@ export function AgentCriteriaReviewDialog({ agent, onConfirm, onClose, projectId
 
       await apiClient.agentReviews.updateAgentDescriptionAndCriteriaApiV1AgentReviewsPromptSlugUpdateDescriptionPost(
         {
-          promptSlug: agent.slug,
           agentDescriptionUpdateRequest: {
-            description: description,
             criteria: criteriaPayload,
+            description: description,
           },
           projectId: projectId,
+          promptSlug: agent.slug,
         }
       );
 
@@ -112,8 +112,8 @@ export function AgentCriteriaReviewDialog({ agent, onConfirm, onClose, projectId
     <Dialog open>
       <DialogContent
         className="flex max-h-[90vh] w-full max-w-2xl flex-col gap-0 overflow-hidden p-0"
-        onInteractOutside={(e) => e.preventDefault()}
         onEscapeKeyDown={(e) => e.preventDefault()}
+        onInteractOutside={(e) => e.preventDefault()}
       >
         <DialogHeader className="shrink-0 border-b border-border px-6 py-4">
           <div className="flex items-center justify-between gap-2">
@@ -207,13 +207,13 @@ export function AgentCriteriaReviewDialog({ agent, onConfirm, onClose, projectId
                   <div className="flex gap-2">
                     <Input
                       className="flex-1 text-sm"
+                      onChange={(e) => setNewRule(e.target.value)}
                       onKeyDown={(e) => {
                         if (e.key === "Enter") {
                           e.preventDefault();
                           addRule();
                         }
                       }}
-                      onChange={(e) => setNewRule(e.target.value)}
                       placeholder="Add a new criterion and press Enter…"
                       value={newRule}
                     />

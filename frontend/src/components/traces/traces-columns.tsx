@@ -1,10 +1,10 @@
 import type { ColumnDef } from "@tanstack/react-table";
 
-import type { SpanRow } from "@/hooks/use-traces";
-import { spanStatusLabel } from "@/hooks/use-traces";
 import { DataTableColumnHeader } from "@/components/traces/table-header";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import type { SpanRow } from "@/hooks/use-traces";
+import { spanStatusLabel } from "@/hooks/use-traces";
 import { formatCost, formatDuration, formatTimestamp } from "@/lib/formatters";
 
 /** Get attribute value, trying common key variants */
@@ -318,8 +318,8 @@ export const tracesColumns: ColumnDef<SpanRow>[] = [
             </span>
             {toolNames.slice(0, 3).map((name) => (
               <span
-                key={name}
                 className="font-mono text-[10px] font-semibold text-violet-600 dark:text-violet-400 truncate max-w-[100px]"
+                key={name}
               >
                 {name}
               </span>

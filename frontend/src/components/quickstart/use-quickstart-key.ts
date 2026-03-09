@@ -93,9 +93,9 @@ export function useQuickstartKey(projectId?: string) {
 
   return {
     apiKey: apiKey ?? null,
-    isLoading: projectsLoading || keyLoading || generateMutation.isPending,
-    isError: generateMutation.isError,
     error: generateMutation.error,
+    isError: generateMutation.isError,
+    isLoading: projectsLoading || keyLoading || generateMutation.isPending,
     retry: () => generateMutation.mutate(),
   };
 }
