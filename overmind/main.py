@@ -25,6 +25,7 @@ from overmind.celery_app import get_celery_app
 from overmind.bootstrap import ensure_default_user
 from logging import getLogger, Filter
 import logging
+from overmind.utils import APP_VERSION, compare_version
 from contextlib import asynccontextmanager
 
 
@@ -48,6 +49,7 @@ async def lifespan(app: FastAPI):
         logger.info("--- Starting overmind worker startup ---")
 
         app.state.client_manager = ClientCacheManager(maxsize=10)
+        compare_version()
 
         # Core uses basic auth (no RBAC permission checking)
         app.state.authentication_provider = RBACAuthenticationProvider()
@@ -106,6 +108,11 @@ app.include_router(core_auth_router, prefix="/api/v1")
 @app.get("/health")
 def health_check():
     return {"status": "healthy"}
+
+
+@app.get("/info")
+def info():
+    return {"status": "healthy", "version": APP_VERSION}
 
 
 # ---------------------------------------------------------------------------
