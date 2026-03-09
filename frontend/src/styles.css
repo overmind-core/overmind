@@ -109,10 +109,6 @@ code {
     background: color-mix(in srgb, var(--foreground) 4%, transparent) !important;
     border-radius: 0.5rem;
   }
-
-  .animate-spin {
-    color: var(--foreground) !important;
-  }
 }
 
 /* ─── Login page animations ──────────────────────────────────────────── */

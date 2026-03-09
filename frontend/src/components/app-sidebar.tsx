@@ -27,6 +27,18 @@ import {
 } from "@/components/ui/sidebar";
 import { useAuthContext } from "@/contexts/auth-context";
 
+function useLogout() {
+  const navigate = useNavigate();
+  const { refreshAuth } = useAuthContext();
+  return () => {
+    localStorage.removeItem("token");
+    localStorage.removeItem("auth_token");
+    localStorage.removeItem("auth_user");
+    refreshAuth?.();
+    navigate({ to: "/login" });
+  };
+}
+
 const navLinks = [
   { icon: Home, label: "Home", to: "/" },
   { icon: Robot, label: "Agents", to: "/agents" },
@@ -105,15 +117,8 @@ const accountLinks = [
 const EEUserButton = () => {
   const { config } = useRouteContext({ from: "/_auth" });
   const { location } = useRouterState();
-  const navigate = useNavigate();
+  const handleLogout = useLogout();
   const [accountOpen, setAccountOpen] = useState(false);
-
-  const handleLogout = () => {
-    localStorage.removeItem("token");
-    localStorage.removeItem("auth_token");
-    localStorage.removeItem("auth_user");
-    navigate({ to: "/login" });
-  };
 
   const handleToggleAccount = () => {
     setAccountOpen((prev) => !prev);
@@ -198,13 +203,7 @@ const EEClerkUserButton = () => {
 
 const OSSUserButton = () => {
   const [accountOpen, setAccountOpen] = useState(false);
-  const navigate = useNavigate();
-  const handleLogout = () => {
-    localStorage.removeItem("token");
-    localStorage.removeItem("auth_token");
-    localStorage.removeItem("auth_user");
-    navigate({ to: "/login" });
-  };
+  const handleLogout = useLogout();
 
   const handleToggleAccount = () => {
     setAccountOpen((prev) => !prev);

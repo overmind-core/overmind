@@ -22,6 +22,15 @@ type Crumb = { label: string; path: string };
 
 const DYNAMIC_PARENTS = new Set(["agents", "projects", "jobs"]);
 
+const JOB_TYPE_LABELS: Record<string, string> = {
+  agent_discovery: "Agent Discovery",
+  judge_scoring: "LLM Judge Scoring",
+  model_backtesting: "Model Backtesting",
+  prompt_tuning: "Prompt Tuning",
+  scoring: "LLM Judge Scoring",
+  template_extraction: "Template Extraction",
+};
+
 function prettifySegment(seg: string): string {
   return decodeURIComponent(seg).replace(/[-_]/g, " ");
 }
@@ -32,15 +41,26 @@ function useCachedName(parent: string | undefined, slug: string | undefined): st
 
   const keyMap: Record<string, string[]> = {
     agents: ["agent-detail", slug],
+    jobs: ["job", slug],
     projects: ["project", slug],
   };
 
   const prefix = keyMap[parent];
   if (!prefix) return undefined;
 
-  const queries = queryClient.getQueriesData<{ name?: string }>({ queryKey: prefix });
+  const queries = queryClient.getQueriesData<{
+    name?: string;
+    promptDisplayName?: string | null;
+    jobType?: string;
+  }>({ queryKey: prefix });
   for (const [, data] of queries) {
-    if (data?.name) return data.name;
+    if (!data) continue;
+    if (parent === "jobs") {
+      const label = data.promptDisplayName ?? (data.jobType && JOB_TYPE_LABELS[data.jobType]);
+      if (label) return label;
+    } else if (data.name) {
+      return data.name;
+    }
   }
   return undefined;
 }

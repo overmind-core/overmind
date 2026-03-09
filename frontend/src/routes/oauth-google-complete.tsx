@@ -6,6 +6,7 @@ import { Loader as Loader2 } from "pixelarticons/react";
 import { z } from "zod";
 
 import apiClient from "@/client";
+import { useAuthContext } from "@/contexts/auth-context";
 
 const querySchema = z.object({
   code: z.string(),
@@ -19,6 +20,7 @@ export const Route = createFileRoute("/oauth-google-complete")({
 
 function OAuthGoogleComplete() {
   const navigate = Route.useNavigate();
+  const { refreshAuth } = useAuthContext();
   const { code, state } = Route.useSearch();
   const hasStarted = useRef(false);
   const completeLogin = useMutation({
@@ -34,6 +36,7 @@ function OAuthGoogleComplete() {
       setTimeout(() => {
         localStorage.setItem("token", response.accessToken);
         localStorage.setItem("auth_user", JSON.stringify(response.user));
+        refreshAuth?.();
         navigate({ to: "/onboarding" });
       }, 300);
     },

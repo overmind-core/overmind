@@ -120,16 +120,9 @@ interface VariantPickerProps {
   selected: string[];
   onChange: (next: string[]) => void;
   atMax: boolean;
-  recommendedVariants?: Set<string>;
 }
 
-function VariantPicker({
-  options,
-  selected,
-  onChange,
-  atMax,
-  recommendedVariants: _recommendedVariants,
-}: VariantPickerProps) {
+function VariantPicker({ options, selected, onChange, atMax }: VariantPickerProps) {
   function toggle(value: string) {
     const isActive = selected.includes(value);
     if (!isActive && atMax) return;
@@ -255,12 +248,6 @@ function ModelRow({ model, config, onChange, totalKeys, suggestions = [] }: Mode
     ];
   }, [supportsReasoning, reasoningRequired, adaptiveMode, reasoningLevels]);
 
-  // Map each suggestion's reasoning_effort to the corresponding variant value
-  const recommendedVariants = useMemo(
-    () => new Set(suggestions.map((s) => s.reasoning_effort ?? "base")),
-    [suggestions]
-  );
-
   // Only truly non-reasoning models use a plain checkbox
   if (variantOptions.length === 0) {
     const isChecked = config.selectedVariants.includes("base");
@@ -315,7 +302,6 @@ function ModelRow({ model, config, onChange, totalKeys, suggestions = [] }: Mode
         atMax={atMax}
         onChange={(variants) => onChange({ selectedVariants: variants })}
         options={variantOptions}
-        recommendedVariants={recommendedVariants}
         selected={config.selectedVariants}
       />
     </div>

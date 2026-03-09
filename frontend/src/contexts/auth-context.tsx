@@ -5,6 +5,8 @@ import { useAuth, useOrganization } from "@clerk/clerk-react";
 type AuthContextValue = {
   organisationId: string;
   isSignedIn: boolean;
+  /** Call after localStorage token changes in the same tab (storage event only fires cross-tab) */
+  refreshAuth?: () => void;
 };
 
 const AuthContext = createContext<AuthContextValue>({
@@ -24,6 +26,8 @@ function readIsSignedInFromStorage(): boolean {
 export function FallbackAuthProvider({ children }: { children: React.ReactNode }) {
   const [isSignedIn, setIsSignedIn] = useState(readIsSignedInFromStorage);
 
+  const refreshAuth = () => setIsSignedIn(readIsSignedInFromStorage);
+
   useEffect(() => {
     const check = () => setIsSignedIn(readIsSignedInFromStorage);
     window.addEventListener("storage", check);
@@ -31,7 +35,7 @@ export function FallbackAuthProvider({ children }: { children: React.ReactNode }
   }, []);
 
   return (
-    <AuthContext.Provider value={{ isSignedIn, organisationId: "" }}>
+    <AuthContext.Provider value={{ isSignedIn, organisationId: "", refreshAuth }}>
       {children}
     </AuthContext.Provider>
   );
