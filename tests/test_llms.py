@@ -2,9 +2,13 @@
 
 from unittest.mock import MagicMock, patch
 
+import litellm
 import pytest
+from tenacity import RetryCallState
 
 from overmind.core.llms import (
+    _do_litellm_completion,
+    _should_retry_llm_call,
     call_llm,
     get_reasoning_levels,
     get_thinking_budget_tokens,
@@ -181,3 +185,156 @@ def test_call_llm_includes_reasoning_content_in_stats_when_present(mock_completi
     content, stats = call_llm("hello", model="gpt-5-mini", reasoning_effort="low")
 
     assert stats.get("reasoning_content") == "Let me think about this..."
+
+
+# ---------------------------------------------------------------------------
+# Retry logic
+# ---------------------------------------------------------------------------
+
+# Minimal litellm exception factories.
+# Use __new__ to skip the complex parent constructor (which needs httpx objects),
+# then set the `message` attribute that litellm exceptions rely on for __str__.
+
+
+def _make_litellm_exc(cls, msg: str):
+    e = cls.__new__(cls)
+    Exception.__init__(e, msg)
+    # litellm exceptions use these in __str__; set to None/0 to avoid AttributeError
+    e.message = msg
+    e.num_retries = None
+    e.max_retries = None
+    return e
+
+
+def _rate_limit_err(msg="rate limited") -> litellm.RateLimitError:
+    return _make_litellm_exc(litellm.RateLimitError, msg)
+
+
+def _internal_server_err(msg="internal server error") -> litellm.InternalServerError:
+    return _make_litellm_exc(litellm.InternalServerError, msg)
+
+
+def _service_unavailable_err(
+    msg="service unavailable",
+) -> litellm.ServiceUnavailableError:
+    return _make_litellm_exc(litellm.ServiceUnavailableError, msg)
+
+
+def _api_connection_err(msg="connection error") -> litellm.APIConnectionError:
+    return _make_litellm_exc(litellm.APIConnectionError, msg)
+
+
+def _bad_request_err(msg="bad request") -> litellm.BadRequestError:
+    return _make_litellm_exc(litellm.BadRequestError, msg)
+
+
+def _make_retry_state(exc=None) -> RetryCallState:
+    """Build a minimal RetryCallState mock with a given outcome exception."""
+    outcome = MagicMock()
+    outcome.exception.return_value = exc
+    state = MagicMock(spec=RetryCallState)
+    state.outcome = outcome
+    return state
+
+
+@pytest.fixture()
+def no_wait_retry():
+    """Swap tenacity's sleep on _do_litellm_completion to a no-op so retry tests are instant."""
+    original = _do_litellm_completion.retry.sleep
+    _do_litellm_completion.retry.sleep = lambda _: None
+    yield
+    _do_litellm_completion.retry.sleep = original
+
+
+# -- _should_retry_llm_call predicate --
+
+
+def test_retry_predicate_returns_false_on_success():
+    assert _should_retry_llm_call(_make_retry_state(exc=None)) is False
+
+
+@pytest.mark.parametrize(
+    "exc_factory",
+    [
+        _rate_limit_err,
+        _internal_server_err,
+        _service_unavailable_err,
+        _api_connection_err,
+    ],
+    ids=[
+        "RateLimitError",
+        "InternalServerError",
+        "ServiceUnavailableError",
+        "APIConnectionError",
+    ],
+)
+def test_retry_predicate_returns_true_for_retryable_errors(exc_factory):
+    assert _should_retry_llm_call(_make_retry_state(exc=exc_factory())) is True
+
+
+@pytest.mark.parametrize(
+    "exc",
+    [
+        _bad_request_err(),
+        ValueError("bad value"),
+        RuntimeError("unexpected"),
+    ],
+    ids=["BadRequestError", "ValueError", "RuntimeError"],
+)
+def test_retry_predicate_returns_false_for_non_retryable_errors(exc):
+    assert _should_retry_llm_call(_make_retry_state(exc=exc)) is False
+
+
+# -- call_llm retry integration --
+
+
+def test_call_llm_retries_on_rate_limit_and_succeeds(no_wait_retry):
+    success = _make_completion_response("ok")
+    with patch(
+        "litellm.completion", side_effect=[_rate_limit_err(), success]
+    ) as mock_comp:
+        content, _ = call_llm("hello", model="gpt-5-mini")
+
+    assert content == "ok"
+    assert mock_comp.call_count == 2
+
+
+def test_call_llm_retries_on_overloaded_internal_server_error_and_succeeds(
+    no_wait_retry,
+):
+    """Covers the Anthropic overloaded_error path (litellm.InternalServerError)."""
+    overloaded = _internal_server_err(
+        'AnthropicError - {"type":"error","error":{"type":"overloaded_error","message":"Overloaded"}}'
+    )
+    success = _make_completion_response("recovered")
+    with patch("litellm.completion", side_effect=[overloaded, success]) as mock_comp:
+        content, _ = call_llm("hello", model="claude-haiku-4-5")
+
+    assert content == "recovered"
+    assert mock_comp.call_count == 2
+
+
+def test_call_llm_does_not_retry_bad_request_error(no_wait_retry):
+    """Non-retryable errors should propagate immediately without a second attempt."""
+    with patch("litellm.completion", side_effect=_bad_request_err()) as mock_comp:
+        with pytest.raises(Exception):
+            call_llm("hello", model="gpt-5-mini")
+
+    assert mock_comp.call_count == 1
+
+
+def test_call_llm_reraises_after_retries_exhausted(no_wait_retry, monkeypatch):
+    """When all retry attempts fail the original error is reraised."""
+    # Limit to 2 attempts so the test terminates quickly.
+    import tenacity
+
+    monkeypatch.setattr(
+        _do_litellm_completion.retry,
+        "stop",
+        tenacity.stop_after_attempt(2),
+    )
+    err = _rate_limit_err("still rate limited")
+    with patch("litellm.completion", side_effect=err):
+        # call_llm wraps the re-raised error as "Error calling LLM: <original>"
+        with pytest.raises(Exception, match="Error calling LLM.*still rate limited"):
+            call_llm("hello", model="gpt-5-mini")

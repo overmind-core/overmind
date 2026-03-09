@@ -1,3 +1,4 @@
+import logging
 import re
 from typing import Any
 import litellm
@@ -8,6 +9,43 @@ from overmind.core.model_resolver import (
 )
 from pydantic import BaseModel
 import json_repair
+from tenacity import (
+    retry,
+    stop_after_delay,
+    wait_exponential_jitter,
+    before_sleep_log,
+    RetryCallState,
+)
+
+logger = logging.getLogger(__name__)
+
+# Transient provider errors that warrant automatic retry
+_RETRYABLE_LITELLM_ERRORS = (
+    litellm.RateLimitError,
+    litellm.InternalServerError,  # includes Anthropic overloaded_error
+    litellm.ServiceUnavailableError,
+    litellm.APIConnectionError,
+)
+
+
+def _should_retry_llm_call(retry_state: RetryCallState) -> bool:
+    """Retry on transient provider errors (rate limits, overloaded, unavailable, network)."""
+    exc = retry_state.outcome.exception()
+    if exc is None:
+        return False
+    return isinstance(exc, _RETRYABLE_LITELLM_ERRORS)
+
+
+@retry(
+    retry=_should_retry_llm_call,
+    wait=wait_exponential_jitter(initial=1, max=60, jitter=5),
+    stop=stop_after_delay(300),  # 5-minute hard cap
+    reraise=True,
+    before_sleep=before_sleep_log(logger, logging.WARNING),
+)
+def _do_litellm_completion(completion_kwargs: dict, request_kwargs: dict):
+    """Thin wrapper around litellm.completion with automatic retry for transient errors."""
+    return litellm.completion(**completion_kwargs, **request_kwargs)
 
 
 # Reasoning support: https://docs.litellm.ai/docs/reasoning_content
@@ -412,7 +450,7 @@ def call_llm(
                     litellm.modify_params = True
 
         try:
-            response = litellm.completion(**completion_kwargs, **request_kwargs)
+            response = _do_litellm_completion(completion_kwargs, request_kwargs)
         finally:
             if prev_modify_params is not None:
                 litellm.modify_params = prev_modify_params
