@@ -358,8 +358,10 @@ async def update_prompt_criteria(
     # prompt improvement can re-trigger with the updated scoring logic.
     prompt.evaluation_criteria = request.evaluation_criteria
     from overmind.tasks.prompt_improvement import invalidate_prompt_improvement_metadata
+    from overmind.tasks.backtesting import invalidate_backtesting_metadata
 
     invalidate_prompt_improvement_metadata(prompt)
+    invalidate_backtesting_metadata(prompt)
 
     await db.commit()
     await db.refresh(prompt)

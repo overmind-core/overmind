@@ -63,6 +63,12 @@ All must be true:
 - After improvement runs (or is skipped), `improvement_metadata.last_improvement_span_count` is advanced to prevent re-triggering at the same count
 - `invalidate_prompt_improvement_metadata(prompt)` — rolls back the threshold by one step when criteria or description changes, so improvement re-triggers with updated scoring logic
 
+## Job Retry Behaviour
+
+When `_execute_prompt_improvement` raises an exception, the job retries up to **3 times** before being marked FAILED:
+- Retry: `job.result["parameters"]["retry_count"]` is incremented and `job.status` is reset to `"pending"` — the reconciler re-dispatches on its next run.
+- Final failure (after 3 retries): job is marked `FAILED` and `prompt.improvement_metadata["last_improvement_span_count"]` is advanced to the current `scored_count` so the scheduler moves on to the next threshold rather than immediately re-triggering.
+
 ## Two Paths: Text vs Tool-Calling
 
 ### Text prompts

@@ -76,6 +76,13 @@ class Prompt(Base):
     # }
     backtest_model_suggestions = Column(JSONB, nullable=True)
 
+    # Backtesting metadata tracking threshold state for the backtesting pipeline.
+    # Format: {
+    #   "last_backtest_span_count": 120,
+    #   "criteria_invalidated": true,   # set when criteria/description changes; cleared after backtest runs
+    # }
+    backtest_metadata = Column(JSONB, nullable=True)
+
     # User-defined categorisation tags, e.g. ["HR", "financial"]
     # Stored as a JSON array of strings; shared across all versions of the same slug
     tags = Column(JSONB, nullable=True)

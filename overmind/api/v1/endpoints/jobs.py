@@ -14,7 +14,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from overmind.api.v1.endpoints.utils.jobs import (
     get_job_or_404,
-    cancel_existing_system_jobs,
     sync_running_job_statuses,
     create_job,
     find_latest_prompt,
@@ -166,11 +165,6 @@ async def create_job_from_user(
     # Verify user has access to the project
     if not await user.is_project_member(project_uuid, db):
         raise HTTPException(status_code=403, detail="Access denied to this project")
-
-    # Cancel any existing PENDING system jobs for the same scope
-    await cancel_existing_system_jobs(
-        db, project_uuid, prompt_slug, data.job_type.value
-    )
 
     # Prepare parameters based on job type
     job_parameters = {

@@ -66,9 +66,9 @@ All must be true (in order):
 1. Evaluation criteria exists (`prompt.evaluation_criteria["correctness"]` non-empty)
 1. Prompt used recently (last 7 days)
 1. Minimum scored spans (`>= MIN_SPANS_FOR_BACKTESTING = 10`)
-1. Threshold re-run guard: `scored_count >= _next_backtest_threshold(last_scored_count)` — sequence **30, 100, 200, 500, 1000**, then every 1000 (`_INITIAL_THRESHOLDS`)
+1. Threshold re-run guard: `scored_count >= _next_backtest_threshold(last_scored_count)` — sequence **30, 100, 200, 500, 1000**, then every 1000 (`_INITIAL_THRESHOLDS`). **System-triggered only.** `last_scored_count` is read from `prompt.backtest_metadata["last_backtest_span_count"]` (falls back to querying COMPLETED/PARTIALLY_COMPLETED job records for backward compat). PARTIALLY_COMPLETED jobs advance the threshold equally to COMPLETED jobs.
 1. Minimum available spans (`>= 10`)
-1. No existing PENDING/RUNNING backtesting job
+1. No existing PENDING/RUNNING backtesting job — applies to **both user- and system-triggered** paths. A new job is rejected if any job is already pending or running (regardless of who triggered it).
 1. At least one model specified (user-triggered only)
 
 ## Model Selection
@@ -118,6 +118,22 @@ Backtest results are stored as regular SpanModel records with special metadata:
 | `_run_model_on_input(model_name, input_text, messages?, tools?, model_key?)` | Single model invocation; model_key controls reasoning (e.g. `gpt-5.2:reasoning-medium`) |
 | `_generate_recommendations(current_model, baseline, model_metrics)` | Recommendation logic    |
 | `validate_backtesting_eligibility(prompt, session, models?)`        | Eligibility check       |
+| `invalidate_backtesting_metadata(prompt)`                           | Roll back threshold by one step when criteria/description changes |
+| `_previous_backtest_threshold(last_count)`                          | Returns the threshold one step below `last_count` (used by invalidation) |
+
+## Threshold Tracking (`prompt.backtest_metadata`)
+
+Threshold state is stored in `prompt.backtest_metadata["last_backtest_span_count"]` on the Prompt model. This enables:
+- **Criteria invalidation**: `invalidate_backtesting_metadata(prompt)` rolls back one step so backtesting re-runs with updated scoring.
+- **PARTIALLY_COMPLETED advancement**: Both COMPLETED and PARTIALLY_COMPLETED write the threshold, ensuring partial results are not wasted.
+
+On every terminal job state (COMPLETED, PARTIALLY_COMPLETED), `_run_backtesting` updates `prompt.backtest_metadata["last_backtest_span_count"] = scored_count_at_creation`. The `criteria_invalidated` flag is cleared after each completed run.
+
+## Job Retry Behaviour
+
+When `_run_backtesting` raises an exception, the job retries up to **3 times** before being marked FAILED:
+- Retry: `job.result["parameters"]["retry_count"]` is incremented and `job.status` is reset to `"pending"` — the reconciler re-dispatches on its next run.
+- Final failure (after 3 retries): job is marked `FAILED` and `prompt.backtest_metadata["last_backtest_span_count"]` is advanced to `scored_count_at_creation` so the scheduler moves on to the next threshold rather than immediately re-triggering.
 
 ## Special Case: "current_is_best" with No Alternates
 
@@ -129,5 +145,6 @@ When `verdict == "current_is_best"` and `total_items == 0` (no alternate models 
 - The 15pp disqualification threshold and 5pp "within range" threshold are hardcoded in `_generate_recommendations`
 - Tool-calling backtests replay the full conversation (messages + tools) — they don't just send the input text
 - Result spans use `operation="backtest:{model}"` which is filtered by `SpanModel._SYSTEM_OPERATION_PREFIXES` — if you change the prefix format, update the model too
-- The `scored_count_at_creation` parameter is preserved in `job.result` across status updates so the threshold guard works correctly
+- The `scored_count_at_creation` parameter is preserved in `job.result["parameters"]` across status updates for auditing and retry threshold advancement
 - Early model suggestions (`prompt.backtest_model_suggestions`) are separate from backtesting `Suggestion` records — they live on the Prompt model and are generated from the agent description alone, not from span data
+- Criteria or description changes call `invalidate_backtesting_metadata(prompt)` (from `PUT /criteria` and agent review endpoints) alongside `invalidate_prompt_improvement_metadata`
