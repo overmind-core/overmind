@@ -721,65 +721,35 @@ async def _get_unscored_spans() -> list[SpanModel]:
     1. Don't have a correctness score in feedback_score
     2. Are linked to a prompt template (have prompt_id)
     3. The linked prompt has evaluation_criteria with correctness defined
+
+    Uses a single JOIN query to avoid N+1 (spans + prompts in one round-trip).
     """
+    prompt_id_expr = func.concat(
+        cast(Prompt.project_id, String),
+        "_",
+        cast(Prompt.version, String),
+        "_",
+        Prompt.slug,
+    )
     AsyncSessionLocal = get_session_local()
     async with AsyncSessionLocal() as session:
-        # Query for all unscored spans with prompt_id (no limit)
-        # Exclude system-generated spans (prompt tuning, backtesting)
         result = await session.execute(
-            select(SpanModel).where(
+            select(SpanModel)
+            .join(Prompt, SpanModel.prompt_id == prompt_id_expr)
+            .where(
                 and_(
-                    SpanModel.prompt_id.isnot(None),  # Must be linked to a prompt
+                    SpanModel.prompt_id.isnot(None),
                     or_(
-                        SpanModel.feedback_score.is_(None),  # No feedback_score at all
-                        ~SpanModel.feedback_score.has_key(
-                            "correctness"
-                        ),  # Or no correctness key
+                        SpanModel.feedback_score.is_(None),
+                        ~SpanModel.feedback_score.has_key("correctness"),
                     ),
                     SpanModel.exclude_system_spans(),
+                    Prompt.evaluation_criteria.isnot(None),
+                    Prompt.evaluation_criteria.has_key("correctness"),
                 )
             )
         )
-        spans = result.scalars().all()
-
-        # Filter spans whose prompts have correctness criteria
-        valid_spans = []
-        for span in spans:
-            if not span.prompt_id:
-                continue
-
-            try:
-                # Parse the prompt_id to get components
-                project_id_str, version, slug = Prompt.parse_prompt_id(span.prompt_id)
-                project_uuid = UUID(project_id_str)
-            except (ValueError, TypeError):
-                logger.warning(
-                    f"Invalid prompt_id format for span {span.span_id}: {span.prompt_id}"
-                )
-                continue
-
-            # Get the prompt
-            prompt_result = await session.execute(
-                select(Prompt).where(
-                    and_(
-                        Prompt.project_id == project_uuid,
-                        Prompt.version == version,
-                        Prompt.slug == slug,
-                    )
-                )
-            )
-            prompt = prompt_result.scalar_one_or_none()
-
-            # Check if prompt has correctness criteria
-            if prompt and prompt.evaluation_criteria:
-                criteria = prompt.evaluation_criteria
-                if isinstance(criteria, dict) and "correctness" in criteria:
-                    if criteria["correctness"] and isinstance(
-                        criteria["correctness"], list
-                    ):
-                        valid_spans.append(span)
-
-        return valid_spans
+        return list(result.scalars().all())
 
 
 async def _auto_evaluate_unscored_spans(
