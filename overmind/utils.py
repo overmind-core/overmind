@@ -1,3 +1,5 @@
+import os
+import requests
 from datetime import datetime
 import logging
 
@@ -38,3 +40,20 @@ def calculate_llm_usage_cost(
     except Exception:
         logger.warning(f"Unknown model for LLM cost calculation: {model_name}")
         return 0.0
+
+
+APP_VERSION = os.getenv("APP_VERSION", "0.0.1")
+
+
+def compare_version():
+    try:
+        response = requests.get("https://api.overmindlab.ai/info")
+        if response.status_code != 200:
+            return False
+        remote_version = response.json()["version"]
+        if remote_version != APP_VERSION:
+            logger.warning(
+                f"Version mismatch detected. Please update to the latest version. Local version: {APP_VERSION}, Remote version: {remote_version}",
+            )
+    except Exception:
+        logger.warning("Failed to compare versions")
