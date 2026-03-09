@@ -35,11 +35,20 @@ call_llm(
 1. Else → build `[{"role": "system", ...}, {"role": "user", ...}]` from `system_prompt` + `input_text`
 1. Resolve model via `normalize_model_name(model)` or `_get_default_model()`
 1. Map to LiteLLM format: `"{provider}/{model_name}"`
-1. Call `litellm.completion()` with optional `tools`, `response_format`, `cache_control`, `reasoning_effort`, `thinking`
+1. Call `_do_litellm_completion()` (which wraps `litellm.completion()`) with automatic retry for transient errors
 1. Anthropic manual mode: use `thinking_budget_tokens` → `thinking={"type":"enabled","budget_tokens":N}`; no reasoning_effort
 1. Anthropic adaptive / OpenAI / Gemini: use `reasoning_effort`; for Anthropic + tools, enable `litellm.modify_params` workaround for thinking_blocks
 1. If response content is None and `tool_calls` present → serialize as `{"tool_calls": [...]}`
 1. Return `(content.strip(), stats)`; stats may include `reasoning_content` when model returns it
+
+### Retry behaviour (`_do_litellm_completion`)
+
+`call_llm` internally routes through `_do_litellm_completion`, a tenacity-decorated helper that retries on transient provider errors before the outer `call_llm` exception wrapper fires.
+
+- **Retried errors:** `RateLimitError` (429), `InternalServerError` (includes Anthropic `overloaded_error`), `ServiceUnavailableError`, `APIConnectionError`
+- **Backoff:** exponential with jitter — initial 1 s, max 60 s per wait
+- **Hard cap:** 5 minutes total per `call_llm` invocation (`stop_after_delay(300)`)
+- **Non-retryable errors** (auth, bad request, unsupported params, etc.) propagate immediately
 
 ### Stats dict
 

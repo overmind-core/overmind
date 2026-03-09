@@ -7,16 +7,8 @@ from typing import Any
 from uuid import UUID
 
 from celery import shared_task
-from litellm import RateLimitError
 from sqlalchemy import select, and_, or_, func, cast, String
 from pydantic import BaseModel, Field
-from tenacity import (
-    retry,
-    stop_after_delay,
-    wait_exponential_jitter,
-    before_sleep_log,
-    RetryCallState,
-)
 from overmind.db.session import get_session_local
 from overmind.models.traces import SpanModel
 from overmind.models.prompts import Prompt
@@ -61,21 +53,6 @@ MIN_UNSCORED_SPANS_FOR_SCORING = 10
 PRE_REVIEW_SCORED_SPAN_CAP = 30
 
 
-def _should_retry_llm_call(retry_state: RetryCallState) -> bool:
-    """
-    Custom retry predicate for LLM calls:
-    - RateLimitError (429): keep retrying with backoff until the 5-min stop deadline.
-    - Any other error: allow a single retry only (attempt 1 failed → try attempt 2).
-    """
-    exc = retry_state.outcome.exception()
-    if exc is None:
-        return False
-    if isinstance(exc, RateLimitError):
-        return True
-    # For non-rate-limit errors: retry once (attempt_number is 1-based)
-    return retry_state.attempt_number < 2
-
-
 class CorrectnessResult(BaseModel):
     """Pydantic model for LLM correctness evaluation response."""
 
@@ -87,13 +64,6 @@ def _format_criteria(criteria_rules: list[str]) -> str:
     return "\n".join(f"- Rule {i + 1}: {rule}" for i, rule in enumerate(criteria_rules))
 
 
-@retry(
-    retry=_should_retry_llm_call,
-    wait=wait_exponential_jitter(initial=1, max=60, jitter=5),
-    stop=stop_after_delay(300),  # 5 minute hard cap per LLM call
-    reraise=True,
-    before_sleep=before_sleep_log(logger, logging.WARNING),
-)
 def _evaluate_correctness_with_llm(
     input_data: dict[str, Any],
     output_data: dict[str, Any],
@@ -111,10 +81,8 @@ def _evaluate_correctness_with_llm(
     - legacy agentic (no response_type) → existing agentic judge
     - plain non-agentic → existing simple correctness judge
 
-    Retry strategy:
-    - Rate limit errors (429): exponential backoff with jitter (1s → 60s cap),
-      retrying until 5-minute deadline is reached.
-    - Other errors: single retry only, then re-raise.
+    Transient errors (rate limits, overloaded, unavailable) are retried automatically
+    inside call_llm with exponential backoff up to a 5-minute deadline.
 
     Args:
         input_data: The input payload
