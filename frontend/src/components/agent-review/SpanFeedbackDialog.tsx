@@ -1,14 +1,10 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import {
   WarningDiamond as AlertCircle,
-  Check,
   Check as CheckCircle2,
   ChevronLeft,
   ChevronRight,
-  Clipboard,
-  Eye,
-  EyeOff,
   Loader as Loader2,
   ThumbsDown,
   ThumbsUp,
@@ -18,6 +14,7 @@ import {
 import type { AgentOut, SpanForReview } from "@/api";
 import apiClient from "@/client";
 import { Badge } from "@/components/ui/badge";
+import { BlockActions } from "@/components/ui/block-actions";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -95,21 +92,21 @@ function ScoreChip({ score }: { score: number | null }) {
 // ---------------------------------------------------------------------------
 
 function ToolCallBubble({ tc }: { tc: ToolCallItem }) {
-  const prettyArgs = (() => {
+  const prettyArgs = useMemo(() => {
     if (!tc.function?.arguments) return "";
     try {
       return JSON.stringify(JSON.parse(tc.function.arguments), null, 2);
     } catch {
       return tc.function.arguments;
     }
-  })();
+  }, [tc.function?.arguments]);
 
   return (
     <div className="rounded-lg border border-border/60 bg-muted/50 px-3 py-2 font-mono text-xs">
       <span className="font-semibold text-foreground">{tc.function?.name ?? "tool"}</span>
       {tc.id && <span className="ml-2 text-muted-foreground/60">({tc.id.slice(0, 12)}…)</span>}
       {prettyArgs && (
-        <pre className="mt-1 whitespace-pre-wrap wrap-break-word text-muted-foreground">
+        <pre className="mt-1 whitespace-pre-wrap break-words text-muted-foreground">
           {prettyArgs}
         </pre>
       )}
@@ -125,17 +122,10 @@ function MessageBubble({ m }: { m: ChatMessage }) {
   const content = m.content ?? "";
   const canMarkdown = !isTool && content.length > 0 && isLikelyMarkdown(content);
   const [mode, setMode] = useState<"raw" | "markdown">(canMarkdown ? "markdown" : "raw");
-  const [copied, setCopied] = useState(false);
 
   const roleLabel = isTool
     ? `tool${m.tool_call_id ? ` · ${m.tool_call_id.slice(0, 12)}…` : ""}`
     : m.role;
-
-  function copy() {
-    void navigator.clipboard.writeText(content);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
-  }
 
   return (
     <div className={cn("flex flex-col gap-1", isUser ? "items-end" : "items-start")}>
@@ -144,32 +134,12 @@ function MessageBubble({ m }: { m: ChatMessage }) {
           {roleLabel}
         </span>
         {content.length > 0 && (
-          <div
-            className={cn("flex items-center gap-0.5", isUser ? "flex-row-reverse" : "flex-row")}
-          >
-            {canMarkdown && (
-              <button
-                className="flex items-center gap-1 rounded px-1 py-0.5 text-[10px] font-medium text-muted-foreground/60 transition-colors hover:bg-muted hover:text-foreground"
-                onClick={() => setMode((prev) => (prev === "raw" ? "markdown" : "raw"))}
-                title={mode === "raw" ? "Render markdown" : "View raw"}
-                type="button"
-              >
-                {mode === "raw" ? <Eye className="size-3" /> : <EyeOff className="size-3" />}
-              </button>
-            )}
-            <button
-              className="rounded p-0.5 text-muted-foreground/60 transition-colors hover:bg-muted hover:text-foreground"
-              onClick={copy}
-              title={copied ? "Copied!" : "Copy to clipboard"}
-              type="button"
-            >
-              {copied ? (
-                <Check className="size-3 text-emerald-500" />
-              ) : (
-                <Clipboard className="size-3" />
-              )}
-            </button>
-          </div>
+          <BlockActions
+            mode={mode}
+            onToggleMode={() => setMode((prev) => (prev === "raw" ? "markdown" : "raw"))}
+            showToggle={canMarkdown}
+            text={content}
+          />
         )}
       </div>
       {/* Tool calls emitted by the assistant */}
@@ -225,13 +195,6 @@ function SpanSection({ label, value }: { label: string; value: unknown }) {
   const canMarkdown =
     !messages && typeof value === "string" && plain.length > 0 && isLikelyMarkdown(plain);
   const [mode, setMode] = useState<"raw" | "markdown">(canMarkdown ? "markdown" : "raw");
-  const [copied, setCopied] = useState(false);
-
-  function copy() {
-    void navigator.clipboard.writeText(plain);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
-  }
 
   return (
     <div>
@@ -240,40 +203,12 @@ function SpanSection({ label, value }: { label: string; value: unknown }) {
           {label}
         </p>
         {!messages && (
-          <div className="flex items-center gap-1">
-            {canMarkdown && (
-              <button
-                className="flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-                onClick={() => setMode((prev) => (prev === "raw" ? "markdown" : "raw"))}
-                title={mode === "raw" ? "Render markdown" : "View raw"}
-                type="button"
-              >
-                {mode === "raw" ? (
-                  <>
-                    <Eye className="size-3" />
-                    Preview
-                  </>
-                ) : (
-                  <>
-                    <EyeOff className="size-3" />
-                    Raw
-                  </>
-                )}
-              </button>
-            )}
-            <button
-              className="rounded p-1 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-              onClick={copy}
-              title={copied ? "Copied!" : "Copy to clipboard"}
-              type="button"
-            >
-              {copied ? (
-                <Check className="size-3 text-emerald-500" />
-              ) : (
-                <Clipboard className="size-3" />
-              )}
-            </button>
-          </div>
+          <BlockActions
+            mode={mode}
+            onToggleMode={() => setMode((prev) => (prev === "raw" ? "markdown" : "raw"))}
+            showToggle={canMarkdown}
+            text={plain}
+          />
         )}
       </div>
       {messages ? (
@@ -283,7 +218,7 @@ function SpanSection({ label, value }: { label: string; value: unknown }) {
           <MarkdownContent>{plain}</MarkdownContent>
         </div>
       ) : (
-        <pre className="whitespace-pre-wrap wrap-break-word rounded-xl bg-muted/50 px-4 py-3 font-mono text-xs leading-relaxed text-foreground">
+        <pre className="whitespace-pre-wrap break-words rounded-xl bg-muted/50 px-4 py-3 font-mono text-xs leading-relaxed text-foreground">
           {plain}
         </pre>
       )}
@@ -331,6 +266,12 @@ export function SpanFeedbackDialog({
   const [fetchError, setFetchError] = useState<string | null>(null);
 
   const fixedSpanIdsRef = useRef<string[]>([]);
+  const mountedRef = useRef(true);
+  useEffect(() => {
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
 
   const loadSpans = useCallback(async () => {
     setPhase("loading");
@@ -484,94 +425,112 @@ export function SpanFeedbackDialog({
 
     setPhase("refreshing");
 
-    if (allPositive) {
-      // All scores look correct — persist votes then close.
-      setStatusMsg("Saving feedback…");
-      await persistFeedback();
-      setStatusMsg("Completing review…");
-      await completeReview();
-      setPhase("done");
-      setTimeout(onComplete, 800);
-      return;
-    }
-
-    if (iteration >= MAX_ITERATIONS - 1) {
-      // Final iteration — persist votes then close.
-      setStatusMsg("Saving feedback…");
-      await persistFeedback();
-      setStatusMsg("Completing review…");
-      await completeReview();
-      setPhase("thanked");
-      return;
-    }
-
-    // Intermediate iteration — pass feedback inline to avoid writing stale
-    // judge_feedback to the DB before the session is complete.
-    const negativeSpans = spans.filter((s) => feedback[s.spanId]?.vote === "down");
-    const negativeSpanIds = negativeSpans.map((s) => s.spanId);
-    const inlineFeedback = Object.fromEntries(
-      negativeSpans.map((s) => [s.spanId, { rating: "down", text: feedback[s.spanId]?.text ?? "" }])
-    );
-
-    setStatusMsg("Updating agent description based on feedback…");
-    await apiClient.agentReviews.syncRefreshDescriptionApiV1AgentReviewsPromptSlugSyncRefreshDescriptionPost(
-      {
-        projectId: projectId,
-        promptSlug: agent.slug,
-        syncRefreshDescriptionRequest: {
-          feedback: inlineFeedback,
-          spanIds: negativeSpanIds,
-        },
-      }
-    );
-
-    setStatusMsg("Re-scoring spans…");
-    const evalResult = await apiClient.spans.evaluateSpansApiV1SpansEvaluatePost({
-      requestBody: negativeSpanIds,
-    });
-
-    setStatusMsg("Waiting for scores to update…");
-    const jobId = (evalResult as { job_id?: string }).job_id;
-    if (jobId) {
-      const deadline = Date.now() + JOB_POLL_TIMEOUT_MS;
-      while (Date.now() < deadline) {
-        await new Promise((resolve) => setTimeout(resolve, JOB_POLL_INTERVAL_MS));
-        try {
-          const job = await apiClient.jobs.getJobApiV1JobsJobIdGet({ jobId });
-          if (job.status === "completed" || job.status === "failed") break;
-        } catch {
-          // ignore transient errors
-        }
-      }
-    }
-
-    setStatusMsg("Loading updated spans…");
     try {
-      const refreshed =
-        await apiClient.agentReviews.getSpansForReviewApiV1AgentReviewsPromptSlugReviewSpansGet({
+      if (allPositive) {
+        // All scores look correct — persist votes then close.
+        setStatusMsg("Saving feedback…");
+        await persistFeedback();
+        setStatusMsg("Completing review…");
+        await completeReview();
+        setPhase("done");
+        setTimeout(onComplete, 800);
+        return;
+      }
+
+      if (iteration >= MAX_ITERATIONS - 1) {
+        // Final iteration — persist votes then close.
+        setStatusMsg("Saving feedback…");
+        await persistFeedback();
+        setStatusMsg("Completing review…");
+        await completeReview();
+        setPhase("thanked");
+        return;
+      }
+
+      // Intermediate iteration — pass feedback inline to avoid writing stale
+      // judge_feedback to the DB before the session is complete.
+      const negativeSpans = spans.filter((s) => feedback[s.spanId]?.vote === "down");
+      const negativeSpanIds = negativeSpans.map((s) => s.spanId);
+      const inlineFeedback = Object.fromEntries(
+        negativeSpans.map((s) => [
+          s.spanId,
+          { rating: "down", text: feedback[s.spanId]?.text ?? "" },
+        ])
+      );
+
+      setStatusMsg("Updating agent description based on feedback…");
+      await apiClient.agentReviews.syncRefreshDescriptionApiV1AgentReviewsPromptSlugSyncRefreshDescriptionPost(
+        {
           projectId: projectId,
           promptSlug: agent.slug,
+          syncRefreshDescriptionRequest: {
+            feedback: inlineFeedback,
+            spanIds: negativeSpanIds,
+          },
+        }
+      );
+
+      if (!mountedRef.current) return;
+      setStatusMsg("Re-scoring spans…");
+      const evalResult = await apiClient.spans.evaluateSpansApiV1SpansEvaluatePost({
+        requestBody: negativeSpanIds,
+      });
+
+      if (!mountedRef.current) return;
+      setStatusMsg("Waiting for scores to update…");
+      const jobId = (evalResult as { job_id?: string }).job_id;
+      if (jobId) {
+        const deadline = Date.now() + JOB_POLL_TIMEOUT_MS;
+        while (Date.now() < deadline && mountedRef.current) {
+          await new Promise((resolve) => setTimeout(resolve, JOB_POLL_INTERVAL_MS));
+          if (!mountedRef.current) return;
+          try {
+            const job = await apiClient.jobs.getJobApiV1JobsJobIdGet({ jobId });
+            if (job.status === "completed" || job.status === "failed") break;
+          } catch {
+            // ignore transient poll errors
+          }
+        }
+      }
+
+      if (!mountedRef.current) return;
+      setStatusMsg("Loading updated spans…");
+      try {
+        const refreshed =
+          await apiClient.agentReviews.getSpansForReviewApiV1AgentReviewsPromptSlugReviewSpansGet({
+            projectId: projectId,
+            promptSlug: agent.slug,
+          });
+
+        if (!mountedRef.current) return;
+        const refreshedAll = [...refreshed.worstSpans, ...refreshed.bestSpans];
+        const byId = new Map(refreshedAll.map((s) => [s.spanId, s]));
+        const ordered = fixedSpanIdsRef.current.flatMap((id) => {
+          const span = byId.get(id);
+          return span ? [span] : [];
         });
+        setSpans(ordered.length > 0 ? ordered : refreshedAll);
+      } catch {
+        // keep existing spans
+      }
 
-      const refreshedAll = [...refreshed.worstSpans, ...refreshed.bestSpans];
-      const byId = new Map(refreshedAll.map((s) => [s.spanId, s]));
-      const ordered = fixedSpanIdsRef.current.map((id) => byId.get(id) ?? refreshedAll[0]);
-      setSpans(ordered.filter(Boolean));
+      if (!mountedRef.current) return;
+      setIteration((i) => i + 1);
+      setCurrentIdx(0);
+      const fresh: Record<string, FeedbackEntry | null> = {};
+      fixedSpanIdsRef.current.forEach((id) => {
+        fresh[id] = null;
+      });
+      setFeedback(fresh);
+      setPendingDownId(null);
+      setPendingTexts({});
+      setPhase("reviewing");
+      setStatusMsg("");
     } catch {
-      // keep existing spans
+      if (!mountedRef.current) return;
+      setPhase("error");
+      setStatusMsg("");
     }
-
-    setIteration((i) => i + 1);
-    setCurrentIdx(0);
-    const fresh: Record<string, FeedbackEntry | null> = {};
-    fixedSpanIdsRef.current.forEach((id) => {
-      fresh[id] = null;
-    });
-    setFeedback(fresh);
-    setPendingDownId(null);
-    setPendingTexts({});
-    setPhase("reviewing");
-    setStatusMsg("");
   }
 
   // ---- render --------------------------------------------------------------

@@ -2,9 +2,10 @@ import type React from "react";
 import { useMemo, useState } from "react";
 
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { Check, Clipboard, Eye, EyeOff, ThumbsDown, ThumbsUp } from "pixelarticons/react";
+import { ThumbsDown, ThumbsUp } from "pixelarticons/react";
 
 import apiClient from "@/client";
+import { BlockActions } from "@/components/ui/block-actions";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
@@ -33,62 +34,6 @@ function formatAttributeValue(value: unknown): string {
     return JSON.stringify(value, null, 2);
   }
   return String(value);
-}
-
-function useCopy(text: string) {
-  const [copied, setCopied] = useState(false);
-  function copy() {
-    void navigator.clipboard.writeText(text);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
-  }
-  return { copied, copy };
-}
-
-function BlockActions({
-  text,
-  mode,
-  onToggleMode,
-  showToggle,
-}: {
-  text: string;
-  mode: "raw" | "markdown";
-  onToggleMode: () => void;
-  showToggle: boolean;
-}) {
-  const { copied, copy } = useCopy(text);
-  return (
-    <div className="flex items-center gap-1">
-      {showToggle && (
-        <button
-          className="flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-          onClick={onToggleMode}
-          title={mode === "raw" ? "Render markdown" : "View raw"}
-          type="button"
-        >
-          {mode === "raw" ? (
-            <>
-              <Eye className="size-3" />
-              Preview
-            </>
-          ) : (
-            <>
-              <EyeOff className="size-3" />
-              Raw
-            </>
-          )}
-        </button>
-      )}
-      <button
-        className="rounded p-1 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-        onClick={copy}
-        title={copied ? "Copied!" : "Copy to clipboard"}
-        type="button"
-      >
-        {copied ? <Check className="size-3 text-emerald-500" /> : <Clipboard className="size-3" />}
-      </button>
-    </div>
-  );
 }
 
 function AttributesTable({
@@ -121,7 +66,7 @@ function AttributesTable({
                 {key === "PromptId" ? "AgentId" : key}
               </TableCell>
               <TableCell className="text-xs">
-                <pre className="wrap-break-word whitespace-pre-wrap rounded bg-muted/30 px-2 py-1.5 font-mono text-xs">
+                <pre className="break-words whitespace-pre-wrap rounded bg-muted/30 px-2 py-1.5 font-mono text-xs">
                   {formatAttributeValue(value)}
                 </pre>
               </TableCell>
@@ -184,7 +129,7 @@ function ToolCallBlock({ tc }: { tc: ToolCallItem }) {
         {tc.function?.name ?? "tool"}
       </span>
       {prettyArgs && (
-        <pre className="mt-1 whitespace-pre-wrap wrap-break-word text-muted-foreground">
+        <pre className="mt-1 whitespace-pre-wrap break-words text-muted-foreground">
           {prettyArgs}
         </pre>
       )}
@@ -326,7 +271,7 @@ function MessageRow({ msg }: { msg: ChatMessage }) {
         )}
       </div>
       {text !== "" && (
-        <div className="wrap-break-word">
+        <div className="break-words">
           {mode === "markdown" && canMarkdown ? (
             <MarkdownContent compact>{text}</MarkdownContent>
           ) : (
@@ -394,9 +339,7 @@ function JsonBlock({
           {mode === "markdown" && canMarkdown ? (
             <MarkdownContent compact>{parsedValue}</MarkdownContent>
           ) : (
-            <pre className="whitespace-pre-wrap wrap-break-word font-mono text-xs">
-              {parsedValue}
-            </pre>
+            <pre className="whitespace-pre-wrap break-words font-mono text-xs">{parsedValue}</pre>
           )}
         </div>
       </div>
@@ -407,7 +350,7 @@ function JsonBlock({
       return (
         <div className="overflow-hidden rounded-md border border-border">
           {header}
-          <pre className="p-3 text-xs font-mono whitespace-pre-wrap wrap-break-word">
+          <pre className="p-3 text-xs font-mono whitespace-pre-wrap break-words">
             {JSON.stringify(parsedValue, null, 2)}
           </pre>
         </div>
@@ -435,6 +378,7 @@ function FeedbackTextInput({
   feedbackMutation,
   feedbackType,
   initialText,
+  rating,
 }: {
   feedbackMutation: {
     mutate: (vars: {
@@ -446,6 +390,7 @@ function FeedbackTextInput({
   };
   feedbackType: "judge" | "agent";
   initialText?: string | null;
+  rating: "up" | "down";
 }) {
   const [text, setText] = useState(initialText ?? "");
   return (
@@ -461,7 +406,7 @@ function FeedbackTextInput({
         disabled={feedbackMutation.isPending || !text.trim()}
         onClick={() => {
           setText("");
-          feedbackMutation.mutate({ feedbackType, rating: "up", text: text.trim() || undefined });
+          feedbackMutation.mutate({ feedbackType, rating, text: text.trim() || undefined });
         }}
         size="sm"
       >
@@ -615,6 +560,7 @@ export function SpanDetailView({ span, queryKey }: SpanDetailViewProps) {
                     feedbackMutation={feedbackMutation}
                     feedbackType="agent"
                     initialText={agentFeedback?.text}
+                    rating={agentFeedback?.rating ?? "up"}
                   />
                 </div>
               </div>

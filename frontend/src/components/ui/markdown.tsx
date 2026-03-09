@@ -5,13 +5,16 @@ import remarkGfm from "remark-gfm";
 import { cn } from "@/lib/utils";
 
 export function isLikelyMarkdown(text: string): boolean {
-  return /^#{1,6}\s|^\s*[-*+]\s|\*\*|__|\[.+\]\(|^```|^>/m.test(text);
+  // `__` is intentionally excluded — it triggers false positives on Python dunder
+  // methods (__init__, __str__, etc.) and SQL/technical identifiers.
+  // Bold is already covered by `\*\*`.
+  return /^#{1,6}\s|^\s*[-*+]\s|\*\*|\[.+\]\(|^```|^>/m.test(text);
 }
 
 /**
  * Renders markdown content with consistent styling.
- * @param compact - adds `text-xs` to prose elements (p, ul, ol, blockquote).
- *                  Use for dense UI contexts like trace panels.
+ * @param compact - reduces font sizes across all prose elements (headings, p, ul, ol, li,
+ *                  blockquote). Use for dense UI contexts like trace panels.
  */
 export function MarkdownContent({
   children,
@@ -23,16 +26,18 @@ export function MarkdownContent({
   return (
     <ReactMarkdown
       components={{
-        a: ({ href, children }) => (
-          <a
-            className="text-primary underline underline-offset-2 hover:text-primary/80"
-            href={href}
-            rel="noopener noreferrer"
-            target="_blank"
-          >
-            {children}
-          </a>
-        ),
+        a: ({ href, children }) => {
+          const isExternal = !!href && (href.startsWith("http") || href.startsWith("//"));
+          return (
+            <a
+              className="text-primary underline underline-offset-2 hover:text-primary/80"
+              href={href}
+              {...(isExternal ? { rel: "noopener noreferrer", target: "_blank" } : {})}
+            >
+              {children}
+            </a>
+          );
+        },
         blockquote: ({ children }) => (
           <blockquote
             className={cn(
@@ -55,20 +60,34 @@ export function MarkdownContent({
         },
         em: ({ children }) => <em className="italic">{children}</em>,
         h1: ({ children }) => (
-          <h1 className="mb-2 mt-4 border-b border-border/50 pb-1 text-sm font-bold first:mt-0">
+          <h1
+            className={cn(
+              "mb-2 mt-4 border-b border-border/50 pb-1 font-bold first:mt-0",
+              compact ? "text-xs" : "text-sm"
+            )}
+          >
             {children}
           </h1>
         ),
         h2: ({ children }) => (
-          <h2 className="mb-1.5 mt-3 text-sm font-semibold first:mt-0">{children}</h2>
+          <h2
+            className={cn("mb-1.5 mt-3 font-semibold first:mt-0", compact ? "text-xs" : "text-sm")}
+          >
+            {children}
+          </h2>
         ),
         h3: ({ children }) => (
-          <h3 className="mb-1 mt-2 text-xs font-semibold uppercase tracking-wide text-foreground/70 first:mt-0">
+          <h3
+            className={cn(
+              "mb-1 mt-2 font-semibold uppercase tracking-wide text-foreground/70 first:mt-0",
+              compact ? "text-[10px]" : "text-xs"
+            )}
+          >
             {children}
           </h3>
         ),
         hr: () => <hr className="my-2 border-border" />,
-        li: ({ children }) => <li className="mb-0.5">{children}</li>,
+        li: ({ children }) => <li className={cn("mb-0.5", compact && "text-xs")}>{children}</li>,
         ol: ({ children }) => (
           <ol className={cn("mb-2 list-decimal pl-4 last:mb-0", compact && "text-xs")}>
             {children}
