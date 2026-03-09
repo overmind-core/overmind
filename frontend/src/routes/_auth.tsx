@@ -27,7 +27,7 @@ const JOB_TYPE_LABELS: Record<string, string> = {
   judge_scoring: "LLM Judge Scoring",
   model_backtesting: "Model Backtesting",
   prompt_tuning: "Prompt Tuning",
-  scoring: "LLM Judge Scoring",
+  scoring: "LLM Judge Scoring", // legacy alias for judge_scoring (create-job-dialog uses "scoring")
   template_extraction: "Template Extraction",
 };
 

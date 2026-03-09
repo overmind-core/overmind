@@ -52,7 +52,7 @@ Repeat the parameter for multiple conditions — all are AND-ed together.
 ?filter=duration_ms;gte;100&filter=duration_ms;lte;5000
 ?filter=operation;ilike;%chat%
 ?filter=parent_span_id;isnull;true
-?filter=span_attr.gen_ai.request.model;eq;gpt-4o
+?filter=span_attr.gen_ai.request.model;eq;gpt-5-mini
 ?filter=source;in;overmind_api,langchain
 ?filter=application_name;ilike;my-%
 ```

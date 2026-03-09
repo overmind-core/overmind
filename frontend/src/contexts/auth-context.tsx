@@ -49,6 +49,7 @@ export function ClerkAuthProvider({ children }: { children: React.ReactNode }) {
       value={{
         isSignedIn: isSignedIn ?? false,
         organisationId: organization?.id ?? "",
+        refreshAuth: undefined, // Clerk manages its own auth state
       }}
     >
       {children}

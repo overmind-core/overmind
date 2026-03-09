@@ -904,7 +904,7 @@ async def generate_outputs_with_new_prompt(
     for old_span in old_spans:
         try:
             # Get the model used by the old span, stripping date suffixes
-            # so LiteLLM can resolve it (e.g. gpt-4o-2024-08-06 → gpt-4o)
+            # so LiteLLM can resolve it (e.g. gpt-5-mini-2025-08-07 → gpt-5-mini)
             raw_model = old_span.metadata_attributes["gen_ai.response.model"]
             model = normalize_model_name(raw_model)
 

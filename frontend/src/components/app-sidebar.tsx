@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useCallback, useState } from "react";
 
 import { UserButton, useUser } from "@clerk/clerk-react";
 import { Link, useNavigate, useRouteContext, useRouterState } from "@tanstack/react-router";
@@ -30,13 +30,13 @@ import { useAuthContext } from "@/contexts/auth-context";
 function useLogout() {
   const navigate = useNavigate();
   const { refreshAuth } = useAuthContext();
-  return () => {
+  return useCallback(() => {
     localStorage.removeItem("token");
     localStorage.removeItem("auth_token");
     localStorage.removeItem("auth_user");
     refreshAuth?.();
     navigate({ to: "/login" });
-  };
+  }, [navigate, refreshAuth]);
 }
 
 const navLinks = [
