@@ -36,4 +36,4 @@ repos:
         name: make lint-format
         entry: make lint-format
         language: system
-        types_or: [python, pyi]
+        types_or: [python, pyi, ts, tsx, javascript, jsx]
