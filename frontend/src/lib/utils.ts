@@ -35,10 +35,10 @@ export const offsetToNavgiation = ({
 }) => {
   const page = Math.floor(offset / limit) + 1;
   return {
-    page,
-    hasPrevious: page > 1,
     hasNext: count > offset + limit,
+    hasPrevious: page > 1,
     nextPage: page + 1,
+    page,
     previousPage: Math.max(1, page - 1),
     totalPages: Math.ceil(count / limit),
   };
@@ -54,16 +54,16 @@ export const paginationFromPageLimit = ({
   count: number;
 }) => {
   return {
+    count,
+    endItem: Math.min(page * pageSize, (page - 1) * pageSize + count),
+    hasNext: count > page * pageSize,
+    hasPrevious: page > 1,
+    nextPage: page + 1,
     page,
     pageSize,
-    count,
-    total: count,
-    startItem: (page - 1) * pageSize + 1,
-    endItem: Math.min(page * pageSize, (page - 1) * pageSize + count),
-    hasPrevious: page > 1,
-    hasNext: count > page * pageSize,
-    nextPage: page + 1,
     previousPage: Math.max(1, page - 1),
+    startItem: (page - 1) * pageSize + 1,
+    total: count,
     totalPages: Math.ceil(count / pageSize),
   };
 };

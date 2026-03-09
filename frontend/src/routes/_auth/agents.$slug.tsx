@@ -14,10 +14,6 @@ import z from "zod";
 
 import { ResponseError } from "@/api";
 import apiClient from "@/client";
-import { AgentCriteriaCard } from "@/components/agent-review/AgentCriteriaCard";
-import { AgentCriteriaReviewDialog } from "@/components/agent-review/AgentCriteriaReviewDialog";
-import { SpanFeedbackDialog } from "@/components/agent-review/SpanFeedbackDialog";
-import { BacktestConfigDialog, type ModelSuggestion } from "@/components/BacktestConfigDialog";
 import { AgentNameEditor } from "@/components/agent-detail/AgentNameEditor";
 import { AgentTagsEditor } from "@/components/agent-detail/AgentTagsEditor";
 import { DateRangePicker } from "@/components/agent-detail/DateRangePicker";
@@ -26,9 +22,13 @@ import { ReportMetricRow } from "@/components/agent-detail/ReportCard";
 import { SparklineChart, SummaryStat } from "@/components/agent-detail/SparklineChart";
 import { SuggestionsTab } from "@/components/agent-detail/SuggestionsTab";
 import { VersionsTab } from "@/components/agent-detail/VersionsTab";
+import { AgentCriteriaCard } from "@/components/agent-review/AgentCriteriaCard";
+import { AgentCriteriaReviewDialog } from "@/components/agent-review/AgentCriteriaReviewDialog";
+import { SpanFeedbackDialog } from "@/components/agent-review/SpanFeedbackDialog";
+import { BacktestConfigDialog, type ModelSuggestion } from "@/components/BacktestConfigDialog";
 import { Alert } from "@/components/ui/alert";
-import { DismissibleAlert } from "@/components/ui/dismissible-alert";
 import { Button } from "@/components/ui/button";
+import { DismissibleAlert } from "@/components/ui/dismissible-alert";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useAgentDetailQuery } from "@/hooks/use-query";
 import {
@@ -44,8 +44,8 @@ import { formatDate } from "@/lib/utils";
 export const Route = createFileRoute("/_auth/agents/$slug")({
   component: AgentDetailPage,
   validateSearch: z.object({
-    tab: z.enum(["suggestions", "jobs", "versions"]).optional().default("suggestions"),
     projectId: z.string().optional(),
+    tab: z.enum(["suggestions", "jobs", "versions"]).optional().default("suggestions"),
   }),
 });
 
@@ -72,8 +72,8 @@ function AgentDetailPage() {
     mutationFn: () =>
       apiClient.jobs
         .createPromptScoringJobApiV1JobsPromptSlugScorePost({
-          promptSlug: slug,
           projectId,
+          promptSlug: slug,
         })
         .catch(async (error) => {
           if (error instanceof ResponseError) {
@@ -91,8 +91,8 @@ function AgentDetailPage() {
     mutationFn: () =>
       apiClient.jobs
         .createPromptTuningJobApiV1JobsPromptSlugTunePost({
-          promptSlug: slug,
           projectId,
+          promptSlug: slug,
         })
         .catch(async (error) => {
           if (error instanceof ResponseError) {
@@ -107,13 +107,12 @@ function AgentDetailPage() {
     },
   });
 
-
   const updateMetadataMutation = useMutation({
     mutationFn: (req: { name?: string; tags?: string[] }) =>
       apiClient.agents
         .updateAgentMetadataApiV1AgentsPromptSlugMetadataPut({
-          promptSlug: slug,
           projectId,
+          promptSlug: slug,
           updateAgentMetadataRequest: req,
         })
         .catch(async (error) => {
@@ -167,11 +166,11 @@ function AgentDetailPage() {
   const lastEvaluated = latestVersion?.createdAt;
 
   const agentForReview = {
-    slug: agent.slug,
+    analytics: agent.analytics,
     name: agent.name,
     promptId: allVersionsSorted[0]?.promptId ?? "",
+    slug: agent.slug,
     version: agent.latestVersion,
-    analytics: agent.analytics,
   };
 
   const isPeriodicReview = Boolean(
@@ -233,8 +232,14 @@ function AgentDetailPage() {
         </div>
       )}
 
-      <DismissibleAlert error={scoreMutation.isError ? scoreMutation.error : null} variant="warning" />
-      <DismissibleAlert error={tuneMutation.isError ? tuneMutation.error : null} variant="warning" />
+      <DismissibleAlert
+        error={scoreMutation.isError ? scoreMutation.error : null}
+        variant="warning"
+      />
+      <DismissibleAlert
+        error={tuneMutation.isError ? tuneMutation.error : null}
+        variant="warning"
+      />
       <DismissibleAlert
         message="Prompt tuning has been queued. Analysis will run in the background."
         messageKey={tuneSuccessKey}
@@ -279,13 +284,19 @@ function AgentDetailPage() {
             <div className="flex-[0_0_25%] border-b border-border/40 p-5 md:border-b-0 md:border-r">
               <p className="mb-0.5 text-[0.92rem] font-semibold text-foreground">Report Card</p>
               <p className="mb-5 text-[0.75rem] text-muted-foreground">
-                {lastEvaluated ? `Last evaluated ${formatDate(lastEvaluated)}` : "Not yet evaluated"}
+                {lastEvaluated
+                  ? `Last evaluated ${formatDate(lastEvaluated)}`
+                  : "Not yet evaluated"}
               </p>
               <div className="space-y-3">
                 <ReportMetricRow
                   label="Accuracy"
                   progress={latestVersion.avgScore != null ? latestVersion.avgScore * 100 : 0}
-                  value={latestVersion.avgScore != null ? `${(latestVersion.avgScore * 100).toFixed(0)}%` : "—"}
+                  value={
+                    latestVersion.avgScore != null
+                      ? `${(latestVersion.avgScore * 100).toFixed(0)}%`
+                      : "—"
+                  }
                 />
                 <ReportMetricRow
                   label="Scored"
@@ -307,7 +318,11 @@ function AgentDetailPage() {
                       ? Math.min(100, (latestVersion.avgLatencyMs / 10000) * 100)
                       : 0
                   }
-                  value={latestVersion.avgLatencyMs != null ? `${latestVersion.avgLatencyMs.toFixed(0)} ms` : "—"}
+                  value={
+                    latestVersion.avgLatencyMs != null
+                      ? `${latestVersion.avgLatencyMs.toFixed(0)} ms`
+                      : "—"
+                  }
                 />
               </div>
             </div>
@@ -325,12 +340,22 @@ function AgentDetailPage() {
                     <SparklineChart buckets={trendBuckets} />
                   </div>
                   <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
-                    <SummaryStat label="Total Spans" value={(analytics.totalSpans ?? 0).toLocaleString()} />
-                    <SummaryStat label="Scored" value={(analytics.scoredSpans ?? 0).toLocaleString()} />
+                    <SummaryStat
+                      label="Total Spans"
+                      value={(analytics.totalSpans ?? 0).toLocaleString()}
+                    />
+                    <SummaryStat
+                      label="Scored"
+                      value={(analytics.scoredSpans ?? 0).toLocaleString()}
+                    />
                     <SummaryStat label="Total Errors" value="0" />
                     <SummaryStat
                       label="Avg Latency"
-                      value={analytics.avgLatencyMs != null ? `${analytics.avgLatencyMs.toFixed(0)} ms` : "—"}
+                      value={
+                        analytics.avgLatencyMs != null
+                          ? `${analytics.avgLatencyMs.toFixed(0)} ms`
+                          : "—"
+                      }
                     />
                   </div>
                 </>
@@ -380,12 +405,12 @@ function AgentDetailPage() {
               </Button>
               {allVersionsSorted[0]?.promptId && (
                 <BacktestConfigDialog
-                  promptId={allVersionsSorted[0].promptId}
                   onSuccess={() =>
                     queryClient.invalidateQueries({ queryKey: ["agent-detail", slug] })
                   }
+                  promptId={allVersionsSorted[0].promptId}
                   recommendations={
-                    (agent.backtestModelSuggestions?.recommendations as ModelSuggestion[] | undefined)
+                    agent.backtestModelSuggestions?.recommendations as ModelSuggestion[] | undefined
                   }
                 />
               )}
@@ -422,6 +447,7 @@ function AgentDetailPage() {
       {reviewStep === "spans" && (
         <SpanFeedbackDialog
           agent={agentForReview}
+          isPeriodicReview={isPeriodicReview}
           onClose={() => {
             setReviewStep(null);
             queryClient.invalidateQueries({ queryKey: ["agent-detail", slug] });
@@ -431,7 +457,6 @@ function AgentDetailPage() {
             queryClient.invalidateQueries({ queryKey: ["agent-detail", slug] });
           }}
           projectId={projectId}
-          isPeriodicReview={isPeriodicReview}
           scoredSpanCount={agent.analytics.scoredSpans}
         />
       )}

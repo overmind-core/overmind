@@ -6,6 +6,7 @@ import { Loader as Loader2 } from "pixelarticons/react";
 import { z } from "zod";
 
 import apiClient from "@/client";
+import { useAuthContext } from "@/contexts/auth-context";
 
 const querySchema = z.object({
   code: z.string(),
@@ -19,6 +20,7 @@ export const Route = createFileRoute("/oauth-google-complete")({
 
 function OAuthGoogleComplete() {
   const navigate = Route.useNavigate();
+  const { refreshAuth } = useAuthContext();
   const { code, state } = Route.useSearch();
   const hasStarted = useRef(false);
   const completeLogin = useMutation({
@@ -34,12 +36,12 @@ function OAuthGoogleComplete() {
       setTimeout(() => {
         localStorage.setItem("token", response.accessToken);
         localStorage.setItem("auth_user", JSON.stringify(response.user));
+        refreshAuth?.();
         navigate({ to: "/onboarding" });
       }, 300);
     },
   });
 
-  // biome-ignore lint/correctness/useExhaustiveDependencies: manual
   useEffect(() => {
     if (hasStarted.current) return;
     if (code && state) {
@@ -48,11 +50,11 @@ function OAuthGoogleComplete() {
     } else {
       navigate({ to: "/" });
     }
-  }, [code, state]);
+  }, [code, state, completeLogin, navigate]);
 
   return (
     <div className="flex min-h-screen flex-col items-center justify-center gap-4">
-      <Loader2 className="animate-spin text-muted-foreground" size={56} />
+      <Loader2 className="size-14 animate-spin text-muted-foreground" />
       <div className="text-lg font-semibold text-foreground">Completing sign in...</div>
     </div>
   );

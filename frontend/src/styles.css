@@ -51,7 +51,10 @@ body {
   @apply m-0;
 }
 
-h1, h2, h3, h4 {
+h1,
+h2,
+h3,
+h4 {
   font-family: "NeueBit", system-ui, sans-serif;
 }
 
@@ -76,8 +79,8 @@ code {
 
   .sidebar-label {
     font-family: var(--font-sidebar);
-    font-weight: 400;
     font-size: 1.46em;
+    font-weight: 400;
     line-height: 1;
     letter-spacing: 0.05em;
   }
@@ -87,8 +90,8 @@ code {
   }
 
   [data-sidebar="menu-button"][data-active="true"] {
-    background: color-mix(in srgb, var(--foreground) 8%, transparent) !important;
     color: var(--foreground) !important;
+    background: color-mix(in srgb, var(--foreground) 8%, transparent) !important;
     border-radius: 0.5rem;
   }
 
@@ -97,28 +100,36 @@ code {
   }
 
   [data-sidebar="menu-button"] {
-    transition: background 150ms ease, color 150ms ease;
+    transition:
+      background 150ms ease,
+      color 150ms ease;
   }
 
   [data-sidebar="menu-button"]:hover {
     background: color-mix(in srgb, var(--foreground) 4%, transparent) !important;
     border-radius: 0.5rem;
   }
-
-  .animate-spin {
-    color: var(--foreground) !important;
-  }
 }
 
 /* ─── Login page animations ──────────────────────────────────────────── */
 @keyframes fade-in {
-  from { opacity: 0; }
-  to { opacity: 1; }
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
 }
 
 @keyframes fade-in-up {
-  from { opacity: 0; transform: translateY(12px); }
-  to { opacity: 1; transform: translateY(0); }
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 .animate-fade-in {

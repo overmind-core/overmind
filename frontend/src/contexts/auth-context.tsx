@@ -1,0 +1,58 @@
+import { createContext, useContext, useEffect, useState } from "react";
+
+import { useAuth, useOrganization } from "@clerk/clerk-react";
+
+type AuthContextValue = {
+  organisationId: string;
+  isSignedIn: boolean;
+  /** Call after localStorage token changes in the same tab (storage event only fires cross-tab) */
+  refreshAuth?: () => void;
+};
+
+const AuthContext = createContext<AuthContextValue>({
+  isSignedIn: false,
+  organisationId: "",
+});
+
+export function useAuthContext() {
+  return useContext(AuthContext);
+}
+
+function readIsSignedInFromStorage(): boolean {
+  if (typeof window === "undefined") return false;
+  return !!(localStorage.getItem("token") ?? localStorage.getItem("auth_token"));
+}
+
+export function FallbackAuthProvider({ children }: { children: React.ReactNode }) {
+  const [isSignedIn, setIsSignedIn] = useState(readIsSignedInFromStorage);
+
+  const refreshAuth = () => setIsSignedIn(readIsSignedInFromStorage);
+
+  useEffect(() => {
+    const check = () => setIsSignedIn(readIsSignedInFromStorage);
+    window.addEventListener("storage", check);
+    return () => window.removeEventListener("storage", check);
+  }, []);
+
+  return (
+    <AuthContext.Provider value={{ isSignedIn, organisationId: "", refreshAuth }}>
+      {children}
+    </AuthContext.Provider>
+  );
+}
+
+export function ClerkAuthProvider({ children }: { children: React.ReactNode }) {
+  const { organization } = useOrganization();
+  const { isSignedIn } = useAuth();
+  return (
+    <AuthContext.Provider
+      value={{
+        isSignedIn: isSignedIn ?? false,
+        organisationId: organization?.id ?? "",
+        refreshAuth: undefined, // Clerk manages its own auth state
+      }}
+    >
+      {children}
+    </AuthContext.Provider>
+  );
+}

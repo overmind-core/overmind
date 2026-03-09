@@ -1,6 +1,6 @@
-import { useState } from "react";
+import { useCallback, useState } from "react";
 
-import { useAuth, UserButton, useUser } from "@clerk/clerk-react";
+import { UserButton, useUser } from "@clerk/clerk-react";
 import { Link, useNavigate, useRouteContext, useRouterState } from "@tanstack/react-router";
 import {
   Briefcase,
@@ -25,6 +25,19 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
 } from "@/components/ui/sidebar";
+import { useAuthContext } from "@/contexts/auth-context";
+
+function useLogout() {
+  const navigate = useNavigate();
+  const { refreshAuth } = useAuthContext();
+  return useCallback(() => {
+    localStorage.removeItem("token");
+    localStorage.removeItem("auth_token");
+    localStorage.removeItem("auth_user");
+    refreshAuth?.();
+    navigate({ to: "/login" });
+  }, [navigate, refreshAuth]);
+}
 
 const navLinks = [
   { icon: Home, label: "Home", to: "/" },
@@ -36,7 +49,7 @@ const navLinks = [
 export function AppSidebar() {
   const { location } = useRouterState();
   const { config } = useRouteContext({ from: "/_auth" });
-  const isSignedIn = useIsSignedIn();
+  const { isSignedIn } = useAuthContext();
 
   return (
     <Sidebar collapsible="icon">
@@ -101,25 +114,11 @@ const accountLinks = [
   { icon: User, label: "Account", to: "/account" },
 ];
 
-function useIsSignedIn() {
-  const { config } = useRouteContext({ from: "/_auth" });
-  if (typeof window === "undefined") return false;
-  if (config.clerkReady) return useAuth().isSignedIn;
-  return !!(localStorage.getItem("token") ?? localStorage.getItem("auth_token"));
-}
-
 const EEUserButton = () => {
   const { config } = useRouteContext({ from: "/_auth" });
   const { location } = useRouterState();
-  const navigate = useNavigate();
+  const handleLogout = useLogout();
   const [accountOpen, setAccountOpen] = useState(false);
-
-  const handleLogout = () => {
-    localStorage.removeItem("token");
-    localStorage.removeItem("auth_token");
-    localStorage.removeItem("auth_user");
-    navigate({ to: "/login" });
-  };
 
   const handleToggleAccount = () => {
     setAccountOpen((prev) => !prev);
@@ -204,13 +203,7 @@ const EEClerkUserButton = () => {
 
 const OSSUserButton = () => {
   const [accountOpen, setAccountOpen] = useState(false);
-  const navigate = useNavigate();
-  const handleLogout = () => {
-    localStorage.removeItem("token");
-    localStorage.removeItem("auth_token");
-    localStorage.removeItem("auth_user");
-    navigate({ to: "/login" });
-  };
+  const handleLogout = useLogout();
 
   const handleToggleAccount = () => {
     setAccountOpen((prev) => !prev);

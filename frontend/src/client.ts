@@ -108,7 +108,9 @@ const apiClient = new OvermindClient(
           return undefined;
         },
         pre: async (context) => {
-          const token = config.clerkReady ? (await window.Clerk.session.getToken()) : localStorage.getItem("token");
+          const token = config.clerkReady
+            ? await window.Clerk.session.getToken()
+            : localStorage.getItem("token");
           if (token) {
             context.init.headers = {
               ...context.init.headers,

@@ -40,9 +40,6 @@ export type TracesPreset = z.infer<typeof tracesPresetSchema>;
 
 /** Traces list query params */
 export const tracesSearchSchema = z.object({
-  query: z.array(z.string()).optional().default([]),
-  ordering: z.array(z.string()).optional().default([]),
-  flatten: z.coerce.boolean().optional().default(false),
   /** Advanced filter params (agent=, run_type=, latency=, etc.) - must be in schema for router to serialize */
   agent: z.string().optional(),
   agent_op: z.string().optional(),
@@ -54,6 +51,7 @@ export const tracesSearchSchema = z.object({
   feedback_op: z.string().optional(),
   feedback_source: z.string().optional(),
   feedback_source_op: z.string().optional(),
+  flatten: z.coerce.boolean().optional().default(false),
   full_text_search: z.string().optional(),
   full_text_search_op: z.string().optional(),
   input: z.string().optional(),
@@ -66,6 +64,7 @@ export const tracesSearchSchema = z.object({
   latency_op: z.string().optional(),
   metadata: z.string().optional(),
   metadata_op: z.string().optional(),
+  ordering: z.array(z.string()).optional().default([]),
   output: z.string().optional(),
   output_key: z.string().optional(),
   output_key_op: z.string().optional(),
@@ -79,6 +78,7 @@ export const tracesSearchSchema = z.object({
   promptSlug: z.string().optional(),
   promptVersion: z.string().optional(),
   q: z.string().optional(),
+  query: z.array(z.string()).optional().default([]),
   run_id: z.string().optional(),
   run_id_op: z.string().optional(),
   run_name: z.string().optional(),

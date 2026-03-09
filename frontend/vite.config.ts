@@ -28,7 +28,7 @@ const config = defineConfig({
       "@": fileURLToPath(new URL("./src", import.meta.url)),
       // pixelarticons has no `exports` field, so Vite can't resolve subpath imports without this alias
       "pixelarticons/react": fileURLToPath(
-        new URL("./node_modules/pixelarticons/react/index.js", import.meta.url),
+        new URL("./node_modules/pixelarticons/react/index.js", import.meta.url)
       ),
     },
   },
@@ -37,8 +37,8 @@ const config = defineConfig({
     : {
         proxy: {
           "/api": {
-            target: "http://api:8000",
             changeOrigin: true,
+            target: "http://api:8000",
           },
         },
       },

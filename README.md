@@ -14,6 +14,7 @@
 Built for engineering teams running AI agents in production. Deployable as a single Docker Compose stack. Compatible with OpenAI, Anthropic, Google, and any OpenTelemetry-instrumented system.
 
 **Key results from production deployments:**
+
 - Up to 66% reduction in LLM inference costs
 - Up to 25% improvement in agent task performance
 - First traces flowing in under 5 minutes from SDK install
@@ -25,8 +26,8 @@ Built for engineering teams running AI agents in production. Deployable as a sin
 Overmind is performance infrastructure for AI agents. It provides three core capabilities:
 
 1. **Execution tracing** — every LLM call recorded with full I/O, timing, tokens, and cost, compatible with OpenTelemetry distributed tracing standards
-2. **Production observability** — LLM judge scoring evaluates each trace on quality, cost, and latency; surfaces actionable recommendations with before/after impact scores
-3. **Continuous model improvement** — replays traces through alternative models and prompt variations; enables RL fine-tuning on production data so agents improve over time
+1. **Production observability** — LLM judge scoring evaluates each trace on quality, cost, and latency; surfaces actionable recommendations with before/after impact scores
+1. **Continuous model improvement** — replays traces through alternative models and prompt variations; enables RL fine-tuning on production data so agents improve over time
 
 Overmind is model-agnostic, framework-agnostic, and designed for zero latency impact on production systems. It is not a security tool or a compliance layer — it is infrastructure for making AI agents faster, cheaper, and more accurate.
 
@@ -354,7 +355,7 @@ make logs-api         # Tail API logs only
 make migrate          # Run database migrations
 make revision m="..." # Create a new migration
 make test             # Run test suite
-make lint             # Lint and format code
+make lint-format      # Lint and format code (backend: ruff, frontend: biome)
 make psql             # Open a psql shell to the database
 make clean            # Stop services and delete all data volumes
 ```
@@ -417,5 +418,5 @@ Contributions are welcome! All contributions to Overmind are subject to a **Cont
 
 - Keep pull requests focused — one feature or fix per PR
 - Add or update tests for any behaviour you change
-- Follow existing code style (enforced by `make lint` / pre-commit)
+- Follow existing code style (enforced by `make lint-format` / pre-commit)
 - Migrations go in `alembic/versions/` — generate with `make revision m="describe change"`

@@ -270,6 +270,7 @@ const FIELD_TO_PARAM: Record<FilterField, string> = {
   isTrace: "is_trace",
   latency: "latency",
   metadata: "metadata",
+  model: "model",
   output: "output",
   outputKey: "output_key",
   promptId: "agent",
@@ -280,7 +281,6 @@ const FIELD_TO_PARAM: Record<FilterField, string> = {
   tag: "tag",
   threadId: "thread_id",
   traceId: "trace_id",
-  model: "model",
 };
 
 const PARAM_TO_FIELD: Record<string, FilterField> = Object.fromEntries(

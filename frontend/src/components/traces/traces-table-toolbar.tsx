@@ -1,9 +1,10 @@
+import { Link, useSearch } from "@tanstack/react-router";
 import type { Table } from "@tanstack/react-table";
 import { Search } from "pixelarticons/react";
 
 import { type FilterEntry, TracesFilters } from "@/components/traces/filters";
-import type { SpanRow } from "@/hooks/use-traces";
 import { DataTableViewOptions } from "@/components/traces/table-column-toggle";
+import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
   Select,
@@ -12,8 +13,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Button } from "@/components/ui/button";
-import { Link, useSearch } from "@tanstack/react-router";
+import type { SpanRow } from "@/hooks/use-traces";
 
 interface TracesTableToolbarProps<TData> {
   table: Table<TData>;
@@ -55,8 +55,8 @@ export function TracesTableToolbar<TData extends SpanRow>({
           value={searchValue}
         />
       </div>
-      <Button variant={flatten ? "secondary" : "outline"} asChild>
-        <Link search={(prev) => ({ ...prev, flatten: !prev.flatten })} to="." resetScroll={false}>
+      <Button asChild variant={flatten ? "secondary" : "outline"}>
+        <Link resetScroll={false} search={(prev) => ({ ...prev, flatten: !prev.flatten })} to=".">
           Flat Spans
         </Link>
       </Button>

@@ -1,5 +1,10 @@
 import type { Table } from "@tanstack/react-table";
-import { ChevronLeft, ChevronLeft2 as ChevronsLeft, ChevronRight, ChevronRight2 as ChevronsRight } from "pixelarticons/react";
+import {
+  ChevronLeft,
+  ChevronRight,
+  ChevronLeft2 as ChevronsLeft,
+  ChevronRight2 as ChevronsRight,
+} from "pixelarticons/react";
 
 import { Button } from "@/components/ui/button";
 import {

@@ -1,6 +1,10 @@
 import { useMemo } from "react";
 
-import { Flatten as FoldVertical, Clock as Timer, Expand as UnfoldVertical } from "pixelarticons/react";
+import {
+  Flatten as FoldVertical,
+  Clock as Timer,
+  Expand as UnfoldVertical,
+} from "pixelarticons/react";
 
 import { Button } from "@/components/ui/button";
 import { useTraceData } from "./contexts/TraceDataContext";

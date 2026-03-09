@@ -1,8 +1,8 @@
 import { useMemo } from "react";
 
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
-import { cn } from "@/lib/utils";
 import type { SpanRow } from "@/hooks/use-traces";
+import { cn } from "@/lib/utils";
 
 interface TraceFlameChartProps {
   spans: SpanRow[] | undefined;
@@ -85,7 +85,6 @@ export function TraceFlameChart({
     );
   }
 
-  const rowHeight = 28;
   const labelWidth = 250;
 
   return (

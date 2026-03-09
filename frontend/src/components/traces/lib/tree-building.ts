@@ -36,7 +36,9 @@ export function buildSpanTree(spans: SpanRow[]): SpanTreeNode[] {
 
   const sortByStart = (nodes: SpanTreeNode[]) => {
     nodes.sort((a, b) => a.span.startTimeUnixNano - b.span.startTimeUnixNano);
-    nodes.forEach((n) => sortByStart(n.children));
+    for (const n of nodes) {
+      sortByStart(n.children);
+    }
   };
   sortByStart(roots);
 

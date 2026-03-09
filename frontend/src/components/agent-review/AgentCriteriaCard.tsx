@@ -1,7 +1,15 @@
 import { useEffect, useRef, useState } from "react";
 
 import { useMutation } from "@tanstack/react-query";
-import { ChevronLeft, ChevronRight, Loader as Loader2, PenSquare as Pencil, Plus, Cancel as Trash2, Cancel as X } from "pixelarticons/react";
+import {
+  ChevronLeft,
+  ChevronRight,
+  Loader as Loader2,
+  PenSquare as Pencil,
+  Plus,
+  Cancel as Trash2,
+  Cancel as X,
+} from "pixelarticons/react";
 import { toast } from "sonner";
 
 import apiClient from "@/client";
@@ -50,8 +58,8 @@ export function AgentCriteriaCard({ agentSlug, promptId, projectId }: Props) {
     setFetchError(null);
     apiClient.agentReviews
       .getSpansForReviewApiV1AgentReviewsPromptSlugReviewSpansGet({
-        promptSlug: agentSlug,
         projectId: projectId,
+        promptSlug: agentSlug,
       })
       .then((e) => {
         setCriteriaMap(e.evaluationCriteria ?? {});
@@ -128,6 +136,9 @@ export function AgentCriteriaCard({ agentSlug, promptId, projectId }: Props) {
         },
       });
     },
+    onError: (err: Error) => {
+      toast.error(err.message ?? "Failed to save criteria.");
+    },
     onSuccess: (_, reEvaluate) => {
       setCriteriaMap(pendingSaveRef.current);
       setIsEditing(false);
@@ -138,9 +149,6 @@ export function AgentCriteriaCard({ agentSlug, promptId, projectId }: Props) {
       } else {
         toast.success("Criteria saved successfully.");
       }
-    },
-    onError: (err: Error) => {
-      toast.error(err.message ?? "Failed to save criteria.");
     },
   });
 

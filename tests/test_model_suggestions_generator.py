@@ -204,7 +204,7 @@ async def test_fetch_span_usage_stats_with_data():
     rows = [
         (
             {
-                "gen_ai.request.model": "gpt-4o",
+                "gen_ai.request.model": "gpt-5-mini",
                 "gen_ai.usage.input_tokens": 400,
                 "gen_ai.usage.output_tokens": 100,
             },
@@ -213,7 +213,7 @@ async def test_fetch_span_usage_stats_with_data():
         ),
         (
             {
-                "gen_ai.request.model": "gpt-4o",
+                "gen_ai.request.model": "gpt-5-mini",
                 "gen_ai.usage.input_tokens": 600,
                 "gen_ai.usage.output_tokens": 200,
             },

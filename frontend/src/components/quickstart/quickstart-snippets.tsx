@@ -4,10 +4,9 @@ import { Check, Copy, ExternalLink, Loader as Loader2, Terminal } from "pixelart
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { cn } from "@/lib/utils";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
-
-import { type Language, LANGUAGES, type Vendor, getSnippet } from "./snippet-data";
+import { cn } from "@/lib/utils";
+import { getSnippet, LANGUAGES, type Language, type Vendor } from "./snippet-data";
 import { useQuickstartKey } from "./use-quickstart-key";
 
 const DOCS_URL = "https://docs.overmindlab.ai/guides/getting-started/";
@@ -52,7 +51,10 @@ function CodeBlock({ children, label }: { children: string; label?: string }) {
         {children}
       </pre>
       {!label && (
-        <CopyButton className="absolute top-2 right-2 text-zinc-400 hover:text-zinc-100" text={children} />
+        <CopyButton
+          className="absolute top-2 right-2 text-zinc-400 hover:text-zinc-100"
+          text={children}
+        />
       )}
     </div>
   );
@@ -114,8 +116,8 @@ function SnippetPanel({
       <div className="rounded-md border border-border bg-muted/30 px-4 py-3">
         <p className="text-sm font-medium text-foreground">3. Send at least {minTraces} traces</p>
         <p className="mt-1 text-sm text-muted-foreground">
-          Run your application normally. Once Overmind collects {minTraces}+ traces, it automatically
-          extracts prompt templates, creates Agents, and starts optimizing.
+          Run your application normally. Once Overmind collects {minTraces}+ traces, it
+          automatically extracts prompt templates, creates Agents, and starts optimizing.
         </p>
       </div>
     </div>
@@ -179,11 +181,7 @@ export function QuickstartSnippets({ compact = false }: { compact?: boolean }) {
               </TabsList>
             </Tabs>
             <Button asChild className="hidden sm:inline-flex" size="sm" variant="outline">
-              <a
-                href={DOCS_URL}
-                rel="noopener noreferrer"
-                target="_blank"
-              >
+              <a href={DOCS_URL} rel="noopener noreferrer" target="_blank">
                 Full Docs <ExternalLink className="ml-1.5 size-3.5" />
               </a>
             </Button>
@@ -213,7 +211,6 @@ export function QuickstartSnippets({ compact = false }: { compact?: boolean }) {
           <SnippetPanel apiKey={apiKey} language={language} vendor={vendor} />
         </div>
       </div>
-
     </div>
   );
 }

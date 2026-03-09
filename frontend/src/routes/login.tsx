@@ -3,9 +3,11 @@ import { useState } from "react";
 import { SignIn, useUser } from "@clerk/clerk-react";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { Loader as Loader2 } from "pixelarticons/react";
-import { ContinueWithGoogle } from "@/components/continue-with-google";
+
 import apiClient from "@/client";
+import { ContinueWithGoogle } from "@/components/continue-with-google";
 import { Separator } from "@/components/ui/separator";
+import { useAuthContext } from "@/contexts/auth-context";
 
 export const Route = createFileRoute("/login")({
   component: RouteComponent,
@@ -51,6 +53,7 @@ function RouteComponent() {
 
 const OSSAuth = () => {
   const navigate = useNavigate();
+  const { refreshAuth } = useAuthContext();
   const [email, setEmail] = useState("admin");
   const [password, setPassword] = useState("admin");
   const [error, setError] = useState<string | null>(null);
@@ -64,6 +67,7 @@ const OSSAuth = () => {
         loginRequest: { email, password },
       });
       localStorage.setItem("token", res.accessToken);
+      refreshAuth?.();
       navigate({ to: "/" });
     } catch (err) {
       setError(err instanceof Error ? err.message : "Login failed");
@@ -132,6 +136,10 @@ const OSSAuth = () => {
 const EEAuth = () => {
   const { config } = Route.useRouteContext();
   if (!config.clerkReady) return <ContinueWithGoogle />;
+  return <EEClerkAuth />;
+};
+
+const EEClerkAuth = () => {
   const { user } = useUser();
   return (
     <>

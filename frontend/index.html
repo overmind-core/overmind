@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <script>
-      (function() {
+      (() => {
         var theme = localStorage.getItem('overmind-theme');
         var resolved = theme === 'dark' ? 'dark' : (theme === 'light' ? 'light' : (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'));
         if (resolved === 'dark') document.documentElement.classList.add('dark');

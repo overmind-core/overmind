@@ -1,10 +1,10 @@
 import { useEffect, useRef, useState } from "react";
 
-import { Cancel as X } from "pixelarticons/react";
 import type { VariantProps } from "class-variance-authority";
+import { Cancel as X } from "pixelarticons/react";
 
-import { cn } from "@/lib/utils";
 import { alertVariants } from "@/components/ui/alert";
+import { cn } from "@/lib/utils";
 
 const AUTO_DISMISS_MS = 5_000;
 
@@ -63,8 +63,7 @@ export function DismissibleAlert({
     return () => {
       if (timerRef.current) clearTimeout(timerRef.current);
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [message, messageKey]);
+  }, [message, messageKey, error]);
 
   const text = error ? error.message || fallback : message;
 

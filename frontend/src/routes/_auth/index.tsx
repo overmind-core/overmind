@@ -1,6 +1,11 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { Robot as Bot, FolderPlus, Loader as Loader2, Reload as RefreshCw } from "pixelarticons/react";
+import {
+  Robot as Bot,
+  FolderPlus,
+  Loader as Loader2,
+  Reload as RefreshCw,
+} from "pixelarticons/react";
 
 import { ResponseError } from "@/api";
 import apiClient from "@/client";
@@ -8,24 +13,23 @@ import { AgentGrid } from "@/components/agent-grid";
 import { CreateProjectDialog } from "@/components/create-project";
 import { QuickstartEmbed } from "@/components/quickstart/quickstart-embed";
 import { Alert } from "@/components/ui/alert";
-import { DismissibleAlert } from "@/components/ui/dismissible-alert";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import { DismissibleAlert } from "@/components/ui/dismissible-alert";
 import { useProjectsList } from "@/hooks/use-projects";
 
 export const Route = createFileRoute("/_auth/")({
   component: HomePage,
 });
 
-
 function AgentsSection({ projectId }: { projectId?: string }) {
   const queryClient = useQueryClient();
 
   const { data, isLoading, error } = useQuery({
+    enabled: !!projectId,
     queryFn: () => apiClient.agents.listAgentsApiV1AgentsGet({ projectId }),
     queryKey: ["agents", projectId],
     refetchInterval: 15_000,
-    enabled: !!projectId,
   });
 
   const extractMutation = useMutation({

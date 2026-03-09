@@ -1,14 +1,9 @@
 import { useQuery } from "@tanstack/react-query";
 
 import apiClient from "@/client";
+import { useAuthContext } from "@/contexts/auth-context";
 
-import { config } from "@/config";
-import { useOrganization } from "@clerk/clerk-react";
-
-
-export const useOrganisationId = () => {
-  return (config.clerkReady) ? (useOrganization().organization?.id ?? "") : "";
-}
+export const useOrganisationId = () => useAuthContext().organisationId;
 
 export const useOnboardingQuery = () => {
   return useQuery({
@@ -21,8 +16,8 @@ export const useAgentDetailQuery = (slug: string, projectId?: string) => {
   return useQuery({
     queryFn: () =>
       apiClient.agents.getAgentDetailApiV1AgentsPromptSlugDetailGet({
-        promptSlug: slug,
         projectId,
+        promptSlug: slug,
       }),
     queryKey: ["agent-detail", slug, projectId],
     refetchInterval: 15_000,

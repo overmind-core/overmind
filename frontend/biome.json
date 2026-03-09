@@ -33,6 +33,11 @@
     },
     "enabled": true
   },
+  "css": {
+    "parser": {
+      "tailwindDirectives": true
+    }
+  },
   "files": {
     "ignoreUnknown": true,
     "includes": ["**", "!**/src/api/**/*.ts", "!**/routeTree.gen.ts"]

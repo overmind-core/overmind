@@ -4,7 +4,6 @@ import { useQuery } from "@tanstack/react-query";
 import { Check, Loader as Loader2 } from "pixelarticons/react";
 
 import apiClient from "@/client";
-import { config } from "@/config";
 import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import {
@@ -25,13 +24,14 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
+import { config } from "@/config";
 
 const EXPIRY_OPTIONS = [
-  { label: "30 days", days: 30 },
-  { label: "90 days", days: 90 },
-  { label: "180 days", days: 180 },
-  { label: "1 year", days: 365 },
-  { label: "Never", days: 0 },
+  { days: 30, label: "30 days" },
+  { days: 90, label: "90 days" },
+  { days: 180, label: "180 days" },
+  { days: 365, label: "1 year" },
+  { days: 0, label: "Never" },
 ] as const;
 
 interface CreateApiKeyDialogProps {
@@ -222,7 +222,10 @@ export function CreateApiKeyDialog({
               <Button onClick={handleClose} variant="outline">
                 Cancel
               </Button>
-              <Button disabled={createPending || (!config.isSelfHosted && rolesLoading)} onClick={handleCreate}>
+              <Button
+                disabled={createPending || (!config.isSelfHosted && rolesLoading)}
+                onClick={handleCreate}
+              >
                 {createPending && <Loader2 className="mr-2 size-4 animate-spin" />}
                 Create
               </Button>

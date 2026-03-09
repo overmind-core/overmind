@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+
 import { Plus, Cancel as X } from "pixelarticons/react";
 
 export function AgentTagsEditor({
@@ -64,7 +65,7 @@ export function AgentTagsEditor({
   }
 
   return (
-    <div ref={containerRef} className="flex flex-wrap items-center gap-1.5">
+    <div className="flex flex-wrap items-center gap-1.5" ref={containerRef}>
       {tags.map((tag) => (
         <span
           className="group/tag inline-flex items-center gap-1 rounded-full border border-border bg-muted/60 px-2.5 py-0.5 text-xs font-medium text-muted-foreground"
@@ -85,13 +86,13 @@ export function AgentTagsEditor({
       {tags.length < 20 &&
         (adding ? (
           <input
-            ref={inputRef}
             className="h-6 w-28 rounded-full border border-border bg-muted/40 px-2.5 text-xs transition-all focus:outline-none focus:ring-1 focus:ring-ring"
             disabled={isSaving}
             maxLength={50}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={handleKeyDown}
             placeholder="Type tag name…"
+            ref={inputRef}
             value={input}
           />
         ) : (

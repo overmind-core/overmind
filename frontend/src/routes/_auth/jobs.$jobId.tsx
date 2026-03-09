@@ -1,9 +1,17 @@
 import { useQuery } from "@tanstack/react-query";
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { WarningDiamond as AlertTriangle, ArrowLeft, Check as CheckCircle, Clock, Loader as Loader2, Cancel as XCircle } from "pixelarticons/react";
+import {
+  WarningDiamond as AlertTriangle,
+  ArrowLeft,
+  Check as CheckCircle,
+  Clock,
+  Loader as Loader2,
+  Cancel as XCircle,
+} from "pixelarticons/react";
 
 import apiClient from "@/client";
 import { BacktestRecommendations } from "@/components/jobs/JobCard";
+import { SheetWrapper } from "@/components/sheet-wrapper";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import {
@@ -14,7 +22,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { SheetWrapper } from "@/components/sheet-wrapper";
+import { JOB_TYPE_LABELS } from "@/lib/jobs";
 
 export const Route = createFileRoute("/_auth/jobs/$jobId")({
   component: () => (
@@ -42,15 +50,6 @@ const STATUS_CONFIG: Record<
     variant: "secondary",
   },
   skipped: { icon: <AlertTriangle className="size-3.5" />, label: "Skipped", variant: "default" },
-};
-
-const JOB_TYPE_LABELS: Record<string, string> = {
-  agent_discovery: "Agent Discovery",
-  judge_scoring: "LLM Judge Scoring",
-  model_backtesting: "Model Backtesting",
-  prompt_tuning: "Prompt Tuning",
-  scoring: "LLM Judge Scoring",
-  template_extraction: "Template Extraction",
 };
 
 function formatDate(iso?: string | null): string {

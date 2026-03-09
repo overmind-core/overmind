@@ -5,17 +5,17 @@ export type AnalyticsRange = AnalyticsPreset | { from: Date; to: Date };
 export type AnalyticsAggregation = "hour" | "day";
 
 export const RANGE_LABELS: Record<AnalyticsPreset, string> = {
-  past24h: "24H",
+  past1m: "1M",
   past7d: "7D",
   past14d: "14D",
-  past1m: "1M",
+  past24h: "24H",
 };
 
 const RANGE_MS: Record<AnalyticsPreset, number> = {
-  past24h: 24 * 60 * 60 * 1000,
+  past1m: 30 * 24 * 60 * 60 * 1000,
   past7d: 7 * 24 * 60 * 60 * 1000,
   past14d: 14 * 24 * 60 * 60 * 1000,
-  past1m: 30 * 24 * 60 * 60 * 1000,
+  past24h: 24 * 60 * 60 * 1000,
 };
 
 export function rangeLabel(range: AnalyticsRange): string {
