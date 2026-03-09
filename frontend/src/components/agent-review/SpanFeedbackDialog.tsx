@@ -2,14 +2,19 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 import {
   WarningDiamond as AlertCircle,
+  Check,
   Check as CheckCircle2,
   ChevronLeft,
   ChevronRight,
+  Clipboard,
+  Eye,
+  EyeOff,
   Loader as Loader2,
   ThumbsDown,
   ThumbsUp,
   Cancel as X,
 } from "pixelarticons/react";
+import ReactMarkdown from "react-markdown";
 
 import type { AgentOut, SpanForReview } from "@/api";
 import apiClient from "@/client";
@@ -123,53 +128,166 @@ function ToolCallBubble({ tc }: { tc: ToolCallItem }) {
   );
 }
 
+function MessageBubble({ m }: { m: ChatMessage }) {
+  const isUser = m.role === "user";
+  const isSystem = m.role === "system";
+  const isTool = m.role === "tool";
+  const hasToolCalls = (m.tool_calls?.length ?? 0) > 0;
+  const content = m.content ?? "";
+  const canMarkdown = !isTool && content.length > 0 && isLikelyMarkdown(content);
+  const [mode, setMode] = useState<"raw" | "markdown">(
+    canMarkdown && isLikelyMarkdown(content) ? "markdown" : "raw",
+  );
+  const [copied, setCopied] = useState(false);
+
+  const roleLabel = isTool
+    ? `tool${m.tool_call_id ? ` · ${m.tool_call_id.slice(0, 12)}…` : ""}`
+    : m.role;
+
+  function copy() {
+    void navigator.clipboard.writeText(content);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  }
+
+  return (
+    <div className={cn("flex flex-col gap-1", isUser ? "items-end" : "items-start")}>
+      <div className={cn("flex items-center gap-1", isUser ? "flex-row-reverse" : "flex-row")}>
+        <span className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">
+          {roleLabel}
+        </span>
+        {content.length > 0 && (
+          <div className={cn("flex items-center gap-0.5", isUser ? "flex-row-reverse" : "flex-row")}>
+            {canMarkdown && (
+              <button
+                className="flex items-center gap-1 rounded px-1 py-0.5 text-[10px] font-medium text-muted-foreground/60 transition-colors hover:bg-muted hover:text-foreground"
+                onClick={() => setMode((m) => (m === "raw" ? "markdown" : "raw"))}
+                title={mode === "raw" ? "Render markdown" : "View raw"}
+                type="button"
+              >
+                {mode === "raw" ? <Eye className="size-3" /> : <EyeOff className="size-3" />}
+              </button>
+            )}
+            <button
+              className="rounded p-0.5 text-muted-foreground/60 transition-colors hover:bg-muted hover:text-foreground"
+              onClick={copy}
+              title={copied ? "Copied!" : "Copy to clipboard"}
+              type="button"
+            >
+              {copied ? (
+                <Check className="size-3 text-emerald-500" />
+              ) : (
+                <Clipboard className="size-3" />
+              )}
+            </button>
+          </div>
+        )}
+      </div>
+      {/* Tool calls emitted by the assistant */}
+      {hasToolCalls && (
+        <div className="max-w-[85%] space-y-1.5">
+          {m.tool_calls!.map((tc, tcIdx) => (
+            <ToolCallBubble key={tcIdx} tc={tc} />
+          ))}
+        </div>
+      )}
+      {/* Regular text content */}
+      {content !== "" && (
+        <div
+          className={cn(
+            "max-w-[85%] rounded-xl px-3.5 py-2.5 text-sm leading-relaxed",
+            isUser
+              ? "bg-primary/10 text-foreground"
+              : isSystem
+                ? "bg-muted/50 text-muted-foreground italic"
+                : isTool
+                  ? "bg-amber-500/10 font-mono text-xs text-foreground"
+                  : "bg-muted text-foreground",
+          )}
+        >
+          {isTool || mode === "raw" ? (
+            <span className="whitespace-pre-wrap">{content}</span>
+          ) : (
+            <MarkdownContent>{content}</MarkdownContent>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function ChatBubbles({ messages }: { messages: ChatMessage[] }) {
   return (
     <div className="space-y-2.5">
-      {messages.map((m, i) => {
-        const isUser = m.role === "user";
-        const isSystem = m.role === "system";
-        const isTool = m.role === "tool";
-        const hasToolCalls = (m.tool_calls?.length ?? 0) > 0;
-
-        const roleLabel = isTool
-          ? `tool${m.tool_call_id ? ` · ${m.tool_call_id.slice(0, 12)}…` : ""}`
-          : m.role;
-
-        return (
-          <div className={cn("flex flex-col gap-1", isUser ? "items-end" : "items-start")} key={i}>
-            <span className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">
-              {roleLabel}
-            </span>
-            {/* Tool calls emitted by the assistant */}
-            {hasToolCalls && (
-              <div className="max-w-[85%] space-y-1.5">
-                {m.tool_calls!.map((tc, tcIdx) => (
-                  <ToolCallBubble key={tcIdx} tc={tc} />
-                ))}
-              </div>
-            )}
-            {/* Regular text content (may coexist with tool_calls in some models) */}
-            {m.content != null && m.content !== "" && (
-              <div
-                className={cn(
-                  "max-w-[85%] rounded-xl px-3.5 py-2.5 text-sm leading-relaxed",
-                  isUser
-                    ? "bg-primary/10 text-foreground"
-                    : isSystem
-                      ? "bg-muted/50 text-muted-foreground italic"
-                      : isTool
-                        ? "bg-amber-500/10 font-mono text-xs text-foreground"
-                        : "bg-muted text-foreground"
-                )}
-              >
-                {m.content}
-              </div>
-            )}
-          </div>
-        );
-      })}
+      {messages.map((m, i) => (
+        <MessageBubble key={i} m={m} />
+      ))}
     </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// MarkdownContent
+// ---------------------------------------------------------------------------
+
+function MarkdownContent({ children }: { children: string }) {
+  return (
+    <ReactMarkdown
+      components={{
+        p: ({ children }) => <p className="mb-2 last:mb-0">{children}</p>,
+        ul: ({ children }) => <ul className="mb-2 list-disc pl-4 last:mb-0">{children}</ul>,
+        ol: ({ children }) => <ol className="mb-2 list-decimal pl-4 last:mb-0">{children}</ol>,
+        li: ({ children }) => <li className="mb-0.5">{children}</li>,
+        h1: ({ children }) => (
+          <h1 className="mb-2 mt-4 border-b border-border/50 pb-1 text-sm font-bold first:mt-0">
+            {children}
+          </h1>
+        ),
+        h2: ({ children }) => (
+          <h2 className="mb-1.5 mt-3 text-sm font-semibold first:mt-0">{children}</h2>
+        ),
+        h3: ({ children }) => (
+          <h3 className="mb-1 mt-2 text-xs font-semibold uppercase tracking-wide text-foreground/70 first:mt-0">
+            {children}
+          </h3>
+        ),
+        code: ({ children, className }) => {
+          const isBlock = className?.includes("language-");
+          return isBlock ? (
+            <code className="block overflow-x-auto rounded bg-muted px-3 py-2 font-mono text-xs">
+              {children}
+            </code>
+          ) : (
+            <code className="rounded bg-muted px-1 py-0.5 font-mono text-xs">{children}</code>
+          );
+        },
+        pre: ({ children }) => (
+          <pre className="mb-2 overflow-x-auto rounded-lg bg-muted/70 px-3 py-2 last:mb-0">
+            {children}
+          </pre>
+        ),
+        blockquote: ({ children }) => (
+          <blockquote className="mb-2 border-l-2 border-muted-foreground/40 pl-3 text-muted-foreground last:mb-0">
+            {children}
+          </blockquote>
+        ),
+        strong: ({ children }) => <strong className="font-semibold">{children}</strong>,
+        em: ({ children }) => <em className="italic">{children}</em>,
+        hr: () => <hr className="my-2 border-border" />,
+        a: ({ href, children }) => (
+          <a
+            className="text-primary underline underline-offset-2 hover:text-primary/80"
+            href={href}
+            rel="noopener noreferrer"
+            target="_blank"
+          >
+            {children}
+          </a>
+        ),
+      }}
+    >
+      {children}
+    </ReactMarkdown>
   );
 }
 
@@ -177,18 +295,77 @@ function ChatBubbles({ messages }: { messages: ChatMessage[] }) {
 // SpanSection
 // ---------------------------------------------------------------------------
 
+function isLikelyMarkdown(text: string): boolean {
+  return /^#{1,6}\s|^\s*[-*+]\s|\*\*|__|\[.+\]\(|^```|^>/m.test(text);
+}
+
 function SpanSection({ label, value }: { label: string; value: unknown }) {
   const messages = parseChatMessages(value);
+  const plain = formatPlain(value);
+  const canMarkdown = !messages && typeof value === "string" && plain.length > 0 && isLikelyMarkdown(plain);
+  const [mode, setMode] = useState<"raw" | "markdown">(
+    canMarkdown && isLikelyMarkdown(plain) ? "markdown" : "raw",
+  );
+  const [copied, setCopied] = useState(false);
+
+  function copy() {
+    void navigator.clipboard.writeText(plain);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  }
+
   return (
     <div>
-      <p className="mb-2 text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">
-        {label}
-      </p>
+      <div className="mb-2 flex items-center justify-between gap-2">
+        <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">
+          {label}
+        </p>
+        {!messages && (
+          <div className="flex items-center gap-1">
+            {canMarkdown && (
+              <button
+                className="flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                onClick={() => setMode((m) => (m === "raw" ? "markdown" : "raw"))}
+                title={mode === "raw" ? "Render markdown" : "View raw"}
+                type="button"
+              >
+                {mode === "raw" ? (
+                  <>
+                    <Eye className="size-3" />
+                    Preview
+                  </>
+                ) : (
+                  <>
+                    <EyeOff className="size-3" />
+                    Raw
+                  </>
+                )}
+              </button>
+            )}
+            <button
+              className="rounded p-1 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+              onClick={copy}
+              title={copied ? "Copied!" : "Copy to clipboard"}
+              type="button"
+            >
+              {copied ? (
+                <Check className="size-3 text-emerald-500" />
+              ) : (
+                <Clipboard className="size-3" />
+              )}
+            </button>
+          </div>
+        )}
+      </div>
       {messages ? (
         <ChatBubbles messages={messages} />
+      ) : mode === "markdown" && canMarkdown ? (
+        <div className="rounded-xl bg-muted/50 px-4 py-3 leading-relaxed text-foreground">
+          <MarkdownContent>{plain}</MarkdownContent>
+        </div>
       ) : (
         <pre className="whitespace-pre-wrap wrap-break-word rounded-xl bg-muted/50 px-4 py-3 font-mono text-xs leading-relaxed text-foreground">
-          {formatPlain(value)}
+          {plain}
         </pre>
       )}
     </div>
@@ -483,7 +660,7 @@ export function SpanFeedbackDialog({
   return (
     <Dialog open>
       <DialogContent
-        className="flex max-h-[92vh] w-full max-w-6xl flex-col gap-0 overflow-hidden p-0"
+        className="flex max-h-[95vh] w-full max-w-6xl flex-col gap-0 overflow-hidden p-0"
         onEscapeKeyDown={(e) => e.preventDefault()}
         onInteractOutside={(e) => e.preventDefault()}
       >
@@ -736,7 +913,7 @@ export function SpanFeedbackDialog({
                 )}
 
                 {/* Span content */}
-                <div className="space-y-5 overflow-y-auto" style={{ maxHeight: 380 }}>
+                <div className="space-y-5">
                   <SpanSection label="Input" value={currentSpan.input} />
                   <SpanSection label="Output" value={currentSpan.output} />
                 </div>

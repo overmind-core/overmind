@@ -2,7 +2,8 @@ import type React from "react";
 import { useMemo, useState } from "react";
 
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { ThumbsDown, ThumbsUp } from "pixelarticons/react";
+import { Check, Clipboard, Eye, EyeOff, ThumbsDown, ThumbsUp } from "pixelarticons/react";
+import ReactMarkdown from "react-markdown";
 
 import apiClient from "@/client";
 import { Button } from "@/components/ui/button";
@@ -31,6 +32,135 @@ function formatAttributeValue(value: unknown): string {
     return JSON.stringify(value, null, 2);
   }
   return String(value);
+}
+
+// ---------------------------------------------------------------------------
+// Markdown helpers
+// ---------------------------------------------------------------------------
+
+function isLikelyMarkdown(text: string): boolean {
+  return /^#{1,6}\s|^\s*[-*+]\s|\*\*|__|\[.+\]\(|^```|^>/m.test(text);
+}
+
+function MarkdownContent({ children }: { children: string }) {
+  return (
+    <ReactMarkdown
+      components={{
+        p: ({ children }) => <p className="mb-2 text-xs leading-relaxed last:mb-0">{children}</p>,
+        ul: ({ children }) => <ul className="mb-2 list-disc pl-4 text-xs last:mb-0">{children}</ul>,
+        ol: ({ children }) => <ol className="mb-2 list-decimal pl-4 text-xs last:mb-0">{children}</ol>,
+        li: ({ children }) => <li className="mb-0.5">{children}</li>,
+        h1: ({ children }) => (
+          <h1 className="mb-2 mt-4 border-b border-border/50 pb-1 text-sm font-bold first:mt-0">
+            {children}
+          </h1>
+        ),
+        h2: ({ children }) => (
+          <h2 className="mb-1.5 mt-3 text-sm font-semibold first:mt-0">{children}</h2>
+        ),
+        h3: ({ children }) => (
+          <h3 className="mb-1 mt-2 text-xs font-semibold uppercase tracking-wide text-foreground/70 first:mt-0">
+            {children}
+          </h3>
+        ),
+        code: ({ children, className }) => {
+          const isBlock = className?.includes("language-");
+          return isBlock ? (
+            <code className="block overflow-x-auto rounded bg-muted px-3 py-2 font-mono text-xs">
+              {children}
+            </code>
+          ) : (
+            <code className="rounded bg-muted px-1 py-0.5 font-mono text-xs">{children}</code>
+          );
+        },
+        pre: ({ children }) => (
+          <pre className="mb-2 overflow-x-auto rounded-lg bg-muted/70 px-3 py-2 last:mb-0">
+            {children}
+          </pre>
+        ),
+        blockquote: ({ children }) => (
+          <blockquote className="mb-2 border-l-2 border-muted-foreground/40 pl-3 text-xs text-muted-foreground last:mb-0">
+            {children}
+          </blockquote>
+        ),
+        strong: ({ children }) => <strong className="font-semibold">{children}</strong>,
+        em: ({ children }) => <em className="italic">{children}</em>,
+        hr: () => <hr className="my-2 border-border" />,
+        a: ({ href, children }) => (
+          <a
+            className="text-primary underline underline-offset-2 hover:text-primary/80"
+            href={href}
+            rel="noopener noreferrer"
+            target="_blank"
+          >
+            {children}
+          </a>
+        ),
+      }}
+    >
+      {children}
+    </ReactMarkdown>
+  );
+}
+
+function useCopy(text: string) {
+  const [copied, setCopied] = useState(false);
+  function copy() {
+    void navigator.clipboard.writeText(text);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  }
+  return { copied, copy };
+}
+
+function BlockActions({
+  text,
+  mode,
+  onToggleMode,
+  showToggle,
+}: {
+  text: string;
+  mode: "raw" | "markdown";
+  onToggleMode: () => void;
+  showToggle: boolean;
+}) {
+  const { copied, copy } = useCopy(text);
+  return (
+    <div className="flex items-center gap-1">
+      {showToggle && (
+        <button
+          className="flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+          onClick={onToggleMode}
+          title={mode === "raw" ? "Render markdown" : "View raw"}
+          type="button"
+        >
+          {mode === "raw" ? (
+            <>
+              <Eye className="size-3" />
+              Preview
+            </>
+          ) : (
+            <>
+              <EyeOff className="size-3" />
+              Raw
+            </>
+          )}
+        </button>
+      )}
+      <button
+        className="rounded p-1 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+        onClick={copy}
+        title={copied ? "Copied!" : "Copy to clipboard"}
+        type="button"
+      >
+        {copied ? (
+          <Check className="size-3 text-emerald-500" />
+        ) : (
+          <Clipboard className="size-3" />
+        )}
+      </button>
+    </div>
+  );
 }
 
 function AttributesTable({
@@ -277,19 +407,39 @@ const ROLE_LABELS: Record<string, string> = {
 function MessageRow({ msg }: { msg: ChatMessage }) {
   const roleLabel = ROLE_LABELS[msg.role ?? ""] ?? msg.role ?? "Message";
   const hasToolCalls = (msg.tool_calls?.length ?? 0) > 0;
+  const text = msg.content ?? "";
+  const isTool = msg.role === "tool";
+  const canMarkdown = !isTool && typeof text === "string" && text.length > 0 && isLikelyMarkdown(text);
+  const [mode, setMode] = useState<"raw" | "markdown">(canMarkdown ? "markdown" : "raw");
 
   return (
     <div>
-      <div className="mb-1.5 flex items-center gap-2">
-        <span className="font-semibold text-muted-foreground">{roleLabel}</span>
-        {hasToolCalls && (
-          <span className="inline-flex items-center rounded-full border border-violet-300 bg-violet-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-violet-700 dark:border-violet-700 dark:bg-violet-900/30 dark:text-violet-400">
-            tool call
-          </span>
+      <div className="mb-1.5 flex items-center justify-between gap-2">
+        <div className="flex items-center gap-2">
+          <span className="font-semibold text-muted-foreground">{roleLabel}</span>
+          {hasToolCalls && (
+            <span className="inline-flex items-center rounded-full border border-violet-300 bg-violet-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-violet-700 dark:border-violet-700 dark:bg-violet-900/30 dark:text-violet-400">
+              tool call
+            </span>
+          )}
+        </div>
+        {text.length > 0 && (
+          <BlockActions
+            mode={mode}
+            onToggleMode={() => setMode((m) => (m === "raw" ? "markdown" : "raw"))}
+            showToggle={canMarkdown}
+            text={text}
+          />
         )}
       </div>
-      {msg.content != null && msg.content !== "" && (
-        <div className="whitespace-pre-wrap wrap-break-word">{msg.content}</div>
+      {text !== "" && (
+        <div className="wrap-break-word">
+          {mode === "markdown" && canMarkdown ? (
+            <MarkdownContent>{text}</MarkdownContent>
+          ) : (
+            <div className="whitespace-pre-wrap text-xs">{text}</div>
+          )}
+        </div>
       )}
       {msg.tool_calls?.map((tc, tcIdx) => (
         <ToolCallBlock key={tcIdx} tc={tc} />
@@ -315,10 +465,35 @@ function JsonBlock({
     }
   }, [value]);
 
+  const rawJson = useMemo(
+    () =>
+      typeof parsedValue === "string"
+        ? parsedValue
+        : JSON.stringify(parsedValue, null, 2),
+    [parsedValue]
+  );
+
+  const canMarkdown =
+    typeof parsedValue === "string" &&
+    parsedValue.length > 0 &&
+    isLikelyMarkdown(parsedValue);
+
+  const [mode, setMode] = useState<"raw" | "markdown">(canMarkdown ? "markdown" : "raw");
+
   const header = (
-    <div className="border-b border-border bg-muted/50 px-3 py-2 flex items-center gap-2">
-      <span className="text-xs font-semibold uppercase text-muted-foreground">{title}</span>
-      {badge}
+    <div className="border-b border-border bg-muted/50 px-3 py-2 flex items-center justify-between gap-2">
+      <div className="flex items-center gap-2">
+        <span className="text-xs font-semibold uppercase text-muted-foreground">{title}</span>
+        {badge}
+      </div>
+      {!Array.isArray(parsedValue) && rawJson && (
+        <BlockActions
+          mode={mode}
+          onToggleMode={() => setMode((m) => (m === "raw" ? "markdown" : "raw"))}
+          showToggle={canMarkdown}
+          text={rawJson}
+        />
+      )}
     </div>
   );
 
@@ -326,7 +501,13 @@ function JsonBlock({
     return (
       <div className="overflow-hidden rounded-md border border-border">
         {header}
-        <div className="max-h-64 overflow-auto p-3 text-xs font-mono space-y-4">{parsedValue}</div>
+        <div className="p-3">
+          {mode === "markdown" && canMarkdown ? (
+            <MarkdownContent>{parsedValue}</MarkdownContent>
+          ) : (
+            <pre className="whitespace-pre-wrap wrap-break-word font-mono text-xs">{parsedValue}</pre>
+          )}
+        </div>
       </div>
     );
   }
@@ -335,7 +516,7 @@ function JsonBlock({
       return (
         <div className="overflow-hidden rounded-md border border-border">
           {header}
-          <pre className="max-h-64 overflow-auto p-3 text-xs font-mono whitespace-pre-wrap wrap-break-word">
+          <pre className="p-3 text-xs font-mono whitespace-pre-wrap wrap-break-word">
             {JSON.stringify(parsedValue, null, 2)}
           </pre>
         </div>
@@ -348,7 +529,7 @@ function JsonBlock({
   return (
     <div className="overflow-hidden rounded-md border border-border">
       {header}
-      <div className="max-h-64 overflow-auto p-3 text-xs font-mono divide-y divide-border/40">
+      <div className="p-3 text-xs font-mono divide-y divide-border/40">
         {(parsedValue as ChatMessage[]).map((msg, idx) => (
           <div className="py-3 first:pt-1" key={idx}>
             <MessageRow msg={msg} />
