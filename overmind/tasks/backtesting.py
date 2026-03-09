@@ -119,6 +119,57 @@ def _next_backtest_threshold(last_count: int) -> int:
     return ((last_count // 1000) + 1) * 1000
 
 
+def _previous_backtest_threshold(last_count: int) -> int:
+    """Return the previous threshold so the next threshold <= last_count.
+
+    Used when criteria change to roll back the threshold by one step, causing
+    backtesting to re-run with the updated scoring logic.
+
+    Examples:
+        last_count=120 (crossed threshold 100) -> returns 50
+        -> next threshold = 100, and 120 >= 100, so backtest re-triggers.
+    """
+    if last_count <= 0:
+        return 0
+
+    all_thresholds = [0] + list(_INITIAL_THRESHOLDS)
+    t = _INITIAL_THRESHOLDS[-1] + 1000
+    while t <= last_count:
+        all_thresholds.append(t)
+        t += 1000
+
+    applicable = [t for t in all_thresholds if t <= last_count]
+    if len(applicable) < 2:
+        return 0
+    return applicable[-2]
+
+
+def invalidate_backtesting_metadata(prompt: "Prompt") -> None:
+    """Roll back the backtesting threshold by one step when evaluation criteria
+    or agent description changes.
+
+    This is a mirror of ``invalidate_prompt_improvement_metadata`` in
+    ``prompt_improvement.py``. It causes the next threshold test to pass with
+    the current span count so backtesting re-runs using the updated scoring.
+
+    Idempotent: if ``criteria_invalidated`` is already set, it is a no-op
+    so rapid successive criteria updates don't double-roll the threshold.
+    """
+    meta = prompt.backtest_metadata or {}
+
+    if meta.get("criteria_invalidated"):
+        return
+
+    last_count = meta.get("last_backtest_span_count", 0)
+    previous_count = _previous_backtest_threshold(last_count)
+
+    prompt.backtest_metadata = {
+        **meta,
+        "last_backtest_span_count": previous_count,
+        "criteria_invalidated": True,
+    }
+
+
 # ---------------------------------------------------------------------------
 # Provider-aware scheduling helpers
 # ---------------------------------------------------------------------------
@@ -1080,6 +1131,38 @@ async def _run_backtesting(
                         "suggestion_id": results.get("suggestion_id"),
                         "parameters": existing_params,
                     }
+
+                    # Advance threshold for COMPLETED and PARTIALLY_COMPLETED so the
+                    # scheduler doesn't re-trigger until enough new spans accumulate.
+                    if final_status in (
+                        JobStatus.COMPLETED,
+                        JobStatus.PARTIALLY_COMPLETED,
+                    ):
+                        scored_count_at_creation = existing_params.get(
+                            "scored_count_at_creation", 0
+                        )
+                        prompt_result = await session.execute(
+                            select(Prompt)
+                            .where(
+                                and_(
+                                    Prompt.project_id == job.project_id,
+                                    Prompt.slug == job.prompt_slug,
+                                )
+                            )
+                            .order_by(Prompt.version.desc())
+                            .limit(1)
+                        )
+                        prompt_obj = prompt_result.scalar_one_or_none()
+                        if prompt_obj is not None:
+                            existing_backtest_meta = prompt_obj.backtest_metadata or {}
+                            # Advance threshold and clear any criteria_invalidated flag
+                            # so the next criteria change can trigger another rollback.
+                            prompt_obj.backtest_metadata = {
+                                k: v
+                                for k, v in existing_backtest_meta.items()
+                                if k != "criteria_invalidated"
+                            } | {"last_backtest_span_count": scored_count_at_creation}
+
                     await session.commit()
                     logger.info(f"Updated job {job_id} to {final_status.value}")
         except Exception as exc:
@@ -1104,6 +1187,8 @@ async def _run_backtesting(
 
     except Exception as e:
         logger.error(f"Backtesting failed: {str(e)}")
+
+        # Mark the BacktestRun record as failed regardless of retry decision.
         async with AsyncSessionLocal() as session:
             result = await session.execute(
                 select(BacktestRun).where(
@@ -1116,6 +1201,11 @@ async def _run_backtesting(
                 backtest_run.completed_at = datetime.now(timezone.utc)
             await session.commit()
 
+        # Retry up to 3 times by resetting the job to "pending" so the
+        # reconciler re-dispatches it.  On the final failure, mark the job
+        # as FAILED and advance the threshold so it does not re-trigger at
+        # the same span count.
+        MAX_JOB_RETRIES = 3
         try:
             async with AsyncSessionLocal() as session:
                 job_result = await session.execute(
@@ -1125,11 +1215,64 @@ async def _run_backtesting(
                 if job:
                     from overmind.api.v1.endpoints.jobs import JobStatus as _JS
 
-                    job.status = _JS.FAILED.value
-                    job.result = {"error": str(e)}
+                    existing_params = (job.result or {}).get("parameters", {})
+                    retry_count = existing_params.get("retry_count", 0)
+
+                    if retry_count < MAX_JOB_RETRIES:
+                        # Schedule a retry via the reconciler.
+                        existing_params["retry_count"] = retry_count + 1
+                        job.status = _JS.PENDING.value
+                        job.result = {
+                            **(job.result or {}),
+                            "parameters": existing_params,
+                            "last_error": str(e),
+                        }
+                        logger.warning(
+                            f"Backtesting job {job_id} failed (attempt {retry_count + 1}/{MAX_JOB_RETRIES}), "
+                            f"resetting to pending for retry"
+                        )
+                    else:
+                        # Final failure — mark job FAILED and advance threshold.
+                        job.status = _JS.FAILED.value
+                        job.result = {
+                            **(job.result or {}),
+                            "parameters": existing_params,
+                            "error": str(e),
+                        }
+                        logger.error(
+                            f"Backtesting job {job_id} failed after {MAX_JOB_RETRIES} retries, "
+                            f"marking as failed and advancing threshold"
+                        )
+
+                        # Advance threshold so the scheduler skips this span count.
+                        scored_count_at_creation = existing_params.get(
+                            "scored_count_at_creation", 0
+                        )
+                        if scored_count_at_creation:
+                            prompt_result = await session.execute(
+                                select(Prompt)
+                                .where(
+                                    and_(
+                                        Prompt.project_id == job.project_id,
+                                        Prompt.slug == job.prompt_slug,
+                                    )
+                                )
+                                .order_by(Prompt.version.desc())
+                                .limit(1)
+                            )
+                            prompt_obj = prompt_result.scalar_one_or_none()
+                            if prompt_obj is not None:
+                                existing_backtest_meta = (
+                                    prompt_obj.backtest_metadata or {}
+                                )
+                                prompt_obj.backtest_metadata = {
+                                    **existing_backtest_meta,
+                                    "last_backtest_span_count": scored_count_at_creation,
+                                }
+
                     await session.commit()
         except Exception:
-            logger.exception("Failed to update job status to failed")
+            logger.exception("Failed to update job status after backtesting failure")
 
         raise
 
@@ -1281,26 +1424,43 @@ async def validate_backtesting_eligibility(
     # Skipped for user-triggered calls (models is not None) — users explicitly
     # choosing a new model selection should not be blocked by the scheduler's
     # throttle.  See docstring for the full rationale.
+    #
+    # Threshold state is tracked in prompt.backtest_metadata["last_backtest_span_count"]
+    # (written on every terminal job state including PARTIALLY_COMPLETED). Falls back
+    # to a job-record query for prompts that haven't yet had a job complete under the
+    # new tracking scheme (backward compatibility).
     if models is None:
         last_count = 0
-        last_job_q = await session.execute(
-            select(Job.result)
-            .where(
-                and_(
-                    Job.project_id == prompt.project_id,
-                    Job.prompt_slug == prompt.slug,
-                    Job.job_type == JobType.MODEL_BACKTESTING.value,
-                    Job.status == JobStatus.COMPLETED.value,
+
+        # Primary: read from prompt metadata (set on every terminal job state)
+        backtest_meta = prompt.backtest_metadata or {}
+        if backtest_meta.get("last_backtest_span_count"):
+            last_count = backtest_meta["last_backtest_span_count"]
+        else:
+            # Fallback: query job records for prompts without metadata yet
+            last_job_q = await session.execute(
+                select(Job.result)
+                .where(
+                    and_(
+                        Job.project_id == prompt.project_id,
+                        Job.prompt_slug == prompt.slug,
+                        Job.job_type == JobType.MODEL_BACKTESTING.value,
+                        Job.status.in_(
+                            [
+                                JobStatus.COMPLETED.value,
+                                JobStatus.PARTIALLY_COMPLETED.value,
+                            ]
+                        ),
+                    )
                 )
+                .order_by(Job.created_at.desc())
+                .limit(1)
             )
-            .order_by(Job.created_at.desc())
-            .limit(1)
-        )
-        last_job_result = last_job_q.scalar_one_or_none()
-        if last_job_result and isinstance(last_job_result, dict):
-            last_count = last_job_result.get("parameters", {}).get(
-                "scored_count_at_creation", 0
-            )
+            last_job_result = last_job_q.scalar_one_or_none()
+            if last_job_result and isinstance(last_job_result, dict):
+                last_count = last_job_result.get("parameters", {}).get(
+                    "scored_count_at_creation", 0
+                )
 
         next_threshold = _next_backtest_threshold(last_count)
         stats["last_scored_count"] = last_count

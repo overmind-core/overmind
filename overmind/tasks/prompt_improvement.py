@@ -1909,17 +1909,57 @@ async def _execute_prompt_improvement(
         return final_result
 
     except Exception as e:
-        # Update job to failed if it was created
+        # Retry up to 3 times by resetting the job to "pending" so the
+        # reconciler re-dispatches it.  On the final failure, mark the job
+        # as FAILED and advance the threshold so it does not re-trigger at
+        # the same span count.
+        MAX_JOB_RETRIES = 3
         if job:
             try:
-                job.status = JobStatus.FAILED.value
-                job.result = {"error": str(e)}
+                existing_params = (job.result or {}).get("parameters", {})
+                retry_count = existing_params.get("retry_count", 0)
+
+                if retry_count < MAX_JOB_RETRIES:
+                    existing_params["retry_count"] = retry_count + 1
+                    job.status = JobStatus.PENDING.value
+                    job.result = {
+                        **(job.result or {}),
+                        "parameters": existing_params,
+                        "last_error": str(e),
+                    }
+                    logger.warning(
+                        f"Prompt tuning job {job_id} failed (attempt {retry_count + 1}/{MAX_JOB_RETRIES}), "
+                        f"resetting to pending for retry"
+                    )
+                else:
+                    # Final failure — mark FAILED and advance threshold so the
+                    # scheduler skips this span count on the next run.
+                    job.status = JobStatus.FAILED.value
+                    job.result = {
+                        **(job.result or {}),
+                        "parameters": existing_params,
+                        "error": str(e),
+                    }
+                    logger.error(
+                        f"Prompt tuning job {job_id} failed after {MAX_JOB_RETRIES} retries, "
+                        f"marking as failed and advancing threshold"
+                    )
+
+                    # Advance threshold to prevent immediate re-triggering.
+                    prompt.improvement_metadata = {
+                        k: v
+                        for k, v in (prompt.improvement_metadata or {}).items()
+                        if k != "criteria_invalidated"
+                    } | {"last_improvement_span_count": scored_count}
+
                 await session.commit()
                 logger.info(
-                    f"Updated job entry to failed for prompt_tuning: {prompt_id}"
+                    f"Updated job entry after prompt_tuning failure: {prompt_id}"
                 )
             except Exception:
-                logger.exception("Failed to update job status to failed")
+                logger.exception(
+                    "Failed to update job status after prompt tuning failure"
+                )
         raise
 
 

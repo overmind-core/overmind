@@ -70,10 +70,13 @@ Each job type has a `validate_*_eligibility()` function called before creation:
 ### Helper functions (`overmind/api/v1/endpoints/utils/jobs.py`)
 
 - `get_job_or_404(job_id, project_id, session)` — fetch or 404
-- `cancel_existing_system_jobs(prompt_slug, job_type, project_id, session)` — cancel pending system jobs before creating user job
 - `sync_running_job_statuses(jobs, celery_app, session)` — reconcile DB status with Celery result backend
 - `create_job(job_type, project_id, prompt_slug, ...)` — create Job record
 - `find_latest_prompt(prompt_slug, project_id, session)` — get latest version of a prompt
+
+### Job conflict policy
+
+A new job is rejected (HTTP 400) if a PENDING or RUNNING job already exists for the same `(project_id, prompt_slug, job_type)` — regardless of whether the existing job was triggered by the system or by the user. `cancel_existing_system_jobs` is **no longer called** before creating user-triggered prompt tuning or backtesting jobs. The eligibility check's "already in progress" message is surfaced directly to the caller.
 
 ## Job Reconciler (`overmind/tasks/job_reconciler.py`)
 

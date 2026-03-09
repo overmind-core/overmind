@@ -13,7 +13,6 @@ from overmind.api.v1.helpers.authentication import (
 from overmind.core.llms import SUPPORTED_LLM_MODELS, SUPPORTED_LLM_MODEL_NAMES
 from overmind.tasks.backtesting import _base_model_from_key
 from overmind.api.v1.endpoints.utils.jobs import (
-    cancel_existing_system_jobs,
     create_job,
 )
 from overmind.db.session import get_db
@@ -178,9 +177,6 @@ async def run_backtesting(
 
     # Get organisation_id from user (optional in core)
     organisation_id = current_user.get_organisation_id()
-
-    # Cancel any existing PENDING system jobs for the same scope
-    await cancel_existing_system_jobs(db, project_uuid, slug, "model_backtesting")
 
     # Create the job using create_job helper
     job = await create_job(

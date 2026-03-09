@@ -30,6 +30,7 @@ The central entity — represents a discovered or user-defined prompt template.
 | `improvement_metadata` | JSONB              | See format below                                             |
 | `agent_description`    | JSONB              | See format below                                             |
 | `backtest_model_suggestions` | JSONB         | See format below — LLM-generated model recommendations       |
+| `backtest_metadata`    | JSONB              | See format below — backtesting threshold state               |
 
 **`prompt_id` property**: `"{project_id}_{version}_{slug}"` — used as a string key in spans and backtests. Parse with `Prompt.parse_prompt_id(prompt_id) -> (project_id, version, slug)`.
 
@@ -115,6 +116,22 @@ LLM-generated model recommendations produced immediately after initial agent des
 | `recommendations` | LLM via `MODEL_SUGGESTIONS_GENERATION_PROMPT` | 2–3 model recommendations across trade-off categories |
 | `recommendations[].category` | LLM | One of: `best_overall`, `most_capable`, `fastest`, `cheapest` |
 | `summary` | LLM | 1–2 sentence overview of the recommendations |
+
+### JSONB: `backtest_metadata`
+
+Tracks backtesting threshold state. Written on every terminal job state (COMPLETED, PARTIALLY_COMPLETED, FAILED after retries exhausted). Read by `validate_backtesting_eligibility` Check 5. Mirrors the role of `improvement_metadata` for the prompt tuning pipeline.
+
+```json
+{
+  "last_backtest_span_count": 120,
+  "criteria_invalidated": true
+}
+```
+
+| Field | Set by | Meaning |
+| ----- | ------ | ------- |
+| `last_backtest_span_count` | `_run_backtesting` completion handler | Scored span count at the time the last backtesting job was created — gates the next threshold |
+| `criteria_invalidated` | `invalidate_backtesting_metadata()` | Set when criteria/description changes; cleared after a backtesting job completes — triggers one-step threshold rollback |
 
 ## SpanModel (`overmind/models/traces.py`)
 

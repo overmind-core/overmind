@@ -234,8 +234,10 @@ async def update_agent_description_and_criteria(
         from overmind.tasks.prompt_improvement import (
             invalidate_prompt_improvement_metadata,
         )
+        from overmind.tasks.backtesting import invalidate_backtesting_metadata
 
         invalidate_prompt_improvement_metadata(prompt)
+        invalidate_backtesting_metadata(prompt)
 
     cleared_count = 0
     if criteria_changed:
