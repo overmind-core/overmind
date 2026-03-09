@@ -235,8 +235,7 @@ function SpanSection({ label, value }: { label: string; value: unknown }) {
   const plain = formatPlain(value);
   const canMarkdown =
     !messages && typeof value === "string" && plain.length > 0 && isLikelyMarkdown(plain);
-  const [mode, setMode] = useState<"raw" | "markdown">(canMarkdown ? "markdown" : "raw"
-  );
+  const [mode, setMode] = useState<"raw" | "markdown">(canMarkdown ? "markdown" : "raw");
   const [copied, setCopied] = useState(false);
 
   function copy() {

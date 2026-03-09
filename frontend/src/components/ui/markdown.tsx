@@ -1,4 +1,5 @@
 import ReactMarkdown from "react-markdown";
+
 import remarkGfm from "remark-gfm";
 
 import { cn } from "@/lib/utils";
@@ -21,7 +22,6 @@ export function MarkdownContent({
 }) {
   return (
     <ReactMarkdown
-      remarkPlugins={[remarkGfm]}
       components={{
         a: ({ href, children }) => (
           <a
@@ -37,7 +37,7 @@ export function MarkdownContent({
           <blockquote
             className={cn(
               "mb-2 border-l-2 border-muted-foreground/40 pl-3 text-muted-foreground last:mb-0",
-              compact && "text-xs",
+              compact && "text-xs"
             )}
           >
             {children}
@@ -88,20 +88,17 @@ export function MarkdownContent({
             <table className="w-full border-collapse text-xs">{children}</table>
           </div>
         ),
+        td: ({ children }) => <td className="border border-border px-2 py-1">{children}</td>,
         th: ({ children }) => (
           <th className="border border-border bg-muted px-2 py-1 text-left font-semibold">
             {children}
           </th>
         ),
-        td: ({ children }) => (
-          <td className="border border-border px-2 py-1">{children}</td>
-        ),
         ul: ({ children }) => (
-          <ul className={cn("mb-2 list-disc pl-4 last:mb-0", compact && "text-xs")}>
-            {children}
-          </ul>
+          <ul className={cn("mb-2 list-disc pl-4 last:mb-0", compact && "text-xs")}>{children}</ul>
         ),
       }}
+      remarkPlugins={[remarkGfm]}
     >
       {children}
     </ReactMarkdown>

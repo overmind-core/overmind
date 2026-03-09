@@ -6,9 +6,9 @@ import { Check, Clipboard, Eye, EyeOff, ThumbsDown, ThumbsUp } from "pixelartico
 
 import apiClient from "@/client";
 import { Button } from "@/components/ui/button";
-import { isLikelyMarkdown, MarkdownContent } from "@/components/ui/markdown";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
+import { isLikelyMarkdown, MarkdownContent } from "@/components/ui/markdown";
 import {
   Table,
   TableBody,
@@ -33,7 +33,6 @@ function formatAttributeValue(value: unknown): string {
   }
   return String(value);
 }
-
 
 function useCopy(text: string) {
   const [copied, setCopied] = useState(false);
