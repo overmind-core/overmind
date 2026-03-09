@@ -500,10 +500,16 @@ export function SpanFeedbackDialog({
           await apiClient.agentReviews.getSpansForReviewApiV1AgentReviewsPromptSlugReviewSpansGet({
             projectId: projectId,
             promptSlug: agent.slug,
+            // Pass the fixed span IDs so the backend returns exactly the same
+            // spans with updated scores rather than a new dynamic worst/best
+            // selection — prevents duplicates when re-scored spans shift rank.
+            spanIds: fixedSpanIdsRef.current,
           });
 
         if (!mountedRef.current) return;
         const refreshedAll = [...refreshed.worstSpans, ...refreshed.bestSpans];
+        // Re-order to match the original display order so the user sees the
+        // same spans in the same positions.
         const byId = new Map(refreshedAll.map((s) => [s.spanId, s]));
         const ordered = fixedSpanIdsRef.current.flatMap((id) => {
           const span = byId.get(id);

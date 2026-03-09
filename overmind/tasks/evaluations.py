@@ -45,9 +45,6 @@ logger = logging.getLogger(__name__)
 # Max concurrent span evaluations (controls thread + DB connection pressure)
 _MAX_CONCURRENT_EVALUATIONS = 10
 
-# Minimum unscored spans required before judge scoring is eligible
-MIN_UNSCORED_SPANS_FOR_SCORING = 10
-
 # Maximum scored spans per prompt before the initial agent review is required.
 # Once this cap is reached, scoring pauses until the user completes the review.
 PRE_REVIEW_SCORED_SPAN_CAP = 30
@@ -649,10 +646,10 @@ async def validate_judge_scoring_eligibility(
     unscored_count = len(unscored_spans)
     stats["unscored_spans_count"] = unscored_count
 
-    if unscored_count < MIN_UNSCORED_SPANS_FOR_SCORING:
+    if unscored_count == 0:
         return (
             False,
-            f"Judge scoring requires at least {MIN_UNSCORED_SPANS_FOR_SCORING} unscored requests, but only {unscored_count} are available.",
+            "No unscored requests found for this agent.",
             stats,
         )
 
@@ -758,7 +755,7 @@ async def _auto_evaluate_unscored_spans(
 
     Logic:
     - Groups unscored spans by (project_id, prompt_slug)
-    - For each prompt with 10+ spans, randomly selects up to 50 spans to evaluate
+    - For each eligible prompt, randomly selects up to 50 spans to evaluate
     - Creates job entries with proper lifecycle tracking (running → completed/failed/cancelled)
 
     Args:
@@ -930,7 +927,7 @@ def auto_evaluate_unscored_spans_task(self) -> dict[str, Any]:
     1. Finds spans without correctness scores
     2. Filters for spans linked to prompts with evaluation criteria
     3. Groups spans by (project_id, prompt_slug)
-    4. For each prompt with 10+ spans, creates a PENDING job
+    4. For each eligible prompt with unscored spans, creates a PENDING job
     5. Job reconciler will pick up these jobs and execute the actual evaluations
 
     Uses distributed locking to prevent concurrent executions.

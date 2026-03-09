@@ -82,12 +82,24 @@ class ReviewFailedRequest(BaseModel):
 async def get_spans_for_review(
     prompt_slug: str,
     project_id: str | None = Query(None, description="Filter by project ID"),
+    span_ids: list[str] | None = Query(
+        None,
+        description=(
+            "When provided, return exactly these spans (with updated scores) "
+            "instead of running the dynamic worst/best selection. Used by the "
+            "review dialog refresh to avoid showing duplicate or stale spans."
+        ),
+    ),
     user: AuthenticatedUserOrToken = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     """
     Get 2 worst-scored and 2 best-scored spans for agent review.
     Used in the interactive criteria refinement dialogue.
+
+    When span_ids is provided the endpoint fetches those specific spans and
+    returns them split into worst/best by score, guaranteeing the caller always
+    gets back the same set of spans with refreshed correctness values.
     """
     # Resolve project
     if project_id:
@@ -111,39 +123,61 @@ async def get_spans_for_review(
     if not prompt:
         raise HTTPException(status_code=404, detail="Agent not found")
 
-    # Get 2 worst-scored spans (lowest correctness)
-    worst_q = await db.execute(
-        select(SpanModel)
-        .where(
-            and_(
-                SpanModel.prompt_id == prompt.prompt_id,
-                SpanModel.feedback_score.has_key("correctness"),
-                SpanModel.exclude_system_spans(),
+    if span_ids:
+        # Fetch the exact spans requested (refresh path after re-scoring).
+        # Deduplicating the input list prevents returning the same span twice
+        # when the caller accidentally passes duplicates.
+        unique_span_ids = list(dict.fromkeys(span_ids))
+        fixed_q = await db.execute(
+            select(SpanModel).where(
+                and_(
+                    SpanModel.prompt_id == prompt.prompt_id,
+                    SpanModel.span_id.in_(unique_span_ids),
+                    SpanModel.exclude_system_spans(),
+                )
             )
         )
-        .order_by(cast(SpanModel.feedback_score["correctness"], Float).asc())
-        .limit(2)
-    )
-    worst_spans = worst_q.scalars().all()
-
-    # Exclude worst span IDs so best spans are always distinct
-    worst_span_ids = [s.span_id for s in worst_spans]
-
-    # Get 2 best-scored spans (highest correctness), excluding worst spans
-    best_q = await db.execute(
-        select(SpanModel)
-        .where(
-            and_(
-                SpanModel.prompt_id == prompt.prompt_id,
-                SpanModel.feedback_score.has_key("correctness"),
-                SpanModel.exclude_system_spans(),
-                ~SpanModel.span_id.in_(worst_span_ids),
+        all_fixed = list(fixed_q.scalars().all())
+        # Split into worst/best by score so the response shape matches the
+        # initial load (worst first, then best).
+        all_fixed.sort(key=lambda s: (s.feedback_score or {}).get("correctness") or 0)
+        mid = (len(all_fixed) + 1) // 2
+        worst_spans = all_fixed[:mid]
+        best_spans = list(reversed(all_fixed[mid:]))
+    else:
+        # Get 2 worst-scored spans (lowest correctness)
+        worst_q = await db.execute(
+            select(SpanModel)
+            .where(
+                and_(
+                    SpanModel.prompt_id == prompt.prompt_id,
+                    SpanModel.feedback_score.has_key("correctness"),
+                    SpanModel.exclude_system_spans(),
+                )
             )
+            .order_by(cast(SpanModel.feedback_score["correctness"], Float).asc())
+            .limit(2)
         )
-        .order_by(cast(SpanModel.feedback_score["correctness"], Float).desc())
-        .limit(2)
-    )
-    best_spans = best_q.scalars().all()
+        worst_spans = worst_q.scalars().all()
+
+        # Exclude worst span IDs so best spans are always distinct
+        worst_span_ids = [s.span_id for s in worst_spans]
+
+        # Get 2 best-scored spans (highest correctness), excluding worst spans
+        best_q = await db.execute(
+            select(SpanModel)
+            .where(
+                and_(
+                    SpanModel.prompt_id == prompt.prompt_id,
+                    SpanModel.feedback_score.has_key("correctness"),
+                    SpanModel.exclude_system_spans(),
+                    ~SpanModel.span_id.in_(worst_span_ids),
+                )
+            )
+            .order_by(cast(SpanModel.feedback_score["correctness"], Float).desc())
+            .limit(2)
+        )
+        best_spans = best_q.scalars().all()
 
     def _parse_json_field(value: Any) -> Any:
         if isinstance(value, str):

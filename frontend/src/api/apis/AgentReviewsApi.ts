@@ -44,6 +44,7 @@ export interface CompletePeriodicReviewApiV1AgentReviewsPromptSlugCompleteReview
 export interface GetSpansForReviewApiV1AgentReviewsPromptSlugReviewSpansGetRequest {
     promptSlug: string;
     projectId?: string | null;
+    spanIds?: Array<string> | null;
     useCache?: boolean;
 }
 
@@ -168,6 +169,10 @@ export class AgentReviewsApi extends runtime.BaseAPI {
 
         if (requestParameters['projectId'] != null) {
             queryParameters['project_id'] = requestParameters['projectId'];
+        }
+
+        if (requestParameters['spanIds'] != null) {
+            queryParameters['span_ids'] = requestParameters['spanIds'];
         }
 
         if (requestParameters['useCache'] != null) {

@@ -7,10 +7,16 @@ import pytest
     "span_count,has_criteria,expected_eligible",
     [
         (12, True, True),
-        (5, True, False),
+        (5, True, True),
+        (0, True, False),
         (15, False, False),
     ],
-    ids=["enough-spans-with-criteria", "too-few-spans", "no-criteria"],
+    ids=[
+        "enough-spans-with-criteria",
+        "few-spans-with-criteria",
+        "no-unscored-spans",
+        "no-criteria",
+    ],
 )
 async def test_judge_scoring_eligibility(
     seed_user,
@@ -54,8 +60,8 @@ async def test_judge_scoring_eligibility(
     assert is_eligible is expected_eligible
 
     if expected_eligible:
-        assert stats["unscored_spans_count"] >= 10
+        assert stats["unscored_spans_count"] >= 1
     elif has_criteria:
-        assert stats["unscored_spans_count"] < 10
+        assert stats["unscored_spans_count"] == 0
     else:
         assert "criteria" in error.lower()
