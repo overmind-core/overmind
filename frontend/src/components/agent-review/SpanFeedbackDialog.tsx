@@ -592,8 +592,8 @@ export function SpanFeedbackDialog({
     <Dialog open>
       <DialogContent
         className="flex max-h-[95vh] w-full max-w-6xl flex-col gap-0 overflow-hidden p-0"
-        onEscapeKeyDown={(e) => e.preventDefault()}
-        onInteractOutside={(e) => e.preventDefault()}
+        onEscapeKeyDown={onClose}
+        onInteractOutside={onClose}
       >
         {/* Header */}
         <DialogHeader className="shrink-0 border-b border-border px-6 py-4">
