@@ -1,6 +1,6 @@
 import { useState } from "react";
 
-import { UserButton, useAuth, useUser } from "@clerk/clerk-react";
+import { UserButton, useUser } from "@clerk/clerk-react";
 import { Link, useNavigate, useRouteContext, useRouterState } from "@tanstack/react-router";
 import {
   Briefcase,
@@ -25,6 +25,7 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
 } from "@/components/ui/sidebar";
+import { useAuthContext } from "@/contexts/auth-context";
 
 const navLinks = [
   { icon: Home, label: "Home", to: "/" },
@@ -36,7 +37,7 @@ const navLinks = [
 export function AppSidebar() {
   const { location } = useRouterState();
   const { config } = useRouteContext({ from: "/_auth" });
-  const isSignedIn = useIsSignedIn();
+  const { isSignedIn } = useAuthContext();
 
   return (
     <Sidebar collapsible="icon">
@@ -100,14 +101,6 @@ const accountLinks = [
   { icon: Zap, label: "Getting Started", to: "/get-started" },
   { icon: User, label: "Account", to: "/account" },
 ];
-
-function useIsSignedIn() {
-  const { config } = useRouteContext({ from: "/_auth" });
-  if (typeof window === "undefined") return false;
-  // biome-ignore lint/correctness/useHookAtTopLevel: Clerk vs self-hosted auth; useAuth only valid when clerkReady
-  if (config.clerkReady) return useAuth().isSignedIn;
-  return !!(localStorage.getItem("token") ?? localStorage.getItem("auth_token"));
-}
 
 const EEUserButton = () => {
   const { config } = useRouteContext({ from: "/_auth" });

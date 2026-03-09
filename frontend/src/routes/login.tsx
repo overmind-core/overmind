@@ -133,7 +133,10 @@ const OSSAuth = () => {
 const EEAuth = () => {
   const { config } = Route.useRouteContext();
   if (!config.clerkReady) return <ContinueWithGoogle />;
-  // biome-ignore lint/correctness/useHookAtTopLevel: useUser only valid when Clerk is enabled
+  return <EEClerkAuth />;
+};
+
+const EEClerkAuth = () => {
   const { user } = useUser();
   return (
     <>

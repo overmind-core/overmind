@@ -39,7 +39,6 @@ function OAuthGoogleComplete() {
     },
   });
 
-  // biome-ignore lint/correctness/useExhaustiveDependencies: manual
   useEffect(() => {
     if (hasStarted.current) return;
     if (code && state) {
@@ -48,11 +47,11 @@ function OAuthGoogleComplete() {
     } else {
       navigate({ to: "/" });
     }
-  }, [code, state]);
+  }, [code, state, completeLogin, navigate]);
 
   return (
     <div className="flex min-h-screen flex-col items-center justify-center gap-4">
-      <Loader2 className="animate-spin text-muted-foreground" size={56} />
+      <Loader2 className="size-14 animate-spin text-muted-foreground" />
       <div className="text-lg font-semibold text-foreground">Completing sign in...</div>
     </div>
   );

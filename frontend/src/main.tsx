@@ -11,6 +11,7 @@ import { createRouter as createTanStackRouter } from "@tanstack/react-router";
 import { Toaster } from "sonner";
 
 import { config } from "./config";
+import { ClerkAuthProvider, FallbackAuthProvider } from "./contexts/auth-context";
 import PostHogProvider from "./integrations/posthog-provider";
 import { getContext } from "./integrations/tanstack-query";
 import { routeTree } from "./routeTree.gen";
@@ -36,7 +37,7 @@ const router = getRouter();
 
 const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   if (!config.clerkReady || config.isSelfHosted) {
-    return children;
+    return <FallbackAuthProvider>{children}</FallbackAuthProvider>;
   }
   return (
     <ClerkProvider
@@ -48,7 +49,7 @@ const AuthProvider = ({ children }: { children: React.ReactNode }) => {
       signUpForceRedirectUrl={"/"}
       signUpUrl="/login"
     >
-      {children}
+      <ClerkAuthProvider>{children}</ClerkAuthProvider>
     </ClerkProvider>
   );
 };

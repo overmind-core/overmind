@@ -1,13 +1,9 @@
-import { useOrganization } from "@clerk/clerk-react";
 import { useQuery } from "@tanstack/react-query";
 
 import apiClient from "@/client";
-import { config } from "@/config";
+import { useAuthContext } from "@/contexts/auth-context";
 
-export const useOrganisationId = () => {
-  // biome-ignore lint/correctness/useHookAtTopLevel: useOrganization only valid when Clerk is enabled
-  return config.clerkReady ? (useOrganization().organization?.id ?? "") : "";
-};
+export const useOrganisationId = () => useAuthContext().organisationId;
 
 export const useOnboardingQuery = () => {
   return useQuery({
