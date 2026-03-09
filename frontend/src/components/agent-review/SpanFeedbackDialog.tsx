@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import ReactMarkdown from "react-markdown";
 
 import {
   WarningDiamond as AlertCircle,
@@ -14,7 +15,6 @@ import {
   ThumbsUp,
   Cancel as X,
 } from "pixelarticons/react";
-import ReactMarkdown from "react-markdown";
 
 import type { AgentOut, SpanForReview } from "@/api";
 import apiClient from "@/client";
@@ -136,7 +136,7 @@ function MessageBubble({ m }: { m: ChatMessage }) {
   const content = m.content ?? "";
   const canMarkdown = !isTool && content.length > 0 && isLikelyMarkdown(content);
   const [mode, setMode] = useState<"raw" | "markdown">(
-    canMarkdown && isLikelyMarkdown(content) ? "markdown" : "raw",
+    canMarkdown && isLikelyMarkdown(content) ? "markdown" : "raw"
   );
   const [copied, setCopied] = useState(false);
 
@@ -157,7 +157,9 @@ function MessageBubble({ m }: { m: ChatMessage }) {
           {roleLabel}
         </span>
         {content.length > 0 && (
-          <div className={cn("flex items-center gap-0.5", isUser ? "flex-row-reverse" : "flex-row")}>
+          <div
+            className={cn("flex items-center gap-0.5", isUser ? "flex-row-reverse" : "flex-row")}
+          >
             {canMarkdown && (
               <button
                 className="flex items-center gap-1 rounded px-1 py-0.5 text-[10px] font-medium text-muted-foreground/60 transition-colors hover:bg-muted hover:text-foreground"
@@ -202,7 +204,7 @@ function MessageBubble({ m }: { m: ChatMessage }) {
                 ? "bg-muted/50 text-muted-foreground italic"
                 : isTool
                   ? "bg-amber-500/10 font-mono text-xs text-foreground"
-                  : "bg-muted text-foreground",
+                  : "bg-muted text-foreground"
           )}
         >
           {isTool || mode === "raw" ? (
@@ -234,10 +236,32 @@ function MarkdownContent({ children }: { children: string }) {
   return (
     <ReactMarkdown
       components={{
-        p: ({ children }) => <p className="mb-2 last:mb-0">{children}</p>,
-        ul: ({ children }) => <ul className="mb-2 list-disc pl-4 last:mb-0">{children}</ul>,
-        ol: ({ children }) => <ol className="mb-2 list-decimal pl-4 last:mb-0">{children}</ol>,
-        li: ({ children }) => <li className="mb-0.5">{children}</li>,
+        a: ({ href, children }) => (
+          <a
+            className="text-primary underline underline-offset-2 hover:text-primary/80"
+            href={href}
+            rel="noopener noreferrer"
+            target="_blank"
+          >
+            {children}
+          </a>
+        ),
+        blockquote: ({ children }) => (
+          <blockquote className="mb-2 border-l-2 border-muted-foreground/40 pl-3 text-muted-foreground last:mb-0">
+            {children}
+          </blockquote>
+        ),
+        code: ({ children, className }) => {
+          const isBlock = className?.includes("language-");
+          return isBlock ? (
+            <code className="block overflow-x-auto rounded bg-muted px-3 py-2 font-mono text-xs">
+              {children}
+            </code>
+          ) : (
+            <code className="rounded bg-muted px-1 py-0.5 font-mono text-xs">{children}</code>
+          );
+        },
+        em: ({ children }) => <em className="italic">{children}</em>,
         h1: ({ children }) => (
           <h1 className="mb-2 mt-4 border-b border-border/50 pb-1 text-sm font-bold first:mt-0">
             {children}
@@ -251,39 +275,17 @@ function MarkdownContent({ children }: { children: string }) {
             {children}
           </h3>
         ),
-        code: ({ children, className }) => {
-          const isBlock = className?.includes("language-");
-          return isBlock ? (
-            <code className="block overflow-x-auto rounded bg-muted px-3 py-2 font-mono text-xs">
-              {children}
-            </code>
-          ) : (
-            <code className="rounded bg-muted px-1 py-0.5 font-mono text-xs">{children}</code>
-          );
-        },
+        hr: () => <hr className="my-2 border-border" />,
+        li: ({ children }) => <li className="mb-0.5">{children}</li>,
+        ol: ({ children }) => <ol className="mb-2 list-decimal pl-4 last:mb-0">{children}</ol>,
+        p: ({ children }) => <p className="mb-2 last:mb-0">{children}</p>,
         pre: ({ children }) => (
           <pre className="mb-2 overflow-x-auto rounded-lg bg-muted/70 px-3 py-2 last:mb-0">
             {children}
           </pre>
         ),
-        blockquote: ({ children }) => (
-          <blockquote className="mb-2 border-l-2 border-muted-foreground/40 pl-3 text-muted-foreground last:mb-0">
-            {children}
-          </blockquote>
-        ),
         strong: ({ children }) => <strong className="font-semibold">{children}</strong>,
-        em: ({ children }) => <em className="italic">{children}</em>,
-        hr: () => <hr className="my-2 border-border" />,
-        a: ({ href, children }) => (
-          <a
-            className="text-primary underline underline-offset-2 hover:text-primary/80"
-            href={href}
-            rel="noopener noreferrer"
-            target="_blank"
-          >
-            {children}
-          </a>
-        ),
+        ul: ({ children }) => <ul className="mb-2 list-disc pl-4 last:mb-0">{children}</ul>,
       }}
     >
       {children}
@@ -302,9 +304,10 @@ function isLikelyMarkdown(text: string): boolean {
 function SpanSection({ label, value }: { label: string; value: unknown }) {
   const messages = parseChatMessages(value);
   const plain = formatPlain(value);
-  const canMarkdown = !messages && typeof value === "string" && plain.length > 0 && isLikelyMarkdown(plain);
+  const canMarkdown =
+    !messages && typeof value === "string" && plain.length > 0 && isLikelyMarkdown(plain);
   const [mode, setMode] = useState<"raw" | "markdown">(
-    canMarkdown && isLikelyMarkdown(plain) ? "markdown" : "raw",
+    canMarkdown && isLikelyMarkdown(plain) ? "markdown" : "raw"
   );
   const [copied, setCopied] = useState(false);
 
