@@ -67,7 +67,7 @@ All must be true (in order):
 1. Prompt used recently (last 7 days)
 1. Minimum scored spans (`>= MIN_SPANS_FOR_BACKTESTING = 10`)
 1. Threshold re-run guard: `scored_count >= _next_backtest_threshold(last_scored_count)` — sequence **30, 100, 200, 500, 1000**, then every 1000 (`_INITIAL_THRESHOLDS`). **System-triggered only.** `last_scored_count` is read from `prompt.backtest_metadata["last_backtest_span_count"]` (falls back to querying COMPLETED/PARTIALLY_COMPLETED job records for backward compat). PARTIALLY_COMPLETED jobs advance the threshold equally to COMPLETED jobs.
-1. Minimum available spans (`>= 10`)
+1. Minimum available scored spans (`>= 10`) — only spans with `feedback_score["correctness"]` count; unscored and error spans are excluded
 1. No existing PENDING/RUNNING backtesting job — applies to **both user- and system-triggered** paths. A new job is rejected if any job is already pending or running (regardless of who triggered it).
 1. At least one model specified (user-triggered only)
 

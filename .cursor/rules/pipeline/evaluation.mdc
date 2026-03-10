@@ -140,7 +140,7 @@ When `_evaluate_correctness_with_llm` raises `ValueError` (malformed LLM respons
 
 - Excluded from all **unscored-span queries**: `_get_unscored_spans`, `_execute_prompt_spans_evaluation`, `validate_judge_scoring_eligibility` — all three queries use `and_(~has_key("correctness"), ~has_key("correctness_error"))` as the "not yet evaluated" condition
 - Excluded from **scored-span queries** (avg score, prompt tuning, periodic reviews, agent reviews) — those all check `has_key("correctness")` which error spans never have
-- Excluded from **backtesting source-span selection**: `_fetch_spans_for_backtesting` filters with `or_(feedback_score.is_(None), ~has_key("correctness_error"))`; the "available spans" eligibility count in `validate_backtesting_eligibility` applies the same filter to stay consistent
+- Excluded from **backtesting source-span selection**: `_fetch_spans_for_backtesting` only fetches spans with `has_key("correctness")` — unscored and error spans are never used as backtest inputs. Check 6 in `validate_backtesting_eligibility` applies the same filter.
 - When **criteria change**, `correctness_error` is also cleared (alongside `correctness` and `correctness_reason`) so the span gets a fresh evaluation attempt under the new criteria
 - `_store_span_score` clears `correctness_error` on successful re-score
 
