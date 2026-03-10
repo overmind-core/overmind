@@ -112,7 +112,7 @@ function AgentCard({ agent, headerAction }: { agent: AgentOut; headerAction?: Re
 
 type ReviewStep = "criteria" | "spans";
 
-export function AgentGrid({ agents, projectId }: { agents: AgentOut[]; projectId?: string }) {
+export function AgentGrid({ agents, projectId }: { agents: AgentOut[]; projectId: string }) {
   const queryClient = useQueryClient();
   const [reviewingAgent, setReviewingAgent] = useState<AgentOut | null>(null);
   const [reviewStep, setReviewStep] = useState<ReviewStep>("criteria");

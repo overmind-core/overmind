@@ -4,10 +4,13 @@ import { useNavigate } from "@tanstack/react-router";
 import { Chart as BarChart3 } from "pixelarticons/react";
 
 import type { PromptVersionOut } from "@/api";
+import { PromptDiff } from "@/components/agent-detail/PromptDiff";
 import { MiniStat } from "@/components/mini-stat";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { formatDate } from "@/lib/utils";
+
+type ViewMode = "full" | "diff";
 
 export function VersionsTab({
   agentName,
@@ -18,8 +21,24 @@ export function VersionsTab({
   projectId: string;
   versions: PromptVersionOut[];
 }) {
+  // versions are passed sorted descending (latest first); reverse for diff lookup
   const [expanded, setExpanded] = useState<number | null>(versions[0]?.version ?? null);
+  const [viewMode, setViewMode] = useState<Record<number, ViewMode>>(() => {
+    // Default all versions (except the first/oldest) to diff view
+    const initial: Record<number, ViewMode> = {};
+    for (let i = 0; i < versions.length - 1; i++) {
+      initial[versions[i].version] = "diff";
+    }
+    return initial;
+  });
   const navigate = useNavigate();
+
+  // Build a map of version → previous prompt text for diff
+  const prevTextByVersion = new Map<number, string>();
+  for (let i = 0; i < versions.length - 1; i++) {
+    // versions[i] is newer, versions[i+1] is older
+    prevTextByVersion.set(versions[i].version, versions[i + 1].promptText ?? "");
+  }
 
   if (versions.length === 0) {
     return (
@@ -34,6 +53,10 @@ export function VersionsTab({
     <div className="space-y-4">
       {versions.map((v) => {
         const isExpanded = expanded === v.version;
+        const mode = viewMode[v.version] ?? "full";
+        const prevText = prevTextByVersion.get(v.version);
+        const hasPrev = prevText !== undefined;
+
         return (
           <div className="overflow-hidden border border-border bg-card" key={v.version}>
             <div className="flex flex-row flex-wrap items-center justify-between gap-4 border-b border-border bg-muted/20 p-4">
@@ -49,13 +72,41 @@ export function VersionsTab({
                   </p>
                 </div>
               </div>
-              <Button
-                onClick={() => setExpanded(isExpanded ? null : v.version)}
-                size="sm"
-                variant="outline"
-              >
-                {isExpanded ? "Hide" : "Show"} template
-              </Button>
+              <div className="flex items-center gap-2">
+                {isExpanded && hasPrev && (
+                  <div className="flex overflow-hidden rounded-md border border-border text-xs">
+                    <button
+                      className={`px-2.5 py-1 transition-colors ${
+                        mode === "full"
+                          ? "bg-accent text-accent-foreground"
+                          : "text-muted-foreground hover:bg-muted/60"
+                      }`}
+                      onClick={() => setViewMode((prev) => ({ ...prev, [v.version]: "full" }))}
+                      type="button"
+                    >
+                      Full
+                    </button>
+                    <button
+                      className={`px-2.5 py-1 transition-colors ${
+                        mode === "diff"
+                          ? "bg-accent text-accent-foreground"
+                          : "text-muted-foreground hover:bg-muted/60"
+                      }`}
+                      onClick={() => setViewMode((prev) => ({ ...prev, [v.version]: "diff" }))}
+                      type="button"
+                    >
+                      Diff
+                    </button>
+                  </div>
+                )}
+                <Button
+                  onClick={() => setExpanded(isExpanded ? null : v.version)}
+                  size="sm"
+                  variant="outline"
+                >
+                  {isExpanded ? "Hide" : "Show"} template
+                </Button>
+              </div>
             </div>
             <div className="p-4">
               <div className="mb-4 flex flex-wrap gap-4">
@@ -115,11 +166,14 @@ export function VersionsTab({
                   Slowest
                 </Button>
               </div>
-              {isExpanded && (
-                <pre className="max-h-[260px] overflow-y-auto border border-border bg-muted/30 p-4 font-mono text-xs whitespace-pre-wrap">
-                  {v.promptText ?? ""}
-                </pre>
-              )}
+              {isExpanded &&
+                (mode === "diff" && hasPrev ? (
+                  <PromptDiff newText={v.promptText ?? ""} oldText={prevText} />
+                ) : (
+                  <pre className="max-h-[260px] overflow-y-auto border border-border bg-muted/30 p-4 font-mono text-xs whitespace-pre-wrap">
+                    {v.promptText ?? ""}
+                  </pre>
+                ))}
             </div>
           </div>
         );

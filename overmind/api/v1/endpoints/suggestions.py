@@ -1,5 +1,5 @@
 import random
-import uuid as _uuid
+import uuid
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
@@ -103,7 +103,7 @@ async def get_suggestion(
 ):
     """Retrieve a suggestion by ID, including its current vote and feedback."""
     try:
-        sid = _uuid.UUID(suggestion_id)
+        sid = uuid.UUID(suggestion_id)
     except ValueError:
         raise HTTPException(status_code=400, detail="Invalid suggestion_id format")
 
@@ -135,7 +135,7 @@ async def add_suggestion_feedback(
     optional text feedback. Retrieves the suggestion first, then updates it.
     """
     try:
-        sid = _uuid.UUID(suggestion_id)
+        sid = uuid.UUID(suggestion_id)
     except ValueError:
         raise HTTPException(status_code=400, detail="Invalid suggestion_id format")
 

@@ -92,7 +92,7 @@ function AgentsPage() {
     enabled: !!activeProjectId,
     queryFn: async () => {
       const res = await apiClient.agents.listAgentsApiV1AgentsGet({
-        projectId: activeProjectId,
+        projectId: activeProjectId!,
       });
       return { data: res.data ?? [] };
     },

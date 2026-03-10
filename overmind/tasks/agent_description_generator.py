@@ -221,7 +221,7 @@ async def _generate_initial_agent_description(
         }
 
 
-async def _update_agent_description_from_feedback(
+async def update_agent_description_from_feedback(
     prompt_id: str,
     span_ids: list[str],
     feedback_override: dict[str, dict[str, str]] | None = None,
@@ -429,7 +429,7 @@ def update_agent_description_from_feedback_task(
         from overmind.db.session import dispose_engine
 
         try:
-            result = await _update_agent_description_from_feedback(prompt_id, span_ids)
+            result = await update_agent_description_from_feedback(prompt_id, span_ids)
             logger.info(
                 f"Updated agent description for prompt {prompt_id} based on feedback"
             )

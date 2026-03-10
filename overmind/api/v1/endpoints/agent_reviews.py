@@ -4,7 +4,6 @@ Agent review endpoints for interactive criteria refinement and span feedback.
 
 import json
 import logging
-import uuid as _uuid
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -17,6 +16,7 @@ from overmind.api.v1.helpers.authentication import (
     AuthenticatedUserOrToken,
     get_current_user,
 )
+from overmind.api.v1.endpoints.utils.jobs import resolve_project_id
 from overmind.api.v1.endpoints.utils.prompts import (
     are_criteria_same,
     are_descriptions_same,
@@ -81,23 +81,27 @@ class ReviewFailedRequest(BaseModel):
 @router.get("/{prompt_slug}/review-spans", response_model=AgentReviewSpansResponse)
 async def get_spans_for_review(
     prompt_slug: str,
-    project_id: str | None = Query(None, description="Filter by project ID"),
+    project_id: str = Query(..., description="Project ID"),
+    span_ids: list[str] | None = Query(
+        None,
+        description=(
+            "When provided, return exactly these spans (with updated scores) "
+            "instead of running the dynamic worst/best selection. Used by the "
+            "review dialog refresh to avoid showing duplicate or stale spans."
+        ),
+    ),
     user: AuthenticatedUserOrToken = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     """
     Get 2 worst-scored and 2 best-scored spans for agent review.
     Used in the interactive criteria refinement dialogue.
+
+    When span_ids is provided the endpoint fetches those specific spans and
+    returns them split into worst/best by score, guaranteeing the caller always
+    gets back the same set of spans with refreshed correctness values.
     """
-    # Resolve project
-    if project_id:
-        pid = _uuid.UUID(project_id)
-        if not await user.is_project_member(pid, db):
-            raise HTTPException(status_code=403, detail="Access denied to this project")
-    elif user.user.projects:
-        pid = user.user.projects[0].project_id
-    else:
-        raise HTTPException(status_code=400, detail="No project found for user")
+    pid = await resolve_project_id(project_id, user, db)
 
     # Get latest prompt version
     prompt_q = await db.execute(
@@ -111,39 +115,61 @@ async def get_spans_for_review(
     if not prompt:
         raise HTTPException(status_code=404, detail="Agent not found")
 
-    # Get 2 worst-scored spans (lowest correctness)
-    worst_q = await db.execute(
-        select(SpanModel)
-        .where(
-            and_(
-                SpanModel.prompt_id == prompt.prompt_id,
-                SpanModel.feedback_score.has_key("correctness"),
-                SpanModel.exclude_system_spans(),
+    if span_ids:
+        # Fetch the exact spans requested (refresh path after re-scoring).
+        # Deduplicating the input list prevents returning the same span twice
+        # when the caller accidentally passes duplicates.
+        unique_span_ids = list(dict.fromkeys(span_ids))
+        fixed_q = await db.execute(
+            select(SpanModel).where(
+                and_(
+                    SpanModel.prompt_id == prompt.prompt_id,
+                    SpanModel.span_id.in_(unique_span_ids),
+                    SpanModel.exclude_system_spans(),
+                )
             )
         )
-        .order_by(cast(SpanModel.feedback_score["correctness"], Float).asc())
-        .limit(2)
-    )
-    worst_spans = worst_q.scalars().all()
-
-    # Exclude worst span IDs so best spans are always distinct
-    worst_span_ids = [s.span_id for s in worst_spans]
-
-    # Get 2 best-scored spans (highest correctness), excluding worst spans
-    best_q = await db.execute(
-        select(SpanModel)
-        .where(
-            and_(
-                SpanModel.prompt_id == prompt.prompt_id,
-                SpanModel.feedback_score.has_key("correctness"),
-                SpanModel.exclude_system_spans(),
-                ~SpanModel.span_id.in_(worst_span_ids),
+        all_fixed = list(fixed_q.scalars().all())
+        # Split into worst/best by score so the response shape matches the
+        # initial load (worst first, then best).
+        all_fixed.sort(key=lambda s: (s.feedback_score or {}).get("correctness") or 0)
+        mid = (len(all_fixed) + 1) // 2
+        worst_spans = all_fixed[:mid]
+        best_spans = list(reversed(all_fixed[mid:]))
+    else:
+        # Get 2 worst-scored spans (lowest correctness)
+        worst_q = await db.execute(
+            select(SpanModel)
+            .where(
+                and_(
+                    SpanModel.prompt_id == prompt.prompt_id,
+                    SpanModel.feedback_score.has_key("correctness"),
+                    SpanModel.exclude_system_spans(),
+                )
             )
+            .order_by(cast(SpanModel.feedback_score["correctness"], Float).asc())
+            .limit(2)
         )
-        .order_by(cast(SpanModel.feedback_score["correctness"], Float).desc())
-        .limit(2)
-    )
-    best_spans = best_q.scalars().all()
+        worst_spans = worst_q.scalars().all()
+
+        # Exclude worst span IDs so best spans are always distinct
+        worst_span_ids = [s.span_id for s in worst_spans]
+
+        # Get 2 best-scored spans (highest correctness), excluding worst spans
+        best_q = await db.execute(
+            select(SpanModel)
+            .where(
+                and_(
+                    SpanModel.prompt_id == prompt.prompt_id,
+                    SpanModel.feedback_score.has_key("correctness"),
+                    SpanModel.exclude_system_spans(),
+                    ~SpanModel.span_id.in_(worst_span_ids),
+                )
+            )
+            .order_by(cast(SpanModel.feedback_score["correctness"], Float).desc())
+            .limit(2)
+        )
+        best_spans = best_q.scalars().all()
 
     def _parse_json_field(value: Any) -> Any:
         if isinstance(value, str):
@@ -180,7 +206,7 @@ async def get_spans_for_review(
 async def update_agent_description_and_criteria(
     prompt_slug: str,
     payload: AgentDescriptionUpdateRequest,
-    project_id: str | None = Query(None),
+    project_id: str = Query(...),
     user: AuthenticatedUserOrToken = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
@@ -190,15 +216,7 @@ async def update_agent_description_and_criteria(
     When criteria change, existing correctness scores on mapped spans are
     cleared so subsequent scoring re-evaluates them with the new rules.
     """
-    # Resolve project
-    if project_id:
-        pid = _uuid.UUID(project_id)
-        if not await user.is_project_member(pid, db):
-            raise HTTPException(status_code=403, detail="Access denied to this project")
-    elif user.user.projects:
-        pid = user.user.projects[0].project_id
-    else:
-        raise HTTPException(status_code=400, detail="No project found for user")
+    pid = await resolve_project_id(project_id, user, db)
 
     # Get latest prompt version
     prompt_q = await db.execute(
@@ -272,7 +290,7 @@ async def update_agent_description_and_criteria(
 @router.post("/{prompt_slug}/update-agent-description")
 async def update_agent_description_from_feedback(
     prompt_slug: str,
-    project_id: str | None = Query(None),
+    project_id: str = Query(...),
     user: AuthenticatedUserOrToken = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
@@ -281,15 +299,7 @@ async def update_agent_description_from_feedback(
     This endpoint should be called after users submit feedback via the standard span feedback endpoint.
     It analyzes all judge_feedback on spans and updates the agent description accordingly.
     """
-    # Resolve project
-    if project_id:
-        pid = _uuid.UUID(project_id)
-        if not await user.is_project_member(pid, db):
-            raise HTTPException(status_code=403, detail="Access denied to this project")
-    elif user.user.projects:
-        pid = user.user.projects[0].project_id
-    else:
-        raise HTTPException(status_code=400, detail="No project found for user")
+    pid = await resolve_project_id(project_id, user, db)
 
     # Get latest prompt version
     prompt_q = await db.execute(
@@ -346,7 +356,7 @@ async def update_agent_description_from_feedback(
 async def sync_refresh_description(
     prompt_slug: str,
     payload: SyncRefreshDescriptionRequest,
-    project_id: str | None = Query(None),
+    project_id: str = Query(...),
     user: AuthenticatedUserOrToken = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
@@ -355,14 +365,7 @@ async def sync_refresh_description(
     Unlike the async version, this awaits the LLM call directly so the frontend
     can wait for the result during the interactive review loop.
     """
-    if project_id:
-        pid = _uuid.UUID(project_id)
-        if not await user.is_project_member(pid, db):
-            raise HTTPException(status_code=403, detail="Access denied to this project")
-    elif user.user.projects:
-        pid = user.user.projects[0].project_id
-    else:
-        raise HTTPException(status_code=400, detail="No project found for user")
+    pid = await resolve_project_id(project_id, user, db)
 
     prompt_q = await db.execute(
         select(Prompt)
@@ -375,10 +378,10 @@ async def sync_refresh_description(
         raise HTTPException(status_code=404, detail="Agent not found")
 
     from overmind.tasks.agent_description_generator import (
-        _update_agent_description_from_feedback,
+        update_agent_description_from_feedback,
     )
 
-    result = await _update_agent_description_from_feedback(
+    result = await update_agent_description_from_feedback(
         prompt.prompt_id, payload.span_ids, feedback_override=payload.feedback
     )
     return result
@@ -387,7 +390,7 @@ async def sync_refresh_description(
 @router.post("/{prompt_slug}/mark-initial-review-complete")
 async def mark_initial_review_complete(
     prompt_slug: str,
-    project_id: str | None = Query(None),
+    project_id: str = Query(...),
     user: AuthenticatedUserOrToken = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
@@ -395,14 +398,7 @@ async def mark_initial_review_complete(
     Mark the initial agent review as completed so the review badge is dismissed.
     Called after the user confirms the span feedback dialog.
     """
-    if project_id:
-        pid = _uuid.UUID(project_id)
-        if not await user.is_project_member(pid, db):
-            raise HTTPException(status_code=403, detail="Access denied to this project")
-    elif user.user.projects:
-        pid = user.user.projects[0].project_id
-    else:
-        raise HTTPException(status_code=400, detail="No project found for user")
+    pid = await resolve_project_id(project_id, user, db)
 
     prompt_q = await db.execute(
         select(Prompt)
@@ -428,7 +424,7 @@ async def mark_initial_review_complete(
 async def report_review_failed(
     prompt_slug: str,
     payload: ReviewFailedRequest,
-    project_id: str | None = Query(None),
+    project_id: str = Query(...),
     user: AuthenticatedUserOrToken = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
@@ -436,14 +432,7 @@ async def report_review_failed(
     Log that the max review iterations were reached without user satisfaction.
     Records a structured backend error for investigation.
     """
-    if project_id:
-        pid = _uuid.UUID(project_id)
-        if not await user.is_project_member(pid, db):
-            raise HTTPException(status_code=403, detail="Access denied to this project")
-    elif user.user.projects:
-        pid = user.user.projects[0].project_id
-    else:
-        raise HTTPException(status_code=400, detail="No project found for user")
+    pid = await resolve_project_id(project_id, user, db)
 
     prompt_q = await db.execute(
         select(Prompt)
@@ -473,7 +462,7 @@ async def complete_periodic_review(
     current_span_count: int = Query(
         ..., description="Current span count at time of review completion"
     ),
-    project_id: str | None = Query(None),
+    project_id: str = Query(...),
     user: AuthenticatedUserOrToken = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
@@ -481,15 +470,7 @@ async def complete_periodic_review(
     Mark a periodic review as completed/dismissed and update the next review threshold.
     This endpoint is called when a user dismisses or completes a periodic review notification.
     """
-    # Resolve project
-    if project_id:
-        pid = _uuid.UUID(project_id)
-        if not await user.is_project_member(pid, db):
-            raise HTTPException(status_code=403, detail="Access denied to this project")
-    elif user.user.projects:
-        pid = user.user.projects[0].project_id
-    else:
-        raise HTTPException(status_code=400, detail="No project found for user")
+    pid = await resolve_project_id(project_id, user, db)
 
     # Get latest prompt version
     prompt_q = await db.execute(

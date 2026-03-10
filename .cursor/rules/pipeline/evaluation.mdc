@@ -123,7 +123,7 @@ All must be true (in order):
 
 1. Evaluation criteria exists (`prompt.evaluation_criteria["correctness"]` non-empty list)
 2. Pre-review scoring cap: if `initial_review_completed` is False, total scored spans must be `< PRE_REVIEW_SCORED_SPAN_CAP (30)` — scoring pauses until the user completes the initial review
-3. Unscored span count `>= MIN_UNSCORED_SPANS_FOR_SCORING (10)`
+3. At least 1 unscored span exists for this prompt
 4. No existing PENDING/RUNNING judge scoring job for this prompt
 
 ## When Modifying This Area

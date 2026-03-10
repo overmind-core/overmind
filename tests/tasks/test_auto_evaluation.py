@@ -7,10 +7,16 @@ import pytest
     "span_count,has_criteria,expected_eligible",
     [
         (12, True, True),
-        (5, True, False),
+        (5, True, True),
+        (0, True, False),
         (15, False, False),
     ],
-    ids=["enough-spans-with-criteria", "too-few-spans", "no-criteria"],
+    ids=[
+        "enough-spans-with-criteria",
+        "few-spans-with-criteria",
+        "no-unscored-spans",
+        "no-criteria",
+    ],
 )
 async def test_judge_scoring_eligibility(
     seed_user,
@@ -54,8 +60,60 @@ async def test_judge_scoring_eligibility(
     assert is_eligible is expected_eligible
 
     if expected_eligible:
-        assert stats["unscored_spans_count"] >= 10
+        assert stats["unscored_spans_count"] >= 1
     elif has_criteria:
-        assert stats["unscored_spans_count"] < 10
+        assert stats["unscored_spans_count"] == 0
     else:
         assert "criteria" in error.lower()
+
+
+async def test_judge_scoring_eligibility_pre_review_cap(
+    seed_user,
+    db_session,
+    prompt_factory,
+    span_factory,
+):
+    """Scoring should pause once PRE_REVIEW_SCORED_SPAN_CAP spans have been
+    scored and the user hasn't yet completed the initial review."""
+    from overmind.tasks.evaluations import (
+        PRE_REVIEW_SCORED_SPAN_CAP,
+        validate_judge_scoring_eligibility,
+    )
+
+    user = seed_user.user
+    project = seed_user.project
+
+    prompt = await prompt_factory(
+        project_id=project.project_id,
+        user_id=user.user_id,
+        slug="eval-pre-review-cap",
+        evaluation_criteria={"correctness": ["Must be accurate"]},
+        # initial_review_completed defaults to False / absent
+    )
+
+    # Create PRE_REVIEW_SCORED_SPAN_CAP spans that already have a correctness
+    # score — these count toward the cap check.
+    for _ in range(PRE_REVIEW_SCORED_SPAN_CAP):
+        await span_factory(
+            project_id=project.project_id,
+            user_id=user.user_id,
+            prompt_id=prompt.prompt_id,
+            feedback_score={"correctness": 0.8},
+        )
+    # Also add one unscored span to prove the cap fires before the unscored
+    # check, so scoring truly is paused rather than merely having no work.
+    await span_factory(
+        project_id=project.project_id,
+        user_id=user.user_id,
+        prompt_id=prompt.prompt_id,
+        feedback_score={},
+    )
+    await db_session.commit()
+
+    is_eligible, error, stats = await validate_judge_scoring_eligibility(
+        prompt, db_session
+    )
+
+    assert is_eligible is False
+    assert "review" in error.lower()
+    assert stats.get("pre_review_scored_count", 0) >= PRE_REVIEW_SCORED_SPAN_CAP

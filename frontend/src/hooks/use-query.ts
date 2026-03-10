@@ -14,9 +14,10 @@ export const useOnboardingQuery = () => {
 
 export const useAgentDetailQuery = (slug: string, projectId?: string) => {
   return useQuery({
+    enabled: !!projectId,
     queryFn: () =>
       apiClient.agents.getAgentDetailApiV1AgentsPromptSlugDetailGet({
-        projectId,
+        projectId: projectId!,
         promptSlug: slug,
       }),
     queryKey: ["agent-detail", slug, projectId],

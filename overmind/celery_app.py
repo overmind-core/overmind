@@ -105,23 +105,33 @@ if not settings.disable_periodic_tasks:
         {
             "agent-discovery": {
                 "task": "agent_discovery.discover_agents",
-                "schedule": 300.0,  # Every 5 minutes (300 seconds)
+                "schedule": 30
+                if settings.debug
+                else 300.0,  # Every 5 minutes (300 seconds)
             },
             "auto-evaluate-unscored-spans": {
                 "task": "evaluations.evaluate_unscored_spans",
-                "schedule": 300.0,  # Every 5 minutes (300 seconds)
+                "schedule": 30
+                if settings.debug
+                else 300.0,  # Every 5 minutes (300 seconds)
             },
             "prompt-improvement": {
                 "task": "prompt_improvement.improve_prompt_templates",
-                "schedule": 300.0,  # Every 5 minutes (300 seconds)
+                "schedule": 30
+                if settings.debug
+                else 300.0,  # Every 5 minutes (300 seconds)
             },
             "model-backtesting": {
                 "task": "backtesting.check_backtesting_candidates",
-                "schedule": 300.0,  # Every 5 minutes (300 seconds)
+                "schedule": 30
+                if settings.debug
+                else 300.0,  # Every 5 minutes (300 seconds)
             },
             "periodic-review-triggers": {
                 "task": "periodic_reviews.check_review_triggers",
-                "schedule": 3600.0,  # Every hour (3600 seconds)
+                "schedule": 30
+                if settings.debug
+                else 3600.0,  # Every hour (3600 seconds)
             },
         }
     )

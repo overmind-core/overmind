@@ -3,7 +3,7 @@ Jobs API - CRUD operations for job management.
 """
 
 import logging
-import uuid as _uuid
+import uuid
 from enum import Enum
 from typing import Any
 
@@ -13,10 +13,11 @@ from sqlalchemy import and_, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from overmind.api.v1.endpoints.utils.jobs import (
-    get_job_or_404,
-    sync_running_job_statuses,
     create_job,
     find_latest_prompt,
+    get_job_or_404,
+    resolve_project_id,
+    sync_running_job_statuses,
 )
 from overmind.api.v1.helpers.authentication import (
     AuthenticatedUserOrToken,
@@ -144,7 +145,7 @@ async def create_job_from_user(
         project_id_str, prompt_version, prompt_slug = Prompt.parse_prompt_id(
             data.prompt_id
         )
-        project_uuid = _uuid.UUID(project_id_str)
+        project_uuid = uuid.UUID(project_id_str)
     except ValueError as e:
         raise HTTPException(
             status_code=400, detail=f"Invalid prompt_id format: {str(e)}"
@@ -263,7 +264,7 @@ async def create_job_from_user(
         job_result["validation_stats"] = validation_stats
 
     job = Job(
-        job_id=_uuid.uuid4(),
+        job_id=uuid.uuid4(),
         job_type=data.job_type.value,
         project_id=project_uuid,
         prompt_slug=prompt_slug,
@@ -295,7 +296,7 @@ async def list_jobs(
     """
     if project_id:
         try:
-            project_uuid = _uuid.UUID(project_id)
+            project_uuid = uuid.UUID(project_id)
         except ValueError:
             raise HTTPException(status_code=400, detail="Invalid project_id format")
 
@@ -366,7 +367,7 @@ async def get_job(
 ):
     """Get a single job by ID."""
     try:
-        jid = _uuid.UUID(job_id)
+        jid = uuid.UUID(job_id)
     except ValueError:
         raise HTTPException(status_code=400, detail="Invalid job_id format")
 
@@ -383,7 +384,7 @@ async def update_job(
 ):
     """Update a job (e.g. cancel a pending job)."""
     try:
-        jid = _uuid.UUID(job_id)
+        jid = uuid.UUID(job_id)
     except ValueError:
         raise HTTPException(status_code=400, detail="Invalid job_id format")
 
@@ -420,7 +421,7 @@ async def delete_job(
 ):
     """Delete a pending job."""
     try:
-        jid = _uuid.UUID(job_id)
+        jid = uuid.UUID(job_id)
     except ValueError:
         raise HTTPException(status_code=400, detail="Invalid job_id format")
 
@@ -439,7 +440,7 @@ async def delete_job(
 
 @router.post("/extract-templates", response_model=JobOut)
 async def create_template_extraction(
-    project_id: str | None = Query(None),
+    project_id: str = Query(...),
     user: AuthenticatedUserOrToken = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
@@ -449,14 +450,7 @@ async def create_template_extraction(
     For user-triggered jobs, validates eligibility before creating the job.
     Returns 400 error if validation fails with specific reason.
     """
-    if project_id:
-        pid = _uuid.UUID(project_id)
-        if not await user.is_project_member(pid, db):
-            raise HTTPException(status_code=403, detail="Access denied to this project")
-    elif user.user.projects:
-        pid = user.user.projects[0].project_id
-    else:
-        raise HTTPException(status_code=400, detail="No project found for user")
+    pid = await resolve_project_id(project_id, user, db)
 
     await get_check_pending_job_count(db, str(pid), None, JobType.AGENT_DISCOVERY)
 
@@ -504,7 +498,7 @@ async def create_prompt_scoring_job(
     Returns 400 error if validation fails with specific reason.
     """
     try:
-        project_uuid = _uuid.UUID(project_id)
+        project_uuid = uuid.UUID(project_id)
     except ValueError:
         raise HTTPException(status_code=400, detail="Invalid project_id format")
 
@@ -559,7 +553,7 @@ async def create_prompt_scoring_job(
 @router.post("/{prompt_slug}/tune", response_model=JobOut)
 async def create_prompt_tuning_job(
     prompt_slug: str,
-    project_id: str | None = Query(None),
+    project_id: str = Query(...),
     user: AuthenticatedUserOrToken = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
@@ -569,18 +563,7 @@ async def create_prompt_tuning_job(
     For user-triggered jobs, validates eligibility before creating the job.
     Returns 400 error if validation fails with specific reason.
     """
-    if project_id:
-        try:
-            project_uuid = _uuid.UUID(project_id)
-        except ValueError:
-            raise HTTPException(status_code=400, detail="Invalid project_id format")
-        if not await user.is_project_member(project_uuid, db):
-            raise HTTPException(status_code=403, detail="Access denied to this project")
-        pid = project_id
-    elif user.user.projects:
-        pid = str(user.user.projects[0].project_id)
-    else:
-        raise HTTPException(status_code=400, detail="No project found for user")
+    pid = str(await resolve_project_id(project_id, user, db))
 
     prompt = await find_latest_prompt(prompt_slug, pid, db)
     if not prompt:

@@ -27,7 +27,7 @@ function AgentsSection({ projectId }: { projectId?: string }) {
 
   const { data, isLoading, error } = useQuery({
     enabled: !!projectId,
-    queryFn: () => apiClient.agents.listAgentsApiV1AgentsGet({ projectId }),
+    queryFn: () => apiClient.agents.listAgentsApiV1AgentsGet({ projectId: projectId! }),
     queryKey: ["agents", projectId],
     refetchInterval: 15_000,
   });
@@ -112,7 +112,11 @@ function AgentsSection({ projectId }: { projectId?: string }) {
       {extractMutation.isSuccess && (
         <Alert variant="success">Template extraction started — results will appear shortly.</Alert>
       )}
-      {agents.length === 0 ? <QuickstartEmbed /> : <AgentGrid agents={agents} />}
+      {agents.length === 0 ? (
+        <QuickstartEmbed />
+      ) : (
+        <AgentGrid agents={agents} projectId={projectId} />
+      )}
     </div>
   );
 }

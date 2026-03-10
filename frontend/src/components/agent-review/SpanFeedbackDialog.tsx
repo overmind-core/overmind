@@ -10,6 +10,7 @@ import {
   ThumbsUp,
   Cancel as X,
 } from "pixelarticons/react";
+import { toast } from "sonner";
 
 import type { AgentOut, SpanForReview } from "@/api";
 import apiClient from "@/client";
@@ -236,7 +237,7 @@ interface Props {
   agent: AgentOut;
   onComplete: () => void;
   onClose: () => void;
-  projectId?: string;
+  projectId: string;
   /** True when this is a follow-up periodic review (initial_review_completed already set). */
   isPeriodicReview?: boolean;
   /** Current scored span count, required to advance the threshold on periodic review completion. */
@@ -384,7 +385,7 @@ export function SpanFeedbackDialog({
   // ---- helpers -------------------------------------------------------------
 
   async function persistFeedback() {
-    await Promise.all(
+    const results = await Promise.allSettled(
       spans.map((s) => {
         const entry = feedback[s.spanId]!;
         return apiClient.spans.submitSpanFeedbackApiV1SpansSpanIdFeedbackPatch({
@@ -397,6 +398,14 @@ export function SpanFeedbackDialog({
         });
       })
     );
+    const failures = results.filter((r) => r.status === "rejected");
+    if (failures.length > 0) {
+      const total = results.length;
+      toast.error(
+        `${failures.length} of ${total} feedback submission${failures.length > 1 ? "s" : ""} failed to save. Please try again.`
+      );
+      throw new Error(`${failures.length} span feedback submission(s) failed`);
+    }
   }
 
   // ---- submit --------------------------------------------------------------
@@ -480,16 +489,24 @@ export function SpanFeedbackDialog({
       setStatusMsg("Waiting for scores to update…");
       const jobId = (evalResult as { job_id?: string }).job_id;
       if (jobId) {
+        let jobFinished = false;
         const deadline = Date.now() + JOB_POLL_TIMEOUT_MS;
         while (Date.now() < deadline && mountedRef.current) {
           await new Promise((resolve) => setTimeout(resolve, JOB_POLL_INTERVAL_MS));
           if (!mountedRef.current) return;
           try {
             const job = await apiClient.jobs.getJobApiV1JobsJobIdGet({ jobId });
-            if (job.status === "completed" || job.status === "failed") break;
+            if (job.status === "completed" || job.status === "failed") {
+              jobFinished = true;
+              break;
+            }
           } catch {
             // ignore transient poll errors
           }
+        }
+        if (!jobFinished && mountedRef.current) {
+          setStatusMsg("Scoring is taking longer than expected — loading current scores…");
+          await new Promise((resolve) => setTimeout(resolve, 1500));
         }
       }
 
@@ -500,10 +517,16 @@ export function SpanFeedbackDialog({
           await apiClient.agentReviews.getSpansForReviewApiV1AgentReviewsPromptSlugReviewSpansGet({
             projectId: projectId,
             promptSlug: agent.slug,
+            // Pass the fixed span IDs so the backend returns exactly the same
+            // spans with updated scores rather than a new dynamic worst/best
+            // selection — prevents duplicates when re-scored spans shift rank.
+            spanIds: fixedSpanIdsRef.current,
           });
 
         if (!mountedRef.current) return;
         const refreshedAll = [...refreshed.worstSpans, ...refreshed.bestSpans];
+        // Re-order to match the original display order so the user sees the
+        // same spans in the same positions.
         const byId = new Map(refreshedAll.map((s) => [s.spanId, s]));
         const ordered = fixedSpanIdsRef.current.flatMap((id) => {
           const span = byId.get(id);
@@ -710,7 +733,7 @@ export function SpanFeedbackDialog({
               >
                 {/* Score + vote buttons */}
                 <div className="mb-4 flex items-center justify-between gap-3">
-                  <ScoreChip score={currentSpan.correctnessScore!} />
+                  <ScoreChip score={currentSpan.correctnessScore} />
 
                   <div className="flex gap-2">
                     <button

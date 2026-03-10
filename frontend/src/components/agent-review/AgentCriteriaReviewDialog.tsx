@@ -30,7 +30,7 @@ interface Props {
   agent: AgentOut;
   onConfirm: () => void;
   onClose: () => void;
-  projectId?: string;
+  projectId: string;
 }
 
 export function AgentCriteriaReviewDialog({ agent, onConfirm, onClose, projectId }: Props) {
