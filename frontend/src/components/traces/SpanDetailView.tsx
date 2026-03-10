@@ -430,6 +430,10 @@ export function SpanDetailView({ span, queryKey }: SpanDetailViewProps) {
     ((span.spanAttributes?.feedback_score as Record<string, unknown> | undefined)?.correctness as
       | number
       | undefined);
+  const correctnessReason =
+    (span.feedbackScores?.correctness_reason as string | undefined) ??
+    ((span.spanAttributes?.feedback_score as Record<string, unknown> | undefined)
+      ?.correctness_reason as string | undefined);
 
   const feedbackMutation = useMutation({
     mutationFn: async ({
@@ -497,6 +501,11 @@ export function SpanDetailView({ span, queryKey }: SpanDetailViewProps) {
                     <span className="text-muted-foreground">—</span>
                   )}
                 </p>
+                {correctnessReason && (
+                  <p className="mt-1.5 text-xs text-muted-foreground leading-relaxed">
+                    {correctnessReason}
+                  </p>
+                )}
               </div>
               <div className="space-y-3 pt-2 border-t border-border">
                 <Label className="text-xs font-semibold">Your feedback</Label>

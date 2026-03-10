@@ -29,7 +29,7 @@ variant at call time. Falls back to "anthropic" if the provider is unknown.
 # CORRECTNESS EVALUATION PROMPTS
 # ============================================================================
 
-CORRECTNESS_SYSTEM_PROMPT = """Return ONLY valid JSON with a single key 'correctness' as a number from 0 to 1. 0 means completely incorrect, 1 means fully correct, and partial correctness should be a decimal."""
+CORRECTNESS_SYSTEM_PROMPT = """Return ONLY valid JSON. Always include 'correctness' as a number from 0 to 1 (0 = completely incorrect, 1 = fully correct). If correctness is below 0.5, also include 'reason': a 1-2 sentence explanation of why the score is low. If correctness is 0.5 or above, omit 'reason' entirely."""
 
 CORRECTNESS_PROMPT_TEMPLATE = """You are an expert data labeler evaluating model outputs for correctness. Your task is to assign a score based on the following context and rubric:
 
@@ -83,7 +83,7 @@ CORRECTNESS_PROMPT_TEMPLATE = """You are an expert data labeler evaluating model
 # AGENTIC/MULTI-STEP EVALUATION PROMPTS
 # ============================================================================
 
-AGENTIC_CORRECTNESS_SYSTEM_PROMPT = """Return ONLY valid JSON with a single key 'correctness' as a number from 0 to 1. 0 means completely incorrect, 1 means fully correct, and partial correctness should be a decimal."""
+AGENTIC_CORRECTNESS_SYSTEM_PROMPT = """Return ONLY valid JSON. Always include 'correctness' as a number from 0 to 1 (0 = completely incorrect, 1 = fully correct). If correctness is below 0.5, also include 'reason': a 1-2 sentence explanation of why the score is low. If correctness is 0.5 or above, omit 'reason' entirely."""
 
 AGENTIC_CORRECTNESS_PROMPT_TEMPLATE = """You are an expert data labeler evaluating agentic LLM outputs for correctness.
 
@@ -188,7 +188,7 @@ DEFAULT_TOOL_ANSWER_CRITERIA = """- Accurately reflects the data returned by the
 - Synthesizes information from multiple tool results coherently
 - Presents information clearly and completely with correct values and appropriate formatting"""
 
-TOOL_CALL_CORRECTNESS_SYSTEM_PROMPT = """Return ONLY valid JSON with a single key 'correctness' as a number from 0 to 1. 0 means completely wrong tool selection or arguments, 1 means perfect tool selection and well-formed arguments."""
+TOOL_CALL_CORRECTNESS_SYSTEM_PROMPT = """Return ONLY valid JSON. Always include 'correctness' as a number from 0 to 1 (0 = completely wrong tool selection or arguments, 1 = perfect tool selection and well-formed arguments). If correctness is below 0.5, also include 'reason': a 1-2 sentence explanation of what went wrong with the tool selection or arguments. If correctness is 0.5 or above, omit 'reason' entirely."""
 
 TOOL_CALL_CORRECTNESS_PROMPT_TEMPLATE = """You are an expert evaluator assessing whether an LLM correctly selected tools and provided well-formed arguments for a user query.
 
@@ -250,7 +250,7 @@ Penalize for:
 </Instructions>
 """
 
-TOOL_ANSWER_CORRECTNESS_SYSTEM_PROMPT = """Return ONLY valid JSON with a single key 'correctness' as a number from 0 to 1. 0 means completely incorrect, 1 means fully correct and faithful to the tool results."""
+TOOL_ANSWER_CORRECTNESS_SYSTEM_PROMPT = """Return ONLY valid JSON. Always include 'correctness' as a number from 0 to 1 (0 = completely incorrect, 1 = fully correct and faithful to the tool results). If correctness is below 0.5, also include 'reason': a 1-2 sentence explanation of why the answer failed to faithfully synthesize the tool results. If correctness is 0.5 or above, omit 'reason' entirely."""
 
 TOOL_ANSWER_CORRECTNESS_PROMPT_TEMPLATE = """You are an expert evaluator assessing whether an LLM correctly synthesized tool results into a final answer.
 

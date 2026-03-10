@@ -50,10 +50,17 @@ _MAX_CONCURRENT_EVALUATIONS = 10
 PRE_REVIEW_SCORED_SPAN_CAP = 30
 
 
+REASON_SCORE_THRESHOLD = 0.5
+
+
 class CorrectnessResult(BaseModel):
     """Pydantic model for LLM correctness evaluation response."""
 
     correctness: float = Field(description="Correctness score from 0 to 1")
+    reason: str | None = Field(
+        default=None,
+        description="Brief explanation (1-2 sentences) required only when correctness < 0.5. Omit when correctness >= 0.5.",
+    )
 
 
 def _format_criteria(criteria_rules: list[str]) -> str:
@@ -68,15 +75,18 @@ def _evaluate_correctness_with_llm(
     project_description: str | None = None,
     agent_description: str | None = None,
     span_metadata: dict[str, Any] | None = None,
-) -> float:
+) -> tuple[float, str | None]:
     """
-    Call LLM to evaluate correctness and return a normalized score.
+    Call LLM to evaluate correctness and return a normalized score with optional reason.
 
     Routes to the appropriate judge prompt based on span type:
     - response_type "tool_calls" → tool selection + argument quality judge
     - response_type "text" + is_agentic → answer faithfulness + completeness judge
     - legacy agentic (no response_type) → existing agentic judge
     - plain non-agentic → existing simple correctness judge
+
+    When the score is below REASON_SCORE_THRESHOLD (0.5), the LLM also returns a brief
+    reason explaining the low score. For scores >= 0.5, reason is omitted to save tokens.
 
     Transient errors (rate limits, overloaded, unavailable) are retried automatically
     inside call_llm with exponential backoff up to a 5-minute deadline.
@@ -90,7 +100,8 @@ def _evaluate_correctness_with_llm(
         span_metadata: Optional span metadata for agentic detection and tool resolution
 
     Returns:
-        Correctness score between 0.0 and 1.0
+        Tuple of (correctness_score, reason) where correctness_score is between 0.0 and 1.0
+        and reason is a brief explanation only present when score < REASON_SCORE_THRESHOLD.
 
     Raises:
         ValueError: If LLM response is invalid or missing correctness
@@ -208,7 +219,16 @@ def _evaluate_correctness_with_llm(
         raise ValueError("Correctness score is not a number") from exc
 
     # Clamp to valid range
-    return max(0.0, min(1.0, correctness_value))
+    correctness_value = max(0.0, min(1.0, correctness_value))
+
+    # Only surface the reason when score is below threshold
+    reason: str | None = None
+    if correctness_value < REASON_SCORE_THRESHOLD:
+        raw_reason = parsed.get("reason")
+        if raw_reason and isinstance(raw_reason, str):
+            reason = raw_reason.strip() or None
+
+    return correctness_value, reason
 
 
 def _extract_span_payload(span: SpanModel) -> dict[str, Any]:
@@ -221,8 +241,10 @@ def _extract_span_payload(span: SpanModel) -> dict[str, Any]:
     }
 
 
-async def _store_span_score(span_id: str, correctness: float) -> bool:
-    """Store correctness score in span's feedback_score field."""
+async def _store_span_score(
+    span_id: str, correctness: float, reason: str | None = None
+) -> bool:
+    """Store correctness score (and optional reason) in span's feedback_score field."""
     AsyncSessionLocal = get_session_local()
     async with AsyncSessionLocal() as session:
         result = await session.execute(
@@ -235,6 +257,11 @@ async def _store_span_score(span_id: str, correctness: float) -> bool:
 
         feedback = dict(span.feedback_score or {})
         feedback["correctness"] = correctness
+        if reason is not None:
+            feedback["correctness_reason"] = reason
+        else:
+            # Remove stale reason if span is being re-scored with a higher score
+            feedback.pop("correctness_reason", None)
         span.feedback_score = feedback
         await session.commit()
         return True
@@ -377,7 +404,7 @@ async def _evaluate_span_correctness(
 
     # Evaluate correctness - run sync LLM call (with retries) in a thread
     # so it doesn't block the event loop and other spans can progress concurrently
-    correctness_value = await asyncio.to_thread(
+    correctness_value, reason = await asyncio.to_thread(
         _evaluate_correctness_with_llm,
         input_data=payload["input"],
         output_data=payload["output"],
@@ -387,11 +414,12 @@ async def _evaluate_span_correctness(
         span_metadata=payload["metadata"],
     )
 
-    stored = await _store_span_score(span_id, correctness_value)
+    stored = await _store_span_score(span_id, correctness_value, reason=reason)
 
     return {
         "span_id": span_id,
         "correctness": correctness_value,
+        "reason": reason,
         "stored": stored,
     }
 

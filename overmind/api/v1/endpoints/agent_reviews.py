@@ -39,6 +39,7 @@ class SpanForReview(BaseModel):
     input: Any
     output: Any
     correctness_score: float | None = None
+    correctness_reason: str | None = None
     created_at: str
 
 
@@ -181,11 +182,13 @@ async def get_spans_for_review(
 
     # Format spans
     def format_span(span: SpanModel) -> SpanForReview:
+        feedback = span.feedback_score or {}
         return SpanForReview(
             span_id=span.span_id,
             input=_parse_json_field(span.input),
             output=_parse_json_field(span.output),
-            correctness_score=(span.feedback_score or {}).get("correctness"),
+            correctness_score=feedback.get("correctness"),
+            correctness_reason=feedback.get("correctness_reason"),
             created_at=span.created_at.isoformat() if span.created_at else "",
         )
 
@@ -259,8 +262,8 @@ async def update_agent_description_and_criteria(
 
     cleared_count = 0
     if criteria_changed:
-        # Clear existing correctness scores so spans are re-evaluated with the
-        # updated criteria.  The JSONB '-' operator removes the key in-place.
+        # Clear existing correctness scores (and reasons) so spans are re-evaluated
+        # with the updated criteria. The JSONB '-' operator removes keys in-place.
         result = await db.execute(
             sa_update(SpanModel)
             .where(
@@ -269,7 +272,11 @@ async def update_agent_description_and_criteria(
                     SpanModel.feedback_score.has_key("correctness"),
                 )
             )
-            .values(feedback_score=SpanModel.feedback_score.op("-")("correctness"))
+            .values(
+                feedback_score=SpanModel.feedback_score.op("-")("correctness").op("-")(
+                    "correctness_reason"
+                )
+            )
         )
         cleared_count = result.rowcount
         logger.info(

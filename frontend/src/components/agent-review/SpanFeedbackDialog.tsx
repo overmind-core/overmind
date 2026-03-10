@@ -27,6 +27,7 @@ import {
 } from "@/components/ui/dialog";
 import { isLikelyMarkdown, MarkdownContent } from "@/components/ui/markdown";
 import { Textarea } from "@/components/ui/textarea";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 import type { ChatMessage, ToolCallItem } from "@/types/chat";
 
@@ -72,7 +73,7 @@ function formatPlain(value: unknown): string {
   return JSON.stringify(value, null, 2);
 }
 
-function ScoreChip({ score }: { score: number | null }) {
+function ScoreChip({ score, reason }: { score: number | null; reason?: string | null }) {
   if (score === null) return <span className="text-xs text-muted-foreground">unscored</span>;
   const pct = Math.round(score * 100);
   const color =
@@ -81,10 +82,19 @@ function ScoreChip({ score }: { score: number | null }) {
       : pct >= 40
         ? "bg-amber-500/15 text-amber-700"
         : "bg-destructive/15 text-destructive";
-  return (
+  const chip = (
     <span className={cn("rounded-full px-2.5 py-0.5 text-sm font-semibold tabular-nums", color)}>
       {pct}%
     </span>
+  );
+  if (!reason) return chip;
+  return (
+    <TooltipProvider>
+      <Tooltip>
+        <TooltipTrigger asChild>{chip}</TooltipTrigger>
+        <TooltipContent className="max-w-xs text-xs leading-relaxed">{reason}</TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
   );
 }
 
@@ -733,7 +743,10 @@ export function SpanFeedbackDialog({
               >
                 {/* Score + vote buttons */}
                 <div className="mb-4 flex items-center justify-between gap-3">
-                  <ScoreChip score={currentSpan.correctnessScore} />
+                  <ScoreChip
+                    reason={currentSpan.correctnessReason}
+                    score={currentSpan.correctnessScore ?? null}
+                  />
 
                   <div className="flex gap-2">
                     <button

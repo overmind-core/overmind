@@ -23,8 +23,9 @@ Periodic (5 min) or Job trigger
   ├── Load prompt → get evaluation_criteria
   ├── Get project description, agent description
   ├── Determine evaluation type (see routing below)
-  ├── Call _evaluate_correctness_with_llm()
-  └── Store result in span.feedback_score["correctness"]
+  ├── Call _evaluate_correctness_with_llm() → (score, reason)
+  ├── Store score in span.feedback_score["correctness"]
+  └── If score < 0.5: store reason in span.feedback_score["correctness_reason"]
 ```
 
 ## Entry Points
@@ -62,13 +63,13 @@ Otherwise:
 | **Tool-call**   | `TOOL_CALL_CORRECTNESS_SYSTEM_PROMPT`   | `TOOL_CALL_CORRECTNESS_PROMPT_TEMPLATE`   | `DEFAULT_TOOL_CALL_CRITERIA`    |
 | **Tool-answer** | `TOOL_ANSWER_CORRECTNESS_SYSTEM_PROMPT` | `TOOL_ANSWER_CORRECTNESS_PROMPT_TEMPLATE` | `DEFAULT_TOOL_ANSWER_CRITERIA`  |
 
-All system prompts instruct the LLM to return `{"correctness": float}` JSON.
+All system prompts instruct the LLM to return `{"correctness": float}` JSON. When `correctness < 0.5`, the LLM also returns `"reason"` (1-2 sentences explaining the low score). When `correctness >= 0.5`, `"reason"` is omitted to save output tokens. The threshold is `REASON_SCORE_THRESHOLD = 0.5`.
 
 ## Key Functions
 
-### `_evaluate_correctness_with_llm(input_data, output_data, criteria_text, project_description, agent_description, span_metadata) -> float`
+### `_evaluate_correctness_with_llm(input_data, output_data, criteria_text, project_description, agent_description, span_metadata) -> tuple[float, str | None]`
 
-Core scoring function. Dispatches to the appropriate judge type, calls `call_llm()`, parses JSON response, clamps to [0, 1].
+Core scoring function. Dispatches to the appropriate judge type, calls `call_llm()`, parses JSON response, clamps to [0, 1]. Returns `(score, reason)` — reason is only populated when score < `REASON_SCORE_THRESHOLD` (0.5).
 
 ### `_get_context_for_span(span, criteria_by_prompt=None) -> tuple[str, str | None, str | None]`
 
@@ -108,9 +109,10 @@ span.input (JSONB)                    span.metadata_attributes
                                           │
                                           ▼
                                    call_llm() → {"correctness": 0.85}
-                                          │
+                                          │    or {"correctness": 0.3, "reason": "..."}
                                           ▼
                                    span.feedback_score["correctness"] = 0.85
+                                   span.feedback_score["correctness_reason"] = "..." (only when score < 0.5)
 ```
 
 ## Model Used
@@ -131,5 +133,8 @@ All must be true (in order):
 - Adding a new evaluation type requires: a new judge prompt pair in `overmind/tasks/utils/prompts.py`, routing logic in `_evaluate_correctness_with_llm`, and possibly a new extractor in `agentic_span_processor.py`
 - The `response_type` metadata is set during trace ingestion — changes there affect which judge is used
 - `ensure_prompt_has_criteria` (from criteria_generator) is called when criteria are missing — evaluation won't proceed without criteria for the plain judge. No module-level cache; orchestrators pass a local `criteria_by_prompt` dict for per-batch deduplication.
-- All judge prompts must return `{"correctness": float}` JSON — the system prompt enforces this
-- Scores are stored in `span.feedback_score` which is a JSONB column — other keys like `agent_feedback` and `judge_feedback` coexist there
+- All judge prompts must return `{"correctness": float}` JSON — the system prompt enforces this. For scores < 0.5, the prompt also instructs the LLM to include `"reason"` (1-2 sentences)
+- Scores are stored in `span.feedback_score` JSONB — keys: `correctness` (float), `correctness_reason` (str, only when score < 0.5), `agent_feedback`, `judge_feedback`
+- When criteria change, both `correctness` and `correctness_reason` keys are cleared using chained JSONB `-` operators: `.op("-")("correctness").op("-")("correctness_reason")`
+- The `CorrectnessResult` Pydantic model has `correctness: float` and `reason: str | None` — reason is extracted from the parsed JSON only when score is below threshold
+- `_store_span_score(span_id, correctness, reason=None)` — removes stale `correctness_reason` when re-scoring a span that now scores >= 0.5
