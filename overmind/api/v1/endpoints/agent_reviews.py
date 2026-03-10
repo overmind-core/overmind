@@ -8,7 +8,7 @@ from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
-from sqlalchemy import and_, cast, select, update as sa_update, Float
+from sqlalchemy import and_, or_, cast, select, update as sa_update, Float
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm.attributes import flag_modified
 
@@ -40,6 +40,7 @@ class SpanForReview(BaseModel):
     output: Any
     correctness_score: float | None = None
     correctness_reason: str | None = None
+    correctness_error: str | None = None
     created_at: str
 
 
@@ -189,6 +190,7 @@ async def get_spans_for_review(
             output=_parse_json_field(span.output),
             correctness_score=feedback.get("correctness"),
             correctness_reason=feedback.get("correctness_reason"),
+            correctness_error=feedback.get("correctness_error"),
             created_at=span.created_at.isoformat() if span.created_at else "",
         )
 
@@ -262,20 +264,25 @@ async def update_agent_description_and_criteria(
 
     cleared_count = 0
     if criteria_changed:
-        # Clear existing correctness scores (and reasons) so spans are re-evaluated
-        # with the updated criteria. The JSONB '-' operator removes keys in-place.
+        # Clear existing correctness scores, reasons, and evaluation errors so
+        # spans are re-evaluated with the updated criteria. The JSONB '-' operator
+        # removes keys in-place. Error spans are also reset so they get a fresh
+        # attempt under the new criteria.
         result = await db.execute(
             sa_update(SpanModel)
             .where(
                 and_(
                     SpanModel.prompt_id == prompt.prompt_id,
-                    SpanModel.feedback_score.has_key("correctness"),
+                    or_(
+                        SpanModel.feedback_score.has_key("correctness"),
+                        SpanModel.feedback_score.has_key("correctness_error"),
+                    ),
                 )
             )
             .values(
-                feedback_score=SpanModel.feedback_score.op("-")("correctness").op("-")(
-                    "correctness_reason"
-                )
+                feedback_score=SpanModel.feedback_score.op("-")("correctness")
+                .op("-")("correctness_reason")
+                .op("-")("correctness_error")
             )
         )
         cleared_count = result.rowcount

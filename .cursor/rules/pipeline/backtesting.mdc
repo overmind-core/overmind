@@ -139,6 +139,15 @@ When `_run_backtesting` raises an exception, the job retries up to **3 times** b
 
 When `verdict == "current_is_best"` and `total_items == 0` (no alternate models to test), the job completes as `COMPLETED` rather than `FAILED`. This handles the case where all available models are the current model.
 
+## Frontend: Reasoning Display in Recommendations
+
+The `ModelCard` component in `frontend/src/components/jobs/JobCard.tsx` parses model keys to surface reasoning information on every candidate card in the backtesting recommendations panel:
+
+- `parseModelKey(key)` splits on `:reasoning` → `{ baseModel, reasoning, effort }`
+- `ReasoningBadges` renders a violet "Reasoning" pill + a separate "medium" / "low" / "high" effort pill for effort-based models, or just a muted "No reasoning" pill for plain models
+- Budget-token mode (`:reasoning` with no effort suffix) shows "Reasoning" without an effort pill
+- The raw model key (with suffix) is never displayed to the user — only `baseModel` is shown
+
 ## When Modifying This Area
 
 - Adding new models: update `BACKTEST_MODELS_BY_PROVIDER` in `overmind/core/model_resolver.py`; also update `_MODEL_DESCRIPTIONS` in `overmind/tasks/model_suggestions_generator.py` so the LLM can recommend the new model in early suggestions (system-triggered backtesting now follows those suggestions)

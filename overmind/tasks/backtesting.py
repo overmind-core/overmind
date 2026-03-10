@@ -17,7 +17,7 @@ from typing import Any
 from uuid import UUID
 
 from celery import shared_task
-from sqlalchemy import select, and_, func
+from sqlalchemy import select, and_, func, or_
 
 from overmind.db.session import get_session_local
 from overmind.models.jobs import Job
@@ -490,7 +490,7 @@ def _generate_recommendations(
 
 
 async def _fetch_spans_for_backtesting(prompt_id: str, limit: int) -> list[SpanModel]:
-    """Fetch spans with inputs for backtesting (excludes system-generated spans)."""
+    """Fetch spans with inputs for backtesting (excludes system-generated and eval-errored spans)."""
     AsyncSessionLocal = get_session_local()
     async with AsyncSessionLocal() as session:
         stmt = (
@@ -500,6 +500,10 @@ async def _fetch_spans_for_backtesting(prompt_id: str, limit: int) -> list[SpanM
                     SpanModel.prompt_id == prompt_id,
                     SpanModel.input.isnot(None),
                     SpanModel.exclude_system_spans(),
+                    or_(
+                        SpanModel.feedback_score.is_(None),
+                        ~SpanModel.feedback_score.has_key("correctness_error"),
+                    ),
                 )
             )
             .order_by(SpanModel.created_at.asc())
@@ -1474,12 +1478,17 @@ async def validate_backtesting_eligibility(
             )
 
     # Check 6: Minimum available spans (for running the backtest itself)
+    # Excludes eval-errored spans to match the actual pool _fetch_spans_for_backtesting returns.
     available_q = await session.execute(
         select(func.count(SpanModel.span_id)).where(
             and_(
                 SpanModel.prompt_id == prompt_id,
                 SpanModel.input.isnot(None),
                 SpanModel.exclude_system_spans(),
+                or_(
+                    SpanModel.feedback_score.is_(None),
+                    ~SpanModel.feedback_score.has_key("correctness_error"),
+                ),
             )
         )
     )

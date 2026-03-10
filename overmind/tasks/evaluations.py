@@ -52,6 +52,11 @@ PRE_REVIEW_SCORED_SPAN_CAP = 30
 
 REASON_SCORE_THRESHOLD = 0.5
 
+# Number of times to retry a failed JSON parse before marking the span as errored.
+# call_llm already retries transient network/API errors internally; these retries
+# target invalid or unparseable LLM responses (missing "correctness" key, bad JSON, etc.).
+_MAX_EVAL_PARSE_RETRIES = 3
+
 
 class CorrectnessResult(BaseModel):
     """Pydantic model for LLM correctness evaluation response."""
@@ -262,6 +267,34 @@ async def _store_span_score(
         else:
             # Remove stale reason if span is being re-scored with a higher score
             feedback.pop("correctness_reason", None)
+        # Clear any previous evaluation error on successful re-score
+        feedback.pop("correctness_error", None)
+        span.feedback_score = feedback
+        await session.commit()
+        return True
+
+
+async def _store_span_error(span_id: str, error: str) -> bool:
+    """Store a permanent evaluation error in span's feedback_score field.
+
+    The span will be excluded from future automatic scoring runs and from all
+    scored-span queries (avg score, prompt tuning, reviews, backtesting).
+    """
+    AsyncSessionLocal = get_session_local()
+    async with AsyncSessionLocal() as session:
+        result = await session.execute(
+            select(SpanModel).where(SpanModel.span_id == span_id)
+        )
+        span = result.scalar_one_or_none()
+        if span is None:
+            logger.warning(f"Span not found in Postgres for id={span_id}")
+            return False
+
+        feedback = dict(span.feedback_score or {})
+        feedback["correctness_error"] = error
+        # Never co-exist with a score
+        feedback.pop("correctness", None)
+        feedback.pop("correctness_reason", None)
         span.feedback_score = feedback
         await session.commit()
         return True
@@ -402,17 +435,42 @@ async def _evaluate_span_correctness(
         agent_description,
     ) = await _get_context_for_span(span, criteria_by_prompt=criteria_by_prompt)
 
-    # Evaluate correctness - run sync LLM call (with retries) in a thread
-    # so it doesn't block the event loop and other spans can progress concurrently
-    correctness_value, reason = await asyncio.to_thread(
-        _evaluate_correctness_with_llm,
-        input_data=payload["input"],
-        output_data=payload["output"],
-        criteria_text=evaluation_criteria,
-        project_description=project_description,
-        agent_description=agent_description,
-        span_metadata=payload["metadata"],
-    )
+    # Evaluate correctness with parse-failure retries.
+    # call_llm already retries transient network/API errors internally via tenacity;
+    # these retries target malformed LLM responses (missing key, bad JSON, etc.).
+    last_error: Exception | None = None
+    correctness_value: float = 0.0
+    reason: str | None = None
+
+    for attempt in range(_MAX_EVAL_PARSE_RETRIES):
+        try:
+            correctness_value, reason = await asyncio.to_thread(
+                _evaluate_correctness_with_llm,
+                input_data=payload["input"],
+                output_data=payload["output"],
+                criteria_text=evaluation_criteria,
+                project_description=project_description,
+                agent_description=agent_description,
+                span_metadata=payload["metadata"],
+            )
+            last_error = None
+            break
+        except ValueError as exc:
+            last_error = exc
+            logger.warning(
+                f"JSON parse attempt {attempt + 1}/{_MAX_EVAL_PARSE_RETRIES} "
+                f"failed for span {span_id}: {exc}"
+            )
+    else:
+        # All retries exhausted — persist the error so the span is excluded from
+        # future automatic scoring runs and scored-span queries.
+        error_msg = str(last_error)
+        await _store_span_error(span_id, error_msg)
+        logger.error(
+            f"Evaluation permanently failed for span {span_id} after "
+            f"{_MAX_EVAL_PARSE_RETRIES} attempts: {error_msg}"
+        )
+        return {"span_id": span_id, "error": error_msg, "eval_error": True}
 
     stored = await _store_span_score(span_id, correctness_value, reason=reason)
 
@@ -662,7 +720,10 @@ async def validate_judge_scoring_eligibility(
                 Prompt.slug == prompt_slug,
                 or_(
                     SpanModel.feedback_score.is_(None),
-                    ~SpanModel.feedback_score.has_key("correctness"),
+                    and_(
+                        ~SpanModel.feedback_score.has_key("correctness"),
+                        ~SpanModel.feedback_score.has_key("correctness_error"),
+                    ),
                 ),
                 Prompt.evaluation_criteria.isnot(None),
                 Prompt.evaluation_criteria.has_key("correctness"),
@@ -725,9 +786,10 @@ async def _get_unscored_spans() -> list[SpanModel]:
                     SpanModel.prompt_id.isnot(None),  # Must be linked to a prompt
                     or_(
                         SpanModel.feedback_score.is_(None),  # No feedback_score at all
-                        ~SpanModel.feedback_score.has_key(
-                            "correctness"
-                        ),  # Or no correctness key
+                        and_(
+                            ~SpanModel.feedback_score.has_key("correctness"),
+                            ~SpanModel.feedback_score.has_key("correctness_error"),
+                        ),
                     ),
                     SpanModel.exclude_system_spans(),
                 )
@@ -1020,7 +1082,12 @@ async def _execute_prompt_spans_evaluation(
                             Prompt.slug == prompt_slug,
                             or_(
                                 SpanModel.feedback_score.is_(None),
-                                ~SpanModel.feedback_score.has_key("correctness"),
+                                and_(
+                                    ~SpanModel.feedback_score.has_key("correctness"),
+                                    ~SpanModel.feedback_score.has_key(
+                                        "correctness_error"
+                                    ),
+                                ),
                             ),
                             Prompt.evaluation_criteria.isnot(None),
                             Prompt.evaluation_criteria.has_key("correctness"),

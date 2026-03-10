@@ -54,6 +54,12 @@ export interface SpanForReview {
      * @type {string}
      * @memberof SpanForReview
      */
+    correctnessError?: string | null;
+    /**
+     * 
+     * @type {string}
+     * @memberof SpanForReview
+     */
     createdAt: string;
 }
 
@@ -83,6 +89,7 @@ export function SpanForReviewFromJSONTyped(json: any, ignoreDiscriminator: boole
         'output': json['output'],
         'correctnessScore': json['correctness_score'] == null ? undefined : json['correctness_score'],
         'correctnessReason': json['correctness_reason'] == null ? undefined : json['correctness_reason'],
+        'correctnessError': json['correctness_error'] == null ? undefined : json['correctness_error'],
         'createdAt': json['created_at'],
     };
 }
@@ -103,6 +110,7 @@ export function SpanForReviewToJSONTyped(value?: SpanForReview | null, ignoreDis
         'output': value['output'],
         'correctness_score': value['correctnessScore'],
         'correctness_reason': value['correctnessReason'],
+        'correctness_error': value['correctnessError'],
         'created_at': value['createdAt'],
     };
 }

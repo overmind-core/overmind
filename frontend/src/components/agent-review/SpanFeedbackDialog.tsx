@@ -73,7 +73,30 @@ function formatPlain(value: unknown): string {
   return JSON.stringify(value, null, 2);
 }
 
-function ScoreChip({ score, reason }: { score: number | null; reason?: string | null }) {
+function ScoreChip({
+  score,
+  reason,
+  error,
+}: {
+  score: number | null;
+  reason?: string | null;
+  error?: string | null;
+}) {
+  if (error) {
+    const chip = (
+      <span className="rounded-full px-2.5 py-0.5 text-sm font-semibold bg-destructive/15 text-destructive">
+        Eval error
+      </span>
+    );
+    return (
+      <TooltipProvider>
+        <Tooltip>
+          <TooltipTrigger asChild>{chip}</TooltipTrigger>
+          <TooltipContent className="max-w-xs text-xs leading-relaxed">{error}</TooltipContent>
+        </Tooltip>
+      </TooltipProvider>
+    );
+  }
   if (score === null) return <span className="text-xs text-muted-foreground">unscored</span>;
   const pct = Math.round(score * 100);
   const color =
@@ -571,7 +594,7 @@ export function SpanFeedbackDialog({
   return (
     <Dialog open>
       <DialogContent
-        className="flex max-h-[95vh] w-full max-w-6xl flex-col gap-0 overflow-hidden p-0"
+        className="flex max-h-[95vh] w-full max-w-5xl sm:max-w-5xl flex-col gap-0 overflow-hidden p-0"
         onEscapeKeyDown={onClose}
         onInteractOutside={onClose}
       >
@@ -744,6 +767,7 @@ export function SpanFeedbackDialog({
                 {/* Score + vote buttons */}
                 <div className="mb-4 flex items-center justify-between gap-3">
                   <ScoreChip
+                    error={currentSpan.correctnessError}
                     reason={currentSpan.correctnessReason}
                     score={currentSpan.correctnessScore ?? null}
                   />
