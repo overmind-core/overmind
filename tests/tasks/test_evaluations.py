@@ -250,9 +250,12 @@ async def _run_batch_persist(
 
     mock_session_local = MagicMock(return_value=mock_session)
 
-    with patch(
-        "overmind.tasks.evaluations.get_session_local",
-        return_value=mock_session_local,
+    with (
+        patch(
+            "overmind.tasks.evaluations.get_session_local",
+            return_value=mock_session_local,
+        ),
+        patch("overmind.tasks.evaluations.flag_modified"),
     ):
         return await _batch_persist_evaluation_results(results)
 
