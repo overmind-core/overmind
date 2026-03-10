@@ -29,6 +29,22 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
+async def _resolve_project_id(
+    project_id: str | None,
+    user: AuthenticatedUserOrToken,
+    db: AsyncSession,
+) -> _uuid.UUID:
+    """Resolve and authorise a project UUID from an optional query param."""
+    if project_id:
+        pid = _uuid.UUID(project_id)
+        if not await user.is_project_member(pid, db):
+            raise HTTPException(status_code=403, detail="Access denied to this project")
+        return pid
+    if user.user.projects:
+        return user.user.projects[0].project_id
+    raise HTTPException(status_code=400, detail="No project found for user")
+
+
 # ---------------------------------------------------------------------------
 # Pydantic models
 # ---------------------------------------------------------------------------
@@ -101,15 +117,7 @@ async def get_spans_for_review(
     returns them split into worst/best by score, guaranteeing the caller always
     gets back the same set of spans with refreshed correctness values.
     """
-    # Resolve project
-    if project_id:
-        pid = _uuid.UUID(project_id)
-        if not await user.is_project_member(pid, db):
-            raise HTTPException(status_code=403, detail="Access denied to this project")
-    elif user.user.projects:
-        pid = user.user.projects[0].project_id
-    else:
-        raise HTTPException(status_code=400, detail="No project found for user")
+    pid = await _resolve_project_id(project_id, user, db)
 
     # Get latest prompt version
     prompt_q = await db.execute(
@@ -224,15 +232,7 @@ async def update_agent_description_and_criteria(
     When criteria change, existing correctness scores on mapped spans are
     cleared so subsequent scoring re-evaluates them with the new rules.
     """
-    # Resolve project
-    if project_id:
-        pid = _uuid.UUID(project_id)
-        if not await user.is_project_member(pid, db):
-            raise HTTPException(status_code=403, detail="Access denied to this project")
-    elif user.user.projects:
-        pid = user.user.projects[0].project_id
-    else:
-        raise HTTPException(status_code=400, detail="No project found for user")
+    pid = await _resolve_project_id(project_id, user, db)
 
     # Get latest prompt version
     prompt_q = await db.execute(
@@ -315,15 +315,7 @@ async def update_agent_description_from_feedback(
     This endpoint should be called after users submit feedback via the standard span feedback endpoint.
     It analyzes all judge_feedback on spans and updates the agent description accordingly.
     """
-    # Resolve project
-    if project_id:
-        pid = _uuid.UUID(project_id)
-        if not await user.is_project_member(pid, db):
-            raise HTTPException(status_code=403, detail="Access denied to this project")
-    elif user.user.projects:
-        pid = user.user.projects[0].project_id
-    else:
-        raise HTTPException(status_code=400, detail="No project found for user")
+    pid = await _resolve_project_id(project_id, user, db)
 
     # Get latest prompt version
     prompt_q = await db.execute(
@@ -389,14 +381,7 @@ async def sync_refresh_description(
     Unlike the async version, this awaits the LLM call directly so the frontend
     can wait for the result during the interactive review loop.
     """
-    if project_id:
-        pid = _uuid.UUID(project_id)
-        if not await user.is_project_member(pid, db):
-            raise HTTPException(status_code=403, detail="Access denied to this project")
-    elif user.user.projects:
-        pid = user.user.projects[0].project_id
-    else:
-        raise HTTPException(status_code=400, detail="No project found for user")
+    pid = await _resolve_project_id(project_id, user, db)
 
     prompt_q = await db.execute(
         select(Prompt)
@@ -409,10 +394,10 @@ async def sync_refresh_description(
         raise HTTPException(status_code=404, detail="Agent not found")
 
     from overmind.tasks.agent_description_generator import (
-        _update_agent_description_from_feedback,
+        update_agent_description_from_feedback,
     )
 
-    result = await _update_agent_description_from_feedback(
+    result = await update_agent_description_from_feedback(
         prompt.prompt_id, payload.span_ids, feedback_override=payload.feedback
     )
     return result
@@ -429,14 +414,7 @@ async def mark_initial_review_complete(
     Mark the initial agent review as completed so the review badge is dismissed.
     Called after the user confirms the span feedback dialog.
     """
-    if project_id:
-        pid = _uuid.UUID(project_id)
-        if not await user.is_project_member(pid, db):
-            raise HTTPException(status_code=403, detail="Access denied to this project")
-    elif user.user.projects:
-        pid = user.user.projects[0].project_id
-    else:
-        raise HTTPException(status_code=400, detail="No project found for user")
+    pid = await _resolve_project_id(project_id, user, db)
 
     prompt_q = await db.execute(
         select(Prompt)
@@ -470,14 +448,7 @@ async def report_review_failed(
     Log that the max review iterations were reached without user satisfaction.
     Records a structured backend error for investigation.
     """
-    if project_id:
-        pid = _uuid.UUID(project_id)
-        if not await user.is_project_member(pid, db):
-            raise HTTPException(status_code=403, detail="Access denied to this project")
-    elif user.user.projects:
-        pid = user.user.projects[0].project_id
-    else:
-        raise HTTPException(status_code=400, detail="No project found for user")
+    pid = await _resolve_project_id(project_id, user, db)
 
     prompt_q = await db.execute(
         select(Prompt)
@@ -515,15 +486,7 @@ async def complete_periodic_review(
     Mark a periodic review as completed/dismissed and update the next review threshold.
     This endpoint is called when a user dismisses or completes a periodic review notification.
     """
-    # Resolve project
-    if project_id:
-        pid = _uuid.UUID(project_id)
-        if not await user.is_project_member(pid, db):
-            raise HTTPException(status_code=403, detail="Access denied to this project")
-    elif user.user.projects:
-        pid = user.user.projects[0].project_id
-    else:
-        raise HTTPException(status_code=400, detail="No project found for user")
+    pid = await _resolve_project_id(project_id, user, db)
 
     # Get latest prompt version
     prompt_q = await db.execute(

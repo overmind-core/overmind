@@ -218,7 +218,7 @@ function AgentDetailPage() {
             <span>
               {isPeriodicReview
                 ? "Time for a periodic review — confirm the description, criteria, and updated span scores."
-                : "This agent is ready for initial review — confirm the description, criteria, and span scores."}
+                : "This agent is ready for initial review - confirm the description, criteria, and span scores to start the review process and improve the agent."}
             </span>
           </div>
           <Button

@@ -384,7 +384,7 @@ export function SpanFeedbackDialog({
   // ---- helpers -------------------------------------------------------------
 
   async function persistFeedback() {
-    await Promise.all(
+    const results = await Promise.allSettled(
       spans.map((s) => {
         const entry = feedback[s.spanId]!;
         return apiClient.spans.submitSpanFeedbackApiV1SpansSpanIdFeedbackPatch({
@@ -397,6 +397,10 @@ export function SpanFeedbackDialog({
         });
       })
     );
+    const failures = results.filter((r) => r.status === "rejected");
+    if (failures.length > 0) {
+      console.warn(`${failures.length} span feedback submission(s) failed`, failures);
+    }
   }
 
   // ---- submit --------------------------------------------------------------
@@ -480,16 +484,24 @@ export function SpanFeedbackDialog({
       setStatusMsg("Waiting for scores to update…");
       const jobId = (evalResult as { job_id?: string }).job_id;
       if (jobId) {
+        let jobFinished = false;
         const deadline = Date.now() + JOB_POLL_TIMEOUT_MS;
         while (Date.now() < deadline && mountedRef.current) {
           await new Promise((resolve) => setTimeout(resolve, JOB_POLL_INTERVAL_MS));
           if (!mountedRef.current) return;
           try {
             const job = await apiClient.jobs.getJobApiV1JobsJobIdGet({ jobId });
-            if (job.status === "completed" || job.status === "failed") break;
+            if (job.status === "completed" || job.status === "failed") {
+              jobFinished = true;
+              break;
+            }
           } catch {
             // ignore transient poll errors
           }
+        }
+        if (!jobFinished && mountedRef.current) {
+          setStatusMsg("Scoring is taking longer than expected — loading current scores…");
+          await new Promise((resolve) => setTimeout(resolve, 1500));
         }
       }
 
@@ -716,7 +728,7 @@ export function SpanFeedbackDialog({
               >
                 {/* Score + vote buttons */}
                 <div className="mb-4 flex items-center justify-between gap-3">
-                  <ScoreChip score={currentSpan.correctnessScore!} />
+                  <ScoreChip score={currentSpan.correctnessScore} />
 
                   <div className="flex gap-2">
                     <button
