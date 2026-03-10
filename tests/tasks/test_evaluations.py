@@ -2,7 +2,7 @@
 
 Covers:
 - _evaluate_correctness_with_llm return shape, threshold boundaries, clamping
-- _store_span_score / _store_span_error (reason storage, error clearing)
+- _batch_persist_evaluation_results (reason storage, error clearing, batch writes)
 - CorrectnessResult Pydantic model
 """
 
@@ -230,89 +230,89 @@ class TestEvaluateCorrectnessErrors:
         assert score == pytest.approx(0.0)
 
 
+def _make_span(span_id: str, initial_feedback: dict) -> SimpleNamespace:
+    return SimpleNamespace(span_id=span_id, feedback_score=dict(initial_feedback))
+
+
+async def _run_batch_persist(
+    spans: list[SimpleNamespace], results: list[dict]
+) -> list[dict]:
+    """Run _batch_persist_evaluation_results with a mocked DB session."""
+    from overmind.tasks.evaluations import _batch_persist_evaluation_results
+
+    mock_session = AsyncMock()
+    mock_session.__aenter__ = AsyncMock(return_value=mock_session)
+    mock_session.__aexit__ = AsyncMock(return_value=False)
+    mock_result = MagicMock()
+    mock_result.scalars.return_value.all.return_value = spans
+    mock_session.execute = AsyncMock(return_value=mock_result)
+    mock_session.commit = AsyncMock()
+
+    mock_session_local = MagicMock(return_value=mock_session)
+
+    with patch(
+        "overmind.tasks.evaluations.get_session_local",
+        return_value=mock_session_local,
+    ):
+        return await _batch_persist_evaluation_results(results)
+
+
 @pytest.mark.asyncio
-class TestStoreSpanScore:
-    """_store_span_score must persist reasons and clear stale ones on re-score."""
+class TestBatchPersistEvaluationResults:
+    """_batch_persist_evaluation_results must persist scores/errors and manage
+    stale keys — all in a single DB session."""
 
-    async def _make_span(self, initial_feedback: dict) -> SimpleNamespace:
-        return SimpleNamespace(span_id="s1", feedback_score=dict(initial_feedback))
-
-    async def _run_store(self, span, correctness, reason=None):
-        from overmind.tasks.evaluations import _store_span_score
-
-        mock_session = AsyncMock()
-        mock_session.__aenter__ = AsyncMock(return_value=mock_session)
-        mock_session.__aexit__ = AsyncMock(return_value=False)
-        mock_result = MagicMock()
-        mock_result.scalar_one_or_none.return_value = span
-        mock_session.execute = AsyncMock(return_value=mock_result)
-        mock_session.commit = AsyncMock()
-
-        mock_session_local = MagicMock(return_value=mock_session)
-
-        with patch(
-            "overmind.tasks.evaluations.get_session_local",
-            return_value=mock_session_local,
-        ):
-            return await _store_span_score("s1", correctness, reason)
-
-    async def test_stores_reason_for_low_score(self):
-        span = await self._make_span({})
-        await self._run_store(span, correctness=0.2, reason="Too vague.")
+    async def test_stores_score_and_reason_for_low_score(self):
+        span = _make_span("s1", {})
+        await _run_batch_persist(
+            [span],
+            [{"span_id": "s1", "correctness": 0.2, "reason": "Too vague."}],
+        )
         assert span.feedback_score["correctness"] == pytest.approx(0.2)
         assert span.feedback_score["correctness_reason"] == "Too vague."
 
     async def test_clears_reason_when_rescored_high(self):
-        span = await self._make_span(
-            {"correctness": 0.2, "correctness_reason": "old reason"}
+        span = _make_span(
+            "s1", {"correctness": 0.2, "correctness_reason": "old reason"}
         )
-        await self._run_store(span, correctness=0.8, reason=None)
+        await _run_batch_persist(
+            [span],
+            [{"span_id": "s1", "correctness": 0.8, "reason": None}],
+        )
         assert span.feedback_score["correctness"] == pytest.approx(0.8)
         assert "correctness_reason" not in span.feedback_score
 
     async def test_clears_error_on_successful_score(self):
-        span = await self._make_span({"correctness_error": "parse failed"})
-        await self._run_store(span, correctness=0.7, reason=None)
+        span = _make_span("s1", {"correctness_error": "parse failed"})
+        await _run_batch_persist(
+            [span],
+            [{"span_id": "s1", "correctness": 0.7, "reason": None}],
+        )
         assert "correctness_error" not in span.feedback_score
         assert span.feedback_score["correctness"] == pytest.approx(0.7)
 
     async def test_replaces_stale_reason_with_new_reason(self):
-        span = await self._make_span(
-            {"correctness": 0.1, "correctness_reason": "stale"}
+        span = _make_span("s1", {"correctness": 0.1, "correctness_reason": "stale"})
+        await _run_batch_persist(
+            [span],
+            [{"span_id": "s1", "correctness": 0.3, "reason": "updated reason"}],
         )
-        await self._run_store(span, correctness=0.3, reason="updated reason")
         assert span.feedback_score["correctness_reason"] == "updated reason"
 
-
-@pytest.mark.asyncio
-class TestStoreSpanError:
-    """_store_span_error must remove both correctness and correctness_reason."""
-
-    async def _run_store_error(self, span, error: str):
-        from overmind.tasks.evaluations import _store_span_error
-
-        mock_session = AsyncMock()
-        mock_session.__aenter__ = AsyncMock(return_value=mock_session)
-        mock_session.__aexit__ = AsyncMock(return_value=False)
-        mock_result = MagicMock()
-        mock_result.scalar_one_or_none.return_value = span
-        mock_session.execute = AsyncMock(return_value=mock_result)
-        mock_session.commit = AsyncMock()
-
-        mock_session_local = MagicMock(return_value=mock_session)
-
-        with patch(
-            "overmind.tasks.evaluations.get_session_local",
-            return_value=mock_session_local,
-        ):
-            return await _store_span_error("s1", error)
-
     async def test_sets_error_clears_score_and_reason(self):
-        span = SimpleNamespace(
-            span_id="s1",
-            feedback_score={"correctness": 0.3, "correctness_reason": "old reason"},
+        span = _make_span(
+            "s1", {"correctness": 0.3, "correctness_reason": "old reason"}
         )
-        await self._run_store_error(span, "JSON parse failed after 3 retries")
+        await _run_batch_persist(
+            [span],
+            [
+                {
+                    "span_id": "s1",
+                    "error": "JSON parse failed after 3 retries",
+                    "eval_error": True,
+                }
+            ],
+        )
         assert (
             span.feedback_score.get("correctness_error")
             == "JSON parse failed after 3 retries"
@@ -321,31 +321,44 @@ class TestStoreSpanError:
         assert "correctness_reason" not in span.feedback_score
 
     async def test_error_overwrites_prior_error(self):
-        span = SimpleNamespace(
-            span_id="s1",
-            feedback_score={"correctness_error": "old error"},
+        span = _make_span("s1", {"correctness_error": "old error"})
+        await _run_batch_persist(
+            [span],
+            [{"span_id": "s1", "error": "new error", "eval_error": True}],
         )
-        await self._run_store_error(span, "new error")
         assert span.feedback_score["correctness_error"] == "new error"
 
-    async def test_returns_false_for_missing_span(self):
-        from overmind.tasks.evaluations import _store_span_error
+    async def test_missing_span_returns_stored_false(self):
+        results = await _run_batch_persist(
+            [],  # DB returns no spans
+            [{"span_id": "missing-id", "correctness": 0.9, "reason": None}],
+        )
+        assert results[0]["stored"] is False
 
-        mock_session = AsyncMock()
-        mock_session.__aenter__ = AsyncMock(return_value=mock_session)
-        mock_session.__aexit__ = AsyncMock(return_value=False)
-        mock_result = MagicMock()
-        mock_result.scalar_one_or_none.return_value = None
-        mock_session.execute = AsyncMock(return_value=mock_result)
+    async def test_batch_writes_multiple_spans_in_one_session(self):
+        span_a = _make_span("a1", {})
+        span_b = _make_span("b2", {"correctness_error": "old"})
+        results = await _run_batch_persist(
+            [span_a, span_b],
+            [
+                {"span_id": "a1", "correctness": 0.9, "reason": None},
+                {"span_id": "b2", "correctness": 0.4, "reason": "Incomplete."},
+            ],
+        )
+        assert span_a.feedback_score["correctness"] == pytest.approx(0.9)
+        assert "correctness_error" not in span_a.feedback_score
+        assert span_b.feedback_score["correctness"] == pytest.approx(0.4)
+        assert span_b.feedback_score["correctness_reason"] == "Incomplete."
+        assert "correctness_error" not in span_b.feedback_score
+        assert all(r["stored"] is True for r in results)
 
-        mock_session_local = MagicMock(return_value=mock_session)
-
-        with patch(
-            "overmind.tasks.evaluations.get_session_local",
-            return_value=mock_session_local,
-        ):
-            result = await _store_span_error("missing-id", "some error")
-        assert result is False
+    async def test_returns_stored_true_for_found_spans(self):
+        span = _make_span("s1", {})
+        results = await _run_batch_persist(
+            [span],
+            [{"span_id": "s1", "correctness": 0.6, "reason": None}],
+        )
+        assert results[0]["stored"] is True
 
 
 class TestCorrectnessResultModel:

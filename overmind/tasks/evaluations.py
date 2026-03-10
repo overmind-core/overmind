@@ -246,58 +246,58 @@ def _extract_span_payload(span: SpanModel) -> dict[str, Any]:
     }
 
 
-async def _store_span_score(
-    span_id: str, correctness: float, reason: str | None = None
-) -> bool:
-    """Store correctness score (and optional reason) in span's feedback_score field."""
-    AsyncSessionLocal = get_session_local()
-    async with AsyncSessionLocal() as session:
-        result = await session.execute(
-            select(SpanModel).where(SpanModel.span_id == span_id)
-        )
-        span = result.scalar_one_or_none()
-        if span is None:
-            logger.warning(f"Span not found in Postgres for id={span_id}")
-            return False
+async def _batch_persist_evaluation_results(
+    results: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """Write all evaluation scores and errors in a single DB session.
 
-        feedback = dict(span.feedback_score or {})
-        feedback["correctness"] = correctness
-        if reason is not None:
-            feedback["correctness_reason"] = reason
-        else:
-            # Remove stale reason if span is being re-scored with a higher score
-            feedback.pop("correctness_reason", None)
-        # Clear any previous evaluation error on successful re-score
-        feedback.pop("correctness_error", None)
-        span.feedback_score = feedback
-        await session.commit()
-        return True
+    Fetches all spans with one IN-query, mutates feedback_score for each, and
+    commits once — reducing N sessions (one per span) to a single round-trip.
 
-
-async def _store_span_error(span_id: str, error: str) -> bool:
-    """Store a permanent evaluation error in span's feedback_score field.
-
-    The span will be excluded from future automatic scoring runs and from all
-    scored-span queries (avg score, prompt tuning, reviews, backtesting).
+    Returns the same list with a ``stored`` key added to each entry (True if the
+    span was found and written, False if it was missing from the DB).
     """
+    span_ids = [r["span_id"] for r in results]
+
     AsyncSessionLocal = get_session_local()
     async with AsyncSessionLocal() as session:
-        result = await session.execute(
-            select(SpanModel).where(SpanModel.span_id == span_id)
+        rows = await session.execute(
+            select(SpanModel).where(SpanModel.span_id.in_(span_ids))
         )
-        span = result.scalar_one_or_none()
-        if span is None:
-            logger.warning(f"Span not found in Postgres for id={span_id}")
-            return False
+        spans_by_id: dict[str, SpanModel] = {s.span_id: s for s in rows.scalars().all()}
 
-        feedback = dict(span.feedback_score or {})
-        feedback["correctness_error"] = error
-        # Never co-exist with a score
-        feedback.pop("correctness", None)
-        feedback.pop("correctness_reason", None)
-        span.feedback_score = feedback
+        updated: list[dict[str, Any]] = []
+        for result in results:
+            sid = result["span_id"]
+            span = spans_by_id.get(sid)
+            if span is None:
+                logger.warning(f"Span not found in Postgres for id={sid}")
+                updated.append({**result, "stored": False})
+                continue
+
+            feedback = dict(span.feedback_score or {})
+
+            if result.get("eval_error"):
+                feedback["correctness_error"] = result["error"]
+                feedback.pop("correctness", None)
+                feedback.pop("correctness_reason", None)
+            else:
+                feedback["correctness"] = result["correctness"]
+                reason = result.get("reason")
+                if reason is not None:
+                    feedback["correctness_reason"] = reason
+                else:
+                    # Remove stale reason if span is being re-scored with a higher score
+                    feedback.pop("correctness_reason", None)
+                # Clear any previous evaluation error on successful re-score
+                feedback.pop("correctness_error", None)
+
+            span.feedback_score = feedback
+            updated.append({**result, "stored": True})
+
         await session.commit()
-        return True
+
+    return updated
 
 
 async def _get_context_for_span(
@@ -414,10 +414,13 @@ async def _evaluate_span_correctness(
     span_id: str,
     criteria_by_prompt: dict[str, dict[str, list[str]] | None] | None = None,
 ) -> dict[str, Any]:
-    """Evaluate a single span's correctness using LLM."""
+    """Evaluate a single span's correctness using LLM.
+
+    Returns the evaluation result dict without persisting it to the DB — callers
+    are responsible for batching writes via ``_batch_persist_evaluation_results``.
+    """
     AsyncSessionLocal = get_session_local()
     async with AsyncSessionLocal() as session:
-        # Get span
         result = await session.execute(
             select(SpanModel).where(SpanModel.span_id == span_id)
         )
@@ -472,23 +475,19 @@ async def _evaluate_span_correctness(
             )
             raise
     else:
-        # All retries exhausted — persist the error so the span is excluded from
-        # future automatic scoring runs and scored-span queries.
+        # All retries exhausted — the caller's _batch_persist_evaluation_results
+        # will store the error so the span is excluded from future scoring runs.
         error_msg = str(last_error)
-        await _store_span_error(span_id, error_msg)
         logger.error(
             f"Evaluation permanently failed for span {span_id} after "
             f"{_MAX_EVAL_PARSE_RETRIES} attempts: {error_msg}"
         )
         return {"span_id": span_id, "error": error_msg, "eval_error": True}
 
-    stored = await _store_span_score(span_id, correctness_value, reason=reason)
-
     return {
         "span_id": span_id,
         "correctness": correctness_value,
         "reason": reason,
-        "stored": stored,
     }
 
 
@@ -554,9 +553,12 @@ def evaluate_spans_task(
 
             # Fan out all span evaluations concurrently (bounded by semaphore).
             # asyncio.gather preserves input order so results stay aligned with span_ids.
-            results = await asyncio.gather(
+            raw_results = await asyncio.gather(
                 *[_evaluate_with_limit(span_id) for span_id in span_ids]
             )
+
+            # Persist all scores/errors in a single DB session instead of one per span.
+            results = await _batch_persist_evaluation_results(list(raw_results))
 
             # Count successes and failures
             success_count = sum(1 for r in results if "error" not in r)
@@ -1136,9 +1138,12 @@ async def _execute_prompt_spans_evaluation(
                             logger.exception(f"Failed to evaluate span {span_id}")
                             return {"span_id": span_id, "error": str(exc)}
 
-                results = await asyncio.gather(
+                raw_results = await asyncio.gather(
                     *[_evaluate_with_limit(span.span_id) for span in spans_to_evaluate]
                 )
+
+                # Persist all scores/errors in a single DB session instead of one per span.
+                results = await _batch_persist_evaluation_results(list(raw_results))
 
                 evaluated_count = sum(1 for r in results if "error" not in r)
                 errors = [
