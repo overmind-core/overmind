@@ -133,6 +133,10 @@ if not settings.disable_periodic_tasks:
                 if settings.debug
                 else 3600.0,  # Every hour (3600 seconds)
             },
+            "telemetry-heartbeat": {
+                "task": "telemetry.send_heartbeat",
+                "schedule": 1800.0,  # Every 30 minutes (1800 seconds)
+            },
         }
     )
 

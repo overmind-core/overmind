@@ -22,12 +22,13 @@ from overmind.api.v1.helpers.authentication import RBACAuthenticationProvider
 from overmind.api.v1.helpers.auth_interface import NoopAuthorizationProvider
 from overmind.db.session import get_session_local
 from overmind.celery_app import get_celery_app
-from overmind.bootstrap import ensure_default_user
+from overmind.bootstrap import ensure_default_user, ensure_installation_id
 from logging import getLogger, Filter
+import asyncio
 import logging
 from overmind.utils import APP_VERSION, compare_version
 from contextlib import asynccontextmanager
-
+from overmind.telemetry import TelemetryReporter, shutdown
 
 FRONTEND_DIR = Path(__file__).resolve().parent.parent / "frontend_dist"
 
@@ -41,6 +42,19 @@ class HealthCheckFilter(Filter):
 
 
 logging.getLogger("uvicorn.access").addFilter(HealthCheckFilter())
+
+
+async def _startup_ping() -> None:
+    """Fire-and-forget telemetry ping on startup. Always silent on failure."""
+
+    try:
+        AsyncSessionLocal = get_session_local()
+        async with AsyncSessionLocal() as db:
+            reporter = TelemetryReporter()
+            payload = await reporter.collect(db)
+            reporter.send(payload)
+    except Exception as exc:
+        logger.debug("Startup telemetry ping failed (non-critical): %s", exc)
 
 
 @asynccontextmanager
@@ -63,6 +77,10 @@ async def lifespan(app: FastAPI):
         async with AsyncSessionLocal() as db:
             await ensure_default_user(db)
 
+        if settings.overmind_analytics_enabled:
+            await ensure_installation_id()
+            asyncio.create_task(_startup_ping())
+
         logger.info("--- overmind startup completed ---")
     except Exception as e:
         logger.error(f"Failed to setup resources: {e}")
@@ -82,6 +100,7 @@ async def lifespan(app: FastAPI):
             await app.state.client_manager.close_all()
 
         logger.info("--- All cached clients closed. ---")
+        shutdown()
     except Exception as e:
         logger.error(f"Error during shutdown: {e}")
         raise

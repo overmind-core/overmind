@@ -1,10 +1,17 @@
 import logging
+from importlib.metadata import PackageNotFoundError
+from importlib.metadata import version as pkg_version
 
 from opentelemetry import trace
 from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import BatchSpanProcessor
 from pydantic_settings import BaseSettings
+
+try:
+    APP_VERSION = pkg_version("overmind")
+except PackageNotFoundError:
+    APP_VERSION = "dev"
 
 
 class Settings(BaseSettings):
@@ -53,6 +60,14 @@ class Settings(BaseSettings):
 
     # AWS (optional — only needed for Bedrock, Textract, Comprehend features)
     aws_region: str = "us-east-1"
+
+    # Anonymous usage telemetry (opt-out via OVERMIND_ANALYTICS_ENABLED=false)
+    # Sends aggregate feature-usage flags and a scale bucket to PostHog.
+    # No trace content, prompts, user emails, or PII is ever collected.
+    overmind_analytics_enabled: bool = False
+    # Write-only PostHog project API key — baked in at release build time.
+    # Operators cannot use this to read data back from PostHog.
+    posthog_api_key: str = "phc_XrIVhixaz5sOqrdzpRwwqlvKXilmcy3PWPgdk0pemZa"
 
 
 settings = Settings()

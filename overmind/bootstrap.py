@@ -8,6 +8,7 @@ invitation flow.
 """
 
 import logging
+from uuid import uuid4
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -17,11 +18,28 @@ from overmind.models.iam.projects import Project
 from overmind.models.iam.relationships import user_project_association
 from overmind.models.iam.tokens import Token
 from overmind.models.iam.users import User
+from overmind.telemetry import INSTALLATION_ID_KEY
 
 logger = logging.getLogger(__name__)
 
 DEFAULT_ADMIN_EMAIL = "admin"
 DEFAULT_ADMIN_PASSWORD = "admin"
+
+
+async def ensure_installation_id() -> None:
+    """Generate and persist a random installation UUID if one does not exist.
+
+    The UUID is stored in Valkey with no TTL so it survives container restarts
+    as long as the Valkey volume is intact. It is never linked to any user,
+    project, or organisation — it identifies the deployment, not the operator.
+    """
+    from overmind.db.valkey import get_key, set_key
+
+    existing = await get_key(INSTALLATION_ID_KEY)
+    if existing is None:
+        installation_id = str(uuid4())
+        await set_key(INSTALLATION_ID_KEY, installation_id)
+        logger.info("Telemetry: generated installation_id %s", installation_id)
 
 
 async def ensure_default_user(db: AsyncSession) -> None:

@@ -44,6 +44,7 @@ faker = "^40.4.0"
 valkey = "^6.1.1"
 redis = "^7.1.1"
 async-lru = "^2.1.0"
+posthog = ">=3.0.0"
 boto3 = {version = "^1.40.10", optional = true}
 
 [tool.poetry.extras]
