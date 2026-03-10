@@ -2,7 +2,7 @@
 Utility functions for the suggestions endpoint.
 """
 
-import uuid as _uuid
+import uuid
 
 from fastapi import HTTPException
 from sqlalchemy import select
@@ -13,7 +13,7 @@ from overmind.models.suggestions import Suggestion
 
 
 async def get_suggestion_or_404(
-    suggestion_id: _uuid.UUID,
+    suggestion_id: uuid.UUID,
     user: AuthenticatedUserOrToken,
     db: AsyncSession,
 ) -> Suggestion:

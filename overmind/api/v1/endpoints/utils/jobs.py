@@ -3,7 +3,7 @@ Utility functions for the jobs endpoint.
 """
 
 import logging
-import uuid as _uuid
+import uuid
 from datetime import datetime, timezone
 
 from fastapi import HTTPException
@@ -18,31 +18,36 @@ from overmind.models.prompts import Prompt
 logger = logging.getLogger(__name__)
 
 
-def resolve_project_id(
-    project_id: str | None, user: AuthenticatedUserOrToken
-) -> _uuid.UUID:
+async def resolve_project_id(
+    project_id: str,
+    user: AuthenticatedUserOrToken,
+    db: AsyncSession,
+) -> uuid.UUID:
     """
-    Resolve project_id from query or user's first project.
+    Parse, validate, and authorise a project UUID.
 
     Args:
-        project_id: Optional project ID string
+        project_id: Project ID string (required — callers must always provide it)
         user: Authenticated user or token
+        db: Database session
 
     Returns:
         UUID of the resolved project
 
     Raises:
-        HTTPException: If no project found
+        HTTPException: 400 if the UUID is malformed, 403 if access denied
     """
-    if project_id:
-        return _uuid.UUID(project_id)
-    if user.user.projects:
-        return user.user.projects[0].project_id
-    raise HTTPException(status_code=400, detail="No project found. Provide project_id.")
+    try:
+        pid = uuid.UUID(project_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid project_id format")
+    if not await user.is_project_member(pid, db):
+        raise HTTPException(status_code=403, detail="Access denied to this project")
+    return pid
 
 
 async def get_job_or_404(
-    job_id: _uuid.UUID, user: AuthenticatedUserOrToken, db: AsyncSession
+    job_id: uuid.UUID, user: AuthenticatedUserOrToken, db: AsyncSession
 ) -> Job:
     """
     Fetch job by ID and verify user has access via project membership.
@@ -69,7 +74,7 @@ async def get_job_or_404(
 
 async def cancel_existing_system_jobs(
     db: AsyncSession,
-    project_id: _uuid.UUID,
+    project_id: uuid.UUID,
     prompt_slug: str,
     job_type: str,
 ) -> int:
@@ -179,7 +184,7 @@ async def create_job(
     project_id,
     prompt_slug: str | None = None,
     celery_task_id: str | None = None,
-    user_id: _uuid.UUID = None,
+    user_id: uuid.UUID = None,
     result: dict | None = None,
 ) -> Job:
     """
@@ -201,7 +206,7 @@ async def create_job(
         Created Job object
     """
     job = Job(
-        job_id=_uuid.uuid4(),
+        job_id=uuid.uuid4(),
         job_type=job_type,
         prompt_slug=prompt_slug,
         project_id=project_id,

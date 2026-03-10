@@ -7,7 +7,7 @@ for the three Celery jobs (agent discovery, judge scoring, prompt tuning).
 """
 
 import logging
-import uuid as _uuid
+import uuid
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -110,7 +110,7 @@ async def list_agents(
     If project_id is not provided, uses the first project the user belongs to.
     """
     if project_id:
-        pid = _uuid.UUID(project_id)
+        pid = uuid.UUID(project_id)
         if not await user.is_project_member(pid, db):
             raise HTTPException(status_code=403, detail="Access denied to this project")
     elif user.user.projects:
@@ -258,7 +258,7 @@ async def get_agent_detail(
     version numbers, suggestions, and job statuses.
     """
     if project_id:
-        pid = _uuid.UUID(project_id)
+        pid = uuid.UUID(project_id)
         if not await user.is_project_member(pid, db):
             raise HTTPException(status_code=403, detail="Access denied to this project")
     elif user.user.projects:
@@ -462,7 +462,7 @@ async def update_agent_metadata(
     - **tags**: List of category strings, e.g. ["HR", "financial"]. Replaces existing tags.
     """
     if project_id:
-        pid = _uuid.UUID(project_id)
+        pid = uuid.UUID(project_id)
     elif user.user.projects:
         pid = user.user.projects[0].project_id
     else:

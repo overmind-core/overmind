@@ -54,7 +54,7 @@ export const Route = createFileRoute("/_auth/agents/$slug")({
 function AgentDetailPage() {
   const { slug } = Route.useParams();
   const queryClient = useQueryClient();
-  const { tab, projectId } = Route.useSearch();
+  const { tab, projectId: projectIdParam } = Route.useSearch();
   const navigate = Route.useNavigate();
   const setTab = (v: string) =>
     navigate({
@@ -66,7 +66,11 @@ function AgentDetailPage() {
   const [range, setRange] = useState<AnalyticsRange>("past7d");
   const [reviewStep, setReviewStep] = useState<"criteria" | "spans" | null>(null);
 
-  const { data, isLoading, error } = useAgentDetailQuery(slug, projectId);
+  const { data, isLoading, error } = useAgentDetailQuery(slug, projectIdParam);
+
+  // Once loaded, the detail response is the authoritative source for projectId.
+  // The URL param is only used as a hint for the initial fetch.
+  const projectId = data?.projectId ?? projectIdParam;
 
   const scoreMutation = useMutation({
     mutationFn: () =>
@@ -440,7 +444,7 @@ function AgentDetailPage() {
           agent={agentForReview}
           onClose={() => setReviewStep(null)}
           onConfirm={() => setReviewStep("spans")}
-          projectId={projectId}
+          projectId={agent.projectId}
         />
       )}
 
@@ -456,7 +460,7 @@ function AgentDetailPage() {
             setReviewStep(null);
             queryClient.invalidateQueries({ queryKey: ["agent-detail", slug] });
           }}
-          projectId={projectId}
+          projectId={agent.projectId}
           scoredSpanCount={agent.analytics.scoredSpans}
         />
       )}

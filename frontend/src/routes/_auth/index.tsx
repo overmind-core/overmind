@@ -112,7 +112,11 @@ function AgentsSection({ projectId }: { projectId?: string }) {
       {extractMutation.isSuccess && (
         <Alert variant="success">Template extraction started — results will appear shortly.</Alert>
       )}
-      {agents.length === 0 ? <QuickstartEmbed /> : <AgentGrid agents={agents} />}
+      {agents.length === 0 ? (
+        <QuickstartEmbed />
+      ) : (
+        <AgentGrid agents={agents} projectId={projectId} />
+      )}
     </div>
   );
 }

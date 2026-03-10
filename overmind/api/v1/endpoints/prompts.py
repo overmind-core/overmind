@@ -17,7 +17,7 @@ from overmind.tasks.prompt_display_name_generator import generate_display_name_t
 from uuid import UUID
 import hashlib
 import logging
-import uuid as _uuid
+import uuid
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -410,7 +410,7 @@ async def update_prompt_criteria(
                 }
 
                 job = Job(
-                    job_id=_uuid.uuid4(),
+                    job_id=uuid.uuid4(),
                     job_type=JobType.JUDGE_SCORING.value,
                     project_id=prompt.project_id,
                     prompt_slug=prompt.slug,

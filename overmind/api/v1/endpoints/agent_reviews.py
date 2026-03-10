@@ -4,7 +4,6 @@ Agent review endpoints for interactive criteria refinement and span feedback.
 
 import json
 import logging
-import uuid as _uuid
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -17,6 +16,7 @@ from overmind.api.v1.helpers.authentication import (
     AuthenticatedUserOrToken,
     get_current_user,
 )
+from overmind.api.v1.endpoints.utils.jobs import resolve_project_id
 from overmind.api.v1.endpoints.utils.prompts import (
     are_criteria_same,
     are_descriptions_same,
@@ -27,22 +27,6 @@ from overmind.models.traces import SpanModel
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
-
-
-async def _resolve_project_id(
-    project_id: str | None,
-    user: AuthenticatedUserOrToken,
-    db: AsyncSession,
-) -> _uuid.UUID:
-    """Resolve and authorise a project UUID from an optional query param."""
-    if project_id:
-        pid = _uuid.UUID(project_id)
-        if not await user.is_project_member(pid, db):
-            raise HTTPException(status_code=403, detail="Access denied to this project")
-        return pid
-    if user.user.projects:
-        return user.user.projects[0].project_id
-    raise HTTPException(status_code=400, detail="No project found for user")
 
 
 # ---------------------------------------------------------------------------
@@ -97,7 +81,7 @@ class ReviewFailedRequest(BaseModel):
 @router.get("/{prompt_slug}/review-spans", response_model=AgentReviewSpansResponse)
 async def get_spans_for_review(
     prompt_slug: str,
-    project_id: str | None = Query(None, description="Filter by project ID"),
+    project_id: str = Query(..., description="Project ID"),
     span_ids: list[str] | None = Query(
         None,
         description=(
@@ -117,7 +101,7 @@ async def get_spans_for_review(
     returns them split into worst/best by score, guaranteeing the caller always
     gets back the same set of spans with refreshed correctness values.
     """
-    pid = await _resolve_project_id(project_id, user, db)
+    pid = await resolve_project_id(project_id, user, db)
 
     # Get latest prompt version
     prompt_q = await db.execute(
@@ -222,7 +206,7 @@ async def get_spans_for_review(
 async def update_agent_description_and_criteria(
     prompt_slug: str,
     payload: AgentDescriptionUpdateRequest,
-    project_id: str | None = Query(None),
+    project_id: str = Query(...),
     user: AuthenticatedUserOrToken = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
@@ -232,7 +216,7 @@ async def update_agent_description_and_criteria(
     When criteria change, existing correctness scores on mapped spans are
     cleared so subsequent scoring re-evaluates them with the new rules.
     """
-    pid = await _resolve_project_id(project_id, user, db)
+    pid = await resolve_project_id(project_id, user, db)
 
     # Get latest prompt version
     prompt_q = await db.execute(
@@ -306,7 +290,7 @@ async def update_agent_description_and_criteria(
 @router.post("/{prompt_slug}/update-agent-description")
 async def update_agent_description_from_feedback(
     prompt_slug: str,
-    project_id: str | None = Query(None),
+    project_id: str = Query(...),
     user: AuthenticatedUserOrToken = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
@@ -315,7 +299,7 @@ async def update_agent_description_from_feedback(
     This endpoint should be called after users submit feedback via the standard span feedback endpoint.
     It analyzes all judge_feedback on spans and updates the agent description accordingly.
     """
-    pid = await _resolve_project_id(project_id, user, db)
+    pid = await resolve_project_id(project_id, user, db)
 
     # Get latest prompt version
     prompt_q = await db.execute(
@@ -372,7 +356,7 @@ async def update_agent_description_from_feedback(
 async def sync_refresh_description(
     prompt_slug: str,
     payload: SyncRefreshDescriptionRequest,
-    project_id: str | None = Query(None),
+    project_id: str = Query(...),
     user: AuthenticatedUserOrToken = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
@@ -381,7 +365,7 @@ async def sync_refresh_description(
     Unlike the async version, this awaits the LLM call directly so the frontend
     can wait for the result during the interactive review loop.
     """
-    pid = await _resolve_project_id(project_id, user, db)
+    pid = await resolve_project_id(project_id, user, db)
 
     prompt_q = await db.execute(
         select(Prompt)
@@ -406,7 +390,7 @@ async def sync_refresh_description(
 @router.post("/{prompt_slug}/mark-initial-review-complete")
 async def mark_initial_review_complete(
     prompt_slug: str,
-    project_id: str | None = Query(None),
+    project_id: str = Query(...),
     user: AuthenticatedUserOrToken = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
@@ -414,7 +398,7 @@ async def mark_initial_review_complete(
     Mark the initial agent review as completed so the review badge is dismissed.
     Called after the user confirms the span feedback dialog.
     """
-    pid = await _resolve_project_id(project_id, user, db)
+    pid = await resolve_project_id(project_id, user, db)
 
     prompt_q = await db.execute(
         select(Prompt)
@@ -440,7 +424,7 @@ async def mark_initial_review_complete(
 async def report_review_failed(
     prompt_slug: str,
     payload: ReviewFailedRequest,
-    project_id: str | None = Query(None),
+    project_id: str = Query(...),
     user: AuthenticatedUserOrToken = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
@@ -448,7 +432,7 @@ async def report_review_failed(
     Log that the max review iterations were reached without user satisfaction.
     Records a structured backend error for investigation.
     """
-    pid = await _resolve_project_id(project_id, user, db)
+    pid = await resolve_project_id(project_id, user, db)
 
     prompt_q = await db.execute(
         select(Prompt)
@@ -478,7 +462,7 @@ async def complete_periodic_review(
     current_span_count: int = Query(
         ..., description="Current span count at time of review completion"
     ),
-    project_id: str | None = Query(None),
+    project_id: str = Query(...),
     user: AuthenticatedUserOrToken = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
@@ -486,7 +470,7 @@ async def complete_periodic_review(
     Mark a periodic review as completed/dismissed and update the next review threshold.
     This endpoint is called when a user dismisses or completes a periodic review notification.
     """
-    pid = await _resolve_project_id(project_id, user, db)
+    pid = await resolve_project_id(project_id, user, db)
 
     # Get latest prompt version
     prompt_q = await db.execute(

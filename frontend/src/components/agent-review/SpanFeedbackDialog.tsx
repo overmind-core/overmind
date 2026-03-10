@@ -236,7 +236,7 @@ interface Props {
   agent: AgentOut;
   onComplete: () => void;
   onClose: () => void;
-  projectId?: string;
+  projectId: string;
   /** True when this is a follow-up periodic review (initial_review_completed already set). */
   isPeriodicReview?: boolean;
   /** Current scored span count, required to advance the threshold on periodic review completion. */
