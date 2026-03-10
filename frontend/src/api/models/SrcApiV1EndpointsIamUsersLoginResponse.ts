@@ -24,44 +24,44 @@ import {
 /**
  * 
  * @export
- * @interface LoginResponse
+ * @interface SrcApiV1EndpointsIamUsersLoginResponse
  */
-export interface LoginResponse {
+export interface SrcApiV1EndpointsIamUsersLoginResponse {
     /**
      * 
      * @type {string}
-     * @memberof LoginResponse
+     * @memberof SrcApiV1EndpointsIamUsersLoginResponse
      */
     accessToken: string;
     /**
      * 
      * @type {string}
-     * @memberof LoginResponse
+     * @memberof SrcApiV1EndpointsIamUsersLoginResponse
      */
     tokenType: string;
     /**
      * 
      * @type {UserResponse}
-     * @memberof LoginResponse
+     * @memberof SrcApiV1EndpointsIamUsersLoginResponse
      */
     user: UserResponse;
 }
 
 /**
- * Check if a given object implements the LoginResponse interface.
+ * Check if a given object implements the SrcApiV1EndpointsIamUsersLoginResponse interface.
  */
-export function instanceOfLoginResponse(value: object): value is LoginResponse {
+export function instanceOfSrcApiV1EndpointsIamUsersLoginResponse(value: object): value is SrcApiV1EndpointsIamUsersLoginResponse {
     if (!('accessToken' in value) || value['accessToken'] === undefined) return false;
     if (!('tokenType' in value) || value['tokenType'] === undefined) return false;
     if (!('user' in value) || value['user'] === undefined) return false;
     return true;
 }
 
-export function LoginResponseFromJSON(json: any): LoginResponse {
-    return LoginResponseFromJSONTyped(json, false);
+export function SrcApiV1EndpointsIamUsersLoginResponseFromJSON(json: any): SrcApiV1EndpointsIamUsersLoginResponse {
+    return SrcApiV1EndpointsIamUsersLoginResponseFromJSONTyped(json, false);
 }
 
-export function LoginResponseFromJSONTyped(json: any, ignoreDiscriminator: boolean): LoginResponse {
+export function SrcApiV1EndpointsIamUsersLoginResponseFromJSONTyped(json: any, ignoreDiscriminator: boolean): SrcApiV1EndpointsIamUsersLoginResponse {
     if (json == null) {
         return json;
     }
@@ -73,11 +73,11 @@ export function LoginResponseFromJSONTyped(json: any, ignoreDiscriminator: boole
     };
 }
 
-export function LoginResponseToJSON(json: any): LoginResponse {
-    return LoginResponseToJSONTyped(json, false);
+export function SrcApiV1EndpointsIamUsersLoginResponseToJSON(json: any): SrcApiV1EndpointsIamUsersLoginResponse {
+    return SrcApiV1EndpointsIamUsersLoginResponseToJSONTyped(json, false);
 }
 
-export function LoginResponseToJSONTyped(value?: LoginResponse | null, ignoreDiscriminator: boolean = false): any {
+export function SrcApiV1EndpointsIamUsersLoginResponseToJSONTyped(value?: SrcApiV1EndpointsIamUsersLoginResponse | null, ignoreDiscriminator: boolean = false): any {
     if (value == null) {
         return value;
     }

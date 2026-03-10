@@ -102,3 +102,6 @@ generate_api_client:
 		-g typescript-fetch \
 		-o /workspace/frontend/src/api \
 		--additional-properties=typescriptThreePlus=true
+		# Fix incorrect FromJSON and ToJSON references due to OpenAPI AnyType
+		find ./frontend/src/api -type f -exec sed -i '' 's/ FromJSON(/(/g' {} +
+		find ./frontend/src/api -type f -exec sed -i '' 's/ ToJSON(/(/g' {} +
