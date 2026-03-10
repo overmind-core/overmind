@@ -37,47 +37,47 @@ import {
 export interface CompletePeriodicReviewApiV1AgentReviewsPromptSlugCompleteReviewPostRequest {
     promptSlug: string;
     currentSpanCount: number;
-    projectId?: string | null;
+    projectId: string;
     useCache?: boolean;
 }
 
 export interface GetSpansForReviewApiV1AgentReviewsPromptSlugReviewSpansGetRequest {
     promptSlug: string;
-    projectId?: string | null;
+    projectId: string;
     spanIds?: Array<string> | null;
     useCache?: boolean;
 }
 
 export interface MarkInitialReviewCompleteApiV1AgentReviewsPromptSlugMarkInitialReviewCompletePostRequest {
     promptSlug: string;
-    projectId?: string | null;
+    projectId: string;
     useCache?: boolean;
 }
 
 export interface ReportReviewFailedApiV1AgentReviewsPromptSlugReviewFailedPostRequest {
     promptSlug: string;
     reviewFailedRequest: ReviewFailedRequest;
-    projectId?: string | null;
+    projectId: string;
     useCache?: boolean;
 }
 
 export interface SyncRefreshDescriptionApiV1AgentReviewsPromptSlugSyncRefreshDescriptionPostRequest {
     promptSlug: string;
     syncRefreshDescriptionRequest: SyncRefreshDescriptionRequest;
-    projectId?: string | null;
+    projectId: string;
     useCache?: boolean;
 }
 
 export interface UpdateAgentDescriptionAndCriteriaApiV1AgentReviewsPromptSlugUpdateDescriptionPostRequest {
     promptSlug: string;
     agentDescriptionUpdateRequest: AgentDescriptionUpdateRequest;
-    projectId?: string | null;
+    projectId: string;
     useCache?: boolean;
 }
 
 export interface UpdateAgentDescriptionFromFeedbackApiV1AgentReviewsPromptSlugUpdateAgentDescriptionPostRequest {
     promptSlug: string;
-    projectId?: string | null;
+    projectId: string;
     useCache?: boolean;
 }
 

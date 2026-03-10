@@ -34,19 +34,19 @@ import {
 
 export interface GetAgentDetailApiV1AgentsPromptSlugDetailGetRequest {
     promptSlug: string;
-    projectId?: string | null;
+    projectId: string;
     useCache?: boolean;
 }
 
 export interface ListAgentsApiV1AgentsGetRequest {
-    projectId?: string | null;
+    projectId: string;
     useCache?: boolean;
 }
 
 export interface UpdateAgentMetadataApiV1AgentsPromptSlugMetadataPutRequest {
     promptSlug: string;
     updateAgentMetadataRequest: UpdateAgentMetadataRequest;
-    projectId?: string | null;
+    projectId: string;
 }
 
 /**

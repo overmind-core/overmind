@@ -1,5 +1,4 @@
 import logging
-import os
 
 from opentelemetry import trace
 from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
@@ -10,7 +9,7 @@ from pydantic_settings import BaseSettings
 
 class Settings(BaseSettings):
     app_name: str = "Overmind Core"
-    debug: bool = os.getenv("DEBUG", "false").lower() == "true"
+    debug: bool = False
     secret_key: str = "change-me-in-production"
     proxy_token: str = "default-proxy-token"
 

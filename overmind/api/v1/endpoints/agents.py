@@ -7,7 +7,6 @@ for the three Celery jobs (agent discovery, judge scoring, prompt tuning).
 """
 
 import logging
-import uuid
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -22,7 +21,10 @@ from overmind.api.v1.endpoints.utils.agents import (
     get_latest_prompts_for_project,
 )
 from overmind.tasks.periodic_reviews import REVIEW_THRESHOLDS
-from overmind.api.v1.endpoints.utils.jobs import sync_running_job_statuses
+from overmind.api.v1.endpoints.utils.jobs import (
+    resolve_project_id,
+    sync_running_job_statuses,
+)
 from overmind.api.v1.helpers.authentication import (
     AuthenticatedUserOrToken,
     get_current_user,
@@ -101,22 +103,14 @@ class TriggerResponse(BaseModel):
 
 @router.get("/", response_model=AgentsResponse)
 async def list_agents(
-    project_id: str | None = Query(None, description="Filter by project ID"),
+    project_id: str = Query(..., description="Project ID"),
     user: AuthenticatedUserOrToken = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     """
     List all detected agents (prompt templates) with analytics and suggestions.
-    If project_id is not provided, uses the first project the user belongs to.
     """
-    if project_id:
-        pid = uuid.UUID(project_id)
-        if not await user.is_project_member(pid, db):
-            raise HTTPException(status_code=403, detail="Access denied to this project")
-    elif user.user.projects:
-        pid = user.user.projects[0].project_id
-    else:
-        return AgentsResponse(data=[])
+    pid = await resolve_project_id(project_id, user, db)
 
     # Reconcile stale 'running' job statuses with Celery backend
     await sync_running_job_statuses(db, pid)
@@ -249,7 +243,7 @@ class AgentDetailOut(BaseModel):
 @router.get("/{prompt_slug}/detail", response_model=AgentDetailOut)
 async def get_agent_detail(
     prompt_slug: str,
-    project_id: str | None = Query(None),
+    project_id: str = Query(...),
     user: AuthenticatedUserOrToken = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
@@ -257,14 +251,7 @@ async def get_agent_detail(
     Get full agent detail — all prompt versions, their texts, scores,
     version numbers, suggestions, and job statuses.
     """
-    if project_id:
-        pid = uuid.UUID(project_id)
-        if not await user.is_project_member(pid, db):
-            raise HTTPException(status_code=403, detail="Access denied to this project")
-    elif user.user.projects:
-        pid = user.user.projects[0].project_id
-    else:
-        raise HTTPException(status_code=400, detail="No project found for user")
+    pid = await resolve_project_id(project_id, user, db)
 
     # Sync running jobs
     await sync_running_job_statuses(db, pid)
@@ -451,7 +438,7 @@ class UpdateAgentMetadataResponse(BaseModel):
 async def update_agent_metadata(
     prompt_slug: str,
     request: UpdateAgentMetadataRequest,
-    project_id: str | None = Query(None),
+    project_id: str = Query(...),
     user: AuthenticatedUserOrToken = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
@@ -461,12 +448,7 @@ async def update_agent_metadata(
     - **name**: Custom display name (3–255 characters). Overwrites the auto-generated one.
     - **tags**: List of category strings, e.g. ["HR", "financial"]. Replaces existing tags.
     """
-    if project_id:
-        pid = uuid.UUID(project_id)
-    elif user.user.projects:
-        pid = user.user.projects[0].project_id
-    else:
-        raise HTTPException(status_code=400, detail="No project found for user")
+    pid = await resolve_project_id(project_id, user, db)
 
     # Validate name if provided
     if request.name is not None:

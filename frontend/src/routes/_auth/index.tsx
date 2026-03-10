@@ -27,7 +27,7 @@ function AgentsSection({ projectId }: { projectId?: string }) {
 
   const { data, isLoading, error } = useQuery({
     enabled: !!projectId,
-    queryFn: () => apiClient.agents.listAgentsApiV1AgentsGet({ projectId }),
+    queryFn: () => apiClient.agents.listAgentsApiV1AgentsGet({ projectId: projectId! }),
     queryKey: ["agents", projectId],
     refetchInterval: 15_000,
   });

@@ -63,13 +63,13 @@ export function PromptDiff({ oldText, newText, className }: PromptDiffProps) {
       <div className="max-h-[360px] overflow-y-auto">
         <table className="w-full border-collapse">
           <tbody>
-            {rows.map((row, i) => (
+            {rows.map((row) => (
               <tr
                 className={cn(
                   row.kind === "added" && "bg-green-500/10 dark:bg-green-400/10",
                   row.kind === "removed" && "bg-red-500/10 dark:bg-red-400/10"
                 )}
-                key={i}
+                key={`${row.kind}-${row.oldNum ?? "n"}-${row.newNum ?? "n"}`}
               >
                 {/* old line number */}
                 <td className="w-8 select-none border-r border-border py-0.5 pr-2 text-right text-muted-foreground/60">

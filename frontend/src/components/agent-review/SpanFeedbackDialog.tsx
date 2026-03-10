@@ -10,6 +10,7 @@ import {
   ThumbsUp,
   Cancel as X,
 } from "pixelarticons/react";
+import { toast } from "sonner";
 
 import type { AgentOut, SpanForReview } from "@/api";
 import apiClient from "@/client";
@@ -399,7 +400,11 @@ export function SpanFeedbackDialog({
     );
     const failures = results.filter((r) => r.status === "rejected");
     if (failures.length > 0) {
-      console.warn(`${failures.length} span feedback submission(s) failed`, failures);
+      const total = results.length;
+      toast.error(
+        `${failures.length} of ${total} feedback submission${failures.length > 1 ? "s" : ""} failed to save. Please try again.`
+      );
+      throw new Error(`${failures.length} span feedback submission(s) failed`);
     }
   }
 
