@@ -157,6 +157,24 @@ const CANDIDATE_KEYS: { key: string; label: string }[] = [
   { key: "cheapest", label: "Cheapest" },
 ];
 
+function ReasoningBadge({ model }: { model: Record<string, unknown> }) {
+  const withReasoning = model.with_reasoning as boolean | undefined;
+  const effort = model.reasoning_effort as string | undefined;
+  const budget = model.thinking_budget_tokens as number | undefined;
+
+  if (!withReasoning) return null;
+
+  let label = "Reasoning";
+  if (effort) label = `Reasoning · ${effort}`;
+  else if (budget) label = "Extended Thinking";
+
+  return (
+    <span className="inline-flex items-center rounded-sm border border-violet-500/30 bg-violet-500/10 px-1.5 py-0.5 text-[0.65rem] font-semibold tracking-wide text-violet-600 dark:text-violet-400">
+      {label}
+    </span>
+  );
+}
+
 function ModelCard({
   label,
   model,
@@ -166,15 +184,18 @@ function ModelCard({
   model: Record<string, unknown>;
   currentModel?: Record<string, unknown>;
 }) {
+  const displayName = String(model.base_model ?? model.model ?? model.name ?? "—");
+
   return (
     <div className="rounded border border-border bg-card p-3 space-y-2">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between gap-2">
         <span className="text-[0.68rem] font-semibold uppercase tracking-widest text-muted-foreground">
           {label}
         </span>
-        <span className="text-sm font-bold text-foreground">
-          {String(model.model ?? model.name ?? "—")}
-        </span>
+        <div className="flex items-center gap-1.5">
+          <ReasoningBadge model={model} />
+          <span className="text-sm font-bold text-foreground">{displayName}</span>
+        </div>
       </div>
       {!!model.reason && (
         <p className="text-xs text-muted-foreground leading-relaxed">{String(model.reason)}</p>

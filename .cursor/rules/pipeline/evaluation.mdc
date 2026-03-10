@@ -16,15 +16,18 @@ Scores every span's output for correctness (0–1) using an LLM judge. Different
 Periodic (5 min) or Job trigger
         │
         ▼
-  Find unscored spans (no feedback_score.correctness)
+  Find unscored spans (no feedback_score.correctness AND no feedback_score.correctness_error)
         │
         ▼
   For each span:
   ├── Load prompt → get evaluation_criteria
   ├── Get project description, agent description
   ├── Determine evaluation type (see routing below)
-  ├── Call _evaluate_correctness_with_llm()
-  └── Store result in span.feedback_score["correctness"]
+  ├── Call _evaluate_correctness_with_llm() — retries JSON parsing up to 3×
+  │   ├── Success → Store score in span.feedback_score["correctness"]
+  │   │             If score < 0.5, also store reason in span.feedback_score["correctness_reason"]
+  │   └── Permanent JSON parse failure → Store error in span.feedback_score["correctness_error"]
+  └── span.feedback_score["correctness_error"] spans are never re-evaluated
 ```
 
 ## Entry Points
@@ -62,13 +65,19 @@ Otherwise:
 | **Tool-call**   | `TOOL_CALL_CORRECTNESS_SYSTEM_PROMPT`   | `TOOL_CALL_CORRECTNESS_PROMPT_TEMPLATE`   | `DEFAULT_TOOL_CALL_CRITERIA`    |
 | **Tool-answer** | `TOOL_ANSWER_CORRECTNESS_SYSTEM_PROMPT` | `TOOL_ANSWER_CORRECTNESS_PROMPT_TEMPLATE` | `DEFAULT_TOOL_ANSWER_CRITERIA`  |
 
-All system prompts instruct the LLM to return `{"correctness": float}` JSON.
+All system prompts instruct the LLM to return `{"correctness": float}` JSON, with an optional `"reason"` string included only when `correctness < 0.5` (`LOW_SCORE_REASON_THRESHOLD`).
 
 ## Key Functions
 
-### `_evaluate_correctness_with_llm(input_data, output_data, criteria_text, project_description, agent_description, span_metadata) -> float`
+### `_evaluate_correctness_with_llm(input_data, output_data, criteria_text, project_description, agent_description, span_metadata) -> tuple[float, str | None]`
 
-Core scoring function. Dispatches to the appropriate judge type, calls `call_llm()`, parses JSON response, clamps to [0, 1].
+Core scoring function. Dispatches to the appropriate judge type, calls `call_llm()`, parses JSON response, clamps to [0, 1]. Returns `(score, reason)` where `reason` is a 1–2 sentence string when `score < LOW_SCORE_REASON_THRESHOLD (0.5)`, otherwise `None`. Callers in `prompt_improvement.py` and `backtesting.py` discard the reason (`score, _ = ...`) since it's only meaningful for user-facing evaluation.
+
+**JSON parse retry**: If `try_json_parsing` fails or the `correctness` key is missing/non-numeric, the full `call_llm` + parse is retried up to `_JSON_PARSE_MAX_RETRIES = 3` times. After all retries are exhausted, raises `JsonParseError` (a subclass of `ValueError`). The caller (`_evaluate_span_correctness`) catches `JsonParseError`, writes `span.feedback_score["correctness_error"] = "<message>"` via `_store_span_error()`, and returns an error result without re-raising. Transient provider errors (rate limits, etc.) are handled separately inside `call_llm` itself with exponential backoff.
+
+### `_store_span_error(span_id, error_message) -> bool`
+
+Writes `feedback_score["correctness_error"] = error_message` for a span. Spans with this key are excluded from all "unscored" queries (auto-evaluator, user-triggered jobs) and never re-evaluated. They also naturally fall outside all "scored" queries (no `correctness` key) so they are excluded from averages, prompt tuning, backtesting, and reviews.
 
 ### `_get_context_for_span(span, criteria_by_prompt=None) -> tuple[str, str | None, str | None]`
 
@@ -108,9 +117,10 @@ span.input (JSONB)                    span.metadata_attributes
                                           │
                                           ▼
                                    call_llm() → {"correctness": 0.85}
-                                          │
+                                          │    or {"correctness": 0.3, "reason": "..."}
                                           ▼
                                    span.feedback_score["correctness"] = 0.85
+                                   span.feedback_score["correctness_reason"] = "..." (only if score < 0.5)
 ```
 
 ## Model Used
@@ -131,5 +141,8 @@ All must be true (in order):
 - Adding a new evaluation type requires: a new judge prompt pair in `overmind/tasks/utils/prompts.py`, routing logic in `_evaluate_correctness_with_llm`, and possibly a new extractor in `agentic_span_processor.py`
 - The `response_type` metadata is set during trace ingestion — changes there affect which judge is used
 - `ensure_prompt_has_criteria` (from criteria_generator) is called when criteria are missing — evaluation won't proceed without criteria for the plain judge. No module-level cache; orchestrators pass a local `criteria_by_prompt` dict for per-batch deduplication.
-- All judge prompts must return `{"correctness": float}` JSON — the system prompt enforces this
-- Scores are stored in `span.feedback_score` which is a JSONB column — other keys like `agent_feedback` and `judge_feedback` coexist there
+- All judge prompts return `{"correctness": float}` JSON; when `correctness < 0.5` they also return `"reason": string` (1–2 sentences). The threshold is `LOW_SCORE_REASON_THRESHOLD = 0.5` in `evaluations.py`. Reasons are discarded defensively if the model includes them above the threshold.
+- Scores are stored in `span.feedback_score` which is a JSONB column — other keys like `agent_feedback`, `judge_feedback`, `correctness_error`, and `correctness_reason` coexist there
+- `correctness_reason` in `feedback_score` is a short explanation of why the score was low (present only when `correctness < 0.5`). The UI shows it as a hover tooltip on the score chip in `SpanFeedbackDialog` and `SpanDetailView`. It is cleared automatically if a span is re-evaluated and the score rises above the threshold.
+- `correctness_error` in `feedback_score` indicates a permanent evaluation failure (JSON parse failed after all retries). These spans are excluded from unscored queries via `~has_key("correctness_error")` and naturally excluded from scored queries (no `correctness` key). The UI renders "Evaluation error" with the error message for these spans.
+- To reset a span's error state (e.g. after fixing an issue), clear `correctness_error` from its `feedback_score`

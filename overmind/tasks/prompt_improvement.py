@@ -291,6 +291,7 @@ async def is_latest_prompt_adopted(
             and_(
                 SpanModel.prompt_id == latest_prompt_id,
                 SpanModel.feedback_score.has_key("correctness"),
+                ~SpanModel.feedback_score.has_key("correctness_error"),
                 SpanModel.exclude_system_spans(),
             )
         )
@@ -364,6 +365,7 @@ async def fetch_spans_by_score_buckets(
                     and_(
                         SpanModel.prompt_id == prompt_id,
                         SpanModel.feedback_score.has_key("correctness"),
+                        ~SpanModel.feedback_score.has_key("correctness_error"),
                         cast(SpanModel.feedback_score["correctness"], Float) >= lower,
                         cast(SpanModel.feedback_score["correctness"], Float) <= upper,
                         SpanModel.exclude_system_spans(),
@@ -379,6 +381,7 @@ async def fetch_spans_by_score_buckets(
                     and_(
                         SpanModel.prompt_id == prompt_id,
                         SpanModel.feedback_score.has_key("correctness"),
+                        ~SpanModel.feedback_score.has_key("correctness_error"),
                         cast(SpanModel.feedback_score["correctness"], Float) >= lower,
                         cast(SpanModel.feedback_score["correctness"], Float) < upper,
                         SpanModel.exclude_system_spans(),
@@ -1058,7 +1061,7 @@ async def create_comparison_spans(
             # Use pre-computed score when available, otherwise evaluate via LLM
             correctness_value = result.get("correctness_score")
             if correctness_value is None:
-                correctness_value = _evaluate_correctness_with_llm(
+                correctness_value, _ = _evaluate_correctness_with_llm(
                     input_data=result["input"],
                     output_data=result["output"],
                     criteria_text=criteria_text,
@@ -1262,12 +1265,13 @@ async def validate_prompt_tuning_eligibility(
             stats,
         )
 
-    # Check 3: Count scored spans (exclude system-generated spans)
+    # Check 3: Count scored spans (exclude system-generated spans and parse-error spans)
     count_result = await session.execute(
         select(func.count(SpanModel.span_id)).where(
             and_(
                 SpanModel.prompt_id == prompt_id,
                 SpanModel.feedback_score.has_key("correctness"),
+                ~SpanModel.feedback_score.has_key("correctness_error"),
                 SpanModel.exclude_system_spans(),
             )
         )
@@ -1501,6 +1505,7 @@ async def _execute_prompt_improvement(
             and_(
                 SpanModel.prompt_id == prompt_id,
                 SpanModel.feedback_score.has_key("correctness"),
+                ~SpanModel.feedback_score.has_key("correctness_error"),
                 SpanModel.exclude_system_spans(),
             )
         )
@@ -1652,7 +1657,7 @@ async def _execute_prompt_improvement(
 
         for result in successful_results:
             try:
-                score = _evaluate_correctness_with_llm(
+                score, _ = _evaluate_correctness_with_llm(
                     input_data=result["input"],
                     output_data=result["output"],
                     criteria_text=criteria_text,

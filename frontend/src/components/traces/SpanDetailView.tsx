@@ -20,6 +20,7 @@ import {
 } from "@/components/ui/table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import type { SpanRow } from "@/hooks/use-traces";
 import { spanStatusLabel } from "@/hooks/use-traces";
 import type { ChatMessage, ToolCallItem } from "@/types/chat";
@@ -430,6 +431,14 @@ export function SpanDetailView({ span, queryKey }: SpanDetailViewProps) {
     ((span.spanAttributes?.feedback_score as Record<string, unknown> | undefined)?.correctness as
       | number
       | undefined);
+  const correctnessError =
+    (span.feedbackScores?.correctness_error as string | undefined) ??
+    ((span.spanAttributes?.feedback_score as Record<string, unknown> | undefined)
+      ?.correctness_error as string | undefined);
+  const correctnessReason =
+    (span.feedbackScores?.correctness_reason as string | undefined) ??
+    ((span.spanAttributes?.feedback_score as Record<string, unknown> | undefined)
+      ?.correctness_reason as string | undefined);
 
   const feedbackMutation = useMutation({
     mutationFn: async ({
@@ -490,13 +499,41 @@ export function SpanDetailView({ span, queryKey }: SpanDetailViewProps) {
                 <Label className="text-xs font-semibold text-muted-foreground">
                   Eval Score (Correctness)
                 </Label>
-                <p className="mt-1 text-2xl font-semibold">
-                  {correctness != null ? (
-                    <span>{(Number(correctness) * 100).toFixed(0)}%</span>
-                  ) : (
-                    <span className="text-muted-foreground">—</span>
-                  )}
-                </p>
+                {correctnessError ? (
+                  <div className="mt-1 space-y-1">
+                    <span className="inline-flex items-center rounded-full border border-red-200 bg-red-100 px-2.5 py-0.5 text-sm font-medium text-red-700 dark:border-red-800 dark:bg-red-900/30 dark:text-red-400">
+                      Evaluation error
+                    </span>
+                    <p className="text-xs text-muted-foreground leading-relaxed break-all">
+                      {correctnessError}
+                    </p>
+                  </div>
+                ) : correctnessReason ? (
+                  <TooltipProvider>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <p className="mt-1 text-2xl font-semibold cursor-help w-fit">
+                          {correctness != null ? (
+                            <span>{(Number(correctness) * 100).toFixed(0)}%</span>
+                          ) : (
+                            <span className="text-muted-foreground">—</span>
+                          )}
+                        </p>
+                      </TooltipTrigger>
+                      <TooltipContent className="max-w-xs text-xs leading-relaxed" side="bottom">
+                        {correctnessReason}
+                      </TooltipContent>
+                    </Tooltip>
+                  </TooltipProvider>
+                ) : (
+                  <p className="mt-1 text-2xl font-semibold">
+                    {correctness != null ? (
+                      <span>{(Number(correctness) * 100).toFixed(0)}%</span>
+                    ) : (
+                      <span className="text-muted-foreground">—</span>
+                    )}
+                  </p>
+                )}
               </div>
               <div className="space-y-3 pt-2 border-t border-border">
                 <Label className="text-xs font-semibold">Your feedback</Label>

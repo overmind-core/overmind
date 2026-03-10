@@ -111,7 +111,7 @@ export function AgentCriteriaReviewDialog({ agent, onConfirm, onClose, projectId
   return (
     <Dialog open>
       <DialogContent
-        className="flex max-h-[90vh] w-full max-w-2xl flex-col gap-0 overflow-hidden p-0"
+        className="flex max-h-[90vh] w-full max-w-5xl sm:max-w-5xl flex-col gap-0 overflow-hidden p-0"
         onEscapeKeyDown={onClose}
         onInteractOutside={onClose}
       >

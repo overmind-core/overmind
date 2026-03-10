@@ -27,6 +27,7 @@ import {
 } from "@/components/ui/dialog";
 import { isLikelyMarkdown, MarkdownContent } from "@/components/ui/markdown";
 import { Textarea } from "@/components/ui/textarea";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 import type { ChatMessage, ToolCallItem } from "@/types/chat";
 
@@ -72,9 +73,9 @@ function formatPlain(value: unknown): string {
   return JSON.stringify(value, null, 2);
 }
 
-function ScoreChip({ score }: { score: number | null }) {
+function ScoreChip({ score }: { score: number | null | undefined }) {
   if (score === null) return <span className="text-xs text-muted-foreground">unscored</span>;
-  const pct = Math.round(score * 100);
+  const pct = Math.round((score ?? 0) * 100);
   const color =
     pct >= 70
       ? "bg-emerald-500/15 text-emerald-700 dark:text-emerald-400"
@@ -561,7 +562,7 @@ export function SpanFeedbackDialog({
   return (
     <Dialog open>
       <DialogContent
-        className="flex max-h-[95vh] w-full max-w-6xl flex-col gap-0 overflow-hidden p-0"
+        className="flex max-h-[95vh] w-full max-w-5xl sm:max-w-5xl flex-col gap-0 overflow-hidden p-0"
         onEscapeKeyDown={onClose}
         onInteractOutside={onClose}
       >
@@ -733,7 +734,22 @@ export function SpanFeedbackDialog({
               >
                 {/* Score + vote buttons */}
                 <div className="mb-4 flex items-center justify-between gap-3">
-                  <ScoreChip score={currentSpan.correctnessScore} />
+                  {currentSpan.correctnessReason ? (
+                    <TooltipProvider>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <span className="cursor-help">
+                            <ScoreChip score={currentSpan.correctnessScore} />
+                          </span>
+                        </TooltipTrigger>
+                        <TooltipContent className="max-w-xs text-xs leading-relaxed" side="bottom">
+                          {currentSpan.correctnessReason}
+                        </TooltipContent>
+                      </Tooltip>
+                    </TooltipProvider>
+                  ) : (
+                    <ScoreChip score={currentSpan.correctnessScore} />
+                  )}
 
                   <div className="flex gap-2">
                     <button

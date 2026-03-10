@@ -258,7 +258,19 @@ export const tracesColumns: ColumnDef<SpanRow>[] = [
       return typeof score === "number" ? score : null;
     },
     cell: ({ row }) => {
-      const score = row.original.feedbackScores?.correctness;
+      const scores = row.original.feedbackScores;
+      const parseError = scores?.correctness_error;
+      if (parseError) {
+        return (
+          <span
+            className="inline-flex items-center rounded-full border border-red-200 bg-red-100 px-2 py-0.5 text-xs font-medium text-red-700 dark:border-red-800 dark:bg-red-900/30 dark:text-red-400"
+            title={typeof parseError === "string" ? parseError : "Evaluation failed"}
+          >
+            Error
+          </span>
+        );
+      }
+      const score = scores?.correctness;
       if (typeof score !== "number") return <span className="text-muted-foreground">—</span>;
       const pct = Math.round(score * 100);
       const colorClass =

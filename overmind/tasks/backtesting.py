@@ -341,8 +341,13 @@ def _generate_recommendations(
         perf_delta = (
             ((top["avg_eval_score"] - b_score) / b_score * 100) if b_score > 0 else 0
         )
+        _bm_top, _effort_top, _budget_top = _parse_backtest_model_key(top_model)
         recs["top_performer"] = {
             "model": top_model,
+            "base_model": _bm_top,
+            "with_reasoning": _effort_top is not None or _budget_top is not None,
+            "reasoning_effort": _effort_top,
+            "thinking_budget_tokens": _budget_top,
             "avg_eval_score": round(top["avg_eval_score"], 4),
             "performance_delta_pct": round(perf_delta, 2),
             "avg_latency_ms": round(top.get("avg_latency_ms", 0), 2),
@@ -375,8 +380,15 @@ def _generate_recommendations(
             perf_note = (
                 f" Performance: {abs(sd) * 100:.1f}pp {'drop' if sd > 0 else 'gain'}."
             )
+            _bm_fast, _effort_fast, _budget_fast = _parse_backtest_model_key(
+                fastest_model
+            )
             recs["fastest"] = {
                 "model": fastest_model,
+                "base_model": _bm_fast,
+                "with_reasoning": _effort_fast is not None or _budget_fast is not None,
+                "reasoning_effort": _effort_fast,
+                "thinking_budget_tokens": _budget_fast,
                 "avg_eval_score": round(fastest.get("avg_eval_score", 0), 4),
                 "performance_delta_pp": round(-sd, 4),
                 "avg_latency_ms": round(fastest["avg_latency_ms"], 2),
@@ -400,8 +412,16 @@ def _generate_recommendations(
             perf_note = (
                 f" Performance: {abs(sd) * 100:.1f}pp {'drop' if sd > 0 else 'gain'}."
             )
+            _bm_cheap, _effort_cheap, _budget_cheap = _parse_backtest_model_key(
+                cheapest_model
+            )
             recs["cheapest"] = {
                 "model": cheapest_model,
+                "base_model": _bm_cheap,
+                "with_reasoning": _effort_cheap is not None
+                or _budget_cheap is not None,
+                "reasoning_effort": _effort_cheap,
+                "thinking_budget_tokens": _budget_cheap,
                 "avg_eval_score": round(cheapest.get("avg_eval_score", 0), 4),
                 "performance_delta_pp": round(-sd, 4),
                 "avg_cost_per_request": round(cheapest["avg_cost_per_request"], 6),
@@ -453,24 +473,39 @@ def _generate_recommendations(
             reason_parts.append(f"cost reduced by {cost_delta_pct:.0f}%")
         elif cost_delta_pct < 0:
             reason_parts.append(f"cost increased by {abs(cost_delta_pct):.0f}%")
+        _bm_best, _effort_best, _budget_best = _parse_backtest_model_key(best_model)
         recs["best_overall"] = {
             "model": best_model,
+            "base_model": _bm_best,
+            "with_reasoning": _effort_best is not None or _budget_best is not None,
+            "reasoning_effort": _effort_best,
+            "thinking_budget_tokens": _budget_best,
             "avg_eval_score": round(best.get("avg_eval_score", 0), 4),
             "avg_latency_ms": round(best.get("avg_latency_ms", 0), 2),
             "avg_cost_per_request": round(best.get("avg_cost_per_request", 0), 6),
             "reason": f"Best overall trade-off: {', '.join(reason_parts)}",
         }
         recs["verdict"] = "switch_recommended"
+        _best_display = _bm_best
+        if _effort_best:
+            _best_display += f" (reasoning: {_effort_best})"
+        elif _budget_best:
+            _best_display += " (extended thinking)"
         recs["summary"] = (
-            f"Consider switching from {current_model or 'unknown'} to {best_model}. "
+            f"Consider switching from {current_model or 'unknown'} to {_best_display}. "
             + recs["best_overall"]["reason"]
             + "."
         )
     elif "top_performer" in recs:
         tp = recs["top_performer"]
         recs["verdict"] = "consider_top_performer"
+        _tp_display = tp.get("base_model") or tp["model"]
+        if tp.get("reasoning_effort"):
+            _tp_display += f" (reasoning: {tp['reasoning_effort']})"
+        elif tp.get("thinking_budget_tokens"):
+            _tp_display += " (extended thinking)"
         recs["summary"] = (
-            f"{tp['model']} offers {tp['reason']}, but may come with higher "
+            f"{_tp_display} offers {tp['reason']}, but may come with higher "
             f"cost or latency. Consider switching if performance is the priority."
         )
     else:
@@ -849,7 +884,7 @@ async def _run_backtesting(
                 # Sync correctness eval → offload to thread
                 eval_score = 0.0
                 if model_result["success"] and model_result.get("output"):
-                    eval_score = await asyncio.wait_for(
+                    eval_score, _ = await asyncio.wait_for(
                         asyncio.to_thread(
                             _evaluate_correctness_with_llm,
                             input_data=eval_input_data,
@@ -1400,12 +1435,13 @@ async def validate_backtesting_eligibility(
             stats,
         )
 
-    # Check 4: Minimum scored spans
+    # Check 4: Minimum scored spans (exclude parse-error spans)
     scored_q = await session.execute(
         select(func.count(SpanModel.span_id)).where(
             and_(
                 SpanModel.prompt_id == prompt_id,
                 SpanModel.feedback_score.has_key("correctness"),
+                ~SpanModel.feedback_score.has_key("correctness_error"),
                 SpanModel.exclude_system_spans(),
             )
         )

@@ -39,6 +39,7 @@ class SpanForReview(BaseModel):
     input: Any
     output: Any
     correctness_score: float | None = None
+    correctness_reason: str | None = None
     created_at: str
 
 
@@ -144,6 +145,7 @@ async def get_spans_for_review(
                 and_(
                     SpanModel.prompt_id == prompt.prompt_id,
                     SpanModel.feedback_score.has_key("correctness"),
+                    ~SpanModel.feedback_score.has_key("correctness_error"),
                     SpanModel.exclude_system_spans(),
                 )
             )
@@ -162,6 +164,7 @@ async def get_spans_for_review(
                 and_(
                     SpanModel.prompt_id == prompt.prompt_id,
                     SpanModel.feedback_score.has_key("correctness"),
+                    ~SpanModel.feedback_score.has_key("correctness_error"),
                     SpanModel.exclude_system_spans(),
                     ~SpanModel.span_id.in_(worst_span_ids),
                 )
@@ -181,11 +184,13 @@ async def get_spans_for_review(
 
     # Format spans
     def format_span(span: SpanModel) -> SpanForReview:
+        fs = span.feedback_score or {}
         return SpanForReview(
             span_id=span.span_id,
             input=_parse_json_field(span.input),
             output=_parse_json_field(span.output),
-            correctness_score=(span.feedback_score or {}).get("correctness"),
+            correctness_score=fs.get("correctness"),
+            correctness_reason=fs.get("correctness_reason"),
             created_at=span.created_at.isoformat() if span.created_at else "",
         )
 

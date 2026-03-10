@@ -90,6 +90,15 @@ If no suggestions are stored yet, an empty model list is used (job is still crea
 1. **Cheapest**: lowest avg cost among models within 5pp of baseline score
 1. **Best overall**: highest weighted score = `perf×3 + latency_score×1 + cost_score×1`
 
+Each candidate recommendation entry (`top_performer`, `fastest`, `cheapest`, `best_overall`) now includes reasoning metadata parsed from the model key via `_parse_backtest_model_key`:
+
+- `base_model` — bare model name without reasoning suffix (e.g. `"gpt-5.2"`)
+- `with_reasoning` — `true` if the model was tested with reasoning enabled
+- `reasoning_effort` — effort level string (`"low"`, `"medium"`, `"high"`) or `null` for effort-based reasoning
+- `thinking_budget_tokens` — integer budget for manual budget-token mode (Anthropic), or `null`
+
+The `summary` text also includes reasoning info when a switch is recommended (e.g. `"gpt-5.2 (reasoning: medium)"`).
+
 ### Verdict values:
 
 - `"switch_recommended"` — a better model was found

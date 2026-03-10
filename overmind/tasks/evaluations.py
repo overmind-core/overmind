@@ -45,6 +45,17 @@ logger = logging.getLogger(__name__)
 # Max concurrent span evaluations (controls thread + DB connection pressure)
 _MAX_CONCURRENT_EVALUATIONS = 10
 
+# How many times to retry the LLM call when JSON parsing fails before giving up
+_JSON_PARSE_MAX_RETRIES = 3
+
+# Scores strictly below this threshold trigger a 'reason' field in the LLM response
+LOW_SCORE_REASON_THRESHOLD = 0.5
+
+
+class JsonParseError(ValueError):
+    """Raised when the LLM evaluation response cannot be parsed after all retries."""
+
+
 # Maximum scored spans per prompt before the initial agent review is required.
 # Once this cap is reached, scoring pauses until the user completes the review.
 PRE_REVIEW_SCORED_SPAN_CAP = 30
@@ -54,6 +65,10 @@ class CorrectnessResult(BaseModel):
     """Pydantic model for LLM correctness evaluation response."""
 
     correctness: float = Field(description="Correctness score from 0 to 1")
+    reason: str | None = Field(
+        default=None,
+        description="Brief explanation of main issues, present only when correctness < 0.5",
+    )
 
 
 def _format_criteria(criteria_rules: list[str]) -> str:
@@ -68,9 +83,12 @@ def _evaluate_correctness_with_llm(
     project_description: str | None = None,
     agent_description: str | None = None,
     span_metadata: dict[str, Any] | None = None,
-) -> float:
+) -> tuple[float, str | None]:
     """
-    Call LLM to evaluate correctness and return a normalized score.
+    Call LLM to evaluate correctness and return a (score, reason) tuple.
+
+    The reason is a brief explanation string when the score is below
+    LOW_SCORE_REASON_THRESHOLD (0.5), otherwise None.
 
     Routes to the appropriate judge prompt based on span type:
     - response_type "tool_calls" → tool selection + argument quality judge
@@ -190,25 +208,43 @@ def _evaluate_correctness_with_llm(
             )
             system_prompt = CORRECTNESS_SYSTEM_PROMPT
 
-    response, _ = call_llm(
-        prompt,
-        system_prompt=system_prompt,
-        response_format=CorrectnessResult,
-        model=resolve_model(TaskType.JUDGE_SCORING),
+    last_error: Exception | None = None
+    for attempt in range(1, _JSON_PARSE_MAX_RETRIES + 1):
+        try:
+            response, _ = call_llm(
+                prompt,
+                system_prompt=system_prompt,
+                response_format=CorrectnessResult,
+                model=resolve_model(TaskType.JUDGE_SCORING),
+            )
+            parsed = try_json_parsing(response)
+            correctness = parsed.get("correctness")
+            if correctness is None:
+                raise ValueError("LLM response missing correctness key")
+            correctness_value = float(correctness)
+            clamped = max(0.0, min(1.0, correctness_value))
+
+            # Extract reason only for low-scoring spans; discard it defensively
+            # if the model included it despite the score being above the threshold.
+            raw_reason = parsed.get("reason")
+            reason: str | None = None
+            if (
+                clamped < LOW_SCORE_REASON_THRESHOLD
+                and isinstance(raw_reason, str)
+                and raw_reason.strip()
+            ):
+                reason = raw_reason.strip()
+
+            return clamped, reason
+        except (TypeError, ValueError) as exc:
+            last_error = exc
+            logger.warning(
+                f"JSON parse attempt {attempt}/{_JSON_PARSE_MAX_RETRIES} failed: {exc}"
+            )
+
+    raise JsonParseError(
+        f"Failed to parse LLM evaluation response after {_JSON_PARSE_MAX_RETRIES} attempts: {last_error}"
     )
-
-    parsed = try_json_parsing(response)
-    correctness = parsed.get("correctness")
-    if correctness is None:
-        raise ValueError("LLM response missing correctness key")
-
-    try:
-        correctness_value = float(correctness)
-    except (TypeError, ValueError) as exc:
-        raise ValueError("Correctness score is not a number") from exc
-
-    # Clamp to valid range
-    return max(0.0, min(1.0, correctness_value))
 
 
 def _extract_span_payload(span: SpanModel) -> dict[str, Any]:
@@ -221,8 +257,10 @@ def _extract_span_payload(span: SpanModel) -> dict[str, Any]:
     }
 
 
-async def _store_span_score(span_id: str, correctness: float) -> bool:
-    """Store correctness score in span's feedback_score field."""
+async def _store_span_score(
+    span_id: str, correctness: float, reason: str | None = None
+) -> bool:
+    """Store correctness score (and optional reason) in span's feedback_score field."""
     AsyncSessionLocal = get_session_local()
     async with AsyncSessionLocal() as session:
         result = await session.execute(
@@ -235,6 +273,34 @@ async def _store_span_score(span_id: str, correctness: float) -> bool:
 
         feedback = dict(span.feedback_score or {})
         feedback["correctness"] = correctness
+        if reason:
+            feedback["correctness_reason"] = reason
+        elif "correctness_reason" in feedback:
+            # Clear stale reason if the span is re-evaluated with a higher score
+            del feedback["correctness_reason"]
+        span.feedback_score = feedback
+        await session.commit()
+        return True
+
+
+async def _store_span_error(span_id: str, error_message: str) -> bool:
+    """Persist a permanent evaluation failure in span's feedback_score field.
+
+    Stores ``correctness_error`` so the span is excluded from future scoring
+    runs and shown as an error in the UI, without assigning a numeric score.
+    """
+    AsyncSessionLocal = get_session_local()
+    async with AsyncSessionLocal() as session:
+        result = await session.execute(
+            select(SpanModel).where(SpanModel.span_id == span_id)
+        )
+        span = result.scalar_one_or_none()
+        if span is None:
+            logger.warning(f"Span not found in Postgres for id={span_id}")
+            return False
+
+        feedback = dict(span.feedback_score or {})
+        feedback["correctness_error"] = error_message
         span.feedback_score = feedback
         await session.commit()
         return True
@@ -377,17 +443,26 @@ async def _evaluate_span_correctness(
 
     # Evaluate correctness - run sync LLM call (with retries) in a thread
     # so it doesn't block the event loop and other spans can progress concurrently
-    correctness_value = await asyncio.to_thread(
-        _evaluate_correctness_with_llm,
-        input_data=payload["input"],
-        output_data=payload["output"],
-        criteria_text=evaluation_criteria,
-        project_description=project_description,
-        agent_description=agent_description,
-        span_metadata=payload["metadata"],
-    )
+    try:
+        correctness_value, correctness_reason = await asyncio.to_thread(
+            _evaluate_correctness_with_llm,
+            input_data=payload["input"],
+            output_data=payload["output"],
+            criteria_text=evaluation_criteria,
+            project_description=project_description,
+            agent_description=agent_description,
+            span_metadata=payload["metadata"],
+        )
+    except JsonParseError as exc:
+        # Permanent parse failure: store the error so the span is excluded from
+        # future scoring runs and is surfaced as an error in the UI.
+        logger.error(
+            f"Permanent JSON parse failure for span {span_id} after {_JSON_PARSE_MAX_RETRIES} retries: {exc}"
+        )
+        await _store_span_error(span_id, str(exc))
+        return {"span_id": span_id, "error": str(exc), "parse_error": True}
 
-    stored = await _store_span_score(span_id, correctness_value)
+    stored = await _store_span_score(span_id, correctness_value, correctness_reason)
 
     return {
         "span_id": span_id,
@@ -636,6 +711,7 @@ async def validate_judge_scoring_eligibility(
                     SpanModel.feedback_score.is_(None),
                     ~SpanModel.feedback_score.has_key("correctness"),
                 ),
+                ~SpanModel.feedback_score.has_key("correctness_error"),
                 Prompt.evaluation_criteria.isnot(None),
                 Prompt.evaluation_criteria.has_key("correctness"),
                 SpanModel.exclude_system_spans(),
@@ -691,6 +767,7 @@ async def _get_unscored_spans() -> list[SpanModel]:
     async with AsyncSessionLocal() as session:
         # Query for all unscored spans with prompt_id (no limit)
         # Exclude system-generated spans (prompt tuning, backtesting)
+        # Exclude spans that permanently failed JSON parsing (correctness_error)
         result = await session.execute(
             select(SpanModel).where(
                 and_(
@@ -701,6 +778,7 @@ async def _get_unscored_spans() -> list[SpanModel]:
                             "correctness"
                         ),  # Or no correctness key
                     ),
+                    ~SpanModel.feedback_score.has_key("correctness_error"),
                     SpanModel.exclude_system_spans(),
                 )
             )
@@ -994,6 +1072,7 @@ async def _execute_prompt_spans_evaluation(
                                 SpanModel.feedback_score.is_(None),
                                 ~SpanModel.feedback_score.has_key("correctness"),
                             ),
+                            ~SpanModel.feedback_score.has_key("correctness_error"),
                             Prompt.evaluation_criteria.isnot(None),
                             Prompt.evaluation_criteria.has_key("correctness"),
                             SpanModel.exclude_system_spans(),
