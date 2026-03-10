@@ -11,6 +11,7 @@ import {
 
 import apiClient from "@/client";
 import { BacktestRecommendations } from "@/components/jobs/JobCard";
+import { BacktestResultsCard } from "@/components/jobs/BacktestResultsCard";
 import { SheetWrapper } from "@/components/sheet-wrapper";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
@@ -50,6 +51,11 @@ const STATUS_CONFIG: Record<
     variant: "secondary",
   },
   skipped: { icon: <AlertTriangle className="size-3.5" />, label: "Skipped", variant: "default" },
+  partially_completed: {
+    icon: <CheckCircle className="size-3.5" />,
+    label: "Partially completed",
+    variant: "warning",
+  },
 };
 
 function formatDate(iso?: string | null): string {
@@ -69,7 +75,30 @@ function humanSlug(slug?: string | null): string {
   return slug.replace(/-/g, " ").replace(/_/g, " ");
 }
 
-function JobResultContent({ result }: { result: Record<string, unknown> }) {
+function JobResultContent({
+  result,
+  jobType,
+  promptSlug,
+}: {
+  result: Record<string, unknown>;
+  jobType?: string | null;
+  promptSlug?: string | null;
+}) {
+  const isBacktest = jobType === "model_backtesting";
+  const hasBacktestData =
+    isBacktest &&
+    (result.recommendations != null || result.model_results != null);
+
+  if (hasBacktestData) {
+    return (
+      <BacktestResultsCard
+        result={result as Parameters<typeof BacktestResultsCard>[0]["result"]}
+        promptSlug={promptSlug}
+      />
+    );
+  }
+
+  // Generic fallback for other job types
   const recommendations = result.recommendations as Record<string, unknown> | undefined;
   const hasRecommendations =
     recommendations && typeof recommendations === "object" && recommendations.summary;
@@ -235,7 +264,11 @@ function JobDetailPage() {
                 <h2 className="text-base font-semibold">Result</h2>
               </CardHeader>
               <CardContent>
-                <JobResultContent result={job.result as Record<string, unknown>} />
+                <JobResultContent
+                  result={job.result as Record<string, unknown>}
+                  jobType={job.jobType}
+                  promptSlug={job.promptSlug}
+                />
               </CardContent>
             </Card>
           )}

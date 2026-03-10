@@ -156,6 +156,7 @@ function ComparisonTestCard({ data }: { data: Record<string, unknown> }) {
 
 const VERDICT_LABELS: Record<string, string> = {
   current_is_best: "Current model is best",
+  consider_top_performer: "Consider top performer",
   switch_recommended: "Switch recommended",
 };
 
