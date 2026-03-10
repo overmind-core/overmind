@@ -84,7 +84,7 @@ export function APIResponseToJSONTyped(value?: APIResponse | null, ignoreDiscrim
 
         'success': value['success'],
         'message': value['message'],
-        'data': ToJSON(value['data']),
+        'data':(value['data']),
         'errors': value['errors'],
     };
 }
