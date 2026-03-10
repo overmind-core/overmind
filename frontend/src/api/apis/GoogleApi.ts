@@ -16,13 +16,13 @@
 import * as runtime from '../runtime';
 import type {
   HTTPValidationError,
-  LoginResponse,
+  SrcApiV1EndpointsIamUsersLoginResponse,
 } from '../models/index';
 import {
     HTTPValidationErrorFromJSON,
     HTTPValidationErrorToJSON,
-    LoginResponseFromJSON,
-    LoginResponseToJSON,
+    SrcApiV1EndpointsIamUsersLoginResponseFromJSON,
+    SrcApiV1EndpointsIamUsersLoginResponseToJSON,
 } from '../models/index';
 
 export interface OauthGoogleCompleteApiV1OauthGoogleCompleteGetRequest {
@@ -38,7 +38,7 @@ export class GoogleApi extends runtime.BaseAPI {
     /**
      * Oauth Google Complete
      */
-    async oauthGoogleCompleteApiV1OauthGoogleCompleteGetRaw(requestParameters: OauthGoogleCompleteApiV1OauthGoogleCompleteGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<LoginResponse>> {
+    async oauthGoogleCompleteApiV1OauthGoogleCompleteGetRaw(requestParameters: OauthGoogleCompleteApiV1OauthGoogleCompleteGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<SrcApiV1EndpointsIamUsersLoginResponse>> {
         if (requestParameters['code'] == null) {
             throw new runtime.RequiredError(
                 'code',
@@ -75,13 +75,13 @@ export class GoogleApi extends runtime.BaseAPI {
             query: queryParameters,
         }, initOverrides);
 
-        return new runtime.JSONApiResponse(response, (jsonValue) => LoginResponseFromJSON(jsonValue));
+        return new runtime.JSONApiResponse(response, (jsonValue) => SrcApiV1EndpointsIamUsersLoginResponseFromJSON(jsonValue));
     }
 
     /**
      * Oauth Google Complete
      */
-    async oauthGoogleCompleteApiV1OauthGoogleCompleteGet(requestParameters: OauthGoogleCompleteApiV1OauthGoogleCompleteGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<LoginResponse> {
+    async oauthGoogleCompleteApiV1OauthGoogleCompleteGet(requestParameters: OauthGoogleCompleteApiV1OauthGoogleCompleteGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<SrcApiV1EndpointsIamUsersLoginResponse> {
         const response = await this.oauthGoogleCompleteApiV1OauthGoogleCompleteGetRaw(requestParameters, initOverrides);
         return await response.value();
     }

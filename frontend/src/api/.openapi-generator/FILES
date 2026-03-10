@@ -34,6 +34,8 @@ docs/AuthenticationApi.md
 docs/BacktestingApi.md
 docs/BacktestingRequest.md
 docs/BacktestingResponse.md
+docs/ChangePasswordRequest.md
+docs/CoreUserModel.md
 docs/CreateProjectRequest.md
 docs/CreatePromptRequest.md
 docs/CreateTokenRequest.md
@@ -54,10 +56,11 @@ docs/JobType.md
 docs/JobUpdateRequest.md
 docs/JobsApi.md
 docs/LocationInner.md
-docs/LoginResponse.md
+docs/LoginRequest.md
 docs/ModelInfo.md
 docs/OauthApi.md
 docs/OnboardingApi.md
+docs/OvermindApiV1EndpointsIamUsersLoginResponse.md
 docs/PaginatedResponse.md
 docs/ProjectListResponse.md
 docs/ProjectResponse.md
@@ -75,6 +78,7 @@ docs/SpanFeedbackRequest.md
 docs/SpanForReview.md
 docs/SpanResponseModel.md
 docs/SpansApi.md
+docs/SrcApiV1EndpointsIamUsersLoginResponse.md
 docs/Suggestion.md
 docs/SuggestionDetailOut.md
 docs/SuggestionFeedbackRequest.md
@@ -116,6 +120,8 @@ models/AssignUserRoleRequest.ts
 models/AuthenticateTokenResponse.ts
 models/BacktestingRequest.ts
 models/BacktestingResponse.ts
+models/ChangePasswordRequest.ts
+models/CoreUserModel.ts
 models/CreateProjectRequest.ts
 models/CreatePromptRequest.ts
 models/CreateTokenRequest.ts
@@ -132,8 +138,9 @@ models/JobStatus.ts
 models/JobType.ts
 models/JobUpdateRequest.ts
 models/LocationInner.ts
-models/LoginResponse.ts
+models/LoginRequest.ts
 models/ModelInfo.ts
+models/OvermindApiV1EndpointsIamUsersLoginResponse.ts
 models/PaginatedResponse.ts
 models/ProjectListResponse.ts
 models/ProjectResponse.ts
@@ -147,6 +154,7 @@ models/RoleScope.ts
 models/SpanFeedbackRequest.ts
 models/SpanForReview.ts
 models/SpanResponseModel.ts
+models/SrcApiV1EndpointsIamUsersLoginResponse.ts
 models/Suggestion.ts
 models/SuggestionDetailOut.ts
 models/SuggestionFeedbackRequest.ts
