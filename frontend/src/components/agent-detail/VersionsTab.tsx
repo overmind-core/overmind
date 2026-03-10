@@ -23,7 +23,14 @@ export function VersionsTab({
 }) {
   // versions are passed sorted descending (latest first); reverse for diff lookup
   const [expanded, setExpanded] = useState<number | null>(versions[0]?.version ?? null);
-  const [viewMode, setViewMode] = useState<Record<number, ViewMode>>({});
+  const [viewMode, setViewMode] = useState<Record<number, ViewMode>>(() => {
+    // Default all versions (except the first/oldest) to diff view
+    const initial: Record<number, ViewMode> = {};
+    for (let i = 0; i < versions.length - 1; i++) {
+      initial[versions[i].version] = "diff";
+    }
+    return initial;
+  });
   const navigate = useNavigate();
 
   // Build a map of version → previous prompt text for diff
