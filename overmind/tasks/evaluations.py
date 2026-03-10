@@ -62,9 +62,9 @@ class CorrectnessResult(BaseModel):
     """Pydantic model for LLM correctness evaluation response."""
 
     correctness: float = Field(description="Correctness score from 0 to 1")
-    reason: str | None = Field(
-        default=None,
-        description="Brief explanation (1-2 sentences) required only when correctness < 0.5. Omit when correctness >= 0.5.",
+    reason: str = Field(
+        default="",
+        description="Brief 1-2 sentence explanation of why the score is low. Required when correctness < 0.5. Set to empty string when correctness >= 0.5.",
     )
 
 

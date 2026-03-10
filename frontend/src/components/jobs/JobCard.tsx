@@ -16,6 +16,7 @@ import { cn, formatDate } from "@/lib/utils";
 const STATUS_ICON: Record<string, React.ReactNode> = {
   completed: <CheckCircle className="size-4 text-emerald-500" />,
   failed: <XCircle className="size-4 text-destructive" />,
+  partially_completed: <CheckCircle className="size-4 text-amber-500" />,
   pending: <Clock className="size-4 text-amber-500" />,
   running: <Loader2 className="size-4 animate-spin text-blue-500" />,
 };
@@ -24,7 +25,15 @@ function getVariantByStatus(status: string) {
   if (status === "completed") return "success";
   if (status === "running") return "secondary";
   if (status === "failed") return "destructive";
+  if (status === "partially_completed") return "warning";
   return "warning";
+}
+
+function formatStatusLabel(status: string) {
+  return status
+    .split("_")
+    .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+    .join(" ");
 }
 
 export function JobMetricColumn({
@@ -375,9 +384,7 @@ export function JobCard({ job: j }: { job: JobOut }) {
       >
         {STATUS_ICON[j.status] ?? STATUS_ICON.pending}
         <span className="flex-1 font-semibold">{JOB_TYPE_LABELS[j.jobType] ?? j.jobType}</span>
-        <Badge variant={getVariantByStatus(j.status)}>
-          {j.status.charAt(0).toUpperCase() + j.status.slice(1)}
-        </Badge>
+        <Badge variant={getVariantByStatus(j.status)}>{formatStatusLabel(j.status)}</Badge>
         <span className="text-xs text-muted-foreground">{formatDate(j.createdAt ?? "")}</span>
         <ChevronDown
           className={cn("size-4 text-muted-foreground transition-transform", open && "rotate-180")}

@@ -82,21 +82,7 @@ function ScoreChip({
   reason?: string | null;
   error?: string | null;
 }) {
-  if (error) {
-    const chip = (
-      <span className="rounded-full px-2.5 py-0.5 text-sm font-semibold bg-destructive/15 text-destructive">
-        Eval error
-      </span>
-    );
-    return (
-      <TooltipProvider>
-        <Tooltip>
-          <TooltipTrigger asChild>{chip}</TooltipTrigger>
-          <TooltipContent className="max-w-xs text-xs leading-relaxed">{error}</TooltipContent>
-        </Tooltip>
-      </TooltipProvider>
-    );
-  }
+  if (error) return <span className="text-xs text-muted-foreground">error</span>;
   if (score === null) return <span className="text-xs text-muted-foreground">unscored</span>;
   const pct = Math.round(score * 100);
   const color =

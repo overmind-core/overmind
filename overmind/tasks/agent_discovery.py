@@ -12,7 +12,8 @@ import uuid
 from typing import Any
 from uuid import UUID
 
-from sqlalchemy import select, func, and_
+from sqlalchemy import select, func, and_, cast
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from sqlalchemy.orm import selectinload
@@ -66,12 +67,28 @@ async def validate_agent_discovery_eligibility(
     """
     stats = {}
 
-    # Check 1: Project has at least 30 spans
+    # Check 1: Project has at least 30 spans with usable LLM input.
+    # The input column is JSONB with nullable=False and default={}, so every span
+    # has a non-null input. Non-LLM spans (tool executions, framework spans, etc.)
+    # default to input={}, which _get_span_input_text_merged() treats as unusable
+    # (falsy check: `if not span.input: return None`). We explicitly exclude those
+    # empty-JSONB-object and empty-JSONB-array inputs so the threshold is measured
+    # against spans the extractor will actually process.
+    empty_obj = cast("{}", JSONB)
+    empty_arr = cast("[]", JSONB)
+    empty_str = cast('""', JSONB)
     total_spans_stmt = (
         select(func.count(SpanModel.span_id))
         .select_from(SpanModel)
         .join(TraceModel, SpanModel.trace_id == TraceModel.trace_id)
-        .where(TraceModel.project_id == project_id)
+        .where(
+            and_(
+                TraceModel.project_id == project_id,
+                SpanModel.input != empty_obj,
+                SpanModel.input != empty_arr,
+                SpanModel.input != empty_str,
+            )
+        )
     )
 
     result = await session.execute(total_spans_stmt)
@@ -81,7 +98,7 @@ async def validate_agent_discovery_eligibility(
     if total_count < MIN_SPANS_FOR_AGENT_DISCOVERY:
         return (
             False,
-            f"Agent discovery requires at least {MIN_SPANS_FOR_AGENT_DISCOVERY} spans, but only {total_count} have been collected.",
+            f"Agent discovery requires at least {MIN_SPANS_FOR_AGENT_DISCOVERY} spans with LLM input, but only {total_count} have been collected.",
             stats,
         )
 
@@ -104,7 +121,9 @@ async def validate_agent_discovery_eligibility(
             stats,
         )
 
-    # Check 3: At least one unmapped span has usable input text
+    # Check 3: At least one unmapped span has usable LLM input text.
+    # Same empty-JSONB exclusion as Check 1 — input={} and input=[] are the default
+    # for non-LLM spans and are discarded by _get_span_input_text_merged().
     unmapped_with_input_stmt = (
         select(func.count(SpanModel.span_id))
         .select_from(SpanModel)
@@ -113,7 +132,9 @@ async def validate_agent_discovery_eligibility(
             and_(
                 TraceModel.project_id == project_id,
                 SpanModel.prompt_id.is_(None),
-                SpanModel.input.isnot(None),
+                SpanModel.input != empty_obj,
+                SpanModel.input != empty_arr,
+                SpanModel.input != empty_str,
             )
         )
     )
@@ -124,7 +145,7 @@ async def validate_agent_discovery_eligibility(
     if unmapped_with_input_count == 0:
         return (
             False,
-            f"Found {unmapped_count} unmapped span(s), but none contain usable input content.",
+            f"Found {unmapped_count} unmapped span(s), but none contain usable LLM input content.",
             stats,
         )
 
@@ -458,6 +479,22 @@ async def _map_spans_to_templates(
     new_prompt_ids: list[str] = []
 
     if mapped_count == 0:
+        # First run: enforce the minimum span threshold against the ACTUAL set of
+        # usable spans (those that survived _get_span_input_text_merged filtering),
+        # not just the raw DB count used in validate_agent_discovery_eligibility.
+        # Non-LLM spans (framework spans, tool executions, etc.) may have non-empty
+        # inputs in formats the extractor cannot use (e.g. dict without "content",
+        # list with only assistant/tool messages, plain strings, etc.) and would
+        # inflate the SQL count while being silently skipped here.
+        if len(span_texts) < MIN_SPANS_FOR_AGENT_DISCOVERY:
+            logger.info(
+                f"Project {project_id}: Only {len(span_texts)} span(s) have usable "
+                f"LLM input (need {MIN_SPANS_FOR_AGENT_DISCOVERY} for first-run "
+                f"discovery), skipping template extraction."
+            )
+            stats["unmapped"] = len(unmapped_spans)
+            return stats
+
         # No spans have been mapped yet - extract templates from all unmapped spans
         logger.info(
             f"Project {project_id}: No mapped spans found, extracting templates from {len(span_texts)} spans"

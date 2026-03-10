@@ -94,6 +94,11 @@ const STATUS_CONFIG: Record<
 > = {
   completed: { icon: <CheckCircle className="size-3.5" />, label: "Completed", variant: "success" },
   failed: { icon: <XCircle className="size-3.5" />, label: "Failed", variant: "destructive" },
+  partially_completed: {
+    icon: <CheckCircle className="size-3.5" />,
+    label: "Partially Completed",
+    variant: "warning",
+  },
   pending: { icon: <Clock className="size-3.5" />, label: "Pending", variant: "warning" },
   running: {
     icon: <Loader2 className="size-3.5 animate-spin" />,
@@ -211,7 +216,7 @@ function JobsPage() {
             <TableHeader>
               <TableRow>
                 <SortableHead
-                  className="w-[120px]"
+                  className="w-[180px]"
                   field="status"
                   label="Status"
                   onSort={handleSort}
@@ -335,7 +340,14 @@ const JobsHeader = ({
   const setStatusFilter = (v: string) =>
     setSearch({
       page: 1,
-      status: v as "all" | "running" | "completed" | "failed" | "pending" | undefined,
+      status: v as
+        | "all"
+        | "running"
+        | "completed"
+        | "partially_completed"
+        | "failed"
+        | "pending"
+        | undefined,
     });
 
   return (
@@ -361,6 +373,7 @@ const JobsHeader = ({
           <SelectItem value="all">All</SelectItem>
           <SelectItem value="running">Running</SelectItem>
           <SelectItem value="completed">Completed</SelectItem>
+          <SelectItem value="partially_completed">Partially Completed</SelectItem>
           <SelectItem value="failed">Failed</SelectItem>
           <SelectItem value="pending">Pending</SelectItem>
         </SelectContent>

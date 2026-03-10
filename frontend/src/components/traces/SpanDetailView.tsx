@@ -502,20 +502,16 @@ export function SpanDetailView({ span, queryKey }: SpanDetailViewProps) {
                   {correctness != null ? (
                     <span>{(Number(correctness) * 100).toFixed(0)}%</span>
                   ) : correctnessError ? (
-                    <span className="text-sm font-semibold text-destructive">Eval error</span>
+                    <span className="text-sm font-medium text-muted-foreground">error</span>
                   ) : (
                     <span className="text-muted-foreground">—</span>
                   )}
                 </p>
-                {correctnessError ? (
-                  <p className="mt-1.5 text-xs text-destructive/80 leading-relaxed">
-                    {correctnessError}
-                  </p>
-                ) : correctnessReason ? (
+                {correctnessReason && !correctnessError && (
                   <p className="mt-1.5 text-xs text-muted-foreground leading-relaxed">
                     {correctnessReason}
                   </p>
-                ) : null}
+                )}
               </div>
               <div className="space-y-3 pt-2 border-t border-border">
                 <Label className="text-xs font-semibold">Your feedback</Label>
