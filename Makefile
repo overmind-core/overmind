@@ -58,23 +58,25 @@ build-frontend:
 deploy-frontend: build-frontend
 	cd frontend && bun run wrangler pages deploy dist
 
+E2E_RUN = docker compose run --rm -e E2E_BASE_URL=http://api:8000 api sh -c "uv pip install --system --group test-e2e pytest-html && cd tests/e2e && python -m pytest"
+
 e2e:
 	@DISABLE_PERIODIC_TASKS=true docker compose up -d --force-recreate --no-deps celery-beat
-	@rc=0; (cd tests/e2e && poetry run pytest -x -v --tb=short $(test_args)) || rc=$$?; \
+	@rc=0; $(E2E_RUN) -x -v --tb=short $(test_args) || rc=$$?; \
 		docker compose up -d --force-recreate --no-deps celery-beat; \
 		echo ""; echo "Reports: tests/e2e/reports/report.html, tests/e2e/reports/junit.xml"; \
 		exit $$rc
 
 e2e-rerun:
 	@DISABLE_PERIODIC_TASKS=true docker compose up -d --force-recreate --no-deps celery-beat
-	@rc=0; (cd tests/e2e && poetry run pytest --e2e-rerun -x -v --tb=short $(test_args)) || rc=$$?; \
+	@rc=0; $(E2E_RUN) --e2e-rerun -x -v --tb=short $(test_args) || rc=$$?; \
 		docker compose up -d --force-recreate --no-deps celery-beat; \
 		echo ""; echo "Reports: tests/e2e/reports/report.html, tests/e2e/reports/junit.xml"; \
 		exit $$rc
 
 e2e-clean:
 	@DISABLE_PERIODIC_TASKS=true docker compose up -d --force-recreate --no-deps celery-beat
-	@rc=0; (cd tests/e2e && poetry run pytest --e2e-clean -x -v --tb=short $(test_args)) || rc=$$?; \
+	@rc=0; $(E2E_RUN) --e2e-clean -x -v --tb=short $(test_args) || rc=$$?; \
 		docker compose up -d --force-recreate --no-deps celery-beat; \
 		echo ""; echo "Reports: tests/e2e/reports/report.html, tests/e2e/reports/junit.xml"; \
 		exit $$rc

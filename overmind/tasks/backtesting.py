@@ -849,8 +849,9 @@ async def _run_backtesting(
 
                 # Sync correctness eval → offload to thread
                 eval_score = 0.0
+                eval_reason: str | None = None
                 if model_result["success"] and model_result.get("output"):
-                    eval_score, _eval_reason = await asyncio.wait_for(
+                    eval_score, eval_reason = await asyncio.wait_for(
                         asyncio.to_thread(
                             _evaluate_correctness_with_llm,
                             input_data=eval_input_data,
@@ -863,7 +864,7 @@ async def _run_backtesting(
                         timeout=_LLM_CALL_TIMEOUT_S,
                     )
 
-                # Persist result span
+                # Persist result span (include correctness_reason when score < 0.5)
                 result_span_id = str(uuid.uuid4())
                 current_time_nano = int(time.time() * 1_000_000_000)
 
@@ -890,7 +891,14 @@ async def _run_backtesting(
                             "error": model_result["error"],
                             "available_tools": call_tools if span_response_type else [],
                         },
-                        feedback_score={"correctness": eval_score},
+                        feedback_score=(
+                            {
+                                "correctness": eval_score,
+                                "correctness_reason": eval_reason,
+                            }
+                            if eval_reason
+                            else {"correctness": eval_score}
+                        ),
                         trace_id=span.trace_id,
                         prompt_id=prompt_id,
                     )

@@ -439,7 +439,9 @@ async def _evaluate_span_correctness(
     # call_llm already retries transient network/API errors internally via tenacity;
     # these retries target malformed LLM responses (missing key, bad JSON, etc.).
     last_error: Exception | None = None
-    correctness_value: float = 0.0
+    correctness_value: float = (
+        0.0  # Only for type checker; always overwritten before use
+    )
     reason: str | None = None
 
     for attempt in range(_MAX_EVAL_PARSE_RETRIES):
@@ -461,6 +463,14 @@ async def _evaluate_span_correctness(
                 f"JSON parse attempt {attempt + 1}/{_MAX_EVAL_PARSE_RETRIES} "
                 f"failed for span {span_id}: {exc}"
             )
+        except Exception as exc:
+            # Non-ValueError (e.g. network timeout) — don't store as eval_error;
+            # span stays unscored and will be retried on future runs.
+            logger.warning(
+                f"Unexpected exception during evaluation for span {span_id}: "
+                f"{type(exc).__name__}: {exc}"
+            )
+            raise
     else:
         # All retries exhausted — persist the error so the span is excluded from
         # future automatic scoring runs and scored-span queries.

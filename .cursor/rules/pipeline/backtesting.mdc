@@ -104,6 +104,7 @@ Backtest results are stored as regular SpanModel records with special metadata:
 - `metadata_attributes.backtest = True`
 - `metadata_attributes.model = "{base_model_name}"` (always the bare model name, no suffix)
 - `metadata_attributes.reasoning_mode = "{effort}" | "enabled" | None` — effort level string, `"enabled"` for manual budget-token mode, or `None` when no reasoning
+- `feedback_score.correctness` — LLM judge score (0–1). When score < 0.5, `feedback_score.correctness_reason` is also stored (same as production spans)
 
 ## Concurrency
 
