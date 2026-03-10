@@ -90,7 +90,7 @@ services:
   frontend:
     image: oven/bun:1-alpine
     working_dir: /frontend
-    command: sh -c "bun install --frozen-lockfile && bun run dev -- --host 0.0.0.0"
+    command: sh -c "bun pm cache rm 2>/dev/null; bun install --frozen-lockfile && bun run dev -- --host 0.0.0.0"
     ports:
       - "5173:5173"
     env_file:
