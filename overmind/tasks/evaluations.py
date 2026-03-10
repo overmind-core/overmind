@@ -64,7 +64,7 @@ class CorrectnessResult(BaseModel):
     correctness: float = Field(description="Correctness score from 0 to 1")
     reason: str = Field(
         default="",
-        description="Brief 1-2 sentence explanation of why the score is low. Required when correctness < 0.5. Set to empty string when correctness >= 0.5.",
+        description="Brief 1-2 sentence explanation of why the score is low. Populate only when correctness < 0.5; leave as empty string otherwise.",
     )
 
 

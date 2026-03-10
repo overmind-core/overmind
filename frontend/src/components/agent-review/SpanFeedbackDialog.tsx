@@ -580,7 +580,7 @@ export function SpanFeedbackDialog({
   return (
     <Dialog open>
       <DialogContent
-        className="flex max-h-[95vh] w-full max-w-5xl sm:max-w-5xl flex-col gap-0 overflow-hidden p-0"
+        className="flex max-h-[95vh] w-full max-w-5xl flex-col gap-0 overflow-hidden p-0"
         onEscapeKeyDown={onClose}
         onInteractOutside={onClose}
       >

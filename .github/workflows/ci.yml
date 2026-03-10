@@ -72,7 +72,7 @@ jobs:
         run: touch .env
 
       - name: Run tests
-        run: docker compose run --rm api sh -c "uv pip install --system --group test && python -m pytest --ignore=tests/e2e"
+        run: make test
 
   notify-enterprise:
     if: github.event_name == 'push'

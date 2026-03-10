@@ -60,6 +60,11 @@ test = [
     "pytest>=7.4.0",
     "pytest-asyncio>=0.21.0",
     "pytest-cov>=4.1.0",
+]
+test-e2e = [
+    "pytest>=7.4.0",
+    "pytest-asyncio>=0.21.0",
+    "pytest-cov>=4.1.0",
     "overmind-sdk (>=0.1.32,<0.2.0)",
 ]
 

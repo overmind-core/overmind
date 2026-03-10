@@ -850,7 +850,7 @@ async def _run_backtesting(
                 # Sync correctness eval → offload to thread
                 eval_score = 0.0
                 if model_result["success"] and model_result.get("output"):
-                    eval_score = await asyncio.wait_for(
+                    eval_score, _eval_reason = await asyncio.wait_for(
                         asyncio.to_thread(
                             _evaluate_correctness_with_llm,
                             input_data=eval_input_data,
