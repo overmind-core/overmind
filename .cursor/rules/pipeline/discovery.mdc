@@ -70,7 +70,11 @@ Creates a Prompt record from an extracted template. Generates a slug from the te
 
 ### `validate_agent_discovery_eligibility(project_id, session) -> tuple[bool, str | None, dict | None]`
 
-Checks if a project has unmapped spans eligible for discovery. Requires at least `MIN_SPANS_FOR_AGENT_DISCOVERY = 30` total spans before discovery runs.
+Checks if a project has unmapped spans eligible for discovery. Requires at least `MIN_SPANS_FOR_AGENT_DISCOVERY = 30` spans with **usable LLM input** before discovery runs.
+
+The `input` column is `JSONB, nullable=False, default={}`. Non-LLM spans (tool executions, agent framework spans, etc.) default to `input={}`, `input=[]`, or `input=""`. `_get_span_input_text_merged()` immediately returns `None` for all of these (falsy check: `if not span.input`), so they are never passed to the template extractor. The eligibility query explicitly excludes these empty JSONB values (`{}`, `[]`, `""`) using JSONB cast comparisons. Check 3 (unmapped spans with input) uses the same exclusions.
+
+**Two-layer threshold guard** — the SQL eligibility check filters the obvious empty cases, but `_get_span_input_text_merged()` can also return `None` for spans with non-empty inputs in unsupported formats (dict without `"content"`, list with only assistant/tool messages, etc.). To prevent these from inflating the count past the threshold, `_map_spans_to_templates` re-checks `len(span_texts) >= MIN_SPANS_FOR_AGENT_DISCOVERY` on the first run _after_ Python-level filtering, and returns early with no templates if the true usable count is too low.
 
 ### `_auto_accept_pending_versions(db, project_id) -> None`
 

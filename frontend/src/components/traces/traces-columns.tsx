@@ -259,6 +259,10 @@ export const tracesColumns: ColumnDef<SpanRow>[] = [
     },
     cell: ({ row }) => {
       const score = row.original.feedbackScores?.correctness;
+      const reason = row.original.feedbackScores?.correctness_reason as string | undefined;
+      const error = row.original.feedbackScores?.correctness_error as string | undefined;
+
+      if (error) return <span className="text-muted-foreground text-xs">error</span>;
       if (typeof score !== "number") return <span className="text-muted-foreground">—</span>;
       const pct = Math.round(score * 100);
       const colorClass =
@@ -267,12 +271,23 @@ export const tracesColumns: ColumnDef<SpanRow>[] = [
           : score >= 0.4
             ? "bg-amber-100 text-amber-800 border-amber-200 dark:bg-amber-900/30 dark:text-amber-400 dark:border-amber-800"
             : "bg-red-100 text-red-800 border-red-200 dark:bg-red-900/30 dark:text-red-400 dark:border-red-800";
-      return (
+      const badge = (
         <span
-          className={`inline-flex items-center rounded-full border px-2 py-0.5 text-xs font-medium tabular-nums ${colorClass}`}
+          className={`inline-flex items-center rounded-full border px-2 py-0.5 text-xs font-medium tabular-nums ${colorClass} ${reason ? "cursor-help" : ""}`}
         >
           {pct}%
         </span>
+      );
+      if (!reason) return badge;
+      return (
+        <TooltipProvider>
+          <Tooltip>
+            <TooltipTrigger asChild>{badge}</TooltipTrigger>
+            <TooltipContent className="max-w-xs text-xs leading-relaxed" side="top">
+              {reason}
+            </TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
       );
     },
     header: ({ column }) => <DataTableColumnHeader column={column} title="Score" />,

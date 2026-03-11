@@ -16,6 +16,7 @@ import { cn, formatDate } from "@/lib/utils";
 const STATUS_ICON: Record<string, React.ReactNode> = {
   completed: <CheckCircle className="size-4 text-emerald-500" />,
   failed: <XCircle className="size-4 text-destructive" />,
+  partially_completed: <CheckCircle className="size-4 text-amber-500" />,
   pending: <Clock className="size-4 text-amber-500" />,
   running: <Loader2 className="size-4 animate-spin text-blue-500" />,
 };
@@ -24,7 +25,15 @@ function getVariantByStatus(status: string) {
   if (status === "completed") return "success";
   if (status === "running") return "secondary";
   if (status === "failed") return "destructive";
+  if (status === "partially_completed") return "warning";
   return "warning";
+}
+
+function formatStatusLabel(status: string) {
+  return status
+    .split("_")
+    .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+    .join(" ");
 }
 
 export function JobMetricColumn({
@@ -157,6 +166,50 @@ const CANDIDATE_KEYS: { key: string; label: string }[] = [
   { key: "cheapest", label: "Cheapest" },
 ];
 
+/**
+ * Parses a backtest model key into its components.
+ * Format: "<base_model>" | "<base_model>:reasoning" | "<base_model>:reasoning-<effort>"
+ * e.g. "gpt-4o:reasoning-medium" → { baseModel: "gpt-4o", reasoning: true, effort: "medium" }
+ */
+function parseModelKey(key: string): {
+  baseModel: string;
+  reasoning: boolean;
+  effort: string | null;
+} {
+  const colonIdx = key.indexOf(":reasoning");
+  if (colonIdx === -1) {
+    return { baseModel: key, effort: null, reasoning: false };
+  }
+  const baseModel = key.slice(0, colonIdx);
+  const suffix = key.slice(colonIdx + ":reasoning".length);
+  // suffix is either "" (budget-token/auto mode) or "-<effort>"
+  const effort = suffix.startsWith("-") ? suffix.slice(1) : null;
+  return { baseModel, effort, reasoning: true };
+}
+
+function ReasoningBadges({ modelKey }: { modelKey: string }) {
+  const { reasoning, effort } = parseModelKey(modelKey);
+  if (!reasoning) {
+    return (
+      <span className="inline-flex items-center rounded-sm bg-muted px-1.5 py-0.5 text-[0.65rem] font-medium text-muted-foreground">
+        No reasoning
+      </span>
+    );
+  }
+  return (
+    <span className="inline-flex items-center gap-1">
+      <span className="inline-flex items-center rounded-sm bg-violet-500/10 px-1.5 py-0.5 text-[0.65rem] font-semibold text-violet-600 dark:text-violet-400">
+        Reasoning
+      </span>
+      {effort && (
+        <span className="inline-flex items-center rounded-sm bg-violet-500/10 px-1.5 py-0.5 text-[0.65rem] font-medium text-violet-600 dark:text-violet-400 capitalize">
+          {effort}
+        </span>
+      )}
+    </span>
+  );
+}
+
 function ModelCard({
   label,
   model,
@@ -166,15 +219,21 @@ function ModelCard({
   model: Record<string, unknown>;
   currentModel?: Record<string, unknown>;
 }) {
+  const modelKey = String(model.model ?? model.name ?? "");
+  const { baseModel } = modelKey ? parseModelKey(modelKey) : { baseModel: "—" };
+
   return (
     <div className="rounded border border-border bg-card p-3 space-y-2">
-      <div className="flex items-center justify-between">
-        <span className="text-[0.68rem] font-semibold uppercase tracking-widest text-muted-foreground">
+      <div className="flex items-start justify-between gap-2">
+        <span className="text-[0.68rem] font-semibold uppercase tracking-widest text-muted-foreground shrink-0">
           {label}
         </span>
-        <span className="text-sm font-bold text-foreground">
-          {String(model.model ?? model.name ?? "—")}
-        </span>
+        <div className="flex flex-col items-end gap-1 min-w-0">
+          <span className="text-sm font-bold text-foreground text-right break-all">
+            {baseModel || "—"}
+          </span>
+          {modelKey && <ReasoningBadges modelKey={modelKey} />}
+        </div>
       </div>
       {!!model.reason && (
         <p className="text-xs text-muted-foreground leading-relaxed">{String(model.reason)}</p>
@@ -325,9 +384,7 @@ export function JobCard({ job: j }: { job: JobOut }) {
       >
         {STATUS_ICON[j.status] ?? STATUS_ICON.pending}
         <span className="flex-1 font-semibold">{JOB_TYPE_LABELS[j.jobType] ?? j.jobType}</span>
-        <Badge variant={getVariantByStatus(j.status)}>
-          {j.status.charAt(0).toUpperCase() + j.status.slice(1)}
-        </Badge>
+        <Badge variant={getVariantByStatus(j.status)}>{formatStatusLabel(j.status)}</Badge>
         <span className="text-xs text-muted-foreground">{formatDate(j.createdAt ?? "")}</span>
         <ChevronDown
           className={cn("size-4 text-muted-foreground transition-transform", open && "rotate-180")}

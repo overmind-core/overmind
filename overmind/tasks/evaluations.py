@@ -8,6 +8,7 @@ from uuid import UUID
 
 from celery import shared_task
 from sqlalchemy import select, and_, or_, func, cast, String
+from sqlalchemy.orm.attributes import flag_modified
 from pydantic import BaseModel, Field
 from overmind.db.session import get_session_local
 from overmind.models.traces import SpanModel
@@ -50,10 +51,22 @@ _MAX_CONCURRENT_EVALUATIONS = 10
 PRE_REVIEW_SCORED_SPAN_CAP = 30
 
 
+REASON_SCORE_THRESHOLD = 0.5
+
+# Number of times to retry a failed JSON parse before marking the span as errored.
+# call_llm already retries transient network/API errors internally; these retries
+# target invalid or unparseable LLM responses (missing "correctness" key, bad JSON, etc.).
+_MAX_EVAL_PARSE_RETRIES = 3
+
+
 class CorrectnessResult(BaseModel):
     """Pydantic model for LLM correctness evaluation response."""
 
     correctness: float = Field(description="Correctness score from 0 to 1")
+    reason: str = Field(
+        default="",
+        description=f"Brief 1-2 sentence explanation of why the score is low. Populate only when the score < {REASON_SCORE_THRESHOLD}; leave as empty string otherwise.",
+    )
 
 
 def _format_criteria(criteria_rules: list[str]) -> str:
@@ -68,15 +81,18 @@ def _evaluate_correctness_with_llm(
     project_description: str | None = None,
     agent_description: str | None = None,
     span_metadata: dict[str, Any] | None = None,
-) -> float:
+) -> tuple[float, str | None]:
     """
-    Call LLM to evaluate correctness and return a normalized score.
+    Call LLM to evaluate correctness and return a normalized score with optional reason.
 
     Routes to the appropriate judge prompt based on span type:
     - response_type "tool_calls" → tool selection + argument quality judge
     - response_type "text" + is_agentic → answer faithfulness + completeness judge
     - legacy agentic (no response_type) → existing agentic judge
     - plain non-agentic → existing simple correctness judge
+
+    When the score is below REASON_SCORE_THRESHOLD (0.5), the LLM also returns a brief
+    reason explaining the low score. For scores >= 0.5, reason is omitted to save tokens.
 
     Transient errors (rate limits, overloaded, unavailable) are retried automatically
     inside call_llm with exponential backoff up to a 5-minute deadline.
@@ -90,7 +106,8 @@ def _evaluate_correctness_with_llm(
         span_metadata: Optional span metadata for agentic detection and tool resolution
 
     Returns:
-        Correctness score between 0.0 and 1.0
+        Tuple of (correctness_score, reason) where correctness_score is between 0.0 and 1.0
+        and reason is a brief explanation only present when score < REASON_SCORE_THRESHOLD.
 
     Raises:
         ValueError: If LLM response is invalid or missing correctness
@@ -208,7 +225,16 @@ def _evaluate_correctness_with_llm(
         raise ValueError("Correctness score is not a number") from exc
 
     # Clamp to valid range
-    return max(0.0, min(1.0, correctness_value))
+    correctness_value = max(0.0, min(1.0, correctness_value))
+
+    # Only surface the reason when score is below threshold
+    reason: str | None = None
+    if correctness_value < REASON_SCORE_THRESHOLD:
+        raw_reason = parsed.get("reason")
+        if raw_reason and isinstance(raw_reason, str):
+            reason = raw_reason.strip() or None
+
+    return correctness_value, reason
 
 
 def _extract_span_payload(span: SpanModel) -> dict[str, Any]:
@@ -221,28 +247,137 @@ def _extract_span_payload(span: SpanModel) -> dict[str, Any]:
     }
 
 
-async def _store_span_score(span_id: str, correctness: float) -> bool:
-    """Store correctness score in span's feedback_score field."""
+def _chunked(lst: list, n: int):
+    """Yield successive n-sized chunks from a list."""
+    for i in range(0, len(lst), n):
+        yield lst[i : i + n]
+
+
+async def _batch_persist_evaluation_results(
+    results: list[dict[str, Any]],
+    chunk_size: int = _MAX_CONCURRENT_EVALUATIONS,
+) -> list[dict[str, Any]]:
+    """Write evaluation scores and errors in chunked DB sessions.
+
+    Processes *chunk_size* results per session/commit to balance session count
+    against transaction size. Each chunk opens one session, fetches its spans
+    with a single IN-query, mutates feedback_score for each, and commits once.
+
+    Returns the same list with a ``stored`` key added to each entry (True if the
+    span was found and written, False if it was missing from the DB).
+    """
+    all_updated: list[dict[str, Any]] = []
+
+    for chunk in _chunked(results, chunk_size):
+        chunk_ids = [r["span_id"] for r in chunk]
+
+        AsyncSessionLocal = get_session_local()
+        async with AsyncSessionLocal() as session:
+            rows = await session.execute(
+                select(SpanModel).where(SpanModel.span_id.in_(chunk_ids))
+            )
+            spans_by_id: dict[str, SpanModel] = {
+                s.span_id: s for s in rows.scalars().all()
+            }
+
+            for result in chunk:
+                sid = result["span_id"]
+                span = spans_by_id.get(sid)
+                if span is None:
+                    logger.warning(f"Span not found in Postgres for id={sid}")
+                    all_updated.append({**result, "stored": False})
+                    continue
+
+                feedback = dict(span.feedback_score or {})
+
+                if result.get("eval_error"):
+                    feedback["correctness_error"] = result.get("error", "unknown error")
+                    feedback.pop("correctness", None)
+                    feedback.pop("correctness_reason", None)
+                else:
+                    feedback["correctness"] = result["correctness"]
+                    reason = result.get("reason")
+                    if reason is not None:
+                        feedback["correctness_reason"] = reason
+                    else:
+                        # Remove stale reason if span is being re-scored with a higher score
+                        feedback.pop("correctness_reason", None)
+                    # Clear any previous evaluation error on successful re-score
+                    feedback.pop("correctness_error", None)
+
+                span.feedback_score = feedback
+                flag_modified(span, "feedback_score")
+                all_updated.append({**result, "stored": True})
+
+            await session.commit()
+
+    return all_updated
+
+
+async def _prefetch_prompt_contexts(
+    spans: list[SpanModel],
+) -> dict[str, tuple[str | None, str | None]]:
+    """Pre-fetch (agent_description, project_description) for every unique prompt_id.
+
+    Uses a single DB session for all lookups, replacing N per-span sessions with
+    one session containing 2×K queries (K = number of unique prompt IDs).
+
+    Returns a dict mapping prompt_id → (agent_description, project_description).
+    """
+    from overmind.models.iam.projects import Project
+
+    prompt_ids_to_fetch = {span.prompt_id for span in spans if span.prompt_id}
+    context_by_prompt: dict[str, tuple[str | None, str | None]] = {}
+
+    if not prompt_ids_to_fetch:
+        return context_by_prompt
+
     AsyncSessionLocal = get_session_local()
     async with AsyncSessionLocal() as session:
-        result = await session.execute(
-            select(SpanModel).where(SpanModel.span_id == span_id)
-        )
-        span = result.scalar_one_or_none()
-        if span is None:
-            logger.warning(f"Span not found in Postgres for id={span_id}")
-            return False
+        for prompt_id_str in prompt_ids_to_fetch:
+            try:
+                project_id_str, version, slug = Prompt.parse_prompt_id(prompt_id_str)
+                project_uuid = UUID(project_id_str)
 
-        feedback = dict(span.feedback_score or {})
-        feedback["correctness"] = correctness
-        span.feedback_score = feedback
-        await session.commit()
-        return True
+                prompt_result = await session.execute(
+                    select(Prompt).where(
+                        and_(
+                            Prompt.project_id == project_uuid,
+                            Prompt.version == version,
+                            Prompt.slug == slug,
+                        )
+                    )
+                )
+                prompt = prompt_result.scalar_one_or_none()
+                agent_description: str | None = None
+                if prompt and prompt.agent_description:
+                    agent_description = prompt.agent_description.get("description")
+
+                project_result = await session.execute(
+                    select(Project).where(Project.project_id == project_uuid)
+                )
+                project = project_result.scalar_one_or_none()
+                project_description: str | None = None
+                if project and project.description:
+                    project_description = project.description
+
+                context_by_prompt[prompt_id_str] = (
+                    agent_description,
+                    project_description,
+                )
+            except (ValueError, TypeError) as e:
+                logger.error(
+                    f"Error pre-fetching context for prompt {prompt_id_str}: {e}"
+                )
+                context_by_prompt[prompt_id_str] = (None, None)
+
+    return context_by_prompt
 
 
 async def _get_context_for_span(
     span: SpanModel,
     criteria_by_prompt: dict[str, dict[str, list[str]] | None] | None = None,
+    context_by_prompt: dict[str, tuple[str | None, str | None]] | None = None,
 ) -> tuple[str, str | None, str | None]:
     """
     Get evaluation criteria, project description, and agent description for a span.
@@ -292,35 +427,41 @@ async def _get_context_for_span(
         else:
             logger.warning(f"No criteria found for span {span.span_id}, using defaults")
 
-        # Fetch agent description and project description from DB
-        AsyncSessionLocal = get_session_local()
-        async with AsyncSessionLocal() as session:
-            try:
-                project_id_str, version, slug = Prompt.parse_prompt_id(span.prompt_id)
-                project_uuid = UUID(project_id_str)
+        # Use pre-fetched agent/project context when available; fall back to a
+        # dedicated DB fetch for callers that don't pre-fetch (e.g. standalone use).
+        if context_by_prompt is not None and span.prompt_id in context_by_prompt:
+            agent_description, project_description = context_by_prompt[span.prompt_id]
+        else:
+            AsyncSessionLocal = get_session_local()
+            async with AsyncSessionLocal() as session:
+                try:
+                    project_id_str, version, slug = Prompt.parse_prompt_id(
+                        span.prompt_id
+                    )
+                    project_uuid = UUID(project_id_str)
 
-                prompt_result = await session.execute(
-                    select(Prompt).where(
-                        and_(
-                            Prompt.project_id == project_uuid,
-                            Prompt.version == version,
-                            Prompt.slug == slug,
+                    prompt_result = await session.execute(
+                        select(Prompt).where(
+                            and_(
+                                Prompt.project_id == project_uuid,
+                                Prompt.version == version,
+                                Prompt.slug == slug,
+                            )
                         )
                     )
-                )
-                prompt = prompt_result.scalar_one_or_none()
-                if prompt and prompt.agent_description:
-                    agent_description = prompt.agent_description.get("description")
+                    prompt = prompt_result.scalar_one_or_none()
+                    if prompt and prompt.agent_description:
+                        agent_description = prompt.agent_description.get("description")
 
-                project_result = await session.execute(
-                    select(Project).where(Project.project_id == project_uuid)
-                )
-                project = project_result.scalar_one_or_none()
-                if project and project.description:
-                    project_description = project.description
+                    project_result = await session.execute(
+                        select(Project).where(Project.project_id == project_uuid)
+                    )
+                    project = project_result.scalar_one_or_none()
+                    if project and project.description:
+                        project_description = project.description
 
-            except (ValueError, TypeError) as e:
-                logger.error(f"Error getting context for span: {e}")
+                except (ValueError, TypeError) as e:
+                    logger.error(f"Error getting context for span: {e}")
     else:
         logger.warning(f"No prompt_id found for span {span.span_id}, using defaults")
 
@@ -351,48 +492,80 @@ async def _get_context_for_span(
 
 
 async def _evaluate_span_correctness(
-    span_id: str,
+    span: SpanModel,
     criteria_by_prompt: dict[str, dict[str, list[str]] | None] | None = None,
+    context_by_prompt: dict[str, tuple[str | None, str | None]] | None = None,
 ) -> dict[str, Any]:
-    """Evaluate a single span's correctness using LLM."""
-    AsyncSessionLocal = get_session_local()
-    async with AsyncSessionLocal() as session:
-        # Get span
-        result = await session.execute(
-            select(SpanModel).where(SpanModel.span_id == span_id)
-        )
-        span = result.scalar_one_or_none()
+    """Evaluate a single span's correctness using LLM.
 
-        if span is None:
-            raise ValueError(f"Span not found: {span_id}")
-
-        payload = _extract_span_payload(span)
+    Accepts a pre-loaded SpanModel so callers can batch-fetch all spans in one
+    DB round-trip before the concurrent fan-out. Does not open any DB session —
+    all persistence is delegated to ``_batch_persist_evaluation_results``.
+    """
+    span_id = span.span_id
+    payload = _extract_span_payload(span)
 
     # Get criteria, project description, and agent description
     (
         evaluation_criteria,
         project_description,
         agent_description,
-    ) = await _get_context_for_span(span, criteria_by_prompt=criteria_by_prompt)
-
-    # Evaluate correctness - run sync LLM call (with retries) in a thread
-    # so it doesn't block the event loop and other spans can progress concurrently
-    correctness_value = await asyncio.to_thread(
-        _evaluate_correctness_with_llm,
-        input_data=payload["input"],
-        output_data=payload["output"],
-        criteria_text=evaluation_criteria,
-        project_description=project_description,
-        agent_description=agent_description,
-        span_metadata=payload["metadata"],
+    ) = await _get_context_for_span(
+        span,
+        criteria_by_prompt=criteria_by_prompt,
+        context_by_prompt=context_by_prompt,
     )
 
-    stored = await _store_span_score(span_id, correctness_value)
+    # Evaluate correctness with parse-failure retries.
+    # call_llm already retries transient network/API errors internally via tenacity;
+    # these retries target malformed LLM responses (missing key, bad JSON, etc.).
+    last_error: Exception | None = None
+    correctness_value: float = (
+        0.0  # Only for type checker; always overwritten before use
+    )
+    reason: str | None = None
+
+    for attempt in range(_MAX_EVAL_PARSE_RETRIES):
+        try:
+            correctness_value, reason = await asyncio.to_thread(
+                _evaluate_correctness_with_llm,
+                input_data=payload["input"],
+                output_data=payload["output"],
+                criteria_text=evaluation_criteria,
+                project_description=project_description,
+                agent_description=agent_description,
+                span_metadata=payload["metadata"],
+            )
+            last_error = None
+            break
+        except ValueError as exc:
+            last_error = exc
+            logger.warning(
+                f"JSON parse attempt {attempt + 1}/{_MAX_EVAL_PARSE_RETRIES} "
+                f"failed for span {span_id}: {exc}"
+            )
+        except Exception as exc:
+            # Non-ValueError (e.g. network timeout) — don't store as eval_error;
+            # span stays unscored and will be retried on future runs.
+            logger.warning(
+                f"Unexpected exception during evaluation for span {span_id}: "
+                f"{type(exc).__name__}: {exc}"
+            )
+            raise
+    else:
+        # All retries exhausted — the caller's _batch_persist_evaluation_results
+        # will store the error so the span is excluded from future scoring runs.
+        error_msg = str(last_error)
+        logger.error(
+            f"Evaluation permanently failed for span {span_id} after "
+            f"{_MAX_EVAL_PARSE_RETRIES} attempts: {error_msg}"
+        )
+        return {"span_id": span_id, "error": error_msg, "eval_error": True}
 
     return {
         "span_id": span_id,
         "correctness": correctness_value,
-        "stored": stored,
+        "reason": reason,
     }
 
 
@@ -429,38 +602,53 @@ def evaluate_spans_task(
                 job.status = "running"
                 await session.commit()
 
-            # Pre-fetch criteria for every unique prompt in this batch so
-            # the concurrent fan-out never races on cache misses.
+            # Phase 1: pre-fetch all spans in one batch query.
             async with AsyncSessionLocal() as session:
                 rows = await session.execute(
-                    select(SpanModel.prompt_id)
-                    .where(SpanModel.span_id.in_(span_ids))
-                    .distinct()
+                    select(SpanModel).where(SpanModel.span_id.in_(span_ids))
                 )
-                unique_prompt_ids = {r for (r,) in rows.all() if r is not None}
+                spans_by_id: dict[str, SpanModel] = {
+                    s.span_id: s for s in rows.scalars().all()
+                }
 
+            # Phase 2: pre-fetch criteria + context for every unique prompt so
+            # the concurrent fan-out opens zero DB sessions for reads.
+            unique_prompt_ids = {
+                s.prompt_id for s in spans_by_id.values() if s.prompt_id
+            }
             criteria_by_prompt: dict[str, dict[str, list[str]] | None] = {}
             for pid in unique_prompt_ids:
                 criteria_by_prompt[pid] = await ensure_prompt_has_criteria(pid)
 
+            context_by_prompt = await _prefetch_prompt_contexts(
+                list(spans_by_id.values())
+            )
+
             semaphore = asyncio.Semaphore(_MAX_CONCURRENT_EVALUATIONS)
 
             async def _evaluate_with_limit(span_id: str) -> dict[str, Any]:
+                span = spans_by_id.get(span_id)
+                if span is None:
+                    return {"span_id": span_id, "error": f"Span not found: {span_id}"}
                 async with semaphore:
                     try:
                         return await _evaluate_span_correctness(
-                            span_id=span_id,
+                            span=span,
                             criteria_by_prompt=criteria_by_prompt,
+                            context_by_prompt=context_by_prompt,
                         )
                     except Exception as exc:
                         logger.exception(f"Failed to evaluate span {span_id}")
                         return {"span_id": span_id, "error": str(exc)}
 
-            # Fan out all span evaluations concurrently (bounded by semaphore).
+            # Phase 3: fan out all LLM evaluations concurrently (bounded by semaphore).
             # asyncio.gather preserves input order so results stay aligned with span_ids.
-            results = await asyncio.gather(
+            raw_results = await asyncio.gather(
                 *[_evaluate_with_limit(span_id) for span_id in span_ids]
             )
+
+            # Persist all scores/errors in a single DB session instead of one per span.
+            results = await _batch_persist_evaluation_results(list(raw_results))
 
             # Count successes and failures
             success_count = sum(1 for r in results if "error" not in r)
@@ -634,7 +822,10 @@ async def validate_judge_scoring_eligibility(
                 Prompt.slug == prompt_slug,
                 or_(
                     SpanModel.feedback_score.is_(None),
-                    ~SpanModel.feedback_score.has_key("correctness"),
+                    and_(
+                        ~SpanModel.feedback_score.has_key("correctness"),
+                        ~SpanModel.feedback_score.has_key("correctness_error"),
+                    ),
                 ),
                 Prompt.evaluation_criteria.isnot(None),
                 Prompt.evaluation_criteria.has_key("correctness"),
@@ -697,9 +888,10 @@ async def _get_unscored_spans() -> list[SpanModel]:
                     SpanModel.prompt_id.isnot(None),  # Must be linked to a prompt
                     or_(
                         SpanModel.feedback_score.is_(None),  # No feedback_score at all
-                        ~SpanModel.feedback_score.has_key(
-                            "correctness"
-                        ),  # Or no correctness key
+                        and_(
+                            ~SpanModel.feedback_score.has_key("correctness"),
+                            ~SpanModel.feedback_score.has_key("correctness_error"),
+                        ),
                     ),
                     SpanModel.exclude_system_spans(),
                 )
@@ -1004,7 +1196,12 @@ async def _execute_prompt_spans_evaluation(
                             Prompt.slug == prompt_slug,
                             or_(
                                 SpanModel.feedback_score.is_(None),
-                                ~SpanModel.feedback_score.has_key("correctness"),
+                                and_(
+                                    ~SpanModel.feedback_score.has_key("correctness"),
+                                    ~SpanModel.feedback_score.has_key(
+                                        "correctness_error"
+                                    ),
+                                ),
                             ),
                             Prompt.evaluation_criteria.isnot(None),
                             Prompt.evaluation_criteria.has_key("correctness"),
@@ -1022,30 +1219,35 @@ async def _execute_prompt_spans_evaluation(
                     f"Prompt {prompt_slug} (project {project_id}): Randomly selected {len(spans_to_evaluate)}/{len(prompt_spans)} spans to evaluate"
                 )
 
-                # Pre-fetch criteria once for this prompt so every span
-                # in the batch reuses it without hitting the DB again.
+                # Pre-fetch criteria + context once for this prompt so every
+                # span in the fan-out opens zero DB sessions for reads.
                 criteria_by_prompt: dict[str, dict[str, list[str]] | None] = {}
                 criteria_by_prompt[prompt_id] = await ensure_prompt_has_criteria(
                     prompt_id
                 )
+                context_by_prompt = await _prefetch_prompt_contexts(spans_to_evaluate)
 
                 # Fan out span evaluations concurrently (bounded by semaphore)
                 semaphore = asyncio.Semaphore(_MAX_CONCURRENT_EVALUATIONS)
 
-                async def _evaluate_with_limit(span_id: str) -> dict[str, Any]:
+                async def _evaluate_with_limit(span: SpanModel) -> dict[str, Any]:
                     async with semaphore:
                         try:
                             return await _evaluate_span_correctness(
-                                span_id=span_id,
+                                span=span,
                                 criteria_by_prompt=criteria_by_prompt,
+                                context_by_prompt=context_by_prompt,
                             )
                         except Exception as exc:
-                            logger.exception(f"Failed to evaluate span {span_id}")
-                            return {"span_id": span_id, "error": str(exc)}
+                            logger.exception(f"Failed to evaluate span {span.span_id}")
+                            return {"span_id": span.span_id, "error": str(exc)}
 
-                results = await asyncio.gather(
-                    *[_evaluate_with_limit(span.span_id) for span in spans_to_evaluate]
+                raw_results = await asyncio.gather(
+                    *[_evaluate_with_limit(span) for span in spans_to_evaluate]
                 )
+
+                # Persist all scores/errors in a single DB session instead of one per span.
+                results = await _batch_persist_evaluation_results(list(raw_results))
 
                 evaluated_count = sum(1 for r in results if "error" not in r)
                 errors = [

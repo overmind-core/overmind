@@ -490,7 +490,7 @@ def _generate_recommendations(
 
 
 async def _fetch_spans_for_backtesting(prompt_id: str, limit: int) -> list[SpanModel]:
-    """Fetch spans with inputs for backtesting (excludes system-generated spans)."""
+    """Fetch scored spans for backtesting (excludes system-generated and unscored spans)."""
     AsyncSessionLocal = get_session_local()
     async with AsyncSessionLocal() as session:
         stmt = (
@@ -500,6 +500,7 @@ async def _fetch_spans_for_backtesting(prompt_id: str, limit: int) -> list[SpanM
                     SpanModel.prompt_id == prompt_id,
                     SpanModel.input.isnot(None),
                     SpanModel.exclude_system_spans(),
+                    SpanModel.feedback_score.has_key("correctness"),
                 )
             )
             .order_by(SpanModel.created_at.asc())
@@ -848,8 +849,9 @@ async def _run_backtesting(
 
                 # Sync correctness eval → offload to thread
                 eval_score = 0.0
+                eval_reason: str | None = None
                 if model_result["success"] and model_result.get("output"):
-                    eval_score = await asyncio.wait_for(
+                    eval_score, eval_reason = await asyncio.wait_for(
                         asyncio.to_thread(
                             _evaluate_correctness_with_llm,
                             input_data=eval_input_data,
@@ -862,7 +864,7 @@ async def _run_backtesting(
                         timeout=_LLM_CALL_TIMEOUT_S,
                     )
 
-                # Persist result span
+                # Persist result span (include correctness_reason when score < 0.5)
                 result_span_id = str(uuid.uuid4())
                 current_time_nano = int(time.time() * 1_000_000_000)
 
@@ -889,7 +891,14 @@ async def _run_backtesting(
                             "error": model_result["error"],
                             "available_tools": call_tools if span_response_type else [],
                         },
-                        feedback_score={"correctness": eval_score},
+                        feedback_score=(
+                            {
+                                "correctness": eval_score,
+                                "correctness_reason": eval_reason,
+                            }
+                            if eval_reason
+                            else {"correctness": eval_score}
+                        ),
                         trace_id=span.trace_id,
                         prompt_id=prompt_id,
                     )
@@ -1474,12 +1483,15 @@ async def validate_backtesting_eligibility(
             )
 
     # Check 6: Minimum available spans (for running the backtest itself)
+    # Must match the filter in _fetch_spans_for_backtesting — only scored spans
+    # are eligible so each span has a baseline correctness value to compare against.
     available_q = await session.execute(
         select(func.count(SpanModel.span_id)).where(
             and_(
                 SpanModel.prompt_id == prompt_id,
                 SpanModel.input.isnot(None),
                 SpanModel.exclude_system_spans(),
+                SpanModel.feedback_score.has_key("correctness"),
             )
         )
     )
