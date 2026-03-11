@@ -19,7 +19,13 @@ from sqlalchemy.orm import selectinload
 from overmind.celery_app import celery_app
 from overmind.db.session import get_session_local
 from overmind.models.traces import SpanModel, TraceModel
-from overmind.models.prompts import Prompt
+from overmind.models.prompts import (
+    Prompt,
+    PROMPT_STATUS_ACTIVE,
+    PROMPT_STATUS_PENDING,
+    PROMPT_STATUS_REJECTED,
+    PROMPT_STATUS_SUPERSEDED,
+)
 from overmind.models.iam.projects import Project
 from overmind.models.jobs import Job
 from overmind.api.v1.endpoints.jobs import JobType, JobStatus
@@ -358,9 +364,13 @@ async def _create_prompt_from_template(
 async def _get_existing_templates(
     db: AsyncSession,
     project_id: UUID,
-) -> dict[str, tuple[Template, UUID]]:
+) -> dict[str, tuple[Template, str]]:
     """
     Get existing templates from prompts in this project.
+
+    All prompt versions are loaded so that spans can be matched to whichever
+    version's template they actually use. Active versions are sorted first so
+    they win tie-breaks when the matching loop iterates the dict.
 
     Args:
         db: Database session
@@ -369,25 +379,26 @@ async def _get_existing_templates(
     Returns:
         Dictionary mapping template strings to (Template, prompt_id) tuples
     """
-    # Get all prompts for this project
-    stmt = select(Prompt).where(Prompt.project_id == project_id)
+    stmt = (
+        select(Prompt)
+        .where(Prompt.project_id == project_id)
+        .order_by(Prompt.version.desc())
+    )
     result = await db.execute(stmt)
     prompts = result.scalars().all()
 
-    templates: dict[str, tuple[Template, UUID]] = {}
+    templates: dict[str, tuple[Template, str]] = {}
+
+    from overmind.core.template_extractor.extractor import _parse_template_string
+    from overmind.core.template_extractor.helpers import tokenize, token_values
 
     for prompt in prompts:
-        # Create a Template object from the prompt
-        # We don't have the full template elements and anchor tokens,
-        # but we can reconstruct a basic Template for matching
-        from overmind.core.template_extractor.extractor import _parse_template_string
-        from overmind.core.template_extractor.helpers import tokenize, token_values
+        if prompt.prompt in templates:
+            continue
 
         elements = _parse_template_string(prompt.prompt)
 
-        # Extract anchor tokens from the template
         anchor_tokens = [elem.value for elem in elements if not elem.is_variable]
-        # Tokenize and get token values
         anchor_token_list = []
         for anchor_text in anchor_tokens:
             tokens = tokenize(anchor_text)
@@ -577,8 +588,87 @@ async def _map_spans_to_templates(
 
         stats["unmapped"] = len(span_texts) - stats["mapped"]
 
+    # After mapping, check if any pending version now has real production
+    # spans and should be auto-accepted.
+    await _auto_accept_pending_versions(db, project_id)
+
     logger.info(f"Project {project_id}: Mapping complete - {stats}")
     return stats
+
+
+async def _auto_accept_pending_versions(db: AsyncSession, project_id: UUID) -> None:
+    """
+    For each prompt slug in the project, check if a pending (non-active) version
+    has at least one real production span.  If so, flip ``is_active`` to that
+    version and mark the associated suggestion as accepted.
+    """
+    from overmind.models.suggestions import Suggestion as SuggestionModel
+
+    # Get all distinct slugs that have multiple versions (i.e. a pending version exists)
+    slugs_q = await db.execute(
+        select(Prompt.slug)
+        .where(Prompt.project_id == project_id)
+        .group_by(Prompt.slug)
+        .having(func.count(Prompt.version) > 1)
+    )
+    slugs_with_versions = [row[0] for row in slugs_q.all()]
+
+    for slug in slugs_with_versions:
+        versions_q = await db.execute(
+            select(Prompt)
+            .where(and_(Prompt.slug == slug, Prompt.project_id == project_id))
+            .order_by(Prompt.version.desc())
+        )
+        all_versions = versions_q.scalars().all()
+        active_prompt = next(
+            (v for v in all_versions if v.status == PROMPT_STATUS_ACTIVE), None
+        )
+        max_prompt = all_versions[0]
+
+        if not active_prompt or max_prompt.version == active_prompt.version:
+            continue
+        if max_prompt.status != PROMPT_STATUS_PENDING:
+            continue
+
+        # Check for real production spans on the pending (max) version
+        real_span_check = await db.execute(
+            select(func.count(SpanModel.span_id)).where(
+                and_(
+                    SpanModel.prompt_id == max_prompt.prompt_id,
+                    SpanModel.exclude_system_spans(),
+                )
+            )
+        )
+        real_span_count = real_span_check.scalar() or 0
+
+        if real_span_count >= 1:
+            for v in all_versions:
+                if (
+                    v.version != max_prompt.version
+                    and v.status != PROMPT_STATUS_REJECTED
+                ):
+                    v.status = PROMPT_STATUS_SUPERSEDED
+            max_prompt.status = PROMPT_STATUS_ACTIVE
+
+            pending_sugg_q = await db.execute(
+                select(SuggestionModel).where(
+                    and_(
+                        SuggestionModel.prompt_slug == slug,
+                        SuggestionModel.project_id == project_id,
+                        SuggestionModel.new_prompt_version == max_prompt.version,
+                        SuggestionModel.status == "pending",
+                    )
+                )
+            )
+            sugg = pending_sugg_q.scalar_one_or_none()
+            if sugg:
+                sugg.status = "accepted"
+
+            await db.commit()
+            logger.info(
+                f"Auto-accepted version {max_prompt.version} for slug '{slug}' "
+                f"(project {project_id}) — {real_span_count} production span(s) detected"
+            )
 
 
 async def _discover_agents(

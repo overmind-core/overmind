@@ -7,6 +7,7 @@ import {
   ClipboardNote as ClipboardCheck,
   Clock,
   Money as DollarSign,
+  Sparkles,
   Target,
 } from "pixelarticons/react";
 
@@ -81,6 +82,14 @@ function AgentCard({ agent, headerAction }: { agent: AgentOut; headerAction?: Re
           <Badge className="bg-muted font-medium text-foreground" variant="secondary">
             v{agent.version}
           </Badge>
+          {agent.latestVersion != null && (
+            <Badge
+              className="border-amber-400/60 bg-amber-400/10 text-amber-700 dark:text-amber-400"
+              variant="outline"
+            >
+              <Sparkles className="mr-1 size-3" />v{agent.latestVersion} available
+            </Badge>
+          )}
         </div>
       </div>
       {(agent.tags ?? []).length > 0 && (
