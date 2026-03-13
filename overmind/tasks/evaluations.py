@@ -81,6 +81,7 @@ def _evaluate_correctness_with_llm(
     project_description: str | None = None,
     agent_description: str | None = None,
     span_metadata: dict[str, Any] | None = None,
+    reference_examples: str | None = None,
 ) -> tuple[float, str | None]:
     """
     Call LLM to evaluate correctness and return a normalized score with optional reason.
@@ -104,6 +105,9 @@ def _evaluate_correctness_with_llm(
         project_description: Optional project context
         agent_description: Optional agent context
         span_metadata: Optional span metadata for agentic detection and tool resolution
+        reference_examples: Optional formatted reference examples section for judge calibration.
+            Pre-fetched per prompt from other spans with reference_output. When provided,
+            included in the judge prompt to calibrate scoring for this agent.
 
     Returns:
         Tuple of (correctness_score, reason) where correctness_score is between 0.0 and 1.0
@@ -115,6 +119,9 @@ def _evaluate_correctness_with_llm(
     metadata = span_metadata or {}
     response_type = metadata.get("response_type")
     is_agentic = metadata.get("is_agentic", False)
+
+    # Build reference examples section (empty string when not provided)
+    reference_examples_section = reference_examples or ""
 
     if response_type == "tool_calls":
         # Evaluate tool selection quality and argument correctness
@@ -139,6 +146,7 @@ def _evaluate_correctness_with_llm(
             available_tools=available_tools_str,
             tool_calls=tool_calls_str,
             criteria=criteria_text,
+            reference_examples_section=reference_examples_section,
         )
         system_prompt = TOOL_CALL_CORRECTNESS_SYSTEM_PROMPT
         logger.info(
@@ -156,6 +164,7 @@ def _evaluate_correctness_with_llm(
             conversation_flow=components["conversation_flow"],
             final_answer=components["final_answer"],
             criteria=criteria_text,
+            reference_examples_section=reference_examples_section,
         )
         system_prompt = TOOL_ANSWER_CORRECTNESS_SYSTEM_PROMPT
         logger.info(
@@ -195,6 +204,7 @@ def _evaluate_correctness_with_llm(
                 intermediate_steps=intermediate_steps,
                 final_output=final_output_str,
                 criteria=criteria_text,
+                reference_examples_section=reference_examples_section,
             )
             system_prompt = AGENTIC_CORRECTNESS_SYSTEM_PROMPT
         else:
@@ -204,6 +214,7 @@ def _evaluate_correctness_with_llm(
                 inputs=input_data,
                 outputs=output_data,
                 criteria=criteria_text,
+                reference_examples_section=reference_examples_section,
             )
             system_prompt = CORRECTNESS_SYSTEM_PROMPT
 
@@ -374,6 +385,90 @@ async def _prefetch_prompt_contexts(
     return context_by_prompt
 
 
+async def _prefetch_reference_examples(
+    spans: list[SpanModel],
+    max_examples: int = 3,
+) -> dict[str, str | None]:
+    """Pre-fetch reference output examples for every unique prompt_id among the spans.
+
+    For each prompt, fetches up to `max_examples` recent scored spans that have
+    reference_output in feedback_score. These are used as calibration examples in
+    the judge prompt so every span for a prompt is scored consistently.
+
+    Returns a dict mapping prompt_id → formatted reference examples text (or None).
+    The spans being evaluated are excluded from reference selection to avoid
+    the judge seeing the answer to the question it's scoring.
+    """
+    prompt_ids_to_fetch = {span.prompt_id for span in spans if span.prompt_id}
+    reference_examples_by_prompt: dict[str, str | None] = {}
+
+    if not prompt_ids_to_fetch:
+        return reference_examples_by_prompt
+
+    # Build set of span_ids being evaluated so we can exclude them
+    current_span_ids = {span.span_id for span in spans}
+
+    AsyncSessionLocal = get_session_local()
+    async with AsyncSessionLocal() as session:
+        for prompt_id_str in prompt_ids_to_fetch:
+            try:
+                result = await session.execute(
+                    select(SpanModel)
+                    .where(
+                        and_(
+                            SpanModel.prompt_id == prompt_id_str,
+                            SpanModel.feedback_score.has_key("reference_output"),
+                            SpanModel.feedback_score.has_key("correctness"),
+                            SpanModel.span_id.notin_(current_span_ids),
+                            SpanModel.exclude_system_spans(),
+                        )
+                    )
+                    .order_by(SpanModel.created_at.desc())
+                    .limit(max_examples)
+                )
+                example_spans = list(result.scalars().all())
+
+                if not example_spans:
+                    reference_examples_by_prompt[prompt_id_str] = None
+                    continue
+
+                # Format as a reference examples section for the judge prompt
+                lines = [
+                    "<ReferenceExamples>",
+                    "The following are examples of correct outputs for this agent, "
+                    "provided as ground truth. Use them to calibrate your scoring — "
+                    "they show what high-quality outputs look like for this specific task.",
+                    "",
+                ]
+                for i, ex_span in enumerate(example_spans, 1):
+                    ref_data = (ex_span.feedback_score or {}).get(
+                        "reference_output", {}
+                    )
+                    ref_content = (
+                        ref_data.get("content", "")
+                        if isinstance(ref_data, dict)
+                        else ""
+                    )
+                    if not ref_content:
+                        continue
+                    input_str = json.dumps(ex_span.input or {}, indent=2)
+                    lines.append(f"Reference {i}:")
+                    lines.append(f"Input: {input_str}")
+                    lines.append(f"Correct Output: {ref_content}")
+                    lines.append("")
+
+                lines.append("</ReferenceExamples>")
+                reference_examples_by_prompt[prompt_id_str] = "\n".join(lines)
+
+            except Exception as e:
+                logger.error(
+                    f"Error pre-fetching reference examples for prompt {prompt_id_str}: {e}"
+                )
+                reference_examples_by_prompt[prompt_id_str] = None
+
+    return reference_examples_by_prompt
+
+
 async def _get_context_for_span(
     span: SpanModel,
     criteria_by_prompt: dict[str, dict[str, list[str]] | None] | None = None,
@@ -495,6 +590,7 @@ async def _evaluate_span_correctness(
     span: SpanModel,
     criteria_by_prompt: dict[str, dict[str, list[str]] | None] | None = None,
     context_by_prompt: dict[str, tuple[str | None, str | None]] | None = None,
+    reference_examples_by_prompt: dict[str, str | None] | None = None,
 ) -> dict[str, Any]:
     """Evaluate a single span's correctness using LLM.
 
@@ -516,6 +612,11 @@ async def _evaluate_span_correctness(
         context_by_prompt=context_by_prompt,
     )
 
+    # Look up pre-fetched reference examples for this prompt
+    reference_examples: str | None = None
+    if reference_examples_by_prompt is not None and span.prompt_id:
+        reference_examples = reference_examples_by_prompt.get(span.prompt_id)
+
     # Evaluate correctness with parse-failure retries.
     # call_llm already retries transient network/API errors internally via tenacity;
     # these retries target malformed LLM responses (missing key, bad JSON, etc.).
@@ -535,6 +636,7 @@ async def _evaluate_span_correctness(
                 project_description=project_description,
                 agent_description=agent_description,
                 span_metadata=payload["metadata"],
+                reference_examples=reference_examples,
             )
             last_error = None
             break
@@ -623,6 +725,9 @@ def evaluate_spans_task(
             context_by_prompt = await _prefetch_prompt_contexts(
                 list(spans_by_id.values())
             )
+            reference_examples_by_prompt = await _prefetch_reference_examples(
+                list(spans_by_id.values())
+            )
 
             semaphore = asyncio.Semaphore(_MAX_CONCURRENT_EVALUATIONS)
 
@@ -636,6 +741,7 @@ def evaluate_spans_task(
                             span=span,
                             criteria_by_prompt=criteria_by_prompt,
                             context_by_prompt=context_by_prompt,
+                            reference_examples_by_prompt=reference_examples_by_prompt,
                         )
                     except Exception as exc:
                         logger.exception(f"Failed to evaluate span {span_id}")
@@ -1226,6 +1332,9 @@ async def _execute_prompt_spans_evaluation(
                     prompt_id
                 )
                 context_by_prompt = await _prefetch_prompt_contexts(spans_to_evaluate)
+                reference_examples_by_prompt = await _prefetch_reference_examples(
+                    spans_to_evaluate
+                )
 
                 # Fan out span evaluations concurrently (bounded by semaphore)
                 semaphore = asyncio.Semaphore(_MAX_CONCURRENT_EVALUATIONS)
@@ -1237,6 +1346,7 @@ async def _execute_prompt_spans_evaluation(
                                 span=span,
                                 criteria_by_prompt=criteria_by_prompt,
                                 context_by_prompt=context_by_prompt,
+                                reference_examples_by_prompt=reference_examples_by_prompt,
                             )
                         except Exception as exc:
                             logger.exception(f"Failed to evaluate span {span.span_id}")

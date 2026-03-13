@@ -59,6 +59,22 @@ def _get_tools_from_span(span: SpanModel) -> list[dict[str, Any]]:
     return (span.metadata_attributes or {}).get("available_tools") or []
 
 
+def _has_user_signal(span: SpanModel) -> bool:
+    """Check if a span has any user-provided feedback or reference output signal."""
+    fb = span.feedback_score or {}
+    if fb.get("agent_feedback") and isinstance(fb["agent_feedback"], dict):
+        return True
+    if fb.get("judge_feedback") and isinstance(fb["judge_feedback"], dict):
+        return True
+    if (
+        fb.get("reference_output")
+        and isinstance(fb["reference_output"], dict)
+        and fb["reference_output"].get("content")
+    ):
+        return True
+    return False
+
+
 def _format_span_examples_text(spans: list[SpanModel], limit: int = 10) -> str:
     """
     Format a list of spans as a human-readable examples string for prompts.
@@ -77,11 +93,16 @@ def _format_span_examples_text(spans: list[SpanModel], limit: int = 10) -> str:
             agent_section = (
                 f"\nUser feedback on Agent output (rating={r}): {agent_fb['text']}"
             )
+        ref_output = (span.feedback_score or {}).get("reference_output", {})
+        ref_section = ""
+        if isinstance(ref_output, dict) and ref_output.get("content"):
+            ref_section = f"\nExpected correct output: {ref_output['content']}"
         examples.append(
             f"\nExample {i} (score: {score:.2f}):\n"
             f"Input: {json.dumps(span.input or {}, indent=2)}\n"
             f"Output: {json.dumps(span.output or {}, indent=2)}"
-            f"{agent_section}\n"
+            f"{agent_section}"
+            f"{ref_section}\n"
         )
     return "\n".join(examples) if examples else "None"
 
@@ -370,7 +391,7 @@ async def fetch_spans_by_score_buckets(
                     )
                 )
                 .order_by(SpanModel.created_at.desc())
-                .limit(per_bucket)
+                .limit(per_bucket * 2)
             )
         else:
             result = await session.execute(
@@ -385,13 +406,15 @@ async def fetch_spans_by_score_buckets(
                     )
                 )
                 .order_by(SpanModel.created_at.desc())
-                .limit(per_bucket)
+                .limit(per_bucket * 2)
             )
 
-        spans = result.scalars().all()
-        results[bucket_name] = list(spans)
+        all_bucket_spans = list(result.scalars().all())
+        with_signal = [s for s in all_bucket_spans if _has_user_signal(s)]
+        without_signal = [s for s in all_bucket_spans if not _has_user_signal(s)]
+        results[bucket_name] = (with_signal + without_signal)[:per_bucket]
         logger.info(
-            f"Fetched {len(spans)} spans for bucket '{bucket_name}' [{lower:.1f}-{upper:.1f}]"
+            f"Fetched {len(results[bucket_name])} spans for bucket '{bucket_name}' [{lower:.1f}-{upper:.1f}]"
         )
 
     return results

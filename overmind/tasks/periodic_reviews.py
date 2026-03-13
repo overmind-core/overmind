@@ -124,15 +124,11 @@ async def _check_prompts_for_reviews() -> dict[str, Any]:
     Check all prompts across all projects for review thresholds.
 
     When a threshold is crossed:
-    - Triggers `update_agent_description_from_feedback_task` if feedback spans exist
     - Advances `next_review_span_count` to the next threshold to prevent re-firing every hour
 
     Returns:
         Dictionary with review trigger statistics
     """
-    from overmind.tasks.agent_description_generator import (
-        update_agent_description_from_feedback_task,
-    )
 
     AsyncSessionLocal = get_session_local()
 
@@ -181,34 +177,8 @@ async def _check_prompts_for_reviews() -> dict[str, Any]:
                     logger.info(
                         f"Review threshold reached for prompt {prompt.prompt_id} "
                         f"(slug: {prompt.slug}, spans: {span_count}) — "
-                        f"triggering description update and advancing threshold"
+                        f"advancing threshold"
                     )
-
-                    # Trigger automatic background description update if there are
-                    # spans with user feedback to learn from
-                    feedback_spans_result = await session.execute(
-                        select(SpanModel.span_id)
-                        .where(
-                            and_(
-                                SpanModel.prompt_id == prompt.prompt_id,
-                                SpanModel.feedback_score.has_key("judge_feedback"),
-                                SpanModel.exclude_system_spans(),
-                            )
-                        )
-                        .order_by(SpanModel.created_at.desc())
-                        .limit(20)
-                    )
-                    feedback_span_ids = feedback_spans_result.scalars().all()
-
-                    if feedback_span_ids:
-                        update_agent_description_from_feedback_task.delay(
-                            prompt_id=prompt.prompt_id,
-                            span_ids=feedback_span_ids,
-                        )
-                        logger.info(
-                            f"Dispatched description update for prompt {prompt.prompt_id} "
-                            f"with {len(feedback_span_ids)} feedback spans"
-                        )
 
                     # Advance the threshold so this prompt doesn't re-trigger next hour
                     await _update_next_review_threshold(prompt, span_count)
