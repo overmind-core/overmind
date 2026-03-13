@@ -91,7 +91,6 @@ class SuggestCriteriaRequest(BaseModel):
 
 class SuggestCriteriaResponse(BaseModel):
     suggested_criteria: dict[str, list[str]]
-    spans_analyzed: int
 
 
 @router.post("/", response_model=PromptResponse)
@@ -627,10 +626,7 @@ async def suggest_prompt_criteria(
 
     suggested_criteria = {"correctness": result_data["correctness"][:5]}
 
-    return SuggestCriteriaResponse(
-        suggested_criteria=suggested_criteria,
-        spans_analyzed=len(spans),
-    )
+    return SuggestCriteriaResponse(suggested_criteria=suggested_criteria)
 
 
 @router.get("/{prompt_id}/criteria")

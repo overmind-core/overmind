@@ -25,12 +25,6 @@ export interface SuggestCriteriaResponse {
      * @memberof SuggestCriteriaResponse
      */
     suggestedCriteria: { [key: string]: Array<string>; };
-    /**
-     * 
-     * @type {number}
-     * @memberof SuggestCriteriaResponse
-     */
-    spansAnalyzed: number;
 }
 
 /**
@@ -38,7 +32,6 @@ export interface SuggestCriteriaResponse {
  */
 export function instanceOfSuggestCriteriaResponse(value: object): value is SuggestCriteriaResponse {
     if (!('suggestedCriteria' in value) || value['suggestedCriteria'] === undefined) return false;
-    if (!('spansAnalyzed' in value) || value['spansAnalyzed'] === undefined) return false;
     return true;
 }
 
@@ -53,7 +46,6 @@ export function SuggestCriteriaResponseFromJSONTyped(json: any, ignoreDiscrimina
     return {
         
         'suggestedCriteria': json['suggested_criteria'],
-        'spansAnalyzed': json['spans_analyzed'],
     };
 }
 
@@ -69,7 +61,6 @@ export function SuggestCriteriaResponseToJSONTyped(value?: SuggestCriteriaRespon
     return {
         
         'suggested_criteria': value['suggestedCriteria'],
-        'spans_analyzed': value['spansAnalyzed'],
     };
 }
 
