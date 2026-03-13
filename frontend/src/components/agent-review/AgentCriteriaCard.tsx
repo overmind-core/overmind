@@ -7,6 +7,7 @@ import {
   Loader as Loader2,
   PenSquare as Pencil,
   Plus,
+  Sparkles,
   Cancel as Trash2,
   Cancel as X,
 } from "pixelarticons/react";
@@ -24,6 +25,8 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import { CriteriaDiffDialog } from "./CriteriaDiffDialog";
 
 interface Props {
   agentSlug: string;
@@ -52,6 +55,14 @@ export function AgentCriteriaCard({ agentSlug, promptId, projectId }: Props) {
   // Re-eval dialog
   const [showReEvalDialog, setShowReEvalDialog] = useState(false);
   const pendingSaveRef = useRef<Record<string, string[]>>({});
+
+  // AI update state
+  const [showAiInput, setShowAiInput] = useState(false);
+  const [aiInstructions, setAiInstructions] = useState("");
+  const [isGeneratingAi, setIsGeneratingAi] = useState(false);
+  const [showDiffDialog, setShowDiffDialog] = useState(false);
+  const [aiSuggestedCriteria, setAiSuggestedCriteria] = useState<Record<string, string[]>>({});
+  const originalCriteriaRef = useRef<Record<string, string[]>>({});
 
   useEffect(() => {
     setIsLoading(true);
@@ -152,6 +163,31 @@ export function AgentCriteriaCard({ agentSlug, promptId, projectId }: Props) {
     },
   });
 
+  async function handleAiGenerate() {
+    if (!aiInstructions.trim()) return;
+    originalCriteriaRef.current = { ...criteriaMap };
+    setIsGeneratingAi(true);
+    try {
+      const result =
+        await apiClient.prompts.suggestPromptCriteriaApiV1PromptsPromptIdCriteriaSuggestPost({
+          promptId,
+          suggestCriteriaRequest: { userInstructions: aiInstructions.trim() },
+        });
+      setAiSuggestedCriteria(result.suggestedCriteria as Record<string, string[]>);
+      setShowAiInput(false);
+      setShowDiffDialog(true);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to generate criteria suggestions.");
+    } finally {
+      setIsGeneratingAi(false);
+    }
+  }
+
+  function handleAiAccepted(newCriteria: Record<string, string[]>) {
+    pendingSaveRef.current = newCriteria;
+    setShowReEvalDialog(true);
+  }
+
   const hasMultipleMetrics = metrics.length > 1;
 
   return (
@@ -196,16 +232,36 @@ export function AgentCriteriaCard({ agentSlug, promptId, projectId }: Props) {
             </div>
 
             {!isEditing ? (
-              <Button
-                className="shrink-0 h-7 px-2 text-xs"
-                disabled={isLoading || !!fetchError}
-                onClick={startEditing}
-                size="sm"
-                variant="ghost"
-              >
-                <Pencil className="size-3" />
-                Edit
-              </Button>
+              <div className="flex items-center gap-1 shrink-0">
+                <Button
+                  className="h-7 px-2 text-xs"
+                  disabled={isLoading || !!fetchError || isGeneratingAi}
+                  onClick={() => {
+                    setShowAiInput((v) => !v);
+                    setAiInstructions("");
+                  }}
+                  size="sm"
+                  title="Update criteria with AI"
+                  variant="ghost"
+                >
+                  {isGeneratingAi ? (
+                    <Loader2 className="size-3 animate-spin" />
+                  ) : (
+                    <Sparkles className="size-3" />
+                  )}
+                  AI
+                </Button>
+                <Button
+                  className="h-7 px-2 text-xs"
+                  disabled={isLoading || !!fetchError}
+                  onClick={startEditing}
+                  size="sm"
+                  variant="ghost"
+                >
+                  <Pencil className="size-3" />
+                  Edit
+                </Button>
+              </div>
             ) : (
               <Button
                 className="shrink-0 h-7 px-2 text-xs"
@@ -221,6 +277,52 @@ export function AgentCriteriaCard({ agentSlug, promptId, projectId }: Props) {
         </CardHeader>
 
         <CardContent className="flex-1 overflow-y-auto pt-0">
+          {showAiInput && !isEditing && (
+            <div className="mb-3 space-y-2 border-b border-border pb-3">
+              <Textarea
+                autoFocus
+                className="min-h-[72px] text-sm resize-none"
+                disabled={isGeneratingAi}
+                onChange={(e) => setAiInstructions(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
+                    e.preventDefault();
+                    handleAiGenerate();
+                  }
+                  if (e.key === "Escape") {
+                    setShowAiInput(false);
+                  }
+                }}
+                placeholder="Describe how to update the criteria… (Cmd+Enter to generate)"
+                value={aiInstructions}
+              />
+              <div className="flex items-center justify-end gap-2">
+                <Button
+                  className="h-7 px-2 text-xs"
+                  disabled={isGeneratingAi}
+                  onClick={() => setShowAiInput(false)}
+                  size="sm"
+                  variant="ghost"
+                >
+                  Cancel
+                </Button>
+                <Button
+                  className="h-7 px-3 text-xs"
+                  disabled={isGeneratingAi || !aiInstructions.trim()}
+                  onClick={handleAiGenerate}
+                  size="sm"
+                >
+                  {isGeneratingAi ? (
+                    <Loader2 className="size-3 animate-spin" />
+                  ) : (
+                    <Sparkles className="size-3" />
+                  )}
+                  {isGeneratingAi ? "Generating…" : "Generate"}
+                </Button>
+              </div>
+            </div>
+          )}
+
           {isLoading ? (
             <div className="flex items-center gap-2 py-4 text-sm text-muted-foreground">
               <Loader2 className="size-4 animate-spin" />
@@ -344,6 +446,17 @@ export function AgentCriteriaCard({ agentSlug, promptId, projectId }: Props) {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {showDiffDialog && (
+        <CriteriaDiffDialog
+          initialSuggestedCriteria={aiSuggestedCriteria}
+          isOpen={showDiffDialog}
+          onAccepted={handleAiAccepted}
+          onClose={() => setShowDiffDialog(false)}
+          originalCriteria={originalCriteriaRef.current}
+          promptId={promptId}
+        />
+      )}
     </>
   );
 }

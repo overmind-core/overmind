@@ -79,6 +79,8 @@ docs/SpanFeedbackRequest.md
 docs/SpanForReview.md
 docs/SpanResponseModel.md
 docs/SpansApi.md
+docs/SuggestCriteriaRequest.md
+docs/SuggestCriteriaResponse.md
 docs/Suggestion.md
 docs/SuggestionDetailOut.md
 docs/SuggestionFeedbackRequest.md
@@ -155,6 +157,8 @@ models/RoleScope.ts
 models/SpanFeedbackRequest.ts
 models/SpanForReview.ts
 models/SpanResponseModel.ts
+models/SuggestCriteriaRequest.ts
+models/SuggestCriteriaResponse.ts
 models/Suggestion.ts
 models/SuggestionDetailOut.ts
 models/SuggestionFeedbackRequest.ts
