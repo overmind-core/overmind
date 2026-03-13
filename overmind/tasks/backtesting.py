@@ -653,14 +653,20 @@ async def _run_backtesting(
 ) -> dict[str, Any]:
     """Run backtesting for multiple models on a set of spans.
 
-    Improvements over the original sequential version:
+    Performance design:
     - All (model × span) pairs are evaluated **concurrently** via
       ``asyncio.gather`` bounded by ``_MAX_CONCURRENT_BACKTESTS``.
+    - Execution is split into two independent phases so each semaphore slot
+      holds only one LLM call at a time instead of two sequential ones:
+        Phase A — model inference: replay all (model × span) pairs concurrently.
+        Phase B — correctness scoring: fan out judge calls concurrently over
+                  all successful inference results.
+    - All result spans are persisted in a single bulk INSERT after both phases
+      complete, replacing the previous per-item session-per-commit pattern.
     - Models are interleaved by provider so concurrent requests spread
       across OpenAI / Anthropic / Gemini rather than hammering one.
-    - After scoring, a recommendation heuristic produces an overall
-      verdict (best performer, fastest, cheapest, best overall) and
-      creates a ``Suggestion`` record when a switch is warranted.
+    - Setup data (spans, criteria, prompt/project context) is fetched in a
+      single DB session instead of three separate round-trips.
     """
     from overmind.api.v1.endpoints.jobs import JobStatus
 
@@ -684,25 +690,42 @@ async def _run_backtesting(
 
     try:
         # ---------------------------------------------------------------
-        # 1. Fetch spans & criteria
+        # 1. Fetch spans, criteria, and context in a single DB session
         # ---------------------------------------------------------------
         logger.info(f"Fetching {span_count} spans for backtesting prompt {prompt_id}")
-        spans = await _fetch_spans_for_backtesting(prompt_id, span_count)
-        if not spans:
-            raise ValueError(f"No spans found for backtesting prompt {prompt_id}")
-        logger.info(f"Found {len(spans)} spans for backtesting")
-
-        criteria_dict = await _get_prompt_criteria(prompt_id)
-        criteria_text = _format_criteria(criteria_dict["correctness"])
-
-        # Fetch project/agent context for evaluation prompts
         project_description: str | None = None
         agent_description: str | None = None
-        async with AsyncSessionLocal() as ctx_session:
+        criteria_text: str = ""
+        spans: list[SpanModel] = []
+
+        async with AsyncSessionLocal() as setup_session:
+            # Spans
+            stmt = (
+                select(SpanModel)
+                .where(
+                    and_(
+                        SpanModel.prompt_id == prompt_id,
+                        SpanModel.input.isnot(None),
+                        SpanModel.exclude_system_spans(),
+                        SpanModel.feedback_score.has_key("correctness"),
+                    )
+                )
+                .order_by(SpanModel.created_at.asc())
+                .limit(span_count)
+            )
+            spans_result = await setup_session.execute(stmt)
+            spans = list(spans_result.scalars().all())
+
+            if not spans:
+                raise ValueError(f"No spans found for backtesting prompt {prompt_id}")
+            logger.info(f"Found {len(spans)} spans for backtesting")
+
+            # Criteria + agent/project context — all from the same session
             try:
                 project_id_str, version, slug = Prompt.parse_prompt_id(prompt_id)
                 project_uuid = UUID(project_id_str)
-                prompt_result = await ctx_session.execute(
+
+                prompt_result = await setup_session.execute(
                     select(Prompt).where(
                         and_(
                             Prompt.project_id == project_uuid,
@@ -712,18 +735,33 @@ async def _run_backtesting(
                     )
                 )
                 prompt_obj = prompt_result.scalar_one_or_none()
-                if prompt_obj and prompt_obj.agent_description:
+                if not prompt_obj:
+                    raise ValueError(f"Prompt not found: {prompt_id}")
+
+                criteria_dict = prompt_obj.evaluation_criteria
+                if (
+                    not criteria_dict
+                    or "correctness" not in criteria_dict
+                    or not criteria_dict["correctness"]
+                ):
+                    raise ValueError(
+                        f"Prompt {prompt_id} does not have evaluation criteria."
+                    )
+                criteria_text = _format_criteria(criteria_dict["correctness"])
+
+                if prompt_obj.agent_description:
                     agent_description = prompt_obj.agent_description.get("description")
-                project_result = await ctx_session.execute(
+
+                project_result = await setup_session.execute(
                     select(Project).where(Project.project_id == project_uuid)
                 )
                 project_obj = project_result.scalar_one_or_none()
                 if project_obj and project_obj.description:
                     project_description = project_obj.description
+
             except (ValueError, TypeError) as e:
-                logger.warning(
-                    f"Could not fetch project/agent context for backtesting: {e}"
-                )
+                logger.warning(f"Could not fetch criteria/context for backtesting: {e}")
+                raise
 
         # ---------------------------------------------------------------
         # 2. Detect current model & compute baseline
@@ -759,36 +797,31 @@ async def _run_backtesting(
         )
 
         # ---------------------------------------------------------------
-        # 4. Process items concurrently (semaphore-bounded)
+        # 4a. Phase A — model inference (concurrent, semaphore-bounded)
+        #
+        # Each slot holds exactly one LLM call.  Scoring is deferred to
+        # Phase B so the semaphore is not held across two sequential calls.
         # ---------------------------------------------------------------
-        semaphore = asyncio.Semaphore(_MAX_CONCURRENT_BACKTESTS)
+        inference_semaphore = asyncio.Semaphore(_MAX_CONCURRENT_BACKTESTS)
 
-        async def _process_item(
+        async def _run_inference(
             model_name: str, span: SpanModel, input_text: str
         ) -> dict[str, Any]:
-            async with semaphore:
-                parsed_span_input = _safe_parse_json(span.input)
-                input_data = parsed_span_input or {}
-                span_response_type = (span.metadata_attributes or {}).get(
-                    "response_type"
+            """Run model inference for one (model, span) pair."""
+            parsed_span_input = _safe_parse_json(span.input)
+            input_data = parsed_span_input or {}
+            span_response_type = (span.metadata_attributes or {}).get("response_type")
+
+            if span_response_type:
+                # Tool-calling span: replay with full conversation + tools
+                call_messages = (
+                    parsed_span_input if isinstance(parsed_span_input, list) else None
                 )
+                call_tools = (span.metadata_attributes or {}).get(
+                    "available_tools"
+                ) or []
 
-                if span_response_type:
-                    # --------------------------------------------------------
-                    # Tool-calling span: replay with full conversation + tools
-                    # --------------------------------------------------------
-                    # Pass the original message list directly so the model
-                    # receives the same context (user turns, prior tool calls,
-                    # tool results) that the source span had.
-                    call_messages = (
-                        parsed_span_input
-                        if isinstance(parsed_span_input, list)
-                        else None
-                    )
-                    call_tools = (span.metadata_attributes or {}).get(
-                        "available_tools"
-                    ) or []
-
+                async with inference_semaphore:
                     model_result = await asyncio.wait_for(
                         asyncio.to_thread(
                             _run_model_on_input,
@@ -801,20 +834,14 @@ async def _run_backtesting(
                         timeout=_LLM_CALL_TIMEOUT_S,
                     )
 
-                    # Preserve response_type / is_agentic so the correct judge
-                    # branch is used (tool-call or tool-answer evaluator).
-                    backtest_metadata = span.metadata_attributes or {}
-                    # The model received the full conversation, so evaluate
-                    # against it (includes tool results in the input).
-                    eval_input_data = input_data
-                    # Output is already normalised to the message-list format
-                    # by _run_model_on_input; the evaluator handles both dict
-                    # and list formats via _safe_parse_json.
-                    output_data = model_result.get("output") or ""
-                else:
-                    # --------------------------------------------------------
-                    # Plain / legacy span: existing plain-text behaviour
-                    # --------------------------------------------------------
+                # Preserve response_type / is_agentic so the correct judge
+                # branch is used (tool-call or tool-answer evaluator).
+                backtest_metadata = span.metadata_attributes or {}
+                eval_input_data = input_data
+                output_data = model_result.get("output") or ""
+            else:
+                # Plain / legacy span: existing plain-text behaviour
+                async with inference_semaphore:
                     model_result = await asyncio.wait_for(
                         asyncio.to_thread(
                             _run_model_on_input,
@@ -825,113 +852,55 @@ async def _run_backtesting(
                         timeout=_LLM_CALL_TIMEOUT_S,
                     )
 
-                    # Strip response_type / is_agentic so we don't route into
-                    # the tool-call judge for a plain-text completion.
-                    backtest_metadata = {
-                        k: v
-                        for k, v in (span.metadata_attributes or {}).items()
-                        if k not in ("response_type", "is_agentic")
-                    }
-                    # Strip tool/assistant messages — the model only saw
-                    # user/system messages, so judging against tool results
-                    # it never received would be unfair.
-                    if isinstance(parsed_span_input, list):
-                        eval_input_data = [
-                            msg
-                            for msg in parsed_span_input
-                            if not isinstance(msg, dict)
-                            or msg.get("role") not in ("tool", "assistant", "function")
-                        ]
-                    else:
-                        eval_input_data = input_data
-                    # Output is already normalised to the message-list format
-                    output_data = model_result.get("output") or ""
-
-                # Sync correctness eval → offload to thread
-                eval_score = 0.0
-                eval_reason: str | None = None
-                if model_result["success"] and model_result.get("output"):
-                    eval_score, eval_reason = await asyncio.wait_for(
-                        asyncio.to_thread(
-                            _evaluate_correctness_with_llm,
-                            input_data=eval_input_data,
-                            output_data=output_data,
-                            criteria_text=criteria_text,
-                            project_description=project_description,
-                            agent_description=agent_description,
-                            span_metadata=backtest_metadata,
-                        ),
-                        timeout=_LLM_CALL_TIMEOUT_S,
-                    )
-
-                # Persist result span (include correctness_reason when score < 0.5)
-                result_span_id = str(uuid.uuid4())
-                current_time_nano = int(time.time() * 1_000_000_000)
-
-                async with AsyncSessionLocal() as db:
-                    result_span = SpanModel(
-                        span_id=result_span_id,
-                        operation=f"backtest:{model_name}",
-                        start_time_unix_nano=current_time_nano,
-                        end_time_unix_nano=current_time_nano
-                        + int(model_result["latency_ms"] * 1_000_000),
-                        input=input_data,
-                        output=output_data if model_result.get("output") else None,
-                        status_code=1 if model_result["success"] else 2,
-                        metadata_attributes={
-                            "backtest": True,
-                            "backtest_run_id": str(backtest_run_id),
-                            "source_span_id": span.span_id,
-                            "model": _base_model_from_key(model_name),
-                            "reasoning_mode": _reasoning_mode_from_key(model_name),
-                            "latency_ms": model_result["latency_ms"],
-                            "cost": model_result["cost"],
-                            "input_tokens": model_result["input_tokens"],
-                            "output_tokens": model_result["output_tokens"],
-                            "error": model_result["error"],
-                            "available_tools": call_tools if span_response_type else [],
-                        },
-                        feedback_score=(
-                            {
-                                "correctness": eval_score,
-                                "correctness_reason": eval_reason,
-                            }
-                            if eval_reason
-                            else {"correctness": eval_score}
-                        ),
-                        trace_id=span.trace_id,
-                        prompt_id=prompt_id,
-                    )
-                    db.add(result_span)
-                    await db.commit()
-
-                return {
-                    "model_name": model_name,
-                    "span_id": span.span_id,
-                    "result_span_id": result_span_id,
-                    "input": input_data,
-                    "output": model_result.get("output"),
-                    "latency_ms": model_result["latency_ms"],
-                    "cost": model_result["cost"],
-                    "input_tokens": model_result["input_tokens"],
-                    "output_tokens": model_result["output_tokens"],
-                    "eval_score": eval_score,
-                    "success": model_result["success"],
-                    "error": model_result["error"],
+                # Strip response_type / is_agentic so we don't route into
+                # the tool-call judge for a plain-text completion.
+                backtest_metadata = {
+                    k: v
+                    for k, v in (span.metadata_attributes or {}).items()
+                    if k not in ("response_type", "is_agentic")
                 }
+                # Strip tool/assistant messages — the model only saw
+                # user/system messages, so judging against tool results
+                # it never received would be unfair.
+                if isinstance(parsed_span_input, list):
+                    eval_input_data = [
+                        msg
+                        for msg in parsed_span_input
+                        if not isinstance(msg, dict)
+                        or msg.get("role") not in ("tool", "assistant", "function")
+                    ]
+                else:
+                    eval_input_data = input_data
+                output_data = model_result.get("output") or ""
+                call_tools = []
 
-        all_results = await asyncio.gather(
-            *[_process_item(m, s, t) for m, s, t in work_items],
+            return {
+                "model_name": model_name,
+                "span": span,
+                "input_data": input_data,
+                "eval_input_data": eval_input_data,
+                "output_data": output_data,
+                "backtest_metadata": backtest_metadata,
+                "call_tools": call_tools,
+                "span_response_type": span_response_type,
+                "model_result": model_result,
+            }
+
+        inference_raw = await asyncio.gather(
+            *[_run_inference(m, s, t) for m, s, t in work_items],
             return_exceptions=True,
         )
 
-        # Gracefully handle any per-item exceptions
-        processed_results: list[dict[str, Any]] = []
-        for i, res in enumerate(all_results):
+        # Separate successful inferences from failures
+        inference_results: list[dict[str, Any]] = []
+        inference_failures: list[dict[str, Any]] = []
+        for i, res in enumerate(inference_raw):
+            m_name, sp, _ = work_items[i]
             if isinstance(res, Exception):
-                m_name, sp, _ = work_items[i]
-                logger.error(f"Error processing {m_name} on span {sp.span_id}: {res}")
-                processed_results.append(
+                logger.error(
+                    f"Inference error for {m_name} on span {sp.span_id}: {res}"
+                )
+                inference_failures.append(
                     {
                         "model_name": m_name,
                         "span_id": sp.span_id,
@@ -945,7 +914,156 @@ async def _run_backtesting(
                     }
                 )
             else:
-                processed_results.append(res)
+                inference_results.append(res)
+
+        logger.info(
+            f"Phase A complete: {len(inference_results)} inference(s) succeeded, "
+            f"{len(inference_failures)} failed"
+        )
+
+        # ---------------------------------------------------------------
+        # 4b. Phase B — correctness scoring (concurrent, semaphore-bounded)
+        #
+        # Fan out all judge calls independently of inference so the
+        # semaphore is not held across two sequential LLM calls.
+        # ---------------------------------------------------------------
+        score_semaphore = asyncio.Semaphore(_MAX_CONCURRENT_BACKTESTS)
+
+        async def _score_inference(item: dict[str, Any]) -> dict[str, Any]:
+            """Score one inference result; returns the item with eval fields added."""
+            model_result = item["model_result"]
+            eval_score = 0.0
+            eval_reason: str | None = None
+
+            if model_result["success"] and model_result.get("output"):
+                async with score_semaphore:
+                    eval_score, eval_reason = await asyncio.wait_for(
+                        asyncio.to_thread(
+                            _evaluate_correctness_with_llm,
+                            input_data=item["eval_input_data"],
+                            output_data=item["output_data"],
+                            criteria_text=criteria_text,
+                            project_description=project_description,
+                            agent_description=agent_description,
+                            span_metadata=item["backtest_metadata"],
+                        ),
+                        timeout=_LLM_CALL_TIMEOUT_S,
+                    )
+
+            return {**item, "eval_score": eval_score, "eval_reason": eval_reason}
+
+        scored_raw = await asyncio.gather(
+            *[_score_inference(item) for item in inference_results],
+            return_exceptions=True,
+        )
+
+        scored_results: list[dict[str, Any]] = []
+        for i, res in enumerate(scored_raw):
+            item = inference_results[i]
+            if isinstance(res, Exception):
+                logger.error(
+                    f"Scoring error for {item['model_name']} on span "
+                    f"{item['span'].span_id}: {res}"
+                )
+                inference_failures.append(
+                    {
+                        "model_name": item["model_name"],
+                        "span_id": item["span"].span_id,
+                        "success": False,
+                        "error": str(res),
+                        "eval_score": 0.0,
+                        "latency_ms": item["model_result"]["latency_ms"],
+                        "cost": item["model_result"]["cost"],
+                        "input_tokens": item["model_result"]["input_tokens"],
+                        "output_tokens": item["model_result"]["output_tokens"],
+                    }
+                )
+            else:
+                scored_results.append(res)
+
+        logger.info(f"Phase B complete: {len(scored_results)} item(s) scored")
+
+        # ---------------------------------------------------------------
+        # 4c. Bulk-persist all result spans in a single DB session
+        #
+        # Replaces the previous per-item session-per-commit pattern
+        # (up to N_spans × N_models individual sessions).
+        # ---------------------------------------------------------------
+        result_span_ids: dict[int, str] = {}  # index → span_id for result dict
+
+        async with AsyncSessionLocal() as db:
+            for idx, item in enumerate(scored_results):
+                model_name = item["model_name"]
+                span = item["span"]
+                model_result = item["model_result"]
+                eval_score = item["eval_score"]
+                eval_reason = item["eval_reason"]
+                output_data = item["output_data"]
+                call_tools = item["call_tools"]
+                span_response_type = item["span_response_type"]
+
+                result_span_id = str(uuid.uuid4())
+                result_span_ids[idx] = result_span_id
+                current_time_nano = int(time.time() * 1_000_000_000)
+
+                result_span = SpanModel(
+                    span_id=result_span_id,
+                    operation=f"backtest:{model_name}",
+                    start_time_unix_nano=current_time_nano,
+                    end_time_unix_nano=current_time_nano
+                    + int(model_result["latency_ms"] * 1_000_000),
+                    input=item["input_data"],
+                    output=output_data if model_result.get("output") else None,
+                    status_code=1 if model_result["success"] else 2,
+                    metadata_attributes={
+                        "backtest": True,
+                        "backtest_run_id": str(backtest_run_id),
+                        "source_span_id": span.span_id,
+                        "model": _base_model_from_key(model_name),
+                        "reasoning_mode": _reasoning_mode_from_key(model_name),
+                        "latency_ms": model_result["latency_ms"],
+                        "cost": model_result["cost"],
+                        "input_tokens": model_result["input_tokens"],
+                        "output_tokens": model_result["output_tokens"],
+                        "error": model_result["error"],
+                        "available_tools": call_tools if span_response_type else [],
+                    },
+                    feedback_score=(
+                        {
+                            "correctness": eval_score,
+                            "correctness_reason": eval_reason,
+                        }
+                        if eval_reason
+                        else {"correctness": eval_score}
+                    ),
+                    trace_id=span.trace_id,
+                    prompt_id=prompt_id,
+                )
+                db.add(result_span)
+
+            await db.commit()
+            logger.info(f"Persisted {len(scored_results)} result span(s) in one commit")
+
+        # Build the flat processed_results list consumed by aggregation below
+        processed_results: list[dict[str, Any]] = list(inference_failures)
+        for idx, item in enumerate(scored_results):
+            model_result = item["model_result"]
+            processed_results.append(
+                {
+                    "model_name": item["model_name"],
+                    "span_id": item["span"].span_id,
+                    "result_span_id": result_span_ids[idx],
+                    "input": item["input_data"],
+                    "output": model_result.get("output"),
+                    "latency_ms": model_result["latency_ms"],
+                    "cost": model_result["cost"],
+                    "input_tokens": model_result["input_tokens"],
+                    "output_tokens": model_result["output_tokens"],
+                    "eval_score": item["eval_score"],
+                    "success": model_result["success"],
+                    "error": model_result["error"],
+                }
+            )
 
         # ---------------------------------------------------------------
         # 5. Aggregate results per model

@@ -12,12 +12,15 @@ import uuid
 from typing import Any
 from uuid import UUID
 
+from faker import Faker
 from sqlalchemy import select, func, and_, cast
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.ext.asyncio import AsyncSession
-
 from sqlalchemy.orm import selectinload
+
 from overmind.celery_app import celery_app
+from overmind.core.template_extractor.extractor import _parse_template_string
+from overmind.core.template_extractor.helpers import tokenize, token_values
 from overmind.db.session import get_session_local
 from overmind.models.traces import SpanModel, TraceModel
 from overmind.models.prompts import (
@@ -30,7 +33,6 @@ from overmind.models.prompts import (
 from overmind.models.iam.projects import Project
 from overmind.models.jobs import Job
 from overmind.api.v1.endpoints.jobs import JobType, JobStatus
-from faker import Faker
 from overmind.core.template_extractor import (
     extract_templates,
     match_string_to_template,
@@ -41,6 +43,7 @@ from overmind.tasks.criteria_generator import generate_criteria_task
 from overmind.tasks.agent_description_generator import (
     generate_initial_agent_description_task,
 )
+from overmind.models.suggestions import Suggestion as SuggestionModel
 from overmind.tasks.utils.task_lock import with_task_lock
 from overmind.tasks.prompt_display_name_generator import (
     generate_display_name_for_prompt,
@@ -344,7 +347,8 @@ async def _create_prompt_from_template(
     # Generate a unique slug — regenerate until no collision exists so this
     # template is always stored as a completely independent prompt (version=1)
     # rather than accidentally being versioned under an existing prompt's slug.
-    slug = Faker().slug().replace("_", "-")
+    _faker = Faker()
+    slug = _faker.slug().replace("_", "-")
     while True:
         slug_check_stmt = (
             select(Prompt)
@@ -354,7 +358,7 @@ async def _create_prompt_from_template(
         slug_result = await db.execute(slug_check_stmt)
         if slug_result.scalar_one_or_none() is None:
             break
-        slug = Faker().slug().replace("_", "-")
+        slug = _faker.slug().replace("_", "-")
 
     # Generate display name for the prompt
     # Use the template examples if available
@@ -412,9 +416,6 @@ async def _get_existing_templates(
 
     templates: dict[str, tuple[Template, str]] = {}
 
-    from overmind.core.template_extractor.extractor import _parse_template_string
-    from overmind.core.template_extractor.helpers import tokenize, token_values
-
     for prompt in prompts:
         if prompt.prompt in templates:
             continue
@@ -454,8 +455,6 @@ async def _map_spans_to_templates(
     Returns:
         Dictionary with statistics: {'mapped': N, 'new_templates': M, 'unmapped': K}
     """
-    from overmind.models.traces import TraceModel
-
     # Get all unmapped spans for traces in this project
     unmapped_spans_stmt = (
         select(SpanModel)
@@ -466,12 +465,16 @@ async def _map_spans_to_templates(
     result = await db.execute(unmapped_spans_stmt)
     unmapped_spans = result.scalars().all()
 
-    # Extract input texts from unmapped spans
+    # Extract input texts from unmapped spans, building a lookup for O(1) match resolution.
+    # Multiple spans can share the same input text (e.g. identical prompts), so we store
+    # a list per text and pop one span per match to avoid double-mapping.
     span_texts: list[tuple[SpanModel, str]] = []
+    text_to_spans: dict[str, list[SpanModel]] = {}
     for span in unmapped_spans:
         text = _get_span_input_text_merged(span)
         if text:
             span_texts.append((span, text))
+            text_to_spans.setdefault(text, []).append(span)
 
     # Check if any spans have been mapped before
     mapped_spans_count_stmt = (
@@ -525,16 +528,16 @@ async def _map_spans_to_templates(
             stats["new_templates"] += 1
             new_prompt_ids.append(prompt.prompt_id)
 
-            # Map all matching spans to this prompt
+            sanitized_vars = _sanitize_for_jsonb(
+                {m.original_string: m.variables for m in template.matches}
+            )
             for match in template.matches:
-                # Find the span with this text
-                for span, text in span_texts:
-                    if text == match.original_string:
-                        span.prompt_id = prompt.prompt_id
-                        # Sanitize variables to strip null bytes before storing
-                        span.input_params = _sanitize_for_jsonb(match.variables)
-                        stats["mapped"] += 1
-                        break
+                candidates = text_to_spans.get(match.original_string)
+                if candidates:
+                    span = candidates.pop(0)
+                    span.prompt_id = prompt.prompt_id
+                    span.input_params = sanitized_vars[match.original_string]
+                    stats["mapped"] += 1
 
         await db.commit()
 
@@ -586,6 +589,10 @@ async def _map_spans_to_templates(
             )
 
             texts_only = [text for _, text in unmatched_span_texts]
+            unmatched_text_to_spans: dict[str, list[SpanModel]] = {}
+            for span, text in unmatched_span_texts:
+                unmatched_text_to_spans.setdefault(text, []).append(span)
+
             config = ExtractionConfig(min_group_size=2)
             extraction_result = extract_templates(texts_only, config)
 
@@ -598,15 +605,16 @@ async def _map_spans_to_templates(
                     stats["new_templates"] += 1
                     new_prompt_ids.append(prompt.prompt_id)
 
-                    # Map all matching spans to this prompt
+                    sanitized_vars = _sanitize_for_jsonb(
+                        {m.original_string: m.variables for m in template.matches}
+                    )
                     for match in template.matches:
-                        for span, text in unmatched_span_texts:
-                            if text == match.original_string:
-                                span.prompt_id = prompt.prompt_id
-                                # Sanitize variables to strip null bytes before storing
-                                span.input_params = _sanitize_for_jsonb(match.variables)
-                                stats["mapped"] += 1
-                                break
+                        candidates = unmatched_text_to_spans.get(match.original_string)
+                        if candidates:
+                            span = candidates.pop(0)
+                            span.prompt_id = prompt.prompt_id
+                            span.input_params = sanitized_vars[match.original_string]
+                            stats["mapped"] += 1
 
                 await db.commit()
 
@@ -641,8 +649,6 @@ async def _auto_accept_pending_versions(db: AsyncSession, project_id: UUID) -> N
     has at least one real production span.  If so, flip ``is_active`` to that
     version and mark the associated suggestion as accepted.
     """
-    from overmind.models.suggestions import Suggestion as SuggestionModel
-
     # Get all distinct slugs that have multiple versions (i.e. a pending version exists)
     slugs_q = await db.execute(
         select(Prompt.slug)
@@ -712,7 +718,7 @@ async def _auto_accept_pending_versions(db: AsyncSession, project_id: UUID) -> N
 
 async def _discover_agents(
     celery_task_id: str | None = None, job_id: str | None = None
-) -> dict[str, any]:
+) -> dict[str, Any]:
     """
     Async function to discover agents across all projects by mapping spans to templates.
 
@@ -839,11 +845,10 @@ async def _discover_agents(
                         overall_stats["total_unmapped"] += stats.get("unmapped", 0)
 
                         # Update job to completed
+                        job.status = JobStatus.COMPLETED.value
                         if stats.get("new_templates", 0) > 0:
-                            job.status = JobStatus.COMPLETED.value
                             job.result = stats
                         else:
-                            job.status = JobStatus.COMPLETED.value
                             job.result = {
                                 "reason": "No new templates created",
                                 "stats": stats,
@@ -896,7 +901,7 @@ async def _discover_agents(
 
 @celery_app.task(name="agent_discovery.discover_agents", bind=True)
 @with_task_lock(lock_name="agent_discovery")
-def discover_agents(self) -> dict[str, any]:
+def discover_agents(self) -> dict[str, Any]:
     """
     Periodic Celery beat task to discover agents across all projects.
 
@@ -912,21 +917,8 @@ def discover_agents(self) -> dict[str, any]:
     return asyncio.run(_discover_agents(celery_task_id=self.request.id))
 
 
-async def _run_single_agent_discovery_async(job_id: str) -> dict[str, any]:
-    """
-    Async wrapper for running agent discovery scoped to a single existing job.
-
-    Args:
-        job_id: The job ID to process (scopes discovery to that job's project)
-
-    Returns:
-        Dictionary with overall statistics
-    """
-    return await _discover_agents(job_id=job_id)
-
-
 @celery_app.task(name="agent_discovery.run_agent_discovery", bind=True)
-def run_agent_discovery_task(self, job_id: str) -> dict[str, any]:
+def run_agent_discovery_task(self, job_id: str) -> dict[str, Any]:
     """
     Celery task to run agent discovery for a single job (dispatched by API or reconciler).
 
@@ -939,4 +931,4 @@ def run_agent_discovery_task(self, job_id: str) -> dict[str, any]:
     Returns:
         Dictionary with overall statistics
     """
-    return asyncio.run(_run_single_agent_discovery_async(job_id))
+    return asyncio.run(_discover_agents(job_id=job_id))

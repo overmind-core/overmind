@@ -345,51 +345,38 @@ async def fetch_spans_by_score_buckets(
     Returns:
         Dict mapping bucket names to lists of SpanModels
     """
-    buckets = {
-        "poor": (0.0, 0.2),
-        "below_average": (0.2, 0.4),
-        "average": (0.4, 0.6),
-        "good": (0.6, 0.8),
-        "excellent": (0.8, 1.0),
-    }
+    buckets = [
+        ("poor", 0.0, 0.2, False),
+        ("below_average", 0.2, 0.4, False),
+        ("average", 0.4, 0.6, False),
+        ("good", 0.6, 0.8, False),
+        ("excellent", 0.8, 1.0, True),  # True = inclusive upper bound
+    ]
 
-    results = {}
+    results: dict[str, list[SpanModel]] = {}
 
-    for bucket_name, (lower, upper) in buckets.items():
-        # For the highest bucket, include 1.0
-        if upper == 1.0:
-            result = await session.execute(
-                select(SpanModel)
-                .where(
-                    and_(
-                        SpanModel.prompt_id == prompt_id,
-                        SpanModel.feedback_score.has_key("correctness"),
-                        cast(SpanModel.feedback_score["correctness"], Float) >= lower,
-                        cast(SpanModel.feedback_score["correctness"], Float) <= upper,
-                        SpanModel.exclude_system_spans(),
-                    )
+    for bucket_name, lower, upper, inclusive_upper in buckets:
+        upper_filter = (
+            cast(SpanModel.feedback_score["correctness"], Float) <= upper
+            if inclusive_upper
+            else cast(SpanModel.feedback_score["correctness"], Float) < upper
+        )
+        result = await session.execute(
+            select(SpanModel)
+            .where(
+                and_(
+                    SpanModel.prompt_id == prompt_id,
+                    SpanModel.feedback_score.has_key("correctness"),
+                    cast(SpanModel.feedback_score["correctness"], Float) >= lower,
+                    upper_filter,
+                    SpanModel.exclude_system_spans(),
                 )
-                .order_by(SpanModel.created_at.desc())
-                .limit(per_bucket)
             )
-        else:
-            result = await session.execute(
-                select(SpanModel)
-                .where(
-                    and_(
-                        SpanModel.prompt_id == prompt_id,
-                        SpanModel.feedback_score.has_key("correctness"),
-                        cast(SpanModel.feedback_score["correctness"], Float) >= lower,
-                        cast(SpanModel.feedback_score["correctness"], Float) < upper,
-                        SpanModel.exclude_system_spans(),
-                    )
-                )
-                .order_by(SpanModel.created_at.desc())
-                .limit(per_bucket)
-            )
-
-        spans = result.scalars().all()
-        results[bucket_name] = list(spans)
+            .order_by(SpanModel.created_at.desc())
+            .limit(per_bucket)
+        )
+        spans = list(result.scalars().all())
+        results[bucket_name] = spans
         logger.info(
             f"Fetched {len(spans)} spans for bucket '{bucket_name}' [{lower:.1f}-{upper:.1f}]"
         )
@@ -870,6 +857,9 @@ async def create_prompt_version(
     return new_prompt
 
 
+_MAX_CONCURRENT_OUTPUT_GENERATIONS = 10
+
+
 async def generate_outputs_with_new_prompt(
     new_prompt: Any,
     old_spans: list[SpanModel],
@@ -889,6 +879,10 @@ async def generate_outputs_with_new_prompt(
     4. Handles model responses that contain tool calls instead of plain text
        by serialising them to JSON.
 
+    LLM calls are fanned out concurrently (bounded by
+    ``_MAX_CONCURRENT_OUTPUT_GENERATIONS``) via ``asyncio.gather`` so that
+    all spans are processed in parallel rather than sequentially.
+
     Args:
         new_prompt: Any object with a ``.prompt`` attribute containing the
             prompt template text (``Prompt`` model or lightweight stand-in).
@@ -896,12 +890,13 @@ async def generate_outputs_with_new_prompt(
 
     Returns:
         List of dicts with new output, latency, cost, and old_span_id
+        (order matches ``old_spans``).
     """
     from overmind.tasks.agentic_span_processor import _safe_parse_json
 
-    results = []
+    semaphore = asyncio.Semaphore(_MAX_CONCURRENT_OUTPUT_GENERATIONS)
 
-    for old_span in old_spans:
+    async def _generate_one(old_span: SpanModel) -> dict[str, Any]:
         try:
             # Get the model used by the old span, stripping date suffixes
             # so LiteLLM can resolve it (e.g. gpt-5-mini-2025-08-07 → gpt-5-mini)
@@ -963,45 +958,46 @@ async def generate_outputs_with_new_prompt(
                 # Fallback for non-list inputs: send as a plain user message
                 call_messages = None
 
-            response, stats = call_llm(
-                input_text=formatted_new_prompt,  # used only when call_messages is None
-                system_prompt=None,
-                model=model,
-                messages=call_messages,
-                tools=tools if tools else None,
-            )
+            async with semaphore:
+                response, stats = await asyncio.to_thread(
+                    call_llm,
+                    input_text=formatted_new_prompt,  # used only when call_messages is None
+                    system_prompt=None,
+                    model=model,
+                    messages=call_messages,
+                    tools=tools if tools else None,
+                )
 
             response = normalize_llm_response_output(response)
-
-            results.append(
-                {
-                    "old_span_id": old_span.span_id,
-                    "input": old_span.input or {},
-                    "input_params": old_span.input_params or {},
-                    "metadata": old_span.metadata_attributes or {},
-                    "output": response,
-                    "latency_ms": stats["response_ms"],
-                    "cost": stats["response_cost"],
-                    "prompt_tokens": stats["prompt_tokens"],
-                    "completion_tokens": stats["completion_tokens"],
-                    "old_span_trace_id": old_span.trace_id,
-                    "model": model,
-                    "available_tools": tools,
-                }
-            )
 
             logger.info(
                 f"Generated output for old span {old_span.span_id} using model {model}: "
                 f"latency={stats['response_ms']}ms, cost=${stats['response_cost']:.6f}"
             )
 
+            return {
+                "old_span_id": old_span.span_id,
+                "input": old_span.input or {},
+                "input_params": old_span.input_params or {},
+                "metadata": old_span.metadata_attributes or {},
+                "output": response,
+                "latency_ms": stats["response_ms"],
+                "cost": stats["response_cost"],
+                "prompt_tokens": stats["prompt_tokens"],
+                "completion_tokens": stats["completion_tokens"],
+                "old_span_trace_id": old_span.trace_id,
+                "model": model,
+                "available_tools": tools,
+            }
+
         except Exception as exc:
             logger.error(
                 f"Failed to generate output for span {old_span.span_id}: {exc}"
             )
-            results.append({"old_span_id": old_span.span_id, "error": str(exc)})
+            return {"old_span_id": old_span.span_id, "error": str(exc)}
 
-    return results
+    results = await asyncio.gather(*[_generate_one(span) for span in old_spans])
+    return list(results)
 
 
 async def create_comparison_spans(
@@ -1057,7 +1053,8 @@ async def create_comparison_spans(
             # Use pre-computed score when available, otherwise evaluate via LLM
             correctness_value = result.get("correctness_score")
             if correctness_value is None:
-                correctness_value = _evaluate_correctness_with_llm(
+                score, _reason = await asyncio.to_thread(
+                    _evaluate_correctness_with_llm,
                     input_data=result["input"],
                     output_data=result["output"],
                     criteria_text=criteria_text,
@@ -1065,6 +1062,7 @@ async def create_comparison_spans(
                     agent_description=agent_description,
                     span_metadata=result.get("metadata", {}),
                 )
+                correctness_value = score
 
             # Create new span
             new_span_id = str(uuid.uuid4())
@@ -1649,22 +1647,33 @@ async def _execute_prompt_improvement(
         criteria_rules = prompt.evaluation_criteria["correctness"]
         criteria_text = _format_criteria(criteria_rules)
 
-        for result in successful_results:
-            try:
-                score = _evaluate_correctness_with_llm(
-                    input_data=result["input"],
-                    output_data=result["output"],
-                    criteria_text=criteria_text,
-                    project_description=project_description,
-                    agent_description=agent_description,
-                    span_metadata=result.get("metadata", {}),
-                )
-                result["correctness_score"] = score
-            except Exception as eval_exc:
-                logger.error(
-                    f"Failed to score output for span {result.get('old_span_id')}: {eval_exc}"
-                )
-                result["correctness_score"] = None
+        score_semaphore = asyncio.Semaphore(_MAX_CONCURRENT_OUTPUT_GENERATIONS)
+
+        async def _score_one(result: dict[str, Any]) -> dict[str, Any]:
+            async with score_semaphore:
+                try:
+                    score, _reason = await asyncio.to_thread(
+                        _evaluate_correctness_with_llm,
+                        input_data=result["input"],
+                        output_data=result["output"],
+                        criteria_text=criteria_text,
+                        project_description=project_description,
+                        agent_description=agent_description,
+                        span_metadata=result.get("metadata", {}),
+                    )
+                    return {**result, "correctness_score": score}
+                except Exception as eval_exc:
+                    logger.error(
+                        f"Failed to score output for span {result.get('old_span_id')}: {eval_exc}"
+                    )
+                    return {**result, "correctness_score": None}
+
+        scored_results_raw = await asyncio.gather(
+            *[_score_one(r) for r in successful_results]
+        )
+        # Update successful_results in-place so downstream code (comparison spans) sees scores
+        for i, updated in enumerate(scored_results_raw):
+            successful_results[i] = updated
 
         scored_results = [
             r for r in successful_results if r.get("correctness_score") is not None
