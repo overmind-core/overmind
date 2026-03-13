@@ -68,13 +68,13 @@ export const transformSpan = (span: SpanResponseModel): SpanRow => {
     endTimeUnixNano: span.endTimeUnixNano,
     events: span.events ?? [],
     feedbackScores: feedbackScore,
-    inputs: span.inputs ?? null,
+    inputs: span.inputs ?? span.spanAttributes?.["traceloop.entity.input"] ?? null,
     judgeScore:
       (feedbackScore?.judge_feedback as { rating: "up" | "down"; text: string | null }) ??
       undefined,
     links: span.links ?? [],
     name: span.name ?? "",
-    outputs: span.outputs ?? null,
+    outputs: span.outputs ?? span.spanAttributes?.["traceloop.entity.output"] ?? null,
     parentSpanId: span.parentSpanId ?? null,
     policyOutcome: span.policyOutcome ?? null,
     resourceAttributes: span.resourceAttributes ?? {},
@@ -103,12 +103,12 @@ export function useTracesList(params: FetchTracesParams) {
   return useQuery({
     queryFn: async () => {
       const data = await apiClient.traces.listTracesApiV1TracesListGet({
-        filter,
         limit,
         offset,
         projectId: project_id,
         promptSlug,
         promptVersion,
+        query: filter,
         rootOnly: root_only,
         startTimestamp: new Date(getTimeRangeStartTimestamp(timeRange)),
       });
