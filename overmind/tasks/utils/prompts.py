@@ -545,7 +545,7 @@ CRITERIA_UPDATE_PROMPT = """You are updating the evaluation criteria for an LLM 
 - Each rule should be clear, specific, and actionable
 - Focus on accuracy, completeness, relevance, logical consistency, and domain-specific requirements
 - Use the project context and examples to ensure rules are grounded in the actual agent behavior
-- There is no limit on the number of rules - include as many as needed to properly evaluate the agent
+- Generate at most 5 rules - prioritise the most impactful ones if more would be needed
 </Instructions>
 
 Return JSON in this exact format:

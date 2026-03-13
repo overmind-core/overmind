@@ -86,6 +86,7 @@ class GenerateCriteriaResponse(BaseModel):
 
 class SuggestCriteriaRequest(BaseModel):
     user_instructions: str
+    current_criteria: dict[str, list[str]]
 
 
 class SuggestCriteriaResponse(BaseModel):
@@ -587,8 +588,8 @@ async def suggest_prompt_criteria(
     )
     agentic_note = AGENTIC_NOTE_FOR_CRITERIA if has_agentic_spans else ""
 
-    # Format current criteria as readable text
-    current_criteria = prompt.evaluation_criteria or {}
+    # Use criteria from the request — always reflects the user's current in-progress edits
+    current_criteria = request.current_criteria
     current_criteria_text = (
         "\n".join(
             f"{metric}:\n" + "\n".join(f"  - {rule}" for rule in rules)
@@ -624,7 +625,7 @@ async def suggest_prompt_criteria(
             detail="Invalid criteria format received from LLM",
         )
 
-    suggested_criteria = {"correctness": result_data["correctness"]}
+    suggested_criteria = {"correctness": result_data["correctness"][:5]}
 
     return SuggestCriteriaResponse(
         suggested_criteria=suggested_criteria,

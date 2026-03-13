@@ -25,6 +25,12 @@ export interface SuggestCriteriaRequest {
      * @memberof SuggestCriteriaRequest
      */
     userInstructions: string;
+    /**
+     * 
+     * @type {{ [key: string]: Array<string>; }}
+     * @memberof SuggestCriteriaRequest
+     */
+    currentCriteria: { [key: string]: Array<string>; };
 }
 
 /**
@@ -32,6 +38,7 @@ export interface SuggestCriteriaRequest {
  */
 export function instanceOfSuggestCriteriaRequest(value: object): value is SuggestCriteriaRequest {
     if (!('userInstructions' in value) || value['userInstructions'] === undefined) return false;
+    if (!('currentCriteria' in value) || value['currentCriteria'] === undefined) return false;
     return true;
 }
 
@@ -46,6 +53,7 @@ export function SuggestCriteriaRequestFromJSONTyped(json: any, ignoreDiscriminat
     return {
         
         'userInstructions': json['user_instructions'],
+        'currentCriteria': json['current_criteria'],
     };
 }
 
@@ -61,6 +69,7 @@ export function SuggestCriteriaRequestToJSONTyped(value?: SuggestCriteriaRequest
     return {
         
         'user_instructions': value['userInstructions'],
+        'current_criteria': value['currentCriteria'],
     };
 }
 
