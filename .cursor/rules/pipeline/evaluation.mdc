@@ -167,6 +167,19 @@ When `_evaluate_correctness_with_llm` raises `ValueError` (malformed LLM respons
 - `SpanFeedbackDialog` (agent review): `ScoreChip` component renders a destructive "Eval error" pill with the message in a tooltip when `correctnessError` is set
 - API model `SpanForReview` and TS type both expose `correctness_error`
 
+## Judge Calibration with Reference Examples
+
+When a prompt has spans with `feedback_score.reference_output` from previous scored evaluations, up to 3 recent examples are pre-fetched per prompt and included in the judge prompt as a `<ReferenceExamples>` calibration section.
+
+**Key properties:**
+- Per-prompt, not per-span — every span for the same prompt sees the same calibration examples, ensuring consistent scoring
+- Only uses spans that are ALREADY scored (have both `reference_output` AND `correctness`) — never the span currently being evaluated
+- Pre-fetched by `_prefetch_reference_examples()` alongside `_prefetch_prompt_contexts()` before the evaluation fan-out
+- Passed through `_evaluate_span_correctness()` → `_evaluate_correctness_with_llm()` → injected as `{reference_examples_section}` in all four judge prompt templates
+- When no reference examples exist for a prompt, `reference_examples_section` is an empty string and the judge prompt renders without the section
+
+**Important:** Reference outputs are NOT used in the judge when they exist on the span being scored — only cross-span calibration examples are used.
+
 ## When Modifying This Area
 
 - Adding a new evaluation type requires: a new judge prompt pair in `overmind/tasks/utils/prompts.py`, routing logic in `_evaluate_correctness_with_llm`, and possibly a new extractor in `agentic_span_processor.py`
