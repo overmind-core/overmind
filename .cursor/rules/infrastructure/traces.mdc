@@ -75,7 +75,10 @@ OTLP span attributes use OpenTelemetry semantic conventions:
 | `gen_ai.usage.prompt_tokens`                              | `output_params.prompt_tokens`                  |
 | `gen_ai.usage.completion_tokens`                          | `output_params.completion_tokens`              |
 | `llm.tools.N.*`                                           | `metadata_attributes.tools` (tool definitions) |
+| `overmind.reference_output`                               | `feedback_score.reference_output` (NOT `metadata_attributes`) — stored as `{"content": value, "source": "sdk"}` |
 | Everything else                                           | `metadata_attributes`                          |
+
+> **Note:** The `overmind.reference_output` attribute is special: it is popped from span attributes before `metadata_attributes` is built, and stored directly in `feedback_score.reference_output`. This ensures ground-truth reference data is co-located with other evaluation signals and never appears in `metadata_attributes`.
 
 ### Tool call extraction
 
