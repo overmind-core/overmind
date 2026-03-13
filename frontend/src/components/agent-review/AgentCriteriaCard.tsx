@@ -66,11 +66,11 @@ export function AgentCriteriaCard({ agentSlug, promptId, projectId }: Props) {
   const hasMultipleMetrics = metrics.length > 1;
 
   function goToPrev() {
-    setMetricIndex((i) => (i - 1 + Math.max(metrics.length, 1)) % Math.max(metrics.length, 1));
+    setMetricIndex((i) => (i - 1 + metrics.length) % metrics.length);
   }
 
   function goToNext() {
-    setMetricIndex((i) => (i + 1) % Math.max(metrics.length, 1));
+    setMetricIndex((i) => (i + 1) % metrics.length);
   }
 
   const saveMutation = useMutation({

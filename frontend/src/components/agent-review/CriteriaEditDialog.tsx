@@ -158,7 +158,12 @@ function LiveDiff({
 // ─── Main dialog ─────────────────────────────────────────────────────────────
 
 export function CriteriaEditDialog({ isOpen, onClose, savedCriteria, promptId, onSave }: Props) {
-  const savedRules = Object.values(savedCriteria).flat();
+  // This dialog edits one metric at a time (the first/primary one).
+  // Other metrics are preserved untouched on save — see handleSave.
+  // Safety: component is conditionally rendered ({showEditDialog && <CriteriaEditDialog/>})
+  // so workingRules is always freshly initialised from savedCriteria on each open.
+  const primaryMetric = Object.keys(savedCriteria)[0] ?? "correctness";
+  const savedRules = savedCriteria[primaryMetric] ?? [];
 
   const [workingRules, setWorkingRules] = useState<string[]>(savedRules);
   const [newRule, setNewRule] = useState("");
@@ -212,9 +217,9 @@ export function CriteriaEditDialog({ isOpen, onClose, savedCriteria, promptId, o
         await apiClient.prompts.suggestPromptCriteriaApiV1PromptsPromptIdCriteriaSuggestPost({
           promptId,
           suggestCriteriaRequest: {
-            // Send the current working rules so the LLM builds on the user's
-            // in-progress manual edits, not the stale DB version
-            currentCriteria: { correctness: workingRules.filter(Boolean) },
+            // Merge working rules back under the primary metric key so the LLM
+            // sees the user's in-progress edits. Other metrics are preserved as-is.
+            currentCriteria: { ...savedCriteria, [primaryMetric]: workingRules.filter(Boolean) },
             userInstructions: combinedInstructions,
           },
         });
@@ -233,8 +238,8 @@ export function CriteriaEditDialog({ isOpen, onClose, savedCriteria, promptId, o
   // ── Save ──
 
   function handleSave() {
-    const metric = Object.keys(savedCriteria)[0] ?? "correctness";
-    onSave({ [metric]: workingRules.filter(Boolean) });
+    // Preserve all metrics from savedCriteria; only replace the primary one being edited.
+    onSave({ ...savedCriteria, [primaryMetric]: workingRules.filter(Boolean) });
     handleClose();
   }
 

@@ -568,9 +568,22 @@ async def suggest_prompt_criteria(
             detail="Access denied: User is not a member of this project",
         )
 
-    # Fetch spans and project context
-    spans = await _get_spans_for_prompt(prompt_id, limit=10)
-    project_description = await _get_project_description(project_uuid)
+    # Fetch spans and project context — failures are non-fatal; degrade gracefully
+    try:
+        spans = await _get_spans_for_prompt(prompt_id, limit=10)
+    except Exception:
+        logger.exception(
+            f"Failed to fetch spans for prompt {prompt_id} during criteria suggest"
+        )
+        spans = []
+
+    try:
+        project_description = await _get_project_description(project_uuid)
+    except Exception:
+        logger.exception(
+            f"Failed to fetch project description for {project_uuid} during criteria suggest"
+        )
+        project_description = "No project description available."
 
     # Detect agentic spans
     has_agentic_spans = any(
@@ -624,7 +637,9 @@ async def suggest_prompt_criteria(
             detail="Invalid criteria format received from LLM",
         )
 
-    suggested_criteria = {"correctness": result_data["correctness"][:5]}
+    # Preserve the primary metric key from the request rather than hardcoding "correctness"
+    primary_metric = next(iter(current_criteria), "correctness")
+    suggested_criteria = {primary_metric: result_data["correctness"][:5]}
 
     return SuggestCriteriaResponse(suggested_criteria=suggested_criteria)
 
