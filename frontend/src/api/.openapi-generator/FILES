@@ -19,6 +19,8 @@ apis/TracesApi.ts
 apis/UserRolesApi.ts
 apis/UsersApi.ts
 apis/index.ts
+docs/AcceptVersionRequest.md
+docs/AcceptVersionResponse.md
 docs/AgentAnalytics.md
 docs/AgentDescriptionUpdateRequest.md
 docs/AgentDetailOut.md
@@ -34,8 +36,6 @@ docs/AuthenticationApi.md
 docs/BacktestingApi.md
 docs/BacktestingRequest.md
 docs/BacktestingResponse.md
-docs/ChangePasswordRequest.md
-docs/CoreUserModel.md
 docs/CreateProjectRequest.md
 docs/CreatePromptRequest.md
 docs/CreateTokenRequest.md
@@ -56,11 +56,10 @@ docs/JobType.md
 docs/JobUpdateRequest.md
 docs/JobsApi.md
 docs/LocationInner.md
-docs/LoginRequest.md
+docs/LoginResponse.md
 docs/ModelInfo.md
 docs/OauthApi.md
 docs/OnboardingApi.md
-docs/OvermindApiV1EndpointsIamUsersLoginResponse.md
 docs/PaginatedResponse.md
 docs/ProjectListResponse.md
 docs/ProjectResponse.md
@@ -69,6 +68,8 @@ docs/PromptDetail.md
 docs/PromptResponse.md
 docs/PromptVersionOut.md
 docs/PromptsApi.md
+docs/RejectVersionRequest.md
+docs/RejectVersionResponse.md
 docs/ReviewFailedRequest.md
 docs/RoleListResponse.md
 docs/RoleResponse.md
@@ -78,7 +79,6 @@ docs/SpanFeedbackRequest.md
 docs/SpanForReview.md
 docs/SpanResponseModel.md
 docs/SpansApi.md
-docs/SrcApiV1EndpointsIamUsersLoginResponse.md
 docs/Suggestion.md
 docs/SuggestionDetailOut.md
 docs/SuggestionFeedbackRequest.md
@@ -109,6 +109,8 @@ docs/UserRolesApi.md
 docs/UsersApi.md
 docs/ValidationError.md
 index.ts
+models/AcceptVersionRequest.ts
+models/AcceptVersionResponse.ts
 models/AgentAnalytics.ts
 models/AgentDescriptionUpdateRequest.ts
 models/AgentDetailOut.ts
@@ -120,8 +122,6 @@ models/AssignUserRoleRequest.ts
 models/AuthenticateTokenResponse.ts
 models/BacktestingRequest.ts
 models/BacktestingResponse.ts
-models/ChangePasswordRequest.ts
-models/CoreUserModel.ts
 models/CreateProjectRequest.ts
 models/CreatePromptRequest.ts
 models/CreateTokenRequest.ts
@@ -138,15 +138,16 @@ models/JobStatus.ts
 models/JobType.ts
 models/JobUpdateRequest.ts
 models/LocationInner.ts
-models/LoginRequest.ts
+models/LoginResponse.ts
 models/ModelInfo.ts
-models/OvermindApiV1EndpointsIamUsersLoginResponse.ts
 models/PaginatedResponse.ts
 models/ProjectListResponse.ts
 models/ProjectResponse.ts
 models/PromptDetail.ts
 models/PromptResponse.ts
 models/PromptVersionOut.ts
+models/RejectVersionRequest.ts
+models/RejectVersionResponse.ts
 models/ReviewFailedRequest.ts
 models/RoleListResponse.ts
 models/RoleResponse.ts
@@ -154,7 +155,6 @@ models/RoleScope.ts
 models/SpanFeedbackRequest.ts
 models/SpanForReview.ts
 models/SpanResponseModel.ts
-models/SrcApiV1EndpointsIamUsersLoginResponse.ts
 models/Suggestion.ts
 models/SuggestionDetailOut.ts
 models/SuggestionFeedbackRequest.ts

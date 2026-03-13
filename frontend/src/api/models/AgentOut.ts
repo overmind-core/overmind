@@ -66,7 +66,7 @@ export interface AgentOut {
      */
     version: number;
     /**
-     * Set when a newer version exists but is not yet active; null/undefined otherwise
+     * 
      * @type {number}
      * @memberof AgentOut
      */
