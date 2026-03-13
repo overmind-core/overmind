@@ -15,25 +15,16 @@
 
 import * as runtime from '../runtime';
 import type {
-  ChangePasswordRequest,
   HTTPValidationError,
   ImpersonateRequest,
-  LoginRequest,
-  OvermindApiV1EndpointsIamUsersLoginResponse,
   UserListResponse,
   UserResponse,
 } from '../models/index';
 import {
-    ChangePasswordRequestFromJSON,
-    ChangePasswordRequestToJSON,
     HTTPValidationErrorFromJSON,
     HTTPValidationErrorToJSON,
     ImpersonateRequestFromJSON,
     ImpersonateRequestToJSON,
-    LoginRequestFromJSON,
-    LoginRequestToJSON,
-    OvermindApiV1EndpointsIamUsersLoginResponseFromJSON,
-    OvermindApiV1EndpointsIamUsersLoginResponseToJSON,
     UserListResponseFromJSON,
     UserListResponseToJSON,
     UserResponseFromJSON,
@@ -45,20 +36,12 @@ export interface AddUserToProjectApiV1IamUsersProjectsProjectIdUsersUserIdPostRe
     userId: string;
 }
 
-export interface ChangePasswordApiV1IamUsersMePasswordPutRequest {
-    changePasswordRequest: ChangePasswordRequest;
-}
-
 export interface ImpersonateApiV1IamUsersImpersonatePostRequest {
     impersonateRequest: ImpersonateRequest;
 }
 
 export interface ListProjectUsersApiV1IamUsersProjectsProjectIdGetRequest {
     projectId: string;
-}
-
-export interface LoginApiV1IamUsersLoginPostRequest {
-    loginRequest: LoginRequest;
 }
 
 export interface RemoveUserFromProjectApiV1IamUsersProjectsProjectIdUsersUserIdDeleteRequest {
@@ -119,49 +102,6 @@ export class UsersApi extends runtime.BaseAPI {
      */
     async addUserToProjectApiV1IamUsersProjectsProjectIdUsersUserIdPost(requestParameters: AddUserToProjectApiV1IamUsersProjectsProjectIdUsersUserIdPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<any> {
         const response = await this.addUserToProjectApiV1IamUsersProjectsProjectIdUsersUserIdPostRaw(requestParameters, initOverrides);
-        return await response.value();
-    }
-
-    /**
-     * Change Password
-     */
-    async changePasswordApiV1IamUsersMePasswordPutRaw(requestParameters: ChangePasswordApiV1IamUsersMePasswordPutRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<any>> {
-        if (requestParameters['changePasswordRequest'] == null) {
-            throw new runtime.RequiredError(
-                'changePasswordRequest',
-                'Required parameter "changePasswordRequest" was null or undefined when calling changePasswordApiV1IamUsersMePasswordPut().'
-            );
-        }
-
-        const queryParameters: any = {};
-
-        const headerParameters: runtime.HTTPHeaders = {};
-
-        headerParameters['Content-Type'] = 'application/json';
-
-
-        let urlPath = `/api/v1/iam/users/me/password`;
-
-        const response = await this.request({
-            path: urlPath,
-            method: 'PUT',
-            headers: headerParameters,
-            query: queryParameters,
-            body: ChangePasswordRequestToJSON(requestParameters['changePasswordRequest']),
-        }, initOverrides);
-
-        if (this.isJsonMime(response.headers.get('content-type'))) {
-            return new runtime.JSONApiResponse<any>(response);
-        } else {
-            return new runtime.TextApiResponse(response) as any;
-        }
-    }
-
-    /**
-     * Change Password
-     */
-    async changePasswordApiV1IamUsersMePasswordPut(requestParameters: ChangePasswordApiV1IamUsersMePasswordPutRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<any> {
-        const response = await this.changePasswordApiV1IamUsersMePasswordPutRaw(requestParameters, initOverrides);
         return await response.value();
     }
 
@@ -345,45 +285,6 @@ export class UsersApi extends runtime.BaseAPI {
      */
     async listProjectUsersApiV1IamUsersProjectsProjectIdGet(requestParameters: ListProjectUsersApiV1IamUsersProjectsProjectIdGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<UserListResponse> {
         const response = await this.listProjectUsersApiV1IamUsersProjectsProjectIdGetRaw(requestParameters, initOverrides);
-        return await response.value();
-    }
-
-    /**
-     * Login
-     */
-    async loginApiV1IamUsersLoginPostRaw(requestParameters: LoginApiV1IamUsersLoginPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<OvermindApiV1EndpointsIamUsersLoginResponse>> {
-        if (requestParameters['loginRequest'] == null) {
-            throw new runtime.RequiredError(
-                'loginRequest',
-                'Required parameter "loginRequest" was null or undefined when calling loginApiV1IamUsersLoginPost().'
-            );
-        }
-
-        const queryParameters: any = {};
-
-        const headerParameters: runtime.HTTPHeaders = {};
-
-        headerParameters['Content-Type'] = 'application/json';
-
-
-        let urlPath = `/api/v1/iam/users/login`;
-
-        const response = await this.request({
-            path: urlPath,
-            method: 'POST',
-            headers: headerParameters,
-            query: queryParameters,
-            body: LoginRequestToJSON(requestParameters['loginRequest']),
-        }, initOverrides);
-
-        return new runtime.JSONApiResponse(response, (jsonValue) => OvermindApiV1EndpointsIamUsersLoginResponseFromJSON(jsonValue));
-    }
-
-    /**
-     * Login
-     */
-    async loginApiV1IamUsersLoginPost(requestParameters: LoginApiV1IamUsersLoginPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<OvermindApiV1EndpointsIamUsersLoginResponse> {
-        const response = await this.loginApiV1IamUsersLoginPostRaw(requestParameters, initOverrides);
         return await response.value();
     }
 

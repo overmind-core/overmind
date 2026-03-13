@@ -50,7 +50,7 @@ export interface PromptVersionOut {
      */
     hash: string;
     /**
-     * Lifecycle status: active | pending | superseded | rejected
+     * 
      * @type {string}
      * @memberof PromptVersionOut
      */

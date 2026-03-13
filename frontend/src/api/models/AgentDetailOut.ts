@@ -73,13 +73,13 @@ export interface AgentDetailOut {
      */
     latestVersion: number;
     /**
-     * The version number currently marked as active (is_active=True in DB)
+     * 
      * @type {number}
      * @memberof AgentDetailOut
      */
     activeVersion: number;
     /**
-     * Set when a new tuning-generated version is pending acceptance; null otherwise
+     * 
      * @type {number}
      * @memberof AgentDetailOut
      */
