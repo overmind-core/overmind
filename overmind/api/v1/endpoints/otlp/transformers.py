@@ -432,9 +432,6 @@ def tranform_spans_for_postgres(
             safe_int(span_attributes.get("gen_ai.usage.output_tokens", 0)),
         )
 
-        # Extract reference_output if provided by the SDK (must happen before metadata_with_flags is built)
-        reference_output_value = span_attributes.pop("overmind.reference_output", None)
-
         # Add agentic flag, response_type, and cost to metadata
         metadata_with_flags = {
             **span_attributes,
@@ -443,13 +440,6 @@ def tranform_spans_for_postgres(
             **tool_type_metadata,
             "cost": cost,
         }
-
-        initial_feedback_score: dict = {}
-        if reference_output_value:
-            initial_feedback_score["reference_output"] = {
-                "content": reference_output_value,
-                "source": "sdk",
-            }
 
         span_model = SpanModel(
             parent_span_id=span.get("ParentSpanId") or None,
@@ -464,7 +454,7 @@ def tranform_spans_for_postgres(
             output=span_outputs,
             status_code=span.get("StatusCode", 0),
             metadata_attributes=metadata_with_flags,
-            feedback_score=initial_feedback_score,
+            feedback_score={},
             created_at=datetime.now(timezone.utc),
         )
         span_models.append(span_model)

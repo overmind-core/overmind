@@ -37,8 +37,6 @@ CORRECTNESS_PROMPT_TEMPLATE = """You are an expert data labeler evaluating model
 
 {agent_context}
 
-{reference_examples_section}
-
 <Rubric>
   A correct answer:
   - Provides accurate and complete information
@@ -61,7 +59,6 @@ CORRECTNESS_PROMPT_TEMPLATE = """You are an expert data labeler evaluating model
   - Check for factual accuracy and completeness
   - Focus on correctness of information rather than style or verbosity
   - Consider the project and agent context when evaluating
-  - If reference examples are provided above, use them to calibrate your scoring — they show what correct outputs look like for this specific agent
 </Instructions>
 
 <Reminder>
@@ -104,8 +101,6 @@ Your job is to assess whether the final answer is correct based on:
 DO NOT penalize the agent for tool calls themselves - they are means to an end.
 DO penalize if the agent misinterprets tool results or provides an incorrect final answer.
 </EvaluationScope>
-
-{reference_examples_section}
 
 <OriginalQuery>
 {original_query}
@@ -158,7 +153,6 @@ Additional specific criteria for this task:
 2. Examine the intermediate steps to see what information the agent gathered
 3. Evaluate whether the final output correctly uses and synthesizes that information
 4. Assign a score from 0 to 1 based on correctness of the final output
-5. If reference examples are provided above, use them to calibrate your understanding of what correct final outputs look like for this agent
 </Instructions>
 
 <Reminder>
@@ -201,8 +195,6 @@ TOOL_CALL_CORRECTNESS_PROMPT_TEMPLATE = """You are an expert evaluator assessing
 <UserQuery>
 {user_query}
 </UserQuery>
-
-{reference_examples_section}
 
 <ConversationHistory>
 Full conversation history leading up to this tool call (includes any prior tool interactions and context):
@@ -255,7 +247,6 @@ Penalize for:
 4. Verify that arguments are well-formed and match the user's intent
 5. Check completeness  -  did the model make all necessary calls?
 6. Score from 0 to 1 based on tool selection and argument quality
-- If reference examples are provided, use them to calibrate your understanding of correct tool selection for this agent
 </Instructions>
 """
 
@@ -268,8 +259,6 @@ IMPORTANT: Your job is to evaluate whether the final answer faithfully and compl
 <OriginalUserQuery>
 {user_query}
 </OriginalUserQuery>
-
-{reference_examples_section}
 
 <ConversationFlow>
 Full conversation history showing all tool calls made, tool responses received, and surrounding context:
@@ -309,7 +298,6 @@ Penalize for:
 4. Check that ALL queried items are addressed in the answer
 5. Verify no information was fabricated beyond what tools provided
 6. Score from 0 to 1 based on faithfulness and completeness
-- If reference examples are provided, use them to calibrate your scoring of final answers for this agent
 </Instructions>
 """
 
@@ -759,11 +747,7 @@ AGENT_DESCRIPTION_UPDATE_FROM_FEEDBACK_PROMPT = """Based on the following contex
 - Start with 1 sentence summarising what this agent does
 - Add a "Good responses" paragraph: describe the concrete qualities of a strong response, drawn from positive feedback and well-rated examples (e.g. "include supporting context", "acknowledge uncertainty where relevant")
 - Add a "Bad responses" paragraph: describe the concrete failure patterns drawn from negative feedback (e.g. "provide only a bare factual answer with no explanation", "omit caveats on uncertain claims")
-- The examples may contain three types of user signal — use all of them:
-  1. "Judge Feedback" — the user correcting the automated judge's score; use this to understand where scoring was miscalibrated and what the agent is actually expected to do
-  2. "Agent Output Feedback" — the user rating the agent's output quality directly; use this to identify concrete failure patterns and success qualities
-  3. "Expected Correct Output" — a reference answer showing what the agent should have produced; compare it against the actual output to extract specific quality patterns
-- Be specific — anchor every quality or failure pattern to something observed in the examples, not generic platitudes
+- Be specific — anchor every quality or failure pattern to something observed in the feedback, not generic platitudes
 - Total length: 4-8 sentences maximum
 - Use plain descriptive language ONLY. Do NOT include numeric scores, scoring instructions, or directives like "MUST SCORE LOW". The description should describe behaviour, not prescribe scores.
 </Instructions>

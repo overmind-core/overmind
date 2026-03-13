@@ -102,12 +102,6 @@ Falls back to Anthropic if provider is unknown. Defined in `overmind/tasks/utils
 
 ## Key Functions
 
-### User Signal Prioritization
-
-`fetch_spans_by_score_buckets` fetches `per_bucket * 2` spans per bucket and prioritizes spans with user signals (checked via `_has_user_signal()`): `agent_feedback`, `judge_feedback`, or `reference_output`. Signal spans appear first within each bucket, then non-signal spans, capped back to `per_bucket`.
-
-`_format_span_examples_text` includes `reference_output` as `"Expected correct output: ..."` alongside the existing `agent_feedback` display, giving the improvement LLM concrete "actual vs expected" pairs.
-
 | Function                                                                         | Purpose                                     |
 | -------------------------------------------------------------------------------- | ------------------------------------------- |
 | `generate_improvement_suggestions(poor_spans, prompt, project_desc, agent_desc)` | Generate 3–5 suggestions from poor spans    |

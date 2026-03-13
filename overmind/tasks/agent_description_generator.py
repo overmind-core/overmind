@@ -74,30 +74,9 @@ async def _format_spans_as_examples(
                     rating = judge_fb.get("rating", "unknown")
                     text = judge_fb.get("text", "").strip()
                     if text:
-                        feedback_section = f"\nJudge Feedback: {rating} - {text}"
+                        feedback_section = f"\nUser Feedback: {rating} - {text}"
                     else:
-                        feedback_section = f"\nJudge Feedback: {rating}"
-
-                agent_fb = (span.feedback_score or {}).get("agent_feedback")
-                if agent_fb and isinstance(agent_fb, dict):
-                    rating = agent_fb.get("rating", "unknown")
-                    text = agent_fb.get("text", "").strip()
-                    if text:
-                        feedback_section += (
-                            f"\nAgent Output Feedback: {rating} - {text}"
-                        )
-                    else:
-                        feedback_section += f"\nAgent Output Feedback: {rating}"
-
-                ref_output = (span.feedback_score or {}).get("reference_output")
-                if (
-                    ref_output
-                    and isinstance(ref_output, dict)
-                    and ref_output.get("content")
-                ):
-                    feedback_section += (
-                        f"\nExpected Correct Output: {ref_output['content']}"
-                    )
+                        feedback_section = f"\nUser Feedback: {rating}"
 
         example = f"""
 Example {i}:
@@ -379,6 +358,7 @@ async def update_agent_description_from_feedback(
         prompt.agent_description = {
             **agent_desc_data,
             "description": new_description,
+            "feedback_history": agent_desc_data.get("feedback_history", []),
         }
         flag_modified(prompt, "agent_description")
 

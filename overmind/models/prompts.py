@@ -58,17 +58,15 @@ class Prompt(Base):
     # }
     improvement_metadata = Column(JSONB, nullable=True)
 
-    # Agent description and review state
+    # Agent description and feedback history
     # Format: {
     #   "description": "Agent does X...",
-    #   "initial_review_completed": true,
+    #   "feedback_history": [
+    #     {"span_id": "...", "feedback": "positive/negative", "timestamp": "..."}
+    #   ],
     #   "last_review_span_count": 10,
-    #   "next_review_span_count": 100,
-    #   "feedback_watermark": "2026-03-11T10:00:00Z",
-    #   "reference_output_watermark": "2026-03-11T10:00:00Z"
+    #   "next_review_span_count": 100
     # }
-    # feedback_watermark: ISO timestamp of latest consumed agent_feedback/judge_feedback signal
-    # reference_output_watermark: ISO timestamp of latest consumed reference_output span
     agent_description = Column(JSONB, nullable=True)
 
     # LLM-generated model recommendations based on agent description.

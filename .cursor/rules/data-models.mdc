@@ -72,8 +72,9 @@ The central entity — represents a discovered or user-defined prompt template.
   "initial_review_completed": true,
   "last_review_span_count": 10,
   "next_review_span_count": 100,
-  "feedback_watermark": "2026-03-11T10:00:00Z",
-  "reference_output_watermark": "2026-03-11T10:00:00Z"
+  "feedback_history": [
+    {"span_id": "...", "feedback": "positive", "timestamp": "..."}
+  ]
 }
 ```
 
@@ -83,8 +84,7 @@ The central entity — represents a discovered or user-defined prompt template.
 | `initial_review_completed` | `POST /agent-reviews/{slug}/mark-initial-review-complete` | User completed the initial review — gates prompt tuning and backtesting |
 | `last_review_span_count` | Periodic reviews task | Span count at the time of last review |
 | `next_review_span_count` | Periodic reviews task | Span count threshold for next scheduled review |
-| `feedback_watermark` | Feedback processor | ISO timestamp of latest consumed `agent_feedback`/`judge_feedback` signal — prevents reprocessing |
-| `reference_output_watermark` | Feedback processor | ISO timestamp of latest consumed `reference_output` span — prevents reprocessing |
+| `feedback_history` | Agent description generator / review flow | User feedback entries on individual spans |
 
 ### JSONB: `backtest_model_suggestions`
 
@@ -177,11 +177,8 @@ Individual LLM call or step within a trace.
 ```json
 {
   "correctness": 0.85,
-  "correctness_reason": "...",
-  "correctness_error": "...",
-  "agent_feedback": {"rating": "up", "text": "Good answer", "given_at": "2026-03-11T12:00:00Z"},
-  "judge_feedback": {"rating": "down", "text": "Judge was wrong", "given_at": "2026-03-11T12:00:00Z"},
-  "reference_output": {"content": "The expected answer...", "source": "sdk"}
+  "agent_feedback": {"score": 1, "comment": "Good answer"},
+  "judge_feedback": {"score": 0, "comment": "Incorrect"}
 }
 ```
 

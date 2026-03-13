@@ -8,18 +8,6 @@ globs:
 alwaysApply: false
 ---
 
-## Criteria Ownership Policy
-
-Evaluation criteria are **user-controlled only**. No automated process may create, modify, or regenerate criteria. The ONLY valid paths to criteria changes are:
-
-1. `PUT /prompts/criteria` — user edits directly via API/UI
-2. `POST /prompts/criteria/generate` — user explicitly requests LLM generation via API/UI
-3. `ensure_prompt_has_criteria()` — auto-generates ONLY on first discovery when no criteria exist at all
-
-The feedback processor, periodic reviews, and prompt improvement tasks MUST NOT touch criteria under any circumstances. Criteria are the user's scoring contract with the judge. Automated feedback flows into the **agent description** (dynamic domain knowledge), not criteria.
-
----
-
 # Criteria and Description Generation
 
 Three generation tasks that enrich discovered agents with evaluation criteria, natural-language descriptions, and human-readable display names. All are triggered after agent discovery creates a new Prompt.

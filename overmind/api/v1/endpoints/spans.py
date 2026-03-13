@@ -1,6 +1,5 @@
 import logging
 import uuid
-from datetime import datetime, timezone
 from typing import Literal
 from fastapi import APIRouter, Depends, Body, HTTPException, Request
 from pydantic import BaseModel, Field
@@ -89,7 +88,6 @@ async def submit_span_feedback(
     feedback_score[feedback_key] = {
         "rating": body.rating,
         "text": body.text or "",
-        "given_at": datetime.now(timezone.utc).isoformat(),
     }
 
     span_obj.feedback_score = feedback_score
