@@ -23,7 +23,6 @@ import {
 import { CriteriaEditDialog } from "./CriteriaEditDialog";
 
 interface Props {
-  agentSlug: string;
   promptId: string;
   projectId?: string;
 }

@@ -298,11 +298,7 @@ function AgentDetailPage() {
             variant="warning"
           />
         </div>
-        <AgentCriteriaCard
-          agentSlug={agent.slug}
-          projectId={projectId}
-          promptId={activeVersion?.promptId ?? ""}
-        />
+        <AgentCriteriaCard projectId={projectId} promptId={activeVersion?.promptId ?? ""} />
       </div>
 
       {/* Review pending banner */}

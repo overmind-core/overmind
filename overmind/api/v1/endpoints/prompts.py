@@ -25,10 +25,12 @@ from overmind.tasks.agentic_span_processor import detect_agentic_span
 from overmind.tasks.backtesting import invalidate_backtesting_metadata
 from overmind.tasks.criteria_generator import (
     CriteriaResponse,
-    _format_spans_as_examples,
-    _get_project_description,
-    _get_spans_for_prompt,
     generate_criteria_task,
+)
+from overmind.tasks.utils.criteria import (
+    format_spans_as_examples,
+    get_project_description,
+    get_spans_for_prompt,
 )
 from overmind.tasks.prompt_display_name_generator import generate_display_name_task
 from overmind.tasks.prompt_improvement import invalidate_prompt_improvement_metadata
@@ -539,6 +541,9 @@ async def suggest_prompt_criteria(
     Uses the current criteria, project context, recent spans, and user instructions
     to generate a new set of criteria. The suggested criteria are returned but NOT saved —
     the caller decides whether to apply them via PUT /{prompt_id}/criteria.
+
+    Only the primary (first) metric in ``current_criteria`` is updated; all other metrics
+    are intentionally ignored. This matches the frontend which edits one metric at a time.
     """
     try:
         project_id_str, version, slug = Prompt.parse_prompt_id(prompt_id)
@@ -569,7 +574,7 @@ async def suggest_prompt_criteria(
 
     # Fetch spans and project context — failures are non-fatal; degrade gracefully
     try:
-        spans = await _get_spans_for_prompt(prompt_id, limit=10)
+        spans = await get_spans_for_prompt(prompt_id, limit=10)
     except Exception:
         logger.exception(
             f"Failed to fetch spans for prompt {prompt_id} during criteria suggest"
@@ -577,7 +582,7 @@ async def suggest_prompt_criteria(
         spans = []
 
     try:
-        project_description = await _get_project_description(project_uuid)
+        project_description = await get_project_description(project_uuid)
     except Exception:
         logger.exception(
             f"Failed to fetch project description for {project_uuid} during criteria suggest"
@@ -595,15 +600,18 @@ async def suggest_prompt_criteria(
     )
 
     examples_text = (
-        await _format_spans_as_examples(spans) if spans else "No examples available."
+        await format_spans_as_examples(spans) if spans else "No examples available."
     )
     agentic_note = AGENTIC_NOTE_FOR_CRITERIA if has_agentic_spans else ""
 
     # Use criteria from the request — always reflects the user's current in-progress edits.
-    # If the client sends an empty dict, primary_metric defaults to "correctness" and the
-    # prompt will show "No existing criteria." — intentional graceful degradation.
     current_criteria = request.current_criteria
-    primary_metric = next(iter(current_criteria), "correctness")
+    if not current_criteria:
+        raise HTTPException(
+            status_code=422,
+            detail="current_criteria must not be empty — provide at least one metric with its rules.",
+        )
+    primary_metric = next(iter(current_criteria))
     current_criteria_text = (
         "\n".join(
             f"{metric}:\n" + "\n".join(f"  - {rule}" for rule in rules)

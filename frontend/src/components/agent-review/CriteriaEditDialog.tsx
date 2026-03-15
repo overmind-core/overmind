@@ -1,5 +1,5 @@
 import type React from "react";
-import { useRef, useState } from "react";
+import { useState } from "react";
 
 import { diffWordsWithSpace } from "diff";
 import { Loader as Loader2, Plus, Redo, Sparkles, Cancel as Trash2 } from "pixelarticons/react";
@@ -178,10 +178,10 @@ export function CriteriaEditDialog({ isOpen, onClose, savedCriteria, promptId, o
   // AI state
   const [aiInstructions, setAiInstructions] = useState("");
   const [isGeneratingAi, setIsGeneratingAi] = useState(false);
-  const instructionHistoryRef = useRef<string[]>([]);
+  const [instructionHistory, setInstructionHistory] = useState<string[]>([]);
 
   function handleClose() {
-    instructionHistoryRef.current = [];
+    setInstructionHistory([]);
     onClose();
   }
 
@@ -205,7 +205,7 @@ export function CriteriaEditDialog({ isOpen, onClose, savedCriteria, promptId, o
   function handleRestore() {
     setWorkingRules(savedRules.map(makeEntry));
     setNewRule("");
-    instructionHistoryRef.current = [];
+    setInstructionHistory([]);
     setAiInstructions("");
   }
 
@@ -217,7 +217,7 @@ export function CriteriaEditDialog({ isOpen, onClose, savedCriteria, promptId, o
 
     // Keep the last 5 instructions to bound prompt size. Combined string is also
     // hard-capped at 1800 chars to stay safely under the backend max_length=2000.
-    const updatedHistory = [...instructionHistoryRef.current, trimmed].slice(-5);
+    const updatedHistory = [...instructionHistory, trimmed].slice(-5);
     const combined = updatedHistory.join("\n\nFollow-up: ");
     const combinedInstructions = combined.length > 1800 ? combined.slice(-1800) : combined;
 
@@ -238,8 +238,8 @@ export function CriteriaEditDialog({ isOpen, onClose, savedCriteria, promptId, o
         });
 
       const suggested = result.suggestedCriteria as Record<string, string[]>;
-      setWorkingRules(Object.values(suggested).flat().slice(0, 5).map(makeEntry));
-      instructionHistoryRef.current = updatedHistory;
+      setWorkingRules((suggested[primaryMetric] ?? []).slice(0, 5).map(makeEntry));
+      setInstructionHistory(updatedHistory);
       setAiInstructions("");
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Failed to generate criteria.");
@@ -353,15 +353,15 @@ export function CriteriaEditDialog({ isOpen, onClose, savedCriteria, promptId, o
                   }
                 }}
                 placeholder={
-                  instructionHistoryRef.current.length === 0
+                  instructionHistory.length === 0
                     ? "Describe how to update the criteria… (Cmd+Enter to run)"
                     : "Add follow-up instructions… (Cmd+Enter to run)"
                 }
                 value={aiInstructions}
               />
-              {instructionHistoryRef.current.length > 0 && (
+              {instructionHistory.length > 0 && (
                 <ol className="space-y-1">
-                  {instructionHistoryRef.current.map((inst, i) => (
+                  {instructionHistory.map((inst, i) => (
                     <li className="text-xs text-muted-foreground leading-snug" key={i}>
                       <span className="font-semibold">{i + 1}.</span> {inst}
                     </li>
