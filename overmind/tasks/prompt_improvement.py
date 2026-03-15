@@ -996,8 +996,20 @@ async def generate_outputs_with_new_prompt(
             )
             return {"old_span_id": old_span.span_id, "error": str(exc)}
 
-    results = await asyncio.gather(*[_generate_one(span) for span in old_spans])
-    return list(results)
+    raw = await asyncio.gather(
+        *[_generate_one(span) for span in old_spans],
+        return_exceptions=True,
+    )
+    results = []
+    for span, val in zip(old_spans, raw):
+        if isinstance(val, BaseException):
+            logger.error(
+                f"Unexpected exception generating output for span {span.span_id}: {val}"
+            )
+            results.append({"old_span_id": span.span_id, "error": str(val)})
+        else:
+            results.append(val)
+    return results
 
 
 async def create_comparison_spans(
@@ -1014,6 +1026,13 @@ async def create_comparison_spans(
     directly; otherwise the score is evaluated via LLM (requires the prompt to
     carry ``evaluation_criteria``).
 
+    Callers in the main prompt-improvement path always pass pre-computed scores
+    (set by ``_run_prompt_improvement`` before calling this function), so the
+    fallback LLM evaluation branch is only exercised when this function is called
+    directly with unscored results. In that case all evaluations are fanned out
+    concurrently (bounded by ``_MAX_CONCURRENT_OUTPUT_GENERATIONS``) rather than
+    evaluated sequentially.
+
     Args:
         new_prompt: The newly created Prompt
         generation_results: Results from generate_outputs_with_new_prompt
@@ -1025,13 +1044,14 @@ async def create_comparison_spans(
     """
     import uuid
 
-    # Determine whether we need LLM-based evaluation for any result
-    needs_evaluation = any(
-        "correctness_score" not in r for r in generation_results if "error" not in r
-    )
+    # Filter out generation errors upfront
+    valid_results = [r for r in generation_results if "error" not in r]
+
+    # Determine whether any result still needs LLM-based evaluation
+    unscored = [r for r in valid_results if r.get("correctness_score") is None]
 
     criteria_text = None
-    if needs_evaluation:
+    if unscored:
         if (
             not new_prompt.evaluation_criteria
             or "correctness" not in new_prompt.evaluation_criteria
@@ -1043,34 +1063,54 @@ async def create_comparison_spans(
         criteria_rules = new_prompt.evaluation_criteria["correctness"]
         criteria_text = _format_criteria(criteria_rules)
 
+        # Fan out all fallback evaluations concurrently (bounded by semaphore)
+        eval_semaphore = asyncio.Semaphore(_MAX_CONCURRENT_OUTPUT_GENERATIONS)
+
+        async def _eval_one(result: dict[str, Any]) -> float | None:
+            async with eval_semaphore:
+                try:
+                    score, _reason = await asyncio.to_thread(
+                        _evaluate_correctness_with_llm,
+                        input_data=result["input"],
+                        output_data=result["output"],
+                        criteria_text=criteria_text,
+                        project_description=project_description,
+                        agent_description=agent_description,
+                        span_metadata=result.get("metadata", {}),
+                    )
+                    return score
+                except Exception as exc:
+                    logger.error(
+                        f"Failed to evaluate score for span {result.get('old_span_id')}: {exc}"
+                    )
+                    return None
+
+        scores_raw = await asyncio.gather(
+            *[_eval_one(r) for r in unscored],
+            return_exceptions=True,
+        )
+        for result, score_val in zip(unscored, scores_raw):
+            if isinstance(score_val, BaseException):
+                logger.error(
+                    f"Unexpected exception evaluating span {result.get('old_span_id')}: {score_val}"
+                )
+                result["correctness_score"] = None
+            else:
+                result["correctness_score"] = score_val
+
     new_spans = []
 
-    for result in generation_results:
-        if "error" in result:
+    for result in valid_results:
+        correctness_value = result.get("correctness_score")
+        if correctness_value is None:
             continue
 
         try:
-            # Use pre-computed score when available, otherwise evaluate via LLM
-            correctness_value = result.get("correctness_score")
-            if correctness_value is None:
-                score, _reason = await asyncio.to_thread(
-                    _evaluate_correctness_with_llm,
-                    input_data=result["input"],
-                    output_data=result["output"],
-                    criteria_text=criteria_text,
-                    project_description=project_description,
-                    agent_description=agent_description,
-                    span_metadata=result.get("metadata", {}),
-                )
-                correctness_value = score
-
-            # Create new span
             new_span_id = str(uuid.uuid4())
 
-            # Calculate unix nano timestamps
             now = datetime.now(timezone.utc)
             start_time_nano = int(now.timestamp() * 1_000_000_000)
-            end_time_nano = start_time_nano + (result["latency_ms"] * 1_000_000)
+            end_time_nano = start_time_nano + int(result["latency_ms"] * 1_000_000)
 
             new_span = SpanModel(
                 span_id=new_span_id,

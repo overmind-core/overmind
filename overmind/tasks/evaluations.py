@@ -247,6 +247,81 @@ def _extract_span_payload(span: SpanModel) -> dict[str, Any]:
     }
 
 
+async def _bulk_fetch_criteria(
+    prompt_ids: list[str],
+) -> dict[str, dict[str, list[str]] | None]:
+    """Fetch evaluation_criteria for multiple prompt IDs in two queries.
+
+    Phase 1: one IN-query fetches all Prompt rows that already have criteria.
+    Phase 2: for any prompt that is missing criteria, fall back to
+    ``ensure_prompt_has_criteria`` (which will generate them) — these are
+    rare and handled concurrently with ``return_exceptions=True``.
+
+    This avoids opening N independent DB sessions (one per prompt) when the
+    common case is that all prompts already have criteria stored.
+    """
+    from sqlalchemy import tuple_ as sa_tuple
+
+    criteria_by_prompt: dict[str, dict[str, list[str]] | None] = {}
+
+    if not prompt_ids:
+        return criteria_by_prompt
+
+    # Parse all prompt IDs upfront; skip malformed ones
+    parsed: list[tuple[str, UUID, int, str]] = []
+    for pid in prompt_ids:
+        try:
+            project_id_str, version, slug = Prompt.parse_prompt_id(pid)
+            parsed.append((pid, UUID(project_id_str), version, slug))
+        except (ValueError, TypeError) as e:
+            logger.warning(f"Skipping malformed prompt_id {pid}: {e}")
+            criteria_by_prompt[pid] = None
+
+    if not parsed:
+        return criteria_by_prompt
+
+    # Bulk-fetch all Prompt rows in one query
+    prompt_keys = [(p_uuid, ver, sl) for _, p_uuid, ver, sl in parsed]
+    AsyncSessionLocal = get_session_local()
+    async with AsyncSessionLocal() as session:
+        rows = await session.execute(
+            select(Prompt).where(
+                sa_tuple(Prompt.project_id, Prompt.version, Prompt.slug).in_(
+                    prompt_keys
+                )
+            )
+        )
+        prompts_by_key: dict[tuple, Prompt] = {
+            (p.project_id, p.version, p.slug): p for p in rows.scalars().all()
+        }
+
+    # Separate prompts that already have criteria from those that need generation
+    needs_generation: list[str] = []
+    for pid, p_uuid, version, slug in parsed:
+        prompt = prompts_by_key.get((p_uuid, version, slug))
+        if prompt and prompt.evaluation_criteria:
+            criteria_by_prompt[pid] = prompt.evaluation_criteria
+        else:
+            needs_generation.append(pid)
+
+    # Generate criteria for the rare prompts that are missing them (concurrent)
+    if needs_generation:
+        gen_values = await asyncio.gather(
+            *[ensure_prompt_has_criteria(pid) for pid in needs_generation],
+            return_exceptions=True,
+        )
+        for pid, val in zip(needs_generation, gen_values):
+            if isinstance(val, BaseException):
+                logger.warning(
+                    f"Failed to fetch/generate criteria for prompt {pid}: {val}"
+                )
+                criteria_by_prompt[pid] = None
+            else:
+                criteria_by_prompt[pid] = val
+
+    return criteria_by_prompt
+
+
 async def _batch_persist_evaluation_results(
     results: list[dict[str, Any]],
 ) -> list[dict[str, Any]]:
@@ -622,22 +697,13 @@ def evaluate_spans_task(
 
             # Phase 2: pre-fetch criteria + context for every unique prompt so
             # the concurrent fan-out opens zero DB sessions for reads.
-            # Criteria fetches are fanned out concurrently since each call opens
-            # its own session and is independent of the others.
+            # _bulk_fetch_criteria uses one IN-query for the common case (criteria
+            # already exist) and only falls back to per-prompt generation for the
+            # rare prompts that are missing criteria.
             unique_prompt_ids = list(
                 {s.prompt_id for s in spans_by_id.values() if s.prompt_id}
             )
-            criteria_values = await asyncio.gather(
-                *[ensure_prompt_has_criteria(pid) for pid in unique_prompt_ids],
-                return_exceptions=True,
-            )
-            criteria_by_prompt: dict[str, dict[str, list[str]] | None] = {}
-            for pid, val in zip(unique_prompt_ids, criteria_values):
-                if isinstance(val, BaseException):
-                    logger.warning(f"Failed to fetch criteria for prompt {pid}: {val}")
-                    criteria_by_prompt[pid] = None
-                else:
-                    criteria_by_prompt[pid] = val
+            criteria_by_prompt = await _bulk_fetch_criteria(unique_prompt_ids)
 
             context_by_prompt = await _prefetch_prompt_contexts(
                 list(spans_by_id.values())

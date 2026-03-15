@@ -489,27 +489,6 @@ def _generate_recommendations(
 # ---------------------------------------------------------------------------
 
 
-async def _fetch_spans_for_backtesting(prompt_id: str, limit: int) -> list[SpanModel]:
-    """Fetch scored spans for backtesting (excludes system-generated and unscored spans)."""
-    AsyncSessionLocal = get_session_local()
-    async with AsyncSessionLocal() as session:
-        stmt = (
-            select(SpanModel)
-            .where(
-                and_(
-                    SpanModel.prompt_id == prompt_id,
-                    SpanModel.input.isnot(None),
-                    SpanModel.exclude_system_spans(),
-                    SpanModel.feedback_score.has_key("correctness"),
-                )
-            )
-            .order_by(SpanModel.created_at.asc())
-            .limit(limit)
-        )
-        result = await session.execute(stmt)
-        return list(result.scalars().all())
-
-
 async def _get_prompt_criteria(prompt_id: str) -> dict[str, list[str]]:
     """Get the evaluation criteria for a prompt_id.
 
@@ -891,16 +870,18 @@ async def _run_backtesting(
             return_exceptions=True,
         )
 
-        # Separate successful inferences from failures
+        # Separate successful inferences from failures.
+        # all_failures accumulates both Phase A (inference) and Phase B (scoring)
+        # failures so they flow into processed_results as a single flat list.
         inference_results: list[dict[str, Any]] = []
-        inference_failures: list[dict[str, Any]] = []
+        all_failures: list[dict[str, Any]] = []
         for i, res in enumerate(inference_raw):
             m_name, sp, _ = work_items[i]
             if isinstance(res, Exception):
                 logger.error(
                     f"Inference error for {m_name} on span {sp.span_id}: {res}"
                 )
-                inference_failures.append(
+                all_failures.append(
                     {
                         "model_name": m_name,
                         "span_id": sp.span_id,
@@ -918,7 +899,7 @@ async def _run_backtesting(
 
         logger.info(
             f"Phase A complete: {len(inference_results)} inference(s) succeeded, "
-            f"{len(inference_failures)} failed"
+            f"{len(all_failures)} failed"
         )
 
         # ---------------------------------------------------------------
@@ -965,7 +946,7 @@ async def _run_backtesting(
                     f"Scoring error for {item['model_name']} on span "
                     f"{item['span'].span_id}: {res}"
                 )
-                inference_failures.append(
+                all_failures.append(
                     {
                         "model_name": item["model_name"],
                         "span_id": item["span"].span_id,
@@ -1045,7 +1026,7 @@ async def _run_backtesting(
             logger.info(f"Persisted {len(scored_results)} result span(s) in one commit")
 
         # Build the flat processed_results list consumed by aggregation below
-        processed_results: list[dict[str, Any]] = list(inference_failures)
+        processed_results: list[dict[str, Any]] = list(all_failures)
         for idx, item in enumerate(scored_results):
             model_result = item["model_result"]
             processed_results.append(
@@ -1600,9 +1581,9 @@ async def validate_backtesting_eligibility(
                 stats,
             )
 
-    # Check 6: Minimum available spans (for running the backtest itself)
-    # Must match the filter in _fetch_spans_for_backtesting — only scored spans
-    # are eligible so each span has a baseline correctness value to compare against.
+    # Check 6: Minimum available spans (for running the backtest itself).
+    # Only scored spans are eligible so each span has a baseline correctness
+    # value to compare against. Must match the inline query in _run_backtesting.
     available_q = await session.execute(
         select(func.count(SpanModel.span_id)).where(
             and_(
