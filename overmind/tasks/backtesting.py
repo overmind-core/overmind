@@ -714,6 +714,47 @@ async def _run_inference(
     }
 
 
+async def _score_inference(
+    item: dict[str, Any],
+    semaphore: asyncio.Semaphore,
+    criteria_text: str,
+    project_description: str | None,
+    agent_description: str | None,
+) -> dict[str, Any]:
+    """Score one inference result; returns the item with eval fields added.
+
+    Args:
+        item: Inference result dict produced by ``_run_inference``.
+        semaphore: Concurrency limiter shared across all Phase B calls.
+        criteria_text: Formatted correctness criteria string.
+        project_description: Optional project context for the judge.
+        agent_description: Optional agent context for the judge.
+
+    Returns:
+        The same dict with ``eval_score`` and ``eval_reason`` keys added.
+    """
+    model_result = item["model_result"]
+    eval_score = 0.0
+    eval_reason: str | None = None
+
+    if model_result["success"] and model_result.get("output"):
+        async with semaphore:
+            eval_score, eval_reason = await asyncio.wait_for(
+                asyncio.to_thread(
+                    _evaluate_correctness_with_llm,
+                    input_data=item["eval_input_data"],
+                    output_data=item["output_data"],
+                    criteria_text=criteria_text,
+                    project_description=project_description,
+                    agent_description=agent_description,
+                    span_metadata=item["backtest_metadata"],
+                ),
+                timeout=_LLM_CALL_TIMEOUT_S,
+            )
+
+    return {**item, "eval_score": eval_score, "eval_reason": eval_reason}
+
+
 # ---------------------------------------------------------------------------
 # Core backtesting execution
 # ---------------------------------------------------------------------------
@@ -927,31 +968,17 @@ async def _run_backtesting(
         # ---------------------------------------------------------------
         score_semaphore = asyncio.Semaphore(_MAX_CONCURRENT_BACKTESTS)
 
-        async def _score_inference(item: dict[str, Any]) -> dict[str, Any]:
-            """Score one inference result; returns the item with eval fields added."""
-            model_result = item["model_result"]
-            eval_score = 0.0
-            eval_reason: str | None = None
-
-            if model_result["success"] and model_result.get("output"):
-                async with score_semaphore:
-                    eval_score, eval_reason = await asyncio.wait_for(
-                        asyncio.to_thread(
-                            _evaluate_correctness_with_llm,
-                            input_data=item["eval_input_data"],
-                            output_data=item["output_data"],
-                            criteria_text=criteria_text,
-                            project_description=project_description,
-                            agent_description=agent_description,
-                            span_metadata=item["backtest_metadata"],
-                        ),
-                        timeout=_LLM_CALL_TIMEOUT_S,
-                    )
-
-            return {**item, "eval_score": eval_score, "eval_reason": eval_reason}
-
         scored_raw = await asyncio.gather(
-            *[_score_inference(item) for item in inference_results],
+            *[
+                _score_inference(
+                    item,
+                    semaphore=score_semaphore,
+                    criteria_text=criteria_text,
+                    project_description=project_description,
+                    agent_description=agent_description,
+                )
+                for item in inference_results
+            ],
             return_exceptions=True,
         )
 
