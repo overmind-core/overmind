@@ -572,6 +572,20 @@ async def suggest_prompt_criteria(
             detail="Access denied: User is not a member of this project",
         )
 
+    # Validate request body early — before any expensive DB/LLM calls.
+    current_criteria = request.current_criteria
+    if not current_criteria:
+        raise HTTPException(
+            status_code=422,
+            detail="current_criteria must not be empty — provide at least one metric with its rules.",
+        )
+    if not any(rules for rules in current_criteria.values()):
+        raise HTTPException(
+            status_code=422,
+            detail="current_criteria must contain at least one non-empty rule list.",
+        )
+    primary_metric = next(iter(current_criteria))
+
     # Fetch spans and project context — failures are non-fatal; degrade gracefully.
     # Pass the injected `db` session to avoid opening extra connections from the pool.
     try:
@@ -604,23 +618,11 @@ async def suggest_prompt_criteria(
         await format_spans_as_examples(spans) if spans else "No examples available."
     )
     agentic_note = AGENTIC_NOTE_FOR_CRITERIA if has_agentic_spans else ""
-
-    # Use criteria from the request — always reflects the user's current in-progress edits.
-    current_criteria = request.current_criteria
-    if not current_criteria:
-        raise HTTPException(
-            status_code=422,
-            detail="current_criteria must not be empty — provide at least one metric with its rules.",
-        )
-    if not any(rules for rules in current_criteria.values()):
-        raise HTTPException(
-            status_code=422,
-            detail="current_criteria must contain at least one non-empty rule list.",
-        )
-    primary_metric = next(iter(current_criteria))
-    current_criteria_text = "\n".join(
-        f"{metric}:\n" + "\n".join(f"  - {rule}" for rule in rules)
-        for metric, rules in current_criteria.items()
+    # Only send the primary metric's rules to the LLM — other metrics are not
+    # updated by this endpoint and including them wastes tokens.
+    primary_rules = current_criteria[primary_metric]
+    current_criteria_text = f"{primary_metric}:\n" + "\n".join(
+        f"  - {rule}" for rule in primary_rules
     )
 
     prompt_text = CRITERIA_UPDATE_PROMPT.format(
@@ -661,6 +663,14 @@ async def suggest_prompt_criteria(
     # silently picking whichever list happens to come first.
     rules_list = result_data.get(primary_metric)
     if not isinstance(rules_list, list):
+        logger.error(
+            "LLM returned unexpected criteria format for prompt %s. "
+            "Expected key %r, got keys: %r. Raw response: %.500s",
+            prompt_id,
+            primary_metric,
+            list(result_data.keys()),
+            response_text,
+        )
         raise HTTPException(
             status_code=500,
             detail="Invalid criteria format received from LLM",

@@ -181,6 +181,7 @@ export function AgentCriteriaCard({ promptId }: Props) {
       {/* key={String(showEditDialog)} remounts the dialog on each open, ensuring
           workingRules is always freshly initialised from savedCriteria. */}
       <CriteriaEditDialog
+        currentMetric={currentMetric}
         isOpen={showEditDialog}
         key={String(showEditDialog)}
         onClose={() => setShowEditDialog(false)}

@@ -29,6 +29,8 @@ interface Props {
   onClose: () => void;
   /** The criteria as it exists in the DB — diff always compares against this */
   savedCriteria: Record<string, string[]>;
+  /** Which metric the user was viewing when they clicked Edit */
+  currentMetric: string;
   promptId: string;
   /** Called when user confirms save — caller handles the actual PUT + re-eval dialog */
   onSave: (newCriteria: Record<string, string[]>) => void;
@@ -164,12 +166,22 @@ function LiveDiff({
 
 // ─── Main dialog ─────────────────────────────────────────────────────────────
 
-export function CriteriaEditDialog({ isOpen, onClose, savedCriteria, promptId, onSave }: Props) {
-  // This dialog edits one metric at a time (the first/primary one).
+export function CriteriaEditDialog({
+  isOpen,
+  onClose,
+  savedCriteria,
+  currentMetric,
+  promptId,
+  onSave,
+}: Props) {
+  // This dialog edits one metric at a time — the one the user was viewing.
   // Other metrics are preserved untouched on save — see handleSave.
   // The parent passes key={String(isOpen)} so the component remounts on each open,
   // guaranteeing workingRules is freshly initialised from savedCriteria every time.
-  const primaryMetric = Object.keys(savedCriteria)[0] ?? "correctness";
+  const primaryMetric =
+    currentMetric in savedCriteria
+      ? currentMetric
+      : (Object.keys(savedCriteria)[0] ?? "correctness");
   const savedRules = savedCriteria[primaryMetric] ?? [];
 
   const [workingRules, setWorkingRules] = useState<RuleEntry[]>(() => savedRules.map(makeEntry));
