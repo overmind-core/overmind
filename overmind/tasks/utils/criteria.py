@@ -98,10 +98,19 @@ async def format_spans_as_examples(
                 judge_section = f"\nUser feedback on Judge (rating={rating}): {text}"
             else:
                 judge_section = f"\nUser feedback on Judge: rating={rating}"
+        # Truncate to 1000 chars per field to prevent very large spans from
+        # inflating prompt size and token cost across 10 examples.
+        _MAX = 1000
+        input_text = json.dumps(span.input or {}, indent=2)
+        output_text = json.dumps(span.output or {}, indent=2)
+        if len(input_text) > _MAX:
+            input_text = input_text[:_MAX] + "... [truncated]"
+        if len(output_text) > _MAX:
+            output_text = output_text[:_MAX] + "... [truncated]"
         example = f"""
 Example {i}:
-Input: {json.dumps(span.input or {}, indent=2)}
-Output: {json.dumps(span.output or {}, indent=2)}{judge_section}
+Input: {input_text}
+Output: {output_text}{judge_section}
 """
         examples.append(example)
     return "\n".join(examples)

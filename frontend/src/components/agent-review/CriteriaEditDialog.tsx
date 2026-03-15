@@ -118,14 +118,23 @@ function LiveDiff({
     }
   }
 
-  const addedCount = rows.filter((r) => r.kind === "added" || r.kind === "changed-new").length;
-  const removedCount = rows.filter((r) => r.kind === "removed" || r.kind === "changed-old").length;
+  const addedCount = rows.filter((r) => r.kind === "added").length;
+  const removedCount = rows.filter((r) => r.kind === "removed").length;
+  // Each modified rule produces one changed-old + one changed-new row; count pairs.
+  const modifiedCount = rows.filter((r) => r.kind === "changed-new").length;
 
   return (
     <div className="flex h-full flex-col overflow-hidden border border-border text-sm">
       <div className="flex shrink-0 items-center gap-3 border-b border-border bg-muted/30 px-3 py-1.5 text-[11px] text-muted-foreground">
-        <span className="text-green-600 dark:text-green-400">+{addedCount} changed/added</span>
-        <span className="text-red-500 dark:text-red-400">−{removedCount} changed/removed</span>
+        {addedCount > 0 && (
+          <span className="text-green-600 dark:text-green-400">+{addedCount} added</span>
+        )}
+        {modifiedCount > 0 && (
+          <span className="text-blue-600 dark:text-blue-400">~{modifiedCount} modified</span>
+        )}
+        {removedCount > 0 && (
+          <span className="text-red-500 dark:text-red-400">−{removedCount} removed</span>
+        )}
       </div>
       <div className="flex-1 overflow-y-auto">
         {rows.map((row, i) => (
@@ -243,10 +252,9 @@ export function CriteriaEditDialog({
         await apiClient.prompts.suggestPromptCriteriaApiV1PromptsPromptIdCriteriaSuggestPost({
           promptId,
           suggestCriteriaRequest: {
-            // Merge working rules back under the primary metric key so the LLM
-            // sees the user's in-progress edits. Other metrics are preserved as-is.
+            // Only send the primary metric — the backend ignores other metrics
+            // and sending them wastes request payload.
             currentCriteria: {
-              ...savedCriteria,
               [primaryMetric]: workingRules.map((r) => r.value).filter(Boolean),
             },
             userInstructions: combinedInstructions,

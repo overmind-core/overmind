@@ -579,12 +579,12 @@ async def suggest_prompt_criteria(
             status_code=422,
             detail="current_criteria must not be empty — provide at least one metric with its rules.",
         )
-    if not any(rules for rules in current_criteria.values()):
+    primary_metric = next(iter(current_criteria))
+    if not current_criteria.get(primary_metric):
         raise HTTPException(
             status_code=422,
-            detail="current_criteria must contain at least one non-empty rule list.",
+            detail=f"Primary metric '{primary_metric}' must have at least one rule.",
         )
-    primary_metric = next(iter(current_criteria))
 
     # Fetch spans and project context — failures are non-fatal; degrade gracefully.
     # Pass the injected `db` session to avoid opening extra connections from the pool.
