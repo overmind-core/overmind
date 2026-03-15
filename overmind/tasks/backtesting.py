@@ -97,6 +97,12 @@ MAX_SPANS_FOR_BACKTESTING = 50
 # so we don't overwhelm LLM provider rate-limits.
 _MAX_CONCURRENT_BACKTESTS = 5
 
+# Number of result spans committed per DB transaction during Phase 4c.
+# Keeps individual transactions small so a transient DB error (connection drop,
+# constraint violation) only loses one chunk instead of the entire backtest run.
+# At MAX_SPANS_FOR_BACKTESTING=50 × ~10 models = 500 items, this means ≤10 commits.
+_PERSIST_CHUNK_SIZE = 50
+
 # Per-call timeout for LLM invocations inside _process_item.  A hung provider
 # connection would otherwise hold a semaphore slot indefinitely, stalling the
 # entire backtest job.  asyncio.wait_for raises TimeoutError on expiry;
@@ -834,6 +840,11 @@ async def _run_backtesting(
             )
             spans_result = await setup_session.execute(stmt)
             spans = list(spans_result.scalars().all())
+            # Detach spans from the session before it closes so that accessing
+            # their columns outside this block never triggers a lazy-load that
+            # would raise DetachedInstanceError / MissingGreenlet.
+            for span in spans:
+                setup_session.expunge(span)
 
             if not spans:
                 raise ValueError(f"No spans found for backtesting prompt {prompt_id}")
@@ -920,6 +931,14 @@ async def _run_backtesting(
         #
         # Each slot holds exactly one LLM call.  Scoring is deferred to
         # Phase B so the semaphore is not held across two sequential calls.
+        #
+        # NOTE: inference_semaphore and score_semaphore intentionally share
+        # the same bound (_MAX_CONCURRENT_BACKTESTS).  The phases are strictly
+        # sequential — Phase B's asyncio.gather only starts after Phase A's
+        # asyncio.gather fully resolves — so at most _MAX_CONCURRENT_BACKTESTS
+        # LLM calls are in-flight at any moment.  Do NOT merge the phases into
+        # a single gather; that would hold a semaphore slot across two
+        # sequential LLM calls (inference + scoring) per item.
         # ---------------------------------------------------------------
         inference_semaphore = asyncio.Semaphore(_MAX_CONCURRENT_BACKTESTS)
 
@@ -1009,65 +1028,95 @@ async def _run_backtesting(
         logger.info(f"Phase B complete: {len(scored_results)} item(s) scored")
 
         # ---------------------------------------------------------------
-        # 4c. Bulk-persist all result spans in a single DB session
+        # 4c. Persist result spans in chunks
         #
-        # Replaces the previous per-item session-per-commit pattern
-        # (up to N_spans × N_models individual sessions).
+        # Committing in _PERSIST_CHUNK_SIZE batches instead of one giant
+        # transaction limits the blast radius of a transient DB error: only
+        # the current chunk is lost, not the entire backtest run.
+        # Each chunk is retried once on failure before giving up.
         # ---------------------------------------------------------------
         result_span_ids: list[str] = []
 
-        async with AsyncSessionLocal() as db:
-            for item in scored_results:
-                model_name = item["model_name"]
-                span = item["span"]
-                model_result = item["model_result"]
-                eval_score = item["eval_score"]
-                eval_reason = item["eval_reason"]
-                output_data = item["output_data"]
-                call_tools = item["call_tools"]
-                span_response_type = item["span_response_type"]
+        def _build_result_span(item: dict[str, Any], span_id: str) -> SpanModel:
+            model_name = item["model_name"]
+            span = item["span"]
+            model_result = item["model_result"]
+            eval_score = item["eval_score"]
+            eval_reason = item["eval_reason"]
+            output_data = item["output_data"]
+            call_tools = item["call_tools"]
+            span_response_type = item["span_response_type"]
+            current_time_nano = int(time.time() * 1_000_000_000)
+            return SpanModel(
+                span_id=span_id,
+                operation=f"backtest:{model_name}",
+                start_time_unix_nano=current_time_nano,
+                end_time_unix_nano=current_time_nano
+                + int(model_result["latency_ms"] * 1_000_000),
+                input=item["input_data"],
+                output=output_data if model_result.get("output") else None,
+                status_code=1 if model_result["success"] else 2,
+                metadata_attributes={
+                    "backtest": True,
+                    "backtest_run_id": str(backtest_run_id),
+                    "source_span_id": span.span_id,
+                    "model": _base_model_from_key(model_name),
+                    "reasoning_mode": _reasoning_mode_from_key(model_name),
+                    "latency_ms": model_result["latency_ms"],
+                    "cost": model_result["cost"],
+                    "input_tokens": model_result["input_tokens"],
+                    "output_tokens": model_result["output_tokens"],
+                    "error": model_result["error"],
+                    "available_tools": call_tools if span_response_type else [],
+                },
+                feedback_score=(
+                    {
+                        "correctness": eval_score,
+                        "correctness_reason": eval_reason,
+                    }
+                    if eval_reason
+                    else {"correctness": eval_score}
+                ),
+                trace_id=span.trace_id,
+                prompt_id=prompt_id,
+            )
 
-                result_span_id = str(uuid.uuid4())
-                result_span_ids.append(result_span_id)
-                current_time_nano = int(time.time() * 1_000_000_000)
+        # Pre-assign span IDs so the aggregation loop below can zip them
+        # regardless of which chunks succeeded.
+        for _ in scored_results:
+            result_span_ids.append(str(uuid.uuid4()))
 
-                result_span = SpanModel(
-                    span_id=result_span_id,
-                    operation=f"backtest:{model_name}",
-                    start_time_unix_nano=current_time_nano,
-                    end_time_unix_nano=current_time_nano
-                    + int(model_result["latency_ms"] * 1_000_000),
-                    input=item["input_data"],
-                    output=output_data if model_result.get("output") else None,
-                    status_code=1 if model_result["success"] else 2,
-                    metadata_attributes={
-                        "backtest": True,
-                        "backtest_run_id": str(backtest_run_id),
-                        "source_span_id": span.span_id,
-                        "model": _base_model_from_key(model_name),
-                        "reasoning_mode": _reasoning_mode_from_key(model_name),
-                        "latency_ms": model_result["latency_ms"],
-                        "cost": model_result["cost"],
-                        "input_tokens": model_result["input_tokens"],
-                        "output_tokens": model_result["output_tokens"],
-                        "error": model_result["error"],
-                        "available_tools": call_tools if span_response_type else [],
-                    },
-                    feedback_score=(
-                        {
-                            "correctness": eval_score,
-                            "correctness_reason": eval_reason,
-                        }
-                        if eval_reason
-                        else {"correctness": eval_score}
-                    ),
-                    trace_id=span.trace_id,
-                    prompt_id=prompt_id,
-                )
-                db.add(result_span)
+        persisted_count = 0
+        for chunk_start in range(0, len(scored_results), _PERSIST_CHUNK_SIZE):
+            chunk_items = scored_results[
+                chunk_start : chunk_start + _PERSIST_CHUNK_SIZE
+            ]
+            chunk_ids = result_span_ids[chunk_start : chunk_start + _PERSIST_CHUNK_SIZE]
 
-            await db.commit()
-            logger.info(f"Persisted {len(scored_results)} result span(s) in one commit")
+            for attempt in range(2):
+                try:
+                    async with AsyncSessionLocal() as db:
+                        for item, span_id in zip(chunk_items, chunk_ids):
+                            db.add(_build_result_span(item, span_id))
+                        await db.commit()
+                    persisted_count += len(chunk_items)
+                    break
+                except Exception as persist_exc:
+                    if attempt == 0:
+                        logger.warning(
+                            f"Chunk persist failed (chunk {chunk_start}–"
+                            f"{chunk_start + len(chunk_items) - 1}), retrying: {persist_exc}"
+                        )
+                    else:
+                        logger.error(
+                            f"Chunk persist failed after retry (chunk {chunk_start}–"
+                            f"{chunk_start + len(chunk_items) - 1}), skipping: {persist_exc}"
+                        )
+
+        logger.info(
+            f"Persisted {persisted_count}/{len(scored_results)} result span(s) "
+            f"in chunks of {_PERSIST_CHUNK_SIZE}"
+        )
 
         # Build the flat processed_results list consumed by aggregation below
         processed_results: list[dict[str, Any]] = list(all_failures)

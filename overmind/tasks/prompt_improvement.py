@@ -1117,6 +1117,13 @@ async def create_comparison_spans(
             else:
                 result["correctness_score"] = score_val
 
+    skipped = sum(1 for r in valid_results if r.get("correctness_score") is None)
+    if skipped:
+        logger.warning(
+            f"create_comparison_spans: skipping {skipped}/{len(valid_results)} result(s) "
+            "whose correctness score could not be computed (see earlier errors above)"
+        )
+
     new_spans = []
 
     for result in valid_results:

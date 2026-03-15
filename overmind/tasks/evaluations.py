@@ -46,6 +46,12 @@ logger = logging.getLogger(__name__)
 # Max concurrent span evaluations (controls thread + DB connection pressure)
 _MAX_CONCURRENT_EVALUATIONS = 10
 
+# Maximum number of spans written per DB transaction in _batch_persist_evaluation_results.
+# Keeps individual transactions bounded so a transient error only loses one chunk.
+# 200 is well above the auto-evaluation cap of 50 spans/prompt, so the common path
+# is still a single commit; larger user-triggered batches are split automatically.
+_PERSIST_CHUNK_SIZE = 200
+
 # Maximum scored spans per prompt before the initial agent review is required.
 # Once this cap is reached, scoring pauses until the user completes the review.
 PRE_REVIEW_SCORED_SPAN_CAP = 30
@@ -325,10 +331,11 @@ async def _bulk_fetch_criteria(
 async def _batch_persist_evaluation_results(
     results: list[dict[str, Any]],
 ) -> list[dict[str, Any]]:
-    """Write evaluation scores and errors in a single DB session.
+    """Write evaluation scores and errors in chunked DB transactions.
 
-    Fetches all spans with one IN-query, mutates feedback_score for each, and
-    commits once — regardless of batch size.
+    Processes up to _PERSIST_CHUNK_SIZE results per session/commit.  Each chunk
+    fetches its spans with a single IN-query and commits once, so a transient DB
+    error only loses one chunk rather than the entire batch.
 
     Returns the same list with a ``stored`` key added to each entry (True if the
     span was found and written, False if it was missing from the DB).
@@ -336,46 +343,51 @@ async def _batch_persist_evaluation_results(
     if not results:
         return []
 
-    all_ids = [r["span_id"] for r in results]
     all_updated: list[dict[str, Any]] = []
-
     AsyncSessionLocal = get_session_local()
-    async with AsyncSessionLocal() as session:
-        rows = await session.execute(
-            select(SpanModel).where(SpanModel.span_id.in_(all_ids))
-        )
-        spans_by_id: dict[str, SpanModel] = {s.span_id: s for s in rows.scalars().all()}
 
-        for result in results:
-            sid = result["span_id"]
-            span = spans_by_id.get(sid)
-            if span is None:
-                logger.warning(f"Span not found in Postgres for id={sid}")
-                all_updated.append({**result, "stored": False})
-                continue
+    for chunk_start in range(0, len(results), _PERSIST_CHUNK_SIZE):
+        chunk = results[chunk_start : chunk_start + _PERSIST_CHUNK_SIZE]
+        chunk_ids = [r["span_id"] for r in chunk]
 
-            feedback = dict(span.feedback_score or {})
+        async with AsyncSessionLocal() as session:
+            rows = await session.execute(
+                select(SpanModel).where(SpanModel.span_id.in_(chunk_ids))
+            )
+            spans_by_id: dict[str, SpanModel] = {
+                s.span_id: s for s in rows.scalars().all()
+            }
 
-            if result.get("eval_error"):
-                feedback["correctness_error"] = result.get("error", "unknown error")
-                feedback.pop("correctness", None)
-                feedback.pop("correctness_reason", None)
-            else:
-                feedback["correctness"] = result["correctness"]
-                reason = result.get("reason")
-                if reason is not None:
-                    feedback["correctness_reason"] = reason
-                else:
-                    # Remove stale reason if span is being re-scored with a higher score
+            for result in chunk:
+                sid = result["span_id"]
+                span = spans_by_id.get(sid)
+                if span is None:
+                    logger.warning(f"Span not found in Postgres for id={sid}")
+                    all_updated.append({**result, "stored": False})
+                    continue
+
+                feedback = dict(span.feedback_score or {})
+
+                if result.get("eval_error"):
+                    feedback["correctness_error"] = result.get("error", "unknown error")
+                    feedback.pop("correctness", None)
                     feedback.pop("correctness_reason", None)
-                # Clear any previous evaluation error on successful re-score
-                feedback.pop("correctness_error", None)
+                else:
+                    feedback["correctness"] = result["correctness"]
+                    reason = result.get("reason")
+                    if reason is not None:
+                        feedback["correctness_reason"] = reason
+                    else:
+                        # Remove stale reason if span is being re-scored with a higher score
+                        feedback.pop("correctness_reason", None)
+                    # Clear any previous evaluation error on successful re-score
+                    feedback.pop("correctness_error", None)
 
-            span.feedback_score = feedback
-            flag_modified(span, "feedback_score")
-            all_updated.append({**result, "stored": True})
+                span.feedback_score = feedback
+                flag_modified(span, "feedback_score")
+                all_updated.append({**result, "stored": True})
 
-        await session.commit()
+            await session.commit()
 
     return all_updated
 
@@ -900,7 +912,9 @@ async def validate_judge_scoring_eligibility(
                 stats,
             )
 
-    # Check 3: Find unscored spans for this prompt
+    # Check 3: Find unscored spans for this prompt.
+    # The SQL expression below replicates Prompt.prompt_id ("{project_id}_{version}_{slug}").
+    # If Prompt.parse_prompt_id ever changes its separator or format, this must be updated too.
     prompt_id_expr = func.concat(
         cast(Prompt.project_id, String),
         "_",
@@ -978,6 +992,8 @@ async def _get_unscored_spans() -> list[SpanModel]:
     """
     AsyncSessionLocal = get_session_local()
     async with AsyncSessionLocal() as session:
+        # Replicates Prompt.prompt_id ("{project_id}_{version}_{slug}") in SQL.
+        # Must stay in sync with Prompt.parse_prompt_id if the format ever changes.
         prompt_id_expr = func.concat(
             cast(Prompt.project_id, String),
             "_",
@@ -1244,9 +1260,9 @@ async def _execute_prompt_spans_evaluation(
             )
 
             try:
-                # Find unscored spans for this prompt
-                # Build a SQL expression equivalent to the Prompt.prompt_id @property:
-                # f"{project_id}_{version}_{slug}"
+                # Find unscored spans for this prompt.
+                # Replicates Prompt.prompt_id ("{project_id}_{version}_{slug}") in SQL.
+                # Must stay in sync with Prompt.parse_prompt_id if the format ever changes.
                 prompt_id_expr = func.concat(
                     cast(Prompt.project_id, String),
                     "_",
