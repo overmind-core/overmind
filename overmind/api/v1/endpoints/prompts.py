@@ -572,13 +572,10 @@ async def suggest_prompt_criteria(
             detail="Access denied: User is not a member of this project",
         )
 
-    # TODO: get_spans_for_prompt and get_project_description each open their own
-    # DB session via get_session_local(), while this endpoint already has an
-    # injected `db` session. Refactor these helpers to accept an optional session
-    # parameter to avoid the double-connection overhead.
-    # Fetch spans and project context — failures are non-fatal; degrade gracefully
+    # Fetch spans and project context — failures are non-fatal; degrade gracefully.
+    # Pass the injected `db` session to avoid opening extra connections from the pool.
     try:
-        spans = await get_spans_for_prompt(prompt_id, limit=10)
+        spans = await get_spans_for_prompt(prompt_id, limit=10, session=db)
     except Exception:
         logger.exception(
             f"Failed to fetch spans for prompt {prompt_id} during criteria suggest"
@@ -586,7 +583,7 @@ async def suggest_prompt_criteria(
         spans = []
 
     try:
-        project_description = await get_project_description(project_uuid)
+        project_description = await get_project_description(project_uuid, session=db)
     except Exception:
         logger.exception(
             f"Failed to fetch project description for {project_uuid} during criteria suggest"
@@ -621,13 +618,9 @@ async def suggest_prompt_criteria(
             detail="current_criteria must contain at least one non-empty rule list.",
         )
     primary_metric = next(iter(current_criteria))
-    current_criteria_text = (
-        "\n".join(
-            f"{metric}:\n" + "\n".join(f"  - {rule}" for rule in rules)
-            for metric, rules in current_criteria.items()
-        )
-        if current_criteria
-        else "No existing criteria."
+    current_criteria_text = "\n".join(
+        f"{metric}:\n" + "\n".join(f"  - {rule}" for rule in rules)
+        for metric, rules in current_criteria.items()
     )
 
     prompt_text = CRITERIA_UPDATE_PROMPT.format(

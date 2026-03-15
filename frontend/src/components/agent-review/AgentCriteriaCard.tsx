@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 
 import { useMutation } from "@tanstack/react-query";
 import {
@@ -24,14 +24,13 @@ import { CriteriaEditDialog } from "./CriteriaEditDialog";
 
 interface Props {
   promptId: string;
-  projectId?: string;
 }
 
 function capitalize(s: string) {
   return s.charAt(0).toUpperCase() + s.slice(1);
 }
 
-export function AgentCriteriaCard({ promptId, projectId }: Props) {
+export function AgentCriteriaCard({ promptId }: Props) {
   const [criteriaMap, setCriteriaMap] = useState<Record<string, string[]>>({});
   const [metricIndex, setMetricIndex] = useState(0);
   const [isLoading, setIsLoading] = useState(true);
@@ -41,7 +40,7 @@ export function AgentCriteriaCard({ promptId, projectId }: Props) {
 
   // Re-eval dialog
   const [showReEvalDialog, setShowReEvalDialog] = useState(false);
-  const pendingSaveRef = useRef<Record<string, string[]>>({});
+  const [pendingCriteria, setPendingCriteria] = useState<Record<string, string[]>>({});
 
   useEffect(() => {
     setIsLoading(true);
@@ -74,7 +73,7 @@ export function AgentCriteriaCard({ promptId, projectId }: Props) {
       await apiClient.prompts.updatePromptCriteriaApiV1PromptsPromptIdCriteriaPut({
         promptId,
         updateCriteriaRequest: {
-          evaluationCriteria: pendingSaveRef.current,
+          evaluationCriteria: pendingCriteria,
           reEvaluate,
         },
       });
@@ -83,7 +82,7 @@ export function AgentCriteriaCard({ promptId, projectId }: Props) {
       toast.error(err.message ?? "Failed to save criteria.");
     },
     onSuccess: (_, reEvaluate) => {
-      setCriteriaMap(pendingSaveRef.current);
+      setCriteriaMap(pendingCriteria);
       setShowReEvalDialog(false);
       if (reEvaluate) {
         toast.success("Criteria saved. Re-evaluation of recent spans has started.");
@@ -94,7 +93,7 @@ export function AgentCriteriaCard({ promptId, projectId }: Props) {
   });
 
   function handleSaveFromDialog(newCriteria: Record<string, string[]>) {
-    pendingSaveRef.current = newCriteria;
+    setPendingCriteria(newCriteria);
     setShowReEvalDialog(true);
   }
 

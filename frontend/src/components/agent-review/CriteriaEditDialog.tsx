@@ -215,11 +215,15 @@ export function CriteriaEditDialog({ isOpen, onClose, savedCriteria, promptId, o
     const trimmed = aiInstructions.trim();
     if (!trimmed) return;
 
-    // Keep the last 5 instructions to bound prompt size. Combined string is also
-    // hard-capped at 1800 chars to stay safely under the backend max_length=2000.
+    // Keep the last 5 instructions to bound prompt size. If the combined string
+    // still exceeds 1800 chars, drop the oldest full entry one at a time until it
+    // fits — avoids truncating mid-word/sentence unlike a raw slice(-1800).
     const updatedHistory = [...instructionHistory, trimmed].slice(-5);
-    const combined = updatedHistory.join("\n\nFollow-up: ");
-    const combinedInstructions = combined.length > 1800 ? combined.slice(-1800) : combined;
+    let trimmedHistory = updatedHistory;
+    while (trimmedHistory.length > 1 && trimmedHistory.join("\n\nFollow-up: ").length > 1800) {
+      trimmedHistory = trimmedHistory.slice(1);
+    }
+    const combinedInstructions = trimmedHistory.join("\n\nFollow-up: ");
 
     setIsGeneratingAi(true);
     try {

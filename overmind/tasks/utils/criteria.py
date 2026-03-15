@@ -9,9 +9,12 @@ private-function boundary.
 
 import json
 import logging
+from contextlib import asynccontextmanager
+from collections.abc import AsyncIterator
 from uuid import UUID
 
 from sqlalchemy import select, and_, desc
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from overmind.db.session import get_session_local
 from overmind.models.iam.projects import Project
@@ -20,8 +23,24 @@ from overmind.models.traces import SpanModel
 logger = logging.getLogger(__name__)
 
 
+@asynccontextmanager
+async def _session_or_new(
+    session: AsyncSession | None,
+) -> AsyncIterator[AsyncSession]:
+    """Yield ``session`` if provided, otherwise open a new one."""
+    if session is not None:
+        yield session
+    else:
+        AsyncSessionLocal = get_session_local()
+        async with AsyncSessionLocal() as new_session:
+            yield new_session
+
+
 async def get_spans_for_prompt(
-    prompt_id: str, limit: int = 10, prefer_judge_feedback: bool = True
+    prompt_id: str,
+    limit: int = 10,
+    prefer_judge_feedback: bool = True,
+    session: AsyncSession | None = None,
 ) -> list[SpanModel]:
     """Fetch spans linked to a prompt.
 
@@ -29,10 +48,12 @@ async def get_spans_for_prompt(
     anchored to current agent behaviour rather than old examples.
     Prefers spans with judge_feedback when available.
     Excludes system-generated spans (prompt tuning, backtesting).
+
+    Pass an existing ``session`` to reuse it and avoid opening a second
+    connection from the pool.
     """
-    AsyncSessionLocal = get_session_local()
-    async with AsyncSessionLocal() as session:
-        result = await session.execute(
+    async with _session_or_new(session) as db:
+        result = await db.execute(
             select(SpanModel)
             .where(
                 and_(
@@ -52,10 +73,7 @@ async def get_spans_for_prompt(
         without_feedback = [
             s for s in all_spans if not (s.feedback_score or {}).get("judge_feedback")
         ]
-        combined = (
-            with_feedback[:limit] + without_feedback[: limit - len(with_feedback)]
-        )
-        return combined[:limit]
+        return with_feedback[:limit] + without_feedback[: limit - len(with_feedback)]
 
 
 async def format_spans_as_examples(
@@ -89,11 +107,16 @@ Output: {json.dumps(span.output or {}, indent=2)}{judge_section}
     return "\n".join(examples)
 
 
-async def get_project_description(project_id: UUID) -> str:
-    """Return the project description, or a generic fallback if unset."""
-    AsyncSessionLocal = get_session_local()
-    async with AsyncSessionLocal() as session:
-        result = await session.execute(
+async def get_project_description(
+    project_id: UUID, session: AsyncSession | None = None
+) -> str:
+    """Return the project description, or a generic fallback if unset.
+
+    Pass an existing ``session`` to reuse it and avoid opening a second
+    connection from the pool.
+    """
+    async with _session_or_new(session) as db:
+        result = await db.execute(
             select(Project).where(Project.project_id == project_id)
         )
         project = result.scalar_one_or_none()
