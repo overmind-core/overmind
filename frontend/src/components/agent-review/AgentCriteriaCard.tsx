@@ -32,7 +32,7 @@ function capitalize(s: string) {
   return s.charAt(0).toUpperCase() + s.slice(1);
 }
 
-export function AgentCriteriaCard({ agentSlug, promptId, projectId }: Props) {
+export function AgentCriteriaCard({ promptId, projectId }: Props) {
   const [criteriaMap, setCriteriaMap] = useState<Record<string, string[]>>({});
   const [metricIndex, setMetricIndex] = useState(0);
   const [isLoading, setIsLoading] = useState(true);
@@ -47,18 +47,15 @@ export function AgentCriteriaCard({ agentSlug, promptId, projectId }: Props) {
   useEffect(() => {
     setIsLoading(true);
     setFetchError(null);
-    apiClient.agentReviews
-      .getSpansForReviewApiV1AgentReviewsPromptSlugReviewSpansGet({
-        projectId: projectId,
-        promptSlug: agentSlug,
-      })
+    apiClient.prompts
+      .getPromptCriteriaApiV1PromptsPromptIdCriteriaGet({ promptId })
       .then((e) => {
         setCriteriaMap(e.evaluationCriteria ?? {});
         setMetricIndex(0);
       })
       .catch((err: Error) => setFetchError(err.message))
       .finally(() => setIsLoading(false));
-  }, [agentSlug, projectId]);
+  }, [promptId]);
 
   const metrics = Object.keys(criteriaMap);
   const currentMetric = metrics[metricIndex] ?? "correctness";
@@ -198,9 +195,8 @@ export function AgentCriteriaCard({ agentSlug, promptId, projectId }: Props) {
           <DialogHeader>
             <DialogTitle>Re-evaluate recent spans?</DialogTitle>
             <DialogDescription>
-              Your criteria changes have been saved. Would you like to re-evaluate the most recent
-              spans using the updated criteria? This will re-score the last 50 spans in the
-              background.
+              Save your criteria changes and optionally re-evaluate the most recent spans. This will
+              re-score the last 50 spans in the background using the updated criteria.
             </DialogDescription>
           </DialogHeader>
           <DialogFooter className="flex-col-reverse gap-2 sm:flex-row sm:justify-end">

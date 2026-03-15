@@ -18,6 +18,13 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
 
+type RuleEntry = { id: number; value: string };
+
+let _ruleIdCounter = 0;
+function nextRuleId() {
+  return ++_ruleIdCounter;
+}
+
 interface Props {
   isOpen: boolean;
   onClose: () => void;
@@ -43,10 +50,10 @@ function LiveDiff({
   workingRules,
 }: {
   savedCriteria: Record<string, string[]>;
-  workingRules: string[];
+  workingRules: RuleEntry[];
 }) {
   const oldRules = Object.values(savedCriteria).flat();
-  const newRules = workingRules.filter(Boolean);
+  const newRules = workingRules.map((r) => r.value).filter(Boolean);
 
   const maxLen = Math.max(oldRules.length, newRules.length);
   const hasAnyChange =
@@ -165,7 +172,9 @@ export function CriteriaEditDialog({ isOpen, onClose, savedCriteria, promptId, o
   const primaryMetric = Object.keys(savedCriteria)[0] ?? "correctness";
   const savedRules = savedCriteria[primaryMetric] ?? [];
 
-  const [workingRules, setWorkingRules] = useState<string[]>(savedRules);
+  const [workingRules, setWorkingRules] = useState<RuleEntry[]>(() =>
+    savedRules.map((value) => ({ id: nextRuleId(), value }))
+  );
   const [newRule, setNewRule] = useState("");
 
   // AI state
@@ -180,23 +189,23 @@ export function CriteriaEditDialog({ isOpen, onClose, savedCriteria, promptId, o
 
   // ── Rule editing ──
 
-  function updateRule(idx: number, value: string) {
-    setWorkingRules((prev) => prev.map((r, i) => (i === idx ? value : r)));
+  function updateRule(id: number, value: string) {
+    setWorkingRules((prev) => prev.map((r) => (r.id === id ? { ...r, value } : r)));
   }
 
-  function removeRule(idx: number) {
-    setWorkingRules((prev) => prev.filter((_, i) => i !== idx));
+  function removeRule(id: number) {
+    setWorkingRules((prev) => prev.filter((r) => r.id !== id));
   }
 
   function addRule() {
     const trimmed = newRule.trim();
     if (!trimmed) return;
-    setWorkingRules((prev) => [...prev, trimmed]);
+    setWorkingRules((prev) => [...prev, { id: nextRuleId(), value: trimmed }]);
     setNewRule("");
   }
 
   function handleRestore() {
-    setWorkingRules(savedRules);
+    setWorkingRules(savedRules.map((value) => ({ id: nextRuleId(), value })));
     setNewRule("");
     instructionHistoryRef.current = [];
     setAiInstructions("");
@@ -219,13 +228,21 @@ export function CriteriaEditDialog({ isOpen, onClose, savedCriteria, promptId, o
           suggestCriteriaRequest: {
             // Merge working rules back under the primary metric key so the LLM
             // sees the user's in-progress edits. Other metrics are preserved as-is.
-            currentCriteria: { ...savedCriteria, [primaryMetric]: workingRules.filter(Boolean) },
+            currentCriteria: {
+              ...savedCriteria,
+              [primaryMetric]: workingRules.map((r) => r.value).filter(Boolean),
+            },
             userInstructions: combinedInstructions,
           },
         });
 
       const suggested = result.suggestedCriteria as Record<string, string[]>;
-      setWorkingRules(Object.values(suggested).flat().slice(0, 5));
+      setWorkingRules(
+        Object.values(suggested)
+          .flat()
+          .slice(0, 5)
+          .map((value) => ({ id: nextRuleId(), value }))
+      );
       instructionHistoryRef.current = updatedHistory;
       setAiInstructions("");
     } catch (err) {
@@ -239,14 +256,18 @@ export function CriteriaEditDialog({ isOpen, onClose, savedCriteria, promptId, o
 
   function handleSave() {
     // Preserve all metrics from savedCriteria; only replace the primary one being edited.
-    onSave({ ...savedCriteria, [primaryMetric]: workingRules.filter(Boolean) });
+    onSave({ ...savedCriteria, [primaryMetric]: workingRules.map((r) => r.value).filter(Boolean) });
     handleClose();
   }
 
   const hasChanges = (() => {
     const normalize = (r: string) => r.trim().toLowerCase();
-    const a = savedRules.map(normalize).sort();
-    const b = workingRules.filter(Boolean).map(normalize).sort();
+    const a = savedRules.map(normalize);
+    const b = workingRules
+      .map((r) => r.value)
+      .filter(Boolean)
+      .map(normalize);
+    // Positional comparison — order changes and content changes both count
     return a.length !== b.length || a.some((v, i) => v !== b[i]);
   })();
 
@@ -268,20 +289,20 @@ export function CriteriaEditDialog({ isOpen, onClose, savedCriteria, promptId, o
 
               <div className="space-y-2.5">
                 {workingRules.map((rule, idx) => (
-                  <div className="flex items-center gap-2" key={idx}>
+                  <div className="flex items-center gap-2" key={rule.id}>
                     <span className="shrink-0 text-[11px] font-semibold text-muted-foreground w-5 text-right">
                       {idx + 1}.
                     </span>
                     <Input
                       className="flex-1 h-9 text-sm"
                       disabled={isGeneratingAi}
-                      onChange={(e) => updateRule(idx, e.target.value)}
-                      value={rule}
+                      onChange={(e) => updateRule(rule.id, e.target.value)}
+                      value={rule.value}
                     />
                     <button
                       className="shrink-0 p-1.5 rounded hover:bg-muted transition-colors disabled:opacity-40"
                       disabled={isGeneratingAi}
-                      onClick={() => removeRule(idx)}
+                      onClick={() => removeRule(rule.id)}
                       title="Remove"
                       type="button"
                     >

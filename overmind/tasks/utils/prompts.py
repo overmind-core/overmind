@@ -536,9 +536,9 @@ CRITERIA_UPDATE_PROMPT = """You are updating the evaluation criteria for an LLM 
 - Generate at most 5 rules - prioritise the most impactful ones if more would be needed
 </Instructions>
 
-Return JSON in this exact format:
+Return JSON in this exact format (use the exact metric name shown):
 {{
-  "correctness": [
+  "{primary_metric}": [
     "Description of what makes output correct",
     "Another specific rule",
     ...

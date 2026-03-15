@@ -5,7 +5,7 @@ import uuid
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import select, and_, desc
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -22,6 +22,7 @@ from overmind.models.jobs import Job
 from overmind.models.prompts import Prompt
 from overmind.models.traces import SpanModel
 from overmind.tasks.agentic_span_processor import detect_agentic_span
+from overmind.tasks.backtesting import invalidate_backtesting_metadata
 from overmind.tasks.criteria_generator import (
     CriteriaResponse,
     _format_spans_as_examples,
@@ -30,6 +31,7 @@ from overmind.tasks.criteria_generator import (
     generate_criteria_task,
 )
 from overmind.tasks.prompt_display_name_generator import generate_display_name_task
+from overmind.tasks.prompt_improvement import invalidate_prompt_improvement_metadata
 from overmind.tasks.utils.prompts import (
     AGENTIC_NOTE_FOR_CRITERIA,
     CRITERIA_UPDATE_PROMPT,
@@ -85,7 +87,7 @@ class GenerateCriteriaResponse(BaseModel):
 
 
 class SuggestCriteriaRequest(BaseModel):
-    user_instructions: str
+    user_instructions: str = Field(..., max_length=2000)
     current_criteria: dict[str, list[str]]
 
 
@@ -383,9 +385,6 @@ async def update_prompt_criteria(
     # Criteria is different, update it and roll back improvement metadata so
     # prompt improvement can re-trigger with the updated scoring logic.
     prompt.evaluation_criteria = request.evaluation_criteria
-    from overmind.tasks.prompt_improvement import invalidate_prompt_improvement_metadata
-    from overmind.tasks.backtesting import invalidate_backtesting_metadata
-
     invalidate_prompt_improvement_metadata(prompt)
     invalidate_backtesting_metadata(prompt)
 
@@ -602,6 +601,7 @@ async def suggest_prompt_criteria(
 
     # Use criteria from the request — always reflects the user's current in-progress edits
     current_criteria = request.current_criteria
+    primary_metric = next(iter(current_criteria), "correctness")
     current_criteria_text = (
         "\n".join(
             f"{metric}:\n" + "\n".join(f"  - {rule}" for rule in rules)
@@ -617,29 +617,37 @@ async def suggest_prompt_criteria(
         examples=examples_text,
         agentic_note=agentic_note,
         user_instructions=request.user_instructions,
+        primary_metric=primary_metric,
     )
 
-    response_text, _ = await asyncio.to_thread(
-        call_llm,
-        prompt_text,
-        system_prompt=CRITERIA_UPDATE_SYSTEM_PROMPT,
-        model=resolve_model(TaskType.CRITERIA_GENERATION),
-        response_format=CriteriaResponse,
-    )
+    try:
+        response_text, _ = await asyncio.wait_for(
+            asyncio.to_thread(
+                call_llm,
+                prompt_text,
+                system_prompt=CRITERIA_UPDATE_SYSTEM_PROMPT,
+                model=resolve_model(TaskType.CRITERIA_GENERATION),
+                response_format=CriteriaResponse,
+            ),
+            timeout=30.0,
+        )
+    except TimeoutError:
+        raise HTTPException(
+            status_code=504,
+            detail="LLM request timed out. Please try again.",
+        )
 
     result_data = try_json_parsing(response_text)
 
-    if "correctness" not in result_data or not isinstance(
-        result_data["correctness"], list
-    ):
+    # Key-agnostic validation: the LLM should return a dict with one list value
+    rules_list = next((v for v in result_data.values() if isinstance(v, list)), None)
+    if rules_list is None:
         raise HTTPException(
             status_code=500,
             detail="Invalid criteria format received from LLM",
         )
 
-    # Preserve the primary metric key from the request rather than hardcoding "correctness"
-    primary_metric = next(iter(current_criteria), "correctness")
-    suggested_criteria = {primary_metric: result_data["correctness"][:5]}
+    suggested_criteria = {primary_metric: rules_list[:5]}
 
     return SuggestCriteriaResponse(suggested_criteria=suggested_criteria)
 
