@@ -18,11 +18,10 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
 
-type RuleEntry = { id: number; value: string };
+type RuleEntry = { id: string; value: string };
 
-let _ruleIdCounter = 0;
-function nextRuleId() {
-  return ++_ruleIdCounter;
+function makeEntry(value: string): RuleEntry {
+  return { id: crypto.randomUUID(), value };
 }
 
 interface Props {
@@ -46,13 +45,14 @@ interface Props {
  * (green, word-level highlight) versions.
  */
 function LiveDiff({
-  savedCriteria,
+  savedRules,
   workingRules,
 }: {
-  savedCriteria: Record<string, string[]>;
+  /** Rules for the primary metric only — other metrics are unaffected by this edit */
+  savedRules: string[];
   workingRules: RuleEntry[];
 }) {
-  const oldRules = Object.values(savedCriteria).flat();
+  const oldRules = savedRules;
   const newRules = workingRules.map((r) => r.value).filter(Boolean);
 
   const maxLen = Math.max(oldRules.length, newRules.length);
@@ -172,9 +172,7 @@ export function CriteriaEditDialog({ isOpen, onClose, savedCriteria, promptId, o
   const primaryMetric = Object.keys(savedCriteria)[0] ?? "correctness";
   const savedRules = savedCriteria[primaryMetric] ?? [];
 
-  const [workingRules, setWorkingRules] = useState<RuleEntry[]>(() =>
-    savedRules.map((value) => ({ id: nextRuleId(), value }))
-  );
+  const [workingRules, setWorkingRules] = useState<RuleEntry[]>(() => savedRules.map(makeEntry));
   const [newRule, setNewRule] = useState("");
 
   // AI state
@@ -189,23 +187,23 @@ export function CriteriaEditDialog({ isOpen, onClose, savedCriteria, promptId, o
 
   // ── Rule editing ──
 
-  function updateRule(id: number, value: string) {
+  function updateRule(id: string, value: string) {
     setWorkingRules((prev) => prev.map((r) => (r.id === id ? { ...r, value } : r)));
   }
 
-  function removeRule(id: number) {
+  function removeRule(id: string) {
     setWorkingRules((prev) => prev.filter((r) => r.id !== id));
   }
 
   function addRule() {
     const trimmed = newRule.trim();
     if (!trimmed) return;
-    setWorkingRules((prev) => [...prev, { id: nextRuleId(), value: trimmed }]);
+    setWorkingRules((prev) => [...prev, makeEntry(trimmed)]);
     setNewRule("");
   }
 
   function handleRestore() {
-    setWorkingRules(savedRules.map((value) => ({ id: nextRuleId(), value })));
+    setWorkingRules(savedRules.map(makeEntry));
     setNewRule("");
     instructionHistoryRef.current = [];
     setAiInstructions("");
@@ -217,8 +215,11 @@ export function CriteriaEditDialog({ isOpen, onClose, savedCriteria, promptId, o
     const trimmed = aiInstructions.trim();
     if (!trimmed) return;
 
-    const updatedHistory = [...instructionHistoryRef.current, trimmed];
-    const combinedInstructions = updatedHistory.join("\n\nFollow-up: ");
+    // Keep the last 5 instructions to bound prompt size. Combined string is also
+    // hard-capped at 1800 chars to stay safely under the backend max_length=2000.
+    const updatedHistory = [...instructionHistoryRef.current, trimmed].slice(-5);
+    const combined = updatedHistory.join("\n\nFollow-up: ");
+    const combinedInstructions = combined.length > 1800 ? combined.slice(-1800) : combined;
 
     setIsGeneratingAi(true);
     try {
@@ -237,12 +238,7 @@ export function CriteriaEditDialog({ isOpen, onClose, savedCriteria, promptId, o
         });
 
       const suggested = result.suggestedCriteria as Record<string, string[]>;
-      setWorkingRules(
-        Object.values(suggested)
-          .flat()
-          .slice(0, 5)
-          .map((value) => ({ id: nextRuleId(), value }))
-      );
+      setWorkingRules(Object.values(suggested).flat().slice(0, 5).map(makeEntry));
       instructionHistoryRef.current = updatedHistory;
       setAiInstructions("");
     } catch (err) {
@@ -395,7 +391,7 @@ export function CriteriaEditDialog({ isOpen, onClose, savedCriteria, promptId, o
               Changes vs. saved
             </p>
             <div className="flex-1 overflow-hidden rounded-sm">
-              <LiveDiff savedCriteria={savedCriteria} workingRules={workingRules} />
+              <LiveDiff savedRules={savedRules} workingRules={workingRules} />
             </div>
           </div>
         </div>

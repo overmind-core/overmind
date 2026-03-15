@@ -599,7 +599,9 @@ async def suggest_prompt_criteria(
     )
     agentic_note = AGENTIC_NOTE_FOR_CRITERIA if has_agentic_spans else ""
 
-    # Use criteria from the request — always reflects the user's current in-progress edits
+    # Use criteria from the request — always reflects the user's current in-progress edits.
+    # If the client sends an empty dict, primary_metric defaults to "correctness" and the
+    # prompt will show "No existing criteria." — intentional graceful degradation.
     current_criteria = request.current_criteria
     primary_metric = next(iter(current_criteria), "correctness")
     current_criteria_text = (
@@ -639,9 +641,11 @@ async def suggest_prompt_criteria(
 
     result_data = try_json_parsing(response_text)
 
-    # Key-agnostic validation: the LLM should return a dict with one list value
-    rules_list = next((v for v in result_data.values() if isinstance(v, list)), None)
-    if rules_list is None:
+    # The prompt instructs the LLM to return {primary_metric: [...]}.
+    # Keying by primary_metric explicitly catches multi-key misbehaviour rather than
+    # silently picking whichever list happens to come first.
+    rules_list = result_data.get(primary_metric)
+    if not isinstance(rules_list, list):
         raise HTTPException(
             status_code=500,
             detail="Invalid criteria format received from LLM",
