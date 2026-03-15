@@ -54,6 +54,11 @@ logger = logging.getLogger(__name__)
 # Minimum spans required before agent discovery is eligible
 MIN_SPANS_FOR_AGENT_DISCOVERY = 30
 
+# Maximum number of unmapped spans loaded per discovery run.
+# Bounds ORM object memory (each span carries input/output/metadata JSONB).
+# The task runs every 5 minutes so remaining spans are processed on the next cycle.
+_MAX_UNMAPPED_SPANS_PER_RUN = 2000
+
 
 async def validate_agent_discovery_eligibility(
     project_id: UUID, session
@@ -455,11 +460,15 @@ async def _map_spans_to_templates(
     Returns:
         Dictionary with statistics: {'mapped': N, 'new_templates': M, 'unmapped': K}
     """
-    # Get all unmapped spans for traces in this project
+    # Get unmapped spans for traces in this project, capped to avoid loading
+    # unbounded ORM objects into memory. Ordered oldest-first so earlier spans
+    # are mapped before newer ones; remaining spans are picked up on the next run.
     unmapped_spans_stmt = (
         select(SpanModel)
         .join(TraceModel, SpanModel.trace_id == TraceModel.trace_id)
         .where(and_(TraceModel.project_id == project_id, SpanModel.prompt_id.is_(None)))
+        .order_by(SpanModel.start_time_unix_nano.asc())
+        .limit(_MAX_UNMAPPED_SPANS_PER_RUN)
     )
 
     result = await db.execute(unmapped_spans_stmt)

@@ -1669,11 +1669,20 @@ async def _execute_prompt_improvement(
                     return {**result, "correctness_score": None}
 
         scored_results_raw = await asyncio.gather(
-            *[_score_one(r) for r in successful_results]
+            *[_score_one(r) for r in successful_results],
+            return_exceptions=True,
         )
-        # Update successful_results in-place so downstream code (comparison spans) sees scores
+        # Update successful_results in-place so downstream code (comparison spans) sees scores.
+        # return_exceptions=True means entries can be BaseException instances — treat those as
+        # scoring failures (correctness_score stays absent → filtered out below).
         for i, updated in enumerate(scored_results_raw):
-            successful_results[i] = updated
+            if isinstance(updated, BaseException):
+                logger.error(
+                    f"Unexpected exception scoring span {successful_results[i].get('old_span_id')}: {updated}"
+                )
+                # Leave successful_results[i] unchanged (no correctness_score key → filtered below)
+            else:
+                successful_results[i] = updated
 
         scored_results = [
             r for r in successful_results if r.get("correctness_score") is not None

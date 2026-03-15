@@ -628,11 +628,16 @@ def evaluate_spans_task(
                 {s.prompt_id for s in spans_by_id.values() if s.prompt_id}
             )
             criteria_values = await asyncio.gather(
-                *[ensure_prompt_has_criteria(pid) for pid in unique_prompt_ids]
+                *[ensure_prompt_has_criteria(pid) for pid in unique_prompt_ids],
+                return_exceptions=True,
             )
-            criteria_by_prompt: dict[str, dict[str, list[str]] | None] = dict(
-                zip(unique_prompt_ids, criteria_values)
-            )
+            criteria_by_prompt: dict[str, dict[str, list[str]] | None] = {}
+            for pid, val in zip(unique_prompt_ids, criteria_values):
+                if isinstance(val, BaseException):
+                    logger.warning(f"Failed to fetch criteria for prompt {pid}: {val}")
+                    criteria_by_prompt[pid] = None
+                else:
+                    criteria_by_prompt[pid] = val
 
             context_by_prompt = await _prefetch_prompt_contexts(
                 list(spans_by_id.values())
