@@ -3,7 +3,6 @@ Task to auto-generate evaluation criteria for prompts based on their linked span
 """
 
 import asyncio
-import json
 import logging
 from typing import Any
 from uuid import UUID
@@ -14,10 +13,13 @@ from sqlalchemy import select, and_
 
 from overmind.db.session import get_session_local
 from overmind.models.prompts import Prompt
-from overmind.models.traces import SpanModel
-from overmind.models.iam.projects import Project
 from overmind.core.llms import call_llm, try_json_parsing
 from overmind.core.model_resolver import TaskType, resolve_model
+from overmind.tasks.utils.criteria import (
+    format_spans_as_examples,
+    get_project_description,
+    get_spans_for_prompt,
+)
 from overmind.tasks.utils.prompts import (
     CRITERIA_GENERATION_SYSTEM_PROMPT,
     CRITERIA_GENERATION_PROMPT,
@@ -30,68 +32,6 @@ logger = logging.getLogger(__name__)
 
 class CriteriaResponse(BaseModel):
     correctness: list[str] = Field(description="List of correctness rules")
-
-
-async def _get_spans_for_prompt(
-    prompt_id: str, limit: int = 10, prefer_judge_feedback: bool = True
-) -> list[SpanModel]:
-    """Fetch spans linked to a prompt. Prefer spans with judge_feedback when adjusting criteria.
-    Excludes system-generated spans (prompt tuning, backtesting)."""
-    AsyncSessionLocal = get_session_local()
-    async with AsyncSessionLocal() as session:
-        result = await session.execute(
-            select(SpanModel)
-            .where(
-                and_(
-                    SpanModel.prompt_id == prompt_id,
-                    SpanModel.exclude_system_spans(),
-                )
-            )
-            .order_by(SpanModel.created_at.asc())
-            .limit(limit * 2)
-        )
-        all_spans = list(result.scalars().all())
-        if not prefer_judge_feedback or len(all_spans) <= limit:
-            return all_spans[:limit]
-        # Prioritize spans that have judge_feedback (for criteria adjustment)
-        with_feedback = [
-            s for s in all_spans if (s.feedback_score or {}).get("judge_feedback")
-        ]
-        without_feedback = [
-            s for s in all_spans if not (s.feedback_score or {}).get("judge_feedback")
-        ]
-        combined = (
-            with_feedback[:limit] + without_feedback[: limit - len(with_feedback)]
-        )
-        return combined[:limit]
-
-
-async def _format_spans_as_examples(
-    spans: list[SpanModel], include_judge_feedback: bool = True
-) -> str:
-    """Format spans into a readable example format. Includes judge feedback when present."""
-    examples = []
-    for i, span in enumerate(spans, 1):
-        judge_fb = (
-            (span.feedback_score or {}).get("judge_feedback")
-            if include_judge_feedback
-            else None
-        )
-        judge_section = ""
-        if judge_fb and isinstance(judge_fb, dict):
-            rating = judge_fb.get("rating", "unknown")
-            text = judge_fb.get("text", "").strip()
-            if text:
-                judge_section = f"\nUser feedback on Judge (rating={rating}): {text}"
-            else:
-                judge_section = f"\nUser feedback on Judge: rating={rating}"
-        example = f"""
-Example {i}:
-Input: {json.dumps(span.input or {}, indent=2)}
-Output: {json.dumps(span.output or {}, indent=2)}{judge_section}
-"""
-        examples.append(example)
-    return "\n".join(examples)
 
 
 async def _store_criteria_to_prompt(
@@ -127,19 +67,6 @@ async def _store_criteria_to_prompt(
         return True
 
 
-async def _get_project_description(project_id: UUID) -> str:
-    """Get project description for context."""
-    AsyncSessionLocal = get_session_local()
-    async with AsyncSessionLocal() as session:
-        result = await session.execute(
-            select(Project).where(Project.project_id == project_id)
-        )
-        project = result.scalar_one_or_none()
-        if project and project.description:
-            return project.description
-        return "No project description available."
-
-
 async def _generate_criteria_for_prompt(prompt_id: str) -> dict[str, Any]:
     """
     Generate evaluation criteria for a prompt using its linked spans and project context.
@@ -147,7 +74,7 @@ async def _generate_criteria_for_prompt(prompt_id: str) -> dict[str, Any]:
     Automatically detects agentic spans and includes appropriate guidance.
     """
     # Get first 10 spans linked to this prompt
-    spans = await _get_spans_for_prompt(prompt_id, limit=10)
+    spans = await get_spans_for_prompt(prompt_id, limit=10)
 
     if not spans:
         raise ValueError(f"No spans found for prompt {prompt_id}")
@@ -161,7 +88,7 @@ async def _generate_criteria_for_prompt(prompt_id: str) -> dict[str, Any]:
     try:
         project_id_str, version, slug = Prompt.parse_prompt_id(prompt_id)
         project_uuid = UUID(project_id_str)
-        project_description = await _get_project_description(project_uuid)
+        project_description = await get_project_description(project_uuid)
     except (ValueError, TypeError) as e:
         logger.error(f"Invalid prompt_id format: {e}")
         project_description = "No project description available."
@@ -180,7 +107,7 @@ async def _generate_criteria_for_prompt(prompt_id: str) -> dict[str, Any]:
             break
 
     # Format spans as examples (include judge feedback for criteria adjustment)
-    examples_text = await _format_spans_as_examples(spans)
+    examples_text = format_spans_as_examples(spans)
     has_judge_feedback = any(
         (s.feedback_score or {}).get("judge_feedback") for s in spans
     )

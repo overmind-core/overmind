@@ -46,6 +46,8 @@ export * from './RoleScope';
 export * from './SpanFeedbackRequest';
 export * from './SpanForReview';
 export * from './SpanResponseModel';
+export * from './SuggestCriteriaRequest';
+export * from './SuggestCriteriaResponse';
 export * from './Suggestion';
 export * from './SuggestionDetailOut';
 export * from './SuggestionFeedbackRequest';

@@ -504,6 +504,49 @@ Remember: Tool calls are intermediary steps. Evaluate the final output's correct
 """
 
 
+CRITERIA_UPDATE_SYSTEM_PROMPT = """You are an expert in evaluating LLM outputs. Your task is to update existing evaluation criteria based on user instructions. Return ONLY valid JSON. Do not use em dashes (—) in any generated text; use a hyphen (-) or colon (:) instead."""
+
+CRITERIA_UPDATE_PROMPT = """You are updating the evaluation criteria for an LLM agent. The user has provided specific instructions on how to change the criteria.
+
+<CurrentCriteria>
+{current_criteria}
+</CurrentCriteria>
+
+<ProjectContext>
+{project_description}
+</ProjectContext>
+
+<Examples>
+{examples}
+</Examples>
+
+{agentic_note}
+
+<UserInstructions>
+{user_instructions}
+</UserInstructions>
+
+<Instructions>
+- Update the existing criteria according to the user's instructions
+- Keep rules that are still relevant and not addressed by the user's instructions
+- Add, remove, or modify rules as directed by the user
+- Each rule should be clear, specific, and actionable
+- Focus on accuracy, completeness, relevance, logical consistency, and domain-specific requirements
+- Use the project context and examples to ensure rules are grounded in the actual agent behavior
+- Generate at most 5 rules - prioritise the most impactful ones if more would be needed
+</Instructions>
+
+Return JSON in this exact format (use the exact metric name shown):
+{{
+  "{primary_metric}": [
+    "Description of what makes output correct",
+    "Another specific rule",
+    ...
+  ]
+}}
+"""
+
+
 # ============================================================================
 # PROMPT IMPROVEMENT PROMPTS
 # ============================================================================

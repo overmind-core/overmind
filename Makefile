@@ -18,6 +18,9 @@ ifdef OPEN_CMD
 	  do sleep 2; done && $(OPEN_CMD) http://localhost:5173) &
 endif
 
+run-backend-detached:
+	docker compose up --build -d postgres valkey api celery-worker celery-beat
+
 stop:
 	docker compose down
 

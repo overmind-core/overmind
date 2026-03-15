@@ -1,23 +1,45 @@
+import asyncio
+import hashlib
+import html
+import logging
+import uuid
+from uuid import UUID
+
 from fastapi import APIRouter, Depends, HTTPException, Query
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 from sqlalchemy import select, and_, desc
 from sqlalchemy.ext.asyncio import AsyncSession
-from overmind.models.prompts import Prompt
-from overmind.models.traces import SpanModel
-from overmind.models.jobs import Job
-from overmind.db.session import get_db
+
+from overmind.api.v1.endpoints.jobs import JobType, JobStatus
+from overmind.api.v1.endpoints.utils.prompts import are_criteria_same
 from overmind.api.v1.helpers.authentication import (
     AuthenticatedUserOrToken,
     get_current_user,
 )
-from overmind.api.v1.endpoints.utils.prompts import are_criteria_same
-from overmind.api.v1.endpoints.jobs import JobType, JobStatus
-from overmind.tasks.criteria_generator import generate_criteria_task
+from overmind.core.llms import call_llm, try_json_parsing
+from overmind.core.model_resolver import TaskType, resolve_model
+from overmind.db.session import get_db
+from overmind.models.jobs import Job
+from overmind.models.prompts import Prompt
+from overmind.models.traces import SpanModel
+from overmind.tasks.agentic_span_processor import detect_agentic_span
+from overmind.tasks.backtesting import invalidate_backtesting_metadata
+from overmind.tasks.criteria_generator import (
+    CriteriaResponse,
+    generate_criteria_task,
+)
+from overmind.tasks.utils.criteria import (
+    format_spans_as_examples,
+    get_project_description,
+    get_spans_for_prompt,
+)
 from overmind.tasks.prompt_display_name_generator import generate_display_name_task
-from uuid import UUID
-import hashlib
-import logging
-import uuid
+from overmind.tasks.prompt_improvement import invalidate_prompt_improvement_metadata
+from overmind.tasks.utils.prompts import (
+    AGENTIC_NOTE_FOR_CRITERIA,
+    CRITERIA_UPDATE_PROMPT,
+    CRITERIA_UPDATE_SYSTEM_PROMPT,
+)
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -65,6 +87,28 @@ class GenerateCriteriaResponse(BaseModel):
     message: str
     task_id: str
     prompt_id: str
+
+
+class SuggestCriteriaRequest(BaseModel):
+    user_instructions: str = Field(..., max_length=2000)
+    current_criteria: dict[str, list[str]] = Field(..., max_length=10)
+
+    @field_validator("current_criteria")
+    @classmethod
+    def validate_criteria_size(cls, v: dict[str, list[str]]) -> dict[str, list[str]]:
+        for metric, rules in v.items():
+            if len(rules) > 20:
+                raise ValueError(f"Metric '{metric}' has too many rules (max 20).")
+            for rule in rules:
+                if len(rule) > 500:
+                    raise ValueError(
+                        f"A rule in metric '{metric}' exceeds the 500-character limit."
+                    )
+        return v
+
+
+class SuggestCriteriaResponse(BaseModel):
+    suggested_criteria: dict[str, list[str]]
 
 
 @router.post("/", response_model=PromptResponse)
@@ -357,9 +401,6 @@ async def update_prompt_criteria(
     # Criteria is different, update it and roll back improvement metadata so
     # prompt improvement can re-trigger with the updated scoring logic.
     prompt.evaluation_criteria = request.evaluation_criteria
-    from overmind.tasks.prompt_improvement import invalidate_prompt_improvement_metadata
-    from overmind.tasks.backtesting import invalidate_backtesting_metadata
-
     invalidate_prompt_improvement_metadata(prompt)
     invalidate_backtesting_metadata(prompt)
 
@@ -499,6 +540,165 @@ async def generate_prompt_criteria(
         task_id=task.id,
         prompt_id=prompt_id,
     )
+
+
+@router.post("/{prompt_id}/criteria/suggest", response_model=SuggestCriteriaResponse)
+async def suggest_prompt_criteria(
+    prompt_id: str,
+    request: SuggestCriteriaRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: AuthenticatedUserOrToken = Depends(get_current_user),
+):
+    """
+    Suggest updated evaluation criteria for a prompt using AI.
+
+    Uses the current criteria, project context, recent spans, and user instructions
+    to generate a new set of criteria. The suggested criteria are returned but NOT saved —
+    the caller decides whether to apply them via PUT /{prompt_id}/criteria.
+
+    Only the primary (first) metric in ``current_criteria`` is updated; all other metrics
+    are intentionally ignored. This matches the frontend which edits one metric at a time.
+    """
+    try:
+        project_id_str, version, slug = Prompt.parse_prompt_id(prompt_id)
+        project_uuid = UUID(project_id_str)
+    except (ValueError, TypeError) as e:
+        raise HTTPException(
+            status_code=400, detail=f"Invalid prompt_id format: {str(e)}"
+        )
+
+    stmt = select(Prompt).where(
+        and_(
+            Prompt.project_id == project_uuid,
+            Prompt.version == version,
+            Prompt.slug == slug,
+        )
+    )
+    result = await db.execute(stmt)
+    prompt = result.scalar_one_or_none()
+
+    if not prompt:
+        raise HTTPException(status_code=404, detail="Prompt not found")
+
+    if not await current_user.is_project_member(prompt.project_id, db):
+        raise HTTPException(
+            status_code=403,
+            detail="Access denied: User is not a member of this project",
+        )
+
+    # Validate request body early — before any expensive DB/LLM calls.
+    current_criteria = request.current_criteria
+    if not current_criteria:
+        raise HTTPException(
+            status_code=422,
+            detail="current_criteria must not be empty — provide at least one metric with its rules.",
+        )
+    primary_metric = next(iter(current_criteria))
+    if not current_criteria[primary_metric]:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Primary metric '{primary_metric}' must have at least one rule.",
+        )
+
+    # Fetch spans and project context — failures are non-fatal; degrade gracefully.
+    # Pass the injected `db` session to avoid opening extra connections from the pool.
+    try:
+        spans = await get_spans_for_prompt(prompt_id, limit=10, session=db)
+    except Exception:
+        logger.exception(
+            f"Failed to fetch spans for prompt {prompt_id} during criteria suggest"
+        )
+        spans = []
+
+    try:
+        project_description = await get_project_description(project_uuid, session=db)
+    except Exception:
+        logger.exception(
+            f"Failed to fetch project description for {project_uuid} during criteria suggest"
+        )
+        project_description = "No project description available."
+
+    # Detect agentic spans
+    has_agentic_spans = any(
+        detect_agentic_span(
+            input_data=span.input or {},
+            output_data=span.output or {},
+            metadata=span.metadata_attributes or {},
+        )
+        for span in spans
+    )
+
+    examples_text = (
+        format_spans_as_examples(spans) if spans else "No examples available."
+    )
+    agentic_note = AGENTIC_NOTE_FOR_CRITERIA if has_agentic_spans else ""
+    # Only send the primary metric's rules to the LLM — other metrics are not
+    # updated by this endpoint and including them wastes tokens.
+    primary_rules = current_criteria[primary_metric]
+    current_criteria_text = f"{primary_metric}:\n" + "\n".join(
+        f"  - {rule}" for rule in primary_rules
+    )
+
+    # Escape angle brackets to prevent XML tag injection — a user could otherwise
+    # close the <UserInstructions> tag early and inject arbitrary prompt content.
+    # html.escape encodes < and > as &lt; and &gt;, which is lossless (the LLM
+    # still reads the intended text) unlike stripping them entirely.
+    safe_user_instructions = html.escape(request.user_instructions)
+
+    prompt_text = CRITERIA_UPDATE_PROMPT.format(
+        current_criteria=current_criteria_text,
+        project_description=project_description,
+        examples=examples_text,
+        agentic_note=agentic_note,
+        user_instructions=safe_user_instructions,
+        primary_metric=primary_metric,
+    )
+
+    # NOTE: asyncio.wait_for cancels the coroutine wrapping the thread, but the
+    # underlying sync thread running call_llm cannot be interrupted — it will
+    # continue executing in the background until the LLM responds or the process
+    # exits. This is a known limitation of asyncio.to_thread. Mitigation: the
+    # LLM client enforces its own network-level timeout via the provider SDK.
+    try:
+        response_text, _ = await asyncio.wait_for(
+            asyncio.to_thread(
+                call_llm,
+                prompt_text,
+                system_prompt=CRITERIA_UPDATE_SYSTEM_PROMPT,
+                model=resolve_model(TaskType.CRITERIA_GENERATION),
+                response_format=CriteriaResponse,
+            ),
+            timeout=30.0,
+        )
+    except TimeoutError:
+        raise HTTPException(
+            status_code=504,
+            detail="LLM request timed out. Please try again.",
+        )
+
+    result_data = try_json_parsing(response_text)
+
+    # The prompt instructs the LLM to return {primary_metric: [...]}.
+    # Keying by primary_metric explicitly catches multi-key misbehaviour rather than
+    # silently picking whichever list happens to come first.
+    rules_list = result_data.get(primary_metric)
+    if not isinstance(rules_list, list):
+        logger.error(
+            "LLM returned unexpected criteria format for prompt %s. "
+            "Expected key %r, got keys: %r. Raw response: %.500s",
+            prompt_id,
+            primary_metric,
+            list(result_data.keys()),
+            response_text,
+        )
+        raise HTTPException(
+            status_code=500,
+            detail="Invalid criteria format received from LLM",
+        )
+
+    suggested_criteria = {primary_metric: rules_list[:5]}
+
+    return SuggestCriteriaResponse(suggested_criteria=suggested_criteria)
 
 
 @router.get("/{prompt_id}/criteria")

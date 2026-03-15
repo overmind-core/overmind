@@ -20,6 +20,8 @@ import type {
   HTTPValidationError,
   PromptDetail,
   PromptResponse,
+  SuggestCriteriaRequest,
+  SuggestCriteriaResponse,
   UpdateCriteriaRequest,
   UpdateDisplayNameRequest,
 } from '../models/index';
@@ -34,6 +36,10 @@ import {
     PromptDetailToJSON,
     PromptResponseFromJSON,
     PromptResponseToJSON,
+    SuggestCriteriaRequestFromJSON,
+    SuggestCriteriaRequestToJSON,
+    SuggestCriteriaResponseFromJSON,
+    SuggestCriteriaResponseToJSON,
     UpdateCriteriaRequestFromJSON,
     UpdateCriteriaRequestToJSON,
     UpdateDisplayNameRequestFromJSON,
@@ -59,6 +65,11 @@ export interface GetPromptCriteriaApiV1PromptsPromptIdCriteriaGetRequest {
 export interface ListPromptsApiV1PromptsGetRequest {
     projectId: string;
     slug?: string | null;
+}
+
+export interface SuggestPromptCriteriaApiV1PromptsPromptIdCriteriaSuggestPostRequest {
+    promptId: string;
+    suggestCriteriaRequest: SuggestCriteriaRequest;
 }
 
 export interface UpdatePromptCriteriaApiV1PromptsPromptIdCriteriaPutRequest {
@@ -281,6 +292,55 @@ export class PromptsApi extends runtime.BaseAPI {
      */
     async listPromptsApiV1PromptsGet(requestParameters: ListPromptsApiV1PromptsGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<Array<PromptDetail>> {
         const response = await this.listPromptsApiV1PromptsGetRaw(requestParameters, initOverrides);
+        return await response.value();
+    }
+
+    /**
+     * Suggest updated evaluation criteria for a prompt using AI.  Uses the current criteria, project context, recent spans, and user instructions to generate a new set of criteria. The suggested criteria are returned but NOT saved — the caller decides whether to apply them via PUT /{prompt_id}/criteria.
+     * Suggest Prompt Criteria
+     */
+    async suggestPromptCriteriaApiV1PromptsPromptIdCriteriaSuggestPostRaw(requestParameters: SuggestPromptCriteriaApiV1PromptsPromptIdCriteriaSuggestPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<SuggestCriteriaResponse>> {
+        if (requestParameters['promptId'] == null) {
+            throw new runtime.RequiredError(
+                'promptId',
+                'Required parameter "promptId" was null or undefined when calling suggestPromptCriteriaApiV1PromptsPromptIdCriteriaSuggestPost().'
+            );
+        }
+
+        if (requestParameters['suggestCriteriaRequest'] == null) {
+            throw new runtime.RequiredError(
+                'suggestCriteriaRequest',
+                'Required parameter "suggestCriteriaRequest" was null or undefined when calling suggestPromptCriteriaApiV1PromptsPromptIdCriteriaSuggestPost().'
+            );
+        }
+
+        const queryParameters: any = {};
+
+        const headerParameters: runtime.HTTPHeaders = {};
+
+        headerParameters['Content-Type'] = 'application/json';
+
+
+        let urlPath = `/api/v1/prompts/{prompt_id}/criteria/suggest`;
+        urlPath = urlPath.replace(`{${"prompt_id"}}`, encodeURIComponent(String(requestParameters['promptId'])));
+
+        const response = await this.request({
+            path: urlPath,
+            method: 'POST',
+            headers: headerParameters,
+            query: queryParameters,
+            body: SuggestCriteriaRequestToJSON(requestParameters['suggestCriteriaRequest']),
+        }, initOverrides);
+
+        return new runtime.JSONApiResponse(response, (jsonValue) => SuggestCriteriaResponseFromJSON(jsonValue));
+    }
+
+    /**
+     * Suggest updated evaluation criteria for a prompt using AI.  Uses the current criteria, project context, recent spans, and user instructions to generate a new set of criteria. The suggested criteria are returned but NOT saved — the caller decides whether to apply them via PUT /{prompt_id}/criteria.
+     * Suggest Prompt Criteria
+     */
+    async suggestPromptCriteriaApiV1PromptsPromptIdCriteriaSuggestPost(requestParameters: SuggestPromptCriteriaApiV1PromptsPromptIdCriteriaSuggestPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<SuggestCriteriaResponse> {
+        const response = await this.suggestPromptCriteriaApiV1PromptsPromptIdCriteriaSuggestPostRaw(requestParameters, initOverrides);
         return await response.value();
     }
 
