@@ -616,6 +616,105 @@ def _run_model_on_input(
 
 
 # ---------------------------------------------------------------------------
+# Inference helper (module-level so it can be tested in isolation)
+# ---------------------------------------------------------------------------
+
+
+async def _run_inference(
+    model_name: str,
+    span: SpanModel,
+    input_text: str,
+    semaphore: asyncio.Semaphore,
+) -> dict[str, Any]:
+    """Run model inference for one (model, span) pair.
+
+    Args:
+        model_name: Backtest model key (e.g. ``"openai/gpt-5-mini"``).
+        span: Source span whose input is replayed.
+        input_text: Pre-extracted plain-text input for template matching.
+        semaphore: Concurrency limiter shared across all Phase A calls.
+
+    Returns:
+        Dict with inference result fields consumed by Phase B scoring.
+    """
+    parsed_span_input = _safe_parse_json(span.input)
+    input_data = parsed_span_input or {}
+    span_response_type = (span.metadata_attributes or {}).get("response_type")
+
+    if span_response_type:
+        # Tool-calling span: replay with full conversation + tools
+        call_messages = (
+            parsed_span_input if isinstance(parsed_span_input, list) else None
+        )
+        call_tools = (span.metadata_attributes or {}).get("available_tools") or []
+
+        async with semaphore:
+            model_result = await asyncio.wait_for(
+                asyncio.to_thread(
+                    _run_model_on_input,
+                    model_name,
+                    input_text,
+                    messages=call_messages,
+                    tools=call_tools if call_tools else None,
+                    model_key=model_name,
+                ),
+                timeout=_LLM_CALL_TIMEOUT_S,
+            )
+
+        # Preserve response_type / is_agentic so the correct judge
+        # branch is used (tool-call or tool-answer evaluator).
+        backtest_metadata = span.metadata_attributes or {}
+        eval_input_data = input_data
+        output_data = model_result.get("output") or ""
+    else:
+        # Plain / legacy span: existing plain-text behaviour
+        async with semaphore:
+            model_result = await asyncio.wait_for(
+                asyncio.to_thread(
+                    _run_model_on_input,
+                    model_name,
+                    input_text,
+                    model_key=model_name,
+                ),
+                timeout=_LLM_CALL_TIMEOUT_S,
+            )
+
+        # Strip response_type / is_agentic so we don't route into
+        # the tool-call judge for a plain-text completion.
+        backtest_metadata = {
+            k: v
+            for k, v in (span.metadata_attributes or {}).items()
+            if k not in ("response_type", "is_agentic")
+        }
+        # Strip tool/assistant messages — the model only saw
+        # user/system messages, so judging against tool results
+        # it never received would be unfair.
+        if isinstance(parsed_span_input, list):
+            eval_input_data = [
+                msg
+                for msg in parsed_span_input
+                if not isinstance(msg, dict)
+                or msg.get("role") not in ("tool", "assistant", "function")
+            ]
+        else:
+            eval_input_data = input_data
+        output_data = model_result.get("output") or ""
+        call_tools = []
+
+    return {
+        "model_name": model_name,
+        "span": span,
+        "input_data": input_data,
+        "eval_input_data": eval_input_data,
+        "output_data": output_data,
+        "backtest_metadata": backtest_metadata,
+        "call_tools": call_tools,
+        "span_response_type": span_response_type,
+        "model_result": model_result,
+    }
+
+
+# ---------------------------------------------------------------------------
 # Core backtesting execution
 # ---------------------------------------------------------------------------
 
@@ -783,90 +882,8 @@ async def _run_backtesting(
         # ---------------------------------------------------------------
         inference_semaphore = asyncio.Semaphore(_MAX_CONCURRENT_BACKTESTS)
 
-        async def _run_inference(
-            model_name: str, span: SpanModel, input_text: str
-        ) -> dict[str, Any]:
-            """Run model inference for one (model, span) pair."""
-            parsed_span_input = _safe_parse_json(span.input)
-            input_data = parsed_span_input or {}
-            span_response_type = (span.metadata_attributes or {}).get("response_type")
-
-            if span_response_type:
-                # Tool-calling span: replay with full conversation + tools
-                call_messages = (
-                    parsed_span_input if isinstance(parsed_span_input, list) else None
-                )
-                call_tools = (span.metadata_attributes or {}).get(
-                    "available_tools"
-                ) or []
-
-                async with inference_semaphore:
-                    model_result = await asyncio.wait_for(
-                        asyncio.to_thread(
-                            _run_model_on_input,
-                            model_name,
-                            input_text,
-                            messages=call_messages,
-                            tools=call_tools if call_tools else None,
-                            model_key=model_name,
-                        ),
-                        timeout=_LLM_CALL_TIMEOUT_S,
-                    )
-
-                # Preserve response_type / is_agentic so the correct judge
-                # branch is used (tool-call or tool-answer evaluator).
-                backtest_metadata = span.metadata_attributes or {}
-                eval_input_data = input_data
-                output_data = model_result.get("output") or ""
-            else:
-                # Plain / legacy span: existing plain-text behaviour
-                async with inference_semaphore:
-                    model_result = await asyncio.wait_for(
-                        asyncio.to_thread(
-                            _run_model_on_input,
-                            model_name,
-                            input_text,
-                            model_key=model_name,
-                        ),
-                        timeout=_LLM_CALL_TIMEOUT_S,
-                    )
-
-                # Strip response_type / is_agentic so we don't route into
-                # the tool-call judge for a plain-text completion.
-                backtest_metadata = {
-                    k: v
-                    for k, v in (span.metadata_attributes or {}).items()
-                    if k not in ("response_type", "is_agentic")
-                }
-                # Strip tool/assistant messages — the model only saw
-                # user/system messages, so judging against tool results
-                # it never received would be unfair.
-                if isinstance(parsed_span_input, list):
-                    eval_input_data = [
-                        msg
-                        for msg in parsed_span_input
-                        if not isinstance(msg, dict)
-                        or msg.get("role") not in ("tool", "assistant", "function")
-                    ]
-                else:
-                    eval_input_data = input_data
-                output_data = model_result.get("output") or ""
-                call_tools = []
-
-            return {
-                "model_name": model_name,
-                "span": span,
-                "input_data": input_data,
-                "eval_input_data": eval_input_data,
-                "output_data": output_data,
-                "backtest_metadata": backtest_metadata,
-                "call_tools": call_tools,
-                "span_response_type": span_response_type,
-                "model_result": model_result,
-            }
-
         inference_raw = await asyncio.gather(
-            *[_run_inference(m, s, t) for m, s, t in work_items],
+            *[_run_inference(m, s, t, inference_semaphore) for m, s, t in work_items],
             return_exceptions=True,
         )
 
@@ -970,10 +987,10 @@ async def _run_backtesting(
         # Replaces the previous per-item session-per-commit pattern
         # (up to N_spans × N_models individual sessions).
         # ---------------------------------------------------------------
-        result_span_ids: dict[int, str] = {}  # index → span_id for result dict
+        result_span_ids: list[str] = []
 
         async with AsyncSessionLocal() as db:
-            for idx, item in enumerate(scored_results):
+            for item in scored_results:
                 model_name = item["model_name"]
                 span = item["span"]
                 model_result = item["model_result"]
@@ -984,7 +1001,7 @@ async def _run_backtesting(
                 span_response_type = item["span_response_type"]
 
                 result_span_id = str(uuid.uuid4())
-                result_span_ids[idx] = result_span_id
+                result_span_ids.append(result_span_id)
                 current_time_nano = int(time.time() * 1_000_000_000)
 
                 result_span = SpanModel(
@@ -1027,13 +1044,13 @@ async def _run_backtesting(
 
         # Build the flat processed_results list consumed by aggregation below
         processed_results: list[dict[str, Any]] = list(all_failures)
-        for idx, item in enumerate(scored_results):
+        for item, result_span_id in zip(scored_results, result_span_ids):
             model_result = item["model_result"]
             processed_results.append(
                 {
                     "model_name": item["model_name"],
                     "span_id": item["span"].span_id,
-                    "result_span_id": result_span_ids[idx],
+                    "result_span_id": result_span_id,
                     "input": item["input_data"],
                     "output": model_result.get("output"),
                     "latency_ms": model_result["latency_ms"],

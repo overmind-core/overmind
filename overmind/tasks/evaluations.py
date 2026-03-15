@@ -382,6 +382,7 @@ async def _batch_persist_evaluation_results(
 
 async def _prefetch_prompt_contexts(
     spans: list[SpanModel],
+    session=None,
 ) -> dict[str, tuple[str | None, str | None]]:
     """Pre-fetch (agent_description, project_description) for every unique prompt_id.
 
@@ -389,9 +390,13 @@ async def _prefetch_prompt_contexts(
     one IN-query for all needed Project rows — instead of 2×K sequential queries
     (K = number of unique prompt IDs).
 
+    If *session* is provided it is reused directly (no new connection checkout).
+    Otherwise a new session is opened and closed internally.
+
     Returns a dict mapping prompt_id → (agent_description, project_description).
     """
     from overmind.models.iam.projects import Project
+    from sqlalchemy import tuple_ as sa_tuple
 
     prompt_ids_to_fetch = {span.prompt_id for span in spans if span.prompt_id}
     context_by_prompt: dict[str, tuple[str | None, str | None]] = {}
@@ -414,14 +419,9 @@ async def _prefetch_prompt_contexts(
     if not parsed:
         return context_by_prompt
 
-    AsyncSessionLocal = get_session_local()
-    async with AsyncSessionLocal() as session:
-        # Bulk-fetch all needed Prompt rows in one query using OR conditions.
-        # Each prompt is uniquely identified by (project_id, version, slug).
-        from sqlalchemy import tuple_ as sa_tuple
-
+    async def _run_queries(sess) -> None:
         prompt_keys = [(p_uuid, ver, sl) for _, p_uuid, ver, sl in parsed]
-        prompts_result = await session.execute(
+        prompts_result = await sess.execute(
             select(Prompt).where(
                 sa_tuple(Prompt.project_id, Prompt.version, Prompt.slug).in_(
                     prompt_keys
@@ -432,16 +432,14 @@ async def _prefetch_prompt_contexts(
             (p.project_id, p.version, p.slug): p for p in prompts_result.scalars().all()
         }
 
-        # Collect unique project UUIDs and bulk-fetch Project rows
         project_uuids = list({p_uuid for _, p_uuid, _, _ in parsed})
-        projects_result = await session.execute(
+        projects_result = await sess.execute(
             select(Project).where(Project.project_id.in_(project_uuids))
         )
         projects_by_id: dict[UUID, Project] = {
             p.project_id: p for p in projects_result.scalars().all()
         }
 
-        # Assemble the result dict from the pre-fetched rows
         for prompt_id_str, p_uuid, version, slug in parsed:
             prompt = prompts_by_key.get((p_uuid, version, slug))
             agent_description: str | None = None
@@ -454,6 +452,13 @@ async def _prefetch_prompt_contexts(
                 project_description = project.description
 
             context_by_prompt[prompt_id_str] = (agent_description, project_description)
+
+    if session is not None:
+        await _run_queries(session)
+    else:
+        AsyncSessionLocal = get_session_local()
+        async with AsyncSessionLocal() as new_session:
+            await _run_queries(new_session)
 
     return context_by_prompt
 
@@ -686,7 +691,10 @@ def evaluate_spans_task(
                 job.status = "running"
                 await session.commit()
 
-            # Phase 1: pre-fetch all spans in one batch query.
+            # Phase 1: pre-fetch all spans + agent/project context in one session.
+            # Criteria are fetched separately via _bulk_fetch_criteria (which issues
+            # its own IN-query) so that missing-criteria generation can run concurrently
+            # with any other work without holding this session open.
             async with AsyncSessionLocal() as session:
                 rows = await session.execute(
                     select(SpanModel).where(SpanModel.span_id.in_(span_ids))
@@ -694,9 +702,11 @@ def evaluate_spans_task(
                 spans_by_id: dict[str, SpanModel] = {
                     s.span_id: s for s in rows.scalars().all()
                 }
+                context_by_prompt = await _prefetch_prompt_contexts(
+                    list(spans_by_id.values()), session=session
+                )
 
-            # Phase 2: pre-fetch criteria + context for every unique prompt so
-            # the concurrent fan-out opens zero DB sessions for reads.
+            # Phase 2: bulk-fetch criteria for every unique prompt.
             # _bulk_fetch_criteria uses one IN-query for the common case (criteria
             # already exist) and only falls back to per-prompt generation for the
             # rare prompts that are missing criteria.
@@ -704,10 +714,6 @@ def evaluate_spans_task(
                 {s.prompt_id for s in spans_by_id.values() if s.prompt_id}
             )
             criteria_by_prompt = await _bulk_fetch_criteria(unique_prompt_ids)
-
-            context_by_prompt = await _prefetch_prompt_contexts(
-                list(spans_by_id.values())
-            )
 
             semaphore = asyncio.Semaphore(_MAX_CONCURRENT_EVALUATIONS)
 
@@ -735,8 +741,12 @@ def evaluate_spans_task(
             # Persist all scores/errors in a single DB session instead of one per span.
             results = await _batch_persist_evaluation_results(list(raw_results))
 
-            # Count successes and failures
-            success_count = sum(1 for r in results if "error" not in r)
+            # Count successes: evaluated without error AND written to the DB.
+            # stored=False means the span was missing from the DB at persist time;
+            # those should not be reported as successfully evaluated.
+            success_count = sum(
+                1 for r in results if "error" not in r and r.get("stored", True)
+            )
             error_count = len(results) - success_count
 
             result_data = {
@@ -1306,11 +1316,13 @@ async def _execute_prompt_spans_evaluation(
                 # Persist all scores/errors in a single DB session instead of one per span.
                 results = await _batch_persist_evaluation_results(list(raw_results))
 
-                evaluated_count = sum(1 for r in results if "error" not in r)
+                evaluated_count = sum(
+                    1 for r in results if "error" not in r and r.get("stored", True)
+                )
                 errors = [
                     f"Failed to evaluate span {r['span_id']}: {r['error']}"
                     for r in results
-                    if "error" in r
+                    if "error" in r or not r.get("stored", True)
                 ]
 
                 # Determine final status based on how many spans were evaluated

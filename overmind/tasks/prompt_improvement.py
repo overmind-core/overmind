@@ -4,6 +4,7 @@ Runs daily and triggers improvements when specific span count thresholds are rea
 """
 
 import asyncio
+import dataclasses
 import hashlib
 import json
 import logging
@@ -860,6 +861,17 @@ async def create_prompt_version(
 _MAX_CONCURRENT_OUTPUT_GENERATIONS = 10
 
 
+@dataclasses.dataclass
+class _CandidatePrompt:
+    """Lightweight stand-in for a Prompt ORM object used during candidate evaluation.
+
+    Carries only the ``prompt`` attribute that ``generate_outputs_with_new_prompt``
+    reads, avoiding a premature DB write for a prompt version that may be discarded.
+    """
+
+    prompt: str
+
+
 async def generate_outputs_with_new_prompt(
     new_prompt: Any,
     old_spans: list[SpanModel],
@@ -899,8 +911,15 @@ async def generate_outputs_with_new_prompt(
     async def _generate_one(old_span: SpanModel) -> dict[str, Any]:
         try:
             # Get the model used by the old span, stripping date suffixes
-            # so LiteLLM can resolve it (e.g. gpt-5-mini-2025-08-07 → gpt-5-mini)
-            raw_model = old_span.metadata_attributes["gen_ai.response.model"]
+            # so LiteLLM can resolve it (e.g. gpt-5-mini-2025-08-07 → gpt-5-mini).
+            # Prefer gen_ai.response.model (actual model used); fall back to
+            # gen_ai.request.model (requested model) for spans that lack response metadata.
+            attrs = old_span.metadata_attributes or {}
+            raw_model = attrs.get("gen_ai.response.model") or attrs.get(
+                "gen_ai.request.model"
+            )
+            if not raw_model:
+                raise ValueError(f"Span {old_span.span_id} has no model metadata")
             model = normalize_model_name(raw_model)
 
             # Parse input_params (may be a JSON string or already a dict)
@@ -1631,11 +1650,7 @@ async def _execute_prompt_improvement(
         # 3. Generate outputs with candidate prompt text
         # --------------------------------------------------------------
         # Use a lightweight stand-in so we don't persist the version yet.
-        class _CandidatePrompt:
-            def __init__(self, text):
-                self.prompt = text
-
-        candidate = _CandidatePrompt(improved_prompt_string)
+        candidate = _CandidatePrompt(prompt=improved_prompt_string)
 
         logger.info(
             f"Generating outputs with candidate prompt for {len(comparison_spans)} spans"
