@@ -42,7 +42,7 @@ Periodic (5 min) or Job trigger
   ├── Phase B — correctness scoring (asyncio.gather, semaphore=5):
   │   └── Score each successful inference with _evaluate_correctness_with_llm()
   │
-  ├── Bulk persist all result spans in ONE DB session + commit
+  ├── Persist result spans in chunked DB transactions (_BACKTEST_PERSIST_CHUNK_SIZE=50, 1 retry per chunk)
   │
   ├── Aggregate per-model metrics
   ├── _generate_recommendations()

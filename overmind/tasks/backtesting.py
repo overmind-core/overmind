@@ -626,40 +626,23 @@ async def _run_inference(
         )
         call_tools = (span.metadata_attributes or {}).get("available_tools") or []
 
-        async with semaphore:
-            model_result = await asyncio.wait_for(
-                asyncio.to_thread(
-                    _run_model_on_input,
-                    model_name,
-                    input_text,
-                    messages=call_messages,
-                    tools=call_tools if call_tools else None,
-                    model_key=model_name,
-                ),
-                timeout=_LLM_CALL_TIMEOUT_S,
-            )
+        llm_kwargs: dict[str, Any] = {
+            "messages": call_messages,
+            "tools": call_tools if call_tools else None,
+            "model_key": model_name,
+        }
 
         # Preserve response_type / is_agentic so the correct judge
         # branch is used (tool-call or tool-answer evaluator).
         backtest_metadata = span.metadata_attributes or {}
         eval_input_data = input_data
-        output_data = model_result.get("output") or ""
     else:
         # Plain / legacy span: existing plain-text behaviour.
         # call_tools is unused for plain spans; initialise here so it is
         # always defined before the shared code below references it.
         call_tools = []
 
-        async with semaphore:
-            model_result = await asyncio.wait_for(
-                asyncio.to_thread(
-                    _run_model_on_input,
-                    model_name,
-                    input_text,
-                    model_key=model_name,
-                ),
-                timeout=_LLM_CALL_TIMEOUT_S,
-            )
+        llm_kwargs = {"model_key": model_name}
 
         # Strip response_type / is_agentic so we don't route into
         # the tool-call judge for a plain-text completion.
@@ -680,7 +663,19 @@ async def _run_inference(
             ]
         else:
             eval_input_data = input_data
-        output_data = model_result.get("output") or ""
+
+    async with semaphore:
+        model_result = await asyncio.wait_for(
+            asyncio.to_thread(
+                _run_model_on_input,
+                model_name,
+                input_text,
+                **llm_kwargs,
+            ),
+            timeout=_LLM_CALL_TIMEOUT_S,
+        )
+
+    output_data = model_result.get("output") or ""
 
     return {
         "model_name": model_name,
@@ -734,6 +729,76 @@ async def _score_inference(
             )
 
     return {**item, "eval_score": eval_score, "eval_reason": eval_reason}
+
+
+# ---------------------------------------------------------------------------
+# Result span builder
+# ---------------------------------------------------------------------------
+
+
+def _build_result_span(
+    item: dict[str, Any],
+    span_id: str,
+    *,
+    backtest_run_id: uuid.UUID,
+    prompt_id: str,
+) -> SpanModel:
+    """Build a ``SpanModel`` for one (model, span) inference + scoring result.
+
+    Extracted as a module-level function so it can be tested in isolation
+    without running a full backtesting job.
+
+    Args:
+        item: Inference + scoring result dict produced by ``_score_inference``.
+        span_id: Pre-assigned UUID string for the new span.
+        backtest_run_id: UUID of the current backtest run (written to metadata).
+        prompt_id: Prompt ID to associate the result span with.
+
+    Returns:
+        An unsaved ``SpanModel`` ready to be added to a DB session.
+    """
+    model_name = item["model_name"]
+    span = item["span"]
+    model_result = item["model_result"]
+    eval_score = item["eval_score"]
+    eval_reason = item["eval_reason"]
+    output_data = item["output_data"]
+    call_tools = item["call_tools"]
+    span_response_type = item["span_response_type"]
+    current_time_nano = int(time.time() * 1_000_000_000)
+    return SpanModel(
+        span_id=span_id,
+        operation=f"backtest:{model_name}",
+        start_time_unix_nano=current_time_nano,
+        end_time_unix_nano=current_time_nano
+        + int(model_result["latency_ms"] * 1_000_000),
+        input=item["input_data"],
+        output=output_data if model_result.get("output") else None,
+        status_code=1 if model_result["success"] else 2,
+        metadata_attributes={
+            "backtest": True,
+            "backtest_run_id": str(backtest_run_id),
+            "source_span_id": span.span_id,
+            "model": _base_model_from_key(model_name),
+            "reasoning_mode": _reasoning_mode_from_key(model_name),
+            "latency_ms": model_result["latency_ms"],
+            "cost": model_result["cost"],
+            "input_tokens": model_result["input_tokens"],
+            "output_tokens": model_result["output_tokens"],
+            "error": model_result["error"],
+            "available_tools": call_tools if span_response_type else [],
+        },
+        feedback_score=(
+            {
+                "correctness": eval_score,
+                "correctness_reason": eval_reason,
+            }
+            if eval_reason
+            else {"correctness": eval_score}
+        ),
+        trace_id=span.trace_id,
+        prompt_id=prompt_id,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -1012,49 +1077,8 @@ async def _run_backtesting(
         # ---------------------------------------------------------------
         result_span_ids: list[str] = []
 
-        def _build_result_span(item: dict[str, Any], span_id: str) -> SpanModel:
-            model_name = item["model_name"]
-            span = item["span"]
-            model_result = item["model_result"]
-            eval_score = item["eval_score"]
-            eval_reason = item["eval_reason"]
-            output_data = item["output_data"]
-            call_tools = item["call_tools"]
-            span_response_type = item["span_response_type"]
-            current_time_nano = int(time.time() * 1_000_000_000)
-            return SpanModel(
-                span_id=span_id,
-                operation=f"backtest:{model_name}",
-                start_time_unix_nano=current_time_nano,
-                end_time_unix_nano=current_time_nano
-                + int(model_result["latency_ms"] * 1_000_000),
-                input=item["input_data"],
-                output=output_data if model_result.get("output") else None,
-                status_code=1 if model_result["success"] else 2,
-                metadata_attributes={
-                    "backtest": True,
-                    "backtest_run_id": str(backtest_run_id),
-                    "source_span_id": span.span_id,
-                    "model": _base_model_from_key(model_name),
-                    "reasoning_mode": _reasoning_mode_from_key(model_name),
-                    "latency_ms": model_result["latency_ms"],
-                    "cost": model_result["cost"],
-                    "input_tokens": model_result["input_tokens"],
-                    "output_tokens": model_result["output_tokens"],
-                    "error": model_result["error"],
-                    "available_tools": call_tools if span_response_type else [],
-                },
-                feedback_score=(
-                    {
-                        "correctness": eval_score,
-                        "correctness_reason": eval_reason,
-                    }
-                    if eval_reason
-                    else {"correctness": eval_score}
-                ),
-                trace_id=span.trace_id,
-                prompt_id=prompt_id,
-            )
+        # _build_result_span is a module-level helper; pass the run-scoped
+        # identifiers explicitly so it remains independently testable.
 
         # Pre-assign span IDs so the aggregation loop below can zip them
         # regardless of which chunks succeeded.
@@ -1076,7 +1100,14 @@ async def _run_backtesting(
                 try:
                     async with AsyncSessionLocal() as db:
                         for item, span_id in zip(chunk_items, chunk_ids):
-                            db.add(_build_result_span(item, span_id))
+                            db.add(
+                                _build_result_span(
+                                    item,
+                                    span_id,
+                                    backtest_run_id=backtest_run_id,
+                                    prompt_id=prompt_id,
+                                )
+                            )
                         await db.commit()
                     persisted_count += len(chunk_items)
                     break

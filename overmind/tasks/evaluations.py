@@ -721,8 +721,9 @@ def evaluate_spans_task(
     async def _run_evaluations():
         from overmind.db.session import dispose_engine
 
+        AsyncSessionLocal = get_session_local()
+
         try:
-            AsyncSessionLocal = get_session_local()
             async with AsyncSessionLocal() as session:
                 job_result = await session.execute(
                     select(Job).where(Job.job_id == UUID(job_id))
@@ -806,7 +807,6 @@ def evaluate_spans_task(
                 "results": list(results),
             }
 
-            AsyncSessionLocal = get_session_local()
             async with AsyncSessionLocal() as session:
                 job_result = await session.execute(
                     select(Job).where(Job.job_id == UUID(job_id))
@@ -840,7 +840,6 @@ def evaluate_spans_task(
 
         except BaseException as exc:
             try:
-                AsyncSessionLocal = get_session_local()
                 async with AsyncSessionLocal() as session:
                     job_result = await session.execute(
                         select(Job).where(Job.job_id == UUID(job_id))
@@ -861,7 +860,6 @@ def evaluate_spans_task(
             # KeyboardInterrupt bypassed the except block above), mark it failed so it
             # never gets stuck in "running" permanently.
             try:
-                AsyncSessionLocal = get_session_local()
                 async with AsyncSessionLocal() as session:
                     job_result = await session.execute(
                         select(Job).where(Job.job_id == UUID(job_id))
@@ -958,8 +956,8 @@ async def validate_judge_scoring_eligibility(
         "_",
         Prompt.slug,
     )
-    result = await session.execute(
-        select(SpanModel)
+    count_result = await session.execute(
+        select(func.count(SpanModel.span_id))
         .join(Prompt, SpanModel.prompt_id == prompt_id_expr)
         .where(
             and_(
@@ -978,8 +976,7 @@ async def validate_judge_scoring_eligibility(
             )
         )
     )
-    unscored_spans = result.scalars().all()
-    unscored_count = len(unscored_spans)
+    unscored_count = count_result.scalar() or 0
     stats["unscored_spans_count"] = unscored_count
 
     if unscored_count == 0:
