@@ -50,7 +50,9 @@ _MAX_CONCURRENT_EVALUATIONS = 10
 # Keeps individual transactions bounded so a transient error only loses one chunk.
 # 200 is well above the auto-evaluation cap of 50 spans/prompt, so the common path
 # is still a single commit; larger user-triggered batches are split automatically.
-_PERSIST_CHUNK_SIZE = 200
+# Named _EVAL_PERSIST_CHUNK_SIZE (not _PERSIST_CHUNK_SIZE) to avoid confusion with
+# backtesting.py's _BACKTEST_PERSIST_CHUNK_SIZE, which uses a different value (50).
+_EVAL_PERSIST_CHUNK_SIZE = 200
 
 # Maximum scored spans per prompt before the initial agent review is required.
 # Once this cap is reached, scoring pauses until the user completes the review.
@@ -333,7 +335,7 @@ async def _batch_persist_evaluation_results(
 ) -> list[dict[str, Any]]:
     """Write evaluation scores and errors in chunked DB transactions.
 
-    Processes up to _PERSIST_CHUNK_SIZE results per session/commit.  Each chunk
+    Processes up to _EVAL_PERSIST_CHUNK_SIZE results per session/commit.  Each chunk
     fetches its spans with a single IN-query and commits once, so a transient DB
     error only loses one chunk rather than the entire batch.
 
@@ -346,8 +348,8 @@ async def _batch_persist_evaluation_results(
     all_updated: list[dict[str, Any]] = []
     AsyncSessionLocal = get_session_local()
 
-    for chunk_start in range(0, len(results), _PERSIST_CHUNK_SIZE):
-        chunk = results[chunk_start : chunk_start + _PERSIST_CHUNK_SIZE]
+    for chunk_start in range(0, len(results), _EVAL_PERSIST_CHUNK_SIZE):
+        chunk = results[chunk_start : chunk_start + _EVAL_PERSIST_CHUNK_SIZE]
         chunk_ids = [r["span_id"] for r in chunk]
 
         async with AsyncSessionLocal() as session:
@@ -717,6 +719,11 @@ def evaluate_spans_task(
                 context_by_prompt = await _prefetch_prompt_contexts(
                     list(spans_by_id.values()), session=session
                 )
+                # Detach spans before the session closes so that column access
+                # outside this block is served from in-memory state rather than
+                # triggering a lazy-load against a closed session.
+                for span in spans_by_id.values():
+                    session.expunge(span)
 
             # Phase 2: bulk-fetch criteria for every unique prompt.
             # _bulk_fetch_criteria uses one IN-query for the common case (criteria

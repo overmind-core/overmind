@@ -101,7 +101,9 @@ _MAX_CONCURRENT_BACKTESTS = 5
 # Keeps individual transactions small so a transient DB error (connection drop,
 # constraint violation) only loses one chunk instead of the entire backtest run.
 # At MAX_SPANS_FOR_BACKTESTING=50 × ~10 models = 500 items, this means ≤10 commits.
-_PERSIST_CHUNK_SIZE = 50
+# Named _BACKTEST_PERSIST_CHUNK_SIZE (not _PERSIST_CHUNK_SIZE) to avoid confusion
+# with evaluations.py's _EVAL_PERSIST_CHUNK_SIZE, which uses a different value (200).
+_BACKTEST_PERSIST_CHUNK_SIZE = 50
 
 # Per-call timeout for LLM invocations inside _process_item.  A hung provider
 # connection would otherwise hold a semaphore slot indefinitely, stalling the
@@ -214,7 +216,14 @@ def _interleave_models_by_provider(models: list[str]) -> list[str]:
     by_provider: dict[str, list[str]] = defaultdict(list)
     for model_key in models:
         base = _base_model_from_key(model_key)
-        provider = LLM_PROVIDER_BY_MODEL.get(base, "unknown")
+        provider = LLM_PROVIDER_BY_MODEL.get(base)
+        if provider is None:
+            logger.debug(
+                f"_interleave_models_by_provider: model '{base}' not found in "
+                "LLM_PROVIDER_BY_MODEL — grouped under 'unknown'. "
+                "Update LLM_PROVIDER_BY_MODEL if this is a new model."
+            )
+            provider = "unknown"
         by_provider[provider].append(model_key)
 
     result: list[str] = []
@@ -495,43 +504,6 @@ def _generate_recommendations(
 # ---------------------------------------------------------------------------
 
 
-async def _get_prompt_criteria(prompt_id: str) -> dict[str, list[str]]:
-    """Get the evaluation criteria for a prompt_id.
-
-    Raises ValueError if prompt not found or has no criteria.
-    """
-    AsyncSessionLocal = get_session_local()
-    async with AsyncSessionLocal() as session:
-        project_id_str, version, slug = Prompt.parse_prompt_id(prompt_id)
-        project_uuid = UUID(project_id_str)
-
-        stmt = select(Prompt).where(
-            and_(
-                Prompt.project_id == project_uuid,
-                Prompt.version == version,
-                Prompt.slug == slug,
-            )
-        )
-        result = await session.execute(stmt)
-        prompt = result.scalar_one_or_none()
-
-        if not prompt:
-            raise ValueError(f"Prompt not found: {prompt_id}")
-
-        criteria_dict = prompt.evaluation_criteria
-        if (
-            not criteria_dict
-            or "correctness" not in criteria_dict
-            or not criteria_dict["correctness"]
-        ):
-            raise ValueError(
-                f"Prompt {prompt_id} does not have evaluation criteria. "
-                "Please generate or define criteria before running backtesting."
-            )
-
-        return criteria_dict
-
-
 def _parse_backtest_model_key(model_key: str) -> tuple[str, str | None, int | None]:
     """Parse a backtest model key into (base_model, reasoning_effort, thinking_budget_tokens).
 
@@ -673,7 +645,11 @@ async def _run_inference(
         eval_input_data = input_data
         output_data = model_result.get("output") or ""
     else:
-        # Plain / legacy span: existing plain-text behaviour
+        # Plain / legacy span: existing plain-text behaviour.
+        # call_tools is unused for plain spans; initialise here so it is
+        # always defined before the shared code below references it.
+        call_tools = []
+
         async with semaphore:
             model_result = await asyncio.wait_for(
                 asyncio.to_thread(
@@ -705,7 +681,6 @@ async def _run_inference(
         else:
             eval_input_data = input_data
         output_data = model_result.get("output") or ""
-        call_tools = []
 
     return {
         "model_name": model_name,
@@ -1030,7 +1005,7 @@ async def _run_backtesting(
         # ---------------------------------------------------------------
         # 4c. Persist result spans in chunks
         #
-        # Committing in _PERSIST_CHUNK_SIZE batches instead of one giant
+        # Committing in _BACKTEST_PERSIST_CHUNK_SIZE batches instead of one giant
         # transaction limits the blast radius of a transient DB error: only
         # the current chunk is lost, not the entire backtest run.
         # Each chunk is retried once on failure before giving up.
@@ -1087,11 +1062,15 @@ async def _run_backtesting(
             result_span_ids.append(str(uuid.uuid4()))
 
         persisted_count = 0
-        for chunk_start in range(0, len(scored_results), _PERSIST_CHUNK_SIZE):
+        failed_chunk_ranges: list[str] = []  # e.g. ["0–49", "100–149"]
+        for chunk_start in range(0, len(scored_results), _BACKTEST_PERSIST_CHUNK_SIZE):
             chunk_items = scored_results[
-                chunk_start : chunk_start + _PERSIST_CHUNK_SIZE
+                chunk_start : chunk_start + _BACKTEST_PERSIST_CHUNK_SIZE
             ]
-            chunk_ids = result_span_ids[chunk_start : chunk_start + _PERSIST_CHUNK_SIZE]
+            chunk_ids = result_span_ids[
+                chunk_start : chunk_start + _BACKTEST_PERSIST_CHUNK_SIZE
+            ]
+            chunk_end = chunk_start + len(chunk_items) - 1
 
             for attempt in range(2):
                 try:
@@ -1104,18 +1083,24 @@ async def _run_backtesting(
                 except Exception as persist_exc:
                     if attempt == 0:
                         logger.warning(
-                            f"Chunk persist failed (chunk {chunk_start}–"
-                            f"{chunk_start + len(chunk_items) - 1}), retrying: {persist_exc}"
+                            f"Chunk persist failed (items {chunk_start}–{chunk_end}), "
+                            f"retrying: {persist_exc}"
                         )
                     else:
                         logger.error(
-                            f"Chunk persist failed after retry (chunk {chunk_start}–"
-                            f"{chunk_start + len(chunk_items) - 1}), skipping: {persist_exc}"
+                            f"Chunk persist failed after retry (items {chunk_start}–"
+                            f"{chunk_end}), skipping: {persist_exc}"
                         )
+                        failed_chunk_ranges.append(f"{chunk_start}–{chunk_end}")
 
+        if failed_chunk_ranges:
+            logger.error(
+                f"Persist failures: {len(failed_chunk_ranges)} chunk(s) lost "
+                f"({', '.join(failed_chunk_ranges)})"
+            )
         logger.info(
             f"Persisted {persisted_count}/{len(scored_results)} result span(s) "
-            f"in chunks of {_PERSIST_CHUNK_SIZE}"
+            f"in chunks of {_BACKTEST_PERSIST_CHUNK_SIZE}"
         )
 
         # Build the flat processed_results list consumed by aggregation below
@@ -1328,6 +1313,7 @@ async def _run_backtesting(
                         "spans_tested": len(spans),
                         "spans_succeeded": success_count,
                         "spans_failed": error_count,
+                        "persist_failures": failed_chunk_ranges or None,
                         "recommendations": recommendations,
                         "suggestion_id": results.get("suggestion_id"),
                         "parameters": existing_params,

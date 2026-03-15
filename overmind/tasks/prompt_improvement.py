@@ -14,7 +14,7 @@ from typing import Any
 
 from celery import shared_task
 from pydantic import BaseModel, Field
-from sqlalchemy import select, and_, func, cast, Float
+from sqlalchemy import select, and_, func, cast, Float, literal, union_all
 
 from overmind.db.session import get_session_local
 from overmind.models.prompts import Prompt, PROMPT_STATUS_PENDING
@@ -248,11 +248,24 @@ async def is_latest_prompt_adopted(
     prompt: Prompt, current_span_count: int, session, adoption_threshold: float = 0.25
 ) -> tuple[bool, dict[str, Any]]:
     """
-    Check if the latest prompt version is being adopted by at least X% of new spans.
+    Check if the latest prompt version is being adopted by at least X% of spans.
+
+    **Known limitation — multi-version denominator bias**:
+    ``adoption_rate`` is computed as ``spans_on_latest_version / current_span_count``
+    where ``current_span_count`` is the *total* scored span count across *all* versions.
+    In a long-lived prompt with many older spans this denominator is inflated, causing
+    the rate to appear low even when all recent traffic uses the latest version.
+    Example: version 5 has 80 spans but versions 1–4 have 1 000 older spans →
+    adoption_rate = 80/1 080 ≈ 7 %, which blocks tuning despite full recent adoption.
+
+    A more accurate approach would count only spans created after the timestamp of the
+    last improvement (tracked in ``prompt.improvement_metadata["last_improvement_span_count"]``).
+    This is left as a future improvement; callers should treat the threshold as
+    "cumulative adoption across all time" rather than "adoption among recent spans".
 
     Args:
         prompt: The Prompt model instance
-        current_span_count: Current total scored span count
+        current_span_count: Total scored span count across all versions of this prompt
         session: Database session
         adoption_threshold: Minimum adoption rate (default 0.25 = 25%)
 
@@ -298,16 +311,9 @@ async def is_latest_prompt_adopted(
     )
     spans_with_latest = result.scalar() or 0
 
-    # Calculate adoption rate
-    # Note: This counts ALL spans with the latest version, not just new ones
-    # A more accurate approach would track the timestamp of the last improvement
-    # and count spans created after that timestamp
     adoption_rate = (
         spans_with_latest / current_span_count if current_span_count > 0 else 0.0
     )
-
-    # Estimate adoption among new spans (conservative approach)
-    # If total adoption is high, new spans likely also use latest
     is_adopted = adoption_rate >= adoption_threshold
 
     stats = {
@@ -329,14 +335,17 @@ async def fetch_spans_by_score_buckets(
     prompt_id: str, session, per_bucket: int = 15
 ) -> dict[str, list[SpanModel]]:
     """
-    Fetch latest spans from each score bucket.
+    Fetch the most-recent *per_bucket* spans from each score bucket in one query.
 
     Buckets:
-    - poor: [0.0-0.2]
-    - below_average: [0.2-0.4]
-    - average: [0.4-0.6]
-    - good: [0.6-0.8]
-    - excellent: [0.8-1.0]
+    - poor: [0.0, 0.2)
+    - below_average: [0.2, 0.4)
+    - average: [0.4, 0.6)
+    - good: [0.6, 0.8)
+    - excellent: [0.8, 1.0]
+
+    Uses a single UNION ALL of five ranked subqueries so only one DB round-trip
+    is needed instead of five sequential queries.
 
     Args:
         prompt_id: The prompt_id to fetch spans for
@@ -346,43 +355,58 @@ async def fetch_spans_by_score_buckets(
     Returns:
         Dict mapping bucket names to lists of SpanModels
     """
-    buckets = [
+
+    score_col = cast(SpanModel.feedback_score["correctness"], Float)
+
+    buckets: list[tuple[str, float, float, bool]] = [
         ("poor", 0.0, 0.2, False),
         ("below_average", 0.2, 0.4, False),
         ("average", 0.4, 0.6, False),
         ("good", 0.6, 0.8, False),
-        ("excellent", 0.8, 1.0, True),  # True = inclusive upper bound
+        ("excellent", 0.8, 1.0, True),  # inclusive upper bound
     ]
 
-    results: dict[str, list[SpanModel]] = {}
-
+    # Build one ranked subquery per bucket, each labelled with a literal bucket name.
+    # ROW_NUMBER() lets us cap rows per bucket without a Python-side LIMIT loop.
+    subqueries = []
     for bucket_name, lower, upper, inclusive_upper in buckets:
-        upper_filter = (
-            cast(SpanModel.feedback_score["correctness"], Float) <= upper
-            if inclusive_upper
-            else cast(SpanModel.feedback_score["correctness"], Float) < upper
-        )
-        result = await session.execute(
-            select(SpanModel)
+        upper_filter = score_col <= upper if inclusive_upper else score_col < upper
+        rn = func.row_number().over(order_by=SpanModel.created_at.desc()).label("rn")
+        sub = (
+            select(
+                SpanModel,
+                literal(bucket_name).label("bucket"),
+                rn,
+            )
             .where(
                 and_(
                     SpanModel.prompt_id == prompt_id,
                     SpanModel.feedback_score.has_key("correctness"),
-                    cast(SpanModel.feedback_score["correctness"], Float) >= lower,
+                    score_col >= lower,
                     upper_filter,
                     SpanModel.exclude_system_spans(),
                 )
             )
-            .order_by(SpanModel.created_at.desc())
-            .limit(per_bucket)
+            .subquery(f"bucket_{bucket_name}")
         )
-        spans = list(result.scalars().all())
-        results[bucket_name] = spans
-        logger.info(
-            f"Fetched {len(spans)} spans for bucket '{bucket_name}' [{lower:.1f}-{upper:.1f}]"
-        )
+        # Wrap in a select that filters to the top-N rows for this bucket
+        subqueries.append(select(sub).where(sub.c.rn <= per_bucket))
 
-    return results
+    combined = union_all(*subqueries).subquery("all_buckets")
+    rows = await session.execute(
+        select(SpanModel, combined.c.bucket).join(
+            combined, SpanModel.span_id == combined.c.span_id
+        )
+    )
+
+    bucket_map: dict[str, list[SpanModel]] = {b[0]: [] for b in buckets}
+    for span, bucket_name in rows.all():
+        bucket_map[bucket_name].append(span)
+
+    for bucket_name, spans in bucket_map.items():
+        logger.info(f"Fetched {len(spans)} spans for bucket '{bucket_name}'")
+
+    return bucket_map
 
 
 # Pydantic response models
