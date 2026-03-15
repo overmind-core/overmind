@@ -1,11 +1,12 @@
 import asyncio
 import hashlib
+import html
 import logging
 import uuid
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 from sqlalchemy import select, and_, desc
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -90,7 +91,20 @@ class GenerateCriteriaResponse(BaseModel):
 
 class SuggestCriteriaRequest(BaseModel):
     user_instructions: str = Field(..., max_length=2000)
-    current_criteria: dict[str, list[str]]
+    current_criteria: dict[str, list[str]] = Field(..., max_length=10)
+
+    @field_validator("current_criteria")
+    @classmethod
+    def validate_criteria_size(cls, v: dict[str, list[str]]) -> dict[str, list[str]]:
+        for metric, rules in v.items():
+            if len(rules) > 20:
+                raise ValueError(f"Metric '{metric}' has too many rules (max 20).")
+            for rule in rules:
+                if len(rule) > 500:
+                    raise ValueError(
+                        f"A rule in metric '{metric}' exceeds the 500-character limit."
+                    )
+        return v
 
 
 class SuggestCriteriaResponse(BaseModel):
@@ -615,7 +629,7 @@ async def suggest_prompt_criteria(
     )
 
     examples_text = (
-        await format_spans_as_examples(spans) if spans else "No examples available."
+        format_spans_as_examples(spans) if spans else "No examples available."
     )
     agentic_note = AGENTIC_NOTE_FOR_CRITERIA if has_agentic_spans else ""
     # Only send the primary metric's rules to the LLM — other metrics are not
@@ -625,9 +639,11 @@ async def suggest_prompt_criteria(
         f"  - {rule}" for rule in primary_rules
     )
 
-    # Strip angle brackets to prevent XML tag injection — a user could otherwise
+    # Escape angle brackets to prevent XML tag injection — a user could otherwise
     # close the <UserInstructions> tag early and inject arbitrary prompt content.
-    safe_user_instructions = request.user_instructions.replace("<", "").replace(">", "")
+    # html.escape encodes < and > as &lt; and &gt;, which is lossless (the LLM
+    # still reads the intended text) unlike stripping them entirely.
+    safe_user_instructions = html.escape(request.user_instructions)
 
     prompt_text = CRITERIA_UPDATE_PROMPT.format(
         current_criteria=current_criteria_text,

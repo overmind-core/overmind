@@ -261,8 +261,11 @@ export function CriteriaEditDialog({
           },
         });
 
-      const suggested = result.suggestedCriteria as Record<string, string[]>;
-      setWorkingRules((suggested[primaryMetric] ?? []).slice(0, 5).map(makeEntry));
+      const rules = result.suggestedCriteria[primaryMetric];
+      if (!Array.isArray(rules)) {
+        throw new Error("Unexpected response format from server.");
+      }
+      setWorkingRules(rules.slice(0, 5).map(makeEntry));
       setInstructionHistory(updatedHistory);
       setAiInstructions("");
     } catch (err) {

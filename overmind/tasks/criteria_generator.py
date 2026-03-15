@@ -107,7 +107,7 @@ async def _generate_criteria_for_prompt(prompt_id: str) -> dict[str, Any]:
             break
 
     # Format spans as examples (include judge feedback for criteria adjustment)
-    examples_text = await format_spans_as_examples(spans)
+    examples_text = format_spans_as_examples(spans)
     has_judge_feedback = any(
         (s.feedback_score or {}).get("judge_feedback") for s in spans
     )

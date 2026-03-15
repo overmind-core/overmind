@@ -83,7 +83,7 @@ async def get_spans_for_prompt(
         )
 
 
-async def format_spans_as_examples(
+def format_spans_as_examples(
     spans: list[SpanModel], include_judge_feedback: bool = True
 ) -> str:
     """Format spans into a readable example string for LLM prompts.
