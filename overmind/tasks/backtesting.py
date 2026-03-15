@@ -1282,11 +1282,23 @@ async def _run_backtesting(
             logger.error(
                 f"Backtesting job {job_id} failed: 0/{total_items} items succeeded"
             )
-        elif error_count > 0:
+        elif error_count > 0 or failed_chunk_ranges:
+            # Degrade to PARTIALLY_COMPLETED when either LLM calls failed OR
+            # some result spans could not be persisted after retry.  The latter
+            # means the job's result data is incomplete even though inference
+            # succeeded, so reporting COMPLETED would be misleading.
             final_status = JobStatus.PARTIALLY_COMPLETED
-            logger.warning(
-                f"Backtesting job {job_id} partially completed: {success_count}/{total_items} items succeeded"
-            )
+            if failed_chunk_ranges:
+                logger.warning(
+                    f"Backtesting job {job_id} partially completed: "
+                    f"{success_count}/{total_items} items succeeded, "
+                    f"{len(failed_chunk_ranges)} persist chunk(s) lost "
+                    f"({', '.join(failed_chunk_ranges)})"
+                )
+            else:
+                logger.warning(
+                    f"Backtesting job {job_id} partially completed: {success_count}/{total_items} items succeeded"
+                )
         else:
             final_status = JobStatus.COMPLETED
             logger.info(

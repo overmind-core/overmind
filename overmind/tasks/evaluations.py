@@ -337,10 +337,12 @@ async def _batch_persist_evaluation_results(
 
     Processes up to _EVAL_PERSIST_CHUNK_SIZE results per session/commit.  Each chunk
     fetches its spans with a single IN-query and commits once, so a transient DB
-    error only loses one chunk rather than the entire batch.
+    error only loses one chunk rather than the entire batch.  Each chunk is retried
+    once on failure (matching the backtesting.py pattern) before being skipped.
 
     Returns the same list with a ``stored`` key added to each entry (True if the
-    span was found and written, False if it was missing from the DB).
+    span was found and written, False if it was missing from the DB or the chunk
+    failed to commit after retry).
     """
     if not results:
         return []
@@ -351,45 +353,72 @@ async def _batch_persist_evaluation_results(
     for chunk_start in range(0, len(results), _EVAL_PERSIST_CHUNK_SIZE):
         chunk = results[chunk_start : chunk_start + _EVAL_PERSIST_CHUNK_SIZE]
         chunk_ids = [r["span_id"] for r in chunk]
+        chunk_end = chunk_start + len(chunk) - 1
 
-        async with AsyncSessionLocal() as session:
-            rows = await session.execute(
-                select(SpanModel).where(SpanModel.span_id.in_(chunk_ids))
-            )
-            spans_by_id: dict[str, SpanModel] = {
-                s.span_id: s for s in rows.scalars().all()
-            }
+        chunk_updated: list[dict[str, Any]] | None = None
+        for attempt in range(2):
+            try:
+                async with AsyncSessionLocal() as session:
+                    rows = await session.execute(
+                        select(SpanModel).where(SpanModel.span_id.in_(chunk_ids))
+                    )
+                    spans_by_id: dict[str, SpanModel] = {
+                        s.span_id: s for s in rows.scalars().all()
+                    }
 
-            for result in chunk:
-                sid = result["span_id"]
-                span = spans_by_id.get(sid)
-                if span is None:
-                    logger.warning(f"Span not found in Postgres for id={sid}")
-                    all_updated.append({**result, "stored": False})
-                    continue
+                    attempt_updated: list[dict[str, Any]] = []
+                    for result in chunk:
+                        sid = result["span_id"]
+                        span = spans_by_id.get(sid)
+                        if span is None:
+                            logger.warning(f"Span not found in Postgres for id={sid}")
+                            attempt_updated.append({**result, "stored": False})
+                            continue
 
-                feedback = dict(span.feedback_score or {})
+                        feedback = dict(span.feedback_score or {})
 
-                if result.get("eval_error"):
-                    feedback["correctness_error"] = result.get("error", "unknown error")
-                    feedback.pop("correctness", None)
-                    feedback.pop("correctness_reason", None)
+                        if result.get("eval_error"):
+                            feedback["correctness_error"] = result.get(
+                                "error", "unknown error"
+                            )
+                            feedback.pop("correctness", None)
+                            feedback.pop("correctness_reason", None)
+                        else:
+                            feedback["correctness"] = result["correctness"]
+                            reason = result.get("reason")
+                            if reason is not None:
+                                feedback["correctness_reason"] = reason
+                            else:
+                                # Remove stale reason if span is being re-scored
+                                feedback.pop("correctness_reason", None)
+                            # Clear any previous evaluation error on successful re-score
+                            feedback.pop("correctness_error", None)
+
+                        span.feedback_score = feedback
+                        flag_modified(span, "feedback_score")
+                        attempt_updated.append({**result, "stored": True})
+
+                    await session.commit()
+                chunk_updated = attempt_updated
+                break
+            except Exception as persist_exc:
+                if attempt == 0:
+                    logger.warning(
+                        f"Evaluation persist failed (items {chunk_start}–{chunk_end}), "
+                        f"retrying: {persist_exc}"
+                    )
                 else:
-                    feedback["correctness"] = result["correctness"]
-                    reason = result.get("reason")
-                    if reason is not None:
-                        feedback["correctness_reason"] = reason
-                    else:
-                        # Remove stale reason if span is being re-scored with a higher score
-                        feedback.pop("correctness_reason", None)
-                    # Clear any previous evaluation error on successful re-score
-                    feedback.pop("correctness_error", None)
+                    logger.error(
+                        f"Evaluation persist failed after retry (items {chunk_start}–"
+                        f"{chunk_end}), skipping chunk: {persist_exc}"
+                    )
 
-                span.feedback_score = feedback
-                flag_modified(span, "feedback_score")
-                all_updated.append({**result, "stored": True})
-
-            await session.commit()
+        if chunk_updated is not None:
+            all_updated.extend(chunk_updated)
+        else:
+            # Both attempts failed — mark every span in the chunk as not stored.
+            for result in chunk:
+                all_updated.append({**result, "stored": False})
 
     return all_updated
 
