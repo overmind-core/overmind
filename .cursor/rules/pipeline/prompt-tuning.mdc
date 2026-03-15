@@ -100,13 +100,27 @@ prompt_text = get_prompt_for_provider(SUGGESTION_GENERATION_PROMPTS, provider)
 
 Falls back to Anthropic if provider is unknown. Defined in `overmind/tasks/utils/prompts.py`.
 
+## Concurrency Model
+
+### `generate_outputs_with_new_prompt`
+
+LLM calls for all comparison spans are fanned out concurrently via `asyncio.gather`. Each call runs in a thread pool via `asyncio.to_thread(call_llm, ...)` since `call_llm` is synchronous. Concurrency is bounded by `_MAX_CONCURRENT_OUTPUT_GENERATIONS = 10` (a semaphore). This mirrors the pattern used in `evaluations.py` (`_MAX_CONCURRENT_EVALUATIONS`).
+
+### Scoring loop in `_execute_prompt_improvement`
+
+The per-result `_evaluate_correctness_with_llm` calls are also fanned out concurrently using the same `asyncio.gather` + semaphore pattern, with `asyncio.to_thread` wrapping the synchronous scoring function.
+
+### `fetch_spans_by_score_buckets`
+
+Bucket queries remain sequential because SQLAlchemy `AsyncSession` is not safe for concurrent use from multiple coroutines on the same session object.
+
 ## Key Functions
 
 | Function                                                                         | Purpose                                     |
 | -------------------------------------------------------------------------------- | ------------------------------------------- |
 | `generate_improvement_suggestions(poor_spans, prompt, project_desc, agent_desc)` | Generate 3–5 suggestions from poor spans    |
 | `improve_prompt_template(current_prompt, suggestions, span_examples, ...)`       | Apply suggestions to create improved prompt |
-| `generate_outputs_with_new_prompt(new_prompt, old_spans)`                        | Re-run old inputs with new prompt           |
+| `generate_outputs_with_new_prompt(new_prompt, old_spans)`                        | Re-run old inputs with new prompt — concurrent fan-out via `asyncio.gather` + semaphore |
 | `create_comparison_spans(new_prompt, results, session, ...)`                     | Persist re-run results as system spans      |
 | `create_prompt_version(base_prompt, new_text, span_count, spans_used, session)`  | Create new Prompt version (dedup by hash). Copies `evaluation_criteria`, `display_name`, `agent_description`, and `tags` from the base prompt. |
 | `should_improve_prompt(prompt, scored_span_count)`                               | Check if threshold is crossed               |

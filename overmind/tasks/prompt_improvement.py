@@ -4,6 +4,7 @@ Runs daily and triggers improvements when specific span count thresholds are rea
 """
 
 import asyncio
+import dataclasses
 import hashlib
 import json
 import logging
@@ -13,7 +14,7 @@ from typing import Any
 
 from celery import shared_task
 from pydantic import BaseModel, Field
-from sqlalchemy import select, and_, func, cast, Float
+from sqlalchemy import select, and_, func, cast, Float, literal, union_all
 
 from overmind.db.session import get_session_local
 from overmind.models.prompts import Prompt, PROMPT_STATUS_PENDING
@@ -247,11 +248,24 @@ async def is_latest_prompt_adopted(
     prompt: Prompt, current_span_count: int, session, adoption_threshold: float = 0.25
 ) -> tuple[bool, dict[str, Any]]:
     """
-    Check if the latest prompt version is being adopted by at least X% of new spans.
+    Check if the latest prompt version is being adopted by at least X% of spans.
+
+    **Known limitation — multi-version denominator bias**:
+    ``adoption_rate`` is computed as ``spans_on_latest_version / current_span_count``
+    where ``current_span_count`` is the *total* scored span count across *all* versions.
+    In a long-lived prompt with many older spans this denominator is inflated, causing
+    the rate to appear low even when all recent traffic uses the latest version.
+    Example: version 5 has 80 spans but versions 1–4 have 1 000 older spans →
+    adoption_rate = 80/1 080 ≈ 7 %, which blocks tuning despite full recent adoption.
+
+    A more accurate approach would count only spans created after the timestamp of the
+    last improvement (tracked in ``prompt.improvement_metadata["last_improvement_span_count"]``).
+    This is left as a future improvement; callers should treat the threshold as
+    "cumulative adoption across all time" rather than "adoption among recent spans".
 
     Args:
         prompt: The Prompt model instance
-        current_span_count: Current total scored span count
+        current_span_count: Total scored span count across all versions of this prompt
         session: Database session
         adoption_threshold: Minimum adoption rate (default 0.25 = 25%)
 
@@ -297,16 +311,9 @@ async def is_latest_prompt_adopted(
     )
     spans_with_latest = result.scalar() or 0
 
-    # Calculate adoption rate
-    # Note: This counts ALL spans with the latest version, not just new ones
-    # A more accurate approach would track the timestamp of the last improvement
-    # and count spans created after that timestamp
     adoption_rate = (
         spans_with_latest / current_span_count if current_span_count > 0 else 0.0
     )
-
-    # Estimate adoption among new spans (conservative approach)
-    # If total adoption is high, new spans likely also use latest
     is_adopted = adoption_rate >= adoption_threshold
 
     stats = {
@@ -328,14 +335,17 @@ async def fetch_spans_by_score_buckets(
     prompt_id: str, session, per_bucket: int = 15
 ) -> dict[str, list[SpanModel]]:
     """
-    Fetch latest spans from each score bucket.
+    Fetch the most-recent *per_bucket* spans from each score bucket in one query.
 
     Buckets:
-    - poor: [0.0-0.2]
-    - below_average: [0.2-0.4]
-    - average: [0.4-0.6]
-    - good: [0.6-0.8]
-    - excellent: [0.8-1.0]
+    - poor: [0.0, 0.2)
+    - below_average: [0.2, 0.4)
+    - average: [0.4, 0.6)
+    - good: [0.6, 0.8)
+    - excellent: [0.8, 1.0]
+
+    Uses a single UNION ALL of five ranked subqueries so only one DB round-trip
+    is needed instead of five sequential queries.
 
     Args:
         prompt_id: The prompt_id to fetch spans for
@@ -345,56 +355,58 @@ async def fetch_spans_by_score_buckets(
     Returns:
         Dict mapping bucket names to lists of SpanModels
     """
-    buckets = {
-        "poor": (0.0, 0.2),
-        "below_average": (0.2, 0.4),
-        "average": (0.4, 0.6),
-        "good": (0.6, 0.8),
-        "excellent": (0.8, 1.0),
-    }
 
-    results = {}
+    score_col = cast(SpanModel.feedback_score["correctness"], Float)
 
-    for bucket_name, (lower, upper) in buckets.items():
-        # For the highest bucket, include 1.0
-        if upper == 1.0:
-            result = await session.execute(
-                select(SpanModel)
-                .where(
-                    and_(
-                        SpanModel.prompt_id == prompt_id,
-                        SpanModel.feedback_score.has_key("correctness"),
-                        cast(SpanModel.feedback_score["correctness"], Float) >= lower,
-                        cast(SpanModel.feedback_score["correctness"], Float) <= upper,
-                        SpanModel.exclude_system_spans(),
-                    )
-                )
-                .order_by(SpanModel.created_at.desc())
-                .limit(per_bucket)
+    buckets: list[tuple[str, float, float, bool]] = [
+        ("poor", 0.0, 0.2, False),
+        ("below_average", 0.2, 0.4, False),
+        ("average", 0.4, 0.6, False),
+        ("good", 0.6, 0.8, False),
+        ("excellent", 0.8, 1.0, True),  # inclusive upper bound
+    ]
+
+    # Build one ranked subquery per bucket, each labelled with a literal bucket name.
+    # ROW_NUMBER() lets us cap rows per bucket without a Python-side LIMIT loop.
+    subqueries = []
+    for bucket_name, lower, upper, inclusive_upper in buckets:
+        upper_filter = score_col <= upper if inclusive_upper else score_col < upper
+        rn = func.row_number().over(order_by=SpanModel.created_at.desc()).label("rn")
+        sub = (
+            select(
+                SpanModel,
+                literal(bucket_name).label("bucket"),
+                rn,
             )
-        else:
-            result = await session.execute(
-                select(SpanModel)
-                .where(
-                    and_(
-                        SpanModel.prompt_id == prompt_id,
-                        SpanModel.feedback_score.has_key("correctness"),
-                        cast(SpanModel.feedback_score["correctness"], Float) >= lower,
-                        cast(SpanModel.feedback_score["correctness"], Float) < upper,
-                        SpanModel.exclude_system_spans(),
-                    )
+            .where(
+                and_(
+                    SpanModel.prompt_id == prompt_id,
+                    SpanModel.feedback_score.has_key("correctness"),
+                    score_col >= lower,
+                    upper_filter,
+                    SpanModel.exclude_system_spans(),
                 )
-                .order_by(SpanModel.created_at.desc())
-                .limit(per_bucket)
             )
-
-        spans = result.scalars().all()
-        results[bucket_name] = list(spans)
-        logger.info(
-            f"Fetched {len(spans)} spans for bucket '{bucket_name}' [{lower:.1f}-{upper:.1f}]"
+            .subquery(f"bucket_{bucket_name}")
         )
+        # Wrap in a select that filters to the top-N rows for this bucket
+        subqueries.append(select(sub).where(sub.c.rn <= per_bucket))
 
-    return results
+    combined = union_all(*subqueries).subquery("all_buckets")
+    rows = await session.execute(
+        select(SpanModel, combined.c.bucket).join(
+            combined, SpanModel.span_id == combined.c.span_id
+        )
+    )
+
+    bucket_map: dict[str, list[SpanModel]] = {b[0]: [] for b in buckets}
+    for span, bucket_name in rows.all():
+        bucket_map[bucket_name].append(span)
+
+    for bucket_name, spans in bucket_map.items():
+        logger.info(f"Fetched {len(spans)} spans for bucket '{bucket_name}'")
+
+    return bucket_map
 
 
 # Pydantic response models
@@ -870,6 +882,26 @@ async def create_prompt_version(
     return new_prompt
 
 
+_MAX_CONCURRENT_OUTPUT_GENERATIONS = 10
+
+# Per-call timeout for LLM invocations in generate_outputs_with_new_prompt and
+# the fallback scoring path in create_comparison_spans.  Matches the value used
+# in backtesting.py (_LLM_CALL_TIMEOUT_S) so a hung provider connection cannot
+# hold a semaphore slot indefinitely and stall the entire improvement job.
+_LLM_CALL_TIMEOUT_S = 120
+
+
+@dataclasses.dataclass
+class _CandidatePrompt:
+    """Lightweight stand-in for a Prompt ORM object used during candidate evaluation.
+
+    Carries only the ``prompt`` attribute that ``generate_outputs_with_new_prompt``
+    reads, avoiding a premature DB write for a prompt version that may be discarded.
+    """
+
+    prompt: str
+
+
 async def generate_outputs_with_new_prompt(
     new_prompt: Any,
     old_spans: list[SpanModel],
@@ -889,6 +921,10 @@ async def generate_outputs_with_new_prompt(
     4. Handles model responses that contain tool calls instead of plain text
        by serialising them to JSON.
 
+    LLM calls are fanned out concurrently (bounded by
+    ``_MAX_CONCURRENT_OUTPUT_GENERATIONS``) via ``asyncio.gather`` so that
+    all spans are processed in parallel rather than sequentially.
+
     Args:
         new_prompt: Any object with a ``.prompt`` attribute containing the
             prompt template text (``Prompt`` model or lightweight stand-in).
@@ -896,16 +932,24 @@ async def generate_outputs_with_new_prompt(
 
     Returns:
         List of dicts with new output, latency, cost, and old_span_id
+        (order matches ``old_spans``).
     """
     from overmind.tasks.agentic_span_processor import _safe_parse_json
 
-    results = []
+    semaphore = asyncio.Semaphore(_MAX_CONCURRENT_OUTPUT_GENERATIONS)
 
-    for old_span in old_spans:
+    async def _generate_one(old_span: SpanModel) -> dict[str, Any]:
         try:
             # Get the model used by the old span, stripping date suffixes
-            # so LiteLLM can resolve it (e.g. gpt-5-mini-2025-08-07 → gpt-5-mini)
-            raw_model = old_span.metadata_attributes["gen_ai.response.model"]
+            # so LiteLLM can resolve it (e.g. gpt-5-mini-2025-08-07 → gpt-5-mini).
+            # Prefer gen_ai.response.model (actual model used); fall back to
+            # gen_ai.request.model (requested model) for spans that lack response metadata.
+            attrs = old_span.metadata_attributes or {}
+            raw_model = attrs.get("gen_ai.response.model") or attrs.get(
+                "gen_ai.request.model"
+            )
+            if not raw_model:
+                raise ValueError(f"Span {old_span.span_id} has no model metadata")
             model = normalize_model_name(raw_model)
 
             # Parse input_params (may be a JSON string or already a dict)
@@ -963,51 +1007,66 @@ async def generate_outputs_with_new_prompt(
                 # Fallback for non-list inputs: send as a plain user message
                 call_messages = None
 
-            response, stats = call_llm(
-                input_text=formatted_new_prompt,  # used only when call_messages is None
-                system_prompt=None,
-                model=model,
-                messages=call_messages,
-                tools=tools if tools else None,
-            )
+            async with semaphore:
+                response, stats = await asyncio.wait_for(
+                    asyncio.to_thread(
+                        call_llm,
+                        input_text=formatted_new_prompt,  # used only when call_messages is None
+                        system_prompt=None,
+                        model=model,
+                        messages=call_messages,
+                        tools=tools if tools else None,
+                    ),
+                    timeout=_LLM_CALL_TIMEOUT_S,
+                )
 
             response = normalize_llm_response_output(response)
-
-            results.append(
-                {
-                    "old_span_id": old_span.span_id,
-                    "input": old_span.input or {},
-                    "input_params": old_span.input_params or {},
-                    "metadata": old_span.metadata_attributes or {},
-                    "output": response,
-                    "latency_ms": stats["response_ms"],
-                    "cost": stats["response_cost"],
-                    "prompt_tokens": stats["prompt_tokens"],
-                    "completion_tokens": stats["completion_tokens"],
-                    "old_span_trace_id": old_span.trace_id,
-                    "model": model,
-                    "available_tools": tools,
-                }
-            )
 
             logger.info(
                 f"Generated output for old span {old_span.span_id} using model {model}: "
                 f"latency={stats['response_ms']}ms, cost=${stats['response_cost']:.6f}"
             )
 
+            return {
+                "old_span_id": old_span.span_id,
+                "input": old_span.input or {},
+                "input_params": old_span.input_params or {},
+                "metadata": old_span.metadata_attributes or {},
+                "output": response,
+                "latency_ms": stats["response_ms"],
+                "cost": stats["response_cost"],
+                "prompt_tokens": stats["prompt_tokens"],
+                "completion_tokens": stats["completion_tokens"],
+                "old_span_trace_id": old_span.trace_id,
+                "model": model,
+                "available_tools": tools,
+            }
+
         except Exception as exc:
             logger.error(
                 f"Failed to generate output for span {old_span.span_id}: {exc}"
             )
-            results.append({"old_span_id": old_span.span_id, "error": str(exc)})
+            return {"old_span_id": old_span.span_id, "error": str(exc)}
 
+    raw = await asyncio.gather(
+        *[_generate_one(span) for span in old_spans],
+        return_exceptions=True,
+    )
+    results = []
+    for span, val in zip(old_spans, raw):
+        if isinstance(val, BaseException):
+            logger.error(
+                f"Unexpected exception generating output for span {span.span_id}: {val}"
+            )
+            results.append({"old_span_id": span.span_id, "error": str(val)})
+        else:
+            results.append(val)
     return results
 
 
 async def create_comparison_spans(
     new_prompt: Prompt,
     generation_results: list[dict[str, Any]],
-    session,
     project_description: str | None = None,
     agent_description: str | None = None,
 ) -> list[SpanModel]:
@@ -1018,24 +1077,35 @@ async def create_comparison_spans(
     directly; otherwise the score is evaluated via LLM (requires the prompt to
     carry ``evaluation_criteria``).
 
+    Callers in the main prompt-improvement path always pass pre-computed scores
+    (set by ``_run_prompt_improvement`` before calling this function), so the
+    fallback LLM evaluation branch is only exercised when this function is called
+    directly with unscored results. In that case all evaluations are fanned out
+    concurrently (bounded by ``_MAX_CONCURRENT_OUTPUT_GENERATIONS``) rather than
+    evaluated sequentially.
+
+    Opens its own short-lived write session so callers do not need to hold a
+    DB connection across the (potentially long) LLM evaluation fallback path.
+
     Args:
         new_prompt: The newly created Prompt
         generation_results: Results from generate_outputs_with_new_prompt
             (may include ``correctness_score`` for pre-computed values)
-        session: Database session
 
     Returns:
         List of newly created SpanModels
     """
+    AsyncSessionLocal = get_session_local()
     import uuid
 
-    # Determine whether we need LLM-based evaluation for any result
-    needs_evaluation = any(
-        "correctness_score" not in r for r in generation_results if "error" not in r
-    )
+    # Filter out generation errors upfront
+    valid_results = [r for r in generation_results if "error" not in r]
+
+    # Determine whether any result still needs LLM-based evaluation
+    unscored = [r for r in valid_results if r.get("correctness_score") is None]
 
     criteria_text = None
-    if needs_evaluation:
+    if unscored:
         if (
             not new_prompt.evaluation_criteria
             or "correctness" not in new_prompt.evaluation_criteria
@@ -1047,32 +1117,64 @@ async def create_comparison_spans(
         criteria_rules = new_prompt.evaluation_criteria["correctness"]
         criteria_text = _format_criteria(criteria_rules)
 
+        # Fan out all fallback evaluations concurrently (bounded by semaphore)
+        eval_semaphore = asyncio.Semaphore(_MAX_CONCURRENT_OUTPUT_GENERATIONS)
+
+        async def _eval_one(result: dict[str, Any]) -> float | None:
+            async with eval_semaphore:
+                try:
+                    score, _reason = await asyncio.wait_for(
+                        asyncio.to_thread(
+                            _evaluate_correctness_with_llm,
+                            input_data=result["input"],
+                            output_data=result["output"],
+                            criteria_text=criteria_text,
+                            project_description=project_description,
+                            agent_description=agent_description,
+                            span_metadata=result.get("metadata", {}),
+                        ),
+                        timeout=_LLM_CALL_TIMEOUT_S,
+                    )
+                    return score
+                except Exception as exc:
+                    logger.error(
+                        f"Failed to evaluate score for span {result.get('old_span_id')}: {exc}"
+                    )
+                    return None
+
+        scores_raw = await asyncio.gather(
+            *[_eval_one(r) for r in unscored],
+            return_exceptions=True,
+        )
+        for result, score_val in zip(unscored, scores_raw):
+            if isinstance(score_val, BaseException):
+                logger.error(
+                    f"Unexpected exception evaluating span {result.get('old_span_id')}: {score_val}"
+                )
+                result["correctness_score"] = None
+            else:
+                result["correctness_score"] = score_val
+
+    skipped = sum(1 for r in valid_results if r.get("correctness_score") is None)
+    if skipped:
+        logger.warning(
+            f"create_comparison_spans: skipping {skipped}/{len(valid_results)} result(s) "
+            "whose correctness score could not be computed (see earlier errors above)"
+        )
+
     new_spans = []
 
-    for result in generation_results:
-        if "error" in result:
+    for result in valid_results:
+        correctness_value = result.get("correctness_score")
+        if correctness_value is None:
             continue
 
         try:
-            # Use pre-computed score when available, otherwise evaluate via LLM
-            correctness_value = result.get("correctness_score")
-            if correctness_value is None:
-                correctness_value = _evaluate_correctness_with_llm(
-                    input_data=result["input"],
-                    output_data=result["output"],
-                    criteria_text=criteria_text,
-                    project_description=project_description,
-                    agent_description=agent_description,
-                    span_metadata=result.get("metadata", {}),
-                )
-
-            # Create new span
             new_span_id = str(uuid.uuid4())
 
-            # Calculate unix nano timestamps
             now = datetime.now(timezone.utc)
             start_time_nano = int(now.timestamp() * 1_000_000_000)
-            end_time_nano = start_time_nano + (result["latency_ms"] * 1_000_000)
+            end_time_nano = start_time_nano + int(result["latency_ms"] * 1_000_000)
 
             new_span = SpanModel(
                 span_id=new_span_id,
@@ -1099,8 +1201,6 @@ async def create_comparison_spans(
                 trace_id=result["old_span_trace_id"],
                 prompt_id=new_prompt.prompt_id,
             )
-
-            session.add(new_span)
             new_spans.append(new_span)
 
             logger.info(
@@ -1112,8 +1212,12 @@ async def create_comparison_spans(
                 f"Failed to create span for old span {result.get('old_span_id')}: {exc}"
             )
 
-    # Commit all new spans
-    await session.commit()
+    # Persist all new spans in a fresh write session.
+    if new_spans:
+        async with AsyncSessionLocal() as write_session:
+            for span in new_spans:
+                write_session.add(span)
+            await write_session.commit()
 
     logger.info(f"Created {len(new_spans)} comparison spans with scores")
     return new_spans
@@ -1435,90 +1539,135 @@ async def _check_and_create_prompt_improvement_job(
         return None
 
 
-async def _execute_prompt_improvement(
-    prompt_id: str, job_id: str, session
-) -> dict[str, Any]:
+async def _execute_prompt_improvement(prompt_id: str, job_id: str) -> dict[str, Any]:
     """
     Execute the actual prompt improvement work for a job.
 
     Flow
     ----
-    1. Generate an improved prompt template (candidate text).
-    2. Select comparison spans across score buckets (max 50).
-    3. Generate new outputs using the candidate text & score them.
-    4. Compare metrics between old and candidate outputs.
-    5. **Always** create comparison spans (with ``operation="prompt_tuning"``
-       and ``prompt_improvement_test`` metadata) so that every test run
-       leaves an auditable record regardless of outcome.
-    6. **Only if at least one metric improves**: persist a new prompt
-       version and create a ``Suggestion`` record visible to the user.
-    7. If no metric improved the new version is discarded but the
-       comparison spans are retained.
+    1. Short-lived setup session: load job, prompt, project, span count, and
+       score-bucket spans.  The session is closed *before* any LLM work begins
+       so that a DB connection is not held across potentially 10+ concurrent
+       LLM calls (each up to ``_LLM_CALL_TIMEOUT_S`` seconds).
+    2. Generate an improved prompt template (candidate text) — no DB session.
+    3. Select comparison spans across score buckets (max 50) — no DB session.
+    4. Generate new outputs using the candidate text — no DB session.
+    5. Score the new outputs — no DB session.
+    6. Compare metrics — no DB session.
+    7. Fresh write session: create comparison spans for record-keeping.
+    8. Fresh write session: if improved, persist new prompt version + Suggestion.
+    9. Fresh write session: mark job COMPLETED / CANCELLED / FAILED.
+
+    Each early-exit path (identical candidate, no spans, generation failure,
+    no criteria, scoring failure) opens its own short-lived write session so
+    the job status is always persisted.
 
     Args:
         prompt_id: The prompt ID to improve
         job_id: The job ID tracking this work
-        session: Database session
 
     Returns:
         Dict with improvement results
     """
-    # ------------------------------------------------------------------
-    # Setup: load job & prompt
-    # ------------------------------------------------------------------
+    AsyncSessionLocal = get_session_local()
     job_uuid = uuid_module.UUID(job_id)
-    job_result = await session.execute(select(Job).where(Job.job_id == job_uuid))
-    job = job_result.scalar_one_or_none()
 
-    if not job:
-        raise ValueError(f"Job {job_id} not found")
+    # ------------------------------------------------------------------
+    # Setup: load job & prompt in a short-lived read session.
+    # All ORM objects are expunged before the session closes so they can
+    # be accessed safely during the session-free LLM phases below.
+    # ------------------------------------------------------------------
+    async with AsyncSessionLocal() as session:
+        job_result = await session.execute(select(Job).where(Job.job_id == job_uuid))
+        job = job_result.scalar_one_or_none()
 
-    project_id_str, version, slug = Prompt.parse_prompt_id(prompt_id)
-    prompt_result = await session.execute(
-        select(Prompt).where(
-            and_(
-                Prompt.project_id == uuid_module.UUID(project_id_str),
-                Prompt.version == version,
-                Prompt.slug == slug,
+        if not job:
+            raise ValueError(f"Job {job_id} not found")
+
+        project_id_str, version, slug = Prompt.parse_prompt_id(prompt_id)
+        prompt_result = await session.execute(
+            select(Prompt).where(
+                and_(
+                    Prompt.project_id == uuid_module.UUID(project_id_str),
+                    Prompt.version == version,
+                    Prompt.slug == slug,
+                )
             )
         )
-    )
-    prompt = prompt_result.scalar_one_or_none()
+        prompt = prompt_result.scalar_one_or_none()
 
-    if not prompt:
-        raise ValueError(f"Prompt {prompt_id} not found")
+        if not prompt:
+            raise ValueError(f"Prompt {prompt_id} not found")
 
-    project_result = await session.execute(
-        select(Project).where(Project.project_id == uuid_module.UUID(project_id_str))
-    )
-    project = project_result.scalar_one_or_none()
-    project_description = project.description if project else ""
-    agent_description = (prompt.agent_description or {}).get("description", "")
-
-    count_result = await session.execute(
-        select(func.count(SpanModel.span_id)).where(
-            and_(
-                SpanModel.prompt_id == prompt_id,
-                SpanModel.feedback_score.has_key("correctness"),
-                SpanModel.exclude_system_spans(),
+        project_result = await session.execute(
+            select(Project).where(
+                Project.project_id == uuid_module.UUID(project_id_str)
             )
         )
-    )
-    scored_count = count_result.scalar() or 0
+        project = project_result.scalar_one_or_none()
+        project_description = project.description if project else ""
+        agent_description = (prompt.agent_description or {}).get("description", "")
+
+        count_result = await session.execute(
+            select(func.count(SpanModel.span_id)).where(
+                and_(
+                    SpanModel.prompt_id == prompt_id,
+                    SpanModel.feedback_score.has_key("correctness"),
+                    SpanModel.exclude_system_spans(),
+                )
+            )
+        )
+        scored_count = count_result.scalar() or 0
+
+        # Fetch score-bucket spans while the session is still open, then
+        # expunge everything so the session can be closed safely.
+        span_buckets = await fetch_spans_by_score_buckets(prompt_id, session)
+        for span_list in span_buckets.values():
+            for span in span_list:
+                session.expunge(span)
+        session.expunge(job)
+        session.expunge(prompt)
 
     logger.info(f"Improving prompt {prompt_id} (scored spans: {scored_count})")
 
+    # Helper: open a fresh write session, re-fetch job + prompt by PK, apply
+    # a mutation function, and commit.  Used for all early-exit writes so we
+    # never hold a session across LLM work.
+    async def _write_job_status(
+        mutate: Any,  # Callable[[Job, Prompt], Awaitable[None]]
+    ) -> None:
+        try:
+            async with AsyncSessionLocal() as write_session:
+                j_res = await write_session.execute(
+                    select(Job).where(Job.job_id == job_uuid)
+                )
+                j = j_res.scalar_one_or_none()
+                p_res = await write_session.execute(
+                    select(Prompt).where(
+                        and_(
+                            Prompt.project_id == uuid_module.UUID(project_id_str),
+                            Prompt.version == version,
+                            Prompt.slug == slug,
+                        )
+                    )
+                )
+                p = p_res.scalar_one_or_none()
+                if j is not None and p is not None:
+                    await mutate(j, p)
+                await write_session.commit()
+        except Exception:
+            logger.exception("Failed to write job status")
+
     try:
-        # --------------------------------------------------------------
-        # 1. Fetch spans & generate candidate prompt text
-        # --------------------------------------------------------------
-        span_buckets = await fetch_spans_by_score_buckets(prompt_id, session)
         total_spans_fetched = sum(len(v) for v in span_buckets.values())
 
         poor_spans = span_buckets.get("poor", []) + span_buckets.get(
             "below_average", []
         )
 
+        # --------------------------------------------------------------
+        # 1. Generate candidate prompt text (no DB session)
+        # --------------------------------------------------------------
         suggestions = []
         if poor_spans:
             suggestions = await generate_improvement_suggestions(
@@ -1533,28 +1682,28 @@ async def _execute_prompt_improvement(
         candidate_hash = hashlib.sha256(improved_prompt_string.encode()).hexdigest()
         if candidate_hash == prompt.hash:
             logger.info("Candidate prompt identical to current version, skipping")
-            # Advance the threshold so we don't immediately re-trigger at the same count.
-            # Clear criteria_invalidated so the next criteria change can trigger a
-            # fresh rollback.
-            prompt.improvement_metadata = {
-                k: v
-                for k, v in (prompt.improvement_metadata or {}).items()
-                if k != "criteria_invalidated"
-            } | {"last_improvement_span_count": scored_count}
-            if job:
-                job.status = JobStatus.CANCELLED.value
-                job.result = {
-                    "reason": "Improved prompt identical to existing version",
-                    "scored_count": scored_count,
-                    "spans_analyzed": total_spans_fetched,
-                }
-            await session.commit()
-            return {
+            early_result = {
                 "prompt_id": prompt_id,
                 "status": "unchanged",
                 "scored_count": scored_count,
                 "spans_analyzed": total_spans_fetched,
             }
+
+            async def _cancel_identical(j: Job, p: Prompt) -> None:
+                p.improvement_metadata = {
+                    k: v
+                    for k, v in (p.improvement_metadata or {}).items()
+                    if k != "criteria_invalidated"
+                } | {"last_improvement_span_count": scored_count}
+                j.status = JobStatus.CANCELLED.value
+                j.result = {
+                    "reason": "Improved prompt identical to existing version",
+                    "scored_count": scored_count,
+                    "spans_analyzed": total_spans_fetched,
+                }
+
+            await _write_job_status(_cancel_identical)
+            return early_result
 
         # --------------------------------------------------------------
         # 2. Select comparison spans (max 50, prioritise lower scores)
@@ -1569,35 +1718,32 @@ async def _execute_prompt_improvement(
                 break
             comparison_spans.extend(bucket_spans[:remaining_slots])
 
-        # Check AFTER iterating all buckets
         if not comparison_spans:
             logger.warning("No spans found for comparison across all buckets, skipping")
-            if job:
-                job.status = JobStatus.CANCELLED.value
-                job.result = {
-                    "reason": "No scored spans available for comparison testing",
-                    "scored_count": scored_count,
-                    "spans_analyzed": total_spans_fetched,
-                }
-                await session.commit()
-            return {
+            early_result = {
                 "prompt_id": prompt_id,
                 "status": "no_comparison_spans",
                 "scored_count": scored_count,
                 "spans_analyzed": total_spans_fetched,
             }
 
+            async def _cancel_no_spans(j: Job, p: Prompt) -> None:
+                j.status = JobStatus.CANCELLED.value
+                j.result = {
+                    "reason": "No scored spans available for comparison testing",
+                    "scored_count": scored_count,
+                    "spans_analyzed": total_spans_fetched,
+                }
+
+            await _write_job_status(_cancel_no_spans)
+            return early_result
+
         logger.info(f"Selected {len(comparison_spans)} spans for comparison testing")
 
         # --------------------------------------------------------------
-        # 3. Generate outputs with candidate prompt text
+        # 3. Generate outputs with candidate prompt text (no DB session)
         # --------------------------------------------------------------
-        # Use a lightweight stand-in so we don't persist the version yet.
-        class _CandidatePrompt:
-            def __init__(self, text):
-                self.prompt = text
-
-        candidate = _CandidatePrompt(improved_prompt_string)
+        candidate = _CandidatePrompt(prompt=improved_prompt_string)
 
         logger.info(
             f"Generating outputs with candidate prompt for {len(comparison_spans)} spans"
@@ -1612,22 +1758,25 @@ async def _execute_prompt_improvement(
 
         if not successful_results:
             logger.warning("All output generations failed, aborting")
-            if job:
-                job.status = JobStatus.FAILED.value
-                job.result = {
-                    "reason": "All output generations failed",
-                    "scored_count": scored_count,
-                    "spans_analyzed": total_spans_fetched,
-                }
-                await session.commit()
-            return {
+            early_result = {
                 "prompt_id": prompt_id,
                 "status": "generation_failed",
                 "scored_count": scored_count,
             }
 
+            async def _fail_generation(j: Job, p: Prompt) -> None:
+                j.status = JobStatus.FAILED.value
+                j.result = {
+                    "reason": "All output generations failed",
+                    "scored_count": scored_count,
+                    "spans_analyzed": total_spans_fetched,
+                }
+
+            await _write_job_status(_fail_generation)
+            return early_result
+
         # --------------------------------------------------------------
-        # 4. Score the new outputs
+        # 4. Score the new outputs (no DB session)
         # --------------------------------------------------------------
         if (
             not prompt.evaluation_criteria
@@ -1636,54 +1785,88 @@ async def _execute_prompt_improvement(
             logger.warning(
                 "Prompt has no evaluation criteria – cannot score candidate outputs"
             )
-            if job:
-                job.status = JobStatus.FAILED.value
-                job.result = {"reason": "No evaluation criteria on prompt"}
-                await session.commit()
-            return {
+            early_result = {
                 "prompt_id": prompt_id,
                 "status": "no_criteria",
                 "scored_count": scored_count,
             }
 
+            async def _fail_no_criteria(j: Job, p: Prompt) -> None:
+                j.status = JobStatus.FAILED.value
+                j.result = {"reason": "No evaluation criteria on prompt"}
+
+            await _write_job_status(_fail_no_criteria)
+            return early_result
+
         criteria_rules = prompt.evaluation_criteria["correctness"]
         criteria_text = _format_criteria(criteria_rules)
 
-        for result in successful_results:
-            try:
-                score = _evaluate_correctness_with_llm(
-                    input_data=result["input"],
-                    output_data=result["output"],
-                    criteria_text=criteria_text,
-                    project_description=project_description,
-                    agent_description=agent_description,
-                    span_metadata=result.get("metadata", {}),
-                )
-                result["correctness_score"] = score
-            except Exception as eval_exc:
-                logger.error(
-                    f"Failed to score output for span {result.get('old_span_id')}: {eval_exc}"
-                )
-                result["correctness_score"] = None
+        score_semaphore = asyncio.Semaphore(_MAX_CONCURRENT_OUTPUT_GENERATIONS)
 
+        async def _score_one(result: dict[str, Any]) -> dict[str, Any]:
+            async with score_semaphore:
+                try:
+                    score, _reason = await asyncio.to_thread(
+                        _evaluate_correctness_with_llm,
+                        input_data=result["input"],
+                        output_data=result["output"],
+                        criteria_text=criteria_text,
+                        project_description=project_description,
+                        agent_description=agent_description,
+                        span_metadata=result.get("metadata", {}),
+                    )
+                    return {**result, "correctness_score": score}
+                except Exception as eval_exc:
+                    logger.error(
+                        f"Failed to score output for span {result.get('old_span_id')}: {eval_exc}"
+                    )
+                    return {**result, "correctness_score": None}
+
+        scored_results_raw = await asyncio.gather(
+            *[_score_one(r) for r in successful_results],
+            return_exceptions=True,
+        )
+        # Update successful_results in-place so downstream code (comparison spans) sees scores.
+        # return_exceptions=True means entries can be BaseException instances — treat those as
+        # scoring failures (correctness_score stays absent → filtered out below).
+        for i, updated in enumerate(scored_results_raw):
+            if isinstance(updated, BaseException):
+                logger.error(
+                    f"Unexpected exception scoring span {successful_results[i].get('old_span_id')}: {updated}"
+                )
+                # Leave successful_results[i] unchanged (no correctness_score key → filtered below)
+            else:
+                successful_results[i] = updated
+
+        # Two distinct failure modes both result in the entry being filtered out:
+        #   • correctness_score=None  — _score_one caught an exception and explicitly
+        #     set the key to None (distinguishable in logs via the error logged there).
+        #   • correctness_score key absent — the BaseException branch above left the
+        #     original dict untouched (no correctness_score key was ever set).
+        # r.get("correctness_score") is not None correctly excludes both cases.
+        # The per-entry errors are already logged above; a summary is emitted by
+        # create_comparison_spans if any scored_results are later skipped there.
         scored_results = [
             r for r in successful_results if r.get("correctness_score") is not None
         ]
 
         if not scored_results:
             logger.warning("No outputs could be scored, aborting")
-            if job:
-                job.status = JobStatus.FAILED.value
-                job.result = {"reason": "Scoring failed for all outputs"}
-                await session.commit()
-            return {
+            early_result = {
                 "prompt_id": prompt_id,
                 "status": "scoring_failed",
                 "scored_count": scored_count,
             }
 
+            async def _fail_scoring(j: Job, p: Prompt) -> None:
+                j.status = JobStatus.FAILED.value
+                j.result = {"reason": "Scoring failed for all outputs"}
+
+            await _write_job_status(_fail_scoring)
+            return early_result
+
         # --------------------------------------------------------------
-        # 5. Compare metrics
+        # 5. Compare metrics (no DB session)
         # --------------------------------------------------------------
         old_scores = [
             span.feedback_score.get("correctness", 0.0)
@@ -1697,7 +1880,6 @@ async def _execute_prompt_improvement(
         score_delta = avg_new - avg_old
         score_delta_pct = (score_delta / avg_old * 100) if avg_old > 0 else 0.0
 
-        # Also compare cost / latency
         total_new_cost = sum(r.get("cost", 0.0) for r in scored_results)
         avg_new_latency = (
             sum(r.get("latency_ms", 0) for r in scored_results) / len(scored_results)
@@ -1762,12 +1944,12 @@ async def _execute_prompt_improvement(
 
         # --------------------------------------------------------------
         # 6. Always create comparison spans for record-keeping
+        #    (fresh write session opened inside create_comparison_spans)
         # --------------------------------------------------------------
         logger.info("Creating comparison spans with pre-computed scores")
         new_comparison_spans = await create_comparison_spans(
             prompt,
             scored_results,
-            session,
             project_description=project_description,
             agent_description=agent_description,
         )
@@ -1779,14 +1961,6 @@ async def _execute_prompt_improvement(
             logger.info(
                 f"No improvement detected for prompt {prompt_id} ({avg_old:.4f} → {avg_new:.4f}), discarding candidate"
             )
-            # Advance the threshold so the scheduler doesn't immediately re-trigger
-            # at the same span count on the next run. Mirrors the identical-candidate
-            # and dedup paths. Clear criteria_invalidated for the same reason.
-            prompt.improvement_metadata = {
-                k: v
-                for k, v in (prompt.improvement_metadata or {}).items()
-                if k != "criteria_invalidated"
-            } | {"last_improvement_span_count": scored_count}
             no_improve_result = {
                 "prompt_id": prompt_id,
                 "status": "no_improvement",
@@ -1800,37 +1974,49 @@ async def _execute_prompt_improvement(
                     "metrics": comparison_metrics,
                 },
             }
-            if job:
-                job.status = JobStatus.COMPLETED.value
-                job.result = no_improve_result
-                await session.commit()
+
+            async def _complete_no_improve(j: Job, p: Prompt) -> None:
+                p.improvement_metadata = {
+                    k: v
+                    for k, v in (p.improvement_metadata or {}).items()
+                    if k != "criteria_invalidated"
+                } | {"last_improvement_span_count": scored_count}
+                j.status = JobStatus.COMPLETED.value
+                j.result = no_improve_result
+
+            await _write_job_status(_complete_no_improve)
             return no_improve_result
 
         # --------------------------------------------------------------
         # 8. Improvement confirmed → create new prompt version
+        #    create_prompt_version commits the session itself.
         # --------------------------------------------------------------
-        new_prompt = await create_prompt_version(
-            prompt, improved_prompt_string, scored_count, total_spans_fetched, session
-        )
+        async with AsyncSessionLocal() as write_session:
+            new_prompt = await create_prompt_version(
+                prompt,
+                improved_prompt_string,
+                scored_count,
+                total_spans_fetched,
+                write_session,
+            )
 
         # Dedup guard (create_prompt_version returns existing if hash matches another version)
         if new_prompt.version == prompt.version:
             logger.info("Prompt version dedup hit after improvement gate, skipping")
-            # Advance the threshold since the generated prompt matched an existing version.
-            # Clear criteria_invalidated so the next criteria change can trigger a
-            # fresh rollback.
-            prompt.improvement_metadata = {
-                k: v
-                for k, v in (prompt.improvement_metadata or {}).items()
-                if k != "criteria_invalidated"
-            } | {"last_improvement_span_count": scored_count}
-            if job:
-                job.status = JobStatus.CANCELLED.value
-                job.result = {
+
+            async def _cancel_dedup(j: Job, p: Prompt) -> None:
+                p.improvement_metadata = {
+                    k: v
+                    for k, v in (p.improvement_metadata or {}).items()
+                    if k != "criteria_invalidated"
+                } | {"last_improvement_span_count": scored_count}
+                j.status = JobStatus.CANCELLED.value
+                j.result = {
                     "reason": "Improved prompt identical to existing version",
                     "scored_count": scored_count,
                 }
-            await session.commit()
+
+            await _write_job_status(_cancel_dedup)
             return {
                 "prompt_id": prompt_id,
                 "status": "unchanged",
@@ -1838,7 +2024,7 @@ async def _execute_prompt_improvement(
             }
 
         # --------------------------------------------------------------
-        # 9. Create a Suggestion record so the UI surfaces the result
+        # 9. Create Suggestion + mark job COMPLETED (single write session)
         # --------------------------------------------------------------
         suggestion_title = (
             f"Prompt v{new_prompt.version}: +{score_delta_pct:.1f}% correctness"
@@ -1852,54 +2038,57 @@ async def _execute_prompt_improvement(
                 f"Applied {len(suggestions)} improvement suggestion(s)."
             )
 
-        suggestion_record = SuggestionModel(
-            prompt_slug=prompt.slug,
-            project_id=prompt.project_id,
-            job_id=job_uuid,
-            title=suggestion_title,
-            description=suggestion_description,
-            new_prompt_text=improved_prompt_string,
-            new_prompt_version=new_prompt.version,
-            scores={
-                "avg_correctness_old": round(avg_old, 4),
-                "avg_correctness_new": round(avg_new, 4),
-                "spans_tested": len(comparison_spans),
-                "spans_scored": len(scored_results),
-                "total_cost_old": round(total_old_cost, 6),
-                "total_cost_new": round(total_new_cost, 6),
-                "avg_latency_ms_old": round(avg_old_latency, 2),
-                "avg_latency_ms_new": round(avg_new_latency, 2),
-            },
-            status="pending",
-        )
-        session.add(suggestion_record)
-        await session.commit()
-        logger.info(
-            f"Created suggestion {suggestion_record.suggestion_id} for prompt v{new_prompt.version}"
-        )
+        async with AsyncSessionLocal() as write_session:
+            suggestion_record = SuggestionModel(
+                prompt_slug=prompt.slug,
+                project_id=prompt.project_id,
+                job_id=job_uuid,
+                title=suggestion_title,
+                description=suggestion_description,
+                new_prompt_text=improved_prompt_string,
+                new_prompt_version=new_prompt.version,
+                scores={
+                    "avg_correctness_old": round(avg_old, 4),
+                    "avg_correctness_new": round(avg_new, 4),
+                    "spans_tested": len(comparison_spans),
+                    "spans_scored": len(scored_results),
+                    "total_cost_old": round(total_old_cost, 6),
+                    "total_cost_new": round(total_new_cost, 6),
+                    "avg_latency_ms_old": round(avg_old_latency, 2),
+                    "avg_latency_ms_new": round(avg_new_latency, 2),
+                },
+                status="pending",
+            )
+            write_session.add(suggestion_record)
+            await write_session.flush()  # populate suggestion_id before commit
 
-        # --------------------------------------------------------------
-        # 10. Mark job completed
-        # --------------------------------------------------------------
-        final_result = {
-            "prompt_id": prompt_id,
-            "new_version": new_prompt.version,
-            "status": "improved",
-            "scored_count": scored_count,
-            "spans_analyzed": total_spans_fetched,
-            "suggestions_count": len(suggestions),
-            "suggestion_id": str(suggestion_record.suggestion_id),
-            "comparison_test": {
-                "spans_tested": len(comparison_spans),
-                "spans_created": len(new_comparison_spans),
-                "metrics": comparison_metrics,
-            },
-        }
+            final_result = {
+                "prompt_id": prompt_id,
+                "new_version": new_prompt.version,
+                "status": "improved",
+                "scored_count": scored_count,
+                "spans_analyzed": total_spans_fetched,
+                "suggestions_count": len(suggestions),
+                "suggestion_id": str(suggestion_record.suggestion_id),
+                "comparison_test": {
+                    "spans_tested": len(comparison_spans),
+                    "spans_created": len(new_comparison_spans),
+                    "metrics": comparison_metrics,
+                },
+            }
 
-        if job:
-            job.status = JobStatus.COMPLETED.value
-            job.result = final_result
-            await session.commit()
+            j_res = await write_session.execute(
+                select(Job).where(Job.job_id == job_uuid)
+            )
+            j = j_res.scalar_one_or_none()
+            if j:
+                j.status = JobStatus.COMPLETED.value
+                j.result = final_result
+
+            await write_session.commit()
+            logger.info(
+                f"Created suggestion {suggestion_record.suggestion_id} for prompt v{new_prompt.version}"
+            )
             logger.info(
                 f"Updated job entry to completed for prompt_tuning: {prompt_id}"
             )
@@ -1912,52 +2101,63 @@ async def _execute_prompt_improvement(
         # as FAILED and advance the threshold so it does not re-trigger at
         # the same span count.
         MAX_JOB_RETRIES = 3
-        if job:
-            try:
-                existing_params = (job.result or {}).get("parameters", {})
-                retry_count = existing_params.get("retry_count", 0)
-
-                if retry_count < MAX_JOB_RETRIES:
-                    existing_params["retry_count"] = retry_count + 1
-                    job.status = JobStatus.PENDING.value
-                    job.result = {
-                        **(job.result or {}),
-                        "parameters": existing_params,
-                        "last_error": str(e),
-                    }
-                    logger.warning(
-                        f"Prompt tuning job {job_id} failed (attempt {retry_count + 1}/{MAX_JOB_RETRIES}), "
-                        f"resetting to pending for retry"
+        try:
+            async with AsyncSessionLocal() as err_session:
+                j_res = await err_session.execute(
+                    select(Job).where(Job.job_id == job_uuid)
+                )
+                j = j_res.scalar_one_or_none()
+                p_res = await err_session.execute(
+                    select(Prompt).where(
+                        and_(
+                            Prompt.project_id == uuid_module.UUID(project_id_str),
+                            Prompt.version == version,
+                            Prompt.slug == slug,
+                        )
                     )
-                else:
-                    # Final failure — mark FAILED and advance threshold so the
-                    # scheduler skips this span count on the next run.
-                    job.status = JobStatus.FAILED.value
-                    job.result = {
-                        **(job.result or {}),
-                        "parameters": existing_params,
-                        "error": str(e),
-                    }
-                    logger.error(
-                        f"Prompt tuning job {job_id} failed after {MAX_JOB_RETRIES} retries, "
-                        f"marking as failed and advancing threshold"
-                    )
+                )
+                p = p_res.scalar_one_or_none()
+                if j is not None:
+                    existing_params = (j.result or {}).get("parameters", {})
+                    retry_count = existing_params.get("retry_count", 0)
 
-                    # Advance threshold to prevent immediate re-triggering.
-                    prompt.improvement_metadata = {
-                        k: v
-                        for k, v in (prompt.improvement_metadata or {}).items()
-                        if k != "criteria_invalidated"
-                    } | {"last_improvement_span_count": scored_count}
+                    if retry_count < MAX_JOB_RETRIES:
+                        existing_params["retry_count"] = retry_count + 1
+                        j.status = JobStatus.PENDING.value
+                        j.result = {
+                            **(j.result or {}),
+                            "parameters": existing_params,
+                            "last_error": str(e),
+                        }
+                        logger.warning(
+                            f"Prompt tuning job {job_id} failed (attempt {retry_count + 1}/{MAX_JOB_RETRIES}), "
+                            f"resetting to pending for retry"
+                        )
+                    else:
+                        j.status = JobStatus.FAILED.value
+                        j.result = {
+                            **(j.result or {}),
+                            "parameters": existing_params,
+                            "error": str(e),
+                        }
+                        logger.error(
+                            f"Prompt tuning job {job_id} failed after {MAX_JOB_RETRIES} retries, "
+                            f"marking as failed and advancing threshold"
+                        )
 
-                await session.commit()
+                        if p is not None:
+                            p.improvement_metadata = {
+                                k: v
+                                for k, v in (p.improvement_metadata or {}).items()
+                                if k != "criteria_invalidated"
+                            } | {"last_improvement_span_count": scored_count}
+
+                await err_session.commit()
                 logger.info(
                     f"Updated job entry after prompt_tuning failure: {prompt_id}"
                 )
-            except Exception:
-                logger.exception(
-                    "Failed to update job status after prompt tuning failure"
-                )
+        except Exception:
+            logger.exception("Failed to update job status after prompt tuning failure")
         raise
 
 
@@ -2085,10 +2285,8 @@ async def _improve_single_prompt_async(prompt_id: str, job_id: str) -> dict[str,
     from overmind.db.session import dispose_engine
 
     try:
-        AsyncSessionLocal = get_session_local()
-        async with AsyncSessionLocal() as session:
-            result = await _execute_prompt_improvement(prompt_id, job_id, session)
-            return result
+        result = await _execute_prompt_improvement(prompt_id, job_id)
+        return result
     finally:
         # CRITICAL: Dispose of the engine to close all connections
         await dispose_engine()

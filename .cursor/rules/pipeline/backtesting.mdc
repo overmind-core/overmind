@@ -25,8 +25,7 @@ Periodic (5 min) or Job trigger
         │
         ▼
   For each eligible prompt:
-  ├── Fetch spans (up to 50, via span_count param)
-  ├── Load evaluation criteria
+  ├── Single DB session: fetch spans + criteria + prompt/project context
   ├── Detect current model from span metadata_attributes.model
   ├── Compute baseline: avg score, avg latency, avg cost
   │
@@ -35,12 +34,15 @@ Periodic (5 min) or Job trigger
   ├── Build work items: (model, span, input_text) for each model × span
   ├── Interleave models by provider to spread API load
   │
-  ├── For each (model, span) — semaphore limit 5:
+  ├── Phase A — model inference (asyncio.gather, semaphore=5):
   │   ├── Tool-calling? → replay full conversation + tools
   │   │   Plain text?   → use extracted input text
-  │   ├── Call _run_model_on_input(model, input_text, messages?, tools?)
-  │   ├── Score output with _evaluate_correctness_with_llm()
-  │   └── Persist result span (operation="backtest:{model_name}")
+  │   └── Call _run_model_on_input(model, input_text, messages?, tools?)
+  │
+  ├── Phase B — correctness scoring (asyncio.gather, semaphore=5):
+  │   └── Score each successful inference with _evaluate_correctness_with_llm()
+  │
+  ├── Persist result spans in chunked DB transactions (_BACKTEST_PERSIST_CHUNK_SIZE=50, 1 retry per chunk)
   │
   ├── Aggregate per-model metrics
   ├── _generate_recommendations()
@@ -50,6 +52,14 @@ Periodic (5 min) or Job trigger
   │
   └── Update Job status + result
 ```
+
+## Concurrency Model
+
+`_run_backtesting` uses a **two-phase** execution model:
+
+- **Phase A** (`_run_inference`): all `N_spans × N_models` inference calls are fanned out concurrently via `asyncio.gather`, bounded by `asyncio.Semaphore(_MAX_CONCURRENT_BACKTESTS=5)`. Each semaphore slot holds exactly one `call_llm` call (via `asyncio.to_thread`).
+- **Phase B** (`_score_inference`): all scoring calls are fanned out independently after Phase A completes, using a separate semaphore of the same size. This means the semaphore is never held across two sequential LLM calls — effectively doubling throughput vs. the previous single-phase approach.
+- **Bulk DB write**: all result `SpanModel` objects are accumulated in memory and committed in a single `async with AsyncSessionLocal() as db` session after both phases, replacing the previous per-item session-per-commit pattern (up to `N_spans × N_models` individual sessions).
 
 ## Entry Points
 
