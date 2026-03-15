@@ -572,6 +572,10 @@ async def suggest_prompt_criteria(
             detail="Access denied: User is not a member of this project",
         )
 
+    # TODO: get_spans_for_prompt and get_project_description each open their own
+    # DB session via get_session_local(), while this endpoint already has an
+    # injected `db` session. Refactor these helpers to accept an optional session
+    # parameter to avoid the double-connection overhead.
     # Fetch spans and project context — failures are non-fatal; degrade gracefully
     try:
         spans = await get_spans_for_prompt(prompt_id, limit=10)
@@ -611,6 +615,11 @@ async def suggest_prompt_criteria(
             status_code=422,
             detail="current_criteria must not be empty — provide at least one metric with its rules.",
         )
+    if not any(rules for rules in current_criteria.values()):
+        raise HTTPException(
+            status_code=422,
+            detail="current_criteria must contain at least one non-empty rule list.",
+        )
     primary_metric = next(iter(current_criteria))
     current_criteria_text = (
         "\n".join(
@@ -630,6 +639,11 @@ async def suggest_prompt_criteria(
         primary_metric=primary_metric,
     )
 
+    # NOTE: asyncio.wait_for cancels the coroutine wrapping the thread, but the
+    # underlying sync thread running call_llm cannot be interrupted — it will
+    # continue executing in the background until the LLM responds or the process
+    # exits. This is a known limitation of asyncio.to_thread. Mitigation: the
+    # LLM client enforces its own network-level timeout via the provider SDK.
     try:
         response_text, _ = await asyncio.wait_for(
             asyncio.to_thread(

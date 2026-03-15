@@ -167,8 +167,8 @@ function LiveDiff({
 export function CriteriaEditDialog({ isOpen, onClose, savedCriteria, promptId, onSave }: Props) {
   // This dialog edits one metric at a time (the first/primary one).
   // Other metrics are preserved untouched on save — see handleSave.
-  // Safety: component is conditionally rendered ({showEditDialog && <CriteriaEditDialog/>})
-  // so workingRules is always freshly initialised from savedCriteria on each open.
+  // The parent passes key={String(isOpen)} so the component remounts on each open,
+  // guaranteeing workingRules is freshly initialised from savedCriteria every time.
   const primaryMetric = Object.keys(savedCriteria)[0] ?? "correctness";
   const savedRules = savedCriteria[primaryMetric] ?? [];
 
@@ -257,13 +257,13 @@ export function CriteriaEditDialog({ isOpen, onClose, savedCriteria, promptId, o
   }
 
   const hasChanges = (() => {
-    const normalize = (r: string) => r.trim().toLowerCase();
+    const normalize = (r: string) => r.trim();
     const a = savedRules.map(normalize);
     const b = workingRules
       .map((r) => r.value)
       .filter(Boolean)
       .map(normalize);
-    // Positional comparison — order changes and content changes both count
+    // Positional comparison — order, content, and case changes all count
     return a.length !== b.length || a.some((v, i) => v !== b[i]);
   })();
 
@@ -359,6 +359,9 @@ export function CriteriaEditDialog({ isOpen, onClose, savedCriteria, promptId, o
                 }
                 value={aiInstructions}
               />
+              {/* History is intentionally append-only and bounded to the last 5
+                  entries (capped at 1800 chars) so each AI call builds on prior
+                  context without exceeding the backend max_length limit. */}
               {instructionHistory.length > 0 && (
                 <ol className="space-y-1">
                   {instructionHistory.map((inst, i) => (

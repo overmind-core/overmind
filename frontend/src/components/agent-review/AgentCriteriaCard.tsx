@@ -179,15 +179,16 @@ export function AgentCriteriaCard({ promptId, projectId }: Props) {
         </CardContent>
       </Card>
 
-      {showEditDialog && (
-        <CriteriaEditDialog
-          isOpen={showEditDialog}
-          onClose={() => setShowEditDialog(false)}
-          onSave={handleSaveFromDialog}
-          promptId={promptId}
-          savedCriteria={criteriaMap}
-        />
-      )}
+      {/* key={String(showEditDialog)} remounts the dialog on each open, ensuring
+          workingRules is always freshly initialised from savedCriteria. */}
+      <CriteriaEditDialog
+        isOpen={showEditDialog}
+        key={String(showEditDialog)}
+        onClose={() => setShowEditDialog(false)}
+        onSave={handleSaveFromDialog}
+        promptId={promptId}
+        savedCriteria={criteriaMap}
+      />
 
       <Dialog onOpenChange={(open) => !open && setShowReEvalDialog(false)} open={showReEvalDialog}>
         <DialogContent className="max-w-md">

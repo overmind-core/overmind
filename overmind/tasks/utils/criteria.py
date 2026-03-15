@@ -11,7 +11,7 @@ import json
 import logging
 from uuid import UUID
 
-from sqlalchemy import select, and_
+from sqlalchemy import select, and_, desc
 
 from overmind.db.session import get_session_local
 from overmind.models.iam.projects import Project
@@ -25,7 +25,9 @@ async def get_spans_for_prompt(
 ) -> list[SpanModel]:
     """Fetch spans linked to a prompt.
 
-    Prefers spans with judge_feedback when adjusting criteria.
+    Returns the most recent spans (``desc`` order) so criteria suggestions are
+    anchored to current agent behaviour rather than old examples.
+    Prefers spans with judge_feedback when available.
     Excludes system-generated spans (prompt tuning, backtesting).
     """
     AsyncSessionLocal = get_session_local()
@@ -38,7 +40,7 @@ async def get_spans_for_prompt(
                     SpanModel.exclude_system_spans(),
                 )
             )
-            .order_by(SpanModel.created_at.asc())
+            .order_by(desc(SpanModel.created_at))
             .limit(limit * 2)
         )
         all_spans = list(result.scalars().all())

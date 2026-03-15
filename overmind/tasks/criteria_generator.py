@@ -27,11 +27,6 @@ from overmind.tasks.utils.prompts import (
 )
 from overmind.tasks.agentic_span_processor import detect_agentic_span
 
-# Private aliases kept for any callers that imported these before they were promoted.
-_get_spans_for_prompt = get_spans_for_prompt
-_format_spans_as_examples = format_spans_as_examples
-_get_project_description = get_project_description
-
 logger = logging.getLogger(__name__)
 
 
