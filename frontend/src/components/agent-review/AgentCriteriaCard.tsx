@@ -40,7 +40,7 @@ export function AgentCriteriaCard({ promptId }: Props) {
 
   // Re-eval dialog
   const [showReEvalDialog, setShowReEvalDialog] = useState(false);
-  const [pendingCriteria, setPendingCriteria] = useState<Record<string, string[]>>({});
+  const [pendingCriteria, setPendingCriteria] = useState<Record<string, string[]> | null>(null);
 
   useEffect(() => {
     setIsLoading(true);
@@ -69,11 +69,17 @@ export function AgentCriteriaCard({ promptId }: Props) {
   }
 
   const saveMutation = useMutation({
-    mutationFn: async (reEvaluate: boolean) => {
+    mutationFn: async ({
+      criteria,
+      reEvaluate,
+    }: {
+      criteria: Record<string, string[]>;
+      reEvaluate: boolean;
+    }) => {
       await apiClient.prompts.updatePromptCriteriaApiV1PromptsPromptIdCriteriaPut({
         promptId,
         updateCriteriaRequest: {
-          evaluationCriteria: pendingCriteria,
+          evaluationCriteria: criteria,
           reEvaluate,
         },
       });
@@ -81,8 +87,8 @@ export function AgentCriteriaCard({ promptId }: Props) {
     onError: (err: Error) => {
       toast.error(err.message ?? "Failed to save criteria.");
     },
-    onSuccess: (_, reEvaluate) => {
-      setCriteriaMap(pendingCriteria);
+    onSuccess: (_, { criteria, reEvaluate }) => {
+      setCriteriaMap(criteria);
       setShowReEvalDialog(false);
       if (reEvaluate) {
         toast.success("Criteria saved. Re-evaluation of recent spans has started.");
@@ -201,17 +207,26 @@ export function AgentCriteriaCard({ promptId }: Props) {
           </DialogHeader>
           <DialogFooter className="flex-col-reverse gap-2 sm:flex-row sm:justify-end">
             <Button
-              disabled={saveMutation.isPending}
-              onClick={() => saveMutation.mutate(false)}
+              disabled={saveMutation.isPending || !pendingCriteria}
+              onClick={() =>
+                pendingCriteria &&
+                saveMutation.mutate({ criteria: pendingCriteria, reEvaluate: false })
+              }
               variant="outline"
             >
-              {saveMutation.isPending && saveMutation.variables === false && (
+              {saveMutation.isPending && saveMutation.variables?.reEvaluate === false && (
                 <Loader2 className="size-4 animate-spin" />
               )}
               No, just save
             </Button>
-            <Button disabled={saveMutation.isPending} onClick={() => saveMutation.mutate(true)}>
-              {saveMutation.isPending && saveMutation.variables === true && (
+            <Button
+              disabled={saveMutation.isPending || !pendingCriteria}
+              onClick={() =>
+                pendingCriteria &&
+                saveMutation.mutate({ criteria: pendingCriteria, reEvaluate: true })
+              }
+            >
+              {saveMutation.isPending && saveMutation.variables?.reEvaluate === true && (
                 <Loader2 className="size-4 animate-spin" />
               )}
               Yes, re-evaluate

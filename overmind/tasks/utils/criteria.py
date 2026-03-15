@@ -22,6 +22,10 @@ from overmind.models.traces import SpanModel
 
 logger = logging.getLogger(__name__)
 
+# Maximum characters per span field (input/output) when formatting examples for LLM prompts.
+# Prevents very large spans from inflating token cost across 10 examples.
+_SPAN_FIELD_MAX_CHARS = 1000
+
 
 @asynccontextmanager
 async def _session_or_new(
@@ -73,7 +77,10 @@ async def get_spans_for_prompt(
         without_feedback = [
             s for s in all_spans if not (s.feedback_score or {}).get("judge_feedback")
         ]
-        return with_feedback[:limit] + without_feedback[: limit - len(with_feedback)]
+        return (
+            with_feedback[:limit]
+            + without_feedback[: max(0, limit - len(with_feedback))]
+        )
 
 
 async def format_spans_as_examples(
@@ -98,15 +105,12 @@ async def format_spans_as_examples(
                 judge_section = f"\nUser feedback on Judge (rating={rating}): {text}"
             else:
                 judge_section = f"\nUser feedback on Judge: rating={rating}"
-        # Truncate to 1000 chars per field to prevent very large spans from
-        # inflating prompt size and token cost across 10 examples.
-        _MAX = 1000
         input_text = json.dumps(span.input or {}, indent=2)
         output_text = json.dumps(span.output or {}, indent=2)
-        if len(input_text) > _MAX:
-            input_text = input_text[:_MAX] + "... [truncated]"
-        if len(output_text) > _MAX:
-            output_text = output_text[:_MAX] + "... [truncated]"
+        if len(input_text) > _SPAN_FIELD_MAX_CHARS:
+            input_text = input_text[:_SPAN_FIELD_MAX_CHARS] + "... [truncated]"
+        if len(output_text) > _SPAN_FIELD_MAX_CHARS:
+            output_text = output_text[:_SPAN_FIELD_MAX_CHARS] + "... [truncated]"
         example = f"""
 Example {i}:
 Input: {input_text}

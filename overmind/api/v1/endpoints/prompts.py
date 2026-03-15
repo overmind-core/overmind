@@ -580,7 +580,7 @@ async def suggest_prompt_criteria(
             detail="current_criteria must not be empty — provide at least one metric with its rules.",
         )
     primary_metric = next(iter(current_criteria))
-    if not current_criteria.get(primary_metric):
+    if not current_criteria[primary_metric]:
         raise HTTPException(
             status_code=422,
             detail=f"Primary metric '{primary_metric}' must have at least one rule.",
@@ -625,12 +625,16 @@ async def suggest_prompt_criteria(
         f"  - {rule}" for rule in primary_rules
     )
 
+    # Strip angle brackets to prevent XML tag injection — a user could otherwise
+    # close the <UserInstructions> tag early and inject arbitrary prompt content.
+    safe_user_instructions = request.user_instructions.replace("<", "").replace(">", "")
+
     prompt_text = CRITERIA_UPDATE_PROMPT.format(
         current_criteria=current_criteria_text,
         project_description=project_description,
         examples=examples_text,
         agentic_note=agentic_note,
-        user_instructions=request.user_instructions,
+        user_instructions=safe_user_instructions,
         primary_metric=primary_metric,
     )
 

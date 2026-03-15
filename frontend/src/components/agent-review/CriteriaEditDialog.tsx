@@ -266,7 +266,18 @@ export function CriteriaEditDialog({
       setInstructionHistory(updatedHistory);
       setAiInstructions("");
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Failed to generate criteria.");
+      // Try to extract the backend `detail` field from API error responses;
+      // fall back to the generic message if the response isn't JSON.
+      let message = "Failed to generate criteria.";
+      if (err instanceof Error) {
+        try {
+          const body = await (err as unknown as { response?: Response }).response?.json();
+          message = body?.detail ?? err.message;
+        } catch {
+          message = err.message;
+        }
+      }
+      toast.error(message);
     } finally {
       setIsGeneratingAi(false);
     }
@@ -276,7 +287,11 @@ export function CriteriaEditDialog({
 
   function handleSave() {
     // Preserve all metrics from savedCriteria; only replace the primary one being edited.
-    onSave({ ...savedCriteria, [primaryMetric]: workingRules.map((r) => r.value).filter(Boolean) });
+    // Filter out blank/whitespace-only rules to match what LiveDiff shows.
+    onSave({
+      ...savedCriteria,
+      [primaryMetric]: workingRules.map((r) => r.value).filter((v) => v.trim()),
+    });
     handleClose();
   }
 
