@@ -320,7 +320,10 @@ def _write_env(path: Path, env: dict[str, str]) -> None:
         k: (v if v is not None else "") for k, v in file_vals.items()
     }
     for k in KEYS_TO_COLLECT:
-        merged[k] = env[k]
+        if k in env:
+            merged[k] = env[k]
+    if not (merged.get("OVERMIND_API_TOKEN") or "").strip():
+        merged.pop("OVERMIND_API_TOKEN", None)
     merged["ANALYZER_MODEL"] = env["ANALYZER_MODEL"]
     if env.get("SYNTHETIC_DATAGEN_MODEL", "").strip():
         merged["SYNTHETIC_DATAGEN_MODEL"] = env["SYNTHETIC_DATAGEN_MODEL"]

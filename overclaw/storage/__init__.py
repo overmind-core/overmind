@@ -147,7 +147,9 @@ def _resolve_storage_identity() -> tuple[str, str | None]:
     # API helpers that read it lazily (e.g. overclaw.client.get_project_id()).
     os.getenv("OVERMIND_PROJECT_ID", "").strip()
 
-    final_agent_path = ((bound.agent_path if bound else None) or env_agent_path or "").strip()
+    final_agent_path = (
+        (bound.agent_path if bound else None) or env_agent_path or ""
+    ).strip()
     final_agent_id = (
         (bound.agent_id if bound else None) or env_agent_id or ""
     ).strip() or None

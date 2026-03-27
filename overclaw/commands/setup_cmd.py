@@ -45,7 +45,12 @@ from overclaw.core.paths import (
     agent_setup_spec_dir,
     load_overclaw_dotenv,
 )
-from overclaw.core.registry import get_agent_id, load_registry, resolve_agent, save_agent
+from overclaw.core.registry import (
+    get_agent_id,
+    load_registry,
+    resolve_agent,
+    save_agent,
+)
 from overclaw.client import (
     _run_async,
     flush_pending_api_updates,
@@ -95,7 +100,9 @@ def _clear_existing_eval_spec(
         if isinstance(storage, ApiBackend):
             if fast:
                 storage.clear_setup_spec()
-                console.print("  [dim]Cleared setup artifacts in Overmind (fast mode).[/dim]")
+                console.print(
+                    "  [dim]Cleared setup artifacts in Overmind (fast mode).[/dim]"
+                )
                 return
             if Confirm.ask(
                 "Delete existing setup artifacts in Overmind and start fresh?",
@@ -344,10 +351,14 @@ def _ensure_remote_agent_id(
                     spec=minimal_spec,
                 )
                 new_id = str(result.id)
-                entrypoint = (load_registry().get(agent_name, {}) or {}).get("entrypoint")
+                entrypoint = (load_registry().get(agent_name, {}) or {}).get(
+                    "entrypoint"
+                )
                 if entrypoint:
                     save_agent(agent_name, entrypoint, id=new_id)
-                console.print("  [dim]Remote agent created and id stored in agents.toml.[/dim]")
+                console.print(
+                    "  [dim]Remote agent created and id stored in agents.toml.[/dim]"
+                )
                 return new_id
         console.print(
             "  [yellow]Warning:[/yellow] Could not create agent in Overmind. "

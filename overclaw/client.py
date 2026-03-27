@@ -632,7 +632,7 @@ def _create_trace(
     ``trace_data`` is the output of ``Trace.to_dict()``.
     """
     try:
-        spans:list[SpanRequest] = []
+        spans: list[SpanRequest] = []
         for idx, s in enumerate(trace_data.get("spans", [])):
             st = s.get("span_type", "llm_call")
             span_type = (
