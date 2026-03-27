@@ -30,6 +30,11 @@ for at least one LLM provider (OpenAI, Anthropic).
 
 ```bash
 # 1. Install OverClaw as a CLI tool
+uv tool install overclaw
+
+## or dev install
+git clone https://github.com/overmind-core/overclaw
+cd overclaw
 uv tool install -e .
 
 # 2. Set API keys and model defaults
@@ -94,8 +99,8 @@ An interactive flow that prepares everything the optimizer needs:
 
 Setup produces two artifacts in `.overclaw/agents/<name>/setup_spec/`:
 
-- **`eval_spec.json`** — machine-readable evaluation spec (used at runtime)
-- **`policies.md`** — human-readable policy document you maintain
+- `**eval_spec.json`\*\* — machine-readable evaluation spec (used at runtime)
+- `**policies.md**` — human-readable policy document you maintain
 
 Both are editable after generation.
 

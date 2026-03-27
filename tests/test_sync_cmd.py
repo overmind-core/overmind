@@ -51,6 +51,7 @@ class TestSyncCmd:
                 "fn_name": "run",
             }
         }
+        (tmp_path / ".overclaw").mkdir()
         monkeypatch.chdir(tmp_path)
 
         from overclaw.commands.sync_cmd import main

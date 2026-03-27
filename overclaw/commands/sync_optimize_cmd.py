@@ -8,7 +8,12 @@ from pathlib import Path
 
 from rich.console import Console
 
-from overclaw.client import ApiReporter, flush_pending_api_updates, get_client, get_project_id
+from overclaw.client import (
+    ApiReporter,
+    flush_pending_api_updates,
+    get_client,
+    get_project_id,
+)
 from overclaw.commands.setup_cmd import _ensure_remote_agent_id
 from overclaw.core.paths import agent_experiments_dir, load_overclaw_dotenv
 from overclaw.core.registry import load_registry
@@ -46,7 +51,9 @@ def _sync_optimize_artifacts_for_agent(
 
     exp_dir = agent_experiments_dir(agent_name)
     if not exp_dir.exists():
-        console.print(f"[yellow]Skipping {agent_name}: no experiments directory.[/yellow]")
+        console.print(
+            f"[yellow]Skipping {agent_name}: no experiments directory.[/yellow]"
+        )
         return False
 
     results_path = exp_dir / "results.tsv"
@@ -113,11 +120,17 @@ def _sync_optimize_artifacts_for_agent(
             dimension_scores=None,
         )
 
-    report_md = report_path.read_text(encoding="utf-8") if report_path.exists() else None
-    best_code = (
-        best_agent_path.read_text(encoding="utf-8") if best_agent_path.exists() else None
+    report_md = (
+        report_path.read_text(encoding="utf-8") if report_path.exists() else None
     )
-    best_score = max([_to_float(r.get("avg_score", "0"), 0.0) for r in iter_rows] or [baseline_score])
+    best_code = (
+        best_agent_path.read_text(encoding="utf-8")
+        if best_agent_path.exists()
+        else None
+    )
+    best_score = max(
+        [_to_float(r.get("avg_score", "0"), 0.0) for r in iter_rows] or [baseline_score]
+    )
     reporter.on_complete(
         best_score=best_score,
         baseline_score=baseline_score,
@@ -178,4 +191,3 @@ def main(agent_name: str | None = None) -> None:
         f"\n[bold green]Optimize sync complete.[/bold green] "
         f"Processed: {synced_agents} agent(s), skipped: {skipped_agents}."
     )
-

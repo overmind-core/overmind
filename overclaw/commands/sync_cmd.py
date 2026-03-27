@@ -7,7 +7,12 @@ from pathlib import Path
 
 from rich.console import Console
 
-from overclaw.client import _create_trace, flush_pending_api_updates, get_client, get_project_id
+from overclaw.client import (
+    _create_trace,
+    flush_pending_api_updates,
+    get_client,
+    get_project_id,
+)
 from overclaw.commands.setup_cmd import _sync_setup_artifacts
 from overclaw.core.paths import agent_experiments_dir, load_overclaw_dotenv
 from overclaw.core.registry import get_agent_id, load_registry
@@ -82,7 +87,9 @@ def main(agent_name: str | None = None) -> None:
         if agent_id:
             traces_synced = _sync_traces_for_agent(name, agent_id, console)
             if traces_synced:
-                console.print(f"  [dim]Synced {traces_synced} trace(s) to Overmind.[/dim]")
+                console.print(
+                    f"  [dim]Synced {traces_synced} trace(s) to Overmind.[/dim]"
+                )
 
         synced_agents += 1
 
