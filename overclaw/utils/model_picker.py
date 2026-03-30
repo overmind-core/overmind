@@ -3,12 +3,12 @@
 from rich.console import Console
 from rich.prompt import Prompt
 
-from overclaw.core.branding import BRAND
-from overclaw.core.models import (
+from overclaw.utils.display import BRAND
+from overclaw.utils.models import (
+    get_litellm_model_ids,
+    get_models_for_provider,
     get_provider_display_name,
     get_providers,
-    get_models_for_provider,
-    get_litellm_model_ids,
 )
 
 

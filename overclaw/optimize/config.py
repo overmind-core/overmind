@@ -12,11 +12,10 @@ from rich.prompt import Confirm, IntPrompt, Prompt
 from rich.rule import Rule
 from rich.table import Table
 
-from overclaw.core.branding import BRAND, render_logo
+from overclaw.utils.display import BRAND, rel, render_logo
 from overclaw.core.constants import overclaw_rel
-from overclaw.core.progress import rel
-from overclaw.core.model_picker import prompt_for_catalog_litellm_model
-from overclaw.core.models import (
+from overclaw.utils.model_picker import prompt_for_catalog_litellm_model
+from overclaw.utils.models import (
     DEFAULT_ANALYZER_MODEL,
     get_default_models_for_provider,
     get_models_for_provider,
@@ -312,7 +311,6 @@ def collect_config(agent_name: str, *, fast: bool = False) -> Config:
     if env_analyzer:
         normalized = normalize_to_litellm_model_id(env_analyzer)
         display = normalized or env_analyzer
-        breakpoint()
         if Confirm.ask(
             f"Use [cyan]{display}[/cyan] from {overclaw_rel('.env')} as analyzer model?",
             default=True,

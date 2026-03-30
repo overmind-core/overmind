@@ -131,7 +131,7 @@ class TestSaveAndFinish:
         spec = {"output_fields": {}, "policy": {"domain_rules": ["r1"]}}
         console = MagicMock()
         _save_and_finish(spec, "myagent", console, policy_md="# Policy")
-        from overclaw.core.policy import default_policy_path
+        from overclaw.utils.policy import default_policy_path
 
         assert Path(default_policy_path("myagent")).exists()
 

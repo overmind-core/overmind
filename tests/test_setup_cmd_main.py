@@ -188,7 +188,8 @@ class TestSetupCmdMainInteractive:
         }
         mock_policy.return_value = ("# Policy", {"purpose": "test", "domain_rules": []})
 
-        mock_prompt.ask.side_effect = ["2"]
+        # Provider pick (1/2/3) then policy mode pick (1/2).
+        mock_prompt.ask.side_effect = ["2", "2"]
         mock_confirm.ask.side_effect = [
             True,  # satisfied with policy
             True,  # satisfied with criteria

@@ -22,12 +22,12 @@ from rich.panel import Panel
 from rich.prompt import Confirm
 from rich.rule import Rule
 
-from overclaw.core.branding import BRAND, render_logo as _render_logo
+from overclaw.utils.display import BRAND, render_logo as _render_logo
 from overclaw.core.constants import OVERCLAW_DIR_NAME, overclaw_rel
-from overclaw.core.io_utils import read_api_key_masked
+from overclaw.utils.io import read_api_key_masked
 from overclaw.core.registry import init_project_root
-from overclaw.core.model_picker import prompt_for_catalog_litellm_model
-from overclaw.core.models import (
+from overclaw.utils.model_picker import prompt_for_catalog_litellm_model
+from overclaw.utils.models import (
     DEFAULT_ANALYZER_MODEL,
     DEFAULT_DATAGEN_MODEL,
     model_name_for_env_storage,

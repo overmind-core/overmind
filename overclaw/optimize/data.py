@@ -31,13 +31,13 @@ from typing import Any
 
 import litellm
 
-from overclaw.core.litellm_params import llm_completion
+from overclaw.utils.llm import llm_completion
 from rich.console import Console
 from rich.rule import Rule
 from rich.table import Table
 
-from overclaw.core.branding import BRAND
-from overclaw.core.progress import make_spinner_progress
+from overclaw.utils.display import BRAND
+from overclaw.utils.display import make_spinner_progress
 from overclaw.prompts.data import (
     BATCH_GENERATION_PROMPT,
     PERSONAS_GENERATION_PROMPT,

@@ -29,17 +29,16 @@ from rich.panel import Panel
 from rich.prompt import Confirm, IntPrompt, Prompt
 from rich.rule import Rule
 
-from overclaw.core.branding import BRAND, render_logo
+from overclaw.utils.display import BRAND, make_spinner_progress, rel, render_logo
 from overclaw.core.constants import overclaw_rel
-from overclaw.core.io_utils import read_api_key_masked
-from overclaw.core.model_picker import prompt_for_catalog_litellm_model
-from overclaw.core.progress import make_spinner_progress, rel
-from overclaw.core.models import (
+from overclaw.utils.io import read_api_key_masked
+from overclaw.utils.model_picker import prompt_for_catalog_litellm_model
+from overclaw.utils.models import (
     DEFAULT_ANALYZER_MODEL,
     DEFAULT_DATAGEN_MODEL,
     normalize_to_litellm_model_id,
 )
-from overclaw.core.policy import default_policy_path, format_for_synthetic_data
+from overclaw.utils.policy import default_policy_path, format_for_synthetic_data
 from overclaw.optimize.data import (
     generate_diverse_synthetic_data,
     generate_synthetic_data,
