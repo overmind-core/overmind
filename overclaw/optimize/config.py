@@ -17,6 +17,7 @@ from overclaw.core.constants import overclaw_rel
 from overclaw.core.progress import rel
 from overclaw.core.model_picker import prompt_for_catalog_litellm_model
 from overclaw.core.models import (
+    DEFAULT_ANALYZER_MODEL,
     get_default_models_for_provider,
     get_models_for_provider,
     get_providers,
@@ -311,6 +312,7 @@ def collect_config(agent_name: str, *, fast: bool = False) -> Config:
     if env_analyzer:
         normalized = normalize_to_litellm_model_id(env_analyzer)
         display = normalized or env_analyzer
+        breakpoint()
         if Confirm.ask(
             f"Use [cyan]{display}[/cyan] from {overclaw_rel('.env')} as analyzer model?",
             default=True,
@@ -321,6 +323,7 @@ def collect_config(agent_name: str, *, fast: bool = False) -> Config:
                 console,
                 select_prompt="   Select analyzer model (number)",
                 env_default=_analyzer_default_from_env(),
+                default_model=DEFAULT_ANALYZER_MODEL,
                 no_catalog_prompt="   Enter analyzer model",
             )
     else:
@@ -331,6 +334,7 @@ def collect_config(agent_name: str, *, fast: bool = False) -> Config:
             console,
             select_prompt="   Select analyzer model (number)",
             env_default=_analyzer_default_from_env(),
+            default_model=DEFAULT_ANALYZER_MODEL,
             no_catalog_prompt="   Enter analyzer model",
         )
 

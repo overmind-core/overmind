@@ -23,6 +23,7 @@ from contextlib import suppress
 from pathlib import Path
 from uuid import UUID
 
+from dotenv import dotenv_values
 from rich.console import Console
 from rich.panel import Panel
 from rich.prompt import Confirm, IntPrompt, Prompt
@@ -30,9 +31,14 @@ from rich.rule import Rule
 
 from overclaw.core.branding import BRAND, render_logo
 from overclaw.core.constants import overclaw_rel
+from overclaw.core.io_utils import read_api_key_masked
 from overclaw.core.model_picker import prompt_for_catalog_litellm_model
 from overclaw.core.progress import make_spinner_progress, rel
-from overclaw.core.models import normalize_to_litellm_model_id
+from overclaw.core.models import (
+    DEFAULT_ANALYZER_MODEL,
+    DEFAULT_DATAGEN_MODEL,
+    normalize_to_litellm_model_id,
+)
 from overclaw.core.policy import default_policy_path, format_for_synthetic_data
 from overclaw.optimize.data import (
     generate_diverse_synthetic_data,
@@ -42,7 +48,9 @@ from overclaw.optimize.data import (
 from overclaw.optimize.data_analyzer import analyze_seed_coverage, validate_seed_data
 from overclaw.optimize.evaluator import has_entrypoint
 from overclaw.core.paths import (
+    agent_env_path,
     agent_setup_spec_dir,
+    load_agent_dotenv,
     load_overclaw_dotenv,
 )
 from overclaw.core.registry import (
@@ -213,7 +221,9 @@ def _smoke_test_agent(
     import importlib.util
 
     try:
-        spec = importlib.util.spec_from_file_location("_overclaw_smoke_agent", agent_path)
+        spec = importlib.util.spec_from_file_location(
+            "_overclaw_smoke_agent", agent_path
+        )
         module = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(module)  # type: ignore[union-attr]
         getattr(module, fn_name)(input_case)
@@ -231,7 +241,9 @@ def _run_beginning_smoke_test(
     Silently skips when there is no seed data — end-of-setup will cover it.
     """
     data_dir = _data_dir(agent_path)
-    console.print(f"  [dim]Looking for seed data in [cyan]{rel(data_dir)}[/cyan]…[/dim]")
+    console.print(
+        f"  [dim]Looking for seed data in [cyan]{rel(data_dir)}[/cyan]…[/dim]"
+    )
     existing_json = sorted(data_dir.glob("*.json")) if data_dir.is_dir() else []
 
     if not existing_json:
@@ -267,7 +279,7 @@ def _run_beginning_smoke_test(
 
     if success:
         console.print(
-            f"  [bold green]✓[/bold green]  [dim]Agent smoke test passed.[/dim]\n"
+            "  [bold green]✓[/bold green]  [dim]Agent smoke test passed.[/dim]\n"
         )
     else:
         console.print(
@@ -299,12 +311,14 @@ def _run_end_smoke_test(
         return
 
     first_input = cases[0].get("input", cases[0])
-    console.print("  [dim]Running post-setup smoke test against first dataset case…[/dim]")
+    console.print(
+        "  [dim]Running post-setup smoke test against first dataset case…[/dim]"
+    )
     success, error = _smoke_test_agent(agent_path, fn_name, first_input)
 
     if success:
         console.print(
-            f"  [bold green]✓[/bold green]  Agent smoke test passed — ready for optimization.\n"
+            "  [bold green]✓[/bold green]  Agent smoke test passed — ready for optimization.\n"
         )
     else:
         console.print(
@@ -378,6 +392,7 @@ def _resolve_datagen_model(console: Console, *, fast: bool = False) -> str:
         console,
         select_prompt="   Select model for data generation (number)",
         env_default=None,
+        default_model=DEFAULT_DATAGEN_MODEL,
         no_catalog_prompt="   Enter model for data generation (provider/model)",
     )
 
@@ -571,6 +586,12 @@ def _run_data_phase(
     # ── Fast mode ──────────────────────────────────────────────────────────
     if fast:
         datagen_model = _resolve_datagen_model(console, fast=True)
+        _pin_model_to_agent_env(
+            datagen_model,
+            "SYNTHETIC_DATAGEN_MODEL",
+            agent_env_path(agent_name),
+            agent_name,
+        )
         if has_seed_data:
             seed_cases = load_data(str(existing_json[0]))
             console.print(
@@ -610,6 +631,12 @@ def _run_data_phase(
                 console.print("  [dim]Skipping dataset generation.[/dim]")
                 return
             datagen_model = _resolve_datagen_model(console)
+            _pin_model_to_agent_env(
+                datagen_model,
+                "SYNTHETIC_DATAGEN_MODEL",
+                agent_env_path(agent_name),
+                agent_name,
+            )
             _handle_no_data_path(
                 analysis=analysis,
                 policy_context=policy_context,
@@ -633,6 +660,12 @@ def _run_data_phase(
             return
 
         datagen_model = _resolve_datagen_model(console)
+        _pin_model_to_agent_env(
+            datagen_model,
+            "SYNTHETIC_DATAGEN_MODEL",
+            agent_env_path(agent_name),
+            agent_name,
+        )
         _handle_seed_data_path(
             seed_path,
             seed_data=seed_data,
@@ -658,6 +691,12 @@ def _run_data_phase(
             console.print("  [dim]Skipping dataset generation.[/dim]")
             return
         datagen_model = _resolve_datagen_model(console)
+        _pin_model_to_agent_env(
+            datagen_model,
+            "SYNTHETIC_DATAGEN_MODEL",
+            agent_env_path(agent_name),
+            agent_name,
+        )
         _handle_no_data_path(
             analysis=analysis,
             policy_context=policy_context,
@@ -834,6 +873,173 @@ def _display_proposed_criteria(analysis: dict, console: Console) -> None:
     console.print(table)
 
 
+def _write_agent_env(path: Path, agent_name: str, env_vars: dict[str, str]) -> None:
+    """Write agent-specific env vars to ``.overclaw/agents/<name>/.env``."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    lines = [f"# OverClaw agent env — {agent_name}", ""]
+    for key, val in env_vars.items():
+        lines.append(f"{key}={val}")
+    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+
+def _update_agent_env(path: Path, agent_name: str, updates: dict[str, str]) -> None:
+    """Merge *updates* into the agent's ``.env``, preserving all existing keys."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    existing: dict[str, str] = {}
+    if path.exists():
+        existing = {k: (v or "") for k, v in (dotenv_values(path) or {}).items()}
+    existing.update(updates)
+    lines = [f"# OverClaw agent env — {agent_name}", ""]
+    for key, val in existing.items():
+        lines.append(f"{key}={val}")
+    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+
+_PROVIDER_API_KEY: dict[str, str] = {
+    "openai": "OPENAI_API_KEY",
+    "anthropic": "ANTHROPIC_API_KEY",
+}
+
+
+def _pin_model_to_agent_env(
+    model: str, env_key: str, env_path: Path, agent_name: str
+) -> None:
+    """Save *model* under *env_key* in the agent's ``.env`` and copy the
+    provider's API key from the global environment if it is not already there.
+
+    This makes the agent env self-contained: OverClaw will always load it
+    instead of the global ``.overclaw/.env`` when setting up or optimizing the
+    agent.
+    """
+    updates: dict[str, str] = {env_key: model}
+
+    provider = model.split("/")[0] if "/" in model else ""
+    api_key_name = _PROVIDER_API_KEY.get(provider)
+    if api_key_name:
+        existing = (
+            {k: (v or "") for k, v in (dotenv_values(env_path) or {}).items()}
+            if env_path.exists()
+            else {}
+        )
+        if not existing.get(api_key_name, "").strip():
+            global_val = os.getenv(api_key_name, "").strip()
+            if global_val:
+                updates[api_key_name] = global_val
+
+    _update_agent_env(env_path, agent_name, updates)
+
+
+def _collect_agent_provider_config(agent_name: str, console: Console) -> None:
+    """Ask which LLM provider the agent uses and save credentials to its per-agent .env."""
+    env_path = agent_env_path(agent_name)
+
+    # If already configured, offer to skip
+    if env_path.exists() and env_path.stat().st_size > 0:
+        existing = {
+            k: v
+            for k, v in (dotenv_values(env_path) or {}).items()
+            if (v or "").strip()
+        }
+        if existing:
+            console.print(
+                f"\n  [dim]Agent env already configured at [cyan]{rel(env_path)}[/cyan] "
+                f"({len(existing)} variable(s) set).[/dim]"
+            )
+            if not Confirm.ask("  Reconfigure agent model provider?", default=False):
+                return
+
+    console.print()
+    console.print(Rule("[bold]Agent model provider[/bold]", style=BRAND))
+    console.print(
+        "  [dim]Which provider does your agent use to call its LLM?\n"
+        "  Credentials are saved to [cyan]"
+        + overclaw_rel(f"agents/{agent_name}/.env")
+        + "[/cyan] and loaded automatically when the agent runs.[/dim]"
+    )
+
+    console.print(f"\n     [bold {BRAND}][1][/bold {BRAND}] OpenAI")
+    console.print(f"     [bold {BRAND}][2][/bold {BRAND}] Anthropic")
+    console.print(f"     [bold {BRAND}][3][/bold {BRAND}] Other")
+
+    pick = Prompt.ask(
+        "\n   Select provider (number)", choices=["1", "2", "3"], default="1"
+    )
+
+    if pick == "1":  # OpenAI
+        existing_key = os.getenv("OPENAI_API_KEY", "").strip()
+        if existing_key:
+            console.print(
+                f"\n  [dim]OPENAI_API_KEY is already set in "
+                f"{overclaw_rel('.env')} — using it for this agent.[/dim]"
+            )
+            key = existing_key
+        else:
+            console.print("\n  [dim]Enter your OpenAI API key for this agent.[/dim]")
+            key = read_api_key_masked("OPENAI_API_KEY")
+        _write_agent_env(env_path, agent_name, {"OPENAI_API_KEY": key})
+        console.print(
+            f"  [bold green]✓[/bold green] Saved [bold]OPENAI_API_KEY[/bold]"
+            f" → [dim]{rel(env_path)}[/dim]"
+        )
+
+    elif pick == "2":  # Anthropic
+        existing_key = os.getenv("ANTHROPIC_API_KEY", "").strip()
+        if existing_key:
+            console.print(
+                f"\n  [dim]ANTHROPIC_API_KEY is already set in "
+                f"{overclaw_rel('.env')} — using it for this agent.[/dim]"
+            )
+            key = existing_key
+        else:
+            console.print("\n  [dim]Enter your Anthropic API key for this agent.[/dim]")
+            key = read_api_key_masked("ANTHROPIC_API_KEY")
+        _write_agent_env(env_path, agent_name, {"ANTHROPIC_API_KEY": key})
+        console.print(
+            f"  [bold green]✓[/bold green] Saved [bold]ANTHROPIC_API_KEY[/bold]"
+            f" → [dim]{rel(env_path)}[/dim]"
+        )
+
+    else:  # Other provider
+        if Confirm.ask(
+            "\n  Is your provider compatible with the OpenAI SDK?", default=True
+        ):
+            console.print(
+                "\n  [dim]Enter the base URL for your OpenAI-compatible endpoint "
+                "(e.g. https://api.example.com/v1).[/dim]"
+            )
+            base_url = Prompt.ask("   OPENAI_BASE_URL").strip()
+            console.print("  [dim]Enter the API key for your provider.[/dim]")
+            key = read_api_key_masked("OPENAI_API_KEY")
+            _write_agent_env(
+                env_path,
+                agent_name,
+                {"OPENAI_BASE_URL": base_url, "OPENAI_API_KEY": key},
+            )
+            console.print(
+                f"  [bold green]✓[/bold green] Saved [bold]OPENAI_BASE_URL[/bold] and "
+                f"[bold]OPENAI_API_KEY[/bold] → [dim]{rel(env_path)}[/dim]"
+            )
+        else:
+            # Not OpenAI-compatible — create an empty file and wait for the user to fill it
+            _write_agent_env(env_path, agent_name, {})
+            console.print(
+                f"\n  [yellow]Created[/yellow] [bold]{env_path}[/bold]\n\n"
+                "  [dim]Open that file and add any environment variables your agent\n"
+                "  needs to call its LLM — API keys, base URLs, custom tokens, etc.\n\n"
+                "  Example:\n"
+                "    MY_PROVIDER_API_KEY=sk-...\n"
+                "    MY_PROVIDER_BASE_URL=https://api.example.com/v1[/dim]"
+            )
+            Confirm.ask(
+                "\n  Confirm once you've added your env variables to the file\n"
+                "  (press Enter to continue — safe to skip if no env vars are needed)",
+                default=True,
+            )
+            # load_agent_dotenv() is called immediately after this function returns in
+            # main(), so any variables the user just saved will be loaded before the
+            # smoke test runs.
+
+
 def main(
     agent_name: str,
     fast: bool = False,
@@ -861,6 +1067,13 @@ def main(
         )
 
     agent_path, fn_name = resolve_agent(agent_name)
+
+    # Ask which provider the agent uses and save its credentials to the agent .env.
+    # Skip interactive prompt in fast mode; always load whatever is already on disk.
+    if not fast:
+        _collect_agent_provider_config(agent_name, console)
+    load_agent_dotenv(agent_name)
+
     agent_id = _ensure_remote_agent_id(agent_name, agent_path, console)
     use_api_backend = bool(agent_id and get_client() and get_project_id())
     configure_storage(
@@ -905,6 +1118,9 @@ def main(
             )
             raise SystemExit(1)
         model = normalize_to_litellm_model_id(raw_model) or raw_model
+        _pin_model_to_agent_env(
+            model, "ANALYZER_MODEL", agent_env_path(agent_name), agent_name
+        )
 
         if not os.getenv("SYNTHETIC_DATAGEN_MODEL", "").strip():
             console.print(
@@ -922,13 +1138,37 @@ def main(
         raw_model = os.getenv("ANALYZER_MODEL", "").strip()
         if raw_model:
             model = normalize_to_litellm_model_id(raw_model) or raw_model
+            display = model.split("/", 1)[-1] if "/" in model else model
+            console.print(
+                f"\n  [dim]ANALYZER_MODEL is set to[/dim] [cyan]{display}[/cyan]"
+            )
+            if not Confirm.ask(
+                f"  Use [cyan]{display}[/cyan] as the analyzer model?",
+                default=True,
+            ):
+                model = prompt_for_catalog_litellm_model(
+                    console,
+                    select_prompt="   Select model for agent analysis (number)",
+                    env_default=model,
+                    default_model=DEFAULT_ANALYZER_MODEL,
+                    no_catalog_prompt="   Enter model for analysis (provider/model)",
+                )
         else:
+            console.print(
+                f"\n  [dim]No ANALYZER_MODEL set in {overclaw_rel('.env')} — "
+                "select a model for agent analysis.[/dim]"
+            )
             model = prompt_for_catalog_litellm_model(
                 console,
                 select_prompt="   Select model for agent analysis (number)",
                 env_default=None,
+                default_model=DEFAULT_ANALYZER_MODEL,
                 no_catalog_prompt="   Enter model for analysis (provider/model)",
             )
+        _pin_model_to_agent_env(
+            model, "ANALYZER_MODEL", agent_env_path(agent_name), agent_name
+        )
+        load_agent_dotenv(agent_name)
 
     # ---- Phase 1: Agent Analysis ----
     console.print()
