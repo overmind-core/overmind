@@ -25,6 +25,7 @@ from uuid import UUID
 
 from dotenv import dotenv_values
 from rich.console import Console
+from rich.markup import escape
 from rich.panel import Panel
 from rich.prompt import Confirm, IntPrompt, Prompt
 from rich.rule import Rule
@@ -72,6 +73,7 @@ from overclaw.setup.policy_generator import (
     generate_policy_from_code,
     improve_existing_policy,
     refine_policy,
+    save_policy,
 )
 from overclaw.setup.questionnaire import run_questionnaire
 from overclaw.setup.spec_generator import generate_spec_from_proposal, save_spec
@@ -154,13 +156,13 @@ def _save_and_finish(
     agent_name: str,
     console: Console,
     policy_md: str | None = None,
+    *,
+    policy_file_already_saved: bool = False,
 ):
     spec_path = agent_setup_spec_dir(agent_name) / "eval_spec.json"
     spec_path.parent.mkdir(parents=True, exist_ok=True)
     save_spec(spec, str(spec_path))
-    if policy_md:
-        from overclaw.setup.policy_generator import save_policy
-
+    if policy_md and not policy_file_already_saved:
         save_policy(policy_md, default_policy_path(agent_name))
 
     storage = None
@@ -194,7 +196,7 @@ def _save_and_finish(
     console.print(
         f"\n  [bold green]\u2713[/bold green] Spec saved  [dim]→ {rel(spec_path)}[/dim]"
     )
-    if policy_md:
+    if policy_md and not policy_file_already_saved:
         pol_path = default_policy_path(agent_name)
         console.print(
             f"  [bold green]\u2713[/bold green] Policy saved  "
@@ -385,7 +387,21 @@ def _resolve_datagen_model(console: Console, *, fast: bool = False) -> str:
 
     if not raw:
         console.print(
-            f"\n  [dim]SYNTHETIC_DATAGEN_MODEL not set in {overclaw_rel('.env')}[/dim]"
+            "\n  [dim]Setup uses an LLM to work with your test data: it reviews coverage "
+            "against your policy and eval sketch, and can generate additional synthetic "
+            "cases that look like real inputs for your agent. That requires a model with "
+            "API access (same idea as codegen or chat — the model proposes structured "
+            "examples, not random JSON).[/dim]"
+        )
+        console.print(
+            f"\n  [dim]No default yet: [cyan]SYNTHETIC_DATAGEN_MODEL[/cyan] is not set in "
+            f"{overclaw_rel('.env')}. Pick a provider and model below; we’ll remember it "
+            "for the next setup or optimize run.[/dim]"
+        )
+    else:
+        console.print(
+            "\n  [dim]Choose an LLM for synthetic test-data work (coverage analysis and "
+            "any generated cases are drafted to match your agent and policy).[/dim]"
         )
     return prompt_for_catalog_litellm_model(
         console,
@@ -651,7 +667,32 @@ def _run_data_phase(
 
         # User wants to use the seed data
         console.print()
-        if not Confirm.ask("  Validate, analyze and augment?", default=True):
+        console.print(
+            Panel(
+                "[dim]Recommended: run a quick quality pass before this becomes "
+                f"[cyan]{rel(agent_setup_spec_dir(agent_name) / 'dataset.json')}[/cyan]. "
+                "Stronger test data means [bold]optimize[/bold] reflects real weaknesses instead "
+                "of noise from bad fixtures or blind spots.[/dim]\n\n"
+                "[dim]• [bold]Validate[/bold] — check each case against your agent’s expected "
+                "inputs/outputs and the eval stub so malformed or inconsistent rows are caught "
+                "early.[/dim]\n"
+                "[dim]• [bold]Analyze coverage[/bold] — compare your seed set to your policy "
+                "and proposed criteria to highlight missing scenarios (personas, edge cases, "
+                "tool paths).[/dim]\n"
+                "[dim]• [bold]Augment[/bold] — optionally generate extra synthetic cases aimed "
+                "at those gaps so you get breadth without hand-editing many new examples.[/dim]\n\n"
+                "[dim]If you skip this, we copy your seed file unchanged — fastest, but you "
+                "won’t get validation errors, gap analysis, or suggested additions.[/dim]",
+                title=f"[bold {BRAND}]Seed data quality[/bold {BRAND}]",
+                border_style=BRAND,
+                padding=(1, 2),
+            )
+        )
+        console.print()
+        if not Confirm.ask(
+            "  Run validation, coverage analysis, and optional augmentation?",
+            default=True,
+        ):
             console.print(
                 f"  [dim]Using seed data as-is ({len(seed_data)} cases).[/dim]"
             )
@@ -724,7 +765,7 @@ def _handle_seed_data_path(
     datagen_model: str,
     console: Console,
 ) -> None:
-    """Validate, analyze and augment existing seed data (routing already decided by caller)."""
+    """Validate seed rows, analyze coverage vs policy/eval stub, optionally augment (caller chose not to skip)."""
     validate_seed_data(seed_data, eval_stub, console=console)
 
     coverage = analyze_seed_coverage(
@@ -900,6 +941,40 @@ _PROVIDER_API_KEY: dict[str, str] = {
 }
 
 
+def _describe_configured_agent_llm_provider(existing: dict[str, str]) -> str | None:
+    """Infer which LLM provider the agent env targets from keys only (no secret values)."""
+    oai_key = (existing.get("OPENAI_API_KEY") or "").strip()
+    ant_key = (existing.get("ANTHROPIC_API_KEY") or "").strip()
+    base_url = (existing.get("OPENAI_BASE_URL") or "").strip()
+    analyzer = (existing.get("ANALYZER_MODEL") or "").strip()
+
+    if base_url and oai_key:
+        label = "Other (OpenAI-compatible SDK, custom base URL)"
+    elif oai_key and ant_key:
+        label = "OpenAI and Anthropic"
+    elif ant_key:
+        label = "Anthropic"
+    elif oai_key:
+        label = "OpenAI"
+    elif analyzer and "/" in analyzer:
+        prefix, _, _rest = analyzer.partition("/")
+        pl = prefix.lower()
+        if pl == "anthropic":
+            label = "Anthropic"
+        elif pl == "openai":
+            label = "OpenAI"
+        else:
+            label = f"Provider {prefix}"
+    elif analyzer:
+        return f"Analyzer model: {analyzer}"
+    else:
+        return None
+
+    if analyzer:
+        return f"{label} · analyzer: {analyzer}"
+    return label
+
+
 def _pin_model_to_agent_env(
     model: str, env_key: str, env_path: Path, agent_name: str
 ) -> None:
@@ -944,6 +1019,12 @@ def _collect_agent_provider_config(agent_name: str, console: Console) -> None:
                 f"\n  [dim]Agent env already configured at [cyan]{rel(env_path)}[/cyan] "
                 f"({len(existing)} variable(s) set).[/dim]"
             )
+            provider_hint = _describe_configured_agent_llm_provider(existing)
+            if provider_hint:
+                console.print(
+                    f"  [dim]Looks like this agent is set up for:[/dim] "
+                    f"{escape(provider_hint)}"
+                )
             if not Confirm.ask("  Reconfigure agent model provider?", default=False):
                 return
 
@@ -1300,6 +1381,7 @@ def main(
     while True:
         console.print()
         if Confirm.ask("Are you satisfied with this policy?", default=True):
+            save_policy(policy_md, pol_path)
             console.print(
                 f"\n  [dim]You can always edit the policy later at "
                 f"[cyan]{rel(pol_path)}[/cyan][/dim]"
@@ -1349,7 +1431,13 @@ def main(
         console.print()
         if Confirm.ask("Are you satisfied with the evaluation criteria?", default=True):
             spec = generate_spec_from_proposal(analysis, policy_data=policy_data)
-            _save_and_finish(spec, agent_name, console, policy_md=policy_md)
+            _save_and_finish(
+                spec,
+                agent_name,
+                console,
+                policy_md=policy_md,
+                policy_file_already_saved=True,
+            )
             _run_end_smoke_test(agent_name, agent_path, fn_name, console)
             _sync_setup_artifacts(agent_name, agent_path, console)
             return
@@ -1367,7 +1455,13 @@ def main(
 
         if choice == "2":
             spec = generate_spec_from_proposal(analysis, policy_data=policy_data)
-            _save_and_finish(spec, agent_name, console, policy_md=policy_md)
+            _save_and_finish(
+                spec,
+                agent_name,
+                console,
+                policy_md=policy_md,
+                policy_file_already_saved=True,
+            )
             spec_out = agent_setup_spec_dir(agent_name) / "eval_spec.json"
             console.print(
                 f"  [dim]Edit [cyan]{spec_out}[/cyan] to fine-tune "
