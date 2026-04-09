@@ -146,6 +146,23 @@ class SpecEvaluator:
         self.llm_judge_model = llm_judge_model
         self.tool_config: dict = self.spec.get("tool_config", {})
         self.policy_judge_rubric = policy_judge_rubric
+
+        spec_judge_weight = float(self.spec.get("llm_judge_weight", 0))
+        if llm_judge_model and spec_judge_weight > 0:
+            self._effective_judge_weight = spec_judge_weight
+        elif spec_judge_weight > 0:
+            self._effective_judge_weight = 0.0
+            self.fields = {k: dict(v) for k, v in self.fields.items()}
+            field_sum = sum(float(c.get("weight", 0)) for c in self.fields.values())
+            if field_sum > 0:
+                for cfg in self.fields.values():
+                    old_w = float(cfg.get("weight", 0))
+                    cfg["weight"] = round(
+                        old_w + (old_w / field_sum) * spec_judge_weight, 1
+                    )
+        else:
+            self._effective_judge_weight = 0.0
+
         self._validate_spec()
 
     def _validate_spec(self) -> None:
@@ -157,7 +174,7 @@ class SpecEvaluator:
         other = (
             self.structure_weight
             + float(self.spec.get("tool_usage_weight", 0))
-            + float(self.spec.get("llm_judge_weight", 0))
+            + self._effective_judge_weight
         )
         actual_total = field_sum + other
         if abs(actual_total - total_declared) > 1.0:
@@ -249,7 +266,7 @@ class SpecEvaluator:
         scores["tool_usage"] = tool_score * tool_weight
 
         # --- LLM-as-Judge (blended in if configured) ---
-        judge_weight = self.spec.get("llm_judge_weight", 0)
+        judge_weight = self._effective_judge_weight
         if not _skip_judge and self.llm_judge_model and judge_weight > 0 and input_data:
             judge_score = self._score_with_llm_judge(input_data, expected, output)
             scores["llm_judge"] = judge_score * judge_weight
@@ -269,7 +286,7 @@ class SpecEvaluator:
         if not results:
             return {"avg_total": 0.0, "count": 0, "individual_scores": []}
 
-        judge_weight = self.spec.get("llm_judge_weight", 0)
+        judge_weight = self._effective_judge_weight
         use_judge = bool(self.llm_judge_model and judge_weight > 0)
 
         all_scores: list[dict] = []
@@ -347,7 +364,7 @@ class SpecEvaluator:
             labels.append((display, f"avg_{field_name}"))
         if self.spec.get("tool_usage_weight", 0) > 0:
             labels.append(("Tool Usage", "avg_tool_usage"))
-        if self.spec.get("llm_judge_weight", 0) > 0:
+        if self._effective_judge_weight > 0:
             labels.append(("LLM Judge", "avg_llm_judge"))
         labels.append(("Type Correctness", "avg_type_correctness_penalty"))
         labels.append(("Consistency", "avg_consistency_penalty"))
@@ -361,7 +378,7 @@ class SpecEvaluator:
         tw = self.spec.get("tool_usage_weight", 0)
         if tw > 0:
             maxes["avg_tool_usage"] = float(tw)
-        jw = self.spec.get("llm_judge_weight", 0)
+        jw = self._effective_judge_weight
         if jw > 0:
             maxes["avg_llm_judge"] = float(jw)
         maxes["avg_type_correctness_penalty"] = 0.0
