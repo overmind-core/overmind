@@ -716,6 +716,7 @@ class Optimizer:
                 best_cand_case_scores,
                 best_cand_items,
                 train_set,
+                candidate_eval=best_cand_eval,
             )
 
             # Cross-run regression gate: check that previously-fixed failures
@@ -788,7 +789,30 @@ class Optimizer:
                 )
                 if reason:
                     self.console.print(f"    [dim]{reason}[/dim]")
-                self._animate_code_update(self.best_code, best_cand["updated_code"])
+
+                resolved_files = best_cand.get("_resolved_files")
+                prev_files_snapshot = (
+                    dict(self._best_files) if self._best_files else None
+                )
+
+                if resolved_files and prev_files_snapshot:
+                    changed_files = [
+                        fp
+                        for fp, src in resolved_files.items()
+                        if prev_files_snapshot.get(fp) != src
+                    ]
+                    if changed_files:
+                        files_text = "  ".join(
+                            f"[cyan]{fp}[/cyan]" for fp in sorted(changed_files)
+                        )
+                        self.console.print(f"    [dim]Updated:[/dim]  {files_text}")
+
+                self._animate_code_update(
+                    self.best_code,
+                    best_cand["updated_code"],
+                    resolved_files=resolved_files,
+                    prev_files=prev_files_snapshot,
+                )
                 dim_deltas = self._compute_dimension_deltas(latest_eval, best_cand_eval)
                 change_record = {
                     "suggestions": best_cand.get("suggestions", []),
@@ -1476,10 +1500,14 @@ class Optimizer:
         candidate_case_scores: list[float],
         candidate_items: list[dict],
         dataset: list[dict],
+        *,
+        candidate_eval: dict | None = None,
     ) -> tuple[bool, str]:
         """Check if a candidate should be accepted.
 
-        Uses a three-tier acceptance strategy:
+        Uses a four-tier acceptance strategy:
+        0. Noise-floor gate — when multi-run stdev data is available, reject
+           improvements smaller than ``noise_factor * stdev``.
         1. Net-positive override — if the average score improved meaningfully
            and fewer than half the cases had major regressions, accept.
         2. Magnitude override — if improvements outweigh regressions by 1.2x,
@@ -1500,6 +1528,20 @@ class Optimizer:
                 f"No improvement ({candidate_score:.1f} vs best {self.best_score:.1f})"
             )
 
+        net_improvement = candidate_score - self.best_score
+
+        # Tier 0: Noise-floor gate — require improvement to exceed the
+        # observed run-to-run variance when multi-run eval is used.
+        if candidate_eval and "_stdev" in candidate_eval:
+            stdev = candidate_eval["_stdev"]
+            noise_factor = 1.0
+            noise_floor = noise_factor * stdev
+            if noise_floor > 0 and net_improvement < noise_floor:
+                return False, (
+                    f"Improvement {net_improvement:.1f} is within noise floor "
+                    f"(stdev={stdev:.1f}, required ≥ {noise_floor:.1f})"
+                )
+
         if not self.best_case_scores or not candidate_case_scores:
             return True, ""
 
@@ -1519,7 +1561,6 @@ class Optimizer:
                 improvement_magnitude += delta
 
         regression_ratio = regressions / max(n, 1)
-        net_improvement = candidate_score - self.best_score
 
         # Tier 1: Net-positive override — average improved meaningfully and
         # fewer than half the cases had major (>3pt) regressions.
@@ -1595,12 +1636,13 @@ class Optimizer:
                 for span in tracer.trace.spans
                 if hasattr(span, "span_type") and span.span_type == "tool_call"
             ]
+            skip_judge = not getattr(self.config, "judge_in_regression", False)
             score = self.evaluator.evaluate_output(
                 output,
                 rc.expected_output,
                 input_data=rc.case_input,
                 tool_trace=tool_trace,
-                _skip_judge=True,
+                _skip_judge=skip_judge,
             )
             if score["total"] < rc.min_score:
                 failures += 1
@@ -2032,7 +2074,11 @@ class Optimizer:
     def _run_single_case(
         self, agent, case: dict, run_name: str, idx: int
     ) -> tuple[Tracer, dict]:
-        """Execute the agent on one test case and return (tracer, eval_item)."""
+        """Execute the agent on one test case and return (tracer, eval_item).
+
+        The LLM judge is always deferred (``_skip_judge=True``) so that
+        ``evaluate_batch`` can batch judge calls for efficiency.
+        """
         tracer = Tracer(trace_id=f"{run_name}_{idx:03d}")
         set_current_tracer(tracer)
         tracer.set_input(case["input"])
@@ -2055,7 +2101,6 @@ class Optimizer:
 
         expected = case.get("expected_output", case.get("expected", {}))
 
-        # Extract full tool trace data (args + results, not just names)
         tool_trace = [
             {
                 "name": span.name,
@@ -2075,10 +2120,12 @@ class Optimizer:
             expected,
             input_data=case.get("input"),
             tool_trace=tool_trace,
+            _skip_judge=True,
         )
         tracer.trace.score = score["total"]
 
         return tracer, {
+            "input": case.get("input"),
             "output": output,
             "expected": expected,
             "score": score,
@@ -2090,19 +2137,23 @@ class Optimizer:
     # Code update animation
     # ------------------------------------------------------------------
 
-    def _applying_changes_panel_title(self) -> Text:
+    def _applying_changes_panel_title(self, label: str | None = None) -> Text:
         """Title for the diff panel: file whose content is being shown."""
-        if self._bundle and self._bundle.is_multi_file():
-            label = self._bundle.entry_file
-        else:
-            label = rel(Path(self.config.agent_path))
+        if label is None:
+            if self._bundle and self._bundle.is_multi_file():
+                label = self._bundle.entry_file
+            else:
+                label = rel(Path(self.config.agent_path))
         title = Text()
         title.append("Applying changes")
         title.append(" · ")
         title.append(label, style="cyan")
         return title
 
-    def _animate_code_update(self, old_code: str, new_code: str) -> None:
+    def _animate_single_file_diff(
+        self, old_code: str, new_code: str, label: str | None = None
+    ) -> None:
+        """Render an animated diff panel for a single file."""
         old_lines = old_code.splitlines(keepends=True)
         new_lines = new_code.splitlines(keepends=True)
         opcodes = difflib.SequenceMatcher(None, old_lines, new_lines).get_opcodes()
@@ -2147,7 +2198,7 @@ class Optimizer:
 
         rendered = Text()
         delay = max(0.03, min(0.12, 6.0 / len(visible)))
-        panel_title = self._applying_changes_panel_title()
+        panel_title = self._applying_changes_panel_title(label)
 
         with Live(
             Panel(rendered, title=panel_title, border_style=BRAND),
@@ -2165,6 +2216,28 @@ class Optimizer:
                 time.sleep(delay)
 
         self.console.print()
+
+    def _animate_code_update(
+        self,
+        old_code: str,
+        new_code: str,
+        resolved_files: dict[str, str] | None = None,
+        prev_files: dict[str, str] | None = None,
+    ) -> None:
+        """Animate the diff for an accepted candidate.
+
+        For multi-file candidates, shows a diff panel per changed file.
+        For single-file candidates, shows the entry-point diff as before.
+        """
+        if resolved_files and prev_files:
+            for file_path, new_source in sorted(resolved_files.items()):
+                old_source = prev_files.get(file_path, "")
+                if old_source != new_source:
+                    self._animate_single_file_diff(
+                        old_source, new_source, label=file_path
+                    )
+        else:
+            self._animate_single_file_diff(old_code, new_code)
 
     # ------------------------------------------------------------------
     # Validation
