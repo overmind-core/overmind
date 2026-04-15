@@ -153,6 +153,10 @@ def validate_case_against_spec(case: dict, eval_spec: dict) -> list[str]:
         errors.append("Missing 'expected_output'")
         return errors
 
+    if not isinstance(inp, dict):
+        errors.append("'input' must be a dict")
+        return errors
+
     # String-typed expected_output is valid for text/markdown agents —
     # skip field-level output validation when it's not a dict.
     if isinstance(inp, dict):

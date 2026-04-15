@@ -203,11 +203,12 @@ class TestValidateCode:
         code = "def other(x):\n    return {}\n"
         assert opt._validate_code(code) is False
 
-    def test_import_error(self, tmp_path):
+    def test_import_error_skipped_at_validate(self, tmp_path):
+        """AST validation does not import modules; the runner catches bad imports."""
         cfg = _make_config(tmp_path)
         opt = Optimizer(cfg)
         code = "import nonexistent_module_xyz\ndef run(x):\n    return {}\n"
-        assert opt._validate_code(code) is False
+        assert opt._validate_code(code) is True
 
 
 class TestGetPromptSize:
@@ -430,7 +431,6 @@ class TestRunSingleCase:
         cfg = _make_config(tmp_path)
         opt = Optimizer(cfg)
         opt._setup_output_dirs()
-        agent = Optimizer._load_agent_module(cfg.agent_path)
         case = {
             "input": {"company": "Test"},
             "expected_output": {
@@ -440,7 +440,9 @@ class TestRunSingleCase:
                 "is_enterprise": True,
             },
         }
-        tracer, item = opt._run_single_case(agent, case, "test", 0)
+        _, _, items = opt._run_agent_on_dataset(cfg.agent_path, [case], "test")
+        assert len(items) == 1
+        item = items[0]
         assert "output" in item
         assert "score" in item
         assert item["score"]["total"] >= 0
@@ -454,9 +456,10 @@ class TestRunSingleCase:
         cfg.agent_path = str(agent_file)
         opt = Optimizer(cfg)
         opt._setup_output_dirs()
-        agent = Optimizer._load_agent_module(str(agent_file))
         case = {"input": {}, "expected_output": {}}
-        tracer, item = opt._run_single_case(agent, case, "test", 0)
+        _, _, items = opt._run_agent_on_dataset(str(agent_file), [case], "test")
+        assert len(items) == 1
+        item = items[0]
         assert "error" in item["output"]
 
 

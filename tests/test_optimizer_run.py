@@ -245,7 +245,6 @@ class TestRunParallel:
         opt = Optimizer(cfg)
         opt._setup_output_dirs()
 
-        agent = Optimizer._load_agent_module(cfg.agent_path)
         dataset = [
             {
                 "input": {"company": "A"},
@@ -266,8 +265,8 @@ class TestRunParallel:
                 },
             },
         ]
-        eval_result, tracers, items = opt._run_parallel(
-            agent, cfg.agent_path, dataset, "par_test"
+        eval_result, tracers, items = opt._run_agent_on_dataset(
+            cfg.agent_path, dataset, "par_test"
         )
         assert len(items) == 2
         assert "avg_total" in eval_result

@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import difflib
 import importlib.util
+import os
 import logging
 import random
 import re
@@ -2034,7 +2035,9 @@ class Optimizer:
             return tmp_dir / self._bundle.entry_file
 
         ext = Path(self.config.agent_path).suffix or ".py"
-        tmp = Path(tempfile.mktemp(suffix=ext, dir=str(self.output_dir)))
+        fd, tmp_str = tempfile.mkstemp(suffix=ext, dir=str(self.output_dir))
+        os.close(fd)
+        tmp = Path(tmp_str)
         code = cand["updated_code"]
         if ext == ".py":
             code = instrument_source(code)
