@@ -116,6 +116,7 @@ def analyze_agent(
     analysis["_agent_path"] = agent_path
     analysis["_agent_code"] = code
     analysis["_agent_code_section"] = agent_code_section
+    analysis["_entrypoint_fn"] = entrypoint_fn
     return analysis
 
 

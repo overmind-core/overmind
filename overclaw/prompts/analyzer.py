@@ -255,7 +255,7 @@ for the LLM's analysis (e.g., "if X then set field to Y") is overfitting.
 2. **NO EVALUATION GAMING (CRITICAL)** — Do NOT game the evaluation system:
    - Do NOT fabricate or inject synthetic tool calls outside the agent's loop.
    - Do NOT inject synthetic "user" or "assistant" messages to trick scoring.
-   - Do NOT add extra call_llm calls solely to "re-score" or "re-evaluate" \
+   - Do NOT add extra LLM calls solely to "re-score" or "re-evaluate" \
 after the main loop.
    - Do NOT pre-call tools before the LLM loop and stitch results into the \
 conversation to bypass the agent's natural decision-making.
@@ -388,7 +388,7 @@ error handling, or helper functions for data processing.
 - If a change targets helper_module, add or modify utility functions in \
 the appropriate supporting file.
 - **NO EVALUATION GAMING** — Do NOT fabricate synthetic tool calls, inject \
-synthetic messages to trick scoring, or add extra call_llm calls solely \
+synthetic messages to trick scoring, or add extra LLM calls solely \
 to re-score. Genuine structural improvements (helper functions, better \
 data processing, error handling) are encouraged.
 - Keep the agent entry function named `{entrypoint_fn}` with a compatible signature \
@@ -470,7 +470,7 @@ numeric output fields using a formula (e.g., value = avg * sqft) and overwrites 
 the LLM's output. The LLM often produces correct values through judgment. \
 Improve system prompt instructions to guide better LLM reasoning instead.
 3. **NO EVALUATION GAMING** — Do NOT fabricate synthetic tool calls, inject \
-synthetic messages to trick scoring, or add extra call_llm calls solely to \
+synthetic messages to trick scoring, or add extra LLM calls solely to \
 re-score. Genuine structural improvements (helper functions, better data \
 processing, error handling, tool implementation fixes) are encouraged.
 4. **PROMPT BLOAT** — Do NOT keep adding rules to SYSTEM_PROMPT. Prefer changes \

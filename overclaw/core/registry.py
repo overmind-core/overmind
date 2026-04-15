@@ -224,10 +224,22 @@ def parse_entrypoint(entrypoint: str) -> tuple[str, str]:
     return module, fn
 
 
+_SUPPORTED_EXTENSIONS = (".py", ".js", ".ts", ".mjs", ".mts")
+
+
 def _module_to_file(module: str, root: Path) -> Path:
-    """Convert a dotted module path to an absolute .py file path."""
+    """Convert a dotted module path to an absolute file path.
+
+    Tries ``.py`` first, then JS/TS extensions, so existing Python
+    agents keep working unchanged.
+    """
     parts = module.split(".")
-    return (root / Path(*parts)).with_suffix(".py")
+    base = root / Path(*parts)
+    for ext in _SUPPORTED_EXTENSIONS:
+        candidate = base.with_suffix(ext)
+        if candidate.exists():
+            return candidate
+    return base.with_suffix(".py")
 
 
 def validate_entrypoint(entrypoint: str) -> tuple[Path, str]:
@@ -255,10 +267,32 @@ def validate_entrypoint(entrypoint: str) -> tuple[Path, str]:
         raise SystemExit(1)
 
     code = file_path.read_text(encoding="utf-8")
-    if f"def {fn}(" not in code and f"def {fn} (" not in code:
+    ext = file_path.suffix.lower()
+
+    if ext == ".py":
+        found = f"def {fn}(" in code or f"def {fn} (" in code
+    else:
+        import re
+
+        found = bool(
+            re.search(
+                rf"(?:function\s+{re.escape(fn)}\s*\(|"
+                rf"(?:const|let|var)\s+{re.escape(fn)}\s*=|"
+                rf"exports\.{re.escape(fn)}\s*=|"
+                rf"module\.exports\s*=)",
+                code,
+            )
+        )
+
+    if not found:
+        hint = (
+            f"'def {fn}(input)'"
+            if ext == ".py"
+            else f"'function {fn}(input)' or 'module.exports = {{ {fn} }}'"
+        )
         print(
             f"\n  Error: Function '{fn}' not found in '{file_path}'.\n"
-            f"  Make sure your agent file defines 'def {fn}(input)'.\n",
+            f"  Make sure your agent file defines {hint}.\n",
             file=sys.stderr,
         )
         raise SystemExit(1)

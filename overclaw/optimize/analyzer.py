@@ -218,12 +218,19 @@ def _format_per_case_results(
         output = case.get("output", {})
         input_data = case.get("input", {})
 
-        input_summary = ", ".join(
-            f"{k}={json.dumps(v)}" for k, v in input_data.items()
-        )[:400]
+        if isinstance(input_data, dict):
+            input_summary = ", ".join(
+                f"{k}={json.dumps(v)}" for k, v in input_data.items()
+            )[:400]
+        else:
+            input_summary = str(input_data)[:400]
 
         lines.append(f"**Case {i + 1} \u2014 {total:.0f}/100**")
         lines.append(f"  Input: {input_summary}")
+
+        if not isinstance(output, dict):
+            lines.append(f"  Output (text): {str(output)[:200]}")
+            continue
 
         for fname in fields:
             act = output.get(fname, "MISSING")
@@ -1006,37 +1013,66 @@ def _run_codegen(
 
 
 def _extract_imports_from_source(source: str, known_files: set[str]) -> list[str]:
-    """Extract imports from *source* that reference files in *known_files*."""
-    import ast as _ast
+    """Extract imports from *source* that reference files in *known_files*.
 
-    try:
-        tree = _ast.parse(source)
-    except SyntaxError:
-        return []
-
-    stems = {}
+    Supports both Python (AST-based) and JS/TS (regex-based) sources.
+    The language is auto-detected: if AST parsing succeeds, Python path
+    is used; otherwise the JS regex path runs as a fallback.
+    """
+    stems: dict[str, str] = {}
     for kf in known_files:
         parts = kf.replace("/", ".").replace("\\", ".")
-        if parts.endswith(".py"):
-            parts = parts[:-3]
+        for ext in (".py", ".js", ".ts", ".mjs", ".mts"):
+            if parts.endswith(ext):
+                parts = parts[: -len(ext)]
+                break
         for segment in parts.split("."):
             stems[segment] = kf
 
     imported: list[str] = []
-    for node in _ast.iter_child_nodes(tree):
-        if isinstance(node, _ast.Import):
-            for alias in node.names:
-                for seg in alias.name.split("."):
+
+    # Try Python AST first
+    import ast as _ast
+
+    try:
+        tree = _ast.parse(source)
+        for node in _ast.iter_child_nodes(tree):
+            if isinstance(node, _ast.Import):
+                for alias in node.names:
+                    for seg in alias.name.split("."):
+                        if seg in stems and stems[seg] not in imported:
+                            imported.append(stems[seg])
+            elif isinstance(node, _ast.ImportFrom):
+                module = node.module or ""
+                for seg in module.split("."):
                     if seg in stems and stems[seg] not in imported:
                         imported.append(stems[seg])
-        elif isinstance(node, _ast.ImportFrom):
-            module = node.module or ""
-            for seg in module.split("."):
-                if seg in stems and stems[seg] not in imported:
-                    imported.append(stems[seg])
-            for alias in node.names:
-                if alias.name in stems and stems[alias.name] not in imported:
-                    imported.append(stems[alias.name])
+                for alias in node.names:
+                    if alias.name in stems and stems[alias.name] not in imported:
+                        imported.append(stems[alias.name])
+        return imported
+    except SyntaxError:
+        pass
+
+    # Fallback: JS/TS regex-based import extraction
+    import re as _re
+
+    for m in _re.finditer(
+        r"""(?:import\s+.*?\s+from\s+|require\s*\(\s*)['"]([^'"]+)['"]""",
+        source,
+    ):
+        mod_path = m.group(1)
+        if not mod_path.startswith("."):
+            continue
+        clean = mod_path.lstrip("./").replace("/", ".")
+        for ext in (".js", ".ts", ".mjs", ".mts"):
+            if clean.endswith(ext):
+                clean = clean[: -len(ext)]
+                break
+        for seg in clean.split("."):
+            if seg in stems and stems[seg] not in imported:
+                imported.append(stems[seg])
+
     return imported
 
 

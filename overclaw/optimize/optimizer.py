@@ -15,10 +15,12 @@ from __future__ import annotations
 
 import difflib
 import importlib.util
+import logging
 import random
 import re
 import shutil
 import statistics
+import subprocess
 import tempfile
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -37,7 +39,11 @@ from rich.progress import (
 )
 
 from overclaw.utils.code import AgentBundle
-from overclaw.core.paths import agent_experiments_dir, agent_run_state_path
+from overclaw.core.paths import (
+    agent_experiments_dir,
+    agent_instrumented_dir,
+    agent_run_state_path,
+)
 from overclaw.utils.display import BRAND, make_spinner_progress, rel
 from rich.rule import Rule
 from rich.table import Table
@@ -60,13 +66,14 @@ from overclaw.optimize.failure_registry import (
     format_clusters_for_diagnosis,
 )
 from overclaw.optimize.run_state import RunState, RunSummary
+from overclaw.optimize.runner import AgentRunner, Language, RunnerConfig
 from overclaw.utils.policy import (
     format_for_codegen,
     format_for_diagnosis,
     format_for_judge,
     load_policy_data,
 )
-from overclaw.core.tracer import Tracer, set_current_tracer
+from overclaw.optimize.trace_reader import ParsedTrace, parse_trace_file_per_line
 from overclaw.storage import get_storage
 
 
@@ -117,6 +124,17 @@ class Optimizer:
         self._best_files: dict[str, str] = {}
         self._baseline_files: dict[str, str] = {}
 
+        # Resolve instrumented agent copy (created by ``overclaw setup``).
+        # The instrumented copy has @observe() decorators so the overmind-sdk
+        # captures spans.  Falls back to the original when not present.
+        self._instrumented_agent_path = self._resolve_instrumented_path()
+
+        # --- Process-isolated agent runner ---
+        self._runner = self._build_runner(
+            self._instrumented_agent_path, config.entrypoint_fn
+        )
+        self._logger = logging.getLogger("overclaw.optimize.optimizer")
+
         # --- Cross-run state & failure clustering ---
         use_persistence = getattr(config, "cross_run_persistence", True)
         if use_persistence:
@@ -141,6 +159,36 @@ class Optimizer:
         self._run_id = self._run_state.begin_run()
         self._session_failed: list[dict] = []
         self._session_successful: list[dict] = []
+
+    def _resolve_instrumented_path(self) -> str:
+        """Return the path to the instrumented agent copy if it exists.
+
+        ``overclaw setup`` copies the agent tree to
+        ``.overclaw/agents/<name>/instrumented/`` and adds ``@observe()``
+        decorators.  If that copy is present, the optimizer uses it so
+        that overmind-sdk traces are captured automatically.  Otherwise
+        falls back to the original ``config.agent_path``.
+        """
+        inst_dir = agent_instrumented_dir(self.config.agent_name)
+        original = Path(self.config.agent_path).resolve()
+        entry_name = original.name
+
+        candidate = inst_dir / entry_name
+        if candidate.is_file():
+            return str(candidate)
+
+        return self.config.agent_path
+
+    @property
+    def _use_local_traces(self) -> bool:
+        """Whether to use local OVERMIND_TRACE_FILE for tracing.
+
+        Returns True when OVERMIND_API_TOKEN is NOT set, meaning traces
+        should be stored locally via OVERMIND_TRACE_FILE.
+        """
+        import os
+
+        return not os.environ.get("OVERMIND_API_TOKEN")
 
     # ------------------------------------------------------------------
     # Public entry point
@@ -221,8 +269,17 @@ class Optimizer:
                 f"  [dim]Bundle:[/dim] {n_files} file(s) resolved, {n_opt} optimizable"
             )
 
+        # Provision agent environment (install deps into venv / node_modules)
+        with make_spinner_progress(self.console, transient=True) as _prov:
+            _prov.add_task(f"  Provisioning {self._runner.language.value} environment…")
+            self._ensure_runner_env()
+        self.console.print(
+            f"  [dim]Runtime:[/dim] {self._runner.language.value} "
+            f"(subprocess isolation)"
+        )
+
         baseline_eval, baseline_traces, baseline_items = self._run_agent_on_dataset(
-            self.config.agent_path, train_set, "baseline"
+            self._instrumented_agent_path, train_set, "baseline"
         )
         self.best_score = baseline_eval["avg_total"]
         self._baseline_train_score = self.best_score
@@ -272,7 +329,8 @@ class Optimizer:
             self._best_files = dict(self._bundle.original_files)
 
         # Working copy
-        working_path = self.output_dir / "agent_working.py"
+        _ext = Path(self.config.agent_path).suffix or ".py"
+        working_path = self.output_dir / f"agent_working{_ext}"
         working_path.write_text(baseline_code)
         working_dir: Path | None = None
         if self._bundle and self._bundle.is_multi_file():
@@ -943,7 +1001,8 @@ class Optimizer:
                 break
 
         # Save best agent
-        best_path = self.output_dir / "best_agent.py"
+        _ext = Path(self.config.agent_path).suffix or ".py"
+        best_path = self.output_dir / f"best_agent{_ext}"
         best_path.write_text(self.best_code)
 
         # Save multi-file output when applicable
@@ -974,7 +1033,7 @@ class Optimizer:
             holdout_score = holdout_eval["avg_total"]
 
             baseline_holdout_eval, _, _ = self._run_agent_on_dataset(
-                self.config.agent_path, holdout_set, "holdout_baseline"
+                self._instrumented_agent_path, holdout_set, "holdout_baseline"
             )
             baseline_holdout_score = baseline_holdout_eval["avg_total"]
             train_improvement = self.best_score - self._baseline_train_score
@@ -1607,38 +1666,51 @@ class Optimizer:
 
         tmp_path = self._write_candidate_to_disk(candidate)
         try:
-            agent = self._load_agent_module(str(tmp_path))
+            runner = self._build_runner(str(tmp_path), self.config.entrypoint_fn)
+            runner.ensure_environment()
         except Exception:
             self._cleanup_candidate(tmp_path, candidate)
             return len(self._run_state.regression_cases)
 
+        trace_path: Path | None = None
+        if self._use_local_traces:
+            trace_path = self.traces_dir / "regression.jsonl"
+            trace_path.parent.mkdir(parents=True, exist_ok=True)
+            if trace_path.exists():
+                trace_path.unlink()
+
+        outputs: list[dict | None] = []
+        failed_indices: set[int] = set()
+        for rc_idx, rc in enumerate(self._run_state.regression_cases):
+            run_output = runner.run(rc.case_input, trace_file=trace_path)
+            if run_output.success:
+                outputs.append(run_output.data)
+            else:
+                outputs.append(None)
+                failed_indices.add(rc_idx)
+
+        per_line_traces: list[ParsedTrace] = []
+        if trace_path is not None and trace_path.exists():
+            per_line_traces = parse_trace_file_per_line(trace_path)
+
         failures = 0
-        for rc in self._run_state.regression_cases:
-            tracer = Tracer(trace_id="regression_check")
-            set_current_tracer(tracer)
-            try:
-                output = getattr(agent, self.config.entrypoint_fn)(rc.case_input)
-            except Exception:
+        trace_line_idx = 0
+        for rc_idx, rc in enumerate(self._run_state.regression_cases):
+            if rc_idx in failed_indices:
                 failures += 1
                 continue
-            finally:
-                tracer.finish()
-                set_current_tracer(None)
 
-            tool_trace = [
-                {
-                    "name": span.name,
-                    "args": span.metadata.get("args", {}),
-                    "result": span.metadata.get("result", {}),
-                    "error": span.error,
-                    "latency_ms": span.latency_ms,
-                }
-                for span in tracer.trace.spans
-                if hasattr(span, "span_type") and span.span_type == "tool_call"
-            ]
+            parsed_trace = (
+                per_line_traces[trace_line_idx]
+                if trace_line_idx < len(per_line_traces)
+                else ParsedTrace()
+            )
+            trace_line_idx += 1
+
+            tool_trace = parsed_trace.tool_trace
             skip_judge = not getattr(self.config, "judge_in_regression", False)
             score = self.evaluator.evaluate_output(
-                output,
+                outputs[rc_idx],
                 rc.expected_output,
                 input_data=rc.case_input,
                 tool_trace=tool_trace,
@@ -1648,6 +1720,7 @@ class Optimizer:
                 failures += 1
 
         self._cleanup_candidate(tmp_path, candidate)
+        runner.cleanup()
         return failures
 
     def _promote_resolved_to_regression(
@@ -1912,8 +1985,6 @@ class Optimizer:
         if not self._bundle:
             return None
 
-        from overclaw.utils.code import has_entrypoint_ast
-
         file_updates = bundle_updates.get("file_updates")
         if file_updates:
             modified = self._bundle.apply_file_updates(file_updates)
@@ -1932,8 +2003,7 @@ class Optimizer:
         if not entry_code:
             return None
 
-        fn = self.config.entrypoint_fn
-        if not has_entrypoint_ast(entry_code, fn):
+        if not self._runner.validate_entrypoint(entry_code):
             return None
 
         return {"entry_code": entry_code, "files": modified}
@@ -1943,8 +2013,12 @@ class Optimizer:
 
         For multi-file candidates with ``_resolved_files``, creates a
         temporary directory tree.  For single-file, creates a temp ``.py``.
+        Each Python file is auto-instrumented with ``@observe()`` so
+        overmind-sdk traces are captured during evaluation.
         Returns the path to the entry file.
         """
+        from overclaw.utils.instrument import instrument_source
+
         resolved = cand.get("_resolved_files")
         if resolved and self._bundle:
             tmp_dir = Path(
@@ -1954,11 +2028,17 @@ class Optimizer:
             for rel_path, source in all_files.items():
                 dest = tmp_dir / rel_path
                 dest.parent.mkdir(parents=True, exist_ok=True)
+                if rel_path.endswith(".py"):
+                    source = instrument_source(source)
                 dest.write_text(source)
             return tmp_dir / self._bundle.entry_file
 
-        tmp = Path(tempfile.mktemp(suffix=".py", dir=str(self.output_dir)))
-        tmp.write_text(cand["updated_code"])
+        ext = Path(self.config.agent_path).suffix or ".py"
+        tmp = Path(tempfile.mktemp(suffix=ext, dir=str(self.output_dir)))
+        code = cand["updated_code"]
+        if ext == ".py":
+            code = instrument_source(code)
+        tmp.write_text(code)
         return tmp
 
     def _cleanup_candidate(self, tmp_path: Path, cand: dict) -> None:
@@ -1991,8 +2071,58 @@ class Optimizer:
     # Agent loading & execution
     # ------------------------------------------------------------------
 
+    def _build_runner(
+        self,
+        agent_path: str,
+        entrypoint_fn: str,
+        extra_env: dict[str, str] | None = None,
+    ) -> AgentRunner:
+        """Create an AgentRunner for the given agent file.
+
+        ``env_dir`` always points to the *original* agent directory so
+        that dependency manifests, .venv, and .env files are found even
+        when the code being evaluated lives in the experiments folder.
+        """
+        p = Path(agent_path).resolve()
+        agent_dir = p.parent
+        entry_file = p.name
+        original_agent_dir = Path(self.config.agent_path).resolve().parent
+        cfg = RunnerConfig(extra_env=extra_env or {})
+        return AgentRunner(
+            agent_dir=agent_dir,
+            entry_file=entry_file,
+            entrypoint_fn=entrypoint_fn,
+            config=cfg,
+            env_dir=original_agent_dir,
+        )
+
+    def _ensure_runner_env(self) -> None:
+        """Provision the runner's environment (deps install). Idempotent."""
+        from overclaw.optimize.runner import MissingDependenciesError
+
+        try:
+            self._runner.ensure_environment()
+        except MissingDependenciesError as exc:
+            self.console.print(
+                f"\n  [bold red]Missing dependency file[/bold red]\n\n"
+                f"  {exc}\n\n"
+                f"  Run [bold]overclaw setup {self.config.agent_name}[/bold] to configure\n"
+                f"  dependencies interactively, or create a dependency file manually.\n"
+            )
+            raise SystemExit(1)
+        except subprocess.CalledProcessError as exc:
+            stderr = exc.stderr
+            if isinstance(stderr, bytes):
+                stderr = stderr.decode(errors="replace")
+            self.console.print(
+                f"  [bold red]Failed to provision agent environment:[/bold red]\n"
+                f"  [dim]{stderr}[/dim]"
+            )
+            raise
+
     @staticmethod
     def _load_agent_module(path: str):
+        """Legacy in-process module loader (kept for Python-only validation)."""
         spec = importlib.util.spec_from_file_location("_agent_mod", path)
         module = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(module)
@@ -2003,18 +2133,30 @@ class Optimizer:
         agent_path: str,
         dataset: list[dict],
         run_name: str,
-    ) -> tuple[dict, list[Tracer], list[dict]]:
-        agent = self._load_agent_module(agent_path)
+    ) -> tuple[dict, list[ParsedTrace], list[dict]]:
+        runner = self._build_runner(agent_path, self.config.entrypoint_fn)
+        runner.ensure_environment()
+
+        trace_path: Path | None = None
+        if self._use_local_traces:
+            trace_path = self.traces_dir / f"{run_name}.jsonl"
+            trace_path.parent.mkdir(parents=True, exist_ok=True)
+            if trace_path.exists():
+                trace_path.unlink()
 
         if self.config.parallel:
-            return self._run_parallel(agent, agent_path, dataset, run_name)
-        return self._run_sequential(agent, dataset, run_name)
+            return self._run_parallel_subprocess(runner, dataset, run_name, trace_path)
+        return self._run_sequential_subprocess(runner, dataset, run_name, trace_path)
 
-    def _run_sequential(
-        self, agent, dataset: list[dict], run_name: str
-    ) -> tuple[dict, list[Tracer], list[dict]]:
-        tracers: list[Tracer] = []
-        eval_items: list[dict] = []
+    def _run_sequential_subprocess(
+        self,
+        runner: AgentRunner,
+        dataset: list[dict],
+        run_name: str,
+        trace_path: Path | None = None,
+    ) -> tuple[dict, list[ParsedTrace], list[dict]]:
+        outputs: list[dict | None] = []
+        cases_data: list[dict] = []
 
         with Progress(
             SpinnerColumn(style=BRAND),
@@ -2027,18 +2169,30 @@ class Optimizer:
             task = progress.add_task("  Running agent…", total=len(dataset))
 
             for idx, case in enumerate(dataset):
-                tracer, score_item = self._run_single_case(agent, case, run_name, idx)
-                tracers.append(tracer)
-                eval_items.append(score_item)
+                run_output = runner.run(case["input"], trace_file=trace_path)
+                if run_output.success:
+                    outputs.append(run_output.data)
+                else:
+                    outputs.append({"error": run_output.error})
+                cases_data.append(case)
                 progress.advance(task)
 
-        batch_eval = self.evaluator.evaluate_batch(eval_items)
-        return batch_eval, tracers, eval_items
+        return self._build_eval_results(outputs, cases_data, run_name, trace_path)
 
-    def _run_parallel(
-        self, agent, agent_path: str, dataset: list[dict], run_name: str
-    ) -> tuple[dict, list[Tracer], list[dict]]:
-        results_by_idx: dict[int, tuple[Tracer, dict]] = {}
+    def _run_parallel_subprocess(
+        self,
+        runner: AgentRunner,
+        dataset: list[dict],
+        run_name: str,
+        trace_path: Path | None = None,
+    ) -> tuple[dict, list[ParsedTrace], list[dict]]:
+        results_by_idx: dict[int, dict | None] = {}
+
+        def _run_one(case: dict, idx: int) -> tuple[int, dict | None]:
+            run_output = runner.run(case["input"], trace_file=trace_path)
+            if run_output.success:
+                return idx, run_output.data
+            return idx, {"error": run_output.error}
 
         with Progress(
             SpinnerColumn(style=BRAND),
@@ -2052,86 +2206,81 @@ class Optimizer:
 
             with ThreadPoolExecutor(max_workers=self.config.max_workers) as pool:
                 futures = {
-                    pool.submit(self._run_single_case, agent, case, run_name, idx): idx
+                    pool.submit(_run_one, case, idx): idx
                     for idx, case in enumerate(dataset)
                 }
                 for future in as_completed(futures):
-                    idx = futures[future]
-                    tracer, score_item = future.result()
-                    results_by_idx[idx] = (tracer, score_item)
+                    idx_result, output = future.result()
+                    results_by_idx[idx_result] = output
                     progress.advance(task)
 
-        tracers = []
-        eval_items = []
-        for idx in range(len(dataset)):
-            tracer, score_item = results_by_idx[idx]
-            tracers.append(tracer)
-            eval_items.append(score_item)
+        outputs = [results_by_idx[i] for i in range(len(dataset))]
+        return self._build_eval_results(outputs, dataset, run_name, trace_path)
+
+    def _build_eval_results(
+        self,
+        outputs: list[dict | None],
+        dataset: list[dict],
+        run_name: str,
+        trace_path: Path | None,
+    ) -> tuple[dict, list[ParsedTrace], list[dict]]:
+        """Parse the single trace file and build per-case eval items.
+
+        Each JSONL line in the trace file corresponds (in order) to one
+        datapoint execution.  When ``trace_path`` is ``None`` (token-based
+        tracing), empty :class:`ParsedTrace` objects are used.
+        """
+        if trace_path is not None and trace_path.exists():
+            per_line_traces = parse_trace_file_per_line(trace_path)
+        else:
+            per_line_traces = []
+
+        traces: list[ParsedTrace] = []
+        eval_items: list[dict] = []
+
+        for idx, (output, case) in enumerate(zip(outputs, dataset)):
+            parsed_trace = (
+                per_line_traces[idx] if idx < len(per_line_traces) else ParsedTrace()
+            )
+            traces.append(parsed_trace)
+
+            if self._reporter:
+                trace_payload = {
+                    "trace_id": f"{run_name}_{idx:03d}",
+                    "input_data": case.get("input", {}),
+                    "output_data": output,
+                    "total_tokens": parsed_trace.total_tokens,
+                    "total_cost": parsed_trace.total_cost,
+                    "tool_trace": parsed_trace.tool_trace,
+                    "trace_group": run_name,
+                }
+                self._reporter.on_trace(trace_payload)
+
+            expected = case.get("expected_output", case.get("expected", {}))
+            tool_trace = parsed_trace.tool_trace
+            tool_calls = [t["name"] for t in tool_trace]
+
+            score = self.evaluator.evaluate_output(
+                output,
+                expected,
+                input_data=case.get("input"),
+                tool_trace=tool_trace,
+                _skip_judge=True,
+            )
+
+            eval_items.append(
+                {
+                    "input": case.get("input"),
+                    "output": output,
+                    "expected": expected,
+                    "score": score,
+                    "tool_calls": tool_calls,
+                    "tool_trace": tool_trace,
+                }
+            )
 
         batch_eval = self.evaluator.evaluate_batch(eval_items)
-        return batch_eval, tracers, eval_items
-
-    def _run_single_case(
-        self, agent, case: dict, run_name: str, idx: int
-    ) -> tuple[Tracer, dict]:
-        """Execute the agent on one test case and return (tracer, eval_item).
-
-        The LLM judge is always deferred (``_skip_judge=True``) so that
-        ``evaluate_batch`` can batch judge calls for efficiency.
-        """
-        tracer = Tracer(trace_id=f"{run_name}_{idx:03d}")
-        set_current_tracer(tracer)
-        tracer.set_input(case["input"])
-
-        try:
-            output = getattr(agent, self.config.entrypoint_fn)(case["input"])
-        except Exception as exc:
-            output = {"error": str(exc)}
-
-        tracer.set_output(output)
-        tracer.finish()
-        set_current_tracer(None)
-
-        trace_path = self.traces_dir / run_name / f"{idx:03d}.json"
-        tracer.trace.save(str(trace_path))
-        if self._reporter:
-            trace_payload = tracer.trace.to_dict()
-            trace_payload["trace_group"] = run_name
-            self._reporter.on_trace(trace_payload)
-
-        expected = case.get("expected_output", case.get("expected", {}))
-
-        tool_trace = [
-            {
-                "name": span.name,
-                "args": span.metadata.get("args", {}),
-                "result": span.metadata.get("result", {}),
-                "error": span.error,
-                "latency_ms": span.latency_ms,
-            }
-            for span in tracer.trace.spans
-            if hasattr(span, "span_type") and span.span_type == "tool_call"
-        ]
-
-        tool_calls = [t["name"] for t in tool_trace]
-
-        score = self.evaluator.evaluate_output(
-            output,
-            expected,
-            input_data=case.get("input"),
-            tool_trace=tool_trace,
-            _skip_judge=True,
-        )
-        tracer.trace.score = score["total"]
-
-        return tracer, {
-            "input": case.get("input"),
-            "output": output,
-            "expected": expected,
-            "score": score,
-            "tool_calls": tool_calls,
-            "tool_trace": tool_trace,
-        }
+        return batch_eval, traces, eval_items
 
     # ------------------------------------------------------------------
     # Code update animation
@@ -2244,34 +2393,28 @@ class Optimizer:
     # ------------------------------------------------------------------
 
     def _validate_code(self, code: str) -> bool:
-        from overclaw.utils.code import has_entrypoint_ast
-
-        agent_path = Path(self.config.agent_path)
-        ext = agent_path.suffix.lower()
-
-        if ext == ".py":
-            try:
-                compile(code, "<agent>", "exec")
-            except SyntaxError:
-                return False
+        from overclaw.optimize.runner import (
+            _validate_python_syntax,
+            _validate_python_entrypoint,
+            _validate_js_entrypoint,
+        )
 
         fn_name = self.config.entrypoint_fn
-        if not has_entrypoint_ast(code, fn_name):
-            return False
+        lang = self._runner.language
 
-        if ext == ".py":
-            import tempfile
-
-            tmp = Path(tempfile.mktemp(suffix=".py"))
-            try:
-                tmp.write_text(code)
-                mod = self._load_agent_module(str(tmp))
-                if not callable(getattr(mod, fn_name, None)):
-                    return False
-            except Exception:
+        if lang == Language.PYTHON:
+            if not _validate_python_syntax(code):
                 return False
-            finally:
-                tmp.unlink(missing_ok=True)
+            if not _validate_python_entrypoint(code, fn_name):
+                return False
+            # Skip module-level import validation — agent code often has
+            # heavy side effects at import time (SDK init, dotenv, MCP
+            # connections) that fail outside the real agent environment.
+            # AST-level syntax + entrypoint checks are sufficient here;
+            # the actual subprocess runner will catch real import errors.
+        else:
+            if not _validate_js_entrypoint(code, fn_name):
+                return False
 
         return True
 
@@ -2287,7 +2430,8 @@ class Optimizer:
                 f'MODEL = "{model_id}"',
                 self.best_code,
             )
-            tmp_path = self.output_dir / "agent_backtest.py"
+            ext = Path(self.config.agent_path).suffix or ".py"
+            tmp_path = self.output_dir / f"agent_backtest{ext}"
             tmp_path.write_text(modified_code)
 
             try:
@@ -2496,7 +2640,10 @@ class Optimizer:
                 f"[cyan]{rel_out / 'best_agent/'}[/cyan] (multi-file)",
             )
         else:
-            summary.add_row("Best agent:", f"[cyan]{rel_out / 'best_agent.py'}[/cyan]")
+            _ext = Path(self.config.agent_path).suffix or ".py"
+            summary.add_row(
+                "Best agent:", f"[cyan]{rel_out / f'best_agent{_ext}'}[/cyan]"
+            )
         summary.add_row("Results log:", f"[cyan]{rel_out / 'results.tsv'}[/cyan]")
         summary.add_row("Traces:", f"[cyan]{rel_out / 'traces/'}[/cyan]")
         self.console.print(Panel(summary, border_style="green", title="Summary"))

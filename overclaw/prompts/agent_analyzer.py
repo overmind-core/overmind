@@ -7,11 +7,26 @@ tool orchestration, and propose evaluation criteria.
 Agent source code:
 {agent_code_section}
 
+The agent's entry function is `{entrypoint_fn}`. The input schema MUST be derived
+from this function's **parameter list** — each parameter becomes a field in
+`input_schema`. Do NOT infer inputs from the UI layer, internal helper functions,
+or Streamlit widgets. Only the parameters of `{entrypoint_fn}()` matter.
+
+CRITICAL: The runner calls the agent via `{entrypoint_fn}(**input_dict)` when
+the function has multiple parameters. This means the `input_schema` field names
+MUST exactly match the function's parameter names, and test-case inputs will
+use these names as dict keys. Getting this wrong causes runtime crashes.
+
+The `output_schema` describes what the agent RETURNS — this may be a structured
+JSON object (dict with typed fields) or a plain string/markdown. Derive the
+output structure from the function's return type and actual return statements
+in the code.
+
 Return a JSON object with this exact structure:
 {{
   "description": "One paragraph describing what this agent does and its purpose",
   "input_schema": {{
-    "field_name": {{"type": "string", "description": "what this field represents"}}
+    "field_name": {{"type": "string|number|boolean|object|array", "description": "what this parameter represents"}}
   }},
   "output_schema": {{
     "field_name": {{

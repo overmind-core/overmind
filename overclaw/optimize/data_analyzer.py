@@ -145,6 +145,8 @@ def _fallback_analysis(cases: list[dict], eval_spec: dict) -> dict:
 
     for case in cases:
         out = case.get("expected_output", {})
+        if not isinstance(out, dict):
+            continue
         for field, cfg in output_fields.items():
             if cfg.get("type") == "enum":
                 val = out.get(field)

@@ -127,6 +127,19 @@ def has_entrypoint_ast(source: str, fn_name: str) -> bool:
 # Import resolution
 # ---------------------------------------------------------------------------
 
+
+def _lang_tag_for_path(rel_path: str) -> str:
+    """Return a Markdown code fence language tag for *rel_path*."""
+    ext = Path(rel_path).suffix.lower()
+    return {
+        ".py": "python",
+        ".js": "javascript",
+        ".mjs": "javascript",
+        ".ts": "typescript",
+        ".mts": "typescript",
+    }.get(ext, "python")
+
+
 _STDLIB_TOP: frozenset[str] = getattr(
     sys, "stdlib_module_names", frozenset()
 ) | frozenset(sys.builtin_module_names)
@@ -589,16 +602,17 @@ class AgentBundle:
                 if p.symbol_type in ("function", "class")
             )
 
+            lang_tag = _lang_tag_for_path(rel_path)
             if has_signature_only and not is_opt:
                 sig_text = "\n\n".join(p.source for p in file_pieces)
                 sections.append(
                     f"\n# ===== FILE: {rel_path} [{tag}] =====\n"
-                    f"```python\n{sig_text}\n```"
+                    f"```{lang_tag}\n{sig_text}\n```"
                 )
             else:
                 sections.append(
                     f"\n# ===== FILE: {rel_path} [{tag}] =====\n"
-                    f"```python\n{source}\n```"
+                    f"```{lang_tag}\n{source}\n```"
                 )
 
         return "\n".join(sections)
@@ -654,18 +668,19 @@ class AgentBundle:
         modified: dict[str, str] = {}
 
         for rel_path, new_source in file_updates.items():
-            # Only allow updates to optimizable files
             if rel_path not in self.optimizable_files:
                 continue
 
-            # Validate syntax
             if rel_path.endswith(".py"):
                 try:
                     ast.parse(new_source)
                 except SyntaxError:
                     return None
+            elif rel_path.endswith((".js", ".mjs")):
+                pass  # JS syntax checked at candidate validation time
+            elif rel_path.endswith((".ts", ".mts")):
+                pass  # TS syntax checked at candidate validation time
 
-            # Only include if actually different from original
             original = self.original_files.get(rel_path, "")
             if new_source.rstrip() != original.rstrip():
                 modified[rel_path] = new_source

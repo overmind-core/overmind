@@ -32,6 +32,18 @@ from overclaw.core.paths import (
 from overclaw.core.registry import get_agent_id, resolve_agent
 
 
+def _detect_language(agent_path: str) -> str:
+    """Auto-detect language from the agent file extension."""
+    ext = Path(agent_path).suffix.lower()
+    return {
+        ".py": "python",
+        ".js": "javascript",
+        ".mjs": "javascript",
+        ".ts": "typescript",
+        ".mts": "typescript",
+    }.get(ext, "python")
+
+
 def _agent_eval_spec_path(agent_name: str) -> Path:
     """Eval spec under per-agent setup_spec (see :func:`agent_setup_spec_dir`)."""
     return agent_setup_spec_dir(agent_name) / "eval_spec.json"
@@ -87,6 +99,8 @@ class Config:
     agent_id: str | None = None
     eval_spec_path: str = ""
     data_path: str | None = None
+    # Auto-detected from agent_path extension; override for ambiguous cases.
+    language: str = ""
     model_backtesting: bool = False
     backtest_models: list[str] = field(default_factory=list)
     iterations: int = 5
@@ -204,6 +218,7 @@ def _collect_config_fast(agent_name: str, console: Console) -> Config:
         agent_path=agent_path,
         entrypoint_fn=fn_name,
         agent_id=get_agent_id(agent_name),
+        language=_detect_language(agent_path),
     )
 
     console.print("\n  [dim]Fast mode: defaults only (no judge, no backtesting).[/dim]")
@@ -260,6 +275,7 @@ def collect_config(agent_name: str, *, fast: bool = False) -> Config:
         agent_path=agent_path,
         entrypoint_fn=fn_name,
         agent_id=get_agent_id(agent_name),
+        language=_detect_language(agent_path),
     )
 
     console.print()

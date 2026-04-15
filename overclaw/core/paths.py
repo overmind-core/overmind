@@ -55,6 +55,11 @@ def agent_experiments_dir(agent_name: str) -> Path:
     return agent_overclaw_dir(agent_name) / "experiments"
 
 
+def agent_instrumented_dir(agent_name: str) -> Path:
+    """Instrumented copy of the agent source: ``<state>/agents/<name>/setup_spec/instrumented/``."""
+    return agent_setup_spec_dir(agent_name) / "instrumented"
+
+
 def agent_run_state_path(agent_name: str) -> Path:
     """Cross-run persistent state at ``<state>/agents/<name>/run_state.json``."""
     return agent_overclaw_dir(agent_name) / "run_state.json"

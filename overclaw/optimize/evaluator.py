@@ -193,8 +193,8 @@ class SpecEvaluator:
 
     def evaluate_output(
         self,
-        output: dict,
-        expected: dict,
+        output,
+        expected,
         input_data: dict | None = None,
         tool_trace: list[dict] | None = None,
         *,
@@ -205,7 +205,24 @@ class SpecEvaluator:
         Returns a dict with per-dimension scores and a ``total`` (0–100).
         When ``_skip_judge`` is True, the LLM judge call is deferred (used
         by ``evaluate_batch`` to batch judge calls for efficiency).
+
+        Both *output* and *expected* can be dicts (structured agents) or
+        plain strings (text/markdown agents).  When either side is a
+        non-dict value the evaluator falls back to a text-comparison path
+        so field-level scoring is skipped gracefully.
         """
+        output_is_dict = isinstance(output, dict)
+        expected_is_dict = isinstance(expected, dict)
+
+        if not output_is_dict or not expected_is_dict:
+            return self._evaluate_text_output(
+                output,
+                expected,
+                input_data,
+                tool_trace,
+                _skip_judge=_skip_judge,
+            )
+
         scores: dict[str, float] = {}
 
         # --- Structure scoring (presence check) ---
@@ -272,6 +289,60 @@ class SpecEvaluator:
             scores["llm_judge"] = judge_score * judge_weight
 
         scores["total"] = max(0.0, sum(scores.values()))
+        return scores
+
+    def _evaluate_text_output(
+        self,
+        output,
+        expected,
+        input_data: dict | None = None,
+        tool_trace: list[dict] | None = None,
+        *,
+        _skip_judge: bool = False,
+    ) -> dict:
+        """Fallback scoring when output and/or expected are plain strings.
+
+        Uses text similarity for a mechanical baseline and the LLM judge
+        (when configured) for semantic quality, producing a 0-100 total
+        comparable to the structured path.
+
+        Score keys are aligned with the structured path so that
+        ``get_dimension_labels`` / ``get_max_scores`` render correctly:
+        ``structure`` for the presence check and the first output-field
+        name for the content quality score.
+        """
+        actual_str = str(output or "").strip()
+        expected_str = str(expected or "").strip()
+
+        scores: dict[str, float] = {}
+
+        # Map to "structure" so the dimension label matches the structured path
+        scores["structure"] = float(self.structure_weight) if actual_str else 0.0
+
+        # Use the first output field name as the content score key so it
+        # aligns with get_dimension_labels (e.g. "response" → avg_response).
+        field_names = list(self.fields.keys())
+        content_key = field_names[0] if field_names else "text_similarity"
+        content_weight = sum(float(c.get("weight", 0)) for c in self.fields.values())
+        if not content_weight:
+            content_weight = max(30.0, 100.0 - self._effective_judge_weight * 100)
+
+        if expected_str:
+            sim = self._text_similarity(actual_str, expected_str)
+            scores[content_key] = sim * content_weight
+        else:
+            scores[content_key] = content_weight if actual_str else 0.0
+
+        tool_score = self._score_tool_usage(tool_trace)
+        tool_weight = self.spec.get("tool_usage_weight", 0)
+        scores["tool_usage"] = tool_score * tool_weight
+
+        judge_weight = self._effective_judge_weight
+        if not _skip_judge and self.llm_judge_model and judge_weight > 0 and input_data:
+            judge_score = self._score_with_llm_judge(input_data, expected, output)
+            scores["llm_judge"] = judge_score * (judge_weight * 100)
+
+        scores["total"] = max(0.0, min(100.0, sum(scores.values())))
         return scores
 
     def evaluate_batch(self, results: list[dict]) -> dict:
@@ -957,15 +1028,18 @@ class SpecEvaluator:
 def has_entrypoint(code: str, fn_name: str) -> bool:
     """Return True if *code* exposes a top-level function named *fn_name*.
 
-    OverClaw loads agent files as Python modules and calls the registered
-    entry function for every test case.  Uses AST parsing for accuracy,
-    with a string-based fallback for non-parseable code.
+    Supports Python (AST + string fallback) and JS/TS (regex).
     """
     from overclaw.utils.code import has_entrypoint_ast
 
     if has_entrypoint_ast(code, fn_name):
         return True
-    return f"def {fn_name}(" in code or f"def {fn_name} (" in code
+    if f"def {fn_name}(" in code or f"def {fn_name} (" in code:
+        return True
+
+    from overclaw.optimize.runner import _validate_js_entrypoint
+
+    return _validate_js_entrypoint(code, fn_name)
 
 
 def has_run_entrypoint(code: str) -> bool:

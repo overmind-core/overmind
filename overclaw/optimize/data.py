@@ -81,11 +81,28 @@ def load_data(path: str) -> list[dict]:
 
 
 def _format_input_schema(eval_spec: dict) -> str:
-    """Render input_schema from eval spec into a readable block."""
+    """Render input_schema from eval spec into a readable block.
+
+    The input_schema fields correspond EXACTLY to the entrypoint function's
+    parameters.  The runner dispatches via ``fn(**input_dict)`` when the
+    function has multiple parameters, so the "input" dict keys **must** be
+    these field names — no extra keys, no missing required keys.
+    """
     schema = eval_spec.get("input_schema", {})
     if not schema:
         return ""
+    entrypoint_fn = eval_spec.get("entrypoint_fn", "")
     lines = []
+    if entrypoint_fn:
+        lines.append(
+            f"  (These are the parameters of the entrypoint function `{entrypoint_fn}()`."
+            " The input dict keys MUST be exactly these field names.)"
+        )
+    else:
+        lines.append(
+            "  (These fields map to the agent entrypoint's function parameters."
+            " The input dict keys MUST be exactly these field names.)"
+        )
     for field, info in schema.items():
         ftype = info.get("type", "string")
         desc = info.get("description", "")
@@ -128,43 +145,63 @@ def validate_case_against_spec(case: dict, eval_spec: dict) -> list[str]:
     inp = case.get("input")
     out = case.get("expected_output")
 
-    if not isinstance(inp, dict):
-        errors.append("Missing or non-dict 'input'")
-        return errors
-    if not isinstance(out, dict):
-        errors.append("Missing or non-dict 'expected_output'")
+    if inp is None:
+        errors.append("Missing 'input'")
         return errors
 
-    input_schema = eval_spec.get("input_schema", {})
-    for field in input_schema:
-        if field not in inp:
-            errors.append(f"input missing required field '{field}'")
+    if out is None:
+        errors.append("Missing 'expected_output'")
+        return errors
 
-    output_fields = eval_spec.get("output_fields", {})
-    for field, cfg in output_fields.items():
-        if field not in out:
-            errors.append(f"expected_output missing field '{field}'")
-            continue
-        val = out[field]
-        ftype = cfg.get("type", "string")
-        if ftype == "enum":
-            allowed = cfg.get("values", [])
-            if allowed and val not in allowed:
-                errors.append(f"expected_output.{field} = {val!r} not in {allowed}")
-        elif ftype == "number":
-            if not isinstance(val, (int, float)):
+    # String-typed expected_output is valid for text/markdown agents —
+    # skip field-level output validation when it's not a dict.
+    if isinstance(inp, dict):
+        input_schema = eval_spec.get("input_schema", {})
+        for field, info in input_schema.items():
+            is_optional = (
+                info.get("optional", False) if isinstance(info, dict) else False
+            )
+            if field not in inp and not is_optional:
+                errors.append(f"input missing required field '{field}'")
+        # Reject unexpected keys — the runner dispatches via **kwargs so
+        # extra keys would cause a TypeError on the entrypoint function.
+        if input_schema:
+            extra = set(inp.keys()) - set(input_schema.keys())
+            if extra:
                 errors.append(
-                    f"expected_output.{field} must be a number, got {type(val).__name__}"
+                    f"input has unexpected keys {sorted(extra)} "
+                    f"not in entrypoint schema {sorted(input_schema.keys())}"
                 )
-            else:
-                rng = cfg.get("range")
-                if rng and (val < rng[0] or val > rng[1]):
+
+    if isinstance(out, dict):
+        output_fields = eval_spec.get("output_fields", {})
+        for field, cfg in output_fields.items():
+            if field not in out:
+                errors.append(f"expected_output missing field '{field}'")
+                continue
+            val = out[field]
+            ftype = cfg.get("type", "string")
+            if ftype == "enum":
+                allowed = cfg.get("values", [])
+                if allowed and val not in allowed:
+                    errors.append(f"expected_output.{field} = {val!r} not in {allowed}")
+            elif ftype == "number":
+                if not isinstance(val, (int, float)):
                     errors.append(
-                        f"expected_output.{field} = {val} outside range {rng}"
+                        f"expected_output.{field} must be a number, got {type(val).__name__}"
                     )
-        elif ftype == "text":
-            if cfg.get("eval_mode") == "non_empty" and not val:
-                errors.append(f"expected_output.{field} must be non-empty")
+                else:
+                    rng = cfg.get("range")
+                    if rng and (val < rng[0] or val > rng[1]):
+                        errors.append(
+                            f"expected_output.{field} = {val} outside range {rng}"
+                        )
+            elif ftype == "text":
+                if cfg.get("eval_mode") == "non_empty" and not val:
+                    errors.append(f"expected_output.{field} must be non-empty")
+    elif isinstance(out, str):
+        if not out.strip():
+            errors.append("expected_output is an empty string")
 
     return errors
 
@@ -175,7 +212,11 @@ def validate_case_against_spec(case: dict, eval_spec: dict) -> list[str]:
 
 
 def _safe_parse_json(text: str) -> Any:
-    """Best-effort JSON extraction from LLM output."""
+    """Best-effort JSON extraction from LLM output.
+
+    Handles common LLM quirks: markdown fences, leading commentary,
+    unescaped control characters inside string literals, and trailing commas.
+    """
     text = text.strip()
     try:
         return json.loads(text)
@@ -187,16 +228,22 @@ def _safe_parse_json(text: str) -> Any:
         try:
             return json.loads(fenced.group(1).strip())
         except json.JSONDecodeError:
-            pass
+            # Try repairing the fenced content too
+            repaired = _repair_json_string(fenced.group(1).strip())
+            if repaired is not None:
+                return repaired
 
     for open_ch, close_ch in [("{", "}"), ("[", "]")]:
         start = text.find(open_ch)
         end = text.rfind(close_ch)
         if start >= 0 and end > start:
+            candidate = text[start : end + 1]
             try:
-                return json.loads(text[start : end + 1])
+                return json.loads(candidate)
             except json.JSONDecodeError:
-                pass
+                repaired = _repair_json_string(candidate)
+                if repaired is not None:
+                    return repaired
 
     repaired = text.replace("'", '"')
     repaired = re.sub(r",\s*([}\]])", r"\1", repaired)
@@ -206,6 +253,42 @@ def _safe_parse_json(text: str) -> Any:
         pass
 
     return None
+
+
+def _repair_json_string(text: str) -> Any:
+    """Try to fix common JSON issues from LLM output.
+
+    Handles: unescaped newlines/tabs inside string values, trailing commas,
+    single quotes used as string delimiters.
+    """
+    # Escape literal newlines and tabs that appear inside JSON string values.
+    # Walk character by character to only fix characters inside quotes.
+    result: list[str] = []
+    in_string = False
+    i = 0
+    while i < len(text):
+        ch = text[i]
+        if ch == '"' and (i == 0 or text[i - 1] != "\\"):
+            in_string = not in_string
+            result.append(ch)
+        elif in_string and ch == "\n":
+            result.append("\\n")
+        elif in_string and ch == "\r":
+            result.append("\\r")
+        elif in_string and ch == "\t":
+            result.append("\\t")
+        else:
+            result.append(ch)
+        i += 1
+    repaired = "".join(result)
+
+    # Remove trailing commas before } or ]
+    repaired = re.sub(r",\s*([}\]])", r"\1", repaired)
+
+    try:
+        return json.loads(repaired)
+    except json.JSONDecodeError:
+        return None
 
 
 # Max concurrent shard calls per persona (each shard is one LLM request).
@@ -319,6 +402,7 @@ def generate_synthetic_data(
     num_samples: int = 15,
     agent_code: str | None = None,
     policy_context: str | None = None,
+    expected_output_hint: str = "",
 ) -> list[dict]:
     """Single-call synthetic generation (fast mode / backward compat).
 
@@ -344,11 +428,20 @@ def generate_synthetic_data(
     if policy_context:
         policy_section = f"\n## Agent Policy\n\n{policy_context}\n"
 
+    output_format_section = ""
+    if expected_output_hint:
+        output_format_section = (
+            f"\n## Expected Output Format\n\n"
+            f"The agent's output is: **{expected_output_hint}**.\n"
+            f"Shape every `expected_output` in the test cases to match this format.\n"
+        )
+
     prompt = SYNTHETIC_DATA_LEGACY_PROMPT.format(
         num_samples=num_samples,
         agent_description=agent_description,
         code_section=code_section,
         policy_section=policy_section,
+        output_format_section=output_format_section,
     )
 
     response = llm_completion(
@@ -492,6 +585,7 @@ def _generate_batch(
     batch_size: int,
     existing_cases: list[dict],
     coverage_gaps: list[dict] | None = None,
+    expected_output_hint: str = "",
 ) -> list[dict]:
     """Phase 2: generate a batch of {input, expected_output} cases for one persona."""
     input_schema_text = _format_input_schema(eval_spec)
@@ -533,6 +627,18 @@ def _generate_batch(
             + "\n"
         )
 
+    output_format_section = ""
+    if expected_output_hint:
+        output_format_section = (
+            "\n<OutputFormatHint>\n"
+            f"The user has specified that the agent's output is: **{expected_output_hint}**.\n"
+            "Shape every `expected_output` in the test cases to match this format. "
+            "For example, if the output is plain text, `expected_output` should be a "
+            "string (or a dict with a single key whose value is a string), not a "
+            "multi-field JSON object.\n"
+            "</OutputFormatHint>\n"
+        )
+
     persona_name = persona.get("name", "User")
     persona_block = (
         f"{persona_name}: {persona.get('role_and_background', '')}\n"
@@ -553,16 +659,23 @@ def _generate_batch(
         existing_section=existing_section,
         batch_size=batch_size,
         persona_name=persona_name,
+        output_format_section=output_format_section,
     )
 
-    raw = _llm_call(model, prompt, temperature=0.8, max_tokens=8000)
+    raw = _llm_call(model, prompt, temperature=0.8, max_tokens=16000)
     if not raw:
         logger.warning("Batch generation returned nothing for persona %s", persona_name)
         return []
 
     parsed = _safe_parse_json(raw)
     if parsed is None:
-        logger.warning("Failed to parse batch JSON for persona %s", persona_name)
+        logger.warning(
+            "Failed to parse batch JSON for persona %s (response length: %d, "
+            "first 500 chars: %.500s)",
+            persona_name,
+            len(raw),
+            raw,
+        )
         return []
 
     if isinstance(parsed, dict) and "cases" in parsed:
@@ -622,19 +735,21 @@ def _apply_dedup(
                 continue
 
         inp = case.get("input", {})
-        if not isinstance(inp, dict):
-            continue
 
-        canon = _canonicalize(inp)
+        if isinstance(inp, dict):
+            canon = _canonicalize(inp)
+        else:
+            canon = str(inp).strip().lower()
+
         if canon in seen_canonical:
             dup_drops += 1
             continue
-        if _is_near_duplicate(inp, seen_key_fields):
+        if isinstance(inp, dict) and _is_near_duplicate(inp, seen_key_fields):
             dup_drops += 1
             continue
 
         seen_canonical.add(canon)
-        kf = _get_key_fields(inp)
+        kf = _get_key_fields(inp) if isinstance(inp, dict) else ()
         if kf:
             seen_key_fields.add(kf)
         out.append(case)
@@ -656,6 +771,7 @@ def _retry_dropped_slots(
     seen_key_fields: set[tuple[str, ...]],
     out: list[dict],
     max_attempts: int = 3,
+    expected_output_hint: str = "",
 ) -> int:
     """For each dedup-dropped slot, try to regenerate a single unique case.
 
@@ -680,6 +796,7 @@ def _retry_dropped_slots(
                 batch_size=1,
                 existing_cases=list(out) + existing_snapshot,
                 coverage_gaps=coverage_gaps,
+                expected_output_hint=expected_output_hint,
             )
             slot_added, _ = _apply_dedup(
                 batch, eval_spec, seen_canonical, seen_key_fields, out
@@ -710,6 +827,7 @@ def _per_persona_parallel_shards_round(
     console: Console,
     *,
     inner_parallel_max: int = PERSONA_INNER_PARALLEL_MAX,
+    expected_output_hint: str = "",
 ) -> list[list[dict]]:
     """Run personas **one after another**; each persona uses parallel LLM shards.
 
@@ -755,6 +873,7 @@ def _per_persona_parallel_shards_round(
                     batch_size=shard_sz,
                     existing_cases=existing_snapshot,
                     coverage_gaps=coverage_gaps,
+                    expected_output_hint=expected_output_hint,
                 )
 
             merged: list[dict] = []
@@ -785,6 +904,7 @@ def generate_diverse_synthetic_data(
     existing_cases: list[dict] | None = None,
     coverage_gaps: list[dict] | None = None,
     console: Console | None = None,
+    expected_output_hint: str = "",
 ) -> list[dict]:
     """Full persona-driven generation pipeline.
 
@@ -864,6 +984,8 @@ def generate_diverse_synthetic_data(
             kf = _get_key_fields(inp)
             if kf:
                 seen_key_fields.add(kf)
+        else:
+            seen_canonical.add(str(inp).strip().lower())
 
     consecutive_empty = 0
     round_num = 0
@@ -885,6 +1007,7 @@ def generate_diverse_synthetic_data(
             existing_snapshot=snapshot,
             coverage_gaps=coverage_gaps,
             console=console,
+            expected_output_hint=expected_output_hint,
         )
 
         # Deduplicate per-persona batch to track which personas had dup drops
@@ -917,6 +1040,7 @@ def generate_diverse_synthetic_data(
                 seen_canonical=seen_canonical,
                 seen_key_fields=seen_key_fields,
                 out=new_cases,
+                expected_output_hint=expected_output_hint,
             )
             added += retry_added
 
@@ -993,6 +1117,8 @@ def _print_coverage_report(
 
     for case in cases:
         out = case.get("expected_output", {})
+        if not isinstance(out, dict):
+            continue
         for field, cfg in output_fields.items():
             val = out.get(field)
             if val is None:
