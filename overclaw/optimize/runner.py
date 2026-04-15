@@ -471,7 +471,7 @@ def _provision_with_agent(agent_dir: Path, language: Language) -> bool:
 # Overmind SDK injection
 # ---------------------------------------------------------------------------
 
-_OVERMIND_SDK_PACKAGE = "overmind-sdk==0.1.36"
+_OVERMIND_SDK_PACKAGE = "overmind-sdk==0.1.37"
 
 
 def _ensure_overmind_sdk(venv_dir: Path, agent_dir: Path) -> None:
