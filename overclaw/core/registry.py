@@ -16,6 +16,7 @@ Example ``.overclaw/agents.toml``::
 
 from __future__ import annotations
 
+import ast
 import re
 import sys
 from pathlib import Path
@@ -296,7 +297,113 @@ def validate_entrypoint(entrypoint: str) -> tuple[Path, str]:
         )
         raise SystemExit(1)
 
+    if ext == ".py":
+        _validate_python_entrypoint(code, fn, file_path)
+    else:
+        _validate_js_entrypoint(code, fn, file_path)
+
     return file_path, fn
+
+
+def _validate_python_entrypoint(code: str, fn: str, file_path: Path) -> None:
+    """Ensure the Python entrypoint accepts input arguments and returns a value."""
+    try:
+        tree = ast.parse(code, filename=str(file_path))
+    except SyntaxError:
+        return
+
+    for node in ast.walk(tree):
+        if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            continue
+        if node.name != fn:
+            continue
+
+        args = node.args
+        param_count = len(args.args) + len(args.posonlyargs) + len(args.kwonlyargs)
+        has_var = args.vararg is not None or args.kwarg is not None
+        if param_count == 0 and not has_var:
+            print(
+                f"\n  Error: Entrypoint '{fn}' in '{file_path}' takes no input arguments.\n\n"
+                "  The entry point should accept input arguments so that OverClaw can\n"
+                "  optimize your agent properly — it runs different data points through\n"
+                "  the entry point to validate performance.\n\n"
+                f"  Update your function signature, e.g.:\n"
+                f"    def {fn}(input, **kwargs):\n",
+                file=sys.stderr,
+            )
+            raise SystemExit(1)
+
+        has_meaningful_return = False
+        for child in ast.walk(node):
+            if isinstance(child, ast.Return) and child.value is not None:
+                if not (
+                    isinstance(child.value, ast.Constant) and child.value.value is None
+                ):
+                    has_meaningful_return = True
+                    break
+
+        if not has_meaningful_return:
+            print(
+                f"\n  Error: Entrypoint '{fn}' in '{file_path}' does not return a value.\n\n"
+                "  The entry point must return a result so that OverClaw can capture the\n"
+                "  agent's output and validate the performance of the workflow.\n\n"
+                f"  Make sure your function returns a value, e.g.:\n"
+                f"    def {fn}(input):\n"
+                f"        ...\n"
+                f"        return result\n",
+                file=sys.stderr,
+            )
+            raise SystemExit(1)
+
+        break
+
+
+def _validate_js_entrypoint(code: str, fn: str, file_path: Path) -> None:
+    """Best-effort validation that a JS/TS entrypoint accepts args and returns a value."""
+    fn_pattern = (
+        rf"(?:function\s+{re.escape(fn)}\s*\(\s*\)|"
+        rf"(?:const|let|var)\s+{re.escape(fn)}\s*=\s*(?:async\s*)?\(\s*\)\s*=>)"
+    )
+    if re.search(fn_pattern, code):
+        print(
+            f"\n  Error: Entrypoint '{fn}' in '{file_path}' takes no input arguments.\n\n"
+            "  The entry point should accept input arguments so that OverClaw can\n"
+            "  optimize your agent properly — it runs different data points through\n"
+            "  the entry point to validate performance.\n\n"
+            f"  Update your function signature, e.g.:\n"
+            f"    function {fn}(input) {{ ... }}\n",
+            file=sys.stderr,
+        )
+        raise SystemExit(1)
+
+    fn_body_match = re.search(
+        rf"(?:function\s+{re.escape(fn)}\s*\([^)]*\)\s*\{{|"
+        rf"(?:const|let|var)\s+{re.escape(fn)}\s*=\s*(?:async\s*)?\([^)]*\)\s*=>\s*\{{)",
+        code,
+    )
+    if fn_body_match:
+        start = fn_body_match.end()
+        depth, i = 1, start
+        while i < len(code) and depth > 0:
+            if code[i] == "{":
+                depth += 1
+            elif code[i] == "}":
+                depth -= 1
+            i += 1
+        body = code[start:i]
+        if "return " not in body and "return\n" not in body:
+            print(
+                f"\n  Error: Entrypoint '{fn}' in '{file_path}' does not return a value.\n\n"
+                "  The entry point must return a result so that OverClaw can capture the\n"
+                "  agent's output and validate the performance of the workflow.\n\n"
+                f"  Make sure your function returns a value, e.g.:\n"
+                f"    function {fn}(input) {{\n"
+                f"        ...\n"
+                f"        return result;\n"
+                f"    }}\n",
+                file=sys.stderr,
+            )
+            raise SystemExit(1)
 
 
 # ---------------------------------------------------------------------------
