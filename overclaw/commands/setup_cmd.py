@@ -99,9 +99,20 @@ from overclaw.storage.api import ApiBackend
 
 
 def _check_agent_dependencies(
-    agent_path: str, agent_name: str, console: Console, *, fast: bool = False
+    agent_path: str,
+    agent_name: str,
+    console: Console,
+    *,
+    fast: bool = False,
+    instrumented_dir: Path | None = None,
 ) -> None:
     """Detect external imports without a dependency manifest and guide the user.
+
+    When *instrumented_dir* is provided the dependency check and any generated
+    manifest are placed inside the instrumented copy so the original agent
+    source is never modified.  The manifest is also written to the
+    instrumented **root** (the top of the copied tree) so the runner's
+    ``ensure_environment`` finds it when provisioning the sandbox.
 
     In interactive mode: offers to generate a requirements.txt / package.json
     or lets the user handle it themselves.  In fast mode: fails with a clear
@@ -120,15 +131,25 @@ def _check_agent_dependencies(
     agent_dir = p.parent
     entry_file = p.name
 
+    check_dir = instrumented_dir if instrumented_dir is not None else agent_dir
+
     try:
         language = Language.from_path(entry_file)
     except ValueError:
         return
 
-    if has_dep_manifest(agent_dir, language):
+    if has_dep_manifest(check_dir, language):
+        console.print(
+            f"  [bold green]\u2713[/bold green] Found dependency manifest in "
+            f"[dim]{rel(check_dir)}[/dim]"
+        )
         return
 
-    ext_imports = detect_external_imports(agent_dir, entry_file, language)
+    inst_entry = check_dir / entry_file if instrumented_dir is not None else p
+    if inst_entry.is_file():
+        ext_imports = detect_external_imports(check_dir, entry_file, language)
+    else:
+        ext_imports = detect_external_imports(agent_dir, entry_file, language)
     if not ext_imports:
         return
 
@@ -143,8 +164,7 @@ def _check_agent_dependencies(
             f"Your agent imports [bold]{len(ext_imports)}[/bold] external package(s):\n"
             f"  [cyan]{', '.join(ext_imports[:12])}"
             f"{'…' if len(ext_imports) > 12 else ''}[/cyan]\n\n"
-            f"But there is no [bold]{manifest_name}[/bold] in\n"
-            f"  [dim]{agent_dir}[/dim]\n\n"
+            f"But there is no [bold]{manifest_name}[/bold] in the project.\n\n"
             f"OverClaw needs a dependency file to create an isolated\n"
             f"environment so your agent runs reliably.",
             border_style="yellow",
@@ -154,7 +174,7 @@ def _check_agent_dependencies(
 
     if fast:
         console.print(
-            f"  [red]Create a [bold]{manifest_name}[/bold] in your agent directory "
+            f"  [red]Create a [bold]{manifest_name}[/bold] in your project "
             f"and re-run setup.[/red]\n"
         )
         raise SystemExit(1)
@@ -171,12 +191,11 @@ def _check_agent_dependencies(
     )
 
     if choice == 0:
+        dest = check_dir / ("requirements.txt" if is_python else "package.json")
         if is_python:
             content = generate_requirements_txt(packages)
-            dest = agent_dir / "requirements.txt"
         else:
             content = generate_package_json(packages, agent_name)
-            dest = agent_dir / "package.json"
 
         dest.write_text(content)
 
@@ -185,7 +204,7 @@ def _check_agent_dependencies(
             Panel(
                 f"[bold green]Generated {manifest_name}[/bold green]\n\n"
                 + "\n".join(f"  {pkg}" for pkg in sorted(set(packages)))
-                + f"\n\n[dim]Saved to: {dest}[/dim]\n\n"
+                + f"\n\n[dim]Saved to: {rel(dest)}[/dim]\n\n"
                 + "[yellow]Versions are unpinned. Review and pin versions\n"
                 "for reproducibility before production use.[/yellow]",
                 border_style="green",
@@ -195,15 +214,13 @@ def _check_agent_dependencies(
 
         if not confirm_option("Continue with setup?", default=True, console=console):
             console.print(
-                f"\n  [dim]Edit [cyan]{dest}[/cyan] and re-run setup when ready.[/dim]\n"
+                f"\n  [dim]Edit [cyan]{rel(dest)}[/cyan] and re-run setup when ready.[/dim]\n"
             )
             raise SystemExit(0)
 
     elif choice == 1:
         console.print(
-            f"\n  Create [bold]{manifest_name}[/bold] in:\n"
-            f"    [cyan]{agent_dir}[/cyan]\n\n"
-            f"  Then re-run:\n"
+            f"\n  Create [bold]{manifest_name}[/bold] in your project, then re-run:\n"
             f"    [bold]overclaw setup {agent_name}[/bold]\n"
         )
         raise SystemExit(0)
@@ -316,7 +333,9 @@ def _clear_existing_eval_spec(
         )
 
 
-def _instrument_agent_files(agent_path: str, agent_name: str, console: Console) -> str:
+def _instrument_agent_files(
+    agent_path: str, agent_name: str, console: Console
+) -> tuple[str, Path]:
     """Copy the agent's source tree to ``.overclaw/agents/<name>/instrumented/``.
 
     The original files are never modified.  This is a **plain copy** — no
@@ -329,17 +348,16 @@ def _instrument_agent_files(agent_path: str, agent_name: str, console: Console) 
     local imports across sibling packages (e.g. ``from agents.foo import …``
     when the entry file lives under ``evals/``) are available in the copy.
 
-    Returns the absolute path to the copied entry file.
+    Returns ``(instrumented_entry_path, instrumented_root_dir)``.
     """
     p = Path(agent_path).resolve()
+    dest_dir = agent_instrumented_dir(agent_name)
     if not p.exists():
-        return agent_path
+        return agent_path, dest_dir
 
     pr = project_root_from_agent_file(agent_path)
     copy_root = pr if pr is not None else p.parent
     entry_relpath = p.relative_to(copy_root)
-
-    dest_dir = agent_instrumented_dir(agent_name)
 
     if dest_dir.exists():
         shutil.rmtree(dest_dir)
@@ -372,7 +390,7 @@ def _instrument_agent_files(agent_path: str, agent_name: str, console: Console) 
         f"  [bold green]\u2713[/bold green] Copied agent source "
         f"({file_count} file(s)) to [dim]{rel(dest_dir)}[/dim]"
     )
-    return instrumented_entry
+    return instrumented_entry, dest_dir
 
 
 def _save_and_finish(
@@ -1266,6 +1284,13 @@ def _handle_seed_data_path(
         "  Additional cases to generate", default=num_to_generate
     )
 
+    if num_to_generate <= 0:
+        console.print(
+            f"\n  [dim]Skipping augmentation — keeping {len(seed_data)} seed case(s) as-is.[/dim]"
+        )
+        _save_dataset(seed_data, agent_name, console)
+        return
+
     console.print()
     new_cases = generate_diverse_synthetic_data(
         agent_description=description,
@@ -1646,14 +1671,22 @@ def main(
 
     signal.signal(signal.SIGINT, _handle_sigint)
     _validate_agent_entrypoint(agent_path, fn_name, console)
-    _check_agent_dependencies(agent_path, agent_name, console, fast=fast)
 
     if policy and not Path(policy).exists():
         console.print(f"\n  [red]Error:[/red] Policy file {policy} does not exist.")
         raise SystemExit(1)
 
-    # Instrument early so smoke tests run the same copy the optimizer will use.
-    instrumented_entry = _instrument_agent_files(agent_path, agent_name, console)
+    _clear_existing_eval_spec(agent_name, console, fast=fast)
+
+    # Instrument (copy the whole project) first, then check deps inside the
+    # instrumented copy.  Any generated manifest goes into the sandbox copy
+    # so the original agent source is never modified.
+    instrumented_entry, instrumented_root = _instrument_agent_files(
+        agent_path, agent_name, console
+    )
+    _check_agent_dependencies(
+        agent_path, agent_name, console, fast=fast, instrumented_dir=instrumented_root
+    )
 
     console.print()
     console.print(Rule(style="dim"))
@@ -1692,8 +1725,6 @@ def main(
                 f"Set it in {overclaw_rel('.env')} (see .env.example) or run without --fast.[/dim]\n"
             )
             raise SystemExit(1)
-
-    _clear_existing_eval_spec(agent_name, console, fast=fast)
 
     if not fast:
         console.print()
