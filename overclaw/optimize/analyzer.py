@@ -13,6 +13,7 @@ Supports multi-file agents via the ``AgentBundle`` virtual representation.
 
 from __future__ import annotations
 
+import ast
 import json
 import random
 import re
@@ -1032,17 +1033,15 @@ def _extract_imports_from_source(source: str, known_files: set[str]) -> list[str
     imported: list[str] = []
 
     # Try Python AST first
-    import ast as _ast
-
     try:
-        tree = _ast.parse(source)
-        for node in _ast.iter_child_nodes(tree):
-            if isinstance(node, _ast.Import):
+        tree = ast.parse(source)
+        for node in ast.iter_child_nodes(tree):
+            if isinstance(node, ast.Import):
                 for alias in node.names:
                     for seg in alias.name.split("."):
                         if seg in stems and stems[seg] not in imported:
                             imported.append(stems[seg])
-            elif isinstance(node, _ast.ImportFrom):
+            elif isinstance(node, ast.ImportFrom):
                 module = node.module or ""
                 for seg in module.split("."):
                     if seg in stems and stems[seg] not in imported:
@@ -1055,9 +1054,7 @@ def _extract_imports_from_source(source: str, known_files: set[str]) -> list[str
         pass
 
     # Fallback: JS/TS regex-based import extraction
-    import re as _re
-
-    for m in _re.finditer(
+    for m in re.finditer(
         r"""(?:import\s+.*?\s+from\s+|require\s*\(\s*)['"]([^'"]+)['"]""",
         source,
     ):

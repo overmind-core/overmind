@@ -295,7 +295,7 @@ class TestRunBeginningSmokTest:
         agent = tmp_path / "agent.py"
         agent.write_text("def run(x): return {}\n")
         console = MagicMock()
-        _run_beginning_smoke_test(str(agent), "run", console)
+        _run_beginning_smoke_test(str(agent), "test", "run", console)
         first_call_args = console.print.call_args_list[0][0][0]
         assert "Skipping" in first_call_args
         assert "--data" in first_call_args
@@ -307,7 +307,9 @@ class TestRunBeginningSmokTest:
         agent = tmp_path / "agent.py"
         agent.write_text("def run(x): return {}\n")
         console = MagicMock()
-        _run_beginning_smoke_test(str(agent), "run", console, data_path=str(data_dir))
+        _run_beginning_smoke_test(
+            str(agent), "test", "run", console, data_path=str(data_dir)
+        )
         # Should mention the file name in the skip message
         all_output = " ".join(str(c) for c in console.print.call_args_list)
         assert "cases.json" in all_output
@@ -321,7 +323,9 @@ class TestRunBeginningSmokTest:
         agent = tmp_path / "agent.py"
         agent.write_text("def run(x): return {'y': x.get('x')}\n")
         console = MagicMock()
-        _run_beginning_smoke_test(str(agent), "run", console, data_path=str(data_dir))
+        _run_beginning_smoke_test(
+            str(agent), "test", "run", console, data_path=str(data_dir)
+        )
         # Should not raise
 
     def test_failure_exits(self, tmp_path):
@@ -335,7 +339,7 @@ class TestRunBeginningSmokTest:
         console = MagicMock()
         with pytest.raises(SystemExit) as exc_info:
             _run_beginning_smoke_test(
-                str(agent), "run", console, data_path=str(data_dir)
+                str(agent), "test", "run", console, data_path=str(data_dir)
             )
         assert exc_info.value.code == 1
 
@@ -347,7 +351,9 @@ class TestRunBeginningSmokTest:
         agent.write_text("def run(x): return {}\n")
         console = MagicMock()
         # Should not raise — bad JSON is treated as unreadable, silently skipped
-        _run_beginning_smoke_test(str(agent), "run", console, data_path=str(data_dir))
+        _run_beginning_smoke_test(
+            str(agent), "test", "run", console, data_path=str(data_dir)
+        )
 
     def test_seed_case_without_input_key(self, tmp_path):
         """Cases stored as flat dicts (no 'input' wrapper) should still work."""
@@ -359,7 +365,9 @@ class TestRunBeginningSmokTest:
         agent = tmp_path / "agent.py"
         agent.write_text("def run(x): return {'ok': True}\n")
         console = MagicMock()
-        _run_beginning_smoke_test(str(agent), "run", console, data_path=str(data_dir))
+        _run_beginning_smoke_test(
+            str(agent), "test", "run", console, data_path=str(data_dir)
+        )
 
 
 class TestRunEndSmokeTest:

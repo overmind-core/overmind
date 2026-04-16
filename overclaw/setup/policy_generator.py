@@ -14,6 +14,7 @@ The policy has two layers:
 """
 
 import json
+import re
 from pathlib import Path
 
 from rich.console import Console
@@ -47,8 +48,6 @@ def _extract_markdown_and_json(text: str) -> tuple[str, dict]:
       3. The largest non-JSON fenced block that looks like a policy heading
       4. Any text block containing a level-1 heading as a last resort
     """
-    import re
-
     md_content = ""
 
     md_blocks = re.findall(r"```markdown\s*\n(.*?)```", text, re.DOTALL)
@@ -362,8 +361,6 @@ def improve_existing_policy(
 
     Returns ``(improved_markdown, improved_policy_dict, change_summary)``.
     """
-    import re
-
     existing_md = Path(existing_policy_path).read_text()
     agent_code_section = analysis.get(
         "_agent_code_section",

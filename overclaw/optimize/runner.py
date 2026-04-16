@@ -25,11 +25,13 @@ function keep working without any modifications.
 
 from __future__ import annotations
 
+import ast
 import hashlib
 import json
 import logging
 import os
 import platform
+import re
 import shutil
 import subprocess
 import sys
@@ -675,6 +677,9 @@ def _provision_js(agent_dir: Path) -> None:
 
 _PYTHON_WRAPPER = """\
 import json, sys, os, io, asyncio, inspect, importlib.util
+_cwd = os.getcwd()
+if _cwd not in sys.path:
+    sys.path.insert(0, _cwd)
 try:
     from overmind_sdk import init as overmind_init
     overmind_init()
@@ -919,10 +924,26 @@ class AgentRunner:
                 cwd=str(self.agent_dir),
                 env=env,
             )
-        except subprocess.TimeoutExpired:
+        except subprocess.TimeoutExpired as exc:
+            partial_stderr = ""
+            if exc.stderr:
+                partial_stderr = (
+                    exc.stderr
+                    if isinstance(exc.stderr, str)
+                    else exc.stderr.decode(errors="replace")
+                )
+            partial_stdout = ""
+            if exc.stdout:
+                partial_stdout = (
+                    exc.stdout
+                    if isinstance(exc.stdout, str)
+                    else exc.stdout.decode(errors="replace")
+                )
             return RunOutput(
                 success=False,
                 error=f"Agent timed out after {effective_timeout}s",
+                stdout=partial_stdout[-4000:],
+                stderr=partial_stderr[-4000:],
                 returncode=-1,
             )
         except FileNotFoundError as exc:
@@ -1101,8 +1122,6 @@ def _validate_python_syntax(code: str) -> bool:
 
 
 def _validate_python_entrypoint(code: str, fn_name: str) -> bool:
-    import ast
-
     try:
         tree = ast.parse(code)
     except SyntaxError:
@@ -1141,8 +1160,6 @@ def _validate_js_syntax(code: str, agent_dir: Path) -> bool:
 
 def _validate_js_entrypoint(code: str, fn_name: str) -> bool:
     """Lightweight regex check for JS/TS function or export."""
-    import re
-
     patterns = [
         rf"\bfunction\s+{re.escape(fn_name)}\s*\(",
         rf"\bconst\s+{re.escape(fn_name)}\s*=",
@@ -1173,8 +1190,6 @@ def extract_imports(code: str, language: Language) -> list[str]:
 
 
 def _extract_python_imports(code: str) -> list[str]:
-    import ast
-
     try:
         tree = ast.parse(code)
     except SyntaxError:
@@ -1190,8 +1205,6 @@ def _extract_python_imports(code: str) -> list[str]:
 
 
 def _extract_js_imports(code: str) -> list[str]:
-    import re
-
     modules: list[str] = []
     for m in re.finditer(
         r"""(?:import\s+.*?\s+from\s+|require\s*\(\s*)['"]([^'"]+)['"]""", code

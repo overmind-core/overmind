@@ -16,6 +16,7 @@ Example ``.overclaw/agents.toml``::
 
 from __future__ import annotations
 
+import re
 import sys
 from pathlib import Path
 
@@ -272,8 +273,6 @@ def validate_entrypoint(entrypoint: str) -> tuple[Path, str]:
     if ext == ".py":
         found = f"def {fn}(" in code or f"def {fn} (" in code
     else:
-        import re
-
         found = bool(
             re.search(
                 rf"(?:function\s+{re.escape(fn)}\s*\(|"

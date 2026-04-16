@@ -15,8 +15,11 @@ import json
 import logging
 import re
 import time
+import warnings
 from pathlib import Path
 
+from overclaw.optimize.runner import _validate_js_entrypoint
+from overclaw.utils.code import has_entrypoint_ast
 from overclaw.utils.llm import llm_completion
 from overclaw.prompts.evaluator import (
     LLM_JUDGE_BATCH_PROMPT,
@@ -167,8 +170,6 @@ class SpecEvaluator:
 
     def _validate_spec(self) -> None:
         """Sanity-check that spec weights are internally consistent."""
-        import warnings
-
         total_declared = self.spec.get("total_points", 100)
         field_sum = sum(float(cfg.get("weight", 0)) for cfg in self.fields.values())
         other = (
@@ -1030,14 +1031,10 @@ def has_entrypoint(code: str, fn_name: str) -> bool:
 
     Supports Python (AST + string fallback) and JS/TS (regex).
     """
-    from overclaw.utils.code import has_entrypoint_ast
-
     if has_entrypoint_ast(code, fn_name):
         return True
     if f"def {fn_name}(" in code or f"def {fn_name} (" in code:
         return True
-
-    from overclaw.optimize.runner import _validate_js_entrypoint
 
     return _validate_js_entrypoint(code, fn_name)
 

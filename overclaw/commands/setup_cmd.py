@@ -72,6 +72,7 @@ from overclaw.core.paths import (
 from overclaw.core.registry import (
     get_agent_id,
     load_registry,
+    project_root_from_agent_file,
     resolve_agent,
     save_agent,
 )
@@ -83,7 +84,6 @@ from overclaw.client import (
     upsert_agent,
 )
 from overclaw.setup.agent_analyzer import analyze_agent
-from overclaw.utils.instrument import instrument_source, is_instrumented
 from overclaw.setup.policy_generator import (
     display_policy,
     elicit_policy,
@@ -316,25 +316,35 @@ def _clear_existing_eval_spec(
         )
 
 
-def _instrument_agent_files(agent_path: str, agent_name: str, console: Console) -> None:
-    """Copy the agent's source tree to ``.overclaw/agents/<name>/instrumented/``
-    and add overmind-sdk ``@observe()`` instrumentation to the copies.
+def _instrument_agent_files(agent_path: str, agent_name: str, console: Console) -> str:
+    """Copy the agent's source tree to ``.overclaw/agents/<name>/instrumented/``.
 
-    The original files are never modified.  The instrumented copy is what
-    the optimizer runs so that spans are captured via ``OVERMIND_TRACE_FILE``.
+    The original files are never modified.  This is a **plain copy** — no
+    ``@observe()`` decorators or overmind-sdk imports are added here.
+    Instrumentation (imports + decorators) is applied later by the
+    optimizer when it actually needs tracing.
+
+    The copy boundary is the **project root** (the directory containing
+    ``.overclaw/``), not just the entry file's parent.  This ensures that
+    local imports across sibling packages (e.g. ``from agents.foo import …``
+    when the entry file lives under ``evals/``) are available in the copy.
+
+    Returns the absolute path to the copied entry file.
     """
     p = Path(agent_path).resolve()
     if not p.exists():
-        return
+        return agent_path
 
-    agent_dir = p.parent
+    pr = project_root_from_agent_file(agent_path)
+    copy_root = pr if pr is not None else p.parent
+    entry_relpath = p.relative_to(copy_root)
+
     dest_dir = agent_instrumented_dir(agent_name)
 
     if dest_dir.exists():
         shutil.rmtree(dest_dir)
     dest_dir.mkdir(parents=True, exist_ok=True)
 
-    # Copy agent directory tree, skipping .venv / node_modules / .overclaw_runners
     _SKIP_DIRS = {
         ".venv",
         "venv",
@@ -342,36 +352,27 @@ def _instrument_agent_files(agent_path: str, agent_name: str, console: Console) 
         ".overclaw_runners",
         "__pycache__",
         ".git",
+        ".overclaw",
     }
 
-    for src_file in agent_dir.rglob("*"):
+    file_count = 0
+    for src_file in copy_root.rglob("*"):
         if any(part in _SKIP_DIRS for part in src_file.parts):
             continue
         if src_file.is_dir():
             continue
-        rel_path = src_file.relative_to(agent_dir)
+        rel_path = src_file.relative_to(copy_root)
         dst_file = dest_dir / rel_path
         dst_file.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(src_file, dst_file)
+        file_count += 1
 
-    # Instrument all .py files in the copy
-    instrumented_count = 0
-    for py_file in dest_dir.rglob("*.py"):
-        try:
-            source = py_file.read_text(encoding="utf-8")
-        except Exception:
-            continue
-        if is_instrumented(source):
-            continue
-        new_source = instrument_source(source)
-        if new_source != source:
-            py_file.write_text(new_source, encoding="utf-8")
-            instrumented_count += 1
-
+    instrumented_entry = str(dest_dir / entry_relpath)
     console.print(
-        f"  [bold green]\u2713[/bold green] Copied & instrumented agent "
-        f"({instrumented_count} file(s)) to [dim]{rel(dest_dir)}[/dim]"
+        f"  [bold green]\u2713[/bold green] Copied agent source "
+        f"({file_count} file(s)) to [dim]{rel(dest_dir)}[/dim]"
     )
+    return instrumented_entry
 
 
 def _save_and_finish(
@@ -435,29 +436,52 @@ def _save_and_finish(
 
 
 def _smoke_test_agent(
-    agent_path: str, fn_name: str, input_case: dict
+    agent_path: str,
+    fn_name: str,
+    input_case: dict,
+    env_dir: str | Path | None = None,
+    agent_dir: str | Path | None = None,
 ) -> tuple[bool, str | None]:
     """Run the agent via subprocess and call fn_name(input_case) once.
 
     Returns (True, None) on success or (False, error_message) on any exception.
     Uses the AgentRunner for full dependency isolation.
+
+    *agent_dir* overrides the working directory for the subprocess.  When
+    running the instrumented copy, pass the instrumented root so local
+    imports resolve correctly.  When ``None``, the project root is detected
+    via ``project_root_from_agent_file`` (falls back to the entry file's
+    parent directory).
+
+    *env_dir* should point to the **original** project root so dependency
+    manifests, ``.venv``, and ``.env`` are found.
     """
     from overclaw.optimize.runner import AgentRunner, RunnerConfig
 
     try:
         p = Path(agent_path).resolve()
+        if agent_dir is not None:
+            resolved_agent_dir = Path(agent_dir).resolve()
+        else:
+            pr = project_root_from_agent_file(agent_path)
+            resolved_agent_dir = pr if pr is not None else p.parent
+        entry_file = str(p.relative_to(resolved_agent_dir))
         runner = AgentRunner(
-            agent_dir=p.parent,
-            entry_file=p.name,
+            agent_dir=resolved_agent_dir,
+            entry_file=entry_file,
             entrypoint_fn=fn_name,
-            config=RunnerConfig(timeout=60),
+            config=RunnerConfig(timeout=300),
+            env_dir=Path(env_dir) if env_dir else None,
         )
         runner.ensure_environment()
         result = runner.run(input_case)
         runner.cleanup()
         if result.success:
             return True, None
-        return False, result.error
+        parts = [result.error] if result.error else []
+        if result.stderr and result.stderr.strip() not in (result.error or ""):
+            parts.append(result.stderr[-2000:])
+        return False, "\n".join(parts) or "Unknown error"
     except Exception as exc:
         return False, str(exc)
 
@@ -540,16 +564,21 @@ def _prompt_seed_data_flag_early(agent_name: str, *, console: Console) -> None:
 
 def _run_beginning_smoke_test(
     agent_path: str,
+    agent_name: str,
     fn_name: str,
     console: Console,
     *,
     fast: bool = False,
     data_path: str | None = None,
+    instrumented_entry: str | None = None,
 ) -> None:
     """Smoke-test the agent with the first seed case when ``--data`` supplies JSON.
 
-    Hard-fails (SystemExit 1) when seed data exists but the agent crashes.
-    Skips when ``--data`` is omitted — use ``--data`` for an early smoke check.
+    When *instrumented_entry* is provided the smoke test runs against the
+    instrumented copy (with the original project root as ``env_dir`` so
+    dependency manifests and venvs are found).  Hard-fails (SystemExit 1)
+    when seed data exists but the agent crashes.  Skips when ``--data`` is
+    omitted — use ``--data`` for an early smoke check.
     """
     existing_json = _resolve_seed_json_files(data_path, console=console)
 
@@ -580,12 +609,26 @@ def _run_beginning_smoke_test(
         )
         return
 
+    run_path = instrumented_entry or agent_path
+    env_dir: str | Path | None = None
+    inst_root: str | Path | None = None
+    if instrumented_entry:
+        pr = project_root_from_agent_file(agent_path)
+        env_dir = pr if pr is not None else Path(agent_path).resolve().parent
+        inst_root = agent_instrumented_dir(agent_name)
+
     first_input = cases[0].get("input", cases[0])
     with make_spinner_progress(console, transient=True) as progress:
         progress.add_task(
             f"  Smoke-testing agent using {existing_json[0].name} ({len(cases)} case(s))…"
         )
-        success, error = _smoke_test_agent(agent_path, fn_name, first_input)
+        success, error = _smoke_test_agent(
+            run_path,
+            fn_name,
+            first_input,
+            env_dir=env_dir,
+            agent_dir=inst_root,
+        )
 
     if success:
         console.print(
@@ -601,9 +644,17 @@ def _run_beginning_smoke_test(
 
 
 def _run_end_smoke_test(
-    agent_name: str, agent_path: str, fn_name: str, console: Console
+    agent_name: str,
+    agent_path: str,
+    fn_name: str,
+    console: Console,
+    instrumented_entry: str | None = None,
 ) -> None:
     """Validate the agent runs against the first generated dataset case.
+
+    When *instrumented_entry* is provided the smoke test executes against the
+    instrumented copy (matching what the optimizer will run) with the
+    original project root as ``env_dir``.
 
     Issues a warning panel on failure but does NOT abort — the spec is already
     saved and the user should be informed rather than left with a silent problem.
@@ -620,10 +671,24 @@ def _run_end_smoke_test(
     if not cases:
         return
 
+    run_path = instrumented_entry or agent_path
+    env_dir: str | Path | None = None
+    inst_root: str | Path | None = None
+    if instrumented_entry:
+        pr = project_root_from_agent_file(agent_path)
+        env_dir = pr if pr is not None else Path(agent_path).resolve().parent
+        inst_root = agent_instrumented_dir(agent_name)
+
     first_input = cases[0].get("input", cases[0])
     with make_spinner_progress(console, transient=True) as progress:
         progress.add_task("  Post-setup smoke test against first dataset case…")
-        success, error = _smoke_test_agent(agent_path, fn_name, first_input)
+        success, error = _smoke_test_agent(
+            run_path,
+            fn_name,
+            first_input,
+            env_dir=env_dir,
+            agent_dir=inst_root,
+        )
 
     if success:
         console.print(
@@ -1587,10 +1652,19 @@ def main(
         console.print(f"\n  [red]Error:[/red] Policy file {policy} does not exist.")
         raise SystemExit(1)
 
+    # Instrument early so smoke tests run the same copy the optimizer will use.
+    instrumented_entry = _instrument_agent_files(agent_path, agent_name, console)
+
     console.print()
     console.print(Rule(style="dim"))
     _run_beginning_smoke_test(
-        agent_path, fn_name, console, fast=fast, data_path=data_opt
+        agent_path,
+        agent_name,
+        fn_name,
+        console,
+        fast=fast,
+        data_path=data_opt,
+        instrumented_entry=instrumented_entry,
     )
 
     if fast:
@@ -1729,10 +1803,15 @@ def main(
             entrypoint_fn=fn_name,
         )
 
-        _instrument_agent_files(agent_path, agent_name, console)
         spec = generate_spec_from_proposal(analysis, policy_data=policy_data)
         _save_and_finish(spec, agent_name, console, policy_md=policy_md)
-        _run_end_smoke_test(agent_name, agent_path, fn_name, console)
+        _run_end_smoke_test(
+            agent_name,
+            agent_path,
+            fn_name,
+            console,
+            instrumented_entry=instrumented_entry,
+        )
         _sync_setup_artifacts(agent_name, agent_path, console)
         return
 
@@ -1877,7 +1956,6 @@ def main(
             default=True,
             console=console,
         ):
-            _instrument_agent_files(agent_path, agent_name, console)
             spec = generate_spec_from_proposal(analysis, policy_data=policy_data)
             _save_and_finish(
                 spec,
@@ -1886,7 +1964,13 @@ def main(
                 policy_md=policy_md,
                 policy_file_already_saved=True,
             )
-            _run_end_smoke_test(agent_name, agent_path, fn_name, console)
+            _run_end_smoke_test(
+                agent_name,
+                agent_path,
+                fn_name,
+                console,
+                instrumented_entry=instrumented_entry,
+            )
             _sync_setup_artifacts(agent_name, agent_path, console)
             return
 
@@ -1902,7 +1986,6 @@ def main(
         )
 
         if choice == 1:
-            _instrument_agent_files(agent_path, agent_name, console)
             spec = generate_spec_from_proposal(analysis, policy_data=policy_data)
             _save_and_finish(
                 spec,
@@ -1916,7 +1999,13 @@ def main(
                 f"  [dim]Edit [cyan]{spec_out}[/cyan] to fine-tune "
                 f"the criteria, then run the optimizer.[/dim]\n"
             )
-            _run_end_smoke_test(agent_name, agent_path, fn_name, console)
+            _run_end_smoke_test(
+                agent_name,
+                agent_path,
+                fn_name,
+                console,
+                instrumented_entry=instrumented_entry,
+            )
             _sync_setup_artifacts(agent_name, agent_path, console)
             return
 

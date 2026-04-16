@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import difflib
 import importlib.util
+import json
 import os
 import logging
 import random
@@ -45,6 +46,7 @@ from overclaw.core.paths import (
     agent_instrumented_dir,
     agent_run_state_path,
 )
+from overclaw.core.registry import project_root_from_agent_file
 from overclaw.utils.display import BRAND, make_spinner_progress, rel
 from rich.rule import Rule
 from rich.table import Table
@@ -78,6 +80,15 @@ from overclaw.optimize.trace_reader import ParsedTrace, parse_trace_file_per_lin
 from overclaw.storage import get_storage
 
 
+def _is_subpath(child: Path, parent: Path) -> bool:
+    """Return True if *child* is at or below *parent* (both must be resolved)."""
+    try:
+        child.relative_to(parent)
+        return True
+    except ValueError:
+        return False
+
+
 class Optimizer:
     """Runs the full optimization pipeline for an agent."""
 
@@ -91,10 +102,8 @@ class Optimizer:
         self._reporter: ApiReporter | None = None
 
         # Load policy from eval spec for injection into pipeline stages
-        import json as _json
-
         with open(config.eval_spec_path) as _f:
-            _spec = _json.load(_f)
+            _spec = json.load(_f)
         self._policy_data = load_policy_data(_spec)
         self._policy_diagnosis = format_for_diagnosis(self._policy_data or {})
         self._policy_codegen = format_for_codegen(self._policy_data or {})
@@ -125,9 +134,10 @@ class Optimizer:
         self._best_files: dict[str, str] = {}
         self._baseline_files: dict[str, str] = {}
 
-        # Resolve instrumented agent copy (created by ``overclaw setup``).
-        # The instrumented copy has @observe() decorators so the overmind-sdk
-        # captures spans.  Falls back to the original when not present.
+        # Resolve agent copy created by ``overclaw setup``.
+        # Setup copies the project tree so local imports work; the optimizer
+        # adds @observe() instrumentation to candidates it writes to disk.
+        # Falls back to the original when no copy is present.
         self._instrumented_agent_path = self._resolve_instrumented_path()
 
         # --- Process-isolated agent runner ---
@@ -162,19 +172,26 @@ class Optimizer:
         self._session_successful: list[dict] = []
 
     def _resolve_instrumented_path(self) -> str:
-        """Return the path to the instrumented agent copy if it exists.
+        """Return the path to the agent copy if it exists.
 
-        ``overclaw setup`` copies the agent tree to
-        ``.overclaw/agents/<name>/instrumented/`` and adds ``@observe()``
-        decorators.  If that copy is present, the optimizer uses it so
-        that overmind-sdk traces are captured automatically.  Otherwise
-        falls back to the original ``config.agent_path``.
+        ``overclaw setup`` copies the **project root** tree to
+        ``.overclaw/agents/<name>/instrumented/`` (a plain copy — no
+        ``@observe()`` decorators).  The entry file lives at its original
+        relative path inside that tree (e.g. ``instrumented/evals/harness.py``).
+
+        Falls back to the original ``config.agent_path`` when no copy is
+        present.
         """
         inst_dir = agent_instrumented_dir(self.config.agent_name)
         original = Path(self.config.agent_path).resolve()
-        entry_name = original.name
 
-        candidate = inst_dir / entry_name
+        pr = project_root_from_agent_file(self.config.agent_path)
+        if pr is not None:
+            entry_relpath = original.relative_to(pr)
+        else:
+            entry_relpath = Path(original.name)
+
+        candidate = inst_dir / entry_relpath
         if candidate.is_file():
             return str(candidate)
 
@@ -187,8 +204,6 @@ class Optimizer:
         Returns True when OVERMIND_API_TOKEN is NOT set, meaning traces
         should be stored locally via OVERMIND_TRACE_FILE.
         """
-        import os
-
         return not os.environ.get("OVERMIND_API_TOKEN")
 
     # ------------------------------------------------------------------
@@ -2082,14 +2097,37 @@ class Optimizer:
     ) -> AgentRunner:
         """Create an AgentRunner for the given agent file.
 
-        ``env_dir`` always points to the *original* agent directory so
-        that dependency manifests, .venv, and .env files are found even
-        when the code being evaluated lives in the experiments folder.
+        ``env_dir`` always points to the *original* agent project root
+        so that dependency manifests, ``.venv``, and ``.env`` files are
+        found even when the code being evaluated lives in the
+        instrumented or experiments folder.
+
+        ``agent_dir`` is resolved to the project root so that local
+        cross-package imports work correctly.  For paths inside the
+        instrumented tree, the instrumented directory is used as
+        ``agent_dir`` (it mirrors the original project layout).
         """
         p = Path(agent_path).resolve()
-        agent_dir = p.parent
-        entry_file = p.name
-        original_agent_dir = Path(self.config.agent_path).resolve().parent
+
+        inst_dir = agent_instrumented_dir(self.config.agent_name).resolve()
+        if _is_subpath(p, inst_dir):
+            agent_dir = inst_dir
+            entry_file = str(p.relative_to(inst_dir))
+        else:
+            pr = project_root_from_agent_file(agent_path)
+            if pr is not None:
+                agent_dir = pr
+                entry_file = str(p.relative_to(pr))
+            else:
+                agent_dir = p.parent
+                entry_file = p.name
+
+        original_pr = project_root_from_agent_file(self.config.agent_path)
+        original_agent_dir = (
+            original_pr
+            if original_pr is not None
+            else Path(self.config.agent_path).resolve().parent
+        )
         cfg = RunnerConfig(extra_env=extra_env or {})
         return AgentRunner(
             agent_dir=agent_dir,
