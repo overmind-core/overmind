@@ -28,7 +28,6 @@ from uuid import UUID
 
 from dotenv import dotenv_values
 from rich.console import Console
-from rich.markup import escape
 from rich.panel import Panel
 from rich.prompt import IntPrompt, Prompt
 from rich.rule import Rule
@@ -42,7 +41,6 @@ from overclaw.utils.display import (
     select_option,
 )
 from overclaw.core.constants import overclaw_rel
-from overclaw.utils.io import read_api_key_masked
 from overclaw.utils.model_picker import prompt_for_catalog_litellm_model
 from overclaw.utils.models import (
     DEFAULT_ANALYZER_MODEL,
@@ -233,9 +231,24 @@ def _check_agent_dependencies(
         )
 
 
-def _validate_agent_entrypoint(agent_path: str, fn_name: str, console: Console) -> None:
-    """Exit with a clear message if the agent file lacks the registered entry function."""
+def _validate_agent_entrypoint(
+    agent_path: str,
+    fn_name: str,
+    agent_name: str,
+    console: Console,
+    *,
+    fast: bool = False,
+) -> tuple[str, str]:
+    """Verify the agent file defines the registered entry function.
+
+    Returns ``(agent_path, fn_name)`` — unchanged when valid, or
+    updated to point at a generated wrapper when the user opts in.
+    """
     from overclaw.optimize.runner import AgentRunner
+    from overclaw.entrypoint_wrapper import (
+        generate_entrypoint_wrapper,
+        wrapper_entrypoint,
+    )
 
     code = Path(agent_path).read_text()
 
@@ -248,34 +261,101 @@ def _validate_agent_entrypoint(agent_path: str, fn_name: str, console: Console) 
     except ValueError:
         found = has_entrypoint(code, fn_name)
 
-    if not found:
-        ext = Path(agent_path).suffix.lower()
-        if ext == ".py":
-            example = (
-                f"  [dim]def {fn_name}(input: dict) -> dict:\n"
-                f"      # your agent logic here\n"
-                f"      return {{...}}[/dim]"
-            )
-        else:
-            example = (
-                f"  [dim]function {fn_name}(input) {{\n"
-                f"      // your agent logic here\n"
-                f"      return {{...}};\n"
-                f"  }}[/dim]\n"
-                f"  [dim]module.exports = {{ {fn_name} }};[/dim]"
-            )
+    if found:
+        return agent_path, fn_name
+
+    # --- Entrypoint not found — offer wrapper generation ---
+    if fast:
         console.print(
             f"\n  [bold red]Error:[/bold red] Function [bold]{fn_name}()[/bold] not found "
             f"in [cyan]{agent_path}[/cyan].\n"
-        )
-        console.print(
-            f"  OverClaw calls [bold]agent.{fn_name}(case_input)[/bold] for every test case.\n"
-            f"  Make sure your agent file defines:\n\n"
-            f"{example}\n\n"
-            f"  Or update the registered entrypoint:\n"
-            f"    [bold]overclaw agent update <name> <module:{fn_name}>[/bold]\n"
+            f"  Generate a wrapper first:\n"
+            f"    [bold]overclaw agent register {agent_name} <module:function>[/bold]\n"
         )
         raise SystemExit(1)
+
+    console.print(
+        f"\n  [bold yellow]\u26a0[/bold yellow]  Function [bold]{fn_name}()[/bold] not found "
+        f"in [cyan]{rel(agent_path)}[/cyan].\n"
+    )
+    console.print(
+        "  OverClaw needs a function that takes input and returns output, e.g.:\n"
+        "    [dim]def run(input_data: dict) -> dict[/dim]\n"
+    )
+
+    choice = select_option(
+        [
+            "Generate an entrypoint wrapper (OverClaw reads your code and creates one)",
+            "I'll fix it myself (exit setup)",
+        ],
+        title="How would you like to proceed?",
+        default_index=0,
+        console=console,
+    )
+
+    if choice != 0:
+        console.print(
+            f"\n  Fix the entrypoint and re-run:\n"
+            f"    [bold]overclaw setup {agent_name}[/bold]\n"
+        )
+        raise SystemExit(1)
+
+    agent_dir = p.parent
+    console.print()
+    with make_spinner_progress(console) as progress:
+        progress.add_task("  Analyzing agent code and generating wrapper\u2026")
+        wp = generate_entrypoint_wrapper(agent_dir, agent_name)
+
+    if wp is None or not wp.is_file():
+        console.print(
+            "\n  [bold red]\u2717[/bold red]  Wrapper generation failed.\n"
+            "  This can happen if no LLM model is configured.\n"
+            f"  Set [bold]ANALYZER_MODEL[/bold] in [bold]{overclaw_rel('.env')}[/bold] "
+            "or write the wrapper manually.\n"
+        )
+        raise SystemExit(1)
+
+    wrapper_code = wp.read_text(encoding="utf-8")
+
+    from rich.syntax import Syntax
+
+    console.print()
+    console.print(
+        Panel(
+            f"[bold green]Generated entrypoint wrapper[/bold green]\n\n"
+            f"  File:     [cyan]{rel(wp)}[/cyan]\n"
+            f"  Function: [bold]run(input_data: dict) -> dict[/bold]",
+            border_style="green",
+            padding=(1, 2),
+        )
+    )
+
+    if confirm_option("Review the generated code?", default=True, console=console):
+        console.print()
+        console.print(
+            Syntax(
+                wrapper_code,
+                "python",
+                theme="monokai",
+                line_numbers=True,
+                word_wrap=True,
+            )
+        )
+
+    console.print()
+    if not confirm_option(
+        "Continue setup with this wrapper?", default=True, console=console
+    ):
+        console.print(f"\n  [dim]Edit [cyan]{rel(wp)}[/cyan] and re-run setup.[/dim]\n")
+        raise SystemExit(0)
+
+    new_agent_path = str(wp)
+    new_fn_name = "run"
+    new_ep = wrapper_entrypoint(agent_name)
+    save_agent(agent_name, new_ep)
+
+    console.print(f"  [dim]Updated registry \u2192 {new_ep}[/dim]\n")
+    return new_agent_path, new_fn_name
 
 
 def _clear_existing_eval_spec(
@@ -336,61 +416,10 @@ def _clear_existing_eval_spec(
 def _instrument_agent_files(
     agent_path: str, agent_name: str, console: Console
 ) -> tuple[str, Path]:
-    """Copy the agent's source tree to ``.overclaw/agents/<name>/instrumented/``.
+    """Copy agent source into .overclaw/ — delegates to shared module."""
+    from overclaw.commands.agent_env import instrument_agent_files
 
-    The original files are never modified.  This is a **plain copy** — no
-    ``@observe()`` decorators or overmind-sdk imports are added here.
-    Instrumentation (imports + decorators) is applied later by the
-    optimizer when it actually needs tracing.
-
-    The copy boundary is the **project root** (the directory containing
-    ``.overclaw/``), not just the entry file's parent.  This ensures that
-    local imports across sibling packages (e.g. ``from agents.foo import …``
-    when the entry file lives under ``evals/``) are available in the copy.
-
-    Returns ``(instrumented_entry_path, instrumented_root_dir)``.
-    """
-    p = Path(agent_path).resolve()
-    dest_dir = agent_instrumented_dir(agent_name)
-    if not p.exists():
-        return agent_path, dest_dir
-
-    pr = project_root_from_agent_file(agent_path)
-    copy_root = pr if pr is not None else p.parent
-    entry_relpath = p.relative_to(copy_root)
-
-    if dest_dir.exists():
-        shutil.rmtree(dest_dir)
-    dest_dir.mkdir(parents=True, exist_ok=True)
-
-    _SKIP_DIRS = {
-        ".venv",
-        "venv",
-        "node_modules",
-        ".overclaw_runners",
-        "__pycache__",
-        ".git",
-        ".overclaw",
-    }
-
-    file_count = 0
-    for src_file in copy_root.rglob("*"):
-        if any(part in _SKIP_DIRS for part in src_file.parts):
-            continue
-        if src_file.is_dir():
-            continue
-        rel_path = src_file.relative_to(copy_root)
-        dst_file = dest_dir / rel_path
-        dst_file.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copy2(src_file, dst_file)
-        file_count += 1
-
-    instrumented_entry = str(dest_dir / entry_relpath)
-    console.print(
-        f"  [bold green]\u2713[/bold green] Copied agent source "
-        f"({file_count} file(s)) to [dim]{rel(dest_dir)}[/dim]"
-    )
-    return instrumented_entry, dest_dir
+    return instrument_agent_files(agent_path, agent_name, console)
 
 
 def _save_and_finish(
@@ -1408,49 +1437,10 @@ def _display_proposed_criteria(analysis: dict, console: Console) -> None:
 
 
 def _write_agent_env(path: Path, agent_name: str, env_vars: dict[str, str]) -> None:
-    """Write agent-specific env vars to ``.overclaw/agents/<name>/.env``."""
-    path.parent.mkdir(parents=True, exist_ok=True)
-    lines = [f"# OverClaw agent env — {agent_name}", ""]
-    for key, val in env_vars.items():
-        lines.append(f"{key}={val}")
-    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    """Write agent-specific env vars — delegates to shared module."""
+    from overclaw.commands.agent_env import write_agent_env
 
-
-def _describe_configured_agent_llm_provider(existing: dict[str, str]) -> str | None:
-    """Summarize LLM provider from env keys and ``ANALYZER_MODEL`` (no secret values)."""
-    oai_key = (existing.get("OPENAI_API_KEY") or "").strip()
-    ant_key = (existing.get("ANTHROPIC_API_KEY") or "").strip()
-    base_url = (existing.get("OPENAI_BASE_URL") or "").strip()
-    analyzer = (existing.get("ANALYZER_MODEL") or "").strip()
-
-    label: str | None = None
-
-    if base_url and oai_key:
-        label = "Other (OpenAI-compatible SDK, custom base URL)"
-    elif analyzer and "/" in analyzer:
-        prefix, _, _rest = analyzer.partition("/")
-        pl = prefix.lower()
-        if pl == "anthropic":
-            label = "Anthropic"
-        elif pl == "openai":
-            label = "OpenAI"
-        else:
-            label = f"Provider {prefix}"
-    elif oai_key and ant_key:
-        label = "OpenAI and Anthropic"
-    elif ant_key:
-        label = "Anthropic"
-    elif oai_key:
-        label = "OpenAI"
-
-    if label is None:
-        if analyzer:
-            return f"Analyzer model: {analyzer}"
-        return None
-
-    if analyzer:
-        return f"{label} · analyzer: {analyzer}"
-    return label
+    write_agent_env(path, agent_name, env_vars)
 
 
 def _pin_model_to_agent_env(
@@ -1483,125 +1473,10 @@ def _pin_model_to_agent_env(
 
 
 def _collect_agent_provider_config(agent_name: str, console: Console) -> None:
-    """Ask which LLM provider the agent uses and save credentials to its per-agent .env."""
-    env_path = agent_env_path(agent_name)
+    """Ask which LLM provider the agent uses — delegates to shared module."""
+    from overclaw.commands.agent_env import collect_agent_provider_config
 
-    # If already configured, offer to skip
-    if env_path.exists() and env_path.stat().st_size > 0:
-        existing = {
-            k: v
-            for k, v in (dotenv_values(env_path) or {}).items()
-            if (v or "").strip()
-        }
-        if existing:
-            console.print(
-                f"\n  [dim]Agent env already configured at [cyan]{rel(env_path)}[/cyan] "
-                f"({len(existing)} variable(s) set).[/dim]"
-            )
-            provider_hint = _describe_configured_agent_llm_provider(existing)
-            if provider_hint:
-                console.print(
-                    f"  [dim]Looks like this agent is set up for:[/dim] "
-                    f"{escape(provider_hint)}"
-                )
-            if not confirm_option(
-                "Reconfigure agent model provider?", default=False, console=console
-            ):
-                return
-
-    console.print()
-    console.print(Rule(style="dim"))
-    console.print(Rule("[bold]Agent model provider[/bold]", style=BRAND))
-    console.print(
-        "  [dim]Which provider does your agent use to call its LLM?\n"
-        "  Credentials are saved to [cyan]"
-        + overclaw_rel(f"agents/{agent_name}/.env")
-        + "[/cyan] and loaded automatically when the agent runs.[/dim]"
-    )
-
-    pick = select_option(
-        ["OpenAI", "Anthropic", "Other"],
-        title="Select provider:",
-        default_index=0,
-        console=console,
-    )
-
-    if pick == 0:  # OpenAI
-        existing_key = os.getenv("OPENAI_API_KEY", "").strip()
-        if existing_key:
-            console.print(
-                f"\n  [dim]OPENAI_API_KEY is already set in "
-                f"{overclaw_rel('.env')} — using it for this agent.[/dim]"
-            )
-            key = existing_key
-        else:
-            console.print("\n  [dim]Enter your OpenAI API key for this agent.[/dim]")
-            key = read_api_key_masked("OPENAI_API_KEY")
-        _write_agent_env(env_path, agent_name, {"OPENAI_API_KEY": key})
-        console.print(
-            f"  [bold green]✓[/bold green] Saved [bold]OPENAI_API_KEY[/bold]"
-            f" → [dim]{rel(env_path)}[/dim]"
-        )
-
-    elif pick == 1:  # Anthropic
-        existing_key = os.getenv("ANTHROPIC_API_KEY", "").strip()
-        if existing_key:
-            console.print(
-                f"\n  [dim]ANTHROPIC_API_KEY is already set in "
-                f"{overclaw_rel('.env')} — using it for this agent.[/dim]"
-            )
-            key = existing_key
-        else:
-            console.print("\n  [dim]Enter your Anthropic API key for this agent.[/dim]")
-            key = read_api_key_masked("ANTHROPIC_API_KEY")
-        _write_agent_env(env_path, agent_name, {"ANTHROPIC_API_KEY": key})
-        console.print(
-            f"  [bold green]✓[/bold green] Saved [bold]ANTHROPIC_API_KEY[/bold]"
-            f" → [dim]{rel(env_path)}[/dim]"
-        )
-
-    else:  # Other provider
-        if confirm_option(
-            "Is your provider compatible with the OpenAI SDK?",
-            default=True,
-            console=console,
-        ):
-            console.print(
-                "\n  [dim]Enter the base URL for your OpenAI-compatible endpoint "
-                "(e.g. https://api.example.com/v1).[/dim]"
-            )
-            base_url = Prompt.ask("  OPENAI_BASE_URL").strip()
-            console.print("  [dim]Enter the API key for your provider.[/dim]")
-            key = read_api_key_masked("OPENAI_API_KEY")
-            _write_agent_env(
-                env_path,
-                agent_name,
-                {"OPENAI_BASE_URL": base_url, "OPENAI_API_KEY": key},
-            )
-            console.print(
-                f"  [bold green]✓[/bold green] Saved [bold]OPENAI_BASE_URL[/bold] and "
-                f"[bold]OPENAI_API_KEY[/bold] → [dim]{rel(env_path)}[/dim]"
-            )
-        else:
-            # Not OpenAI-compatible — create an empty file and wait for the user to fill it
-            _write_agent_env(env_path, agent_name, {})
-            console.print(
-                f"\n  [yellow]Created[/yellow] [bold]{env_path}[/bold]\n\n"
-                "  [dim]Open that file and add any environment variables your agent\n"
-                "  needs to call its LLM — API keys, base URLs, custom tokens, etc.\n\n"
-                "  Example:\n"
-                "    MY_PROVIDER_API_KEY=sk-...\n"
-                "    MY_PROVIDER_BASE_URL=https://api.example.com/v1[/dim]"
-            )
-            confirm_option(
-                "Confirm once you've added your env variables to the file"
-                " (select Yes to continue — safe to skip if no env vars are needed)",
-                default=True,
-                console=console,
-            )
-            # load_agent_dotenv() is called immediately after this function returns in
-            # main(), so any variables the user just saved will be loaded before the
-            # smoke test runs.
+    collect_agent_provider_config(agent_name, console)
 
 
 def main(
@@ -1638,8 +1513,8 @@ def main(
         console.print()
         _prompt_seed_data_flag_early(agent_name, console=console)
 
-    # Ask which provider the agent uses and save its credentials to the agent .env.
-    # Skip interactive prompt in fast mode; always load whatever is already on disk.
+    # Agent env vars (API keys) — may have been configured during register.
+    # The shared function skips if already configured; always load into env.
     console.print()
     console.print(Rule(style="dim"))
     if not fast:
@@ -1670,7 +1545,9 @@ def main(
         raise SystemExit(130)
 
     signal.signal(signal.SIGINT, _handle_sigint)
-    _validate_agent_entrypoint(agent_path, fn_name, console)
+    agent_path, fn_name = _validate_agent_entrypoint(
+        agent_path, fn_name, agent_name, console, fast=fast
+    )
 
     if policy and not Path(policy).exists():
         console.print(f"\n  [red]Error:[/red] Policy file {policy} does not exist.")
@@ -1678,12 +1555,22 @@ def main(
 
     _clear_existing_eval_spec(agent_name, console, fast=fast)
 
-    # Instrument (copy the whole project) first, then check deps inside the
-    # instrumented copy.  Any generated manifest goes into the sandbox copy
-    # so the original agent source is never modified.
-    instrumented_entry, instrumented_root = _instrument_agent_files(
-        agent_path, agent_name, console
-    )
+    # The instrumented copy is created at register time.  Re-use it as-is so
+    # we don't wipe the generated _overclaw_entrypoint wrapper (if any).  Only
+    # copy if the instrumented dir is missing (e.g. manual cleanup).
+    instrumented_root = agent_instrumented_dir(agent_name)
+    if instrumented_root.exists():
+        p = Path(agent_path).resolve()
+        if str(p).startswith(str(instrumented_root)):
+            instrumented_entry = str(p)
+        else:
+            pr = project_root_from_agent_file(agent_path)
+            copy_root = pr if pr is not None else p.parent
+            instrumented_entry = str(instrumented_root / p.relative_to(copy_root))
+    else:
+        instrumented_entry, instrumented_root = _instrument_agent_files(
+            agent_path, agent_name, console
+        )
     _check_agent_dependencies(
         agent_path, agent_name, console, fast=fast, instrumented_dir=instrumented_root
     )

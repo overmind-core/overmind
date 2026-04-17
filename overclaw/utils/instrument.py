@@ -160,8 +160,26 @@ def _replace_call_tool(source: str) -> str:
 # ---------------------------------------------------------------------------
 
 
+_ENUM_LIKE_BASES = frozenset(
+    {
+        "Enum",
+        "IntEnum",
+        "StrEnum",
+        "Flag",
+        "IntFlag",
+        "NamedTuple",
+        "TypedDict",
+    }
+)
+
+
 def _add_observe_decorators(source: str) -> str:
-    """Add ``@observe()`` above every ``def`` / ``async def`` that lacks it."""
+    """Add ``@observe()`` above every ``def`` / ``async def`` that lacks it.
+
+    Skips methods inside enum-like classes (``IntEnum``, ``Enum``, etc.)
+    because their metaclass restricts name lookup in the class body,
+    making module-level ``observe`` invisible during class construction.
+    """
     try:
         tree = ast.parse(source)
     except SyntaxError:
@@ -170,26 +188,50 @@ def _add_observe_decorators(source: str) -> str:
     lines = source.split("\n")
     func_lines: list[int] = []
 
+    skip_classes: set[int] = set()
     for node in ast.walk(tree):
-        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
-            already_has = any(
-                (
-                    isinstance(d, ast.Call)
-                    and isinstance(d.func, ast.Name)
-                    and d.func.id == "observe"
-                )
-                or (isinstance(d, ast.Name) and d.id == "observe")
-                or (
-                    isinstance(d, ast.Call)
-                    and isinstance(d.func, ast.Attribute)
-                    and d.func.attr == "observe"
-                )
-                for d in node.decorator_list
-            )
-            if not already_has:
-                func_lines.append(node.lineno)
+        if isinstance(node, ast.ClassDef):
+            for base in node.bases:
+                base_name = ""
+                if isinstance(base, ast.Name):
+                    base_name = base.id
+                elif isinstance(base, ast.Attribute):
+                    base_name = base.attr
+                if base_name in _ENUM_LIKE_BASES:
+                    skip_classes.add(id(node))
+                    break
 
-    # Insert in reverse order to preserve line numbers
+    def _visit(node: ast.AST, inside_skip: bool = False) -> None:
+        if isinstance(node, ast.ClassDef):
+            child_skip = inside_skip or id(node) in skip_classes
+            for child in ast.iter_child_nodes(node):
+                _visit(child, inside_skip=child_skip)
+            return
+
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            if not inside_skip:
+                already_has = any(
+                    (
+                        isinstance(d, ast.Call)
+                        and isinstance(d.func, ast.Name)
+                        and d.func.id == "observe"
+                    )
+                    or (isinstance(d, ast.Name) and d.id == "observe")
+                    or (
+                        isinstance(d, ast.Call)
+                        and isinstance(d.func, ast.Attribute)
+                        and d.func.attr == "observe"
+                    )
+                    for d in node.decorator_list
+                )
+                if not already_has:
+                    func_lines.append(node.lineno)
+
+        for child in ast.iter_child_nodes(node):
+            _visit(child, inside_skip=inside_skip)
+
+    _visit(tree)
+
     for lineno in sorted(func_lines, reverse=True):
         idx = lineno - 1
         existing_line = lines[idx]
@@ -211,3 +253,27 @@ def is_instrumented(source: str) -> bool:
     )
     has_decorator = "@observe()" in source
     return has_import and has_decorator
+
+
+def instrument_directory(directory: str) -> int:
+    """Apply ``instrument_source`` to every ``.py`` file under *directory*.
+
+    Files that are already instrumented (per :func:`is_instrumented`) are
+    skipped.  Returns the number of files modified.
+    """
+    from pathlib import Path as _Path
+
+    root = _Path(directory)
+    count = 0
+    for py_file in root.rglob("*.py"):
+        try:
+            source = py_file.read_text(encoding="utf-8")
+        except Exception:
+            continue
+        if is_instrumented(source):
+            continue
+        new_source = instrument_source(source)
+        if new_source != source:
+            py_file.write_text(new_source, encoding="utf-8")
+            count += 1
+    return count

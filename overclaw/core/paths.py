@@ -56,8 +56,8 @@ def agent_experiments_dir(agent_name: str) -> Path:
 
 
 def agent_instrumented_dir(agent_name: str) -> Path:
-    """Instrumented copy of the agent source: ``<state>/agents/<name>/setup_spec/instrumented/``."""
-    return agent_setup_spec_dir(agent_name) / "instrumented"
+    """Instrumented copy of the agent source: ``<state>/agents/<name>/instrumented/``."""
+    return agent_overclaw_dir(agent_name) / "instrumented"
 
 
 def agent_run_state_path(agent_name: str) -> Path:

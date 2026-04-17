@@ -230,13 +230,24 @@ _SUPPORTED_EXTENSIONS = (".py", ".js", ".ts", ".mjs", ".mts")
 
 
 def _module_to_file(module: str, root: Path) -> Path:
-    """Convert a dotted module path to an absolute file path.
+    """Convert a module reference to an absolute file path.
+
+    Accepts two formats:
+    - Dotted Python module path: ``agents.my_agent.main``
+    - Relative file path (with ``/``): ``.overclaw/agents/gsec/.../file``
+
+    The second form is used for generated wrappers whose directory name
+    starts with a dot, which cannot survive a round-trip through dotted
+    module notation.
 
     Tries ``.py`` first, then JS/TS extensions, so existing Python
     agents keep working unchanged.
     """
-    parts = module.split(".")
-    base = root / Path(*parts)
+    if "/" in module or "\\" in module:
+        base = root / Path(module)
+    else:
+        parts = module.split(".")
+        base = root / Path(*parts)
     for ext in _SUPPORTED_EXTENSIONS:
         candidate = base.with_suffix(ext)
         if candidate.exists():
@@ -244,29 +255,76 @@ def _module_to_file(module: str, root: Path) -> Path:
     return base.with_suffix(".py")
 
 
-def validate_entrypoint(entrypoint: str) -> tuple[Path, str]:
-    """Validate entrypoint string, resolve it, and verify the file + function exist.
+class EntrypointNotFoundError(Exception):
+    """The entrypoint file exists but the expected function is missing.
+
+    Raised by :func:`resolve_entrypoint` so callers can offer wrapper
+    generation instead of hard-exiting.
+    """
+
+    def __init__(self, file_path: Path, fn_name: str) -> None:
+        self.file_path = file_path
+        self.fn_name = fn_name
+        super().__init__(f"Function '{fn_name}' not found in '{file_path}'")
+
+
+class EntrypointSignatureError(Exception):
+    """The entrypoint function exists but doesn't match OverClaw's contract.
+
+    Covers cases like missing input arguments or missing return value.
+    Raised so callers can offer wrapper generation instead of hard-exiting.
+    """
+
+    def __init__(self, file_path: Path, fn_name: str, reason: str) -> None:
+        self.file_path = file_path
+        self.fn_name = fn_name
+        self.reason = reason
+        super().__init__(f"Function '{fn_name}' in '{file_path}': {reason}")
+
+
+def resolve_entrypoint_file(entrypoint: str) -> tuple[Path, str]:
+    """Resolve the entrypoint to a file path without checking the function.
 
     Returns (resolved_file_path, function_name).
-    Prints a clear error and raises SystemExit(1) on any failure.
+
+    Raises:
+        ValueError: invalid entrypoint format or module file not found.
     """
-    try:
-        module, fn = parse_entrypoint(entrypoint)
-    except ValueError as exc:
-        print(f"\n  Error: {exc}\n", file=sys.stderr)
-        raise SystemExit(1) from exc
+    module, fn = parse_entrypoint(entrypoint)
 
     root = project_root()
     file_path = _module_to_file(module, root)
 
     if not file_path.exists():
-        print(
-            f"\n  Error: Module '{module}' resolves to '{file_path}', "
+        raise ValueError(
+            f"Module '{module}' resolves to '{file_path}', "
             "which does not exist.\n"
-            "  Check that the module path is correct and the file is present.\n",
-            file=sys.stderr,
+            "  Check that the module path is correct and the file is present."
         )
-        raise SystemExit(1)
+
+    return file_path, fn
+
+
+def resolve_entrypoint(entrypoint: str) -> tuple[Path, str]:
+    """Validate and resolve an entrypoint string.
+
+    Returns (resolved_file_path, function_name).
+
+    Raises:
+        ValueError: invalid entrypoint format or module file not found.
+        EntrypointNotFoundError: file exists but the function is missing.
+    """
+    module, fn = parse_entrypoint(entrypoint)
+
+    root = project_root()
+    file_path = _module_to_file(module, root)
+
+    if not file_path.exists():
+        raise ValueError(
+            f"Module '{module}' resolves to '{file_path}', "
+            "which does not exist.\n"
+            "  Check that the module path is correct and the file is present."
+        )
 
     code = file_path.read_text(encoding="utf-8")
     ext = file_path.suffix.lower()
@@ -285,17 +343,7 @@ def validate_entrypoint(entrypoint: str) -> tuple[Path, str]:
         )
 
     if not found:
-        hint = (
-            f"'def {fn}(input)'"
-            if ext == ".py"
-            else f"'function {fn}(input)' or 'module.exports = {{ {fn} }}'"
-        )
-        print(
-            f"\n  Error: Function '{fn}' not found in '{file_path}'.\n"
-            f"  Make sure your agent file defines {hint}.\n",
-            file=sys.stderr,
-        )
-        raise SystemExit(1)
+        raise EntrypointNotFoundError(file_path, fn)
 
     if ext == ".py":
         _validate_python_entrypoint(code, fn, file_path)
@@ -303,6 +351,40 @@ def validate_entrypoint(entrypoint: str) -> tuple[Path, str]:
         _validate_js_entrypoint(code, fn, file_path)
 
     return file_path, fn
+
+
+def validate_entrypoint(entrypoint: str) -> tuple[Path, str]:
+    """Validate entrypoint string, resolve it, and verify the file + function exist.
+
+    Returns (resolved_file_path, function_name).
+    Prints a clear error and raises SystemExit(1) on any failure.
+    """
+    try:
+        return resolve_entrypoint(entrypoint)
+    except ValueError as exc:
+        print(f"\n  Error: {exc}\n", file=sys.stderr)
+        raise SystemExit(1) from exc
+    except EntrypointNotFoundError as exc:
+        ext = exc.file_path.suffix.lower()
+        fn = exc.fn_name
+        hint = (
+            f"'def {fn}(input)'"
+            if ext == ".py"
+            else f"'function {fn}(input)' or 'module.exports = {{ {fn} }}'"
+        )
+        print(
+            f"\n  Error: Function '{fn}' not found in '{exc.file_path}'.\n"
+            f"  Make sure your agent file defines {hint}.\n",
+            file=sys.stderr,
+        )
+        raise SystemExit(1) from exc
+    except EntrypointSignatureError as exc:
+        print(
+            f"\n  Error: Entrypoint '{exc.fn_name}' in '{exc.file_path}' "
+            f"{exc.reason}.\n",
+            file=sys.stderr,
+        )
+        raise SystemExit(1) from exc
 
 
 def _validate_python_entrypoint(code: str, fn: str, file_path: Path) -> None:
@@ -322,16 +404,7 @@ def _validate_python_entrypoint(code: str, fn: str, file_path: Path) -> None:
         param_count = len(args.args) + len(args.posonlyargs) + len(args.kwonlyargs)
         has_var = args.vararg is not None or args.kwarg is not None
         if param_count == 0 and not has_var:
-            print(
-                f"\n  Error: Entrypoint '{fn}' in '{file_path}' takes no input arguments.\n\n"
-                "  The entry point should accept input arguments so that OverClaw can\n"
-                "  optimize your agent properly — it runs different data points through\n"
-                "  the entry point to validate performance.\n\n"
-                f"  Update your function signature, e.g.:\n"
-                f"    def {fn}(input, **kwargs):\n",
-                file=sys.stderr,
-            )
-            raise SystemExit(1)
+            raise EntrypointSignatureError(file_path, fn, "takes no input arguments")
 
         has_meaningful_return = False
         for child in ast.walk(node):
@@ -343,17 +416,7 @@ def _validate_python_entrypoint(code: str, fn: str, file_path: Path) -> None:
                     break
 
         if not has_meaningful_return:
-            print(
-                f"\n  Error: Entrypoint '{fn}' in '{file_path}' does not return a value.\n\n"
-                "  The entry point must return a result so that OverClaw can capture the\n"
-                "  agent's output and validate the performance of the workflow.\n\n"
-                f"  Make sure your function returns a value, e.g.:\n"
-                f"    def {fn}(input):\n"
-                f"        ...\n"
-                f"        return result\n",
-                file=sys.stderr,
-            )
-            raise SystemExit(1)
+            raise EntrypointSignatureError(file_path, fn, "does not return a value")
 
         break
 
@@ -365,16 +428,7 @@ def _validate_js_entrypoint(code: str, fn: str, file_path: Path) -> None:
         rf"(?:const|let|var)\s+{re.escape(fn)}\s*=\s*(?:async\s*)?\(\s*\)\s*=>)"
     )
     if re.search(fn_pattern, code):
-        print(
-            f"\n  Error: Entrypoint '{fn}' in '{file_path}' takes no input arguments.\n\n"
-            "  The entry point should accept input arguments so that OverClaw can\n"
-            "  optimize your agent properly — it runs different data points through\n"
-            "  the entry point to validate performance.\n\n"
-            f"  Update your function signature, e.g.:\n"
-            f"    function {fn}(input) {{ ... }}\n",
-            file=sys.stderr,
-        )
-        raise SystemExit(1)
+        raise EntrypointSignatureError(file_path, fn, "takes no input arguments")
 
     fn_body_match = re.search(
         rf"(?:function\s+{re.escape(fn)}\s*\([^)]*\)\s*\{{|"
@@ -392,18 +446,7 @@ def _validate_js_entrypoint(code: str, fn: str, file_path: Path) -> None:
             i += 1
         body = code[start:i]
         if "return " not in body and "return\n" not in body:
-            print(
-                f"\n  Error: Entrypoint '{fn}' in '{file_path}' does not return a value.\n\n"
-                "  The entry point must return a result so that OverClaw can capture the\n"
-                "  agent's output and validate the performance of the workflow.\n\n"
-                f"  Make sure your function returns a value, e.g.:\n"
-                f"    function {fn}(input) {{\n"
-                f"        ...\n"
-                f"        return result;\n"
-                f"    }}\n",
-                file=sys.stderr,
-            )
-            raise SystemExit(1)
+            raise EntrypointSignatureError(file_path, fn, "does not return a value")
 
 
 # ---------------------------------------------------------------------------
@@ -475,7 +518,7 @@ def resolve_agent(name: str) -> tuple[str, str]:
     file_path = entry["file_path"]
     fn_name = entry["fn_name"]
 
-    if not Path(file_path).exists():
+    if not file_path or not Path(file_path).exists():
         console.print(
             f"\n  [bold red]Error:[/bold red] "
             f"Agent '[bold]{name}[/bold]' is registered but its file was not found:\n"
