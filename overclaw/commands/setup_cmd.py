@@ -306,6 +306,18 @@ def _validate_agent_entrypoint(
         progress.add_task("  Analyzing agent code and generating wrapper\u2026")
         wp = generate_entrypoint_wrapper(agent_dir, agent_name)
 
+    if wp == "refused":
+        console.print(
+            "\n  [bold yellow]⚠[/bold yellow]  This agent's code is too complex for an "
+            "auto-generated wrapper.\n\n"
+            "  The wrapper needs to be a trivial bridge (import + call), but this\n"
+            "  agent would require re-implementing agent-specific logic.\n\n"
+            "  Add a [bold]def run(input_data: dict) -> dict[/bold] function directly\n"
+            "  in your agent code, then re-register:\n"
+            f"    [bold]overclaw agent register {agent_name} <your_module:run>[/bold]\n"
+        )
+        raise SystemExit(1)
+
     if wp is None or not wp.is_file():
         console.print(
             "\n  [bold red]\u2717[/bold red]  Wrapper generation failed.\n"

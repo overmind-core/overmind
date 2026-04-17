@@ -46,12 +46,67 @@ Here is the agent's code and surrounding files:
 
 {code_context}
 
+═══════════════════════════════════════════════════════════════════════
+CRITICAL RULE — THE WRAPPER MUST BE TRIVIALLY SIMPLE
+═══════════════════════════════════════════════════════════════════════
+
+The wrapper you generate MUST be a thin bridge that:
+  1. Imports the existing agent object/function from the agent's own modules.
+  2. Calls it using the framework's standard runner/executor.
+  3. Returns the result as a dict.
+
+That's it. The wrapper should be ~20-40 lines at most.
+
+GOOD wrapper (just imports + calls):
+    from my_agent.agent import root_agent
+    from framework import Runner
+    def run(input_data: dict) -> dict:
+        result = Runner(agent=root_agent).run(input_data["query"])
+        return {{"response": result}}
+
+BAD wrapper (re-implements agent logic):
+    def run(input_data: dict) -> dict:
+        # Setting up tools manually
+        # Re-implementing tool call logic
+        # Parsing tool outputs
+        # Building prompts from scratch
+        # Any agent-specific business logic
+
+If generating a correct wrapper would require:
+  - Re-implementing tool calls, agent logic, or prompt construction
+  - Copying substantial code from the agent into the wrapper
+  - Any domain-specific logic beyond framework boilerplate
+
+Then DO NOT generate the wrapper. Instead, create the file with ONLY
+this content:
+
+    # OVERCLAW_WRAPPER_REFUSED
+    #
+    # This agent's code cannot be wrapped with a simple bridge.
+    # The entrypoint function needs agent-specific logic that belongs
+    # in the agent code itself, not in an auto-generated wrapper.
+    #
+    # To make your agent work with OverClaw, add a function to your
+    # agent code with this signature:
+    #
+    #     def run(input_data: dict) -> dict:
+    #         # call your agent here
+    #         return {{"response": ...}}
+    #
+    # Then register it:
+    #     overclaw agent register <name> your_module:run
+
+═══════════════════════════════════════════════════════════════════════
+
 YOUR TASK:
 1. Read the agent code and identify the framework (Google ADK, LangChain,
-   CrewAI, AutoGen, LangGraph, or custom).
+   CrewAI, AutoGen, LangGraph, Claude Agent SDK, or custom).
 2. Understand how the agent is executed (look at test files, examples,
    or main blocks for patterns).
-3. Create the file: {wrapper_path}
+3. Decide: can the agent be invoked with a trivial import-and-call wrapper?
+   - YES → generate the wrapper at {wrapper_path}
+   - NO  → write the refusal comment file at {wrapper_path}
+4. If generating:
    - Import the agent from its module using absolute imports based on
      the agent source directory structure. The agent source directory
      will be on sys.path at runtime.
@@ -61,8 +116,7 @@ YOUR TASK:
    - Execute the agent using the framework's standard runner
    - Return {{"response": <agent_output_text>}} at minimum
    - Handle async execution with asyncio.run() if needed
-4. Keep it minimal — no logging, no retries, no error wrapping.
-   Just the clean bridge from dict-in to dict-out.
+   - No logging, no retries, no error wrapping.
 
 IMPORTANT:
 - The file MUST be at exactly: {wrapper_path}
@@ -72,6 +126,8 @@ IMPORTANT:
 - Use absolute imports that work when the agent source directory is on
   sys.path (e.g. ``from llm_red_team_agent.agent import root_agent``)
 """
+
+WRAPPER_REFUSED_MARKER = "# OVERCLAW_WRAPPER_REFUSED"
 
 
 def _get_model() -> str | None:
@@ -209,7 +265,7 @@ def wrapper_entrypoint(agent_name: str, fn_name: str = "run") -> str:
 def generate_entrypoint_wrapper(
     agent_dir: str | Path,
     agent_name: str,
-) -> Path | None:
+) -> Path | str | None:
     """Use the coding agent to generate an entrypoint wrapper.
 
     The wrapper is written to
@@ -217,8 +273,9 @@ def generate_entrypoint_wrapper(
     alongside the instrumented copy of the agent source so that all
     imports resolve correctly.  The user's original code is never modified.
 
-    Returns the path to the generated wrapper file, or None if
-    generation failed or the coding agent is unavailable.
+    Returns the path to the generated wrapper file, ``"refused"`` if the
+    coding agent determined the wrapper would be too complex, or ``None``
+    if generation failed or the coding agent is unavailable.
     """
     model = _get_model()
     if not model:
@@ -257,9 +314,17 @@ def generate_entrypoint_wrapper(
         logger.warning("Wrapper generation failed: %s", exc)
         return None
 
-    if wp.is_file():
-        logger.info("Entrypoint wrapper generated at %s", wp)
-        return wp
+    if not wp.is_file():
+        logger.warning("Coding agent ran but wrapper file not found at %s", wp)
+        return None
 
-    logger.warning("Coding agent ran but wrapper file not found at %s", wp)
-    return None
+    content = wp.read_text(encoding="utf-8")
+    if content.strip().startswith(WRAPPER_REFUSED_MARKER):
+        logger.info(
+            "Coding agent declined to generate wrapper — agent needs manual restructuring"
+        )
+        wp.unlink(missing_ok=True)
+        return "refused"
+
+    logger.info("Entrypoint wrapper generated at %s", wp)
+    return wp

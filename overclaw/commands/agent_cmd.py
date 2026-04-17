@@ -186,9 +186,21 @@ def _offer_wrapper_generation(
         progress.add_task("  Analyzing agent code and generating wrapper\u2026")
         wp = generate_entrypoint_wrapper(agent_dir, name)
 
+    if wp == "refused":
+        console.print(
+            "\n  [bold yellow]⚠[/bold yellow]  This agent's code is too complex for an "
+            "auto-generated wrapper.\n\n"
+            "  The wrapper needs to be a trivial bridge (import + call), but this\n"
+            "  agent would require re-implementing agent-specific logic.\n\n"
+            "  Add a [bold]def run(input_data: dict) -> dict[/bold] function directly\n"
+            "  in your agent code, then re-register:\n"
+            f"    [bold]overclaw agent register {name} <your_module:run>[/bold]\n"
+        )
+        return None
+
     if wp is None or not wp.is_file():
         console.print(
-            "\n  [bold red]\u2717[/bold red]  Wrapper generation failed.\n"
+            "\n  [bold red]✗[/bold red]  Wrapper generation failed.\n"
             "  This can happen if no LLM model is configured.\n"
             f"  Set [bold]ANALYZER_MODEL[/bold] in [bold]{overclaw_rel('.env')}[/bold] "
             "or write the wrapper manually.\n"
