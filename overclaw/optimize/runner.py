@@ -693,11 +693,11 @@ data = json.loads(sys.stdin.read())
 
 sig = inspect.signature(fn)
 params = list(sig.parameters.values())
-_use_kwargs = (
-    isinstance(data, dict)
-    and len(params) != 1
-    and not (len(params) == 1 and params[0].annotation in (dict, inspect.Parameter.empty))
+_single_dict_param = (
+    len(params) == 1
+    and params[0].annotation in (dict, inspect.Parameter.empty)
 )
+_use_kwargs = isinstance(data, dict) and not _single_dict_param and len(params) >= 1
 
 _real_stdout = sys.stdout
 sys.stdout = io.StringIO()
