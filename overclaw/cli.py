@@ -360,6 +360,23 @@ def main() -> None:
 
         require_overclaw_initialized()
 
+    # Wire up logging as early as possible so every module that gets
+    # imported next (commands, optimizer, coding agent, …) can emit debug
+    # traces from its module-level loggers.  ``overclaw init`` configures
+    # its logger after it creates ``.overclaw/`` so the log lands there.
+    if args.command != "init":
+        from overclaw.core.logging import setup_logging
+
+        log_path = setup_logging()
+        import logging
+
+        logging.getLogger("overclaw.cli").info(
+            "CLI invoked command=%s argv=%s log_file=%s",
+            args.command,
+            sys.argv[1:],
+            log_path,
+        )
+
     try:
         if args.command == "init":
             from overclaw.commands.init_cmd import main as _init

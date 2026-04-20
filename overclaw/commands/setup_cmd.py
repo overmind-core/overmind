@@ -18,6 +18,7 @@ Usage:
 """
 
 import json
+import logging
 import os
 import shlex
 import signal
@@ -96,6 +97,8 @@ from overclaw.setup.questionnaire import run_questionnaire
 from overclaw.setup.spec_generator import generate_spec_from_proposal, save_spec
 from overclaw.storage import configure_storage, get_storage
 from overclaw.storage.api import ApiBackend
+
+logger = logging.getLogger("overclaw.commands.setup")
 
 
 def _check_agent_dependencies(
@@ -466,6 +469,14 @@ def _smoke_test_agent(
             pr = project_root_from_agent_file(agent_path)
             resolved_agent_dir = pr if pr is not None else p.parent
         entry_file = str(p.relative_to(resolved_agent_dir))
+        logger.debug(
+            "smoke_test: agent_path=%s fn=%s entry=%s agent_dir=%s env_dir=%s",
+            agent_path,
+            fn_name,
+            entry_file,
+            resolved_agent_dir,
+            env_dir,
+        )
         runner = AgentRunner(
             agent_dir=resolved_agent_dir,
             entry_file=entry_file,
@@ -477,12 +488,20 @@ def _smoke_test_agent(
         result = runner.run(input_case)
         runner.cleanup()
         if result.success:
+            logger.debug("smoke_test: agent=%s succeeded", agent_path)
             return True, None
         parts = [result.error] if result.error else []
         if result.stderr and result.stderr.strip() not in (result.error or ""):
             parts.append(result.stderr[-2000:])
+        logger.warning(
+            "smoke_test: agent=%s failed rc=%s err=%s",
+            agent_path,
+            result.returncode,
+            (result.error or "")[:300],
+        )
         return False, "\n".join(parts) or "Unknown error"
     except Exception as exc:
+        logger.exception("smoke_test: exception for agent=%s", agent_path)
         return False, str(exc)
 
 
@@ -1585,6 +1604,13 @@ def main(
     policy: str | None = None,
     data: str | None = None,
 ) -> None:
+    logger.info(
+        "setup: start agent=%s fast=%s policy=%s data=%s",
+        agent_name,
+        fast,
+        policy,
+        data,
+    )
     load_overclaw_dotenv()
 
     console = Console()
@@ -1738,6 +1764,7 @@ def main(
         load_agent_dotenv(agent_name)
 
     # ---- Phase 1: Agent Analysis ----
+    logger.info("PHASE BEGIN setup.phase1.agent_analysis agent=%s model=%s", agent_name, model)
     console.print()
     console.print(Rule(style="dim"))
     console.print()
@@ -1750,8 +1777,19 @@ def main(
         )
     )
     analysis = analyze_agent(agent_path, model, console, entrypoint_fn=fn_name)
+    logger.info(
+        "PHASE END   setup.phase1.agent_analysis fields=%s criteria_fields=%s",
+        list(analysis.get("output_schema", {}).keys()),
+        list(analysis.get("proposed_criteria", {}).get("fields", {}).keys()),
+    )
 
     # ---- Phase 2: Policy Definition ----
+    logger.info(
+        "PHASE BEGIN setup.phase2.policy agent=%s fast=%s policy_arg=%s",
+        agent_name,
+        fast,
+        policy,
+    )
     console.print()
     console.print(Rule(style="dim"))
     console.print()
@@ -1780,7 +1818,10 @@ def main(
                 f"to improve optimization quality.[/dim]"
             )
 
+        logger.info("PHASE END   setup.phase2.policy agent=%s fast=True", agent_name)
+
         # ---- Phase 3 (fast): Dataset ----
+        logger.info("PHASE BEGIN setup.phase3.dataset agent=%s fast=True data=%s", agent_name, data_opt)
         console.print()
         console.print(Rule(style="dim"))
         console.print()
@@ -1802,6 +1843,7 @@ def main(
             data_path=data_opt,
             entrypoint_fn=fn_name,
         )
+        logger.info("PHASE END   setup.phase3.dataset agent=%s fast=True", agent_name)
 
         spec = generate_spec_from_proposal(analysis, policy_data=policy_data)
         _save_and_finish(spec, agent_name, console, policy_md=policy_md)
@@ -1813,6 +1855,7 @@ def main(
             instrumented_entry=instrumented_entry,
         )
         _sync_setup_artifacts(agent_name, agent_path, console)
+        logger.info("setup: fast-mode complete agent=%s", agent_name)
         return
 
     pol_path = default_policy_path(agent_name)
@@ -1909,7 +1952,10 @@ def main(
             policy_md, policy_data, analysis, model, console
         )
 
+    logger.info("PHASE END   setup.phase2.policy agent=%s fast=False", agent_name)
+
     # ---- Phase 3: Dataset ----
+    logger.info("PHASE BEGIN setup.phase3.dataset agent=%s data=%s", agent_name, data_opt)
     console.print()
     console.print(Rule(style="dim"))
     console.print()
@@ -1930,8 +1976,10 @@ def main(
         data_path=data_opt,
         entrypoint_fn=fn_name,
     )
+    logger.info("PHASE END   setup.phase3.dataset agent=%s", agent_name)
 
     # ---- Phase 4: Evaluation Criteria ----
+    logger.info("PHASE BEGIN setup.phase4.eval_criteria agent=%s", agent_name)
     console.print()
     console.print(Rule(style="dim"))
     console.print()
@@ -1956,6 +2004,11 @@ def main(
             default=True,
             console=console,
         ):
+            logger.info(
+                "PHASE END   setup.phase4.eval_criteria agent=%s iterations=%d accepted=True",
+                agent_name,
+                iteration,
+            )
             spec = generate_spec_from_proposal(analysis, policy_data=policy_data)
             _save_and_finish(
                 spec,
@@ -1972,6 +2025,7 @@ def main(
                 instrumented_entry=instrumented_entry,
             )
             _sync_setup_artifacts(agent_name, agent_path, console)
+            logger.info("setup: complete agent=%s", agent_name)
             return
 
         console.print()
@@ -1986,6 +2040,11 @@ def main(
         )
 
         if choice == 1:
+            logger.info(
+                "PHASE END   setup.phase4.eval_criteria agent=%s iterations=%d accepted=False save_manual=True",
+                agent_name,
+                iteration,
+            )
             spec = generate_spec_from_proposal(analysis, policy_data=policy_data)
             _save_and_finish(
                 spec,
@@ -2007,9 +2066,15 @@ def main(
                 instrumented_entry=instrumented_entry,
             )
             _sync_setup_artifacts(agent_name, agent_path, console)
+            logger.info("setup: complete-save-manual agent=%s", agent_name)
             return
 
         iteration += 1
+        logger.info(
+            "setup.phase4.eval_criteria refinement round=%d agent=%s",
+            iteration,
+            agent_name,
+        )
         console.print()
         console.print(Rule(style="dim"))
         console.print()

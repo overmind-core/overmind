@@ -211,12 +211,26 @@ class Optimizer:
     # ------------------------------------------------------------------
 
     def run(self):
+        self._logger.info(
+            "Optimizer.run starting agent=%s iterations=%d parallel=%s max_workers=%s",
+            getattr(self.config, "agent_name", "?"),
+            self.config.iterations,
+            getattr(self.config, "parallel", False),
+            getattr(self.config, "max_workers", None),
+        )
         self._setup_output_dirs()
         dataset = self._load_dataset()
+        self._logger.info("Loaded dataset with %d cases", len(dataset))
 
         # Split into train (optimizer sees) and holdout (final generalization check)
         holdout_ratio = getattr(self.config, "holdout_ratio", 0.2)
         train_set, holdout_set = self._split_dataset(dataset, holdout_ratio)
+        self._logger.info(
+            "Dataset split: train=%d holdout=%d ratio=%.2f",
+            len(train_set),
+            len(holdout_set),
+            holdout_ratio,
+        )
 
         self.console.print()
         self.console.print(
@@ -372,6 +386,13 @@ class Optimizer:
         latest_eval = baseline_eval
 
         for i in range(1, self.config.iterations + 1):
+            self._logger.info(
+                "STAGE BEGIN optimizer.iteration iter=%d/%d best_score=%.4f stall_count=%d",
+                i,
+                self.config.iterations,
+                self.best_score,
+                self.stall_count,
+            )
             self.console.print()
             self.console.print(
                 Rule(
@@ -469,6 +490,9 @@ class Optimizer:
                         focus_weights=_focus_weights,
                     )
                 except Exception as exc:
+                    self._logger.exception(
+                        "Iteration %d analyzer error: %s", i, exc
+                    )
                     progress.update(task, description=f"  [red]Analyzer error: {exc}")
                     self._log_result(
                         f"iter_{i:03d}",
@@ -480,6 +504,9 @@ class Optimizer:
                     continue
 
                 progress.update(task, completed=True)
+                self._logger.info(
+                    "Iteration %d generated %d candidate(s)", i, len(candidates)
+                )
 
             # Show diagnosis if available (full text; wrap inside panel)
             for cand in candidates:
@@ -674,6 +701,13 @@ class Optimizer:
                 tmp_path = self._write_candidate_to_disk(cand)
                 try:
                     runs_per = getattr(self.config, "runs_per_eval", 1)
+                    self._logger.debug(
+                        "Iter %d candidate %d: evaluating (runs_per=%d, path=%s)",
+                        i,
+                        orig_idx,
+                        runs_per,
+                        tmp_path,
+                    )
                     if runs_per > 1:
                         c_eval, c_items = self._run_multi_eval(
                             str(tmp_path),
@@ -688,6 +722,11 @@ class Optimizer:
                             f"iter_{i:03d}_c{orig_idx}",
                         )
                 except Exception:
+                    self._logger.exception(
+                        "Iter %d candidate %d crashed during evaluation",
+                        i,
+                        orig_idx,
+                    )
                     c_eval = None
                     c_items = None
                 finally:
@@ -1006,9 +1045,23 @@ class Optimizer:
                 prev_evaluation=prev_eval,
             )
 
+            self._logger.info(
+                "STAGE END   optimizer.iteration iter=%d/%d best_score=%.4f stall_count=%d best_cand_score=%.4f",
+                i,
+                self.config.iterations,
+                self.best_score,
+                self.stall_count,
+                float(best_cand_eval.get("avg_total", 0)) if best_cand_eval else 0.0,
+            )
+
             # Early stopping
             patience = getattr(self.config, "early_stopping_patience", 3)
             if patience > 0 and self.stall_count >= patience:
+                self._logger.info(
+                    "Early stopping triggered stall_count=%d patience=%d",
+                    self.stall_count,
+                    patience,
+                )
                 self.console.print(
                     f"\n  [yellow]Early stopping: {self.stall_count} consecutive "
                     f"iterations without improvement "
@@ -2186,7 +2239,20 @@ class Optimizer:
                 trace_path.unlink()
 
         if self.config.parallel:
+            self._logger.debug(
+                "Running agent in parallel: run=%s cases=%d workers=%s trace=%s",
+                run_name,
+                len(dataset),
+                self.config.max_workers,
+                trace_path,
+            )
             return self._run_parallel_subprocess(runner, dataset, run_name, trace_path)
+        self._logger.debug(
+            "Running agent sequentially: run=%s cases=%d trace=%s",
+            run_name,
+            len(dataset),
+            trace_path,
+        )
         return self._run_sequential_subprocess(runner, dataset, run_name, trace_path)
 
     def _run_sequential_subprocess(
@@ -2210,10 +2276,20 @@ class Optimizer:
             task = progress.add_task("  Running agent…", total=len(dataset))
 
             for idx, case in enumerate(dataset):
+                self._logger.debug(
+                    "[%s] Sequential case %d/%d", run_name, idx + 1, len(dataset)
+                )
                 run_output = runner.run(case["input"], trace_file=trace_path)
                 if run_output.success:
                     outputs.append(run_output.data)
                 else:
+                    self._logger.warning(
+                        "[%s] Sequential case %d failed rc=%s err=%s",
+                        run_name,
+                        idx,
+                        run_output.returncode,
+                        (run_output.error or "")[:300],
+                    )
                     outputs.append({"error": run_output.error})
                 cases_data.append(case)
                 progress.advance(task)
@@ -2230,9 +2306,25 @@ class Optimizer:
         results_by_idx: dict[int, dict | None] = {}
 
         def _run_one(case: dict, idx: int) -> tuple[int, dict | None]:
+            self._logger.debug(
+                "[%s] Dispatching case %d on worker thread", run_name, idx
+            )
             run_output = runner.run(case["input"], trace_file=trace_path)
             if run_output.success:
+                self._logger.debug(
+                    "[%s] Case %d succeeded (stderr_bytes=%d)",
+                    run_name,
+                    idx,
+                    len(run_output.stderr or ""),
+                )
                 return idx, run_output.data
+            self._logger.warning(
+                "[%s] Case %d failed rc=%s err=%s",
+                run_name,
+                idx,
+                run_output.returncode,
+                (run_output.error or "")[:300],
+            )
             return idx, {"error": run_output.error}
 
         with Progress(
