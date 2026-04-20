@@ -195,6 +195,32 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     show_p.add_argument("name", metavar="NAME", help="Agent name to inspect")
 
+    val_p = agent_subs.add_parser(
+        "validate",
+        formatter_class=_FMT,
+        help="Validate an agent's entrypoint by running it against test data",
+        description=(
+            "Run the agent against one or more JSON test cases to verify\n"
+            "that the registered entrypoint works end-to-end.\n"
+            "\n"
+            'Each case should be a JSON object with an "input" key (or be\n'
+            "the input dict itself).  The agent is invoked via the same\n"
+            "subprocess runner used by setup and optimize."
+        ),
+        epilog=(
+            "Examples:\n"
+            "  overclaw agent validate gsec --data tests/case.json\n"
+            "  overclaw agent validate gsec --data tests/cases/\n"
+        ),
+    )
+    val_p.add_argument("name", metavar="NAME", help="Agent name to validate")
+    val_p.add_argument(
+        "--data",
+        metavar="PATH",
+        required=True,
+        help="Path to a JSON file or directory of JSON files with test cases",
+    )
+
     # ── setup ────────────────────────────────────────────────────────────────
     setup_p = subparsers.add_parser(
         "setup",
@@ -390,6 +416,7 @@ def main() -> None:
                 cmd_remove,
                 cmd_show,
                 cmd_update,
+                cmd_validate,
             )
 
             if args.agent_command == "register":
@@ -402,6 +429,8 @@ def main() -> None:
                 cmd_update(args.name, args.entrypoint)
             elif args.agent_command == "show":
                 cmd_show(args.name)
+            elif args.agent_command == "validate":
+                cmd_validate(args.name, args.data)
 
         elif args.command == "setup":
             from overclaw.commands.setup_cmd import main as _setup

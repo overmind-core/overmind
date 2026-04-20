@@ -25,41 +25,88 @@ optimization diagnosis, and scoring.
 - **Agent logic** — tool-call ordering, iteration limits, output parsing
 - **Policy compliance** — alignment with your domain rules and constraints
 
-## Quick start
+## Get started
+
+This walks you through the full workflow — from installation to your first
+optimized agent. The whole process takes about 10 minutes.
 
 **Requirements:** Python 3.10+, [uv](https://docs.astral.sh/uv/), and API keys
 for at least one LLM provider (OpenAI, Anthropic).
 
+### 1. Install
+
 ```bash
-# 1. Install OverClaw as a CLI tool
 uv tool install overclaw
 
-## or dev install
+# or dev install
 git clone https://github.com/overmind-core/overclaw
 cd overclaw
 uv tool install -e .
-
-# 2. Set API keys and model defaults
-overclaw init
-
-# 3. Register your agent with a name and entrypoint
-overclaw agent register lead-qualification examples.agents.agent1.sample_agent:run
-
-# 4. Analyze your agent, define policies, and build evaluation criteria
-overclaw setup lead-qualification
-
-# 5. Run the optimizer
-overclaw optimize lead-qualification
 ```
 
-> **Have an existing policy document?** Pass it directly to setup:
->
-> ```bash
-> overclaw setup lead-qualification --policy docs/my_policy.md
-> ```
+> Using `uv run` instead? All commands work as `uv run overclaw <command>`
+> after `uv sync`.
 
-> **Using `uv run` instead?** If you prefer not to install globally, all
-> commands work as `uv run overclaw <command>` after `uv sync`.
+### 2. Initialize the project
+
+```bash
+cd your-agent-project/
+overclaw init
+```
+
+This creates `.overclaw/` in your project root and prompts for API keys and
+default models. Safe to re-run anytime.
+
+### 3. Register your agent
+
+```bash
+overclaw agent register my-agent agents.my_agent:run
+```
+
+Point OverClaw at the Python function it should call. The function receives an
+input dict and must return a dict:
+
+```python
+def run(input_data: dict) -> dict:
+    # your agent logic
+    return {"response": result}
+```
+
+**Framework-based agents** (Google ADK, LangChain, CrewAI, etc.) often don't
+expose a simple callable. OverClaw detects this and offers to auto-generate an
+entrypoint wrapper — no manual boilerplate needed. During registration it will
+also collect any API keys your agent needs.
+
+### 4. Validate the entrypoint (optional)
+
+```bash
+overclaw agent validate my-agent --data tests/sample.json
+```
+
+Runs the first case from your test data through the agent to make sure the
+entrypoint works end-to-end before investing time in setup.
+
+### 5. Set up evaluation criteria
+
+```bash
+overclaw setup my-agent
+# or with an existing policy document:
+overclaw setup my-agent --policy docs/my_policy.md
+# or non-interactive:
+overclaw setup my-agent --fast
+```
+
+An interactive flow that analyzes your code, defines policies, builds (or
+imports) a test dataset, and generates scoring criteria.
+
+### 6. Optimize
+
+```bash
+overclaw optimize my-agent
+```
+
+Iteratively runs your agent, scores outputs, diagnoses failures, and generates
+code improvements. Changes that raise the score are kept; the rest are reverted.
 
 ## How it works
 
@@ -81,12 +128,13 @@ receives an input dict and must return a dict.
 
 Other registry commands:
 
-| Command                                 | Description                                        |
-| --------------------------------------- | -------------------------------------------------- |
-| `overclaw agent list`                   | List all registered agents                         |
-| `overclaw agent show <name>`            | Show registration details and pipeline status      |
-| `overclaw agent update <name> <mod:fn>` | Update the entrypoint (e.g. after renaming a file) |
-| `overclaw agent remove <name>`          | Remove from registry (does not delete files)       |
+| Command                                        | Description                                        |
+| ---------------------------------------------- | -------------------------------------------------- |
+| `overclaw agent list`                          | List all registered agents                         |
+| `overclaw agent show <name>`                   | Show registration details and pipeline status      |
+| `overclaw agent update <name> <mod:fn>`        | Update the entrypoint (e.g. after renaming a file) |
+| `overclaw agent remove <name>`                 | Remove from registry and instrumented copy         |
+| `overclaw agent validate <name> --data <path>` | Run the first test case to verify the entrypoint   |
 
 ### 3. Setup (`overclaw setup`)
 
@@ -227,14 +275,15 @@ After optimization, results are saved under `.overclaw/agents/<name>/`:
 ## CLI reference
 
 ```
-overclaw init                              Configure API keys and models
-overclaw agent register <name> <mod:fn>    Register an agent
-overclaw agent list                        List registered agents
-overclaw agent show <name>                 Show agent status
-overclaw agent update <name> <mod:fn>      Update entrypoint
-overclaw agent remove <name>               Remove from registry
-overclaw setup <name> [--fast] [--policy]  Analyze agent, build eval spec
-overclaw optimize <name> [--fast]          Run optimization loop
+overclaw init                                        Configure API keys and models
+overclaw agent register <name> <mod:fn>              Register an agent
+overclaw agent list                                  List registered agents
+overclaw agent show <name>                           Show agent status
+overclaw agent update <name> <mod:fn>                Update entrypoint
+overclaw agent remove <name>                         Remove from registry
+overclaw agent validate <name> --data <path>         Run first test case to verify entrypoint
+overclaw setup <name> [--fast] [--policy PATH]       Analyze agent, build eval spec
+overclaw optimize <name> [--fast]                    Run optimization loop
 ```
 
 Run `overclaw <command> --help` for full documentation on any command.

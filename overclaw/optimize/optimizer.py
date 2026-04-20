@@ -135,10 +135,11 @@ class Optimizer:
         self._baseline_files: dict[str, str] = {}
 
         # Resolve agent copy created by ``overclaw setup``.
-        # Setup copies the project tree so local imports work; the optimizer
-        # adds @observe() instrumentation to candidates it writes to disk.
-        # Falls back to the original when no copy is present.
+        # Setup copies the project tree (plain, no decorators); the optimizer
+        # instruments all .py files with @observe() so overmind-sdk traces
+        # are captured for both the baseline and candidate runs.
         self._instrumented_agent_path = self._resolve_instrumented_path()
+        self._instrument_agent_copy()
 
         # --- Process-isolated agent runner ---
         self._runner = self._build_runner(
@@ -175,9 +176,11 @@ class Optimizer:
         """Return the path to the agent copy if it exists.
 
         ``overclaw setup`` copies the **project root** tree to
-        ``.overclaw/agents/<name>/instrumented/`` (a plain copy — no
-        ``@observe()`` decorators).  The entry file lives at its original
-        relative path inside that tree (e.g. ``instrumented/evals/harness.py``).
+        ``.overclaw/agents/<name>/instrumented/`` as a plain copy.
+        ``_instrument_agent_copy`` then adds ``@observe()`` decorators
+        to all ``.py`` files so traces are captured.  The entry file
+        lives at its original relative path inside that tree
+        (e.g. ``instrumented/evals/harness.py``).
 
         Falls back to the original ``config.agent_path`` when no copy is
         present.
@@ -196,6 +199,25 @@ class Optimizer:
             return str(candidate)
 
         return self.config.agent_path
+
+    def _instrument_agent_copy(self) -> None:
+        """Add ``@observe()`` instrumentation to all ``.py`` files in the agent copy.
+
+        Called once at optimizer init so that both the baseline and all
+        subsequent candidate runs produce overmind-sdk trace spans.
+        Only modifies the copy under ``.overclaw/``; original files are
+        never touched.  No-op when the copy doesn't exist (fallback to
+        original agent path).
+        """
+        from overclaw.utils.instrument import instrument_directory
+
+        inst_dir = agent_instrumented_dir(self.config.agent_name)
+        if not inst_dir.is_dir():
+            return
+        resolved = Path(self._instrumented_agent_path).resolve()
+        if not _is_subpath(resolved, inst_dir.resolve()):
+            return
+        instrument_directory(inst_dir)
 
     @property
     def _use_local_traces(self) -> bool:
