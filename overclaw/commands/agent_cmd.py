@@ -610,7 +610,7 @@ def cmd_validate(name: str, data: str) -> None:
         progress.add_task("  Running agent…")
         try:
             result = runner.run(test_input)
-            error = result.get("error")
+            error = result.error if not result.success else ""
         except Exception as exc:
             result = None
             error = str(exc)
@@ -626,7 +626,7 @@ def cmd_validate(name: str, data: str) -> None:
         )
         raise SystemExit(1)
     else:
-        output_str = json.dumps(result, indent=2, default=str)
+        output_str = json.dumps(result.data, indent=2, default=str)
         if len(output_str) > 500:
             output_str = output_str[:497] + "..."
         console.print(
