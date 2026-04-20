@@ -10,6 +10,7 @@ Commands:
     overclaw agent show <name>                         Show agent registration and pipeline status
     overclaw setup <name> [--data PATH] [--fast]      Analyze agent and define eval criteria
     overclaw optimize <name> [--fast]                  Run the optimization loop
+    overclaw doctor <name>                             Diagnose bundle scope and eval spec (read-only)
     overclaw sync [name]                               Sync local setup artifacts to Overmind
     overclaw sync-optimize [name]                      Sync local optimize artifacts to Overmind
 """
@@ -18,10 +19,34 @@ from __future__ import annotations
 
 import argparse
 import sys
+from unittest.mock import MagicMock
 
 from overclaw.core.constants import OVERCLAW_DIR_NAME, overclaw_rel
 
 _FMT = argparse.RawDescriptionHelpFormatter
+
+
+def _bundle_cli_kwargs(args: object) -> dict:
+    """Return scope / bundle cap kwargs for setup & optimize (test-safe).
+
+    When the CLI is exercised via ``MagicMock`` parse results (unit tests),
+    unspecified attributes auto-resolve to nested mocks — coerce those to
+    ``None`` so downstream commands receive real optional values.
+    """
+    scope_globs = getattr(args, "scope_globs", None)
+    max_files = getattr(args, "max_files", None)
+    max_chars = getattr(args, "max_chars", None)
+    if isinstance(scope_globs, MagicMock):
+        scope_globs = None
+    if isinstance(max_files, MagicMock):
+        max_files = None
+    if isinstance(max_chars, MagicMock):
+        max_chars = None
+    return {
+        "scope_globs": scope_globs,
+        "max_files": max_files,
+        "max_chars": max_chars,
+    }
 
 
 def _build_parser() -> argparse.ArgumentParser:
@@ -284,6 +309,31 @@ def _build_parser() -> argparse.ArgumentParser:
             "(optional; wizard can remind you of this flag)"
         ),
     )
+    setup_p.add_argument(
+        "--scope",
+        dest="scope_globs",
+        action="append",
+        default=None,
+        metavar="GLOB",
+        help=(
+            "optimizable path glob relative to project root (repeatable); "
+            "passed as hints to the analyzer for `scope.optimizable_paths`"
+        ),
+    )
+    setup_p.add_argument(
+        "--max-files",
+        type=int,
+        default=None,
+        metavar="N",
+        help="max files to follow from the entrypoint during Phase 1 analysis (default: 48)",
+    )
+    setup_p.add_argument(
+        "--max-chars",
+        type=int,
+        default=None,
+        metavar="N",
+        help="max total characters for dependency context during Phase 1 (default: 80000)",
+    )
 
     # ── optimize ─────────────────────────────────────────────────────────────
     opt_p = subparsers.add_parser(
@@ -324,6 +374,49 @@ def _build_parser() -> argparse.ArgumentParser:
         "--fast",
         action="store_true",
         help=f"skip all prompts; requires ANALYZER_MODEL in {overclaw_rel('.env')}",
+    )
+    opt_p.add_argument(
+        "--scope",
+        dest="scope_globs",
+        action="append",
+        default=None,
+        metavar="GLOB",
+        help=(
+            "override optimizable path globs from eval_spec (repeatable); "
+            "replaces `scope.optimizable_paths` for this run"
+        ),
+    )
+    opt_p.add_argument(
+        "--max-files",
+        type=int,
+        default=None,
+        metavar="N",
+        help="override max import-closure file count for the bundle (default: from Config)",
+    )
+    opt_p.add_argument(
+        "--max-chars",
+        type=int,
+        default=None,
+        metavar="N",
+        help="override max total characters in the bundle (default: from Config)",
+    )
+
+    # ── doctor ───────────────────────────────────────────────────────────────
+    doctor_p = subparsers.add_parser(
+        "doctor",
+        formatter_class=_FMT,
+        help="Diagnose bundle scope and eval spec for a registered agent (read-only)",
+        description=(
+            "Prints how OverClaw would resolve the multi-file bundle: file count, "
+            "character budget, suggested scope from eval_spec.json, and wrapper status. "
+            "Does not call any LLM and does not modify files."
+        ),
+        epilog=("Example:\n  overclaw doctor my-agent\n"),
+    )
+    doctor_p.add_argument(
+        "agent",
+        metavar="AGENT_NAME",
+        help="registered agent name (see: overclaw agent list)",
     )
 
     # ── sync ─────────────────────────────────────────────────────────────────
@@ -435,17 +528,25 @@ def main() -> None:
         elif args.command == "setup":
             from overclaw.commands.setup_cmd import main as _setup
 
+            _kw = _bundle_cli_kwargs(args)
             _setup(
                 agent_name=args.agent,
                 fast=args.fast,
                 policy=args.policy,
                 data=args.data,
+                **_kw,
             )
 
         elif args.command == "optimize":
             from overclaw.commands.optimize_cmd import main as _optimize
 
-            _optimize(agent_name=args.agent, fast=args.fast)
+            _kw = _bundle_cli_kwargs(args)
+            _optimize(agent_name=args.agent, fast=args.fast, **_kw)
+
+        elif args.command == "doctor":
+            from overclaw.commands.doctor_cmd import main as _doctor
+
+            _doctor(agent_name=args.agent)
 
         elif args.command == "sync":
             from overclaw.commands.sync_cmd import main as _sync

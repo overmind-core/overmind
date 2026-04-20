@@ -150,6 +150,7 @@ class TestSetupCmdMainFast:
 
 
 class TestSetupCmdMainInteractive:
+    @patch("overclaw.commands.setup_cmd._collect_agent_provider_config")
     @patch("overclaw.commands.setup_cmd.run_questionnaire")
     @patch("overclaw.commands.setup_cmd.confirm_option")
     @patch("overclaw.commands.setup_cmd.select_option")
@@ -163,13 +164,8 @@ class TestSetupCmdMainInteractive:
         "overclaw.utils.provider_keys.read_api_key_masked",
         return_value="sk-ant-api03-test-placeholder",
     )
-    @patch(
-        "overclaw.commands.setup_cmd.read_api_key_masked",
-        return_value="sk-ant-api03-test-placeholder",
-    )
     def test_interactive_auto_policy(
         self,
-        _mock_read_api_key,
         _mock_provider_read_api_key,
         mock_load_env,
         mock_resolve,
@@ -180,6 +176,7 @@ class TestSetupCmdMainInteractive:
         mock_select,
         mock_confirm,
         mock_questionnaire,
+        _mock_skip_provider,
         tmp_path,
         monkeypatch,
     ):
@@ -198,13 +195,15 @@ class TestSetupCmdMainInteractive:
         }
         mock_policy.return_value = ("# Policy", {"purpose": "test", "domain_rules": []})
 
-        # select_option calls: provider pick (index 1 = Anthropic),
-        # then policy mode pick (index 1 = auto-generate from code).
-        mock_select.side_effect = [1, 1]
+        # select_option calls: policy mode pick (index 1 = auto-generate from code).
+        mock_select.side_effect = [1]
 
         # First confirm is seed-data (--data); decline so setup continues. Later: policy & criteria.
         def _confirm_side_effect(prompt: str, **kwargs):
-            if "seed data" in prompt.lower() and "--data" in prompt:
+            pl = prompt.lower()
+            if "seed data" in pl and "--data" in prompt:
+                return False
+            if "reconfigure" in pl:
                 return False
             return True
 

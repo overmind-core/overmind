@@ -197,6 +197,19 @@ class TestBuildParser:
         out = capsys.readouterr().out
         assert "optimize" in out.lower()
 
+    # ── doctor ───────────────────────────────────────────────────────────
+
+    def test_doctor_parsed(self):
+        parser = _build_parser()
+        args = parser.parse_args(["doctor", "my-agent"])
+        assert args.command == "doctor"
+        assert args.agent == "my-agent"
+
+    def test_doctor_missing_agent(self):
+        parser = _build_parser()
+        with pytest.raises(SystemExit):
+            parser.parse_args(["doctor"])
+
     # ── sync ──────────────────────────────────────────────────────────────
 
     def test_sync_parsed_all(self):
@@ -328,7 +341,13 @@ class TestMainDispatch:
             with patch("overclaw.commands.setup_cmd.main") as mock_fn:
                 main()
                 mock_fn.assert_called_once_with(
-                    agent_name="my-agent", fast=True, policy=None, data=None
+                    agent_name="my-agent",
+                    fast=True,
+                    policy=None,
+                    data=None,
+                    scope_globs=None,
+                    max_files=None,
+                    max_chars=None,
                 )
 
     def test_optimize_dispatches(self):
@@ -340,7 +359,23 @@ class TestMainDispatch:
             mock_parser.return_value.parse_args.return_value = mock_args
             with patch("overclaw.commands.optimize_cmd.main") as mock_fn:
                 main()
-                mock_fn.assert_called_once_with(agent_name="my-agent", fast=False)
+                mock_fn.assert_called_once_with(
+                    agent_name="my-agent",
+                    fast=False,
+                    scope_globs=None,
+                    max_files=None,
+                    max_chars=None,
+                )
+
+    def test_doctor_dispatches(self):
+        with patch("overclaw.cli._build_parser") as mock_parser:
+            mock_args = MagicMock()
+            mock_args.command = "doctor"
+            mock_args.agent = "my-agent"
+            mock_parser.return_value.parse_args.return_value = mock_args
+            with patch("overclaw.commands.doctor_cmd.main") as mock_fn:
+                main()
+                mock_fn.assert_called_once_with(agent_name="my-agent")
 
     def test_sync_dispatches(self):
         with patch("overclaw.cli._build_parser") as mock_parser:

@@ -7,6 +7,7 @@ agent run and collects the resulting Trace afterwards.
 """
 
 import json
+import logging
 import os
 import threading
 import time
@@ -16,6 +17,8 @@ from typing import Any
 import litellm
 
 from overclaw.utils.llm import llm_completion
+
+logger = logging.getLogger("overclaw.core.tracer")
 
 _local = threading.local()
 
@@ -98,6 +101,14 @@ def call_llm(
     tracer = get_current_tracer()
     span = Span(span_type="llm_call", name=model, start_time=time.time())
 
+    logger.debug(
+        "call_llm start model=%s msgs=%d tools=%d has_tracer=%s",
+        model,
+        len(messages),
+        len(tools or []),
+        tracer is not None,
+    )
+
     try:
         response = llm_completion(model, messages, tools=tools, **kwargs)
         span.finish()
@@ -134,6 +145,14 @@ def call_llm(
             tracer.trace.total_tokens += usage.total_tokens if usage else 0
             tracer.trace.total_cost += cost
 
+        logger.debug(
+            "call_llm done model=%s latency_ms=%.1f tokens=%d cost=%.5f tool_calls=%d",
+            model,
+            span.latency_ms,
+            usage.total_tokens if usage else 0,
+            cost,
+            len(tool_calls_data),
+        )
         return response
 
     except Exception as e:
@@ -141,6 +160,7 @@ def call_llm(
         span.error = str(e)
         if tracer:
             tracer.add_span(span)
+        logger.exception("call_llm failed model=%s latency_ms=%.1f", model, span.latency_ms)
         raise
 
 
@@ -148,6 +168,7 @@ def call_tool(name: str, args: dict, fn: Any) -> Any:
     """Traced wrapper for tool execution. Captures args, result, and latency."""
     tracer = get_current_tracer()
     span = Span(span_type="tool_call", name=name, start_time=time.time())
+    logger.debug("call_tool start name=%s args_keys=%s", name, list((args or {}).keys()))
 
     try:
         result = fn(**args)
@@ -155,6 +176,7 @@ def call_tool(name: str, args: dict, fn: Any) -> Any:
         span.metadata = {"args": args, "result": result}
         if tracer:
             tracer.add_span(span)
+        logger.debug("call_tool done name=%s latency_ms=%.1f", name, span.latency_ms)
         return result
 
     except Exception as e:
@@ -163,4 +185,5 @@ def call_tool(name: str, args: dict, fn: Any) -> Any:
         span.metadata = {"args": args}
         if tracer:
             tracer.add_span(span)
+        logger.exception("call_tool failed name=%s", name)
         raise

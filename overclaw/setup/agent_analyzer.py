@@ -16,7 +16,9 @@ from rich.panel import Panel
 from rich.rule import Rule
 from rich.table import Table
 
+from overclaw.core.logging import stage
 from overclaw.utils.code import AgentBundle
+from overclaw.utils.ignore import build_ignore_predicate
 from overclaw.utils.display import BRAND, make_spinner_progress
 from overclaw.utils.llm import llm_completion
 from overclaw.core.registry import project_root, project_root_from_agent_file
@@ -43,6 +45,9 @@ def analyze_agent(
     console: Console,
     *,
     entrypoint_fn: str,
+    max_resolved_files: int = 48,
+    max_total_chars: int = 80_000,
+    scope_hint_globs: list[str] | None = None,
 ) -> dict:
     """Analyze an agent file and return structured metadata with proposed criteria.
 
@@ -58,10 +63,20 @@ def analyze_agent(
         if pr is None:
             pr = project_root()
         root = str(pr)
+        entry_rel = str(Path(agent_path).resolve().relative_to(Path(root).resolve()))
+        # Setup analysis only needs the entry file as full source; dependencies
+        # stay read-only so the bundle can compress them (signatures) under the
+        # char budget. Without this, every resolved local file (e.g. a whole
+        # vendored package) is marked optimizable and sent in full to the LLM.
+        ign = build_ignore_predicate(Path(root))
         bundle = AgentBundle.from_entry_point(
             entry_path=agent_path,
             project_root=root,
             entrypoint_fn=entrypoint_fn,
+            optimizable_paths=[entry_rel],
+            max_total_chars=max_total_chars,
+            max_resolved_files=max_resolved_files,
+            should_ignore_rel=ign,
         )
         if bundle.is_multi_file():
             logger.info(
@@ -77,39 +92,61 @@ def analyze_agent(
 
     agent_code_section = _build_setup_code_section(agent_path, bundle)
 
-    with make_spinner_progress(console) as progress:
-        task = progress.add_task("  Analyzing agent code and tool definitions…")
+    with stage(
+        "setup.agent_analyzer.analyze",
+        logger=logger,
+        agent_path=agent_path,
+        entrypoint=entrypoint_fn,
+        model=model,
+        code_chars=len(code),
+        multi_file=bool(bundle and bundle.is_multi_file()),
+    ) as info:
+        with make_spinner_progress(console) as progress:
+            task = progress.add_task("  Analyzing agent code and tool definitions…")
+            content = ANALYSIS_PROMPT.format(
+                agent_code_section=agent_code_section,
+                entrypoint_fn=entrypoint_fn,
+            )
+            if scope_hint_globs:
+                content += (
+                    "\n\nUser-provided optimizable path hints (globs relative to "
+                    "project root; refine into `scope.optimizable_paths`):\n"
+                    + "\n".join(f"- {g}" for g in scope_hint_globs)
+                )
 
-        response = llm_completion(
-            model,
-            [
-                {
-                    "role": "user",
-                    "content": ANALYSIS_PROMPT.format(
-                        agent_code_section=agent_code_section,
-                        entrypoint_fn=entrypoint_fn,
-                    ),
-                }
-            ],
-            temperature=0.2,
-            max_tokens=6000,
+            response = llm_completion(
+                model,
+                [
+                    {
+                        "role": "user",
+                        "content": content,
+                    }
+                ],
+                temperature=0.2,
+                max_tokens=6000,
+            )
+            progress.update(task, completed=True)
+
+        content = response.choices[0].message.content
+
+        try:
+            start = content.find("{")
+            end = content.rfind("}") + 1
+            if start >= 0 and end > start:
+                analysis = json.loads(content[start:end])
+            else:
+                raise ValueError("No JSON object found in LLM response")
+        except (json.JSONDecodeError, ValueError) as exc:
+            logger.exception("Failed to parse analyzer response: %s", exc)
+            console.print(f"[red]Failed to parse analysis: {exc}[/red]")
+            console.print("[dim]Raw response:[/dim]")
+            console.print(content[:500])
+            raise SystemExit(1)
+
+        info["fields"] = list(analysis.get("output_schema", {}).keys())
+        info["criteria_fields"] = list(
+            analysis.get("proposed_criteria", {}).get("fields", {}).keys()
         )
-        progress.update(task, completed=True)
-
-    content = response.choices[0].message.content
-
-    try:
-        start = content.find("{")
-        end = content.rfind("}") + 1
-        if start >= 0 and end > start:
-            analysis = json.loads(content[start:end])
-        else:
-            raise ValueError("No JSON object found in LLM response")
-    except (json.JSONDecodeError, ValueError) as exc:
-        console.print(f"[red]Failed to parse analysis: {exc}[/red]")
-        console.print("[dim]Raw response:[/dim]")
-        console.print(content[:500])
-        raise SystemExit(1)
 
     _display_analysis(analysis, console)
 
@@ -271,6 +308,25 @@ def _display_analysis(analysis: dict, console: Console):
         console.print("  [bold yellow]Orchestration Issues[/bold yellow]")
         for issue in orch_issues:
             console.print(f"    [yellow]\u26a0[/yellow] [dim]{issue}[/dim]")
+
+    # ---- Scope (optimizer bundle) ----
+    scope = analysis.get("scope") or {}
+    if scope:
+        console.print()
+        console.print(Rule("[bold]Suggested optimizer scope[/bold]", style="dim"))
+        for key, label in (
+            ("optimizable_paths", "Optimizable (editable)"),
+            ("context_paths", "Context (read-only)"),
+            ("exclude_paths", "Exclude"),
+        ):
+            paths = scope.get(key) or []
+            if not paths:
+                continue
+            console.print(f"  [bold]{label}[/bold]")
+            for p in paths[:40]:
+                console.print(f"    [cyan]{p}[/cyan]")
+            if len(paths) > 40:
+                console.print(f"    [dim]… and {len(paths) - 40} more[/dim]")
 
     # ---- Consistency rules ----
     rules = analysis.get("consistency_rules", [])

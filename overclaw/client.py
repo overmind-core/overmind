@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import logging
 import os
 import random
 import re
@@ -51,6 +52,8 @@ from overclaw.openapi_client.models.span_request import SpanRequest
 from overclaw.openapi_client.models.span_type_enum import SpanTypeEnum
 from overclaw.openapi_client.models.status1b7_enum import Status1b7Enum
 from overclaw.openapi_client.models.trace_create_request import TraceCreateRequest
+
+logger = logging.getLogger("overclaw.client")
 
 # Module-level thread pool for fire-and-forget API pushes.
 # Daemon threads so they don't block process exit.
@@ -105,6 +108,9 @@ def _get_bg_loop() -> asyncio.AbstractEventLoop:
                     name="overclaw-async",
                 )
                 t.start()
+                logger.debug(
+                    "Started background asyncio loop thread=%s loop=%r", t.name, _bg_loop
+                )
     return _bg_loop
 
 
@@ -130,8 +136,15 @@ def flush_pending_api_updates(timeout: float = 8.0) -> None:
     with _pending_lock:
         pending = list(_pending_futures)
     if not pending:
+        logger.debug("flush_pending_api_updates: nothing to flush")
         return
+    logger.info(
+        "Flushing %d pending API update(s) (timeout=%.1fs)", len(pending), timeout
+    )
     done, not_done = wait(pending, timeout=timeout)
+    logger.info(
+        "Flush complete: done=%d not_done=%d", len(done), len(not_done)
+    )
     # Best-effort completion; cancel leftovers to avoid dangling references.
     for fut in not_done:
         with _pending_lock:
@@ -168,12 +181,18 @@ def get_client() -> OverClawClient | None:
     base_url = os.getenv("OVERMIND_API_URL", "").strip().rstrip("/")
     token = os.getenv("OVERMIND_API_TOKEN", "").strip()
     if not base_url or not token:
+        logger.debug(
+            "get_client: API not configured (base_url_set=%s token_set=%s)",
+            bool(base_url),
+            bool(token),
+        )
         return None
     cfg = Configuration(host=base_url, api_key=token)
     cfg.access_token = token
     cfg.proxy_headers = {
         "X-Api-Key": token,
     }
+    logger.debug("get_client: built OverClawClient for host=%s", base_url)
     return OverClawClient(api_client=ApiClient(configuration=cfg))
 
 
@@ -270,11 +289,16 @@ def write_project_toml(agent_path: str, data: dict) -> None:
 def _fire(fn, *args, **kwargs) -> None:
     """Submit *fn* to the background thread pool — returns immediately."""
 
+    fn_label = getattr(fn, "__name__", repr(fn))
+
     def _run():
+        logger.debug("_fire: running %s on background thread", fn_label)
         try:
             fn(*args, **kwargs)
         except Exception:
-            pass  # Swallow silently; API failures must never break the optimizer
+            # Never propagate: API failures must not break the optimizer.
+            # Still record the exception so operators can diagnose from logs.
+            logger.exception("_fire: background %s failed", fn_label)
 
     fut = _executor.submit(_run)
     _track_future(fut)
@@ -308,6 +332,14 @@ def upsert_agent(
     if policy_data:
         eval_dataset["policy"] = policy_data
 
+    logger.info(
+        "upsert_agent: slug=%s project_id=%s dataset_cases=%d has_policy=%s",
+        slug,
+        project_id,
+        len(dataset or []),
+        bool(policy_data),
+    )
+
     existing = None
     try:
         page = _run_async(client.agents_list(project=UUID(project_id)))
@@ -316,6 +348,10 @@ def upsert_agent(
                 existing = ag
                 break
     except Exception:
+        logger.debug(
+            "upsert_agent: filtered list failed, falling back to unfiltered",
+            exc_info=True,
+        )
         # Fallback for backends that may not support `project` filter.
         try:
             page = _run_async(client.agents_list())
@@ -327,7 +363,7 @@ def upsert_agent(
                     existing = ag
                     break
         except Exception:
-            pass
+            logger.warning("upsert_agent: unfiltered list also failed", exc_info=True)
 
     shared: dict[str, Any] = dict(
         description=description,
@@ -349,9 +385,15 @@ def upsert_agent(
         result = _run_async(
             client.agents_partial_update(id=existing.id, patched_agent_request=patch)
         )
+        logger.info("upsert_agent: updated existing agent id=%s slug=%s", existing.id, slug)
     else:
         req = AgentRequest(name=name, slug=slug, project=UUID(project_id), **shared)
         result = _run_async(client.agents_create(agent_request=req))
+        logger.info(
+            "upsert_agent: created new agent id=%s slug=%s",
+            getattr(result, "id", "?"),
+            slug,
+        )
 
     # Persist agent_id to the per-agent project.toml immediately
 
@@ -412,11 +454,17 @@ def create_policy_prompt(
     Runs synchronously (waits for the API) under a per-agent lock so concurrent
     calls cannot each create a policy row. Safe to call from ``overclaw sync``.
     """
+    logger.debug(
+        "create_policy_prompt: acquiring lock agent_id=%s policy_len=%d",
+        agent_id,
+        len(policy_md or ""),
+    )
     with _policy_upsert_lock(str(agent_id)):
         _run_async(
             _replace_policy_prompt_async(client, agent_id, policy_md, agent_code),
             timeout=60.0,
         )
+    logger.info("create_policy_prompt: synced policy for agent_id=%s", agent_id)
 
 
 def fetch_agent_spec_and_dataset(
@@ -430,6 +478,9 @@ def fetch_agent_spec_and_dataset(
     if the agent is not found or the request fails.
     """
     slug = agent_slug_from_path(agent_path)
+    logger.debug(
+        "fetch_agent_spec_and_dataset: slug=%s project_id=%s", slug, project_id
+    )
     try:
         kwargs: dict[str, Any] = {}
         if project_id:
@@ -441,10 +492,16 @@ def fetch_agent_spec_and_dataset(
                 agent_stub = ag
                 break
         if not agent_stub:
+            logger.info(
+                "fetch_agent_spec_and_dataset: no match for slug=%s", slug
+            )
             return None
         # agents_list returns AgentList (lightweight); fetch full detail
         agent = _run_async(client.agents_retrieve(id=agent_stub.id))
     except Exception:
+        logger.warning(
+            "fetch_agent_spec_and_dataset: API lookup failed slug=%s", slug, exc_info=True
+        )
         return None
 
     spec: dict[str, Any] = {
@@ -505,8 +562,15 @@ def _create_job(
             data_source="dataset",
         )
         job = _run_async(client.jobs_create(job_request=req))
+        logger.info(
+            "_create_job: created job id=%s agent_id=%s iterations=%d",
+            job.id,
+            agent_id,
+            num_iterations,
+        )
         return str(job.id)
     except Exception:
+        logger.exception("_create_job: failed to create job for agent_id=%s", agent_id)
         return None
 
 
@@ -516,8 +580,9 @@ def _patch_job(client: OverClawClient, job_id: str, **fields: Any) -> None:
         _submit_async(
             client.jobs_partial_update(id=UUID(job_id), patched_job_request=patch)
         )
+        logger.debug("_patch_job: job_id=%s fields=%s", job_id, list(fields))
     except Exception:
-        pass
+        logger.exception("_patch_job: failed job_id=%s", job_id)
 
 
 def _create_iteration(
@@ -543,8 +608,18 @@ def _create_iteration(
             dimension_scores=dimension_scores or {},
         )
         iteration = _run_async(client.job_iterations_create(job_iteration_request=req))
+        logger.info(
+            "_create_iteration: job_id=%s order=%d status=%s avg_score=%.4f",
+            job_id,
+            order,
+            status,
+            avg_score,
+        )
         return str(iteration.id)
     except Exception:
+        logger.exception(
+            "_create_iteration: failed job_id=%s order=%d", job_id, order
+        )
         return None
 
 
@@ -576,7 +651,18 @@ def fetch_traces_as_dataset(
             if page_num > 20:  # safety cap
                 break
     except Exception:
+        logger.warning(
+            "fetch_traces_as_dataset: trace listing failed agent_id=%s",
+            agent_id,
+            exc_info=True,
+        )
         return []
+    logger.debug(
+        "fetch_traces_as_dataset: fetched %d trace stubs across %d page(s) for agent_id=%s",
+        len(all_traces),
+        page_num,
+        agent_id,
+    )
 
     if not all_traces:
         return []
@@ -601,8 +687,18 @@ def fetch_traces_as_dataset(
                 }
             )
         except Exception:
+            logger.debug(
+                "fetch_traces_as_dataset: retrieve failed trace_id=%s",
+                getattr(trace_stub, "id", "?"),
+                exc_info=True,
+            )
             continue
 
+    logger.info(
+        "fetch_traces_as_dataset: returning %d cases from %d sampled traces",
+        len(cases),
+        len(sampled),
+    )
     return cases
 
 
@@ -672,13 +768,24 @@ def _create_trace(
             trace = fut.result(timeout=10)
             trace_id = str(trace.id)
         except Exception:
+            logger.warning(
+                "_create_trace: trace create timeout/failed agent_id=%s",
+                agent_id,
+                exc_info=True,
+            )
             return
 
         for span in spans:
             span.trace = trace_id
             _submit_async(client.spans_create(span_request=span))
+        logger.debug(
+            "_create_trace: queued trace_id=%s with %d spans (job_id=%s)",
+            trace_id,
+            len(spans),
+            job_id,
+        )
     except Exception:
-        pass
+        logger.exception("_create_trace: failed agent_id=%s", agent_id)
 
 
 # ---------------------------------------------------------------------------

@@ -33,6 +33,7 @@ rel(path)
 
 from __future__ import annotations
 
+import logging
 import xml.etree.ElementTree as ET
 from pathlib import Path
 
@@ -41,6 +42,10 @@ from rich.progress import Progress, SpinnerColumn, TextColumn
 from rich.prompt import Prompt
 from rich.text import Text
 from simple_term_menu import TerminalMenu
+
+from overclaw.core.logging import log_prompt
+
+logger = logging.getLogger("overclaw.display")
 
 # ---------------------------------------------------------------------------
 # Brand colour
@@ -127,6 +132,8 @@ def overmind_prompt(console: Console, prompt: str, **kwargs) -> str:
     """Print the small Overmind logo above a free-text question."""
     console.print()
     render_logo(console, small=True)
+    # Note: the underlying rich.prompt.Prompt is monkey-patched in
+    # overclaw.core.logging to log every ask, so we don't double-log here.
     return Prompt.ask(prompt.lstrip(), **kwargs)
 
 
@@ -167,6 +174,12 @@ def select_option(
     if console and title:
         console.print(f"\n  [dim]{title}[/dim]")
 
+    logger.debug(
+        "select_option presented title=%r options=%r default_index=%d",
+        title,
+        options,
+        default_index,
+    )
     menu = TerminalMenu(
         options,
         cursor_index=default_index,
@@ -177,7 +190,15 @@ def select_option(
     idx = menu.show()
 
     if idx is None:
+        logger.info("select_option cancelled title=%r", title)
         raise SystemExit(0)
+    log_prompt(
+        title or "(select)",
+        f"[{idx}] {options[idx]}",
+        kind="select",
+        default=options[default_index] if 0 <= default_index < len(options) else None,
+        logger=logger,
+    )
     if console:
         console.print(f"  [bold]{options[idx]}[/bold]")
         console.print()
@@ -194,6 +215,7 @@ def confirm_option(
     if console:
         console.print(f"\n  [dim]{prompt}[/dim]")
 
+    logger.debug("confirm_option presented prompt=%r default=%s", prompt, default)
     choices = ["Yes", "No"]
     menu = TerminalMenu(
         choices,
@@ -205,7 +227,15 @@ def confirm_option(
     idx = menu.show()
 
     if idx is None:
+        logger.info("confirm_option cancelled prompt=%r", prompt)
         raise SystemExit(0)
+    log_prompt(
+        prompt,
+        "Yes" if idx == 0 else "No",
+        kind="confirm",
+        default="Yes" if default else "No",
+        logger=logger,
+    )
     if console:
         console.print(f"  [bold]{choices[idx]}[/bold]")
         console.print()

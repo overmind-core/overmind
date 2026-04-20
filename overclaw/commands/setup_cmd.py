@@ -1515,6 +1515,9 @@ def main(
     fast: bool = False,
     policy: str | None = None,
     data: str | None = None,
+    scope_globs: list[str] | None = None,
+    max_files: int | None = None,
+    max_chars: int | None = None,
 ) -> None:
     logger.info(
         "setup: start agent=%s fast=%s policy=%s data=%s",
@@ -1706,7 +1709,15 @@ def main(
             border_style=BRAND,
         )
     )
-    analysis = analyze_agent(agent_path, model, console, entrypoint_fn=fn_name)
+    analysis = analyze_agent(
+        agent_path,
+        model,
+        console,
+        entrypoint_fn=fn_name,
+        max_resolved_files=max_files if max_files is not None else 48,
+        max_total_chars=max_chars if max_chars is not None else 80_000,
+        scope_hint_globs=list(scope_globs) if scope_globs else None,
+    )
     logger.info(
         "PHASE END   setup.phase1.agent_analysis fields=%s criteria_fields=%s",
         list(analysis.get("output_schema", {}).keys()),

@@ -336,6 +336,15 @@ def _write_env(path: Path, env: dict[str, str]) -> None:
 def main() -> None:
     oc_dir = init_project_root() / OVERCLAW_DIR_NAME
     oc_dir.mkdir(parents=True, exist_ok=True)
+
+    from overclaw.core.logging import setup_logging
+    import logging
+
+    log_path = setup_logging()
+    logging.getLogger("overclaw.init").info(
+        "Running overclaw init in %s (log_file=%s)", oc_dir, log_path
+    )
+
     env_path = oc_dir / ".env"
     console = Console()
     console.print()
@@ -380,6 +389,9 @@ def main() -> None:
         env.setdefault(k, "")
 
     _write_env(env_path, env)
+    logging.getLogger("overclaw.init").info(
+        "Wrote env file %s (keys=%s)", env_path, sorted(env.keys())
+    )
     console.print(f"\n  [green]Wrote[/green] {env_path}")
     console.print(
         "  [dim]Run setup / optimize as usual; keys are read on startup.[/dim]\n"

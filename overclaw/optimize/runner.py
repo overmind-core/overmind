@@ -440,7 +440,10 @@ def _provision_with_agent(agent_dir: Path, language: Language) -> bool:
     )
 
     logger.info(
-        "Using coding agent (%s) to provision %s environment …", model, lang_label
+        "Using coding agent (%s) to provision %s environment in %s …",
+        model,
+        lang_label,
+        agent_dir,
     )
 
     try:
@@ -451,7 +454,7 @@ def _provision_with_agent(agent_dir: Path, language: Language) -> bool:
             max_steps=15,
         )
     except Exception as exc:
-        logger.warning("Agent-based env setup failed: %s", exc)
+        logger.warning("Agent-based env setup failed: %s", exc, exc_info=True)
         return False
 
     if language == Language.PYTHON:
@@ -876,15 +879,31 @@ class AgentRunner:
         if self._env_provisioned:
             return
 
+        logger.info(
+            "AgentRunner.ensure_environment language=%s env_dir=%s entry=%s",
+            self.language.value,
+            self.env_dir,
+            self.entry_file,
+        )
+
         if not has_dep_manifest(self.env_dir, self.language):
             ext_imports = detect_external_imports(
                 self.env_dir, self.entry_file, self.language
             )
             if ext_imports:
+                logger.error(
+                    "Missing dependency manifest for %s; detected external imports: %s",
+                    self.env_dir,
+                    ext_imports,
+                )
                 raise MissingDependenciesError(self.env_dir, self.language, ext_imports)
 
         if self.language == Language.PYTHON:
             self._python_path = _provision_python(self.env_dir)
+            logger.info(
+                "AgentRunner.ensure_environment python interpreter resolved: %s",
+                self._python_path,
+            )
         else:
             _provision_js(self.env_dir)
 
@@ -914,6 +933,15 @@ class AgentRunner:
 
         input_json = json.dumps(input_data, default=str)
 
+        logger.debug(
+            "AgentRunner.run spawning subprocess cmd=%s cwd=%s timeout=%ds trace_file=%s input_bytes=%d",
+            cmd,
+            self.agent_dir,
+            effective_timeout,
+            trace_file,
+            len(input_json),
+        )
+
         try:
             proc = subprocess.run(
                 cmd,
@@ -925,6 +953,11 @@ class AgentRunner:
                 env=env,
             )
         except subprocess.TimeoutExpired as exc:
+            logger.warning(
+                "AgentRunner.run subprocess timeout after %ds cmd=%s",
+                effective_timeout,
+                cmd,
+            )
             partial_stderr = ""
             if exc.stderr:
                 partial_stderr = (
@@ -947,13 +980,28 @@ class AgentRunner:
                 returncode=-1,
             )
         except FileNotFoundError as exc:
+            logger.error(
+                "AgentRunner.run interpreter not found cmd=%s err=%s", cmd, exc
+            )
             return RunOutput(
                 success=False,
                 error=f"Interpreter not found: {exc}",
                 returncode=-1,
             )
 
+        logger.debug(
+            "AgentRunner.run subprocess exited rc=%d stdout_bytes=%d stderr_bytes=%d",
+            proc.returncode,
+            len(proc.stdout or ""),
+            len(proc.stderr or ""),
+        )
+
         if proc.returncode != 0:
+            logger.warning(
+                "AgentRunner.run subprocess non-zero exit rc=%d stderr_tail=%s",
+                proc.returncode,
+                (proc.stderr or "")[-500:],
+            )
             return RunOutput(
                 success=False,
                 error=proc.stderr[-4000:]

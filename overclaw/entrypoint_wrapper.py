@@ -125,9 +125,85 @@ IMPORTANT:
 - Do NOT install packages or run the agent
 - Use absolute imports that work when the agent source directory is on
   sys.path (e.g. ``from llm_red_team_agent.agent import root_agent``)
+- Do NOT manipulate ``sys.path`` yourself.  OverClaw prepends a bootstrap
+  header to this wrapper that places the agent source directory
+  ({agent_dir}) at ``sys.path[0]`` at runtime, so bare imports of modules
+  that live directly inside that directory (e.g. ``from news_monitor
+  import extract_latest_article``) will resolve.
 """
 
 WRAPPER_REFUSED_MARKER = "# OVERCLAW_WRAPPER_REFUSED"
+
+_SYS_PATH_BOOTSTRAP_BEGIN = "# --- OVERCLAW_SYS_PATH_BOOTSTRAP (auto-generated, do not edit) ---"
+_SYS_PATH_BOOTSTRAP_END = "# --- END OVERCLAW_SYS_PATH_BOOTSTRAP ---"
+
+
+def _instrumented_agent_dir_relpath(agent_dir: Path, agent_name: str) -> Path:
+    """Where the agent source sits inside the instrumented copy, relative to the wrapper.
+
+    Mirrors the layout produced by
+    :func:`overclaw.commands.agent_env.instrument_agent_files`:
+    the copy boundary is ``project_root_from_agent_file`` (or, fallback,
+    the agent file's parent).  The wrapper lives at the top of the
+    instrumented dir, so the relative path is simply ``agent_dir``
+    relative to that copy root.
+    """
+    from overclaw.core.registry import project_root_from_agent_file
+
+    original_root = project_root_from_agent_file(agent_dir) or agent_dir
+    try:
+        return agent_dir.relative_to(original_root)
+    except ValueError:
+        return Path(".")
+
+
+def _render_sys_path_bootstrap(agent_relpath: Path) -> str:
+    """Return a small deterministic header that puts the agent dir on sys.path.
+
+    The header is prepended to every generated wrapper so that bare imports
+    like ``from news_monitor import ...`` resolve at runtime, matching the
+    promise made to the coding agent in ``_WRAPPER_PROMPT``.
+    """
+    parts = agent_relpath.parts if agent_relpath != Path(".") else ()
+    path_parts = [repr(p) for p in parts] or ["'.'"]
+    join_args = ", ".join(
+        [
+            "_overclaw_os.path.dirname(_overclaw_os.path.abspath(__file__))",
+            *path_parts,
+        ]
+    )
+    return (
+        f"{_SYS_PATH_BOOTSTRAP_BEGIN}\n"
+        "import os as _overclaw_os\n"
+        "import sys as _overclaw_sys\n"
+        f"_OVERCLAW_AGENT_DIR = _overclaw_os.path.normpath(_overclaw_os.path.join({join_args}))\n"
+        "if _OVERCLAW_AGENT_DIR not in _overclaw_sys.path:\n"
+        "    _overclaw_sys.path.insert(0, _OVERCLAW_AGENT_DIR)\n"
+        f"{_SYS_PATH_BOOTSTRAP_END}\n\n"
+    )
+
+
+def _prepend_sys_path_bootstrap(wp: Path, agent_relpath: Path) -> None:
+    """Inject the sys.path bootstrap at the top of the generated wrapper.
+
+    Idempotent: if the marker is already present, we rewrite the block so
+    re-generation stays in sync with the current instrumented layout.
+    """
+    content = wp.read_text(encoding="utf-8")
+
+    if _SYS_PATH_BOOTSTRAP_BEGIN in content:
+        before, _, rest = content.partition(_SYS_PATH_BOOTSTRAP_BEGIN)
+        _, _, after = rest.partition(_SYS_PATH_BOOTSTRAP_END + "\n")
+        content = before + after
+
+    header = _render_sys_path_bootstrap(agent_relpath)
+
+    shebang = ""
+    if content.startswith("#!"):
+        shebang, _, content = content.partition("\n")
+        shebang += "\n"
+
+    wp.write_text(shebang + header + content, encoding="utf-8")
 
 
 def _get_model() -> str | None:
@@ -325,6 +401,14 @@ def generate_entrypoint_wrapper(
         )
         wp.unlink(missing_ok=True)
         return "refused"
+
+    # Guarantee that bare imports from the agent source directory resolve at
+    # runtime.  The coding agent is told this happens automatically (see
+    # ``_WRAPPER_PROMPT``); we make that promise true by prepending a
+    # deterministic ``sys.path`` bootstrap computed from the layout produced
+    # by ``instrument_agent_files``.
+    agent_relpath = _instrumented_agent_dir_relpath(agent_dir, agent_name)
+    _prepend_sys_path_bootstrap(wp, agent_relpath)
 
     logger.info("Entrypoint wrapper generated at %s", wp)
     return wp

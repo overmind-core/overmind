@@ -282,7 +282,7 @@ class TestValidateEntrypoint:
 
     def test_function_with_space_before_paren(self, tmp_project):
         agent_file = tmp_project / "agents" / "agent1" / "sample_agent.py"
-        agent_file.write_text("def spaced_run (input_data):\n    pass\n")
+        agent_file.write_text("def spaced_run (input_data):\n    return {}\n")
         file_path, fn = validate_entrypoint("agents.agent1.sample_agent:spaced_run")
         assert fn == "spaced_run"
 

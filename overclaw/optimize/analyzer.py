@@ -1707,6 +1707,11 @@ def generate_candidates(
         if num_candidates <= 1:
             all_results.append(_agentic_fork(None))
         else:
+            _log.info(
+                "Spawning %d agentic codegen fork(s) in parallel (workers=%d)",
+                num_candidates,
+                min(num_candidates, 5),
+            )
             with ThreadPoolExecutor(max_workers=min(num_candidates, 5)) as pool:
                 futures = []
                 for idx, focus in enumerate(focus_assignments):
@@ -1717,7 +1722,21 @@ def generate_candidates(
                         )
                     else:
                         futures.append(pool.submit(_agentic_fork, focus))
-                all_results = [f.result() for f in futures]
+                all_results = []
+                for i, fut in enumerate(futures):
+                    try:
+                        all_results.append(fut.result())
+                    except Exception:
+                        _log.exception("Agentic codegen fork %d failed", i)
+                        all_results.append(
+                            {
+                                "analysis": "agentic fork crashed",
+                                "suggestions": [],
+                                "updated_code": None,
+                                "method": "failed",
+                                "_debug": {"fork_crash": True},
+                            }
+                        )
 
         has_any_output = any(
             r.get("updated_code") or r.get("bundle_updates") for r in all_results
@@ -1801,6 +1820,11 @@ def generate_candidates(
     if num_candidates <= 1:
         all_results.append(_codegen_for_focus(None))
     else:
+        _log.info(
+            "Spawning %d legacy codegen fork(s) in parallel (workers=%d)",
+            num_candidates,
+            min(num_candidates, 5),
+        )
         with ThreadPoolExecutor(max_workers=min(num_candidates, 5)) as pool:
             futures = []
             for idx, focus in enumerate(focus_assignments):
@@ -1811,7 +1835,21 @@ def generate_candidates(
                     )
                 else:
                     futures.append(pool.submit(_codegen_for_focus, focus))
-            all_results = [f.result() for f in futures]
+            all_results = []
+            for i, fut in enumerate(futures):
+                try:
+                    all_results.append(fut.result())
+                except Exception:
+                    _log.exception("Legacy codegen fork %d failed", i)
+                    all_results.append(
+                        {
+                            "analysis": "codegen crashed",
+                            "suggestions": [],
+                            "updated_code": None,
+                            "method": "failed",
+                            "_debug": {"fork_crash": True},
+                        }
+                    )
 
     has_any_output = any(
         r.get("updated_code") or r.get("bundle_updates") for r in all_results

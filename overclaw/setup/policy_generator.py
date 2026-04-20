@@ -14,6 +14,7 @@ The policy has two layers:
 """
 
 import json
+import logging
 import re
 from pathlib import Path
 
@@ -23,9 +24,12 @@ from rich.panel import Panel
 from rich.prompt import Prompt
 from rich.rule import Rule
 
+from overclaw.core.logging import stage
 from overclaw.utils.display import BRAND, overmind_prompt
 from overclaw.utils.llm import llm_completion
 from overclaw.utils.display import make_spinner_progress
+
+logger = logging.getLogger("overclaw.setup.policy_generator")
 from overclaw.prompts.policy_generator import (
     POLICY_FROM_CODE_PROMPT,
     POLICY_FROM_DOCUMENT_PROMPT,
@@ -162,6 +166,7 @@ def elicit_policy(
     """
     description = analysis.get("description", "AI agent")
     agent_name = description.split(":")[0].strip() if ":" in description else "Agent"
+    logger.info("elicit_policy starting agent=%s model=%s", agent_name, model)
 
     console.print()
     console.print(Rule(style="dim"))
@@ -216,36 +221,51 @@ def elicit_policy(
 
     analysis_for_llm = {k: v for k, v in analysis.items() if not k.startswith("_")}
 
-    with make_spinner_progress(console) as progress:
-        task = progress.add_task("  Generating agent policy…")
+    with stage(
+        "setup.policy.generate",
+        logger=logger,
+        agent=agent_name,
+        model=model,
+        decision_rules_len=len(decision_rules or ""),
+        hard_constraints_len=len(hard_constraints or ""),
+        edge_cases_len=len(edge_cases or ""),
+        terminology_len=len(terminology or ""),
+    ) as info:
+        with make_spinner_progress(console) as progress:
+            task = progress.add_task("  Generating agent policy…")
 
-        response = llm_completion(
-            model,
-            [
-                {
-                    "role": "user",
-                    "content": POLICY_GENERATION_PROMPT.format(
-                        analysis_json=json.dumps(analysis_for_llm, indent=2),
-                        decision_rules=decision_rules,
-                        hard_constraints=hard_constraints,
-                        edge_cases=edge_cases or "(none provided)",
-                        terminology=terminology or "(none provided)",
-                        agent_name=agent_name,
-                    ),
-                }
-            ],
-            temperature=0.3,
-            max_tokens=4000,
-        )
-        progress.update(task, completed=True)
+            response = llm_completion(
+                model,
+                [
+                    {
+                        "role": "user",
+                        "content": POLICY_GENERATION_PROMPT.format(
+                            analysis_json=json.dumps(analysis_for_llm, indent=2),
+                            decision_rules=decision_rules,
+                            hard_constraints=hard_constraints,
+                            edge_cases=edge_cases or "(none provided)",
+                            terminology=terminology or "(none provided)",
+                            agent_name=agent_name,
+                        ),
+                    }
+                ],
+                temperature=0.3,
+                max_tokens=4000,
+            )
+            progress.update(task, completed=True)
 
-    content = response.choices[0].message.content or ""
-    md_text, policy_data = _extract_markdown_and_json(content)
+        content = response.choices[0].message.content or ""
+        md_text, policy_data = _extract_markdown_and_json(content)
 
-    if not policy_data:
-        policy_data = _default_policy_data()
-    if not md_text:
-        md_text = f"# Agent Policy: {agent_name}\n\n(Policy generation failed — please edit manually.)"
+        if not policy_data:
+            policy_data = _default_policy_data()
+            info["policy_default"] = True
+        if not md_text:
+            md_text = f"# Agent Policy: {agent_name}\n\n(Policy generation failed — please edit manually.)"
+            info["markdown_missing"] = True
+
+        info["md_chars"] = len(md_text)
+        info["policy_keys"] = list(policy_data.keys()) if isinstance(policy_data, dict) else []
 
     display_policy(md_text, policy_data, console)
     return md_text, policy_data
@@ -266,33 +286,42 @@ def generate_policy_from_document(
     agent_name = description.split(":")[0].strip() if ":" in description else "Agent"
     analysis_for_llm = {k: v for k, v in analysis.items() if not k.startswith("_")}
 
-    with make_spinner_progress(console) as progress:
-        task = progress.add_task("  Structuring policy from document…")
+    with stage(
+        "setup.policy.from_document",
+        logger=logger,
+        agent=agent_name,
+        model=model,
+        document=document_path,
+        doc_chars=len(user_doc),
+    ) as info:
+        with make_spinner_progress(console) as progress:
+            task = progress.add_task("  Structuring policy from document…")
 
-        response = llm_completion(
-            model,
-            [
-                {
-                    "role": "user",
-                    "content": POLICY_FROM_DOCUMENT_PROMPT.format(
-                        analysis_json=json.dumps(analysis_for_llm, indent=2),
-                        user_document=user_doc,
-                        agent_name=agent_name,
-                    ),
-                }
-            ],
-            temperature=0.2,
-            max_tokens=4000,
-        )
-        progress.update(task, completed=True)
+            response = llm_completion(
+                model,
+                [
+                    {
+                        "role": "user",
+                        "content": POLICY_FROM_DOCUMENT_PROMPT.format(
+                            analysis_json=json.dumps(analysis_for_llm, indent=2),
+                            user_document=user_doc,
+                            agent_name=agent_name,
+                        ),
+                    }
+                ],
+                temperature=0.2,
+                max_tokens=4000,
+            )
+            progress.update(task, completed=True)
 
-    content = response.choices[0].message.content or ""
-    md_text, policy_data = _extract_markdown_and_json(content)
+        content = response.choices[0].message.content or ""
+        md_text, policy_data = _extract_markdown_and_json(content)
 
-    if not policy_data:
-        policy_data = _default_policy_data()
-    if not md_text:
-        md_text = user_doc
+        if not policy_data:
+            policy_data = _default_policy_data()
+        if not md_text:
+            md_text = user_doc
+        info["md_chars"] = len(md_text)
 
     display_policy(md_text, policy_data, console)
     return md_text, policy_data
@@ -315,38 +344,45 @@ def generate_policy_from_code(
     agent_name = description.split(":")[0].strip() if ":" in description else "Agent"
     analysis_for_llm = {k: v for k, v in analysis.items() if not k.startswith("_")}
 
-    with make_spinner_progress(console) as progress:
-        task = progress.add_task("  Inferring policy from agent code…")
+    with stage(
+        "setup.policy.from_code",
+        logger=logger,
+        agent=agent_name,
+        model=model,
+    ) as info:
+        with make_spinner_progress(console) as progress:
+            task = progress.add_task("  Inferring policy from agent code…")
 
-        response = llm_completion(
-            model,
-            [
-                {
-                    "role": "user",
-                    "content": POLICY_FROM_CODE_PROMPT.format(
-                        analysis_json=json.dumps(analysis_for_llm, indent=2),
-                        agent_code_section=agent_code_section,
-                        agent_name=agent_name,
-                    ),
-                }
-            ],
-            temperature=0.2,
-            max_tokens=3000,
-        )
-        progress.update(task, completed=True)
+            response = llm_completion(
+                model,
+                [
+                    {
+                        "role": "user",
+                        "content": POLICY_FROM_CODE_PROMPT.format(
+                            analysis_json=json.dumps(analysis_for_llm, indent=2),
+                            agent_code_section=agent_code_section,
+                            agent_name=agent_name,
+                        ),
+                    }
+                ],
+                temperature=0.2,
+                max_tokens=3000,
+            )
+            progress.update(task, completed=True)
 
-    content = response.choices[0].message.content or ""
-    md_text, policy_data = _extract_markdown_and_json(content)
+        content = response.choices[0].message.content or ""
+        md_text, policy_data = _extract_markdown_and_json(content)
 
-    if not policy_data:
-        policy_data = _default_policy_data()
-    if not md_text:
-        md_text = (
-            f"<!-- Auto-generated from code analysis. "
-            f"Edit to improve optimization quality. -->\n\n"
-            f"# Agent Policy: {agent_name}\n\n"
-            f"(Auto-generated — edit this file to add domain knowledge.)"
-        )
+        if not policy_data:
+            policy_data = _default_policy_data()
+        if not md_text:
+            md_text = (
+                f"<!-- Auto-generated from code analysis. "
+                f"Edit to improve optimization quality. -->\n\n"
+                f"# Agent Policy: {agent_name}\n\n"
+                f"(Auto-generated — edit this file to add domain knowledge.)"
+            )
+        info["md_chars"] = len(md_text)
 
     return md_text, policy_data
 
@@ -370,43 +406,53 @@ def improve_existing_policy(
     agent_name = description.split(":")[0].strip() if ":" in description else "Agent"
     analysis_for_llm = {k: v for k, v in analysis.items() if not k.startswith("_")}
 
-    with make_spinner_progress(console) as progress:
-        task = progress.add_task("  Analyzing policy against agent code…")
+    with stage(
+        "setup.policy.improve",
+        logger=logger,
+        agent=agent_name,
+        model=model,
+        existing_path=existing_policy_path,
+        existing_chars=len(existing_md),
+    ) as info:
+        with make_spinner_progress(console) as progress:
+            task = progress.add_task("  Analyzing policy against agent code…")
 
-        response = llm_completion(
-            model,
-            [
-                {
-                    "role": "user",
-                    "content": POLICY_IMPROVE_PROMPT.format(
-                        analysis_json=json.dumps(analysis_for_llm, indent=2),
-                        agent_code_section=agent_code_section,
-                        existing_policy=existing_md,
-                        agent_name=agent_name,
-                    ),
-                }
-            ],
-            temperature=0.2,
-            max_tokens=4000,
-        )
-        progress.update(task, completed=True)
+            response = llm_completion(
+                model,
+                [
+                    {
+                        "role": "user",
+                        "content": POLICY_IMPROVE_PROMPT.format(
+                            analysis_json=json.dumps(analysis_for_llm, indent=2),
+                            agent_code_section=agent_code_section,
+                            existing_policy=existing_md,
+                            agent_name=agent_name,
+                        ),
+                    }
+                ],
+                temperature=0.2,
+                max_tokens=4000,
+            )
+            progress.update(task, completed=True)
 
-    content = response.choices[0].message.content or ""
+        content = response.choices[0].message.content or ""
 
-    changes_blocks = re.findall(r"```changes\s*\n(.*?)```", content, re.DOTALL)
-    change_summary = changes_blocks[0].strip() if changes_blocks else ""
+        changes_blocks = re.findall(r"```changes\s*\n(.*?)```", content, re.DOTALL)
+        change_summary = changes_blocks[0].strip() if changes_blocks else ""
 
-    if not change_summary:
-        lines = content.split("```")[0].strip().splitlines()
-        bullet_lines = [ln.strip() for ln in lines if ln.strip().startswith("-")]
-        change_summary = "\n".join(bullet_lines[:5])
+        if not change_summary:
+            lines = content.split("```")[0].strip().splitlines()
+            bullet_lines = [ln.strip() for ln in lines if ln.strip().startswith("-")]
+            change_summary = "\n".join(bullet_lines[:5])
 
-    md_text, policy_data = _extract_markdown_and_json(content)
+        md_text, policy_data = _extract_markdown_and_json(content)
 
-    if not policy_data:
-        policy_data = _default_policy_data()
-    if not md_text:
-        md_text = existing_md
+        if not policy_data:
+            policy_data = _default_policy_data()
+        if not md_text:
+            md_text = existing_md
+        info["md_chars"] = len(md_text)
+        info["change_lines"] = len(change_summary.splitlines()) if change_summary else 0
 
     return md_text, policy_data, change_summary
 
@@ -451,24 +497,33 @@ def refine_policy(
         agent_name=agent_name,
     )
 
-    with make_spinner_progress(console) as progress:
-        task = progress.add_task("  Refining policy…")
+    with stage(
+        "setup.policy.refine",
+        logger=logger,
+        agent=agent_name,
+        model=model,
+        feedback_len=len(feedback or ""),
+        additions_len=len(additions or ""),
+    ) as info:
+        with make_spinner_progress(console) as progress:
+            task = progress.add_task("  Refining policy…")
 
-        response = llm_completion(
-            model,
-            [{"role": "user", "content": prompt}],
-            temperature=0.3,
-            max_tokens=4000,
-        )
-        progress.update(task, completed=True)
+            response = llm_completion(
+                model,
+                [{"role": "user", "content": prompt}],
+                temperature=0.3,
+                max_tokens=4000,
+            )
+            progress.update(task, completed=True)
 
-    content = response.choices[0].message.content or ""
-    md_text, policy_data = _extract_markdown_and_json(content)
+        content = response.choices[0].message.content or ""
+        md_text, policy_data = _extract_markdown_and_json(content)
 
-    if not policy_data:
-        policy_data = current_data
-    if not md_text:
-        md_text = current_md
+        if not policy_data:
+            policy_data = current_data
+        if not md_text:
+            md_text = current_md
+        info["md_chars"] = len(md_text)
 
     display_policy(md_text, policy_data, console)
     return md_text, policy_data

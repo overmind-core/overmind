@@ -114,7 +114,10 @@ CRITICAL RULES:
 - expected_output enum fields MUST use ONLY the allowed values from OutputSchema
 - expected_output number fields MUST be within the specified ranges
 - expected_output MUST be consistent with the policy's decision mapping
-- All required fields in both input and expected_output MUST be present
+- All NON-OPTIONAL fields in input and expected_output MUST be present
+- Fields marked [optional] in OutputSchema are only present on SOME code paths
+  (e.g. error_message only when status=error). OMIT them when the branch does
+  not populate them — do NOT emit null/empty placeholders.
 - For edge cases: test boundary conditions, missing optional fields, ambiguous inputs
 - Each case must be DISTINCT from the others and from existing cases
 

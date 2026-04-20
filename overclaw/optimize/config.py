@@ -144,6 +144,31 @@ class Config:
     # When False (default), regression checks are faster but may miss
     # semantic quality regressions on judge-heavy specs.
     judge_in_regression: bool = False
+    # Read-only context files (globs relative to project root), merged into the
+    # bundle but never edited by the coding agent.
+    context_scope: list[str] = field(default_factory=list)
+    # Extra path globs to exclude from BFS (merged with .overclawignore).
+    exclude_scope: list[str] = field(default_factory=list)
+    # Cap how many files import-resolution collects; also bounds prompt size.
+    max_resolved_files: int = 24
+    max_total_chars: int = 60_000
+
+
+def apply_eval_spec_scope(cfg: Config, spec: dict) -> None:
+    """Fill scope-related fields from ``eval_spec.json`` when not already set."""
+    scope = spec.get("scope") or {}
+    if not cfg.optimizable_scope:
+        paths = scope.get("optimizable_paths")
+        if paths:
+            cfg.optimizable_scope = list(paths)
+    if not cfg.context_scope:
+        ctx = scope.get("context_paths")
+        if ctx:
+            cfg.context_scope = list(ctx)
+    if not cfg.exclude_scope:
+        excl = scope.get("exclude_paths")
+        if excl:
+            cfg.exclude_scope = list(excl)
 
 
 def _select_backtest_models(console: Console) -> list[str]:
@@ -206,7 +231,14 @@ def _require_analyzer_model_env_fast(console: Console) -> str:
     return normalize_to_litellm_model_id(raw) or raw
 
 
-def _collect_config_fast(agent_name: str, console: Console) -> Config:
+def _collect_config_fast(
+    agent_name: str,
+    console: Console,
+    *,
+    scope_globs: list[str] | None = None,
+    max_files: int | None = None,
+    max_chars: int | None = None,
+) -> Config:
     """Build Config with the same defaults as accepting every interactive prompt.
 
     Requires ANALYZER_MODEL. Data is always loaded from disk (prepared
@@ -242,6 +274,10 @@ def _collect_config_fast(agent_name: str, console: Console) -> Config:
 
     cfg.eval_spec_path = str(spec_path)
 
+    with open(spec_path, encoding="utf-8") as f:
+        spec = json.load(f)
+    apply_eval_spec_scope(cfg, spec)
+
     data_path = _agent_dataset_path(cfg.agent_name)
     if not data_path.exists():
         console.print(
@@ -259,15 +295,35 @@ def _collect_config_fast(agent_name: str, console: Console) -> Config:
     console.print(f"  [dim]Dataset:  {rel(data_path)}[/dim]")
     console.print(f"  [dim]Model:    {cfg.analyzer_model}[/dim]")
 
+    if scope_globs:
+        cfg.optimizable_scope = list(scope_globs)
+    if max_files is not None:
+        cfg.max_resolved_files = max_files
+    if max_chars is not None:
+        cfg.max_total_chars = max_chars
+
     return cfg
 
 
-def collect_config(agent_name: str, *, fast: bool = False) -> Config:
+def collect_config(
+    agent_name: str,
+    *,
+    fast: bool = False,
+    scope_globs: list[str] | None = None,
+    max_files: int | None = None,
+    max_chars: int | None = None,
+) -> Config:
     """Collect optimization settings (interactive, or defaults when fast=True)."""
     load_overclaw_dotenv()
     console = Console()
     if fast:
-        return _collect_config_fast(agent_name, console)
+        return _collect_config_fast(
+            agent_name,
+            console,
+            scope_globs=scope_globs,
+            max_files=max_files,
+            max_chars=max_chars,
+        )
 
     agent_path, fn_name = resolve_agent(agent_name)
     cfg = Config(
@@ -312,8 +368,9 @@ def collect_config(agent_name: str, *, fast: bool = False) -> Config:
 
     cfg.eval_spec_path = str(spec_path)
 
-    with open(spec_path) as f:
+    with open(spec_path, encoding="utf-8") as f:
         spec = json.load(f)
+    apply_eval_spec_scope(cfg, spec)
 
     console.print(f"  [dim]Spec:  {rel(spec_path)}[/dim]")
 
@@ -566,5 +623,12 @@ def collect_config(agent_name: str, *, fast: bool = False) -> Config:
         "Proceed with these settings?", default=True, console=console
     ):
         raise SystemExit("Aborted by user.")
+
+    if scope_globs:
+        cfg.optimizable_scope = list(scope_globs)
+    if max_files is not None:
+        cfg.max_resolved_files = max_files
+    if max_chars is not None:
+        cfg.max_total_chars = max_chars
 
     return cfg

@@ -30,16 +30,22 @@ from overclaw.commands.setup_cmd import (
 class TestValidateAgentEntrypoint:
     def test_valid(self, tmp_path):
         agent = tmp_path / "agent.py"
-        agent.write_text("def run(x):\n    pass\n")
+        agent.write_text("def run(x):\n    return {}\n")
         console = MagicMock()
-        _validate_agent_entrypoint(str(agent), "run", console)
+        ap, fn = _validate_agent_entrypoint(
+            str(agent), "run", "testagent", console, fast=True
+        )
+        assert ap == str(agent)
+        assert fn == "run"
 
     def test_missing_function(self, tmp_path):
         agent = tmp_path / "agent.py"
         agent.write_text("def other(x):\n    pass\n")
         console = MagicMock()
         with pytest.raises(SystemExit):
-            _validate_agent_entrypoint(str(agent), "run", console)
+            _validate_agent_entrypoint(
+                str(agent), "run", "testagent", console, fast=True
+            )
 
 
 class TestPathHelpers:

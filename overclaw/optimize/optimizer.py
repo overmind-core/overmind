@@ -314,12 +314,30 @@ class Optimizer:
 
         # Build the agent bundle for multi-file context
         self._bundle = self._build_bundle()
-        if self._bundle and self._bundle.is_multi_file():
+        _opt_logger = logging.getLogger(__name__)
+        if self._bundle:
             n_files = len(self._bundle.original_files)
+            total_chars = sum(len(s) for s in self._bundle.original_files.values())
             n_opt = self._bundle.optimizable_file_count()
-            self.console.print(
-                f"  [dim]Bundle:[/dim] {n_files} file(s) resolved, {n_opt} optimizable"
+            n_ro = max(0, n_files - n_opt)
+            cap = getattr(self.config, "max_total_chars", 60_000)
+            _opt_logger.info(
+                "bundle: files=%d chars=%d/%d optimizable=%d read_only=%d",
+                n_files,
+                total_chars,
+                cap,
+                n_opt,
+                n_ro,
             )
+            if self._bundle.is_multi_file():
+                self.console.print(
+                    f"  [dim]Bundle:[/dim] {n_files} file(s) resolved, {n_opt} optimizable, "
+                    f"{n_ro} read-only, {total_chars}/{cap} chars"
+                )
+            else:
+                self.console.print(
+                    f"  [dim]Bundle:[/dim] {n_files} file(s), {total_chars}/{cap} chars"
+                )
 
         # Provision agent environment (install deps into venv / node_modules)
         with make_spinner_progress(self.console, transient=True) as _prov:
@@ -2006,32 +2024,9 @@ class Optimizer:
 
     def _build_bundle(self) -> AgentBundle | None:
         """Build an ``AgentBundle`` from the current config."""
-        from overclaw.core.registry import project_root, project_root_from_agent_file
+        from overclaw.optimize.bundle_factory import build_agent_bundle
 
-        pr = project_root_from_agent_file(self.config.agent_path)
-        if pr is None:
-            try:
-                pr = project_root()
-            except SystemExit:
-                return None
-        project_root_str = str(pr)
-
-        opt_scope = getattr(self.config, "optimizable_scope", []) or []
-        try:
-            if opt_scope:
-                return AgentBundle.from_entry_point(
-                    self.config.agent_path,
-                    project_root_str,
-                    self.config.entrypoint_fn,
-                    optimizable_paths=opt_scope,
-                )
-            return AgentBundle.from_entry_point(
-                self.config.agent_path,
-                project_root_str,
-                self.config.entrypoint_fn,
-            )
-        except Exception:
-            return None
+        return build_agent_bundle(self.config)
 
     def _rebuild_bundle(self) -> None:
         """Rebuild the bundle from current ``_best_files`` state.

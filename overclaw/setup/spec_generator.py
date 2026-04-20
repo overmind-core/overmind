@@ -172,6 +172,9 @@ def _build_spec(
     if analysis.get("_entrypoint_fn"):
         spec["entrypoint_fn"] = analysis["_entrypoint_fn"]
 
+    if analysis.get("scope"):
+        spec["scope"] = analysis["scope"]
+
     if tool_config:
         spec["tool_config"] = tool_config
         spec["tool_usage_weight"] = tool_usage_weight

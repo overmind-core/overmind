@@ -272,6 +272,23 @@ After optimization, results are saved under `.overclaw/agents/<name>/`:
 | `experiments/traces/`       | Detailed JSON traces of every agent run      |
 | `experiments/report.md`     | Summary report with scores and diffs         |
 
+### Bundle scope and caps
+
+For large repositories, the optimizer resolves a **bounded** import closure (defaults: 24 files, 60k characters) and skips common paths (`tests/`, `docs/`, `.overclaw/`, etc.) using built-in rules plus optional `.overclawignore` / `.gitignore`.
+
+After `overclaw setup`, `eval_spec.json` may include a `scope` block (`optimizable_paths`, `context_paths`, `exclude_paths` as globs relative to the project root). Inspect what will load without running an LLM:
+
+```bash
+overclaw doctor my-agent
+```
+
+One-off overrides:
+
+```bash
+overclaw optimize my-agent --scope "myagent/prompts/**/*.py" --max-files 32 --max-chars 80000
+overclaw setup my-agent --scope "agents/core/*.py"   # hints for the analyzer
+```
+
 ## CLI reference
 
 ```
@@ -284,6 +301,7 @@ overclaw agent remove <name>                         Remove from registry
 overclaw agent validate <name> --data <path>         Run first test case to verify entrypoint
 overclaw setup <name> [--fast] [--policy PATH]       Analyze agent, build eval spec
 overclaw optimize <name> [--fast]                    Run optimization loop
+overclaw doctor <name>                               Diagnose bundle scope (read-only)
 ```
 
 Run `overclaw <command> --help` for full documentation on any command.
