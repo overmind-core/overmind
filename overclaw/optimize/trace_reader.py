@@ -34,7 +34,7 @@ class ParsedTrace:
     """Aggregated data extracted from an overmind-sdk trace file."""
 
     tool_trace: list[dict] = field(default_factory=list)
-    """tool_trace items: {name, args, result, error, latency_ms}"""
+    """tool_trace items: {name, args, result, error, latency_ms, source?}"""
 
     total_tokens: int = 0
     total_cost: float = 0.0
@@ -43,6 +43,14 @@ class ParsedTrace:
 
     llm_spans: list[dict] = field(default_factory=list)
     """All raw LLM spans (openai instrumentation scope)."""
+
+    source_tags: list[dict] = field(default_factory=list)
+    """Per-call provenance tags harvested from the shadow sidecar file.
+
+    Each tag is ``{"name": str, "source": str, "reason": str, "ts": float}``.
+    Empty when the run happened in normal subprocess mode.  Extended by
+    :func:`attach_shadow_provenance` after parsing the trace.
+    """
 
 
 # ---------------------------------------------------------------------------
@@ -230,3 +238,36 @@ def _process_llm_spans(spans: list[dict], result: ParsedTrace) -> None:
             "parent_span_id": span.get("parent_span_id"),
         }
         result.llm_spans.append(parsed_llm)
+
+
+# ---------------------------------------------------------------------------
+# Shadow provenance decoration
+# ---------------------------------------------------------------------------
+
+
+def attach_shadow_provenance(
+    traces: list[ParsedTrace], sidecar_tags: list[list[dict]]
+) -> None:
+    """Copy per-case shadow sidecar tags onto matching :class:`ParsedTrace`s.
+
+    The shadow runtime writes one provenance JSONL file per subprocess call
+    (see :mod:`overclaw.optimize.shadow_runtime`).  *sidecar_tags* has the
+    same length and ordering as *traces* — index ``i`` in *sidecar_tags*
+    belongs to ``traces[i]``.  When the shadow bootstrap is not active the
+    caller passes empty lists and nothing changes.
+
+    Tool-trace rows whose ``name`` matches a tag's ``name`` (or the literal
+    LLM identifier ``"llm:<model>"``) also gain a ``"source"`` key so
+    downstream scoring can down-weight simulated rows.
+    """
+    for trace, tags in zip(traces, sidecar_tags):
+        if not tags:
+            continue
+        trace.source_tags.extend(tags)
+        if not trace.tool_trace:
+            continue
+        tag_by_name = {t.get("name", ""): t for t in tags}
+        for row in trace.tool_trace:
+            tag = tag_by_name.get(row.get("name", ""))
+            if tag:
+                row["source"] = tag.get("source", "")

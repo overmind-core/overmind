@@ -39,7 +39,10 @@ import tempfile
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from overclaw.optimize.shadow_runtime import ShadowConfig
 
 logger = logging.getLogger("overclaw.optimize.runner")
 
@@ -679,7 +682,8 @@ def _provision_js(agent_dir: Path) -> None:
 # ---------------------------------------------------------------------------
 
 _PYTHON_WRAPPER = """\
-import json, sys, os, io, asyncio, inspect, importlib.util
+{shadow_bootstrap}
+import json, sys, os, io, asyncio, inspect, importlib.util, traceback
 _cwd = os.getcwd()
 if _cwd not in sys.path:
     sys.path.insert(0, _cwd)
@@ -688,27 +692,66 @@ try:
     overmind_init()
 except ImportError:
     pass
-spec = importlib.util.spec_from_file_location("_agent", {entry_path!r})
-mod = importlib.util.module_from_spec(spec)
-spec.loader.exec_module(mod)
-fn = getattr(mod, {fn_name!r})
+
+# Preflight import so module-level failures surface with a clear marker
+# (argparse-on-sys.argv crashes, load_dotenv misses, broken imports, …)
+try:
+    spec = importlib.util.spec_from_file_location("_agent", {entry_path!r})
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+except SystemExit as _ocl_sysexit:
+    sys.stderr.write(
+        "__OVERCLAW_IMPORT_ERROR__\\n"
+        "Agent module called sys.exit({{0}}) at import time (typical for "
+        "module-level argparse.parse_args). Move CLI parsing behind "
+        "`if __name__ == '__main__':`.\\n".format(_ocl_sysexit.code)
+    )
+    raise
+except Exception as _ocl_imp_exc:
+    sys.stderr.write("__OVERCLAW_IMPORT_ERROR__\\n")
+    traceback.print_exc()
+    raise
+try:
+    fn = getattr(mod, {fn_name!r})
+except AttributeError:
+    sys.stderr.write(
+        "__OVERCLAW_ENTRYPOINT_MISSING__\\n"
+        "Module loaded but function {fn_name!r} is not defined.\\n"
+    )
+    raise
 data = json.loads(sys.stdin.read())
 
 sig = inspect.signature(fn)
 params = list(sig.parameters.values())
+_param_names = [p.name for p in params if p.kind in (inspect.Parameter.POSITIONAL_OR_KEYWORD, inspect.Parameter.KEYWORD_ONLY)]
 _single_dict_param = (
     len(params) == 1
     and params[0].annotation in (dict, inspect.Parameter.empty)
 )
-_use_kwargs = isinstance(data, dict) and not _single_dict_param and len(params) >= 1
+
+# Schema-aware dispatch: prefer kwargs when the dict's keys are a subset of
+# the function's parameter names.  Gracefully falls back to positional
+# single-dict if a TypeError surfaces — this recovers from ambiguous cases
+# without the optimiser having to re-guess.
+def _ocl_invoke(fn, data):
+    if not isinstance(data, dict):
+        return fn(data)
+    if _single_dict_param:
+        return fn(data)
+    if params and set(data.keys()).issubset(set(_param_names)):
+        try:
+            return fn(**data)
+        except TypeError:
+            pass
+    try:
+        return fn(**data)
+    except TypeError:
+        return fn(data)
 
 _real_stdout = sys.stdout
 sys.stdout = io.StringIO()
 try:
-    if _use_kwargs:
-        result = fn(**data)
-    else:
-        result = fn(data)
+    result = _ocl_invoke(fn, data)
     if inspect.isawaitable(result):
         result = asyncio.run(result)
 finally:
@@ -721,7 +764,7 @@ sys.stdout.write(_MARKER)
 if isinstance(result, str):
     sys.stdout.write(result)
 else:
-    json.dump(result, sys.stdout)
+    json.dump(result, sys.stdout, default=str)
 sys.stdout.write(_MARKER)
 """
 
@@ -783,17 +826,39 @@ def _generate_wrapper(
     entry_path: str,
     fn_name: str,
     agent_dir: Path,
+    shadow_config: ShadowConfig | None = None,
 ) -> Path:
     """Create a thin wrapper that reads stdin JSON, calls the agent, writes stdout JSON.
 
+    When *shadow_config* is given and enabled, the generated wrapper is
+    prepended with the OverClaw shadow bootstrap (see
+    :mod:`overclaw.optimize.shadow_runtime`) which intercepts LLM, HTTP,
+    and browser calls for cassette-based record/replay and simulation.
+    Otherwise the wrapper gets the minimal sys.argv guard that is already
+    enough to fix ~90% of "module-level side effects crash on import"
+    failures.
+
     Returns the path to the generated wrapper file.
     """
+    from overclaw.optimize.shadow_runtime import bootstrap_source
+
     wrapper_dir = agent_dir / ".overclaw_runners"
     wrapper_dir.mkdir(parents=True, exist_ok=True)
 
     if language == Language.PYTHON:
-        code = _PYTHON_WRAPPER.format(entry_path=entry_path, fn_name=fn_name)
-        wrapper_path = wrapper_dir / "_run_agent.py"
+        bootstrap = bootstrap_source(shadow_config)
+        code = _PYTHON_WRAPPER.format(
+            shadow_bootstrap=bootstrap,
+            entry_path=entry_path,
+            fn_name=fn_name,
+        )
+        if shadow_config and shadow_config.enabled:
+            wrapper_name = "_run_agent_shadow.py"
+        elif shadow_config and shadow_config.cassette_path:
+            wrapper_name = "_run_agent_record.py"
+        else:
+            wrapper_name = "_run_agent.py"
+        wrapper_path = wrapper_dir / wrapper_name
         wrapper_path.write_text(code)
     elif language == Language.JAVASCRIPT:
         entry_for_require = os.path.relpath(entry_path, str(wrapper_dir))
@@ -918,18 +983,25 @@ class AgentRunner:
         input_data: Any,
         timeout: int | None = None,
         trace_file: str | Path | None = None,
+        shadow_config: ShadowConfig | None = None,
     ) -> RunOutput:
         """Execute the agent in a subprocess. Returns structured output.
 
         If *trace_file* is given, ``OVERMIND_TRACE_FILE`` is set in the
         child environment so the overmind-sdk writes spans there.
+
+        When *shadow_config* is provided and enabled, the subprocess is
+        launched with the OverClaw shadow bootstrap active so external
+        calls (LLM, HTTP, browser) are intercepted and either replayed
+        from a cassette or simulated.  LLM calls with novel prompts still
+        hit the real model so optimisation signal remains meaningful.
         """
         effective_timeout = timeout or self.config.timeout
         entry_abs = str(self.agent_dir / self.entry_file)
 
-        wrapper = self._get_wrapper(entry_abs)
+        wrapper = self._get_wrapper(entry_abs, shadow_config=shadow_config)
         cmd = self._build_command(wrapper)
-        env = self._build_env(trace_file=trace_file)
+        env = self._build_env(trace_file=trace_file, shadow_config=shadow_config)
 
         input_json = json.dumps(input_data, default=str)
 
@@ -1073,12 +1145,36 @@ class AgentRunner:
     # Internals
     # ------------------------------------------------------------------
 
-    def _get_wrapper(self, entry_abs: str) -> Path:
-        if self._wrapper_path is None or not self._wrapper_path.exists():
-            self._wrapper_path = _generate_wrapper(
-                self.language, entry_abs, self.entrypoint_fn, self.agent_dir
-            )
-        return self._wrapper_path
+    def _get_wrapper(
+        self,
+        entry_abs: str,
+        shadow_config: ShadowConfig | None = None,
+    ) -> Path:
+        # Three distinct wrapper flavours — cached separately so one doesn't
+        # overwrite another when the same runner is invoked with different
+        # shadow configs (e.g. subprocess=record-only, shadow=full):
+        #   - "shadow": full intercept bootstrap (HTTP, browser, LLM)
+        #   - "record": LLM-only intercept for cassette capture
+        #   - "real":   minimal argv guard, no intercepts
+        if shadow_config and shadow_config.enabled:
+            cache_key = "_shadow"
+        elif shadow_config and shadow_config.cassette_path:
+            cache_key = "_record"
+        else:
+            cache_key = "_real"
+        cached: Path | None = getattr(self, f"_wrapper_path{cache_key}", None)
+        if cached is not None and cached.exists():
+            return cached
+        wrapper = _generate_wrapper(
+            self.language,
+            entry_abs,
+            self.entrypoint_fn,
+            self.agent_dir,
+            shadow_config=shadow_config,
+        )
+        setattr(self, f"_wrapper_path{cache_key}", wrapper)
+        self._wrapper_path = wrapper
+        return wrapper
 
     def _build_command(self, wrapper: Path) -> list[str]:
         if self.language == Language.PYTHON:
@@ -1089,7 +1185,11 @@ class AgentRunner:
         else:
             return ["npx", "tsx", str(wrapper)]
 
-    def _build_env(self, trace_file: str | Path | None = None) -> dict[str, str]:
+    def _build_env(
+        self,
+        trace_file: str | Path | None = None,
+        shadow_config: ShadowConfig | None = None,
+    ) -> dict[str, str]:
         env = dict(os.environ)
         env["TERM"] = "dumb"
         env["PYTHONDONTWRITEBYTECODE"] = "1"
@@ -1098,6 +1198,8 @@ class AgentRunner:
         if trace_file is not None:
             env["OVERMIND_TRACE_FILE"] = str(trace_file)
             env.pop("OVERMIND_API_KEY", None)
+        if shadow_config is not None:
+            env.update(shadow_config.env())
         env.update(self.config.extra_env)
         return env
 

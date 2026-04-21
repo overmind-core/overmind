@@ -134,7 +134,9 @@ IMPORTANT:
 
 WRAPPER_REFUSED_MARKER = "# OVERCLAW_WRAPPER_REFUSED"
 
-_SYS_PATH_BOOTSTRAP_BEGIN = "# --- OVERCLAW_SYS_PATH_BOOTSTRAP (auto-generated, do not edit) ---"
+_SYS_PATH_BOOTSTRAP_BEGIN = (
+    "# --- OVERCLAW_SYS_PATH_BOOTSTRAP (auto-generated, do not edit) ---"
+)
 _SYS_PATH_BOOTSTRAP_END = "# --- END OVERCLAW_SYS_PATH_BOOTSTRAP ---"
 
 
@@ -186,6 +188,14 @@ def _render_sys_path_bootstrap(agent_relpath: Path) -> str:
 def _prepend_sys_path_bootstrap(wp: Path, agent_relpath: Path) -> None:
     """Inject the sys.path bootstrap at the top of the generated wrapper.
 
+    Python requires ``from __future__`` imports to appear before any other
+    code (with the narrow exception of the module docstring, comments, and
+    blank lines).  The coding agent that generates wrappers often emits
+    ``from __future__ import annotations`` right under the module header,
+    so we must hoist it above our bootstrap — otherwise we produce code
+    that fails with ``SyntaxError: from __future__ imports must occur at
+    the beginning of the file``.
+
     Idempotent: if the marker is already present, we rewrite the block so
     re-generation stays in sync with the current instrumented layout.
     """
@@ -194,6 +204,10 @@ def _prepend_sys_path_bootstrap(wp: Path, agent_relpath: Path) -> None:
     if _SYS_PATH_BOOTSTRAP_BEGIN in content:
         before, _, rest = content.partition(_SYS_PATH_BOOTSTRAP_BEGIN)
         _, _, after = rest.partition(_SYS_PATH_BOOTSTRAP_END + "\n")
+        # The header itself ends in ``\n\n`` — strip the leading blank so we
+        # don't accumulate blank lines across repeated injections.
+        if after.startswith("\n"):
+            after = after[1:]
         content = before + after
 
     header = _render_sys_path_bootstrap(agent_relpath)
@@ -203,7 +217,49 @@ def _prepend_sys_path_bootstrap(wp: Path, agent_relpath: Path) -> None:
         shebang, _, content = content.partition("\n")
         shebang += "\n"
 
-    wp.write_text(shebang + header + content, encoding="utf-8")
+    # Pull out module docstring + future imports that MUST stay at the top,
+    # leaving everything else in ``body``.  We keep a very simple tokenizer
+    # here — the wrapper files we generate are short and syntactically
+    # plain, so a line-oriented scan is good enough.
+    preamble_lines: list[str] = []
+    body_lines: list[str] = []
+    in_docstring = False
+    docstring_quote = ""
+    seen_code = False
+
+    for line in content.splitlines(keepends=True):
+        stripped = line.strip()
+        if not seen_code:
+            if stripped == "" or stripped.startswith("#"):
+                preamble_lines.append(line)
+                continue
+            if not in_docstring and (
+                stripped.startswith('"""') or stripped.startswith("'''")
+            ):
+                quote = stripped[:3]
+                preamble_lines.append(line)
+                # Single-line docstring (opened and closed on same line)
+                rest = stripped[3:]
+                if rest.count(quote) >= 1:
+                    continue
+                in_docstring = True
+                docstring_quote = quote
+                continue
+            if in_docstring:
+                preamble_lines.append(line)
+                if docstring_quote in stripped:
+                    in_docstring = False
+                continue
+            if stripped.startswith("from __future__"):
+                preamble_lines.append(line)
+                continue
+            seen_code = True
+        body_lines.append(line)
+
+    preamble = "".join(preamble_lines)
+    body = "".join(body_lines)
+
+    wp.write_text(shebang + preamble + header + body, encoding="utf-8")
 
 
 def _get_model() -> str | None:

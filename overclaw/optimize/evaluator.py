@@ -18,6 +18,11 @@ import time
 import warnings
 from pathlib import Path
 
+from overclaw.optimize.provenance import (
+    SourceTag,
+    TraceSource,
+    aggregate_confidence,
+)
 from overclaw.optimize.runner import _validate_js_entrypoint
 from overclaw.utils.code import has_entrypoint_ast
 from overclaw.utils.llm import llm_completion
@@ -28,6 +33,42 @@ from overclaw.prompts.evaluator import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+def _annotate_confidence(scores: dict, source_tags: list[dict] | None) -> None:
+    """Attach confidence metadata to *scores* in-place.
+
+    Extracts ``TraceSource`` tags from the shadow provenance sidecar and
+    collapses them into a single confidence score via
+    :func:`aggregate_confidence`.  Scores without source tags default to
+    real-execution confidence (1.0), preserving historical behaviour.
+    """
+    if not source_tags:
+        scores.setdefault("_confidence", 1.0)
+        scores.setdefault("_source_summary", {TraceSource.REAL_SUBPROCESS.value: 1})
+        return
+
+    tags: list[SourceTag] = []
+    for raw in source_tags:
+        source = raw.get("source")
+        if not source:
+            continue
+        try:
+            tags.append(
+                SourceTag(source=TraceSource(source), reason=raw.get("reason", ""))
+            )
+        except ValueError:
+            continue
+
+    if not tags:
+        scores.setdefault("_confidence", 1.0)
+        scores.setdefault("_source_summary", {TraceSource.REAL_SUBPROCESS.value: 1})
+        return
+
+    confidence = aggregate_confidence(tags)
+    scores["_confidence"] = confidence.score
+    scores["_source_summary"] = confidence.summary
+
 
 _STOPWORDS = frozenset(
     {
@@ -200,6 +241,7 @@ class SpecEvaluator:
         tool_trace: list[dict] | None = None,
         *,
         _skip_judge: bool = False,
+        source_tags: list[dict] | None = None,
     ) -> dict:
         """Score a single output against expected ground truth.
 
@@ -211,6 +253,13 @@ class SpecEvaluator:
         plain strings (text/markdown agents).  When either side is a
         non-dict value the evaluator falls back to a text-comparison path
         so field-level scoring is skipped gracefully.
+
+        When *source_tags* is provided (from shadow execution), the result
+        dict is annotated with ``_confidence`` (0.0–1.0) and
+        ``_source_summary`` (count-by-source dict).  These keys are never
+        aggregated into ``total`` — they are pure metadata consumed by the
+        optimiser's acceptance gate.  Callers that don't pass source tags
+        see the exact same return shape as before.
         """
         output_is_dict = isinstance(output, dict)
         expected_is_dict = isinstance(expected, dict)
@@ -222,6 +271,7 @@ class SpecEvaluator:
                 input_data,
                 tool_trace,
                 _skip_judge=_skip_judge,
+                source_tags=source_tags,
             )
 
         scores: dict[str, float] = {}
@@ -290,6 +340,7 @@ class SpecEvaluator:
             scores["llm_judge"] = judge_score * judge_weight
 
         scores["total"] = max(0.0, sum(scores.values()))
+        _annotate_confidence(scores, source_tags)
         return scores
 
     def _evaluate_text_output(
@@ -300,6 +351,7 @@ class SpecEvaluator:
         tool_trace: list[dict] | None = None,
         *,
         _skip_judge: bool = False,
+        source_tags: list[dict] | None = None,
     ) -> dict:
         """Fallback scoring when output and/or expected are plain strings.
 
@@ -344,6 +396,7 @@ class SpecEvaluator:
             scores["llm_judge"] = judge_score * (judge_weight * 100)
 
         scores["total"] = max(0.0, min(100.0, sum(scores.values())))
+        _annotate_confidence(scores, source_tags)
         return scores
 
     def evaluate_batch(self, results: list[dict]) -> dict:
@@ -376,6 +429,7 @@ class SpecEvaluator:
                     input_data=r.get("input"),
                     tool_trace=r.get("tool_trace"),
                     _skip_judge=use_judge,
+                    source_tags=r.get("source_tags"),
                 )
                 all_scores.append(score)
                 if use_judge and r.get("input"):
@@ -419,13 +473,28 @@ class SpecEvaluator:
                     _JUDGE_FALLBACK_SCORE,
                 )
 
-        keys = [k for k in all_scores[0] if k != "total"]
+        keys = [k for k in all_scores[0] if k != "total" and not k.startswith("_")]
         avg: dict[str, float] = {}
         for k in keys:
             avg[f"avg_{k}"] = sum(s.get(k, 0) for s in all_scores) / len(all_scores)
         avg["avg_total"] = sum(s["total"] for s in all_scores) / len(all_scores)
         avg["count"] = len(all_scores)
         avg["individual_scores"] = all_scores  # type: ignore[assignment]
+
+        # Aggregate per-case confidence — defaults to 1.0 when none of the
+        # cases carry provenance (historical behaviour).  Stored under an
+        # underscore-prefixed key so downstream TSV / UI layers that iterate
+        # over ``avg_*`` dimension scores skip it the same way they skip
+        # other metadata.
+        confidences = [float(s.get("_confidence", 1.0)) for s in all_scores]
+        avg["_avg_confidence"] = (
+            sum(confidences) / len(confidences) if confidences else 1.0
+        )
+        agg_summary: dict[str, int] = {}
+        for s in all_scores:
+            for k, v in (s.get("_source_summary") or {}).items():
+                agg_summary[k] = agg_summary.get(k, 0) + int(v)
+        avg["_source_summary"] = agg_summary  # type: ignore[assignment]
         return avg
 
     def get_dimension_labels(self) -> list[tuple[str, str]]:

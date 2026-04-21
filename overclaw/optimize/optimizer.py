@@ -69,6 +69,12 @@ from overclaw.optimize.failure_registry import (
     format_clusters_for_diagnosis,
 )
 from overclaw.optimize.run_state import RunState, RunSummary
+from overclaw.optimize.execution_backend import (
+    BackendOutput,
+    BackendPlan,
+    build_default_plan,
+    should_try_next,
+)
 from overclaw.optimize.runner import AgentRunner, Language, RunnerConfig
 from overclaw.utils.policy import (
     format_for_codegen,
@@ -76,7 +82,11 @@ from overclaw.utils.policy import (
     format_for_judge,
     load_policy_data,
 )
-from overclaw.optimize.trace_reader import ParsedTrace, parse_trace_file_per_line
+from overclaw.optimize.trace_reader import (
+    ParsedTrace,
+    attach_shadow_provenance,
+    parse_trace_file_per_line,
+)
 from overclaw.storage import get_storage
 
 
@@ -530,9 +540,7 @@ class Optimizer:
                         focus_weights=_focus_weights,
                     )
                 except Exception as exc:
-                    self._logger.exception(
-                        "Iteration %d analyzer error: %s", i, exc
-                    )
+                    self._logger.exception("Iteration %d analyzer error: %s", i, exc)
                     progress.update(task, description=f"  [red]Analyzer error: {exc}")
                     self._log_result(
                         f"iter_{i:03d}",
@@ -2255,22 +2263,64 @@ class Optimizer:
             if trace_path.exists():
                 trace_path.unlink()
 
+        cassette_path = self._cassette_path_for(run_name)
+        shadow_prov_dir = self._shadow_prov_dir_for(run_name)
+        plan = build_default_plan(
+            runner=runner,
+            cassette_path=cassette_path,
+            provenance_dir=shadow_prov_dir,
+            enable_shadow_fallback=self._shadow_fallback_enabled(),
+        )
+
         if self.config.parallel:
             self._logger.debug(
-                "Running agent in parallel: run=%s cases=%d workers=%s trace=%s",
+                "Running agent in parallel: run=%s cases=%d workers=%s trace=%s backends=%d",
                 run_name,
                 len(dataset),
                 self.config.max_workers,
                 trace_path,
+                len(plan),
             )
-            return self._run_parallel_subprocess(runner, dataset, run_name, trace_path)
+            return self._run_parallel_subprocess(
+                runner, dataset, run_name, trace_path, plan
+            )
         self._logger.debug(
-            "Running agent sequentially: run=%s cases=%d trace=%s",
+            "Running agent sequentially: run=%s cases=%d trace=%s backends=%d",
             run_name,
             len(dataset),
             trace_path,
+            len(plan),
         )
-        return self._run_sequential_subprocess(runner, dataset, run_name, trace_path)
+        return self._run_sequential_subprocess(
+            runner, dataset, run_name, trace_path, plan
+        )
+
+    def _cassette_path_for(self, run_name: str) -> Path:
+        """Cassette file used to record/replay external calls for *run_name*."""
+        base = self.traces_dir if hasattr(self, "traces_dir") else Path(".")
+        cass_dir = Path(base).parent / "cassettes"
+        cass_dir.mkdir(parents=True, exist_ok=True)
+        # One cassette per agent (not per run_name) so the cassette
+        # accumulates knowledge across iterations.
+        return cass_dir / f"{self.config.agent_name or 'agent'}.jsonl"
+
+    def _shadow_prov_dir_for(self, run_name: str) -> Path:
+        """Per-run directory holding shadow-execution sidecar JSONLs."""
+        base = self.traces_dir if hasattr(self, "traces_dir") else Path(".")
+        d = Path(base).parent / "shadow" / run_name
+        d.mkdir(parents=True, exist_ok=True)
+        return d
+
+    def _shadow_fallback_enabled(self) -> bool:
+        """Global switch for the subprocess → shadow fallback.
+
+        Defaults to ``True`` so the optimiser transparently recovers from
+        runtime failures.  Users can disable via ``config.enable_shadow``
+        or the ``OVERCLAW_DISABLE_SHADOW`` environment variable.
+        """
+        if os.environ.get("OVERCLAW_DISABLE_SHADOW") == "1":
+            return False
+        return bool(getattr(self.config, "enable_shadow", True))
 
     def _run_sequential_subprocess(
         self,
@@ -2278,9 +2328,11 @@ class Optimizer:
         dataset: list[dict],
         run_name: str,
         trace_path: Path | None = None,
+        plan: BackendPlan | None = None,
     ) -> tuple[dict, list[ParsedTrace], list[dict]]:
         outputs: list[dict | None] = []
         cases_data: list[dict] = []
+        provenance_by_idx: dict[int, list[dict]] = {}
 
         with Progress(
             SpinnerColumn(style=BRAND),
@@ -2296,22 +2348,32 @@ class Optimizer:
                 self._logger.debug(
                     "[%s] Sequential case %d/%d", run_name, idx + 1, len(dataset)
                 )
-                run_output = runner.run(case["input"], trace_file=trace_path)
+                backend_output = self._run_case_with_plan(
+                    plan, case["input"], trace_path, idx, run_name
+                )
+                run_output = backend_output.run_output
                 if run_output.success:
                     outputs.append(run_output.data)
                 else:
                     self._logger.warning(
-                        "[%s] Sequential case %d failed rc=%s err=%s",
+                        "[%s] Sequential case %d failed backend=%s rc=%s err=%s",
                         run_name,
                         idx,
+                        backend_output.backend,
                         run_output.returncode,
                         (run_output.error or "")[:300],
                     )
                     outputs.append({"error": run_output.error})
+                if backend_output.provenance:
+                    provenance_by_idx[idx] = [
+                        t.to_dict() for t in backend_output.provenance
+                    ]
                 cases_data.append(case)
                 progress.advance(task)
 
-        return self._build_eval_results(outputs, cases_data, run_name, trace_path)
+        return self._build_eval_results(
+            outputs, cases_data, run_name, trace_path, provenance_by_idx
+        )
 
     def _run_parallel_subprocess(
         self,
@@ -2319,30 +2381,39 @@ class Optimizer:
         dataset: list[dict],
         run_name: str,
         trace_path: Path | None = None,
+        plan: BackendPlan | None = None,
     ) -> tuple[dict, list[ParsedTrace], list[dict]]:
         results_by_idx: dict[int, dict | None] = {}
+        provenance_by_idx: dict[int, list[dict]] = {}
 
-        def _run_one(case: dict, idx: int) -> tuple[int, dict | None]:
+        def _run_one(case: dict, idx: int) -> tuple[int, dict | None, list[dict]]:
             self._logger.debug(
                 "[%s] Dispatching case %d on worker thread", run_name, idx
             )
-            run_output = runner.run(case["input"], trace_file=trace_path)
+            backend_output = self._run_case_with_plan(
+                plan, case["input"], trace_path, idx, run_name
+            )
+            run_output = backend_output.run_output
+            prov = [t.to_dict() for t in backend_output.provenance]
             if run_output.success:
                 self._logger.debug(
-                    "[%s] Case %d succeeded (stderr_bytes=%d)",
+                    "[%s] Case %d succeeded backend=%s (stderr_bytes=%d, prov=%d)",
                     run_name,
                     idx,
+                    backend_output.backend,
                     len(run_output.stderr or ""),
+                    len(prov),
                 )
-                return idx, run_output.data
+                return idx, run_output.data, prov
             self._logger.warning(
-                "[%s] Case %d failed rc=%s err=%s",
+                "[%s] Case %d failed backend=%s rc=%s err=%s",
                 run_name,
                 idx,
+                backend_output.backend,
                 run_output.returncode,
                 (run_output.error or "")[:300],
             )
-            return idx, {"error": run_output.error}
+            return idx, {"error": run_output.error}, prov
 
         with Progress(
             SpinnerColumn(style=BRAND),
@@ -2360,12 +2431,54 @@ class Optimizer:
                     for idx, case in enumerate(dataset)
                 }
                 for future in as_completed(futures):
-                    idx_result, output = future.result()
+                    idx_result, output, prov = future.result()
                     results_by_idx[idx_result] = output
+                    if prov:
+                        provenance_by_idx[idx_result] = prov
                     progress.advance(task)
 
         outputs = [results_by_idx[i] for i in range(len(dataset))]
-        return self._build_eval_results(outputs, dataset, run_name, trace_path)
+        return self._build_eval_results(
+            outputs, dataset, run_name, trace_path, provenance_by_idx
+        )
+
+    def _run_case_with_plan(
+        self,
+        plan: BackendPlan | None,
+        input_data,
+        trace_path: Path | None,
+        idx: int,
+        run_name: str,
+    ) -> BackendOutput:
+        """Execute a single case using the backend plan with fallback.
+
+        Tries each backend in order; bails out on the first success or on a
+        non-retryable failure (missing API key, import error, …).  The
+        returned :class:`BackendOutput` carries provenance tags and a
+        :class:`Confidence` that the evaluator/optimizer can inspect.
+        """
+        if plan is None or len(plan) == 0:
+            raise RuntimeError("BackendPlan missing — cannot run case")
+
+        last_output: BackendOutput | None = None
+        for i, backend in enumerate(plan):
+            backend.prepare()
+            out = backend.run(input_data, trace_file=trace_path)
+            last_output = out
+            if out.success:
+                if i > 0:
+                    self._logger.info(
+                        "[%s] Case %d recovered via backend=%s after "
+                        "subprocess failure.",
+                        run_name,
+                        idx,
+                        backend.name,
+                    )
+                return out
+            if not should_try_next(out.diagnosis):
+                return out
+        assert last_output is not None
+        return last_output
 
     def _build_eval_results(
         self,
@@ -2373,26 +2486,43 @@ class Optimizer:
         dataset: list[dict],
         run_name: str,
         trace_path: Path | None,
+        provenance_by_idx: dict[int, list[dict]] | None = None,
     ) -> tuple[dict, list[ParsedTrace], list[dict]]:
         """Parse the single trace file and build per-case eval items.
 
         Each JSONL line in the trace file corresponds (in order) to one
         datapoint execution.  When ``trace_path`` is ``None`` (token-based
         tracing), empty :class:`ParsedTrace` objects are used.
+
+        When *provenance_by_idx* is provided (populated by the shadow
+        backend), each :class:`ParsedTrace` is decorated with per-call
+        source tags and the per-case score gains ``_confidence`` /
+        ``_source_summary`` metadata so the optimiser can reason about how
+        trustworthy the signal is.
         """
         if trace_path is not None and trace_path.exists():
             per_line_traces = parse_trace_file_per_line(trace_path)
         else:
             per_line_traces = []
 
+        provenance_by_idx = provenance_by_idx or {}
+
         traces: list[ParsedTrace] = []
         eval_items: list[dict] = []
 
+        # Pad per_line_traces to dataset length so indices align.
+        while len(per_line_traces) < len(dataset):
+            per_line_traces.append(ParsedTrace())
+
+        # Attach shadow provenance tags in bulk — keeps ParsedTrace and
+        # tool_trace rows in sync with what actually ran.
+        sidecar_tags = [provenance_by_idx.get(i, []) for i in range(len(dataset))]
+        attach_shadow_provenance(per_line_traces, sidecar_tags)
+
         for idx, (output, case) in enumerate(zip(outputs, dataset)):
-            parsed_trace = (
-                per_line_traces[idx] if idx < len(per_line_traces) else ParsedTrace()
-            )
+            parsed_trace = per_line_traces[idx]
             traces.append(parsed_trace)
+            case_prov = provenance_by_idx.get(idx, [])
 
             if self._reporter:
                 trace_payload = {
@@ -2403,6 +2533,7 @@ class Optimizer:
                     "total_cost": parsed_trace.total_cost,
                     "tool_trace": parsed_trace.tool_trace,
                     "trace_group": run_name,
+                    "source_tags": case_prov,
                 }
                 self._reporter.on_trace(trace_payload)
 
@@ -2416,6 +2547,7 @@ class Optimizer:
                 input_data=case.get("input"),
                 tool_trace=tool_trace,
                 _skip_judge=True,
+                source_tags=case_prov,
             )
 
             eval_items.append(
@@ -2426,6 +2558,7 @@ class Optimizer:
                     "score": score,
                     "tool_calls": tool_calls,
                     "tool_trace": tool_trace,
+                    "source_tags": case_prov,
                 }
             )
 
