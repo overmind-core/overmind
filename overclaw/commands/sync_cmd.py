@@ -8,8 +8,6 @@ from pathlib import Path
 
 from rich.console import Console
 
-logger = logging.getLogger("overclaw.commands.sync")
-
 from overclaw.client import (
     _create_trace,
     flush_pending_api_updates,
@@ -19,6 +17,8 @@ from overclaw.client import (
 from overclaw.commands.setup_cmd import _sync_setup_artifacts
 from overclaw.core.paths import agent_experiments_dir, load_overclaw_dotenv
 from overclaw.core.registry import get_agent_id, load_registry
+
+logger = logging.getLogger("overclaw.commands.sync")
 
 
 def _sync_traces_for_agent(agent_name: str, agent_id: str, console: Console) -> int:

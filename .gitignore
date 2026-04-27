@@ -28,3 +28,4 @@ run.log
 .env
 .overclaw
 .coverage
+testing_agents

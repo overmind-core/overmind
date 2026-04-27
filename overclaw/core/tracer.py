@@ -160,7 +160,9 @@ def call_llm(
         span.error = str(e)
         if tracer:
             tracer.add_span(span)
-        logger.exception("call_llm failed model=%s latency_ms=%.1f", model, span.latency_ms)
+        logger.exception(
+            "call_llm failed model=%s latency_ms=%.1f", model, span.latency_ms
+        )
         raise
 
 
@@ -168,7 +170,9 @@ def call_tool(name: str, args: dict, fn: Any) -> Any:
     """Traced wrapper for tool execution. Captures args, result, and latency."""
     tracer = get_current_tracer()
     span = Span(span_type="tool_call", name=name, start_time=time.time())
-    logger.debug("call_tool start name=%s args_keys=%s", name, list((args or {}).keys()))
+    logger.debug(
+        "call_tool start name=%s args_keys=%s", name, list((args or {}).keys())
+    )
 
     try:
         result = fn(**args)

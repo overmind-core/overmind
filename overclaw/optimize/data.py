@@ -199,9 +199,7 @@ def validate_case_against_spec(case: dict, eval_spec: dict) -> list[str]:
             # discriminated union (e.g. ``{status="success", ...}`` vs
             # ``{status="error", error_message}`` — different fields are
             # populated on different code paths).
-            is_optional = (
-                cfg.get("optional", False) if isinstance(cfg, dict) else False
-            )
+            is_optional = cfg.get("optional", False) if isinstance(cfg, dict) else False
             if field not in out:
                 if not is_optional:
                     errors.append(f"expected_output missing field '{field}'")
@@ -779,7 +777,11 @@ def _shard_variation_directive(
     the persona has fewer scenarios than shards, generic orthogonal axes
     fill the gap.
     """
-    scenarios = [s for s in (persona.get("typical_scenarios") or []) if isinstance(s, str) and s.strip()]
+    scenarios = [
+        s
+        for s in (persona.get("typical_scenarios") or [])
+        if isinstance(s, str) and s.strip()
+    ]
     rotation = max(0, round_num - 1)
     if scenarios:
         focus = scenarios[(shard_idx + rotation) % len(scenarios)]
@@ -788,7 +790,9 @@ def _shard_variation_directive(
     else:
         return ""
 
-    axis = _GENERIC_VARIATION_AXES[(shard_idx + rotation) % len(_GENERIC_VARIATION_AXES)]
+    axis = _GENERIC_VARIATION_AXES[
+        (shard_idx + rotation) % len(_GENERIC_VARIATION_AXES)
+    ]
     return (
         f"Within this persona's behavior space, focus THIS batch on: **{focus}**.\n"
         f"- Generate cases that specifically exercise that sub-scenario.\n"
@@ -1088,7 +1092,9 @@ def _per_persona_parallel_shards_round(
                 intent=persona.get("intent", "?"),
                 shards=len(sizes),
                 batch_size=batch_size,
-                directives=[d.splitlines()[0] if d else "(none)" for d in shard_directives],
+                directives=[
+                    d.splitlines()[0] if d else "(none)" for d in shard_directives
+                ],
             ) as pinfo:
                 with ThreadPoolExecutor(max_workers=len(sizes)) as executor:
                     futures = [
@@ -1325,9 +1331,7 @@ def generate_diverse_synthetic_data(
             # statistically more likely to keep producing duplicates and
             # burning retry budget.
             skip_personas = {
-                idx
-                for idx, n in per_persona_added.items()
-                if n >= quota_per_persona
+                idx for idx, n in per_persona_added.items() if n >= quota_per_persona
             }
 
             retry_added = 0

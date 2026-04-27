@@ -25,11 +25,6 @@ from rich.prompt import Prompt
 from rich.rule import Rule
 
 from overclaw.core.logging import stage
-from overclaw.utils.display import BRAND, overmind_prompt
-from overclaw.utils.llm import llm_completion
-from overclaw.utils.display import make_spinner_progress
-
-logger = logging.getLogger("overclaw.setup.policy_generator")
 from overclaw.prompts.policy_generator import (
     POLICY_FROM_CODE_PROMPT,
     POLICY_FROM_DOCUMENT_PROMPT,
@@ -37,6 +32,10 @@ from overclaw.prompts.policy_generator import (
     POLICY_IMPROVE_PROMPT,
     POLICY_REFINE_PROMPT,
 )
+from overclaw.utils.display import BRAND, make_spinner_progress, overmind_prompt
+from overclaw.utils.llm import llm_completion
+
+logger = logging.getLogger("overclaw.setup.policy_generator")
 
 # ---------------------------------------------------------------------------
 # Parsing helpers
@@ -265,7 +264,9 @@ def elicit_policy(
             info["markdown_missing"] = True
 
         info["md_chars"] = len(md_text)
-        info["policy_keys"] = list(policy_data.keys()) if isinstance(policy_data, dict) else []
+        info["policy_keys"] = (
+            list(policy_data.keys()) if isinstance(policy_data, dict) else []
+        )
 
     display_policy(md_text, policy_data, console)
     return md_text, policy_data

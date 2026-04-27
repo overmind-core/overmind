@@ -109,7 +109,7 @@ def _get_bg_loop() -> asyncio.AbstractEventLoop:
                 )
                 t.start()
                 logger.debug(
-                    "Started background asyncio loop thread=%s loop=%r", t.name, _bg_loop
+                    f"Started background asyncio loop thread={t.name} loop={_bg_loop!r}"
                 )
     return _bg_loop
 
@@ -139,12 +139,10 @@ def flush_pending_api_updates(timeout: float = 8.0) -> None:
         logger.debug("flush_pending_api_updates: nothing to flush")
         return
     logger.info(
-        "Flushing %d pending API update(s) (timeout=%.1fs)", len(pending), timeout
+        f"Flushing {len(pending)} pending API update(s) (timeout={timeout:.1f}s)"
     )
     done, not_done = wait(pending, timeout=timeout)
-    logger.info(
-        "Flush complete: done=%d not_done=%d", len(done), len(not_done)
-    )
+    logger.info(f"Flush complete: done={len(done)} not_done={len(not_done)}")
     # Best-effort completion; cancel leftovers to avoid dangling references.
     for fut in not_done:
         with _pending_lock:
@@ -182,9 +180,8 @@ def get_client() -> OverClawClient | None:
     token = os.getenv("OVERMIND_API_TOKEN", "").strip()
     if not base_url or not token:
         logger.debug(
-            "get_client: API not configured (base_url_set=%s token_set=%s)",
-            bool(base_url),
-            bool(token),
+            "get_client: API not configured "
+            f"(base_url_set={bool(base_url)} token_set={bool(token)})"
         )
         return None
     cfg = Configuration(host=base_url, api_key=token)
@@ -192,7 +189,7 @@ def get_client() -> OverClawClient | None:
     cfg.proxy_headers = {
         "X-Api-Key": token,
     }
-    logger.debug("get_client: built OverClawClient for host=%s", base_url)
+    logger.debug(f"get_client: built OverClawClient for host={base_url}")
     return OverClawClient(api_client=ApiClient(configuration=cfg))
 
 
@@ -292,13 +289,13 @@ def _fire(fn, *args, **kwargs) -> None:
     fn_label = getattr(fn, "__name__", repr(fn))
 
     def _run():
-        logger.debug("_fire: running %s on background thread", fn_label)
+        logger.debug(f"_fire: running {fn_label} on background thread")
         try:
             fn(*args, **kwargs)
         except Exception:
             # Never propagate: API failures must not break the optimizer.
             # Still record the exception so operators can diagnose from logs.
-            logger.exception("_fire: background %s failed", fn_label)
+            logger.exception(f"_fire: background {fn_label} failed")
 
     fut = _executor.submit(_run)
     _track_future(fut)
@@ -333,11 +330,9 @@ def upsert_agent(
         eval_dataset["policy"] = policy_data
 
     logger.info(
-        "upsert_agent: slug=%s project_id=%s dataset_cases=%d has_policy=%s",
-        slug,
-        project_id,
-        len(dataset or []),
-        bool(policy_data),
+        "upsert_agent: "
+        f"slug={slug} project_id={project_id} "
+        f"dataset_cases={len(dataset or [])} has_policy={bool(policy_data)}"
     )
 
     existing = None
@@ -385,14 +380,15 @@ def upsert_agent(
         result = _run_async(
             client.agents_partial_update(id=existing.id, patched_agent_request=patch)
         )
-        logger.info("upsert_agent: updated existing agent id=%s slug=%s", existing.id, slug)
+        logger.info(
+            f"upsert_agent: updated existing agent id={existing.id} slug={slug}"
+        )
     else:
         req = AgentRequest(name=name, slug=slug, project=UUID(project_id), **shared)
         result = _run_async(client.agents_create(agent_request=req))
         logger.info(
-            "upsert_agent: created new agent id=%s slug=%s",
-            getattr(result, "id", "?"),
-            slug,
+            "upsert_agent: created new agent "
+            f"id={getattr(result, 'id', '?')} slug={slug}"
         )
 
     # Persist agent_id to the per-agent project.toml immediately
@@ -455,16 +451,15 @@ def create_policy_prompt(
     calls cannot each create a policy row. Safe to call from ``overclaw sync``.
     """
     logger.debug(
-        "create_policy_prompt: acquiring lock agent_id=%s policy_len=%d",
-        agent_id,
-        len(policy_md or ""),
+        "create_policy_prompt: acquiring lock "
+        f"agent_id={agent_id} policy_len={len(policy_md or '')}"
     )
     with _policy_upsert_lock(str(agent_id)):
         _run_async(
             _replace_policy_prompt_async(client, agent_id, policy_md, agent_code),
             timeout=60.0,
         )
-    logger.info("create_policy_prompt: synced policy for agent_id=%s", agent_id)
+    logger.info(f"create_policy_prompt: synced policy for agent_id={agent_id}")
 
 
 def fetch_agent_spec_and_dataset(
@@ -478,9 +473,7 @@ def fetch_agent_spec_and_dataset(
     if the agent is not found or the request fails.
     """
     slug = agent_slug_from_path(agent_path)
-    logger.debug(
-        "fetch_agent_spec_and_dataset: slug=%s project_id=%s", slug, project_id
-    )
+    logger.debug(f"fetch_agent_spec_and_dataset: slug={slug} project_id={project_id}")
     try:
         kwargs: dict[str, Any] = {}
         if project_id:
@@ -492,15 +485,14 @@ def fetch_agent_spec_and_dataset(
                 agent_stub = ag
                 break
         if not agent_stub:
-            logger.info(
-                "fetch_agent_spec_and_dataset: no match for slug=%s", slug
-            )
+            logger.info(f"fetch_agent_spec_and_dataset: no match for slug={slug}")
             return None
         # agents_list returns AgentList (lightweight); fetch full detail
         agent = _run_async(client.agents_retrieve(id=agent_stub.id))
     except Exception:
         logger.warning(
-            "fetch_agent_spec_and_dataset: API lookup failed slug=%s", slug, exc_info=True
+            f"fetch_agent_spec_and_dataset: API lookup failed slug={slug}",
+            exc_info=True,
         )
         return None
 
@@ -563,14 +555,12 @@ def _create_job(
         )
         job = _run_async(client.jobs_create(job_request=req))
         logger.info(
-            "_create_job: created job id=%s agent_id=%s iterations=%d",
-            job.id,
-            agent_id,
-            num_iterations,
+            "_create_job: created job "
+            f"id={job.id} agent_id={agent_id} iterations={num_iterations}"
         )
         return str(job.id)
     except Exception:
-        logger.exception("_create_job: failed to create job for agent_id=%s", agent_id)
+        logger.exception(f"_create_job: failed to create job for agent_id={agent_id}")
         return None
 
 
@@ -580,9 +570,9 @@ def _patch_job(client: OverClawClient, job_id: str, **fields: Any) -> None:
         _submit_async(
             client.jobs_partial_update(id=UUID(job_id), patched_job_request=patch)
         )
-        logger.debug("_patch_job: job_id=%s fields=%s", job_id, list(fields))
+        logger.debug(f"_patch_job: job_id={job_id} fields={list(fields)}")
     except Exception:
-        logger.exception("_patch_job: failed job_id=%s", job_id)
+        logger.exception(f"_patch_job: failed job_id={job_id}")
 
 
 def _create_iteration(
@@ -609,17 +599,12 @@ def _create_iteration(
         )
         iteration = _run_async(client.job_iterations_create(job_iteration_request=req))
         logger.info(
-            "_create_iteration: job_id=%s order=%d status=%s avg_score=%.4f",
-            job_id,
-            order,
-            status,
-            avg_score,
+            "_create_iteration: "
+            f"job_id={job_id} order={order} status={status} avg_score={avg_score:.4f}"
         )
         return str(iteration.id)
     except Exception:
-        logger.exception(
-            "_create_iteration: failed job_id=%s order=%d", job_id, order
-        )
+        logger.exception(f"_create_iteration: failed job_id={job_id} order={order}")
         return None
 
 
@@ -652,16 +637,14 @@ def fetch_traces_as_dataset(
                 break
     except Exception:
         logger.warning(
-            "fetch_traces_as_dataset: trace listing failed agent_id=%s",
-            agent_id,
+            f"fetch_traces_as_dataset: trace listing failed agent_id={agent_id}",
             exc_info=True,
         )
         return []
     logger.debug(
-        "fetch_traces_as_dataset: fetched %d trace stubs across %d page(s) for agent_id=%s",
-        len(all_traces),
-        page_num,
-        agent_id,
+        "fetch_traces_as_dataset: fetched "
+        f"{len(all_traces)} trace stubs across {page_num} page(s) "
+        f"for agent_id={agent_id}"
     )
 
     if not all_traces:
@@ -688,16 +671,15 @@ def fetch_traces_as_dataset(
             )
         except Exception:
             logger.debug(
-                "fetch_traces_as_dataset: retrieve failed trace_id=%s",
-                getattr(trace_stub, "id", "?"),
+                "fetch_traces_as_dataset: retrieve failed "
+                f"trace_id={getattr(trace_stub, 'id', '?')}",
                 exc_info=True,
             )
             continue
 
     logger.info(
-        "fetch_traces_as_dataset: returning %d cases from %d sampled traces",
-        len(cases),
-        len(sampled),
+        "fetch_traces_as_dataset: returning "
+        f"{len(cases)} cases from {len(sampled)} sampled traces"
     )
     return cases
 
@@ -769,8 +751,7 @@ def _create_trace(
             trace_id = str(trace.id)
         except Exception:
             logger.warning(
-                "_create_trace: trace create timeout/failed agent_id=%s",
-                agent_id,
+                f"_create_trace: trace create timeout/failed agent_id={agent_id}",
                 exc_info=True,
             )
             return
@@ -779,13 +760,11 @@ def _create_trace(
             span.trace = trace_id
             _submit_async(client.spans_create(span_request=span))
         logger.debug(
-            "_create_trace: queued trace_id=%s with %d spans (job_id=%s)",
-            trace_id,
-            len(spans),
-            job_id,
+            "_create_trace: queued "
+            f"trace_id={trace_id} with {len(spans)} spans (job_id={job_id})"
         )
     except Exception:
-        logger.exception("_create_trace: failed agent_id=%s", agent_id)
+        logger.exception(f"_create_trace: failed agent_id={agent_id}")
 
 
 # ---------------------------------------------------------------------------
