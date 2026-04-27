@@ -33,6 +33,7 @@ from overclaw.core.registry import (
     remove_agent,
     resolve_entrypoint,
     resolve_entrypoint_file,
+    resolve_module_to_file,
     save_agent,
 )
 from overclaw.commands.agent_env import (
@@ -245,6 +246,94 @@ def _offer_wrapper_generation(
     return new_ep, wp, "run"
 
 
+def _auto_generate_wrapper(
+    name: str,
+    agent_path: str,
+    console: Console,
+) -> tuple[str, Path, str] | None:
+    """Generate an entrypoint wrapper when the user provided only a filename.
+
+    Unlike :func:`_offer_wrapper_generation`, this path is taken *before* any
+    entrypoint validation — the user has already confirmed they want auto-gen,
+    so we skip the "function not found" preamble and go straight to generation.
+
+    Returns ``(new_entrypoint, file_path, fn_name)`` on success, or ``None``
+    if the user declines or generation fails.
+    """
+    from overclaw.entrypoint_wrapper import (
+        generate_entrypoint_wrapper,
+        wrapper_entrypoint,
+    )
+    from overclaw.utils.display import make_spinner_progress
+
+    agent_dir = Path(agent_path).resolve().parent
+
+    _ensure_model_for_wrapper(console)
+
+    console.print()
+    with make_spinner_progress(console) as progress:
+        progress.add_task("  Analyzing agent code and generating wrapper…")
+        wp = generate_entrypoint_wrapper(agent_dir, name)
+
+    if wp == "refused":
+        console.print(
+            "\n  [bold yellow]⚠[/bold yellow]  This agent's code is too complex for an "
+            "auto-generated wrapper.\n\n"
+            "  The wrapper needs to be a trivial bridge (import + call), but this\n"
+            "  agent would require re-implementing agent-specific logic.\n\n"
+            "  Add a [bold]def run(input_data: dict) -> dict[/bold] function directly\n"
+            "  in your agent code, then re-register:\n"
+            f"    [bold]overclaw agent register {name} <your_module:run>[/bold]\n"
+        )
+        return None
+
+    if wp is None or not wp.is_file():
+        console.print(
+            "\n  [bold red]✗[/bold red]  Wrapper generation failed.\n"
+            "  This can happen if no LLM model is configured.\n"
+            f"  Set [bold]ANALYZER_MODEL[/bold] in [bold]{overclaw_rel('.env')}[/bold] "
+            "or write the wrapper manually.\n"
+        )
+        return None
+
+    wrapper_code = wp.read_text(encoding="utf-8")
+
+    console.print()
+    console.print(
+        Panel(
+            f"[bold green]Generated entrypoint wrapper[/bold green]\n\n"
+            f"  File:     [cyan]{rel(wp)}[/cyan]\n"
+            f"  Function: [bold]run(input_data: dict) -> dict[/bold]",
+            border_style="green",
+            padding=(1, 2),
+        )
+    )
+
+    if confirm_option("Review the generated code?", default=True, console=console):
+        console.print()
+        console.print(
+            Syntax(
+                wrapper_code,
+                "python",
+                theme="monokai",
+                line_numbers=True,
+                word_wrap=True,
+            )
+        )
+
+    console.print()
+    if not confirm_option(
+        "Register with this entrypoint?", default=True, console=console
+    ):
+        console.print(
+            f"\n  [dim]Edit [cyan]{rel(wp)}[/cyan] and re-run register.[/dim]\n"
+        )
+        return None
+
+    new_ep = wrapper_entrypoint(name)
+    return new_ep, wp, "run"
+
+
 # ---------------------------------------------------------------------------
 # Commands
 # ---------------------------------------------------------------------------
@@ -267,6 +356,60 @@ def cmd_register(name: str, entrypoint: str) -> None:
             f"    [bold]overclaw agent update {name} <module:function>[/bold]\n"
         )
         raise SystemExit(1)
+
+    # ---- Handle filename-only input (no entrypoint function specified) ----
+    if ":" not in entrypoint:
+        file_path = resolve_module_to_file(entrypoint)
+        if file_path is None:
+            console.print(
+                f"\n  [bold red]Error:[/bold red] "
+                f"Cannot find file for '[bold]{entrypoint}[/bold]'.\n\n"
+                f"  If this is a module path, specify a function too:\n"
+                f"    [bold]overclaw agent register {name} {entrypoint}:run[/bold]\n"
+            )
+            raise SystemExit(1)
+
+        console.print(
+            f"\n  [bold yellow]No entrypoint function specified.[/bold yellow]\n"
+            f"  [dim]File:[/dim] [cyan]{rel(file_path)}[/cyan]\n\n"
+            f"  Since no entrypoint was specified, an overclaw entrypoint wrapper\n"
+            f"  will be generated automatically for this agent.\n"
+        )
+        if not confirm_option(
+            "Generate entrypoint automatically?", default=True, console=console
+        ):
+            console.print(
+                f"\n  [dim]Re-register with an explicit entrypoint:\n"
+                f"    [bold]overclaw agent register {name} {entrypoint}:run[/bold][/dim]\n"
+            )
+            raise SystemExit(0)
+
+        agent_path = str(file_path)
+
+        console.print()
+        console.print(Rule(style="dim"))
+        collect_agent_provider_config(name, console)
+        load_agent_dotenv(name)
+
+        console.print()
+        console.print(Rule(style="dim"))
+        instrument_agent_files(agent_path, name, console)
+
+        result = _auto_generate_wrapper(name, agent_path, console)
+        if result is None:
+            raise SystemExit(1)
+        entrypoint, file_path, fn = result
+
+        save_agent(name, entrypoint)
+        console.print(
+            f"\n  [bold green]\u2713[/bold green]  "
+            f"Agent '[bold]{name}[/bold]' registered.\n"
+            f"  [dim]Entrypoint:[/dim] {entrypoint}\n"
+            f"  [dim]File:[/dim]      {file_path}\n"
+            f"  [dim]Function:[/dim]  {fn}\n\n"
+            f"  Next step: [bold {BRAND}]overclaw setup {name}[/bold {BRAND}]\n"
+        )
+        return
 
     dupes = _other_agents_with_entrypoint(registry, entrypoint)
     if dupes:

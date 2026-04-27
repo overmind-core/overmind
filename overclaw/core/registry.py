@@ -282,6 +282,18 @@ class EntrypointSignatureError(Exception):
         super().__init__(f"Function '{fn_name}' in '{file_path}': {reason}")
 
 
+def resolve_module_to_file(module: str) -> Path | None:
+    """Resolve a bare module path (no ``:function`` part) to an existing file.
+
+    Returns the absolute Path if a matching source file exists, otherwise None.
+    Used when the user provides only a filename/module without specifying a
+    function name.
+    """
+    root = project_root()
+    file_path = _module_to_file(module, root)
+    return file_path if file_path.exists() else None
+
+
 def resolve_entrypoint_file(entrypoint: str) -> tuple[Path, str]:
     """Resolve the entrypoint to a file path without checking the function.
 

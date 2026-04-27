@@ -779,7 +779,11 @@ def _run_end_smoke_test(
                 "The agent raised an error on a sample dataset case:\n"
                 f"[dim]{error}[/dim]\n\n"
                 "The setup spec has been saved. Review the error above before running:\n"
-                f"  [bold]overclaw optimize {agent_name}[/bold]",
+                f"  [bold]overclaw optimize {agent_name}[/bold]\n\n"
+                "Validate the agent endpoint against the setup dataset (important during "
+                "optimization) with:\n"
+                f"  [bold]overclaw agent validate {agent_name} --data "
+                f".overclaw/agents/{agent_name}/setup_spec/dataset.json[/bold]",
                 border_style="yellow",
                 padding=(1, 2),
             )
@@ -1697,7 +1701,9 @@ def main(
         load_agent_dotenv(agent_name)
 
     # ---- Phase 1: Agent Analysis ----
-    logger.info("PHASE BEGIN setup.phase1.agent_analysis agent=%s model=%s", agent_name, model)
+    logger.info(
+        "PHASE BEGIN setup.phase1.agent_analysis agent=%s model=%s", agent_name, model
+    )
     console.print()
     console.print(Rule(style="dim"))
     console.print()
@@ -1762,7 +1768,11 @@ def main(
         logger.info("PHASE END   setup.phase2.policy agent=%s fast=True", agent_name)
 
         # ---- Phase 3 (fast): Dataset ----
-        logger.info("PHASE BEGIN setup.phase3.dataset agent=%s fast=True data=%s", agent_name, data_opt)
+        logger.info(
+            "PHASE BEGIN setup.phase3.dataset agent=%s fast=True data=%s",
+            agent_name,
+            data_opt,
+        )
         console.print()
         console.print(Rule(style="dim"))
         console.print()
@@ -1896,7 +1906,9 @@ def main(
     logger.info("PHASE END   setup.phase2.policy agent=%s fast=False", agent_name)
 
     # ---- Phase 3: Dataset ----
-    logger.info("PHASE BEGIN setup.phase3.dataset agent=%s data=%s", agent_name, data_opt)
+    logger.info(
+        "PHASE BEGIN setup.phase3.dataset agent=%s data=%s", agent_name, data_opt
+    )
     console.print()
     console.print(Rule(style="dim"))
     console.print()
