@@ -1,0 +1,47 @@
+[
+  {
+    "input": {
+      "service": "payments-api",
+      "alert_summary": "Error rate 60% on /v1/charges for the last 10 minutes. Started ~09:14 UTC. Customer escalations coming in.",
+      "timestamp": "2025-08-10T09:20:00Z"
+    },
+    "expected_output": {
+      "severity": "SEV1",
+      "suggested_owner_hint": "payments-platform",
+      "must_correlate_with_commits": true
+    }
+  },
+  {
+    "input": {
+      "service": "auth-svc",
+      "alert_summary": "auth-svc error_rate > 99% from 11:04 UTC. Customers cannot log in.",
+      "timestamp": "2025-08-10T11:10:00Z"
+    },
+    "expected_output": {
+      "severity": "SEV1",
+      "suggested_owner_hint": "identity"
+    }
+  },
+  {
+    "input": {
+      "service": "search-svc",
+      "alert_summary": "Index lag on search-svc has grown to 7 minutes over the past hour. Results feel stale but not broken.",
+      "timestamp": "2025-08-10T15:00:00Z"
+    },
+    "expected_output": {
+      "severity": "SEV3",
+      "suggested_owner_hint": "search-infra"
+    }
+  },
+  {
+    "input": {
+      "service": "payments-api",
+      "alert_summary": "Synthetic canary reports 1 failure out of 100 runs overnight. Already self-recovered.",
+      "timestamp": "2025-08-10T06:00:00Z"
+    },
+    "expected_output": {
+      "severity": "SEV4",
+      "suggested_owner_hint": "payments-platform"
+    }
+  }
+]

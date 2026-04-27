@@ -58,6 +58,16 @@ def _other_agents_with_entrypoint(
     )
 
 
+def _print_post_register_next_step(console: Console, name: str) -> None:
+    """Suggest validating the agent with seed data after registration."""
+    console.print(
+        f"  Next step: [bold {BRAND}]overclaw agent validate {name} "
+        f"--data <path/to/seed.json>[/bold {BRAND}] "
+        f"[dim](if you have seed data)[/dim]\n"
+        f"  [dim]Or jump straight to [bold]overclaw setup {name}[/bold].[/dim]\n"
+    )
+
+
 def _confirm_duplicate_entrypoint(
     console: Console,
     entrypoint: str,
@@ -406,9 +416,9 @@ def cmd_register(name: str, entrypoint: str) -> None:
             f"Agent '[bold]{name}[/bold]' registered.\n"
             f"  [dim]Entrypoint:[/dim] {entrypoint}\n"
             f"  [dim]File:[/dim]      {file_path}\n"
-            f"  [dim]Function:[/dim]  {fn}\n\n"
-            f"  Next step: [bold {BRAND}]overclaw setup {name}[/bold {BRAND}]\n"
+            f"  [dim]Function:[/dim]  {fn}\n"
         )
+        _print_post_register_next_step(console, name)
         return
 
     dupes = _other_agents_with_entrypoint(registry, entrypoint)
@@ -453,9 +463,9 @@ def cmd_register(name: str, entrypoint: str) -> None:
         f"Agent '[bold]{name}[/bold]' registered.\n"
         f"  [dim]Entrypoint:[/dim] {entrypoint}\n"
         f"  [dim]File:[/dim]      {file_path}\n"
-        f"  [dim]Function:[/dim]  {fn}\n\n"
-        f"  Next step: [bold {BRAND}]overclaw setup {name}[/bold {BRAND}]\n"
+        f"  [dim]Function:[/dim]  {fn}\n"
     )
+    _print_post_register_next_step(console, name)
 
 
 def cmd_list() -> None:

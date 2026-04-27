@@ -1,0 +1,52 @@
+[
+  {
+    "input": {
+      "clinical_question": "Does early mobilisation after hip fracture surgery reduce 30-day mortality in adults over 65?",
+      "population": "adults over 65 post hip-fracture surgery"
+    },
+    "expected_output": {
+      "must_include_sections": ["answer", "evidence_grade", "key_studies", "caveats", "disclaimer"],
+      "min_studies": 2
+    }
+  },
+  {
+    "input": {
+      "clinical_question": "Is intermittent fasting more effective than continuous caloric restriction for long-term weight loss?",
+      "population": "adults with BMI > 27"
+    },
+    "expected_output": {
+      "must_include_sections": ["answer", "evidence_grade", "key_studies", "caveats", "disclaimer"],
+      "min_studies": 2
+    }
+  },
+  {
+    "input": {
+      "clinical_question": "What is the evidence for SGLT2 inhibitors in heart failure with preserved ejection fraction?",
+      "population": "adults with HFpEF"
+    },
+    "expected_output": {
+      "must_include_sections": ["answer", "evidence_grade", "key_studies", "caveats", "disclaimer"],
+      "min_studies": 2
+    }
+  },
+  {
+    "input": {
+      "clinical_question": "Does metformin reduce all-cause mortality in prediabetes?",
+      "population": "adults with prediabetes"
+    },
+    "expected_output": {
+      "must_include_sections": ["answer", "evidence_grade", "key_studies", "caveats", "disclaimer"],
+      "min_studies": 2
+    }
+  },
+  {
+    "input": {
+      "clinical_question": "Is music therapy effective for agitation in dementia?",
+      "population": "adults with moderate-to-severe dementia"
+    },
+    "expected_output": {
+      "must_include_sections": ["answer", "evidence_grade", "key_studies", "caveats", "disclaimer"],
+      "min_studies": 2
+    }
+  }
+]

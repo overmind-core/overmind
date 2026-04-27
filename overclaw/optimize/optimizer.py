@@ -47,8 +47,10 @@ from overclaw.core.paths import (
     agent_run_state_path,
 )
 from overclaw.core.registry import project_root_from_agent_file
-from overclaw.utils.display import BRAND, make_spinner_progress, rel
+from overclaw.utils.display import BRAND, confirm_option, make_spinner_progress, rel
+from overclaw.utils.instrument import deinstrument_source
 from rich.rule import Rule
+from rich.syntax import Syntax
 from rich.table import Table
 from rich.text import Text
 
@@ -1348,6 +1350,153 @@ class Optimizer:
                 f"\n  [dim]Cross-run state saved: {n_clusters} cluster(s), "
                 f"{n_reg} regression case(s)[/dim]"
             )
+
+        # ---- Offer to commit optimized code back to the original agent ----
+        try:
+            self._prompt_commit_to_original_sources()
+        except Exception:
+            self._logger.exception(
+                "Failed to prompt/commit optimized sources back to originals"
+            )
+
+    # ------------------------------------------------------------------
+    # Commit optimized sources back to original agent files
+    # ------------------------------------------------------------------
+
+    def _collect_commit_targets(self) -> list[tuple[Path, str, str]]:
+        """Return ``[(abs_path, original, optimized), ...]`` for files to commit.
+
+        Each ``optimized`` string has all overmind-sdk instrumentation
+        (imports, ``overmind_init()``, ``@observe()`` decorators) stripped
+        so what the user sees and commits matches the style of their
+        original source.  Files whose cleaned optimized content matches
+        the on-disk original are included with identical strings so the
+        caller can decide whether to show them or not.
+        """
+        targets: list[tuple[Path, str, str]] = []
+
+        use_bundle = (
+            self._bundle is not None
+            and self._best_files
+            and self._bundle.is_multi_file()
+        )
+
+        if use_bundle:
+            root = Path(self._bundle.project_root).resolve()
+            for rel_path, new_src in self._best_files.items():
+                abs_path = (root / rel_path).resolve()
+                try:
+                    original = abs_path.read_text(encoding="utf-8")
+                except Exception:
+                    continue
+                cleaned = (
+                    deinstrument_source(new_src)
+                    if rel_path.endswith(".py")
+                    else new_src
+                )
+                targets.append((abs_path, original, cleaned))
+        else:
+            abs_path = Path(self.config.agent_path).resolve()
+            try:
+                original = abs_path.read_text(encoding="utf-8")
+            except Exception:
+                return targets
+            new_src = self.best_code or original
+            cleaned = (
+                deinstrument_source(new_src) if abs_path.suffix == ".py" else new_src
+            )
+            targets.append((abs_path, original, cleaned))
+
+        return targets
+
+    def _prompt_commit_to_original_sources(self) -> None:
+        """After optimization, show diffs and offer to write them to originals.
+
+        Skips silently when the cleaned optimized source is identical to
+        what's already on disk for every file, or when there was no
+        meaningful improvement over the baseline.
+        """
+        if self.best_score <= self._baseline_train_score:
+            return
+
+        targets = self._collect_commit_targets()
+        changed: list[tuple[Path, str, str]] = [t for t in targets if t[1] != t[2]]
+        if not changed:
+            return
+
+        self.console.print()
+        self.console.print(Rule(style="dim"))
+        self.console.print()
+        self.console.print(
+            Panel(
+                "[bold]Commit Optimized Code to Original Agent[/bold]\n"
+                "[dim]Review the diff for each file. If you accept, the "
+                "cleaned-up optimized source will replace your original "
+                "agent files on disk (overmind-sdk instrumentation is "
+                "stripped first).[/dim]",
+                border_style=BRAND,
+            )
+        )
+
+        cwd = Path.cwd()
+        for abs_path, original, cleaned in changed:
+            try:
+                shown_path = abs_path.relative_to(cwd)
+            except ValueError:
+                shown_path = abs_path
+            diff_text = "".join(
+                difflib.unified_diff(
+                    original.splitlines(keepends=True),
+                    cleaned.splitlines(keepends=True),
+                    fromfile=f"a/{shown_path}",
+                    tofile=f"b/{shown_path}",
+                    n=3,
+                )
+            )
+            if not diff_text:
+                continue
+            self.console.print()
+            self.console.print(f"  [bold]{shown_path}[/bold]")
+            self.console.print(
+                Syntax(
+                    diff_text,
+                    "diff",
+                    theme="ansi_dark",
+                    background_color="default",
+                    word_wrap=False,
+                )
+            )
+
+        self.console.print()
+        accepted = confirm_option(
+            "Do you want to commit these changes back to the original agent?",
+            default=True,
+            console=self.console,
+        )
+        if not accepted:
+            self.console.print(
+                "  [dim]Skipped. Your original agent files are unchanged.[/dim]\n"
+                f"  [dim]Optimized sources remain available under "
+                f"[bold]{self.output_dir}[/bold].[/dim]\n"
+            )
+            return
+
+        written = 0
+        for abs_path, _, cleaned in changed:
+            try:
+                abs_path.parent.mkdir(parents=True, exist_ok=True)
+                abs_path.write_text(cleaned, encoding="utf-8")
+                written += 1
+            except Exception as exc:
+                self.console.print(f"  [red]Failed to write {abs_path}: {exc}[/red]")
+
+        self.console.print(
+            f"\n  [bold green]\u2713[/bold green] "
+            f"Committed {written} file(s) to the original agent.\n"
+            f"  [dim]Re-register or re-instrument to refresh the "
+            f"[bold]{agent_instrumented_dir(self.config.agent_name)}[/bold] "
+            f"copy before the next optimize run.[/dim]\n"
+        )
 
     # ------------------------------------------------------------------
     # Complexity penalty (prompt bloat + code growth + override detection)

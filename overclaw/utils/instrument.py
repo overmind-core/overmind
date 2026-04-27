@@ -57,33 +57,51 @@ def _add_overmind_imports(source: str) -> str:
 
     lines = source.split("\n")
 
+    # Use AST to reliably skip past the module docstring and any
+    # ``from __future__`` imports (which must stay at the very top).
+    # The previous line-by-line heuristic could inject our import
+    # *inside* a multi-line docstring, leaving ``observe`` undefined
+    # and crashing the instrumented module at import time.
     insert_idx = 0
-    for i, line in enumerate(lines):
-        stripped = line.strip()
-        if (
-            stripped.startswith("#")
-            or stripped == ""
-            or stripped.startswith('"""')
-            or stripped.startswith("'''")
-        ):
-            if stripped.startswith('"""') or stripped.startswith("'''"):
-                quote = stripped[:3]
-                if stripped.count(quote) == 1:
-                    for j in range(i + 1, len(lines)):
-                        if quote in lines[j]:
-                            insert_idx = j + 1
-                            break
-                    else:
-                        insert_idx = i + 1
-                else:
-                    insert_idx = i + 1
-            else:
-                insert_idx = i + 1
-            continue
-        break
+    try:
+        tree = ast.parse(source)
+    except SyntaxError:
+        tree = None
 
-    lines.insert(insert_idx, _OVERMIND_IMPORT)
-    lines.insert(insert_idx + 1, _OVERMIND_INIT)
+    if tree is not None and tree.body:
+        body = tree.body
+        i = 0
+        first = body[0]
+        if (
+            isinstance(first, ast.Expr)
+            and isinstance(first.value, ast.Constant)
+            and isinstance(first.value.value, str)
+        ):
+            insert_idx = first.end_lineno or insert_idx
+            i = 1
+        while i < len(body):
+            node = body[i]
+            if isinstance(node, ast.ImportFrom) and node.module == "__future__":
+                insert_idx = node.end_lineno or insert_idx
+                i += 1
+            else:
+                break
+
+    # Bookend our injected block with blank lines so deinstrumentation
+    # yields a clean round-trip (the strip regexes consume the trailing
+    # ``\n`` of the line they remove; having the blanks here means the
+    # blank line that was originally adjacent to the removed lines
+    # survives).
+    block = [_OVERMIND_IMPORT, _OVERMIND_INIT]
+    prev_is_blank = insert_idx == 0 or lines[insert_idx - 1].strip() == ""
+    next_is_blank = insert_idx >= len(lines) or lines[insert_idx].strip() == ""
+    if not prev_is_blank:
+        block.insert(0, "")
+    if not next_is_blank:
+        block.append("")
+
+    for offset, text in enumerate(block):
+        lines.insert(insert_idx + offset, text)
     return "\n".join(lines)
 
 
@@ -253,6 +271,34 @@ def is_instrumented(source: str) -> bool:
     )
     has_decorator = "@observe()" in source
     return has_import and has_decorator
+
+
+_OBSERVE_DECORATOR_RE = re.compile(r"^[ \t]*@observe\(\s*\)\s*\n", re.MULTILINE)
+# Only match the exact import form we inject in :func:`instrument_source` so
+# we don't clobber a user's pre-existing ``from overmind_sdk import ...`` line.
+_OVERMIND_IMPORT_RE = re.compile(
+    r"^[ \t]*from\s+overmind_sdk\s+import\s+[^\n]*\b(?:overmind_init|observe)\b"
+    r"[^\n]*\n",
+    re.MULTILINE,
+)
+_OVERMIND_INIT_RE = re.compile(r"^[ \t]*overmind_init\s*\(\s*\)\s*\n", re.MULTILINE)
+
+
+def deinstrument_source(source: str) -> str:
+    """Reverse the additions made by :func:`instrument_source`.
+
+    Strips ``@observe()`` decorators, the ``overmind_sdk`` import line,
+    and bare ``overmind_init()`` calls so the cleaned-up source matches
+    what the user originally wrote (minus any pre-existing instrumentation
+    they may have had, which is intentionally unsupported here).
+
+    This is used by ``overclaw optimize`` when committing optimized
+    sources back to the user's original agent files.
+    """
+    source = _OBSERVE_DECORATOR_RE.sub("", source)
+    source = _OVERMIND_IMPORT_RE.sub("", source)
+    source = _OVERMIND_INIT_RE.sub("", source)
+    return source
 
 
 def instrument_directory(directory: str) -> int:

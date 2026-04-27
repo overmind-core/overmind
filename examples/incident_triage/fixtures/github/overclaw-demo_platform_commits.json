@@ -1,0 +1,7 @@
+{
+  "commits": [
+    {"sha": "a1b2c3d4e5", "message": "bump stripe-sdk to 12.0 (breaking changes to charges.list)", "author": "alice", "date": "2025-08-10T09:02:11Z"},
+    {"sha": "f9e8d7c6b5", "message": "tune fraud-rules thresholds for weekend traffic", "author": "bob", "date": "2025-08-10T08:48:03Z"},
+    {"sha": "112233aabb", "message": "chore: dependabot readme update", "author": "dependabot[bot]", "date": "2025-08-10T06:10:00Z"}
+  ]
+}
