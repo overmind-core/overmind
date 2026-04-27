@@ -18,7 +18,7 @@ the "OverClaw helps even when you have no tools" demo.
 ## Register
 
 ```bash
-overclaw agent register contract-extractor new_examples.contract_extractor.agent:run
+overclaw agent register contract-extractor examples.contract_extractor.agent:run
 overclaw setup contract-extractor
 overclaw optimize contract-extractor
 ```

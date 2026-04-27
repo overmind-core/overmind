@@ -20,13 +20,17 @@ from typing import Any
 from dotenv import load_dotenv
 from openai import OpenAI
 
-from .prompts import SYSTEM_PROMPT
-from .tools import TOOL_FNS, TOOL_SCHEMAS
+from prompts import SYSTEM_PROMPT
+from tools import TOOL_FNS, TOOL_SCHEMAS
 
 load_dotenv()
 
 _MODEL = os.environ.get("INVESTMENT_MEMO_MODEL", "gpt-4o")
 _MAX_TOOL_ROUNDS = 16
+
+
+def _client() -> OpenAI:
+    return OpenAI()
 
 
 def _extract_json(text: str) -> dict[str, Any]:
@@ -66,7 +70,7 @@ def run(input_data: dict[str, Any]) -> dict[str, Any]:
         "Write the investment memo JSON."
     )
 
-    client = OpenAI()
+    client = _client()
     messages: list[dict[str, Any]] = [
         {"role": "system", "content": SYSTEM_PROMPT},
         {"role": "user", "content": user_msg},

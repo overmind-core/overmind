@@ -21,7 +21,7 @@ Set `OVERCLAW_USE_FIXTURES=1` to use fixture data for GitHub calls
 ## Register
 
 ```bash
-overclaw agent register incident-triage new_examples.incident_triage.agent:run
+overclaw agent register incident-triage examples.incident_triage.agent:run
 overclaw setup incident-triage
 overclaw optimize incident-triage
 ```

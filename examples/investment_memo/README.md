@@ -16,7 +16,7 @@ grounded in SEC filings + news.
 ## Register
 
 ```bash
-overclaw agent register investment-memo new_examples.investment_memo.agent:run
+overclaw agent register investment-memo examples.investment_memo.agent:run
 overclaw setup investment-memo
 overclaw optimize investment-memo
 ```

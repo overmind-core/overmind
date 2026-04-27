@@ -18,13 +18,17 @@ from typing import Any
 from anthropic import Anthropic
 from dotenv import load_dotenv
 
-from .prompts import SYSTEM_PROMPT
-from .tools import TOOL_FNS, TOOL_SCHEMAS
+from prompts import SYSTEM_PROMPT
+from tools import TOOL_FNS, TOOL_SCHEMAS
 
 load_dotenv()
 
-_MODEL = os.environ.get("SUPPORT_TRIAGE_MODEL", "claude-3-5-sonnet-latest")
+_MODEL = os.environ.get("SUPPORT_TRIAGE_MODEL", "claude-sonnet-4-6")
 _MAX_TOOL_ROUNDS = 8
+
+
+def _client() -> Anthropic:
+    return Anthropic()
 
 
 def _extract_json(text: str) -> dict[str, Any]:
@@ -63,7 +67,7 @@ def run(input_data: dict[str, Any]) -> dict[str, Any]:
         "Triage this ticket and return the JSON."
     )
 
-    client = Anthropic()
+    client = _client()
     messages: list[dict[str, Any]] = [{"role": "user", "content": user_text}]
 
     for _ in range(_MAX_TOOL_ROUNDS):

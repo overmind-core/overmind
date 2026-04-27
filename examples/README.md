@@ -13,7 +13,7 @@ def run(input_data: dict) -> dict: ...
 so you can register it with:
 
 ```bash
-overclaw agent register <name> new_examples.<folder>.agent:run
+overclaw agent register <name> examples.<folder>.agent:run
 ```
 
 ## The portfolio
@@ -44,13 +44,13 @@ overclaw agent register <name> new_examples.<folder>.agent:run
 
 ```bash
 cp ../.env.example .env      # add OPENAI_API_KEY, ANTHROPIC_API_KEY, EXA_API_KEY
-pip install -r new_examples/lead_qualifier/requirements.txt
+pip install -r examples/lead_qualifier/requirements.txt
 ```
 
 Then from the repo root:
 
 ```bash
-overclaw agent register lead-qualifier new_examples.lead_qualifier.agent:run
+overclaw agent register lead-qualifier examples.lead_qualifier.agent:run
 overclaw setup lead-qualifier
 overclaw optimize lead-qualifier
 ```

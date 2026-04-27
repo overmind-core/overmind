@@ -20,7 +20,7 @@ PubMed abstracts and clinical guidelines.
 ## Register
 
 ```bash
-overclaw agent register clinical-evidence new_examples.clinical_evidence.agent:run
+overclaw agent register clinical-evidence examples.clinical_evidence.agent:run
 overclaw setup clinical-evidence
 overclaw optimize clinical-evidence
 ```

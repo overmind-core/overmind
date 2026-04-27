@@ -8,6 +8,7 @@ skip those steps when they've already been performed.
 from __future__ import annotations
 
 import os
+import re
 import shutil
 from pathlib import Path
 
@@ -25,6 +26,9 @@ from overclaw.core.paths import (
     agent_instrumented_dir,
 )
 from overclaw.core.registry import project_root_from_agent_file
+from overclaw.utils.code import resolve_local_files
+from overclaw.utils.env_scan import discover_env_var_defaults
+from overclaw.utils.ignore import build_ignore_predicate
 
 
 # ---------------------------------------------------------------------------
@@ -32,13 +36,36 @@ from overclaw.core.registry import project_root_from_agent_file
 # ---------------------------------------------------------------------------
 
 
+def _format_env_value(val: str) -> str:
+    """Format a value for ``KEY=value`` lines (quote when needed)."""
+    if val == "":
+        return '""'
+    if re.fullmatch(r"[A-Za-z0-9_.:@/+-]+", val):
+        return val
+    esc = val.replace("\\", "\\\\").replace('"', '\\"').replace("\n", "\\n")
+    return f'"{esc}"'
+
+
 def write_agent_env(path: Path, agent_name: str, env_vars: dict[str, str]) -> None:
-    """Write agent-specific env vars to ``.overclaw/agents/<name>/.env``."""
+    """Merge *env_vars* into the per-agent ``.env`` and write the file.
+
+    Existing keys from the file are preserved unless overwritten by
+    *env_vars*. Empty-string values in *env_vars* are written as ``KEY=""``.
+    """
     path.parent.mkdir(parents=True, exist_ok=True)
+    merged: dict[str, str] = {}
+    if path.exists():
+        for k, v in (dotenv_values(path) or {}).items():
+            if v is None:
+                continue
+            merged[k] = str(v)
+    merged.update(env_vars)
+
     lines = [f"# OverClaw agent env — {agent_name}", ""]
-    for key, val in env_vars.items():
-        lines.append(f"{key}={val}")
-    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    for key in sorted(merged.keys()):
+        lines.append(f"{key}={_format_env_value(merged[key])}")
+    lines.append("")
+    path.write_text("\n".join(lines), encoding="utf-8")
 
 
 def describe_configured_agent_llm_provider(existing: dict[str, str]) -> str | None:
@@ -73,6 +100,136 @@ def describe_configured_agent_llm_provider(existing: dict[str, str]) -> str | No
             return f"Analyzer model: {analyzer}"
         return None
     return label
+
+
+# Env names that are almost always inherited from the OS, not agent-specific.
+_SKIP_DISCOVER_KEYS = frozenset(
+    {
+        "PATH",
+        "HOME",
+        "USER",
+        "LOGNAME",
+        "SHELL",
+        "TERM",
+        "LANG",
+        "PWD",
+        "TMPDIR",
+        "TMP",
+        "TEMP",
+    }
+)
+
+
+def collect_code_detected_env_vars(
+    agent_name: str, entry_path: str, console: Console
+) -> None:
+    """Scan the agent import closure for ``os.environ`` / ``os.getenv`` reads.
+
+    For each discovered name, prompts with the literal default from source
+    (when present). Enter accepts the shown default; a typed value is saved
+    to ``.overclaw/agents/<name>/.env``. Keys that already have a non-empty
+    value in that file are skipped so provider setup is not duplicated.
+    """
+    entry = Path(entry_path).resolve()
+    if not entry.is_file():
+        return
+
+    pr = project_root_from_agent_file(str(entry))
+    root = Path(pr).resolve() if pr is not None else entry.parent
+    try:
+        entry.relative_to(root)
+    except ValueError:
+        files = {entry.name: entry.read_text(encoding="utf-8")}
+    else:
+        ignore = build_ignore_predicate(root)
+        raw = resolve_local_files(
+            str(entry),
+            str(root),
+            max_files=400,
+            should_ignore_rel=ignore,
+        )
+        files = {rel: src for rel, src in raw.items() if rel.endswith(".py")}
+
+    if not files:
+        return
+
+    discovered = discover_env_var_defaults(files)
+    for k in list(discovered):
+        if k in _SKIP_DISCOVER_KEYS:
+            del discovered[k]
+
+    if not discovered:
+        return
+
+    env_path = agent_env_path(agent_name)
+    existing: dict[str, str] = {}
+    if env_path.exists():
+        for k, v in (dotenv_values(env_path) or {}).items():
+            if v is None:
+                continue
+            existing[k] = str(v)
+
+    console.print()
+    console.print(Rule(style="dim"))
+    console.print(
+        Rule("[bold]Environment variables from your agent code[/bold]", style=BRAND)
+    )
+    console.print(
+        "  [dim]Scanned your entrypoint and local imports for "
+        "[cyan]os.environ.get[/cyan] / [cyan]os.getenv[/cyan] / "
+        "[cyan]os.environ[...][/cyan]. Press Enter to keep the suggested value; "
+        "type a new value to override. Empty Enter skips keys with no default "
+        "in code.[/dim]"
+    )
+
+    updates: dict[str, str] = {}
+    for key in sorted(discovered.keys()):
+        if existing.get(key, "").strip():
+            console.print(
+                f"  [dim]{escape(key)}[/dim]  [dim]— already set in "
+                f"{rel(env_path)}; leaving as-is.[/dim]"
+            )
+            continue
+
+        code_default = discovered[key]
+        if code_default is not None:
+            display = (
+                escape(code_default)
+                if len(code_default) < 120
+                else escape(code_default[:117] + "...")
+            )
+            console.print(
+                f"\n  [bold]{escape(key)}[/bold]  [dim](code default: "
+                f"[cyan]{display}[/cyan])[/dim]"
+            )
+            val = Prompt.ask(
+                "  Value",
+                default=code_default,
+                show_default=True,
+                console=console,
+            )
+            updates[key] = val
+        else:
+            console.print(
+                f"\n  [bold]{escape(key)}[/bold]  [dim](no literal default in code)[/dim]"
+            )
+            val = Prompt.ask(
+                "  Value (leave empty to skip)",
+                default="",
+                show_default=False,
+                console=console,
+            ).strip()
+            if val:
+                updates[key] = val
+
+    if updates:
+        write_agent_env(env_path, agent_name, updates)
+        console.print(
+            f"\n  [bold green]\u2713[/bold green] Saved "
+            f"[bold]{len(updates)}[/bold] variable(s) \u2192 [dim]{rel(env_path)}[/dim]"
+        )
+    else:
+        console.print("\n  [dim]No new agent-specific env vars to write.[/dim]")
 
 
 def collect_agent_provider_config(agent_name: str, console: Console) -> None:

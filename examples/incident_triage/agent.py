@@ -23,13 +23,17 @@ from langchain.agents import AgentExecutor, create_tool_calling_agent
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_openai import ChatOpenAI
 
-from .prompts import SYSTEM_PROMPT
-from .tools import fetch_commit_diff, list_recent_commits, query_metrics, search_runbook
+from prompts import SYSTEM_PROMPT
+from tools import fetch_commit_diff, list_recent_commits, query_metrics, search_runbook
 
 load_dotenv()
 
 _MODEL = os.environ.get("INCIDENT_TRIAGE_MODEL", "gpt-4o-mini")
 _REPO = os.environ.get("INCIDENT_TRIAGE_REPO", "overclaw-demo/platform")
+
+
+def _llm() -> ChatOpenAI:
+    return ChatOpenAI(model=_MODEL, temperature=0.2)
 
 
 def _extract_json(text: str) -> dict[str, Any]:
@@ -69,7 +73,7 @@ def run(input_data: dict[str, Any]) -> dict[str, Any]:
         ]
     )
 
-    llm = ChatOpenAI(model=_MODEL, temperature=0.2)
+    llm = _llm()
     agent = create_tool_calling_agent(llm, tools, prompt)
     executor = AgentExecutor(agent=agent, tools=tools, max_iterations=10, verbose=False)
 

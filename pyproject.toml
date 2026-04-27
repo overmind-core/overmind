@@ -22,6 +22,13 @@ dependencies = [
 [project.scripts]
 overclaw = "overclaw.cli:main"
 
+[project.optional-dependencies]
+test = [
+    "pytest>=8.0",
+    "pytest-xdist>=3.5",
+    "pytest-cov>=5.0",
+]
+
 [tool.hatch.build.targets.wheel]
 packages = ["overclaw", "agents"]
 
@@ -52,5 +59,13 @@ filterwarnings = [
 ]
 
 [tool.ruff]
-exclude = ["bae", "dspy", "openapi_client", "tests", "agents"]
+exclude = [
+    "bae",
+    "dspy",
+    "openapi_client",
+    "tests",
+    "agents",
+    "**/.overclaw_runners",
+    "**/.overclaw",
+]
 fix = true

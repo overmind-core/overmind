@@ -1509,6 +1509,13 @@ dependencies = [
     { name = "urllib3" },
 ]
 
+[package.optional-dependencies]
+test = [
+    { name = "pytest" },
+    { name = "pytest-cov" },
+    { name = "pytest-xdist" },
+]
+
 [package.dev-dependencies]
 dev = [
     { name = "pre-commit" },
@@ -1529,6 +1536,9 @@ requires-dist = [
     { name = "opentelemetry-exporter-otlp", specifier = ">=1.40.0" },
     { name = "opentelemetry-sdk", specifier = ">=1.40.0" },
     { name = "pydantic", specifier = ">=2.0.0" },
+    { name = "pytest", marker = "extra == 'test'", specifier = ">=8.0" },
+    { name = "pytest-cov", marker = "extra == 'test'", specifier = ">=5.0" },
+    { name = "pytest-xdist", marker = "extra == 'test'", specifier = ">=3.5" },
     { name = "python-dateutil" },
     { name = "python-dotenv", specifier = ">=1.0.0" },
     { name = "rich", specifier = ">=13.0.0" },
@@ -1536,6 +1546,7 @@ requires-dist = [
     { name = "tomlkit", specifier = ">=0.14.0" },
     { name = "urllib3", specifier = ">=1.25.3" },
 ]
+provides-extras = ["test"]
 
 [package.metadata.requires-dev]
 dev = [

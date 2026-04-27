@@ -38,6 +38,7 @@ from overclaw.core.registry import (
 )
 from overclaw.commands.agent_env import (
     collect_agent_provider_config,
+    collect_code_detected_env_vars,
     instrument_agent_files,
 )
 
@@ -64,7 +65,8 @@ def _print_post_register_next_step(console: Console, name: str) -> None:
         f"  Next step: [bold {BRAND}]overclaw agent validate {name} "
         f"--data <path/to/seed.json>[/bold {BRAND}] "
         f"[dim](if you have seed data)[/dim]\n"
-        f"  [dim]Or jump straight to [bold]overclaw setup {name}[/bold].[/dim]\n"
+        f"  [dim]Or jump straight to [/dim]"
+        f"[bold {BRAND}]overclaw setup {name}[/bold {BRAND}][dim].[/dim]\n"
     )
 
 
@@ -395,10 +397,12 @@ def cmd_register(name: str, entrypoint: str) -> None:
             raise SystemExit(0)
 
         agent_path = str(file_path)
+        entry_for_env_scan = str(Path(file_path).resolve())
 
         console.print()
         console.print(Rule(style="dim"))
         collect_agent_provider_config(name, console)
+        collect_code_detected_env_vars(name, entry_for_env_scan, console)
         load_agent_dotenv(name)
 
         console.print()
@@ -437,6 +441,7 @@ def cmd_register(name: str, entrypoint: str) -> None:
     console.print()
     console.print(Rule(style="dim"))
     collect_agent_provider_config(name, console)
+    collect_code_detected_env_vars(name, str(Path(agent_path).resolve()), console)
     load_agent_dotenv(name)
 
     # ---- 2. Copy agent source into .overclaw/ (instrumentation) ----
@@ -569,6 +574,7 @@ def cmd_update(name: str, entrypoint: str) -> None:
     console.print()
     console.print(Rule(style="dim"))
     collect_agent_provider_config(name, console)
+    collect_code_detected_env_vars(name, str(Path(agent_path).resolve()), console)
     load_agent_dotenv(name)
 
     # 2. Re-instrument

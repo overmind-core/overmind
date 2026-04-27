@@ -17,7 +17,7 @@ writer can hand off directly.
 ## Register
 
 ```bash
-overclaw agent register seo-brief new_examples.seo_brief.agent:run
+overclaw agent register seo-brief examples.seo_brief.agent:run
 overclaw setup seo-brief
 overclaw optimize seo-brief
 ```
