@@ -7,18 +7,34 @@ tool orchestration, and propose evaluation criteria.
 Agent source code:
 {agent_code_section}
 
+The agent's entry function is `{entrypoint_fn}`. The input schema MUST be derived
+from this function's **parameter list** — each parameter becomes a field in
+`input_schema`. Do NOT infer inputs from the UI layer, internal helper functions,
+or Streamlit widgets. Only the parameters of `{entrypoint_fn}()` matter.
+
+CRITICAL: The runner calls the agent via `{entrypoint_fn}(**input_dict)` when
+the function has multiple parameters. This means the `input_schema` field names
+MUST exactly match the function's parameter names, and test-case inputs will
+use these names as dict keys. Getting this wrong causes runtime crashes.
+
+The `output_schema` describes what the agent RETURNS — this may be a structured
+JSON object (dict with typed fields) or a plain string/markdown. Derive the
+output structure from the function's return type and actual return statements
+in the code.
+
 Return a JSON object with this exact structure:
 {{
   "description": "One paragraph describing what this agent does and its purpose",
   "input_schema": {{
-    "field_name": {{"type": "string", "description": "what this field represents"}}
+    "field_name": {{"type": "string|number|boolean|object|array", "description": "what this parameter represents"}}
   }},
   "output_schema": {{
     "field_name": {{
       "type": "enum or number or text or boolean",
       "description": "what this field represents",
       "values": ["list", "of", "valid", "values"],
-      "range": [0, 100]
+      "range": [0, 100],
+      "optional": false
     }}
   }},
   "proposed_criteria": {{
@@ -65,6 +81,11 @@ Return a JSON object with this exact structure:
   ],
   "tools_summary": "Brief description of what tools the agent uses and why",
   "decision_logic": "Brief description of the agent's decision-making process",
+  "scope": {{
+    "optimizable_paths": ["glob patterns relative to project root for files the optimizer may edit"],
+    "context_paths": ["glob patterns for read-only context files (prompts, schemas) not in import closure"],
+    "exclude_paths": ["glob patterns to skip entirely (tests, vendored code, infra)"]
+  }},
   "optimizable_elements": ["element1", "element2"],
   "fixed_elements": ["element1", "element2"]
 }}
@@ -75,6 +96,12 @@ values in "values".
 - Use "number" for numeric fields. Include the expected range in "range".
 - Use "text" for free-form string fields. Omit "values" and "range".
 - Use "boolean" for true/false fields. Omit "values" and "range".
+- Set "optional": true for any field that is only populated on SOME code paths \
+(e.g. an "error_message" field that only appears when status="error", or success-only \
+fields that are absent when the agent returns an error object). This is critical: if \
+the agent returns a discriminated union keyed on a status/kind/type field, every \
+field OTHER than the discriminator itself should be marked optional. Default is false \
+(field is always present).
 
 Rules for proposed_criteria:
 - Set "importance" to "critical" for primary output fields, "important" for secondary, \
@@ -98,6 +125,17 @@ Rules for consistency_rules:
 there's a numeric score and a categorical field, a high score should align with the \
 "best" category value. List the FIRST value in enum "values" as the highest/best.
 - Set penalty proportional to how egregious the inconsistency would be.
+
+Rules for scope (critical for large repos):
+- optimizable_paths: Only files that materially affect LLM behaviour — system prompts, \
+tool description/schema modules, orchestration around `{entrypoint_fn}()`, model routing. \
+Use tight globs (e.g. ``myagent/prompts/**/*.py``). Aim for fewer than 25 patterns; prefer \
+directories that hold prompts and agent config over the whole package tree.
+- context_paths: Important read-only context (eval templates, JSON schemas) the optimizer \
+should see but must not edit. Omit if empty.
+- exclude_paths: Tests, benchmarks, docs, examples, scripts, docker/k8s, web servers, \
+database adapters, vendored trees. Be aggressive — missing an exclude is better than \
+indexing thousands of files.
 
 Rules for optimizable_elements vs fixed_elements:
 - optimizable_elements: Things the optimizer CAN change to improve performance.

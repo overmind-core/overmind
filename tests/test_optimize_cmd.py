@@ -17,6 +17,12 @@ class TestOptimizeMain:
         mock_config.return_value = mock_cfg
         main(agent_name="test", fast=True)
         mock_load_dotenv.assert_called_once_with("test")
-        mock_config.assert_called_once_with(agent_name="test", fast=True)
+        mock_config.assert_called_once_with(
+            agent_name="test",
+            fast=True,
+            scope_globs=None,
+            max_files=None,
+            max_chars=None,
+        )
         mock_optimizer.assert_called_once_with(mock_cfg)
         mock_optimizer.return_value.run.assert_called_once()

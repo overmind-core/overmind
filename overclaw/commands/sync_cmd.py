@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import logging
 from pathlib import Path
 
 from rich.console import Console
@@ -16,6 +17,8 @@ from overclaw.client import (
 from overclaw.commands.setup_cmd import _sync_setup_artifacts
 from overclaw.core.paths import agent_experiments_dir, load_overclaw_dotenv
 from overclaw.core.registry import get_agent_id, load_registry
+
+logger = logging.getLogger("overclaw.commands.sync")
 
 
 def _sync_traces_for_agent(agent_name: str, agent_id: str, console: Console) -> int:
@@ -34,10 +37,20 @@ def _sync_traces_for_agent(agent_name: str, agent_id: str, console: Console) -> 
         try:
             trace_data = json.loads(trace_file.read_text(encoding="utf-8"))
         except Exception:
+            logger.debug(
+                "sync: failed to parse trace file %s", trace_file, exc_info=True
+            )
             continue
         trace_data["trace_group"] = trace_data.get("trace_group") or run_name
         _create_trace(client, agent_id, None, trace_data)
         synced += 1
+
+    logger.info(
+        "sync: queued %d trace(s) for agent=%s (%s)",
+        synced,
+        agent_name,
+        agent_id,
+    )
 
     if synced:
         flush_pending_api_updates(timeout=20.0)
@@ -47,6 +60,7 @@ def _sync_traces_for_agent(agent_name: str, agent_id: str, console: Console) -> 
 
 def main(agent_name: str | None = None) -> None:
     """Sync local setup artifacts and traces to Overmind for one or all agents."""
+    logger.info("sync: start (agent_name=%s)", agent_name)
     load_overclaw_dotenv()
     console = Console()
 

@@ -35,8 +35,8 @@ def tmp_project(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
         def run(input_data: dict) -> dict:
             return {"result": "ok"}
 
-        def helper():
-            pass
+        def helper(input_data: dict) -> dict:
+            return {"result": "helper"}
         """),
         encoding="utf-8",
     )

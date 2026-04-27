@@ -31,9 +31,10 @@ from __future__ import annotations
 import ast
 import sys
 import textwrap
+from collections import deque
 from dataclasses import dataclass, field
 from pathlib import Path
-from collections.abc import Sequence
+from collections.abc import Callable, Mapping, Sequence
 
 
 # ---------------------------------------------------------------------------
@@ -126,6 +127,19 @@ def has_entrypoint_ast(source: str, fn_name: str) -> bool:
 # ---------------------------------------------------------------------------
 # Import resolution
 # ---------------------------------------------------------------------------
+
+
+def _lang_tag_for_path(rel_path: str) -> str:
+    """Return a Markdown code fence language tag for *rel_path*."""
+    ext = Path(rel_path).suffix.lower()
+    return {
+        ".py": "python",
+        ".js": "javascript",
+        ".mjs": "javascript",
+        ".ts": "typescript",
+        ".mts": "typescript",
+    }.get(ext, "python")
+
 
 _STDLIB_TOP: frozenset[str] = getattr(
     sys, "stdlib_module_names", frozenset()
@@ -254,29 +268,57 @@ def resolve_local_files(
     project_root: str,
     *,
     max_depth: int = 6,
+    max_files: int | None = None,
+    should_ignore_rel: Callable[[str], bool] | None = None,
 ) -> dict[str, str]:
-    """Recursively resolve all project-local files reachable from *entry_path*.
+    """Resolve project-local files reachable from *entry_path* (breadth-first).
 
-    Returns ``{relative_path: source_code}`` with the entry file first.
+    Returns ``{relative_path: source_code}`` with the entry file first, then
+    dependencies in roughly increasing distance from the entry file.
+
+    Parameters
+    ----------
+    max_files:
+        If set, stop after this many files have been collected. Used for LLM
+        prompts (e.g. setup analysis) where pulling an entire vendored package
+        tree would exceed context limits.
+    should_ignore_rel:
+        If set, skip any project-relative path for which this returns True (no
+        read, no import traversal from that file).
     """
     root = Path(project_root).resolve()
     entry = Path(entry_path).resolve()
     result: dict[str, str] = {}
     visited: set[Path] = set()
+    queue: deque[tuple[Path, int]] = deque()
 
-    def _walk(file_path: Path, depth: int) -> None:
+    try:
+        entry.relative_to(root)
+    except ValueError:
+        return {}
+
+    queue.append((entry, 0))
+
+    while queue:
+        if max_files is not None and len(result) >= max_files:
+            break
+        file_path, depth = queue.popleft()
         if depth > max_depth or file_path in visited:
-            return
+            continue
         if not file_path.exists() or not file_path.is_file():
-            return
+            continue
         try:
             file_path.relative_to(root)
         except ValueError:
-            return
+            continue
+
+        rel = str(file_path.relative_to(root))
+        if should_ignore_rel and should_ignore_rel(rel):
+            visited.add(file_path)
+            continue
 
         visited.add(file_path)
         source = file_path.read_text(encoding="utf-8")
-        rel = str(file_path.relative_to(root))
         result[rel] = source
 
         # Resolve absolute imports
@@ -284,20 +326,32 @@ def resolve_local_files(
             if not _is_local_module(mod_name, root):
                 continue
             resolved = _resolve_module_to_file(mod_name, file_path, root)
-            if resolved:
-                _walk(resolved, depth + 1)
+            if resolved and resolved not in visited:
+                try:
+                    rrel = str(resolved.relative_to(root))
+                except ValueError:
+                    continue
+                if should_ignore_rel and should_ignore_rel(rrel):
+                    continue
+                queue.append((resolved, depth + 1))
 
         # Resolve relative imports via AST
         try:
             tree = ast.parse(source)
         except SyntaxError:
-            return
+            continue
         for node in ast.iter_child_nodes(tree):
             if isinstance(node, ast.ImportFrom) and node.level and node.level > 0:
                 for resolved in _resolve_relative_import(node, file_path, root):
-                    _walk(resolved, depth + 1)
+                    if resolved not in visited:
+                        try:
+                            rrel = str(resolved.relative_to(root))
+                        except ValueError:
+                            continue
+                        if should_ignore_rel and should_ignore_rel(rrel):
+                            continue
+                        queue.append((resolved, depth + 1))
 
-    _walk(entry, 0)
     return result
 
 
@@ -463,6 +517,9 @@ class AgentBundle:
         *,
         optimizable_paths: Sequence[str] | None = None,
         max_total_chars: int = 150_000,
+        max_resolved_files: int | None = None,
+        should_ignore_rel: Callable[[str], bool] | None = None,
+        prefetched_files: Mapping[str, str] | None = None,
     ) -> AgentBundle:
         """Build a bundle by resolving all local dependencies from *entry_path*.
 
@@ -476,22 +533,52 @@ class AgentBundle:
             Name of the entry function the optimizer invokes.
         optimizable_paths:
             Relative paths (under *project_root*) of files the LLM may modify.
-            Defaults to ``[entry_file_relative_path]``.
+            When ``None``, every resolved local dependency file is optimizable.
+            Pass ``[entry_file]`` (relative path) for read-only dependency context
+            with signature compression (e.g. setup-time analysis prompts).
         max_total_chars:
             Token budget expressed as characters.  Read-only files beyond
             this budget are demoted to signature-only representation.
+        max_resolved_files:
+            Optional cap on how many project-local files to follow from the
+            entry point (breadth-first). ``None`` means no limit.
+        should_ignore_rel:
+            Skip matching paths during BFS (see :func:`resolve_local_files`).
+        prefetched_files:
+            Extra ``{rel_path: source}`` merged after BFS (e.g. read-only context
+            files from scope globs). Ignored paths are dropped.
         """
         root = Path(project_root).resolve()
         entry = Path(entry_path).resolve()
         entry_rel = str(entry.relative_to(root))
 
-        local_files = resolve_local_files(entry_path, project_root)
+        local_files = resolve_local_files(
+            entry_path,
+            project_root,
+            max_files=max_resolved_files,
+            should_ignore_rel=should_ignore_rel,
+        )
+
+        if prefetched_files:
+            for rel, src in prefetched_files.items():
+                rel = rel.replace("\\", "/")
+                if should_ignore_rel and should_ignore_rel(rel):
+                    continue
+                local_files.setdefault(rel, src)
 
         if optimizable_paths is None:
             opt_set = set(local_files.keys())
         else:
             opt_set = set(optimizable_paths)
             opt_set.add(entry_rel)
+            for rel in list(opt_set):
+                if rel in local_files:
+                    continue
+                abs_p = root / rel
+                if abs_p.is_file():
+                    if should_ignore_rel and should_ignore_rel(rel):
+                        continue
+                    local_files[rel] = abs_p.read_text(encoding="utf-8")
 
         bundle = cls(
             entry_file=entry_rel,
@@ -589,16 +676,17 @@ class AgentBundle:
                 if p.symbol_type in ("function", "class")
             )
 
+            lang_tag = _lang_tag_for_path(rel_path)
             if has_signature_only and not is_opt:
                 sig_text = "\n\n".join(p.source for p in file_pieces)
                 sections.append(
                     f"\n# ===== FILE: {rel_path} [{tag}] =====\n"
-                    f"```python\n{sig_text}\n```"
+                    f"```{lang_tag}\n{sig_text}\n```"
                 )
             else:
                 sections.append(
                     f"\n# ===== FILE: {rel_path} [{tag}] =====\n"
-                    f"```python\n{source}\n```"
+                    f"```{lang_tag}\n{source}\n```"
                 )
 
         return "\n".join(sections)
@@ -654,18 +742,19 @@ class AgentBundle:
         modified: dict[str, str] = {}
 
         for rel_path, new_source in file_updates.items():
-            # Only allow updates to optimizable files
             if rel_path not in self.optimizable_files:
                 continue
 
-            # Validate syntax
             if rel_path.endswith(".py"):
                 try:
                     ast.parse(new_source)
                 except SyntaxError:
                     return None
+            elif rel_path.endswith((".js", ".mjs")):
+                pass  # JS syntax checked at candidate validation time
+            elif rel_path.endswith((".ts", ".mts")):
+                pass  # TS syntax checked at candidate validation time
 
-            # Only include if actually different from original
             original = self.original_files.get(rel_path, "")
             if new_source.rstrip() != original.rstrip():
                 modified[rel_path] = new_source

@@ -18,6 +18,7 @@ Usage:
 """
 
 import json
+import logging
 import os
 import shlex
 import signal
@@ -28,7 +29,6 @@ from uuid import UUID
 
 from dotenv import dotenv_values
 from rich.console import Console
-from rich.markup import escape
 from rich.panel import Panel
 from rich.prompt import IntPrompt, Prompt
 from rich.rule import Rule
@@ -42,7 +42,6 @@ from overclaw.utils.display import (
     select_option,
 )
 from overclaw.core.constants import overclaw_rel
-from overclaw.utils.io import read_api_key_masked
 from overclaw.utils.model_picker import prompt_for_catalog_litellm_model
 from overclaw.utils.models import (
     DEFAULT_ANALYZER_MODEL,
@@ -64,6 +63,7 @@ from overclaw.optimize.data_analyzer import analyze_seed_coverage, validate_seed
 from overclaw.optimize.evaluator import has_entrypoint
 from overclaw.core.paths import (
     agent_env_path,
+    agent_instrumented_dir,
     agent_setup_spec_dir,
     load_agent_dotenv,
     load_overclaw_dotenv,
@@ -71,6 +71,7 @@ from overclaw.core.paths import (
 from overclaw.core.registry import (
     get_agent_id,
     load_registry,
+    project_root_from_agent_file,
     resolve_agent,
     save_agent,
 )
@@ -95,25 +96,281 @@ from overclaw.setup.spec_generator import generate_spec_from_proposal, save_spec
 from overclaw.storage import configure_storage, get_storage
 from overclaw.storage.api import ApiBackend
 
+logger = logging.getLogger("overclaw.commands.setup")
 
-def _validate_agent_entrypoint(agent_path: str, fn_name: str, console: Console) -> None:
-    """Exit with a clear message if the agent file lacks the registered entry function."""
+
+def _check_agent_dependencies(
+    agent_path: str,
+    agent_name: str,
+    console: Console,
+    *,
+    fast: bool = False,
+    instrumented_dir: Path | None = None,
+) -> None:
+    """Detect external imports without a dependency manifest and guide the user.
+
+    When *instrumented_dir* is provided the dependency check and any generated
+    manifest are placed inside the instrumented copy so the original agent
+    source is never modified.  The manifest is also written to the
+    instrumented **root** (the top of the copied tree) so the runner's
+    ``ensure_environment`` finds it when provisioning the sandbox.
+
+    In interactive mode: offers to generate a requirements.txt / package.json
+    or lets the user handle it themselves.  In fast mode: fails with a clear
+    message.
+    """
+    from overclaw.optimize.runner import (
+        Language,
+        has_dep_manifest,
+        detect_external_imports,
+        imports_to_package_names,
+        generate_requirements_txt,
+        generate_package_json,
+    )
+
+    p = Path(agent_path).resolve()
+    agent_dir = p.parent
+    entry_file = p.name
+
+    check_dir = instrumented_dir if instrumented_dir is not None else agent_dir
+
+    try:
+        language = Language.from_path(entry_file)
+    except ValueError:
+        return
+
+    if has_dep_manifest(check_dir, language):
+        console.print(
+            f"  [bold green]\u2713[/bold green] Found dependency manifest in "
+            f"[dim]{rel(check_dir)}[/dim]"
+        )
+        return
+
+    inst_entry = check_dir / entry_file if instrumented_dir is not None else p
+    if inst_entry.is_file():
+        ext_imports = detect_external_imports(check_dir, entry_file, language)
+    else:
+        ext_imports = detect_external_imports(agent_dir, entry_file, language)
+    if not ext_imports:
+        return
+
+    packages = imports_to_package_names(ext_imports, language)
+    is_python = language == Language.PYTHON
+    manifest_name = "requirements.txt" if is_python else "package.json"
+
+    console.print()
+    console.print(
+        Panel(
+            f"[bold yellow]No dependency file found[/bold yellow]\n\n"
+            f"Your agent imports [bold]{len(ext_imports)}[/bold] external package(s):\n"
+            f"  [cyan]{', '.join(ext_imports[:12])}"
+            f"{'…' if len(ext_imports) > 12 else ''}[/cyan]\n\n"
+            f"But there is no [bold]{manifest_name}[/bold] in the project.\n\n"
+            f"OverClaw needs a dependency file to create an isolated\n"
+            f"environment so your agent runs reliably.",
+            border_style="yellow",
+            padding=(1, 2),
+        )
+    )
+
+    if fast:
+        console.print(
+            f"  [red]Create a [bold]{manifest_name}[/bold] in your project "
+            f"and re-run setup.[/red]\n"
+        )
+        raise SystemExit(1)
+
+    choice = select_option(
+        [
+            f"Generate {manifest_name} (auto-detected — you review before continuing)",
+            f"I'll create {manifest_name} myself (exit setup, re-run when ready)",
+            "Skip isolation — use the current environment (not recommended)",
+        ],
+        title="How would you like to proceed?",
+        default_index=0,
+        console=console,
+    )
+
+    if choice == 0:
+        dest = check_dir / ("requirements.txt" if is_python else "package.json")
+        if is_python:
+            content = generate_requirements_txt(packages)
+        else:
+            content = generate_package_json(packages, agent_name)
+
+        dest.write_text(content)
+
+        console.print()
+        console.print(
+            Panel(
+                f"[bold green]Generated {manifest_name}[/bold green]\n\n"
+                + "\n".join(f"  {pkg}" for pkg in sorted(set(packages)))
+                + f"\n\n[dim]Saved to: {rel(dest)}[/dim]\n\n"
+                + "[yellow]Versions are unpinned. Review and pin versions\n"
+                "for reproducibility before production use.[/yellow]",
+                border_style="green",
+                padding=(1, 2),
+            )
+        )
+
+        if not confirm_option("Continue with setup?", default=True, console=console):
+            console.print(
+                f"\n  [dim]Edit [cyan]{rel(dest)}[/cyan] and re-run setup when ready.[/dim]\n"
+            )
+            raise SystemExit(0)
+
+    elif choice == 1:
+        console.print(
+            f"\n  Create [bold]{manifest_name}[/bold] in your project, then re-run:\n"
+            f"    [bold]overclaw setup {agent_name}[/bold]\n"
+        )
+        raise SystemExit(0)
+
+    else:
+        console.print(
+            "\n  [yellow]Skipping dependency isolation.[/yellow]\n"
+            "  [dim]The agent will run using packages from the current environment.\n"
+            "  If imports fail during optimization, create a dependency file and retry.[/dim]\n"
+        )
+
+
+def _validate_agent_entrypoint(
+    agent_path: str,
+    fn_name: str,
+    agent_name: str,
+    console: Console,
+    *,
+    fast: bool = False,
+) -> tuple[str, str]:
+    """Verify the agent file defines the registered entry function.
+
+    Returns ``(agent_path, fn_name)`` — unchanged when valid, or
+    updated to point at a generated wrapper when the user opts in.
+    """
+    from overclaw.optimize.runner import AgentRunner
+    from overclaw.entrypoint_wrapper import (
+        generate_entrypoint_wrapper,
+        wrapper_entrypoint,
+    )
+
     code = Path(agent_path).read_text()
-    if not has_entrypoint(code, fn_name):
+
+    p = Path(agent_path).resolve()
+    try:
+        runner = AgentRunner(
+            agent_dir=p.parent, entry_file=p.name, entrypoint_fn=fn_name
+        )
+        found = runner.validate_entrypoint(code)
+    except ValueError:
+        found = has_entrypoint(code, fn_name)
+
+    if found:
+        return agent_path, fn_name
+
+    # --- Entrypoint not found — offer wrapper generation ---
+    if fast:
         console.print(
             f"\n  [bold red]Error:[/bold red] Function [bold]{fn_name}()[/bold] not found "
             f"in [cyan]{agent_path}[/cyan].\n"
-        )
-        console.print(
-            f"  OverClaw calls [bold]agent.{fn_name}(case_input)[/bold] for every test case.\n"
-            f"  Make sure your agent file defines:\n\n"
-            f"  [dim]def {fn_name}(input: dict) -> dict:\n"
-            f"      # your agent logic here\n"
-            f"      return {{...}}[/dim]\n\n"
-            f"  Or update the registered entrypoint:\n"
-            f"    [bold]overclaw agent update <name> <module:{fn_name}>[/bold]\n"
+            f"  Generate a wrapper first:\n"
+            f"    [bold]overclaw agent register {agent_name} <module:function>[/bold]\n"
         )
         raise SystemExit(1)
+
+    console.print(
+        f"\n  [bold yellow]\u26a0[/bold yellow]  Function [bold]{fn_name}()[/bold] not found "
+        f"in [cyan]{rel(agent_path)}[/cyan].\n"
+    )
+    console.print(
+        "  OverClaw needs a function that takes input and returns output, e.g.:\n"
+        "    [dim]def run(input_data: dict) -> dict[/dim]\n"
+    )
+
+    choice = select_option(
+        [
+            "Generate an entrypoint wrapper (OverClaw reads your code and creates one)",
+            "I'll fix it myself (exit setup)",
+        ],
+        title="How would you like to proceed?",
+        default_index=0,
+        console=console,
+    )
+
+    if choice != 0:
+        console.print(
+            f"\n  Fix the entrypoint and re-run:\n"
+            f"    [bold]overclaw setup {agent_name}[/bold]\n"
+        )
+        raise SystemExit(1)
+
+    agent_dir = p.parent
+    console.print()
+    with make_spinner_progress(console) as progress:
+        progress.add_task("  Analyzing agent code and generating wrapper\u2026")
+        wp = generate_entrypoint_wrapper(agent_dir, agent_name)
+
+    if wp == "refused":
+        console.print(
+            "\n  [bold yellow]⚠[/bold yellow]  This agent's code is too complex for an "
+            "auto-generated wrapper.\n\n"
+            "  The wrapper needs to be a trivial bridge (import + call), but this\n"
+            "  agent would require re-implementing agent-specific logic.\n\n"
+            "  Add a [bold]def run(input_data: dict) -> dict[/bold] function directly\n"
+            "  in your agent code, then re-register:\n"
+            f"    [bold]overclaw agent register {agent_name} <your_module:run>[/bold]\n"
+        )
+        raise SystemExit(1)
+
+    if wp is None or not wp.is_file():
+        console.print(
+            "\n  [bold red]\u2717[/bold red]  Wrapper generation failed.\n"
+            "  This can happen if no LLM model is configured.\n"
+            f"  Set [bold]ANALYZER_MODEL[/bold] in [bold]{overclaw_rel('.env')}[/bold] "
+            "or write the wrapper manually.\n"
+        )
+        raise SystemExit(1)
+
+    wrapper_code = wp.read_text(encoding="utf-8")
+
+    from rich.syntax import Syntax
+
+    console.print()
+    console.print(
+        Panel(
+            f"[bold green]Generated entrypoint wrapper[/bold green]\n\n"
+            f"  File:     [cyan]{rel(wp)}[/cyan]\n"
+            f"  Function: [bold]run(input_data: dict) -> dict[/bold]",
+            border_style="green",
+            padding=(1, 2),
+        )
+    )
+
+    if confirm_option("Review the generated code?", default=True, console=console):
+        console.print()
+        console.print(
+            Syntax(
+                wrapper_code,
+                "python",
+                theme="monokai",
+                line_numbers=True,
+                word_wrap=True,
+            )
+        )
+
+    console.print()
+    if not confirm_option(
+        "Continue setup with this wrapper?", default=True, console=console
+    ):
+        console.print(f"\n  [dim]Edit [cyan]{rel(wp)}[/cyan] and re-run setup.[/dim]\n")
+        raise SystemExit(0)
+
+    new_agent_path = str(wp)
+    new_fn_name = "run"
+    new_ep = wrapper_entrypoint(agent_name)
+    save_agent(agent_name, new_ep)
+
+    console.print(f"  [dim]Updated registry \u2192 {new_ep}[/dim]\n")
+    return new_agent_path, new_fn_name
 
 
 def _clear_existing_eval_spec(
@@ -169,6 +426,15 @@ def _clear_existing_eval_spec(
         console.print(
             "  [dim]Keeping existing files. New spec will overwrite setup_spec/eval_spec.json.[/dim]"
         )
+
+
+def _instrument_agent_files(
+    agent_path: str, agent_name: str, console: Console
+) -> tuple[str, Path]:
+    """Copy agent source into .overclaw/ — delegates to shared module."""
+    from overclaw.commands.agent_env import instrument_agent_files
+
+    return instrument_agent_files(agent_path, agent_name, console)
 
 
 def _save_and_finish(
@@ -232,24 +498,69 @@ def _save_and_finish(
 
 
 def _smoke_test_agent(
-    agent_path: str, fn_name: str, input_case: dict
+    agent_path: str,
+    fn_name: str,
+    input_case: dict,
+    env_dir: str | Path | None = None,
+    agent_dir: str | Path | None = None,
 ) -> tuple[bool, str | None]:
-    """Import the agent module and call fn_name(input_case) once.
+    """Run the agent via subprocess and call fn_name(input_case) once.
 
     Returns (True, None) on success or (False, error_message) on any exception.
-    Uses a throwaway module name so repeated imports don't collide.
+    Uses the AgentRunner for full dependency isolation.
+
+    *agent_dir* overrides the working directory for the subprocess.  When
+    running the instrumented copy, pass the instrumented root so local
+    imports resolve correctly.  When ``None``, the project root is detected
+    via ``project_root_from_agent_file`` (falls back to the entry file's
+    parent directory).
+
+    *env_dir* should point to the **original** project root so dependency
+    manifests, ``.venv``, and ``.env`` are found.
     """
-    import importlib.util
+    from overclaw.optimize.runner import AgentRunner, RunnerConfig
 
     try:
-        spec = importlib.util.spec_from_file_location(
-            "_overclaw_smoke_agent", agent_path
+        p = Path(agent_path).resolve()
+        if agent_dir is not None:
+            resolved_agent_dir = Path(agent_dir).resolve()
+        else:
+            pr = project_root_from_agent_file(agent_path)
+            resolved_agent_dir = pr if pr is not None else p.parent
+        entry_file = str(p.relative_to(resolved_agent_dir))
+        logger.debug(
+            "smoke_test: agent_path=%s fn=%s entry=%s agent_dir=%s env_dir=%s",
+            agent_path,
+            fn_name,
+            entry_file,
+            resolved_agent_dir,
+            env_dir,
         )
-        module = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(module)  # type: ignore[union-attr]
-        getattr(module, fn_name)(input_case)
-        return True, None
+        runner = AgentRunner(
+            agent_dir=resolved_agent_dir,
+            entry_file=entry_file,
+            entrypoint_fn=fn_name,
+            config=RunnerConfig(timeout=300),
+            env_dir=Path(env_dir) if env_dir else None,
+        )
+        runner.ensure_environment()
+        result = runner.run(input_case)
+        runner.cleanup()
+        if result.success:
+            logger.debug("smoke_test: agent=%s succeeded", agent_path)
+            return True, None
+        parts = [result.error] if result.error else []
+        if result.stderr and result.stderr.strip() not in (result.error or ""):
+            parts.append(result.stderr[-2000:])
+        logger.warning(
+            "smoke_test: agent=%s failed rc=%s err=%s",
+            agent_path,
+            result.returncode,
+            (result.error or "")[:300],
+        )
+        return False, "\n".join(parts) or "Unknown error"
     except Exception as exc:
+        logger.exception("smoke_test: exception for agent=%s", agent_path)
         return False, str(exc)
 
 
@@ -331,16 +642,21 @@ def _prompt_seed_data_flag_early(agent_name: str, *, console: Console) -> None:
 
 def _run_beginning_smoke_test(
     agent_path: str,
+    agent_name: str,
     fn_name: str,
     console: Console,
     *,
     fast: bool = False,
     data_path: str | None = None,
+    instrumented_entry: str | None = None,
 ) -> None:
     """Smoke-test the agent with the first seed case when ``--data`` supplies JSON.
 
-    Hard-fails (SystemExit 1) when seed data exists but the agent crashes.
-    Skips when ``--data`` is omitted — use ``--data`` for an early smoke check.
+    When *instrumented_entry* is provided the smoke test runs against the
+    instrumented copy (with the original project root as ``env_dir`` so
+    dependency manifests and venvs are found).  Hard-fails (SystemExit 1)
+    when seed data exists but the agent crashes.  Skips when ``--data`` is
+    omitted — use ``--data`` for an early smoke check.
     """
     existing_json = _resolve_seed_json_files(data_path, console=console)
 
@@ -371,12 +687,26 @@ def _run_beginning_smoke_test(
         )
         return
 
+    run_path = instrumented_entry or agent_path
+    env_dir: str | Path | None = None
+    inst_root: str | Path | None = None
+    if instrumented_entry:
+        pr = project_root_from_agent_file(agent_path)
+        env_dir = pr if pr is not None else Path(agent_path).resolve().parent
+        inst_root = agent_instrumented_dir(agent_name)
+
     first_input = cases[0].get("input", cases[0])
     with make_spinner_progress(console, transient=True) as progress:
         progress.add_task(
             f"  Smoke-testing agent using {existing_json[0].name} ({len(cases)} case(s))…"
         )
-        success, error = _smoke_test_agent(agent_path, fn_name, first_input)
+        success, error = _smoke_test_agent(
+            run_path,
+            fn_name,
+            first_input,
+            env_dir=env_dir,
+            agent_dir=inst_root,
+        )
 
     if success:
         console.print(
@@ -392,9 +722,17 @@ def _run_beginning_smoke_test(
 
 
 def _run_end_smoke_test(
-    agent_name: str, agent_path: str, fn_name: str, console: Console
+    agent_name: str,
+    agent_path: str,
+    fn_name: str,
+    console: Console,
+    instrumented_entry: str | None = None,
 ) -> None:
     """Validate the agent runs against the first generated dataset case.
+
+    When *instrumented_entry* is provided the smoke test executes against the
+    instrumented copy (matching what the optimizer will run) with the
+    original project root as ``env_dir``.
 
     Issues a warning panel on failure but does NOT abort — the spec is already
     saved and the user should be informed rather than left with a silent problem.
@@ -411,10 +749,24 @@ def _run_end_smoke_test(
     if not cases:
         return
 
+    run_path = instrumented_entry or agent_path
+    env_dir: str | Path | None = None
+    inst_root: str | Path | None = None
+    if instrumented_entry:
+        pr = project_root_from_agent_file(agent_path)
+        env_dir = pr if pr is not None else Path(agent_path).resolve().parent
+        inst_root = agent_instrumented_dir(agent_name)
+
     first_input = cases[0].get("input", cases[0])
     with make_spinner_progress(console, transient=True) as progress:
         progress.add_task("  Post-setup smoke test against first dataset case…")
-        success, error = _smoke_test_agent(agent_path, fn_name, first_input)
+        success, error = _smoke_test_agent(
+            run_path,
+            fn_name,
+            first_input,
+            env_dir=env_dir,
+            agent_dir=inst_root,
+        )
 
     if success:
         console.print(
@@ -427,7 +779,11 @@ def _run_end_smoke_test(
                 "The agent raised an error on a sample dataset case:\n"
                 f"[dim]{error}[/dim]\n\n"
                 "The setup spec has been saved. Review the error above before running:\n"
-                f"  [bold]overclaw optimize {agent_name}[/bold]",
+                f"  [bold]overclaw optimize {agent_name}[/bold]\n\n"
+                "Validate the agent endpoint against the setup dataset (important during "
+                "optimization) with:\n"
+                f"  [bold]overclaw agent validate {agent_name} --data "
+                f".overclaw/agents/{agent_name}/setup_spec/dataset.json[/bold]",
                 border_style="yellow",
                 padding=(1, 2),
             )
@@ -439,14 +795,22 @@ def _data_dir(agent_path: str) -> Path:
     return Path(agent_path).resolve().parent / "data"
 
 
-def _build_eval_spec_stub(analysis: dict, policy_data: dict | None = None) -> dict:
+def _build_eval_spec_stub(
+    analysis: dict,
+    policy_data: dict | None = None,
+    entrypoint_fn: str = "",
+) -> dict:
     """Build a minimal eval-spec-like dict from analysis for schema validation.
 
     At setup time the real eval spec doesn't exist yet, but the data
     generation functions need ``input_schema`` and ``output_fields`` for
     validation.  The analysis dict has ``output_schema`` which uses the
     same per-field shape (type, values, range, description).
-    f"""
+
+    ``entrypoint_fn`` is carried through so that the data-generation
+    prompts can reference the function name when explaining the input
+    schema contract (the runner dispatches via ``**kwargs``).
+    """
     output_schema = analysis.get("output_schema", {})
     output_fields: dict = {}
     for field, info in output_schema.items():
@@ -460,6 +824,8 @@ def _build_eval_spec_stub(analysis: dict, policy_data: dict | None = None) -> di
         "input_schema": analysis.get("input_schema", {}),
         "output_fields": output_fields,
     }
+    if entrypoint_fn:
+        stub["entrypoint_fn"] = entrypoint_fn
     if policy_data:
         stub["policy"] = policy_data
     return stub
@@ -510,6 +876,47 @@ def _resolve_datagen_model(console: Console, *, fast: bool = False) -> str:
         default_model=DEFAULT_DATAGEN_MODEL,
         no_catalog_prompt="  Enter model for data generation (provider/model)",
     )
+
+
+_OUTPUT_FORMAT_OPTIONS = [
+    "JSON object (structured key/value response)",
+    "Plain text / string (free-form prose, summary, etc.)",
+    "Markdown (formatted text with headings, lists, etc.)",
+    "List of items (JSON array or bullet points)",
+    "Other (describe below)",
+]
+
+
+def _prompt_expected_output_format(console: Console) -> str:
+    """Ask the user what output format their agent produces.
+
+    Returns a short description string suitable for injection into the
+    synthetic-data generation prompt.
+    """
+    console.print()
+    console.print(
+        "  [dim]Without seed data, OverClaw needs to know the shape of your agent's "
+        "output so the synthetic dataset has the right structure.[/dim]"
+    )
+
+    idx = select_option(
+        _OUTPUT_FORMAT_OPTIONS,
+        title="What format does your agent return?",
+        default_index=0,
+        console=console,
+    )
+    choice = _OUTPUT_FORMAT_OPTIONS[idx]
+
+    if idx == len(_OUTPUT_FORMAT_OPTIONS) - 1:
+        custom = Prompt.ask(
+            "  Describe the expected output format",
+            console=console,
+        ).strip()
+        if custom:
+            return custom
+        return "unstructured text"
+
+    return choice.split("(")[0].strip()
 
 
 def _save_dataset(cases: list[dict], agent_name: str, console: Console) -> str:
@@ -685,6 +1092,7 @@ def _run_data_phase(
     *,
     fast: bool = False,
     data_path: str | None = None,
+    entrypoint_fn: str = "",
 ) -> None:
     """Phase 3: Generate or analyze+augment the test dataset.
 
@@ -693,7 +1101,9 @@ def _run_data_phase(
     agent_code = analysis.get("_agent_code_section") or Path(agent_path).read_text()
     description = analysis.get("description", "")
     policy_context = format_for_synthetic_data(policy_data) if policy_data else None
-    eval_stub = _build_eval_spec_stub(analysis, policy_data)
+    eval_stub = _build_eval_spec_stub(
+        analysis, policy_data, entrypoint_fn=entrypoint_fn
+    )
 
     seed_files: list[Path] = []
     if (data_path or "").strip():
@@ -715,6 +1125,23 @@ def _run_data_phase(
                 f"  [dim]Seed data found ({len(seed_cases)} cases)"
                 " — copying to setup_spec/dataset.json[/dim]"
             )
+            # Validate seed data against the input schema before saving.
+            from overclaw.optimize.data import validate_case_against_spec
+
+            invalid_count = 0
+            for case in seed_cases:
+                errs = validate_case_against_spec(case, eval_stub)
+                if errs:
+                    invalid_count += 1
+                    if invalid_count <= 3:
+                        console.print(
+                            f"  [yellow]⚠ Validation issue:[/yellow] [dim]{'; '.join(errs)}[/dim]"
+                        )
+            if invalid_count:
+                console.print(
+                    f"  [yellow]{invalid_count}/{len(seed_cases)} cases have schema issues "
+                    f"(input keys may not match entrypoint params).[/yellow]"
+                )
             _save_dataset(seed_cases, agent_name, console)
         else:
             with make_spinner_progress(console, transient=True) as progress:
@@ -725,6 +1152,7 @@ def _run_data_phase(
                     num_samples=15,
                     agent_code=agent_code,
                     policy_context=policy_context,
+                    expected_output_hint="",
                 )
             _save_dataset(cases, agent_name, console)
         return
@@ -844,6 +1272,9 @@ def _run_data_phase(
         ):
             console.print("  [dim]Skipping dataset generation.[/dim]")
             return
+
+        expected_output_hint = _prompt_expected_output_format(console)
+
         datagen_model = _resolve_datagen_model(console)
         _pin_model_to_agent_env(
             datagen_model,
@@ -864,6 +1295,7 @@ def _run_data_phase(
             eval_stub=eval_stub,
             datagen_model=datagen_model,
             console=console,
+            expected_output_hint=expected_output_hint,
         )
 
 
@@ -916,6 +1348,13 @@ def _handle_seed_data_path(
         "  Additional cases to generate", default=num_to_generate
     )
 
+    if num_to_generate <= 0:
+        console.print(
+            f"\n  [dim]Skipping augmentation — keeping {len(seed_data)} seed case(s) as-is.[/dim]"
+        )
+        _save_dataset(seed_data, agent_name, console)
+        return
+
     console.print()
     new_cases = generate_diverse_synthetic_data(
         agent_description=description,
@@ -950,6 +1389,7 @@ def _handle_no_data_path(
     eval_stub: dict,
     datagen_model: str,
     console: Console,
+    expected_output_hint: str = "",
 ) -> None:
     """Path A: no seed data — full persona-driven generation."""
     console.print(
@@ -979,6 +1419,7 @@ def _handle_no_data_path(
         policy_context=policy_context,
         eval_spec=eval_stub,
         console=console,
+        expected_output_hint=expected_output_hint,
     )
 
     _save_dataset(cases, agent_name, console)
@@ -1031,49 +1472,10 @@ def _display_proposed_criteria(analysis: dict, console: Console) -> None:
 
 
 def _write_agent_env(path: Path, agent_name: str, env_vars: dict[str, str]) -> None:
-    """Write agent-specific env vars to ``.overclaw/agents/<name>/.env``."""
-    path.parent.mkdir(parents=True, exist_ok=True)
-    lines = [f"# OverClaw agent env — {agent_name}", ""]
-    for key, val in env_vars.items():
-        lines.append(f"{key}={val}")
-    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    """Write agent-specific env vars — delegates to shared module."""
+    from overclaw.commands.agent_env import write_agent_env
 
-
-def _describe_configured_agent_llm_provider(existing: dict[str, str]) -> str | None:
-    """Summarize LLM provider from env keys and ``ANALYZER_MODEL`` (no secret values)."""
-    oai_key = (existing.get("OPENAI_API_KEY") or "").strip()
-    ant_key = (existing.get("ANTHROPIC_API_KEY") or "").strip()
-    base_url = (existing.get("OPENAI_BASE_URL") or "").strip()
-    analyzer = (existing.get("ANALYZER_MODEL") or "").strip()
-
-    label: str | None = None
-
-    if base_url and oai_key:
-        label = "Other (OpenAI-compatible SDK, custom base URL)"
-    elif analyzer and "/" in analyzer:
-        prefix, _, _rest = analyzer.partition("/")
-        pl = prefix.lower()
-        if pl == "anthropic":
-            label = "Anthropic"
-        elif pl == "openai":
-            label = "OpenAI"
-        else:
-            label = f"Provider {prefix}"
-    elif oai_key and ant_key:
-        label = "OpenAI and Anthropic"
-    elif ant_key:
-        label = "Anthropic"
-    elif oai_key:
-        label = "OpenAI"
-
-    if label is None:
-        if analyzer:
-            return f"Analyzer model: {analyzer}"
-        return None
-
-    if analyzer:
-        return f"{label} · analyzer: {analyzer}"
-    return label
+    write_agent_env(path, agent_name, env_vars)
 
 
 def _pin_model_to_agent_env(
@@ -1106,125 +1508,10 @@ def _pin_model_to_agent_env(
 
 
 def _collect_agent_provider_config(agent_name: str, console: Console) -> None:
-    """Ask which LLM provider the agent uses and save credentials to its per-agent .env."""
-    env_path = agent_env_path(agent_name)
+    """Ask which LLM provider the agent uses — delegates to shared module."""
+    from overclaw.commands.agent_env import collect_agent_provider_config
 
-    # If already configured, offer to skip
-    if env_path.exists() and env_path.stat().st_size > 0:
-        existing = {
-            k: v
-            for k, v in (dotenv_values(env_path) or {}).items()
-            if (v or "").strip()
-        }
-        if existing:
-            console.print(
-                f"\n  [dim]Agent env already configured at [cyan]{rel(env_path)}[/cyan] "
-                f"({len(existing)} variable(s) set).[/dim]"
-            )
-            provider_hint = _describe_configured_agent_llm_provider(existing)
-            if provider_hint:
-                console.print(
-                    f"  [dim]Looks like this agent is set up for:[/dim] "
-                    f"{escape(provider_hint)}"
-                )
-            if not confirm_option(
-                "Reconfigure agent model provider?", default=False, console=console
-            ):
-                return
-
-    console.print()
-    console.print(Rule(style="dim"))
-    console.print(Rule("[bold]Agent model provider[/bold]", style=BRAND))
-    console.print(
-        "  [dim]Which provider does your agent use to call its LLM?\n"
-        "  Credentials are saved to [cyan]"
-        + overclaw_rel(f"agents/{agent_name}/.env")
-        + "[/cyan] and loaded automatically when the agent runs.[/dim]"
-    )
-
-    pick = select_option(
-        ["OpenAI", "Anthropic", "Other"],
-        title="Select provider:",
-        default_index=0,
-        console=console,
-    )
-
-    if pick == 0:  # OpenAI
-        existing_key = os.getenv("OPENAI_API_KEY", "").strip()
-        if existing_key:
-            console.print(
-                f"\n  [dim]OPENAI_API_KEY is already set in "
-                f"{overclaw_rel('.env')} — using it for this agent.[/dim]"
-            )
-            key = existing_key
-        else:
-            console.print("\n  [dim]Enter your OpenAI API key for this agent.[/dim]")
-            key = read_api_key_masked("OPENAI_API_KEY")
-        _write_agent_env(env_path, agent_name, {"OPENAI_API_KEY": key})
-        console.print(
-            f"  [bold green]✓[/bold green] Saved [bold]OPENAI_API_KEY[/bold]"
-            f" → [dim]{rel(env_path)}[/dim]"
-        )
-
-    elif pick == 1:  # Anthropic
-        existing_key = os.getenv("ANTHROPIC_API_KEY", "").strip()
-        if existing_key:
-            console.print(
-                f"\n  [dim]ANTHROPIC_API_KEY is already set in "
-                f"{overclaw_rel('.env')} — using it for this agent.[/dim]"
-            )
-            key = existing_key
-        else:
-            console.print("\n  [dim]Enter your Anthropic API key for this agent.[/dim]")
-            key = read_api_key_masked("ANTHROPIC_API_KEY")
-        _write_agent_env(env_path, agent_name, {"ANTHROPIC_API_KEY": key})
-        console.print(
-            f"  [bold green]✓[/bold green] Saved [bold]ANTHROPIC_API_KEY[/bold]"
-            f" → [dim]{rel(env_path)}[/dim]"
-        )
-
-    else:  # Other provider
-        if confirm_option(
-            "Is your provider compatible with the OpenAI SDK?",
-            default=True,
-            console=console,
-        ):
-            console.print(
-                "\n  [dim]Enter the base URL for your OpenAI-compatible endpoint "
-                "(e.g. https://api.example.com/v1).[/dim]"
-            )
-            base_url = Prompt.ask("  OPENAI_BASE_URL").strip()
-            console.print("  [dim]Enter the API key for your provider.[/dim]")
-            key = read_api_key_masked("OPENAI_API_KEY")
-            _write_agent_env(
-                env_path,
-                agent_name,
-                {"OPENAI_BASE_URL": base_url, "OPENAI_API_KEY": key},
-            )
-            console.print(
-                f"  [bold green]✓[/bold green] Saved [bold]OPENAI_BASE_URL[/bold] and "
-                f"[bold]OPENAI_API_KEY[/bold] → [dim]{rel(env_path)}[/dim]"
-            )
-        else:
-            # Not OpenAI-compatible — create an empty file and wait for the user to fill it
-            _write_agent_env(env_path, agent_name, {})
-            console.print(
-                f"\n  [yellow]Created[/yellow] [bold]{env_path}[/bold]\n\n"
-                "  [dim]Open that file and add any environment variables your agent\n"
-                "  needs to call its LLM — API keys, base URLs, custom tokens, etc.\n\n"
-                "  Example:\n"
-                "    MY_PROVIDER_API_KEY=sk-...\n"
-                "    MY_PROVIDER_BASE_URL=https://api.example.com/v1[/dim]"
-            )
-            confirm_option(
-                "Confirm once you've added your env variables to the file"
-                " (select Yes to continue — safe to skip if no env vars are needed)",
-                default=True,
-                console=console,
-            )
-            # load_agent_dotenv() is called immediately after this function returns in
-            # main(), so any variables the user just saved will be loaded before the
-            # smoke test runs.
+    collect_agent_provider_config(agent_name, console)
 
 
 def main(
@@ -1232,7 +1519,17 @@ def main(
     fast: bool = False,
     policy: str | None = None,
     data: str | None = None,
+    scope_globs: list[str] | None = None,
+    max_files: int | None = None,
+    max_chars: int | None = None,
 ) -> None:
+    logger.info(
+        "setup: start agent=%s fast=%s policy=%s data=%s",
+        agent_name,
+        fast,
+        policy,
+        data,
+    )
     load_overclaw_dotenv()
 
     console = Console()
@@ -1261,8 +1558,8 @@ def main(
         console.print()
         _prompt_seed_data_flag_early(agent_name, console=console)
 
-    # Ask which provider the agent uses and save its credentials to the agent .env.
-    # Skip interactive prompt in fast mode; always load whatever is already on disk.
+    # Agent env vars (API keys) — may have been configured during register.
+    # The shared function skips if already configured; always load into env.
     console.print()
     console.print(Rule(style="dim"))
     if not fast:
@@ -1293,16 +1590,46 @@ def main(
         raise SystemExit(130)
 
     signal.signal(signal.SIGINT, _handle_sigint)
-    _validate_agent_entrypoint(agent_path, fn_name, console)
+    agent_path, fn_name = _validate_agent_entrypoint(
+        agent_path, fn_name, agent_name, console, fast=fast
+    )
 
     if policy and not Path(policy).exists():
         console.print(f"\n  [red]Error:[/red] Policy file {policy} does not exist.")
         raise SystemExit(1)
 
+    _clear_existing_eval_spec(agent_name, console, fast=fast)
+
+    # The instrumented copy is created at register time.  Re-use it as-is so
+    # we don't wipe the generated _overclaw_entrypoint wrapper (if any).  Only
+    # copy if the instrumented dir is missing (e.g. manual cleanup).
+    instrumented_root = agent_instrumented_dir(agent_name)
+    if instrumented_root.exists():
+        p = Path(agent_path).resolve()
+        if str(p).startswith(str(instrumented_root)):
+            instrumented_entry = str(p)
+        else:
+            pr = project_root_from_agent_file(agent_path)
+            copy_root = pr if pr is not None else p.parent
+            instrumented_entry = str(instrumented_root / p.relative_to(copy_root))
+    else:
+        instrumented_entry, instrumented_root = _instrument_agent_files(
+            agent_path, agent_name, console
+        )
+    _check_agent_dependencies(
+        agent_path, agent_name, console, fast=fast, instrumented_dir=instrumented_root
+    )
+
     console.print()
     console.print(Rule(style="dim"))
     _run_beginning_smoke_test(
-        agent_path, fn_name, console, fast=fast, data_path=data_opt
+        agent_path,
+        agent_name,
+        fn_name,
+        console,
+        fast=fast,
+        data_path=data_opt,
+        instrumented_entry=instrumented_entry,
     )
 
     if fast:
@@ -1330,8 +1657,6 @@ def main(
                 f"Set it in {overclaw_rel('.env')} (see .env.example) or run without --fast.[/dim]\n"
             )
             raise SystemExit(1)
-
-    _clear_existing_eval_spec(agent_name, console, fast=fast)
 
     if not fast:
         console.print()
@@ -1376,6 +1701,9 @@ def main(
         load_agent_dotenv(agent_name)
 
     # ---- Phase 1: Agent Analysis ----
+    logger.info(
+        "PHASE BEGIN setup.phase1.agent_analysis agent=%s model=%s", agent_name, model
+    )
     console.print()
     console.print(Rule(style="dim"))
     console.print()
@@ -1387,9 +1715,28 @@ def main(
             border_style=BRAND,
         )
     )
-    analysis = analyze_agent(agent_path, model, console, entrypoint_fn=fn_name)
+    analysis = analyze_agent(
+        agent_path,
+        model,
+        console,
+        entrypoint_fn=fn_name,
+        max_resolved_files=max_files if max_files is not None else 48,
+        max_total_chars=max_chars if max_chars is not None else 80_000,
+        scope_hint_globs=list(scope_globs) if scope_globs else None,
+    )
+    logger.info(
+        "PHASE END   setup.phase1.agent_analysis fields=%s criteria_fields=%s",
+        list(analysis.get("output_schema", {}).keys()),
+        list(analysis.get("proposed_criteria", {}).get("fields", {}).keys()),
+    )
 
     # ---- Phase 2: Policy Definition ----
+    logger.info(
+        "PHASE BEGIN setup.phase2.policy agent=%s fast=%s policy_arg=%s",
+        agent_name,
+        fast,
+        policy,
+    )
     console.print()
     console.print(Rule(style="dim"))
     console.print()
@@ -1418,7 +1765,14 @@ def main(
                 f"to improve optimization quality.[/dim]"
             )
 
+        logger.info("PHASE END   setup.phase2.policy agent=%s fast=True", agent_name)
+
         # ---- Phase 3 (fast): Dataset ----
+        logger.info(
+            "PHASE BEGIN setup.phase3.dataset agent=%s fast=True data=%s",
+            agent_name,
+            data_opt,
+        )
         console.print()
         console.print(Rule(style="dim"))
         console.print()
@@ -1438,12 +1792,21 @@ def main(
             console,
             fast=True,
             data_path=data_opt,
+            entrypoint_fn=fn_name,
         )
+        logger.info("PHASE END   setup.phase3.dataset agent=%s fast=True", agent_name)
 
         spec = generate_spec_from_proposal(analysis, policy_data=policy_data)
         _save_and_finish(spec, agent_name, console, policy_md=policy_md)
-        _run_end_smoke_test(agent_name, agent_path, fn_name, console)
+        _run_end_smoke_test(
+            agent_name,
+            agent_path,
+            fn_name,
+            console,
+            instrumented_entry=instrumented_entry,
+        )
         _sync_setup_artifacts(agent_name, agent_path, console)
+        logger.info("setup: fast-mode complete agent=%s", agent_name)
         return
 
     pol_path = default_policy_path(agent_name)
@@ -1540,7 +1903,12 @@ def main(
             policy_md, policy_data, analysis, model, console
         )
 
+    logger.info("PHASE END   setup.phase2.policy agent=%s fast=False", agent_name)
+
     # ---- Phase 3: Dataset ----
+    logger.info(
+        "PHASE BEGIN setup.phase3.dataset agent=%s data=%s", agent_name, data_opt
+    )
     console.print()
     console.print(Rule(style="dim"))
     console.print()
@@ -1559,9 +1927,12 @@ def main(
         model,
         console,
         data_path=data_opt,
+        entrypoint_fn=fn_name,
     )
+    logger.info("PHASE END   setup.phase3.dataset agent=%s", agent_name)
 
     # ---- Phase 4: Evaluation Criteria ----
+    logger.info("PHASE BEGIN setup.phase4.eval_criteria agent=%s", agent_name)
     console.print()
     console.print(Rule(style="dim"))
     console.print()
@@ -1586,6 +1957,11 @@ def main(
             default=True,
             console=console,
         ):
+            logger.info(
+                "PHASE END   setup.phase4.eval_criteria agent=%s iterations=%d accepted=True",
+                agent_name,
+                iteration,
+            )
             spec = generate_spec_from_proposal(analysis, policy_data=policy_data)
             _save_and_finish(
                 spec,
@@ -1594,8 +1970,15 @@ def main(
                 policy_md=policy_md,
                 policy_file_already_saved=True,
             )
-            _run_end_smoke_test(agent_name, agent_path, fn_name, console)
+            _run_end_smoke_test(
+                agent_name,
+                agent_path,
+                fn_name,
+                console,
+                instrumented_entry=instrumented_entry,
+            )
             _sync_setup_artifacts(agent_name, agent_path, console)
+            logger.info("setup: complete agent=%s", agent_name)
             return
 
         console.print()
@@ -1610,6 +1993,11 @@ def main(
         )
 
         if choice == 1:
+            logger.info(
+                "PHASE END   setup.phase4.eval_criteria agent=%s iterations=%d accepted=False save_manual=True",
+                agent_name,
+                iteration,
+            )
             spec = generate_spec_from_proposal(analysis, policy_data=policy_data)
             _save_and_finish(
                 spec,
@@ -1623,11 +2011,23 @@ def main(
                 f"  [dim]Edit [cyan]{spec_out}[/cyan] to fine-tune "
                 f"the criteria, then run the optimizer.[/dim]\n"
             )
-            _run_end_smoke_test(agent_name, agent_path, fn_name, console)
+            _run_end_smoke_test(
+                agent_name,
+                agent_path,
+                fn_name,
+                console,
+                instrumented_entry=instrumented_entry,
+            )
             _sync_setup_artifacts(agent_name, agent_path, console)
+            logger.info("setup: complete-save-manual agent=%s", agent_name)
             return
 
         iteration += 1
+        logger.info(
+            "setup.phase4.eval_criteria refinement round=%d agent=%s",
+            iteration,
+            agent_name,
+        )
         console.print()
         console.print(Rule(style="dim"))
         console.print()

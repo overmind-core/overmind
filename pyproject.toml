@@ -52,5 +52,5 @@ filterwarnings = [
 ]
 
 [tool.ruff]
-exclude = ["bae", "openapi_client", "tests", "agents"]
+exclude = ["bae", "dspy", "openapi_client", "tests", "agents"]
 fix = true

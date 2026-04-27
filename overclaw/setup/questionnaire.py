@@ -6,15 +6,19 @@ refined evaluation criteria.
 """
 
 import json
+import logging
 
 from rich.console import Console
 from rich.prompt import Prompt
 from rich.table import Table
 
+from overclaw.core.logging import stage
 from overclaw.utils.display import overmind_prompt
 from overclaw.utils.llm import llm_completion
 from overclaw.utils.display import make_spinner_progress
 from overclaw.prompts.questionnaire import REFINEMENT_PROMPT
+
+logger = logging.getLogger("overclaw.setup.questionnaire")
 
 
 def run_questionnaire(analysis: dict, model: str, console: Console) -> dict:
@@ -24,6 +28,11 @@ def run_questionnaire(analysis: dict, model: str, console: Console) -> dict:
     """
     output_schema = analysis.get("output_schema", {})
     field_names = ", ".join(f.replace("_", " ") for f in output_schema)
+    logger.info(
+        "run_questionnaire starting model=%s fields=%s",
+        model,
+        list(output_schema.keys()),
+    )
 
     console.print(
         "\n  [dim]Tell me about your expectations so I can build better "
@@ -59,44 +68,58 @@ def run_questionnaire(analysis: dict, model: str, console: Console) -> dict:
     # Strip internal keys before sending to the LLM
     analysis_for_llm = {k: v for k, v in analysis.items() if not k.startswith("_")}
 
-    with make_spinner_progress(console) as progress:
-        task = progress.add_task("\n  Refining evaluation criteria…")
+    with stage(
+        "setup.questionnaire.refine_criteria",
+        logger=logger,
+        model=model,
+        feedback_len=len(feedback or ""),
+        expectations_len=len(expectations or ""),
+        critical_mistakes_len=len(critical_mistakes or ""),
+        additional_context_len=len(additional_context or ""),
+    ) as info:
+        with make_spinner_progress(console) as progress:
+            task = progress.add_task("\n  Refining evaluation criteria…")
 
-        response = llm_completion(
-            model,
-            [
-                {
-                    "role": "user",
-                    "content": REFINEMENT_PROMPT.format(
-                        analysis_json=json.dumps(analysis_for_llm, indent=2),
-                        criteria_json=json.dumps(original_criteria, indent=2),
-                        feedback=feedback,
-                        expectations=expectations,
-                        critical_mistakes=critical_mistakes,
-                        additional_context=additional_context or "(none)",
-                    ),
-                }
-            ],
-            temperature=0.2,
-            max_tokens=2000,
-        )
-        progress.update(task, completed=True)
+            response = llm_completion(
+                model,
+                [
+                    {
+                        "role": "user",
+                        "content": REFINEMENT_PROMPT.format(
+                            analysis_json=json.dumps(analysis_for_llm, indent=2),
+                            criteria_json=json.dumps(original_criteria, indent=2),
+                            feedback=feedback,
+                            expectations=expectations,
+                            critical_mistakes=critical_mistakes,
+                            additional_context=additional_context or "(none)",
+                        ),
+                    }
+                ],
+                temperature=0.2,
+                max_tokens=2000,
+            )
+            progress.update(task, completed=True)
 
-    content = response.choices[0].message.content
+        content = response.choices[0].message.content
 
-    try:
-        start = content.find("{")
-        end = content.rfind("}") + 1
-        if start >= 0 and end > start:
-            refined_criteria = json.loads(content[start:end])
-        else:
-            raise ValueError("No JSON found in LLM response")
-    except (json.JSONDecodeError, ValueError) as exc:
-        console.print(
-            f"\n  [yellow]Could not parse refined criteria ({exc}). "
-            f"Using original proposal.[/yellow]"
-        )
-        refined_criteria = original_criteria
+        try:
+            start = content.find("{")
+            end = content.rfind("}") + 1
+            if start >= 0 and end > start:
+                refined_criteria = json.loads(content[start:end])
+            else:
+                raise ValueError("No JSON found in LLM response")
+            info["parsed_ok"] = True
+        except (json.JSONDecodeError, ValueError) as exc:
+            logger.warning("Refined-criteria JSON parse failed: %s", exc)
+            console.print(
+                f"\n  [yellow]Could not parse refined criteria ({exc}). "
+                f"Using original proposal.[/yellow]"
+            )
+            refined_criteria = original_criteria
+            info["parsed_ok"] = False
+
+        info["fields"] = list(refined_criteria.get("fields", {}).keys())
 
     # Show what changed
     _display_refined(refined_criteria, analysis, console)
