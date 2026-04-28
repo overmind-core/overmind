@@ -5,9 +5,12 @@ Configure via environment variables:
     OVERMIND_API_TOKEN    Bearer token  (ovr_core_... or any JWT)
     OVERMIND_PROJECT_ID   UUID of the project to associate agents with
 
+Every helper here is a thin wrapper around the generated
+``overclaw.openapi_client`` SDK — no hand-rolled URLs.
+
 Usage::
 
-    from overclaw.client import get_client, upsert_agent, fetch_agent_spec_and_dataset
+    from overclaw.client import get_client, upsert_agent
     from overclaw.client import ApiReporter
     from overclaw.client import read_project_toml, write_project_toml
 """
@@ -18,7 +21,6 @@ import asyncio
 import contextlib
 import logging
 import os
-import random
 import re
 import threading
 from concurrent.futures import Future, ThreadPoolExecutor, wait
@@ -31,46 +33,39 @@ import tomlkit
 from overclaw.openapi_client import ApiClient, Configuration
 from overclaw.openapi_client.api.agents_api import AgentsApi
 from overclaw.openapi_client.api.auth_api import AuthApi
+from overclaw.openapi_client.api.datasets_api import DatasetsApi
 from overclaw.openapi_client.api.job_iterations_api import JobIterationsApi
 from overclaw.openapi_client.api.jobs_api import JobsApi
-from overclaw.openapi_client.api.organisations_api import OrganisationsApi
 from overclaw.openapi_client.api.projects_api import ProjectsApi
-from overclaw.openapi_client.api.prompts_api import PromptsApi
 from overclaw.openapi_client.api.spans_api import SpansApi
-from overclaw.openapi_client.api.suggestions_api import SuggestionsApi
 from overclaw.openapi_client.api.traces_api import TracesApi
 from overclaw.openapi_client.models.agent_request import AgentRequest
+from overclaw.openapi_client.models.datapoint_request import DatapointRequest
+from overclaw.openapi_client.models.dataset_request import DatasetRequest
 from overclaw.openapi_client.models.job_iteration_request import JobIterationRequest
 from overclaw.openapi_client.models.job_iteration_status_enum import (
     JobIterationStatusEnum,
 )
 from overclaw.openapi_client.models.job_request import JobRequest
+from overclaw.openapi_client.models.job_status_enum import JobStatusEnum
 from overclaw.openapi_client.models.patched_agent_request import PatchedAgentRequest
 from overclaw.openapi_client.models.patched_job_request import PatchedJobRequest
-from overclaw.openapi_client.models.prompt_request import PromptRequest
-from overclaw.openapi_client.models.span_request import SpanRequest
-from overclaw.openapi_client.models.span_type_enum import SpanTypeEnum
-from overclaw.openapi_client.models.status1b7_enum import Status1b7Enum
-from overclaw.openapi_client.models.trace_create_request import TraceCreateRequest
+from overclaw.openapi_client.models.source_enum import SourceEnum
 
 logger = logging.getLogger("overclaw.client")
 
-# Module-level thread pool for fire-and-forget API pushes.
-# Daemon threads so they don't block process exit.
+# ---------------------------------------------------------------------------
+# Background execution: thread pool + asyncio loop
+# ---------------------------------------------------------------------------
+# Fire-and-forget API writes are dispatched here so the optimizer / setup
+# loops never block on network I/O.  Daemon threads so they don't block exit.
+
 _executor = ThreadPoolExecutor(max_workers=4, thread_name_prefix="overclaw-api")
 _pending_futures: set[Future] = set()
 _pending_lock = threading.Lock()
 
-# Serialize policy sync per agent so concurrent upserts cannot each create a row.
-_policy_upsert_locks: dict[str, threading.Lock] = {}
-_policy_upsert_locks_guard = threading.Lock()
-
-
-def _policy_upsert_lock(agent_id: str) -> threading.Lock:
-    with _policy_upsert_locks_guard:
-        if agent_id not in _policy_upsert_locks:
-            _policy_upsert_locks[agent_id] = threading.Lock()
-        return _policy_upsert_locks[agent_id]
+_bg_loop: asyncio.AbstractEventLoop | None = None
+_bg_loop_lock = threading.Lock()
 
 
 def _track_future(fut: Future) -> Future:
@@ -84,16 +79,6 @@ def _track_future(fut: Future) -> Future:
 
     fut.add_done_callback(_done)
     return fut
-
-
-# ---------------------------------------------------------------------------
-# Shared background async event loop
-# ---------------------------------------------------------------------------
-# A single event loop runs forever in a daemon thread.  All async API calls
-# are submitted here so they never block the main thread or user code.
-
-_bg_loop: asyncio.AbstractEventLoop | None = None
-_bg_loop_lock = threading.Lock()
 
 
 def _get_bg_loop() -> asyncio.AbstractEventLoop:
@@ -127,12 +112,23 @@ def _run_async(coro, timeout: float = 30.0) -> Any:
     )
 
 
-def flush_pending_api_updates(timeout: float = 8.0) -> None:
-    """Best-effort wait for currently pending background API writes.
+def _fire(fn, *args, **kwargs) -> None:
+    """Submit *fn* to the background thread pool — returns immediately."""
+    fn_label = getattr(fn, "__name__", repr(fn))
 
-    Intended for graceful shutdown paths (e.g. Ctrl+C) so queued writes are
-    pushed before process exit.
-    """
+    def _run() -> None:
+        logger.debug(f"_fire: running {fn_label} on background thread")
+        try:
+            fn(*args, **kwargs)
+        except Exception:
+            logger.exception(f"_fire: background {fn_label} failed")
+
+    fut = _executor.submit(_run)
+    _track_future(fut)
+
+
+def flush_pending_api_updates(timeout: float = 8.0) -> None:
+    """Best-effort wait for currently pending background API writes."""
     with _pending_lock:
         pending = list(_pending_futures)
     if not pending:
@@ -143,7 +139,6 @@ def flush_pending_api_updates(timeout: float = 8.0) -> None:
     )
     done, not_done = wait(pending, timeout=timeout)
     logger.info(f"Flush complete: done={len(done)} not_done={len(not_done)}")
-    # Best-effort completion; cancel leftovers to avoid dangling references.
     for fut in not_done:
         with _pending_lock:
             _pending_futures.discard(fut)
@@ -151,31 +146,25 @@ def flush_pending_api_updates(timeout: float = 8.0) -> None:
             fut.cancel()
 
 
-class OverClawClient(
-    AgentsApi,
-    AuthApi,
-    JobIterationsApi,
-    JobsApi,
-    OrganisationsApi,
-    ProjectsApi,
-    PromptsApi,
-    SpansApi,
-    SuggestionsApi,
-    TracesApi,
-): ...
-
-
 # ---------------------------------------------------------------------------
 # Client factory
 # ---------------------------------------------------------------------------
 
 
-def get_client() -> OverClawClient | None:
-    """Return a configured client if OVERMIND_API_URL and OVERMIND_API_TOKEN are set.
+class OverClawClient(
+    AgentsApi,
+    AuthApi,
+    DatasetsApi,
+    JobIterationsApi,
+    JobsApi,
+    ProjectsApi,
+    SpansApi,
+    TracesApi,
+): ...
 
-    The token is sent as ``Authorization: Bearer <token>``.
-    Returns ``None`` when either variable is missing.
-    """
+
+def get_client() -> OverClawClient | None:
+    """Return a configured client if ``OVERMIND_API_URL`` and ``OVERMIND_API_TOKEN`` are set."""
     base_url = os.getenv("OVERMIND_API_URL", "").strip().rstrip("/")
     token = os.getenv("OVERMIND_API_TOKEN", "").strip()
     if not base_url or not token:
@@ -186,15 +175,13 @@ def get_client() -> OverClawClient | None:
         return None
     cfg = Configuration(host=base_url, api_key=token)
     cfg.access_token = token
-    cfg.proxy_headers = {
-        "X-Api-Key": token,
-    }
+    cfg.proxy_headers = {"X-Api-Key": token}
     logger.debug(f"get_client: built OverClawClient for host={base_url}")
     return OverClawClient(api_client=ApiClient(configuration=cfg))
 
 
 def is_configured() -> bool:
-    """Return True if both OVERMIND_API_URL and OVERMIND_API_TOKEN are set."""
+    """Return True if both ``OVERMIND_API_URL`` and ``OVERMIND_API_TOKEN`` are set."""
     return bool(
         os.getenv("OVERMIND_API_URL", "").strip()
         and os.getenv("OVERMIND_API_TOKEN", "").strip()
@@ -202,7 +189,7 @@ def is_configured() -> bool:
 
 
 def get_project_id() -> str | None:
-    """Return OVERMIND_PROJECT_ID from env, or None."""
+    """Return ``OVERMIND_PROJECT_ID`` from env, or None."""
     return os.getenv("OVERMIND_PROJECT_ID", "").strip() or None
 
 
@@ -218,13 +205,10 @@ def _make_slug(name: str) -> str:
 
 
 def agent_slug_from_path(agent_path: str) -> str:
-    """Derive a stable, URL-safe slug from the agent file path.
-
-    e.g. ``agents/agent1/sample_agent.py``  →  ``agent1-sample-agent``
-    """
+    """Derive a stable, URL-safe slug from the agent file path."""
     p = Path(agent_path).resolve()
-    stem = p.stem  # "sample_agent"
-    parent = p.parent.name  # "agent1"
+    stem = p.stem
+    parent = p.parent.name
     name = f"{parent}-{stem}" if parent else stem
     return _make_slug(name)
 
@@ -235,19 +219,12 @@ def agent_slug_from_path(agent_path: str) -> str:
 
 
 def _project_toml_path(agent_path: str) -> Path:
-    """Return the path to the per-agent project.toml file.
-
-    Lives next to the agent file, e.g.
-    ``agents/agent1/sample_agent.py``  →  ``agents/agent1/project.toml``
-    """
+    """Return the path to the per-agent project.toml file."""
     return Path(agent_path).resolve().parent / "project.toml"
 
 
 def write_project_toml(agent_path: str, data: dict) -> None:
-    """Write *data* to the per-agent project.toml, merging with any existing content.
-
-    Only keys present in *data* are updated; all other keys are preserved.
-    """
+    """Write *data* to the per-agent project.toml, merging with any existing content."""
     p = _project_toml_path(agent_path)
     try:
         existing: tomlkit.TOMLDocument
@@ -279,31 +256,26 @@ def write_project_toml(agent_path: str, data: dict) -> None:
 
 
 # ---------------------------------------------------------------------------
-# Background fire-and-forget
-# ---------------------------------------------------------------------------
-
-
-def _fire(fn, *args, **kwargs) -> None:
-    """Submit *fn* to the background thread pool — returns immediately."""
-
-    fn_label = getattr(fn, "__name__", repr(fn))
-
-    def _run():
-        logger.debug(f"_fire: running {fn_label} on background thread")
-        try:
-            fn(*args, **kwargs)
-        except Exception:
-            # Never propagate: API failures must not break the optimizer.
-            # Still record the exception so operators can diagnose from logs.
-            logger.exception(f"_fire: background {fn_label} failed")
-
-    fut = _executor.submit(_run)
-    _track_future(fut)
-
-
-# ---------------------------------------------------------------------------
 # Agent helpers
 # ---------------------------------------------------------------------------
+
+
+def _agent_shared_fields(spec: dict, agent_path: str) -> dict[str, Any]:
+    """Build the common Agent / PatchedAgent payload fields from a spec dict."""
+    description = (spec.get("agent_description") or "")[:512] or None
+    return dict(
+        description=description,
+        agent_path=(agent_path or "")[:512] or None,
+        input_schema=spec.get("input_schema"),
+        output_fields=spec.get("output_fields"),
+        structure_weight=spec.get("structure_weight"),
+        total_points=spec.get("total_points"),
+        tool_config=spec.get("tool_config"),
+        tool_usage_weight=spec.get("tool_usage_weight"),
+        consistency_rules=spec.get("consistency_rules"),
+        optimizable_elements=spec.get("optimizable_elements"),
+        fixed_elements=spec.get("fixed_elements"),
+    )
 
 
 def upsert_agent(
@@ -311,29 +283,21 @@ def upsert_agent(
     project_id: str,
     agent_path: str,
     spec: dict,
-    dataset: list[dict] | None = None,
-    policy_data: dict | None = None,
 ) -> Any:
     """Create or update the Agent record for *agent_path* in the API.
 
-    Stores all eval-spec fields plus dataset cases + policy JSON in
-    ``eval_dataset``.  Returns the Agent object.
+    Stores eval-spec fields on the Agent.  Datasets are persisted separately
+    via :func:`create_dataset`; policy is stored on
+    ``Agent.policy_markdown`` / ``Agent.policy_data`` via
+    ``agents_partial_update``.
+
+    Returns the Agent object (typed model from the OpenAPI client).
     """
     slug = agent_slug_from_path(agent_path)
     description = (spec.get("agent_description") or "")[:512] or None
     name = (description or slug)[:255]
 
-    eval_dataset: dict[str, Any] = {}
-    if dataset is not None:
-        eval_dataset["cases"] = dataset
-    if policy_data:
-        eval_dataset["policy"] = policy_data
-
-    logger.info(
-        "upsert_agent: "
-        f"slug={slug} project_id={project_id} "
-        f"dataset_cases={len(dataset or [])} has_policy={bool(policy_data)}"
-    )
+    logger.info(f"upsert_agent: slug={slug} project_id={project_id}")
 
     existing = None
     try:
@@ -347,7 +311,6 @@ def upsert_agent(
             "upsert_agent: filtered list failed, falling back to unfiltered",
             exc_info=True,
         )
-        # Fallback for backends that may not support `project` filter.
         try:
             page = _run_async(client.agents_list())
             for ag in page.results or []:
@@ -360,20 +323,7 @@ def upsert_agent(
         except Exception:
             logger.warning("upsert_agent: unfiltered list also failed", exc_info=True)
 
-    shared: dict[str, Any] = dict(
-        description=description,
-        agent_path=(agent_path or "")[:512] or None,
-        input_schema=spec.get("input_schema"),
-        output_fields=spec.get("output_fields"),
-        structure_weight=spec.get("structure_weight"),
-        total_points=spec.get("total_points"),
-        tool_config=spec.get("tool_config"),
-        tool_usage_weight=spec.get("tool_usage_weight"),
-        consistency_rules=spec.get("consistency_rules"),
-        optimizable_elements=spec.get("optimizable_elements"),
-        fixed_elements=spec.get("fixed_elements"),
-        eval_dataset=eval_dataset or None,
-    )
+    shared = _agent_shared_fields(spec, agent_path)
 
     if existing:
         patch = PatchedAgentRequest(**shared)
@@ -390,145 +340,118 @@ def upsert_agent(
             "upsert_agent: created new agent "
             f"id={getattr(result, 'id', '?')} slug={slug}"
         )
-
-    # Persist agent_id to the per-agent project.toml immediately
-
     return result
 
 
-async def _list_all_prompts_for_agent(
-    client: OverClawClient, agent_id: str
-) -> list[Any]:
-    """Walk every page of ``/api/prompts/?agent=…`` (DRF pagination)."""
-    aid = UUID(agent_id)
-    collected: list[Any] = []
+# ---------------------------------------------------------------------------
+# Datasets
+# ---------------------------------------------------------------------------
+
+
+def _source_enum(source: str) -> SourceEnum:
+    """Map a string to :class:`SourceEnum`, defaulting to synthetic."""
+    key = (source or "").strip().lower()
+    mapping: dict[str, SourceEnum] = {
+        "seed": SourceEnum.SEED,
+        "synthetic": SourceEnum.SYNTHETIC,
+        "augmented": SourceEnum.AUGMENTED,
+        "production": SourceEnum.PRODUCTION,
+    }
+    return mapping.get(key, SourceEnum.SYNTHETIC)
+
+
+def _datapoint_request(dp: Any, index: int) -> DatapointRequest:
+    """Coerce a loosely-typed case dict into ``DatapointRequest``."""
+    if not isinstance(dp, dict):
+        return DatapointRequest(order=index, input={"value": dp})
+    return DatapointRequest(
+        order=dp.get("order", index),
+        input=dp.get("input", {}) or {},
+        expected_output=dp.get("expected_output"),
+        persona=(dp.get("persona", "") or "")[:128],
+        tags=dp.get("tags", []) or [],
+    )
+
+
+def create_dataset(
+    client: OverClawClient,
+    agent_id: str,
+    datapoints: list[dict],
+    *,
+    source: str = "synthetic",
+    generator_model: str = "",
+    policy_hash: str = "",
+    metadata: dict | None = None,
+    name: str = "",
+    make_active: bool = True,
+) -> dict | None:
+    """``POST /api/datasets/`` via :meth:`DatasetsApi.datasets_create`."""
+    req = DatasetRequest(
+        agent=UUID(agent_id),
+        name=name[:255],
+        source=_source_enum(source),
+        generator_model=(generator_model or "")[:128],
+        policy_hash=(policy_hash or "")[:64],
+        metadata=metadata or {},
+        make_active=make_active,
+        datapoints=[_datapoint_request(dp, i) for i, dp in enumerate(datapoints)],
+    )
+    try:
+        created = _run_async(
+            client.datasets_create(dataset_request=req),
+            timeout=60.0,
+        )
+        return created.model_dump(mode="json") if created is not None else None
+    except Exception:
+        logger.exception("create_dataset failed agent_id=%s", agent_id)
+        return None
+
+
+def fetch_dataset_datapoints(client: OverClawClient, dataset_id: str) -> list[dict]:
+    """Return every datapoint for *dataset_id* via :meth:`DatasetsApi.datasets_datapoints_list`."""
+    collected: list[dict] = []
     page_num = 1
     while page_num <= 200:
-        page = await client.prompts_list(agent=aid, page=page_num)
-        collected.extend(page.results or [])
+        try:
+            page = _run_async(
+                client.datasets_datapoints_list(id=UUID(dataset_id), page=page_num)
+            )
+        except Exception:
+            logger.debug(
+                "fetch_dataset_datapoints: page=%d failed dataset_id=%s",
+                page_num,
+                dataset_id,
+                exc_info=True,
+            )
+            break
+        results = page.results or []
+        for dp in results:
+            with contextlib.suppress(Exception):
+                collected.append(dp.model_dump(mode="json"))
         if not page.next:
             break
         page_num += 1
     return collected
 
 
-async def _replace_policy_prompt_async(
-    client: OverClawClient,
-    agent_id: str,
-    policy_md: str,
-    agent_code: str | None,
-) -> None:
-    """Exactly one ``label=policy`` row: remove any existing, then create fresh.
-
-    Avoids duplicate ``v1`` rows from races or older clients; does not bump
-    version on an existing row — there is always a single replacement record.
-    """
-    aid = UUID(agent_id)
-    for p in await _list_all_prompts_for_agent(client, agent_id):
-        if getattr(p, "label", None) != "policy":
-            continue
-        with contextlib.suppress(Exception):
-            await client.prompts_destroy(id=p.id)
-
-    req = PromptRequest(
-        agent=aid,
-        label="policy",
-        system_prompt=policy_md,
-        full_agent_code=agent_code,
-    )
-    await client.prompts_create(prompt_request=req)
-
-
-def create_policy_prompt(
-    client: OverClawClient,
-    agent_id: str,
-    policy_md: str,
-    agent_code: str | None = None,
-) -> None:
-    """Sync agent policy: replace every ``label=policy`` prompt with one new row.
-
-    Runs synchronously (waits for the API) under a per-agent lock so concurrent
-    calls cannot each create a policy row. Safe to call from ``overclaw sync``.
-    """
-    logger.debug(
-        "create_policy_prompt: acquiring lock "
-        f"agent_id={agent_id} policy_len={len(policy_md or '')}"
-    )
-    with _policy_upsert_lock(str(agent_id)):
-        _run_async(
-            _replace_policy_prompt_async(client, agent_id, policy_md, agent_code),
-            timeout=60.0,
-        )
-    logger.info(f"create_policy_prompt: synced policy for agent_id={agent_id}")
-
-
-def fetch_agent_spec_and_dataset(
-    client: OverClawClient,
-    agent_path: str,
-    project_id: str | None = None,
-) -> tuple[dict, list[dict], str] | None:
-    """Fetch the eval spec, dataset, and agent UUID for *agent_path* from the API.
-
-    Returns ``(spec_dict, dataset_cases, agent_id)`` on success, or ``None``
-    if the agent is not found or the request fails.
-    """
-    slug = agent_slug_from_path(agent_path)
-    logger.debug(f"fetch_agent_spec_and_dataset: slug={slug} project_id={project_id}")
+def get_active_dataset_id(client: OverClawClient, agent_id: str) -> str | None:
+    """Return the agent's ``active_dataset`` UUID, or ``None``."""
     try:
-        kwargs: dict[str, Any] = {}
-        if project_id:
-            kwargs["project"] = project_id
-        page = _run_async(client.agents_list(**kwargs))
-        agent_stub = None
-        for ag in page.results or []:
-            if ag.slug == slug or ag.agent_path == agent_path:
-                agent_stub = ag
-                break
-        if not agent_stub:
-            logger.info(f"fetch_agent_spec_and_dataset: no match for slug={slug}")
-            return None
-        # agents_list returns AgentList (lightweight); fetch full detail
-        agent = _run_async(client.agents_retrieve(id=agent_stub.id))
+        agent = _run_async(client.agents_retrieve(id=UUID(agent_id)))
     except Exception:
-        logger.warning(
-            f"fetch_agent_spec_and_dataset: API lookup failed slug={slug}",
-            exc_info=True,
-        )
         return None
+    active = getattr(agent, "active_dataset", None)
+    return str(active) if active else None
 
-    spec: dict[str, Any] = {
-        "agent_description": agent.description or "",
-        "agent_path": agent.agent_path or agent_path,
-        "input_schema": agent.input_schema or {},
-        "output_fields": agent.output_fields or {},
-        "structure_weight": agent.structure_weight
-        if agent.structure_weight is not None
-        else 20,
-        "total_points": agent.total_points if agent.total_points is not None else 100,
-    }
-    if agent.tool_config:
-        spec["tool_config"] = agent.tool_config
-    if agent.tool_usage_weight is not None:
-        spec["tool_usage_weight"] = agent.tool_usage_weight
-    if agent.consistency_rules:
-        spec["consistency_rules"] = agent.consistency_rules
-    if agent.optimizable_elements:
-        spec["optimizable_elements"] = agent.optimizable_elements
-    if agent.fixed_elements:
-        spec["fixed_elements"] = agent.fixed_elements
 
-    dataset: list[dict] = []
-    if agent.eval_dataset:
-        blob = agent.eval_dataset
-        if isinstance(blob, dict):
-            dataset = blob.get("cases", [])
-            policy_data = blob.get("policy")
-            if policy_data:
-                spec["policy"] = policy_data
-        elif isinstance(blob, list):
-            dataset = blob
-
-    return spec, dataset, str(agent.id)
+def delete_dataset(client: OverClawClient, dataset_id: str) -> bool:
+    """``DELETE /api/datasets/{id}/`` via :meth:`DatasetsApi.datasets_destroy`."""
+    try:
+        _run_async(client.datasets_destroy(id=UUID(dataset_id)))
+        return True
+    except Exception:
+        logger.exception("delete_dataset failed dataset_id=%s", dataset_id)
+        return False
 
 
 # ---------------------------------------------------------------------------
@@ -547,7 +470,7 @@ def _create_job(
     try:
         req = JobRequest(
             agent=UUID(agent_id),
-            status=Status1b7Enum.RUNNING,
+            status=JobStatusEnum.RUNNING,
             analyzer_model=analyzer_model[:128],
             num_iterations=num_iterations,
             candidates_per_iteration=candidates_per_iteration,
@@ -608,182 +531,17 @@ def _create_iteration(
         return None
 
 
-def fetch_traces_as_dataset(
-    client: OverClawClient,
-    agent_id: str,
-    sample_size: int = 20,
-    *,
-    seed: int = 42,
-) -> list[dict]:
-    """Fetch traces for *agent_id* from the API and convert to dataset cases.
-
-    Returns a list of ``{"input": ..., "expected_output": ...}`` dicts
-    randomly sampled from available traces.  Returns an empty list when
-    no traces exist or the request fails.
-    """
-
-    try:
-        # Paginate through all trace IDs
-        all_traces: list = []
-        page_num = 1
-        while True:
-            page = _run_async(client.traces_list(agent=UUID(agent_id), page=page_num))
-            results = page.results or []
-            all_traces.extend(results)
-            if not page.next:
-                break
-            page_num += 1
-            if page_num > 20:  # safety cap
-                break
-    except Exception:
-        logger.warning(
-            f"fetch_traces_as_dataset: trace listing failed agent_id={agent_id}",
-            exc_info=True,
-        )
-        return []
-    logger.debug(
-        "fetch_traces_as_dataset: fetched "
-        f"{len(all_traces)} trace stubs across {page_num} page(s) "
-        f"for agent_id={agent_id}"
-    )
-
-    if not all_traces:
-        return []
-
-    # Sample from available traces
-    rng = random.Random(seed)
-    sampled = rng.sample(all_traces, min(sample_size, len(all_traces)))
-
-    # Fetch full detail for each sampled trace to get input_data / output_data
-    cases: list[dict] = []
-    for trace_stub in sampled:
-        try:
-            trace = _run_async(client.traces_retrieve(id=trace_stub.id))
-            input_data = trace.input_data
-            output_data = trace.output_data
-            if not input_data and not output_data:
-                continue
-            cases.append(
-                {
-                    "input": input_data or {},
-                    "expected_output": output_data or {},
-                }
-            )
-        except Exception:
-            logger.debug(
-                "fetch_traces_as_dataset: retrieve failed "
-                f"trace_id={getattr(trace_stub, 'id', '?')}",
-                exc_info=True,
-            )
-            continue
-
-    logger.info(
-        "fetch_traces_as_dataset: returning "
-        f"{len(cases)} cases from {len(sampled)} sampled traces"
-    )
-    return cases
-
-
-def count_agent_traces(
-    client: OverClawClient,
-    agent_id: str,
-) -> int:
-    """Return the total number of traces for *agent_id*, or 0 on failure."""
-    try:
-        page = _run_async(client.traces_list(agent=UUID(agent_id), page=1))
-        return page.count or len(page.results or [])
-    except Exception:
-        return 0
-
-
-def _create_trace(
-    client: OverClawClient,
-    agent_id: str,
-    job_id: str | None,
-    trace_data: dict,
-    *,
-    iteration_id: str | None = None,
-) -> None:
-    """Create a Trace record (with nested spans) from an overclaw Trace dict.
-
-    ``trace_data`` is the output of ``Trace.to_dict()``.
-    """
-    try:
-        spans: list[SpanRequest] = []
-        for idx, s in enumerate(trace_data.get("spans", [])):
-            st = s.get("span_type", "llm_call")
-            span_type = (
-                SpanTypeEnum.LLM_CALL if st == "llm_call" else SpanTypeEnum.TOOL_CALL
-            )
-            spans.append(
-                SpanRequest(
-                    span_type=span_type,
-                    name=(s.get("name", "unknown"))[:255],
-                    order=idx,
-                    start_time=s.get("start_time", 0),
-                    end_time=s.get("end_time", 0),
-                    latency_ms=s.get("latency_ms", 0),
-                    metadata=s.get("metadata"),
-                    error=s.get("error"),
-                )
-            )
-
-        req = TraceCreateRequest(
-            agent=UUID(agent_id),
-            job=UUID(job_id) if job_id else None,
-            iteration=UUID(iteration_id) if iteration_id else None,
-            trace_id=(trace_data.get("trace_id", "unknown"))[:255],
-            trace_group=(trace_data.get("trace_group", ""))[:128] or None,
-            input_data=trace_data.get("input_data"),
-            output_data=trace_data.get("output_data"),
-            total_latency_ms=trace_data.get("total_latency_ms", 0),
-            total_tokens=int(trace_data.get("total_tokens", 0)),
-            total_cost=trace_data.get("total_cost", 0),
-            score=trace_data.get("score", 0),
-            error=trace_data.get("error"),
-            start_time=trace_data.get("start_time", 0),
-            end_time=trace_data.get("end_time", 0),
-        )
-        # Create the trace and get its id, then create spans for that trace.
-        fut = _submit_async(client.traces_create(trace_create_request=req))
-        try:
-            trace = fut.result(timeout=10)
-            trace_id = str(trace.id)
-        except Exception:
-            logger.warning(
-                f"_create_trace: trace create timeout/failed agent_id={agent_id}",
-                exc_info=True,
-            )
-            return
-
-        for span in spans:
-            span.trace = trace_id
-            _submit_async(client.spans_create(span_request=span))
-        logger.debug(
-            "_create_trace: queued "
-            f"trace_id={trace_id} with {len(spans)} spans (job_id={job_id})"
-        )
-    except Exception:
-        logger.exception(f"_create_trace: failed agent_id={agent_id}")
-
-
 # ---------------------------------------------------------------------------
 # ApiReporter — streams optimize progress to the backend in real time
 # ---------------------------------------------------------------------------
 
 
 class ApiReporter:
-    """Streams optimize progress events to the Overmind API as they happen.
+    """Streams optimize progress events to the Overmind API.
 
-    All API calls are submitted to a background thread pool so they never
-    block or slow down the optimization loop.  Failures are silently swallowed.
-
-    Usage::
-
-        reporter = ApiReporter.create(agent_id, config)
-        reporter.on_baseline(score)
-        reporter.on_iteration(i, eval_result, "keep", code, "improved prompt", dims)
-        reporter.on_complete(best_score, improvement, report_md, best_code)
+    Trace records are emitted by ``overmind`` directly via OTEL — this
+    reporter only handles Job and JobIteration writes, both of which are
+    fully covered by the generated OpenAPI client.
     """
 
     def __init__(
@@ -795,10 +553,6 @@ class ApiReporter:
         self._client = client
         self._agent_id = agent_id
         self._job_id = job_id
-
-    # ------------------------------------------------------------------
-    # Factory
-    # ------------------------------------------------------------------
 
     @classmethod
     def create(
@@ -825,9 +579,9 @@ class ApiReporter:
 
         return cls(client, agent_id, job_id)
 
-    # ------------------------------------------------------------------
-    # Event hooks (all fire-and-forget)
-    # ------------------------------------------------------------------
+    @property
+    def job_id(self) -> str:
+        return self._job_id
 
     def on_baseline(self, score: float) -> None:
         """Called once the baseline has been evaluated."""
@@ -836,7 +590,7 @@ class ApiReporter:
             self._client,
             self._job_id,
             baseline_score=score,
-            status=Status1b7Enum.RUNNING,
+            status=JobStatusEnum.RUNNING,
         )
 
     def on_iteration(
@@ -878,7 +632,7 @@ class ApiReporter:
         """Called when the full optimization run is done."""
         improvement = best_score - baseline_score
         fields: dict[str, Any] = {
-            "status": Status1b7Enum.COMPLETED,
+            "status": JobStatusEnum.COMPLETED,
             "best_score": best_score,
             "improvement": improvement,
         }
@@ -890,24 +644,8 @@ class ApiReporter:
             fields["backtest_results"] = backtest_results
         _fire(_patch_job, self._client, self._job_id, **fields)
 
-    def on_trace(self, trace_data: dict) -> None:
-        """Called after each test case to upload the trace to the API.
-
-        ``trace_data`` is the output of ``Trace.to_dict()``.
-        """
-        _fire(
-            _create_trace,
-            self._client,
-            self._agent_id,
-            self._job_id,
-            trace_data,
-        )
-
     def on_holdout(self, holdout_results: dict) -> None:
-        """Called after holdout evaluation to store holdout metrics on the Job.
-
-        Merges holdout data into ``backtest_results`` since both are JSONB.
-        """
+        """Called after holdout evaluation to store holdout metrics on the Job."""
         _fire(
             _patch_job,
             self._client,
@@ -915,16 +653,12 @@ class ApiReporter:
             backtest_results={"holdout": holdout_results},
         )
 
-    @property
-    def job_id(self) -> str:
-        return self._job_id
-
     def on_failed(self, reason: str = "") -> None:
         """Called if the optimization run aborts with an error."""
         _fire(
             _patch_job,
             self._client,
             self._job_id,
-            status=Status1b7Enum.FAILED,
+            status=JobStatusEnum.FAILED,
             report_markdown=f"Run failed: {reason}",
         )

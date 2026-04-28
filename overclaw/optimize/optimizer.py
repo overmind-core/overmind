@@ -54,6 +54,10 @@ from rich.syntax import Syntax
 from rich.table import Table
 from rich.text import Text
 
+from overmind import SpanType, set_tag, start_span as otel_span
+from overclaw import attrs
+from overclaw.utils.tracing import traced
+
 from overclaw.client import ApiReporter, flush_pending_api_updates
 from overclaw.optimize.analyzer import (
     compute_focus_weights,
@@ -104,9 +108,22 @@ def _is_subpath(child: Path, parent: Path) -> bool:
 class Optimizer:
     """Runs the full optimization pipeline for an agent."""
 
+    @traced("optimizer.init")
     def __init__(self, config: Config):
         self.config = config
         self.console = Console()
+        set_tag(attrs.OPTIMIZE_AGENT_NAME, getattr(config, "agent_name", "") or "")
+        set_tag(attrs.OPTIMIZE_AGENT_PATH, str(getattr(config, "agent_path", "") or ""))
+        set_tag(attrs.OPTIMIZE_ITERATIONS, int(getattr(config, "iterations", 0) or 0))
+        set_tag(
+            attrs.OPTIMIZE_ANALYZER_MODEL,
+            getattr(config, "analyzer_model", "") or "",
+        )
+        set_tag(
+            attrs.OPTIMIZE_CANDIDATES_PER_ITERATION,
+            int(getattr(config, "candidates_per_iteration", 1) or 1),
+        )
+        set_tag(attrs.OPTIMIZE_PARALLEL, bool(getattr(config, "parallel", False)))
         try:
             self._storage = get_storage()
         except ValueError:
@@ -212,6 +229,7 @@ class Optimizer:
 
         return self.config.agent_path
 
+    @traced("optimizer.instrument_agent_copy")
     def _instrument_agent_copy(self) -> None:
         """Add ``@observe()`` instrumentation to all ``.py`` files in the agent copy.
 
@@ -244,6 +262,7 @@ class Optimizer:
     # Public entry point
     # ------------------------------------------------------------------
 
+    @traced("optimizer.run", SpanType.WORKFLOW)
     def run(self):
         self._logger.info(
             "Optimizer.run starting agent=%s iterations=%d parallel=%s max_workers=%s",
@@ -252,6 +271,21 @@ class Optimizer:
             getattr(self.config, "parallel", False),
             getattr(self.config, "max_workers", None),
         )
+        set_tag(attrs.OPTIMIZE_AGENT_NAME, getattr(self.config, "agent_name", "") or "")
+        set_tag(attrs.OPTIMIZE_ITERATIONS, int(self.config.iterations))
+        set_tag(attrs.OPTIMIZE_PARALLEL, bool(getattr(self.config, "parallel", False)))
+        set_tag(
+            attrs.OPTIMIZE_MAX_WORKERS,
+            int(getattr(self.config, "max_workers", 0) or 0),
+        )
+        set_tag(
+            attrs.OPTIMIZE_ANALYZER_MODEL,
+            getattr(self.config, "analyzer_model", "") or "",
+        )
+        set_tag(
+            attrs.OPTIMIZE_CANDIDATES_PER_ITERATION,
+            int(getattr(self.config, "candidates_per_iteration", 1) or 1),
+        )
         self._setup_output_dirs()
         dataset = self._load_dataset()
         self._logger.info("Loaded dataset with %d cases", len(dataset))
@@ -259,6 +293,9 @@ class Optimizer:
         # Split into train (optimizer sees) and holdout (final generalization check)
         holdout_ratio = getattr(self.config, "holdout_ratio", 0.2)
         train_set, holdout_set = self._split_dataset(dataset, holdout_ratio)
+        set_tag(attrs.OPTIMIZE_DATASET_TOTAL, len(dataset))
+        set_tag(attrs.OPTIMIZE_DATASET_TRAIN, len(train_set))
+        set_tag(attrs.OPTIMIZE_DATASET_HOLDOUT, len(holdout_set))
         self._logger.info(
             "Dataset split: train=%d holdout=%d ratio=%.2f",
             len(train_set),
@@ -367,6 +404,7 @@ class Optimizer:
         self._baseline_train_score = self.best_score
         self.best_code = baseline_code
         self.best_case_scores = [item["score"]["total"] for item in baseline_items]
+        set_tag(attrs.OPTIMIZE_BASELINE_SCORE, float(self.best_score))
 
         # Start real-time API reporting once we know baseline score.
         if self.config.agent_id:
@@ -438,686 +476,757 @@ class Optimizer:
         latest_eval = baseline_eval
 
         for i in range(1, self.config.iterations + 1):
-            self._logger.info(
-                "STAGE BEGIN optimizer.iteration iter=%d/%d best_score=%.4f stall_count=%d",
-                i,
-                self.config.iterations,
-                self.best_score,
-                self.stall_count,
-            )
-            self.console.print()
-            self.console.print(
-                Rule(
-                    f"[bold cyan]Iteration {i}/{self.config.iterations}[/bold cyan]",
-                    style="cyan",
+            with otel_span(
+                "optimizer.iteration",
+                attributes={
+                    attrs.OPTIMIZE_ITERATION: i,
+                    attrs.OPTIMIZE_TOTAL_ITERATIONS: self.config.iterations,
+                    attrs.OPTIMIZE_BEST_SCORE_BEFORE: float(self.best_score),
+                    attrs.OPTIMIZE_STALL_COUNT: int(self.stall_count),
+                },
+            ):
+                self._logger.info(
+                    "STAGE BEGIN optimizer.iteration iter=%d/%d best_score=%.4f stall_count=%d",
+                    i,
+                    self.config.iterations,
+                    self.best_score,
+                    self.stall_count,
                 )
-            )
-
-            current_code = working_path.read_text()
-
-            # Temperature annealing
-            t_start, t_end = 0.8, 0.4
-            temperature = t_start - (t_start - t_end) * (i - 1) / max(
-                self.config.iterations - 1, 1
-            )
-
-            # Stall detection: increase exploration
-            if self.stall_count >= 2:
-                temperature = min(temperature + 0.2, 1.0)
+                self.console.print()
                 self.console.print(
-                    "  [yellow]Detected stall — increasing exploration[/yellow]"
-                )
-
-            # --- Compute focus weights & cluster context ---
-            _cluster_ctx = ""
-            _component_ctx = ""
-            _focus_weights: dict[str, float] | None = None
-
-            if getattr(self.config, "failure_clustering", True):
-                priority_clusters = self._failure_registry.get_priority_clusters()
-                if priority_clusters:
-                    _cluster_ctx = format_clusters_for_diagnosis(priority_clusters)
-
-            if getattr(self.config, "adaptive_focus", True):
-                _focus_weights = compute_focus_weights(
-                    latest_case_results,
-                    latest_eval,
-                    self.evaluator.spec,
-                    self._failure_registry,
-                    self.successful_changes,
-                    self.failed_attempts,
-                    is_multi_file=(
-                        self._bundle is not None and self._bundle.is_multi_file()
-                    ),
-                )
-                _component_ctx = format_component_weights(_focus_weights)
-
-                top_focus = max(_focus_weights, key=_focus_weights.get)  # type: ignore[arg-type]
-                top_pct = _focus_weights[top_focus] * 100
-                self.console.print(
-                    f"  [dim]Focus targeting:[/dim] {top_focus} ({top_pct:.0f}%)"
-                )
-
-            # --- Step 1: Diagnosis & candidate generation ---
-            self.console.print(
-                f"  [dim]Step 1:[/dim] Analyzing failures and generating "
-                f"{n_candidates} candidates (temp={temperature:.2f})"
-            )
-            with make_spinner_progress(self.console) as progress:
-                task = progress.add_task("  Diagnosing and generating improvements…")
-
-                try:
-                    # Build agent_files for the coding agent: use the
-                    # current best multi-file state, or fall back to the
-                    # single entry file.
-                    _agent_files = self._current_agent_files(current_code)
-
-                    candidates = generate_candidates(
-                        current_code,
-                        case_results=latest_case_results,
-                        evaluation_results=latest_eval,
-                        model=self.config.analyzer_model,
-                        eval_spec=self.evaluator.spec,
-                        failed_attempts=self.failed_attempts,
-                        successful_changes=self.successful_changes,
-                        allow_model_change=bool(
-                            self.config.model_backtesting
-                            and self.config.backtest_models
-                        ),
-                        num_candidates=n_candidates,
-                        temperature=temperature,
-                        diagnosis_case_fraction=getattr(
-                            self.config, "diagnosis_case_fraction", 0.7
-                        ),
-                        iteration_seed=i * 7919,
-                        policy_context=self._policy_diagnosis,
-                        policy_constraints=self._policy_codegen,
-                        entrypoint_fn=self.config.entrypoint_fn,
-                        bundle=self._bundle,
-                        agent_files=_agent_files,
-                        codegen_model=getattr(self.config, "codegen_model", ""),
-                        codegen_max_steps=getattr(self.config, "codegen_max_steps", 50),
-                        cluster_context=_cluster_ctx,
-                        component_weights_context=_component_ctx,
-                        focus_weights=_focus_weights,
+                    Rule(
+                        f"[bold cyan]Iteration {i}/{self.config.iterations}[/bold cyan]",
+                        style="cyan",
                     )
-                except Exception as exc:
-                    self._logger.exception("Iteration %d analyzer error: %s", i, exc)
-                    progress.update(task, description=f"  [red]Analyzer error: {exc}")
-                    self._log_result(
-                        f"iter_{i:03d}",
+                )
+
+                current_code = working_path.read_text()
+
+                # Temperature annealing
+                t_start, t_end = 0.8, 0.4
+                temperature = t_start - (t_start - t_end) * (i - 1) / max(
+                    self.config.iterations - 1, 1
+                )
+
+                # Stall detection: increase exploration
+                if self.stall_count >= 2:
+                    temperature = min(temperature + 0.2, 1.0)
+                    self.console.print(
+                        "  [yellow]Detected stall — increasing exploration[/yellow]"
+                    )
+                set_tag(attrs.OPTIMIZE_TEMPERATURE, float(temperature))
+
+                # --- Compute focus weights & cluster context ---
+                _cluster_ctx = ""
+                _component_ctx = ""
+                _focus_weights: dict[str, float] | None = None
+
+                if getattr(self.config, "failure_clustering", True):
+                    priority_clusters = self._failure_registry.get_priority_clusters()
+                    if priority_clusters:
+                        _cluster_ctx = format_clusters_for_diagnosis(priority_clusters)
+
+                if getattr(self.config, "adaptive_focus", True):
+                    _focus_weights = compute_focus_weights(
+                        latest_case_results,
                         latest_eval,
-                        "error",
-                        f"Analyzer failed: {exc}",
+                        self.evaluator.spec,
+                        self._failure_registry,
+                        self.successful_changes,
+                        self.failed_attempts,
+                        is_multi_file=(
+                            self._bundle is not None and self._bundle.is_multi_file()
+                        ),
+                    )
+                    _component_ctx = format_component_weights(_focus_weights)
+
+                    top_focus = max(_focus_weights, key=_focus_weights.get)  # type: ignore[arg-type]
+                    top_pct = _focus_weights[top_focus] * 100
+                    self.console.print(
+                        f"  [dim]Focus targeting:[/dim] {top_focus} ({top_pct:.0f}%)"
+                    )
+
+                # --- Step 1: Diagnosis & candidate generation ---
+                self.console.print(
+                    f"  [dim]Step 1:[/dim] Analyzing failures and generating "
+                    f"{n_candidates} candidates (temp={temperature:.2f})"
+                )
+                with make_spinner_progress(self.console) as progress:
+                    task = progress.add_task(
+                        "  Diagnosing and generating improvements…"
+                    )
+
+                    try:
+                        # Build agent_files for the coding agent: use the
+                        # current best multi-file state, or fall back to the
+                        # single entry file.
+                        _agent_files = self._current_agent_files(current_code)
+
+                        candidates = generate_candidates(
+                            current_code,
+                            case_results=latest_case_results,
+                            evaluation_results=latest_eval,
+                            model=self.config.analyzer_model,
+                            eval_spec=self.evaluator.spec,
+                            failed_attempts=self.failed_attempts,
+                            successful_changes=self.successful_changes,
+                            allow_model_change=bool(
+                                self.config.model_backtesting
+                                and self.config.backtest_models
+                            ),
+                            num_candidates=n_candidates,
+                            temperature=temperature,
+                            diagnosis_case_fraction=getattr(
+                                self.config, "diagnosis_case_fraction", 0.7
+                            ),
+                            iteration_seed=i * 7919,
+                            policy_context=self._policy_diagnosis,
+                            policy_constraints=self._policy_codegen,
+                            entrypoint_fn=self.config.entrypoint_fn,
+                            bundle=self._bundle,
+                            agent_files=_agent_files,
+                            codegen_model=getattr(self.config, "codegen_model", ""),
+                            codegen_max_steps=getattr(
+                                self.config, "codegen_max_steps", 50
+                            ),
+                            cluster_context=_cluster_ctx,
+                            component_weights_context=_component_ctx,
+                            focus_weights=_focus_weights,
+                        )
+                    except Exception as exc:
+                        self._logger.exception(
+                            "Iteration %d analyzer error: %s", i, exc
+                        )
+                        progress.update(
+                            task, description=f"  [red]Analyzer error: {exc}"
+                        )
+                        self._log_result(
+                            f"iter_{i:03d}",
+                            latest_eval,
+                            "error",
+                            f"Analyzer failed: {exc}",
+                        )
+                        self.stall_count += 1
+                        continue
+
+                    progress.update(task, completed=True)
+                    self._logger.info(
+                        "Iteration %d generated %d candidate(s)", i, len(candidates)
+                    )
+                    set_tag(attrs.OPTIMIZE_N_CANDIDATES_GENERATED, len(candidates))
+
+                # Show diagnosis if available (full text; wrap inside panel)
+                for cand in candidates:
+                    diag = cand.get("diagnosis")
+                    if diag and diag.get("root_cause"):
+                        self.console.print(
+                            Panel(
+                                Text(diag["root_cause"].strip(), overflow="fold"),
+                                title="[dim]Diagnosis[/dim]",
+                                border_style="dim",
+                                expand=False,
+                            )
+                        )
+                        tool_issues = diag.get("tool_issues", [])
+                        if tool_issues:
+                            ti_table = Table(
+                                show_header=True,
+                                header_style="bold yellow",
+                                border_style="dim",
+                                title="[dim]Tool issues[/dim]",
+                            )
+                            ti_table.add_column("Issue", overflow="fold")
+                            for ti in tool_issues:
+                                issue_txt = ti.get("issue", "") or "—"
+                                ti_table.add_row(Text(str(issue_txt), overflow="fold"))
+                            self.console.print(ti_table)
+                        break
+
+                # --- Step 2: Validate candidates ---
+                self.console.print("  [dim]Step 2:[/dim] Validating candidates")
+                valid = []
+                for idx, cand in enumerate(candidates):
+                    code = cand.get("updated_code")
+                    bundle_updates = cand.get("bundle_updates")
+                    method = cand.get("method", "unknown")
+
+                    # Resolve bundle updates into a unified code string
+                    if not code and bundle_updates and self._bundle:
+                        resolved = self._resolve_bundle_candidate(bundle_updates)
+                        if resolved is not None:
+                            code = resolved["entry_code"]
+                            cand["updated_code"] = code
+                            cand["_resolved_files"] = resolved["files"]
+                        else:
+                            self.console.print(
+                                f"    Candidate {idx + 1} ({method}): "
+                                f"[yellow]bundle splice validation failed[/yellow]"
+                            )
+                            continue
+
+                    if not code:
+                        debug = cand.get("_debug", {})
+                        if isinstance(debug, list):
+                            debug = debug[0] if debug else {}
+                        reason = "no code"
+                        if debug.get("error"):
+                            reason = f"error: {debug['error'][:60]}"
+                        elif debug.get("finish_reason") == "length":
+                            reason = "response truncated"
+                        elif debug.get("response_len", 0) > 0:
+                            reason = "parsing failed"
+                        self.console.print(
+                            f"    Candidate {idx + 1} ({method}): [yellow]{reason}[/yellow]"
+                        )
+                        continue
+                    if not self._validate_code(code):
+                        ext = Path(self.config.agent_path).suffix or ".txt"
+                        failed_path = (
+                            self.output_dir / f"failed_iter_{i:03d}_c{idx}{ext}"
+                        )
+                        failed_path.write_text(code)
+                        self.console.print(
+                            f"    Candidate {idx + 1} ({method}): "
+                            f"[yellow]syntax/interface validation failed[/yellow]"
+                        )
+                        continue
+                    valid.append((idx, cand))
+
+                if valid:
+                    summary_keys: list[tuple[str, ...]] = []
+                    for _vidx, vcand in valid:
+                        sugs = vcand.get("suggestions") or []
+                        summary_keys.append(tuple(str(s) for s in sugs))
+                    distinct_summaries = set(summary_keys)
+                    all_same_summary = len(distinct_summaries) == 1
+                    shared_text = summary_keys[0] if all_same_summary else ()
+
+                    if all_same_summary and shared_text:
+                        self.console.print(
+                            Panel(
+                                Text("; ".join(shared_text), overflow="fold"),
+                                title="[dim]Planned changes (shared for all variants)[/dim]",
+                                border_style="dim",
+                                expand=False,
+                            )
+                        )
+
+                    cand_table = Table(
+                        show_header=True,
+                        header_style="bold",
+                        border_style="dim",
+                        title="[dim]Validated candidates[/dim]",
+                        show_lines=not all_same_summary,
+                    )
+                    cand_table.add_column("#", justify="right", style="cyan", width=4)
+                    cand_table.add_column(
+                        "Codegen focus",
+                        style="magenta",
+                        overflow="fold",
+                        max_width=44,
+                    )
+                    if all_same_summary:
+                        for vidx, vcand in valid:
+                            cand_table.add_row(
+                                str(vidx + 1), vcand.get("method", "unknown")
+                            )
+                    else:
+                        cand_table.add_column("Change summary", overflow="fold")
+                        for vidx, vcand in valid:
+                            method = vcand.get("method", "unknown")
+                            sugs = vcand.get("suggestions") or []
+                            if sugs:
+                                summary_cell = Text(
+                                    "; ".join(str(s) for s in sugs), overflow="fold"
+                                )
+                            else:
+                                summary_cell = Text("—", style="dim")
+                            cand_table.add_row(str(vidx + 1), method, summary_cell)
+                    self.console.print(cand_table)
+
+                set_tag(attrs.OPTIMIZE_N_CANDIDATES_VALID, len(valid))
+                if not valid:
+                    self.console.print(
+                        "  [yellow]No valid candidates this iteration.[/yellow]"
+                    )
+                    self._log_result(
+                        f"iter_{i:03d}", latest_eval, "skip", "No valid candidates"
                     )
                     self.stall_count += 1
                     continue
 
-                progress.update(task, completed=True)
-                self._logger.info(
-                    "Iteration %d generated %d candidate(s)", i, len(candidates)
-                )
+                # --- Step 2.5: Smoke test (quick catastrophic-failure filter) ---
+                smoke_n = getattr(self.config, "smoke_test_cases", 2)
+                if smoke_n > 0 and len(train_set) > smoke_n and self.best_score > 0:
+                    smoke_set = random.Random(i * 6271).sample(train_set, smoke_n)
+                    smoke_threshold = self.best_score * 0.4
+                    surviving: list[tuple[int, dict]] = []
 
-            # Show diagnosis if available (full text; wrap inside panel)
-            for cand in candidates:
-                diag = cand.get("diagnosis")
-                if diag and diag.get("root_cause"):
-                    self.console.print(
-                        Panel(
-                            Text(diag["root_cause"].strip(), overflow="fold"),
-                            title="[dim]Diagnosis[/dim]",
-                            border_style="dim",
-                            expand=False,
-                        )
-                    )
-                    tool_issues = diag.get("tool_issues", [])
-                    if tool_issues:
-                        ti_table = Table(
-                            show_header=True,
-                            header_style="bold yellow",
-                            border_style="dim",
-                            title="[dim]Tool issues[/dim]",
-                        )
-                        ti_table.add_column("Issue", overflow="fold")
-                        for ti in tool_issues:
-                            issue_txt = ti.get("issue", "") or "—"
-                            ti_table.add_row(Text(str(issue_txt), overflow="fold"))
-                        self.console.print(ti_table)
-                    break
-
-            # --- Step 2: Validate candidates ---
-            self.console.print("  [dim]Step 2:[/dim] Validating candidates")
-            valid = []
-            for idx, cand in enumerate(candidates):
-                code = cand.get("updated_code")
-                bundle_updates = cand.get("bundle_updates")
-                method = cand.get("method", "unknown")
-
-                # Resolve bundle updates into a unified code string
-                if not code and bundle_updates and self._bundle:
-                    resolved = self._resolve_bundle_candidate(bundle_updates)
-                    if resolved is not None:
-                        code = resolved["entry_code"]
-                        cand["updated_code"] = code
-                        cand["_resolved_files"] = resolved["files"]
-                    else:
-                        self.console.print(
-                            f"    Candidate {idx + 1} ({method}): "
-                            f"[yellow]bundle splice validation failed[/yellow]"
-                        )
-                        continue
-
-                if not code:
-                    debug = cand.get("_debug", {})
-                    if isinstance(debug, list):
-                        debug = debug[0] if debug else {}
-                    reason = "no code"
-                    if debug.get("error"):
-                        reason = f"error: {debug['error'][:60]}"
-                    elif debug.get("finish_reason") == "length":
-                        reason = "response truncated"
-                    elif debug.get("response_len", 0) > 0:
-                        reason = "parsing failed"
-                    self.console.print(
-                        f"    Candidate {idx + 1} ({method}): [yellow]{reason}[/yellow]"
-                    )
-                    continue
-                if not self._validate_code(code):
-                    ext = Path(self.config.agent_path).suffix or ".txt"
-                    failed_path = self.output_dir / f"failed_iter_{i:03d}_c{idx}{ext}"
-                    failed_path.write_text(code)
-                    self.console.print(
-                        f"    Candidate {idx + 1} ({method}): "
-                        f"[yellow]syntax/interface validation failed[/yellow]"
-                    )
-                    continue
-                valid.append((idx, cand))
-
-            if valid:
-                summary_keys: list[tuple[str, ...]] = []
-                for _vidx, vcand in valid:
-                    sugs = vcand.get("suggestions") or []
-                    summary_keys.append(tuple(str(s) for s in sugs))
-                distinct_summaries = set(summary_keys)
-                all_same_summary = len(distinct_summaries) == 1
-                shared_text = summary_keys[0] if all_same_summary else ()
-
-                if all_same_summary and shared_text:
-                    self.console.print(
-                        Panel(
-                            Text("; ".join(shared_text), overflow="fold"),
-                            title="[dim]Planned changes (shared for all variants)[/dim]",
-                            border_style="dim",
-                            expand=False,
-                        )
-                    )
-
-                cand_table = Table(
-                    show_header=True,
-                    header_style="bold",
-                    border_style="dim",
-                    title="[dim]Validated candidates[/dim]",
-                    show_lines=not all_same_summary,
-                )
-                cand_table.add_column("#", justify="right", style="cyan", width=4)
-                cand_table.add_column(
-                    "Codegen focus",
-                    style="magenta",
-                    overflow="fold",
-                    max_width=44,
-                )
-                if all_same_summary:
-                    for vidx, vcand in valid:
-                        cand_table.add_row(
-                            str(vidx + 1), vcand.get("method", "unknown")
-                        )
-                else:
-                    cand_table.add_column("Change summary", overflow="fold")
-                    for vidx, vcand in valid:
-                        method = vcand.get("method", "unknown")
-                        sugs = vcand.get("suggestions") or []
-                        if sugs:
-                            summary_cell = Text(
-                                "; ".join(str(s) for s in sugs), overflow="fold"
+                    for idx, cand in valid:
+                        tmp_path = self._write_candidate_to_disk(cand)
+                        try:
+                            s_eval, _, _ = self._run_agent_on_dataset(
+                                str(tmp_path),
+                                smoke_set,
+                                f"smoke_{i:03d}_c{idx}",
                             )
+                        except Exception:
+                            s_eval = None
+                        finally:
+                            self._cleanup_candidate(tmp_path, cand)
+
+                        if s_eval is None:
+                            self.console.print(
+                                f"    Candidate {idx + 1}: [red]crashed in smoke test[/red]"
+                            )
+                        elif s_eval["avg_total"] >= smoke_threshold:
+                            surviving.append((idx, cand))
                         else:
-                            summary_cell = Text("—", style="dim")
-                        cand_table.add_row(str(vidx + 1), method, summary_cell)
-                self.console.print(cand_table)
+                            self.console.print(
+                                f"    Candidate {idx + 1}: "
+                                f"[yellow]failed smoke test "
+                                f"({s_eval['avg_total']:.1f} < "
+                                f"{smoke_threshold:.1f})[/yellow]"
+                            )
+                    if surviving:
+                        valid = surviving
+                    elif valid:
+                        self.console.print(
+                            "  [yellow]All candidates failed smoke test, "
+                            "proceeding with full eval anyway.[/yellow]"
+                        )
 
-            if not valid:
+                # --- Step 3: Evaluate candidates ---
                 self.console.print(
-                    "  [yellow]No valid candidates this iteration.[/yellow]"
+                    f"  [dim]Step 3:[/dim] Evaluating {len(valid)} candidate(s) "
+                    f"against test cases"
                 )
-                self._log_result(
-                    f"iter_{i:03d}", latest_eval, "skip", "No valid candidates"
-                )
-                self.stall_count += 1
-                continue
+                best_cand = None
+                best_cand_eval = None
+                best_cand_score = -1.0
+                best_cand_items = None
+                best_cand_case_scores: list[float] = []
 
-            # --- Step 2.5: Smoke test (quick catastrophic-failure filter) ---
-            smoke_n = getattr(self.config, "smoke_test_cases", 2)
-            if smoke_n > 0 and len(train_set) > smoke_n and self.best_score > 0:
-                smoke_set = random.Random(i * 6271).sample(train_set, smoke_n)
-                smoke_threshold = self.best_score * 0.4
-                surviving: list[tuple[int, dict]] = []
+                for orig_idx, cand in valid:
+                    with otel_span(
+                        "optimizer.evaluate_candidate",
+                        attributes={
+                            attrs.OPTIMIZE_ITERATION: i,
+                            attrs.OPTIMIZE_CANDIDATE_INDEX: int(orig_idx),
+                            attrs.OPTIMIZE_CANDIDATE_METHOD: str(
+                                cand.get("method", "")
+                            ),
+                        },
+                    ):
+                        tmp_path = self._write_candidate_to_disk(cand)
+                        try:
+                            runs_per = getattr(self.config, "runs_per_eval", 1)
+                            self._logger.debug(
+                                "Iter %d candidate %d: evaluating (runs_per=%d, path=%s)",
+                                i,
+                                orig_idx,
+                                runs_per,
+                                tmp_path,
+                            )
+                            set_tag(attrs.OPTIMIZE_RUNS_PER_EVAL, int(runs_per))
+                            if runs_per > 1:
+                                c_eval, c_items = self._run_multi_eval(
+                                    str(tmp_path),
+                                    train_set,
+                                    f"iter_{i:03d}_c{orig_idx}",
+                                    runs_per,
+                                )
+                            else:
+                                c_eval, _, c_items = self._run_agent_on_dataset(
+                                    str(tmp_path),
+                                    train_set,
+                                    f"iter_{i:03d}_c{orig_idx}",
+                                )
+                        except Exception:
+                            self._logger.exception(
+                                "Iter %d candidate %d crashed during evaluation",
+                                i,
+                                orig_idx,
+                            )
+                            c_eval = None
+                            c_items = None
+                        finally:
+                            self._cleanup_candidate(tmp_path, cand)
 
-                for idx, cand in valid:
-                    tmp_path = self._write_candidate_to_disk(cand)
-                    try:
-                        s_eval, _, _ = self._run_agent_on_dataset(
-                            str(tmp_path),
-                            smoke_set,
-                            f"smoke_{i:03d}_c{idx}",
-                        )
-                    except Exception:
-                        s_eval = None
-                    finally:
-                        self._cleanup_candidate(tmp_path, cand)
+                        if c_eval is None:
+                            self.console.print(
+                                f"    Candidate {orig_idx + 1}: [red]crashed[/red]"
+                            )
+                            set_tag(attrs.OPTIMIZE_ITERATION_DECISION, "crash")
+                            continue
 
-                    if s_eval is None:
+                        c_score = c_eval["avg_total"]
                         self.console.print(
-                            f"    Candidate {idx + 1}: [red]crashed in smoke test[/red]"
+                            f"    Candidate {orig_idx + 1}: [cyan]{c_score:.1f}[/cyan] / 100"
                         )
-                    elif s_eval["avg_total"] >= smoke_threshold:
-                        surviving.append((idx, cand))
-                    else:
-                        self.console.print(
-                            f"    Candidate {idx + 1}: "
-                            f"[yellow]failed smoke test "
-                            f"({s_eval['avg_total']:.1f} < "
-                            f"{smoke_threshold:.1f})[/yellow]"
+                        set_tag(attrs.OPTIMIZE_CANDIDATE_SCORE, float(c_score))
+
+                        complexity_penalty = self._compute_complexity_penalty(
+                            cand["updated_code"],
+                            train_set=train_set,
+                            raw_score=c_score,
                         )
-                if surviving:
-                    valid = surviving
-                elif valid:
+                        adjusted_score = c_score - complexity_penalty
+                        set_tag(
+                            attrs.OPTIMIZE_COMPLEXITY_PENALTY,
+                            float(complexity_penalty),
+                        )
+                        set_tag(
+                            attrs.OPTIMIZE_CANDIDATE_ADJUSTED_SCORE,
+                            float(adjusted_score),
+                        )
+                        if complexity_penalty > 0:
+                            self.console.print(
+                                f"      [dim]Complexity penalty: "
+                                f"-{complexity_penalty:.1f} → {adjusted_score:.1f}[/dim]"
+                            )
+
+                        if adjusted_score > best_cand_score:
+                            best_cand = cand
+                            best_cand_eval = c_eval
+                            best_cand_score = adjusted_score
+                            best_cand_items = c_items
+                            best_cand_case_scores = [
+                                item["score"]["total"] for item in c_items
+                            ]
+
+                if best_cand is None or best_cand_eval is None:
                     self.console.print(
-                        "  [yellow]All candidates failed smoke test, "
-                        "proceeding with full eval anyway.[/yellow]"
+                        "  [yellow]All candidates crashed. Reverting.[/yellow]"
                     )
-
-            # --- Step 3: Evaluate candidates ---
-            self.console.print(
-                f"  [dim]Step 3:[/dim] Evaluating {len(valid)} candidate(s) "
-                f"against test cases"
-            )
-            best_cand = None
-            best_cand_eval = None
-            best_cand_score = -1.0
-            best_cand_items = None
-            best_cand_case_scores: list[float] = []
-
-            for orig_idx, cand in valid:
-                tmp_path = self._write_candidate_to_disk(cand)
-                try:
-                    runs_per = getattr(self.config, "runs_per_eval", 1)
-                    self._logger.debug(
-                        "Iter %d candidate %d: evaluating (runs_per=%d, path=%s)",
-                        i,
-                        orig_idx,
-                        runs_per,
-                        tmp_path,
+                    working_path.write_text(self.best_code)
+                    self._log_result(
+                        f"iter_{i:03d}",
+                        {"avg_total": 0},
+                        "crash",
+                        "All candidates crashed",
                     )
-                    if runs_per > 1:
-                        c_eval, c_items = self._run_multi_eval(
-                            str(tmp_path),
-                            train_set,
-                            f"iter_{i:03d}_c{orig_idx}",
-                            runs_per,
-                        )
-                    else:
-                        c_eval, _, c_items = self._run_agent_on_dataset(
-                            str(tmp_path),
-                            train_set,
-                            f"iter_{i:03d}_c{orig_idx}",
-                        )
-                except Exception:
-                    self._logger.exception(
-                        "Iter %d candidate %d crashed during evaluation",
-                        i,
-                        orig_idx,
-                    )
-                    c_eval = None
-                    c_items = None
-                finally:
-                    self._cleanup_candidate(tmp_path, cand)
-
-                if c_eval is None:
-                    self.console.print(
-                        f"    Candidate {orig_idx + 1}: [red]crashed[/red]"
-                    )
+                    self.stall_count += 1
                     continue
 
-                c_score = c_eval["avg_total"]
-                self.console.print(
-                    f"    Candidate {orig_idx + 1}: [cyan]{c_score:.1f}[/cyan] / 100"
+                # --- Step 3.5: Confirmation re-eval for close calls ---
+                reeval_margin = getattr(self.config, "reeval_margin", 3.0)
+                runs_per = getattr(self.config, "runs_per_eval", 1)
+                is_close_call = (
+                    runs_per <= 1
+                    and best_cand_score <= self.best_score
+                    and best_cand_score > self.best_score - reeval_margin
+                    and best_cand_eval is not None
                 )
-
-                complexity_penalty = self._compute_complexity_penalty(
-                    cand["updated_code"],
-                    train_set=train_set,
-                    raw_score=c_score,
-                )
-                adjusted_score = c_score - complexity_penalty
-                if complexity_penalty > 0:
+                if is_close_call and best_cand is not None:
                     self.console.print(
-                        f"      [dim]Complexity penalty: "
-                        f"-{complexity_penalty:.1f} → {adjusted_score:.1f}[/dim]"
+                        f"  [dim]Close call ({best_cand_score:.1f} vs "
+                        f"{self.best_score:.1f}) — confirming with 3 runs[/dim]"
                     )
+                    tmp_path = self._write_candidate_to_disk(best_cand)
+                    try:
+                        confirm_eval, confirm_items = self._run_multi_eval(
+                            str(tmp_path),
+                            train_set,
+                            f"iter_{i:03d}_confirm",
+                            3,
+                        )
+                        confirmed_score = confirm_eval["avg_total"]
+                        confirm_penalty = self._compute_complexity_penalty(
+                            best_cand["updated_code"],
+                            train_set=train_set,
+                            raw_score=confirmed_score,
+                        )
+                        confirmed_adjusted = confirmed_score - confirm_penalty
+                        self.console.print(
+                            f"  [dim]Confirmed score: {confirmed_score:.1f} "
+                            f"(adjusted: {confirmed_adjusted:.1f})[/dim]"
+                        )
+                        best_cand_eval = confirm_eval
+                        best_cand_score = confirmed_adjusted
+                        best_cand_items = confirm_items
+                        best_cand_case_scores = [
+                            item["score"]["total"] for item in confirm_items
+                        ]
+                    except Exception:
+                        pass
+                    finally:
+                        self._cleanup_candidate(tmp_path, best_cand)
 
-                if adjusted_score > best_cand_score:
-                    best_cand = cand
-                    best_cand_eval = c_eval
-                    best_cand_score = adjusted_score
-                    best_cand_items = c_items
-                    best_cand_case_scores = [item["score"]["total"] for item in c_items]
+                # --- Step 4: Regression-aware acceptance ---
+                desc = "; ".join(best_cand.get("suggestions", [])[:2])
+                prev_eval = dict(latest_eval)
 
-            if best_cand is None or best_cand_eval is None:
-                self.console.print(
-                    "  [yellow]All candidates crashed. Reverting.[/yellow]"
+                accept, reason = self._check_acceptance(
+                    best_cand_score,
+                    best_cand_case_scores,
+                    best_cand_items,
+                    train_set,
+                    candidate_eval=best_cand_eval,
                 )
-                working_path.write_text(self.best_code)
-                self._log_result(
-                    f"iter_{i:03d}",
-                    {"avg_total": 0},
-                    "crash",
-                    "All candidates crashed",
-                )
-                self.stall_count += 1
-                continue
 
-            # --- Step 3.5: Confirmation re-eval for close calls ---
-            reeval_margin = getattr(self.config, "reeval_margin", 3.0)
-            runs_per = getattr(self.config, "runs_per_eval", 1)
-            is_close_call = (
-                runs_per <= 1
-                and best_cand_score <= self.best_score
-                and best_cand_score > self.best_score - reeval_margin
-                and best_cand_eval is not None
-            )
-            if is_close_call and best_cand is not None:
-                self.console.print(
-                    f"  [dim]Close call ({best_cand_score:.1f} vs "
-                    f"{self.best_score:.1f}) — confirming with 3 runs[/dim]"
-                )
-                tmp_path = self._write_candidate_to_disk(best_cand)
-                try:
-                    confirm_eval, confirm_items = self._run_multi_eval(
-                        str(tmp_path),
-                        train_set,
-                        f"iter_{i:03d}_confirm",
-                        3,
+                # Cross-run regression gate: check that previously-fixed failures
+                # stay fixed (only when the within-run gate passed).
+                if accept and self._run_state.regression_cases:
+                    reg_fail = self._check_regression_suite(best_cand, train_set)
+                    reg_threshold = getattr(
+                        self.config, "regression_gate_threshold", 0.2
                     )
-                    confirmed_score = confirm_eval["avg_total"]
-                    confirm_penalty = self._compute_complexity_penalty(
-                        best_cand["updated_code"],
-                        train_set=train_set,
-                        raw_score=confirmed_score,
-                    )
-                    confirmed_adjusted = confirmed_score - confirm_penalty
-                    self.console.print(
-                        f"  [dim]Confirmed score: {confirmed_score:.1f} "
-                        f"(adjusted: {confirmed_adjusted:.1f})[/dim]"
-                    )
-                    best_cand_eval = confirm_eval
-                    best_cand_score = confirmed_adjusted
-                    best_cand_items = confirm_items
-                    best_cand_case_scores = [
-                        item["score"]["total"] for item in confirm_items
-                    ]
-                except Exception:
-                    pass
-                finally:
-                    self._cleanup_candidate(tmp_path, best_cand)
-
-            # --- Step 4: Regression-aware acceptance ---
-            desc = "; ".join(best_cand.get("suggestions", [])[:2])
-            prev_eval = dict(latest_eval)
-
-            accept, reason = self._check_acceptance(
-                best_cand_score,
-                best_cand_case_scores,
-                best_cand_items,
-                train_set,
-                candidate_eval=best_cand_eval,
-            )
-
-            # Cross-run regression gate: check that previously-fixed failures
-            # stay fixed (only when the within-run gate passed).
-            if accept and self._run_state.regression_cases:
-                reg_fail = self._check_regression_suite(best_cand, train_set)
-                reg_threshold = getattr(self.config, "regression_gate_threshold", 0.2)
-                n_reg = len(self._run_state.regression_cases)
-                if reg_fail > n_reg * reg_threshold:
-                    accept = False
-                    reason = (
-                        f"Regression gate: {reg_fail}/{n_reg} previously-fixed "
-                        f"cases regressed (threshold: {reg_threshold:.0%})"
-                    )
-                elif reg_fail > 0:
-                    reason = (
-                        f"{reason}; regression gate: {reg_fail}/{n_reg} minor "
-                        f"regressions (within threshold)"
-                    )
-
-            # --- Step 4.5: Periodic holdout probe (overfitting early detection) ---
-            holdout_probe_interval = getattr(self.config, "holdout_probe_interval", 3)
-            if (
-                accept
-                and holdout_set
-                and i % holdout_probe_interval == 0
-                and best_cand is not None
-            ):
-                self.console.print(f"  [dim]Holdout probe (iteration {i})…[/dim]")
-                probe_path = self._write_candidate_to_disk(best_cand)
-                try:
-                    probe_eval, _, _ = self._run_agent_on_dataset(
-                        str(probe_path),
-                        holdout_set,
-                        f"holdout_probe_{i:03d}",
-                    )
-                    probe_score = probe_eval["avg_total"]
-                    train_gap = best_cand_score - probe_score
-                    overfit_threshold = getattr(
-                        self.config, "holdout_probe_gap_threshold", 15.0
-                    )
-                    if train_gap > overfit_threshold:
+                    n_reg = len(self._run_state.regression_cases)
+                    if reg_fail > n_reg * reg_threshold:
                         accept = False
                         reason = (
-                            f"Holdout probe: train={best_cand_score:.1f} vs "
-                            f"holdout={probe_score:.1f} "
-                            f"(gap={train_gap:.1f} > {overfit_threshold:.1f}) "
-                            f"— likely overfitting"
+                            f"Regression gate: {reg_fail}/{n_reg} previously-fixed "
+                            f"cases regressed (threshold: {reg_threshold:.0%})"
                         )
-                        self.console.print(
-                            f"    [yellow]Holdout gap {train_gap:.1f} exceeds "
-                            f"threshold — rejecting[/yellow]"
+                    elif reg_fail > 0:
+                        reason = (
+                            f"{reason}; regression gate: {reg_fail}/{n_reg} minor "
+                            f"regressions (within threshold)"
                         )
-                    else:
-                        self.console.print(
-                            f"    [dim]Holdout probe OK: train={best_cand_score:.1f}, "
-                            f"holdout={probe_score:.1f} "
-                            f"(gap={train_gap:.1f})[/dim]"
-                        )
-                except Exception:
-                    pass
-                finally:
-                    self._cleanup_candidate(probe_path, best_cand)
 
-            if accept:
-                improvement = best_cand_score - self.best_score
-                self.console.print(
-                    f"\n  [bold green]\u2713 Accepted: {self.best_score:.1f} \u2192 "
-                    f"{best_cand_score:.1f} (+{improvement:.1f})[/bold green]"
+                # --- Step 4.5: Periodic holdout probe (overfitting early detection) ---
+                holdout_probe_interval = getattr(
+                    self.config, "holdout_probe_interval", 3
                 )
-                if reason:
-                    self.console.print(f"    [dim]{reason}[/dim]")
-
-                resolved_files = best_cand.get("_resolved_files")
-                prev_files_snapshot = (
-                    dict(self._best_files) if self._best_files else None
-                )
-
-                if resolved_files and prev_files_snapshot:
-                    changed_files = [
-                        fp
-                        for fp, src in resolved_files.items()
-                        if prev_files_snapshot.get(fp) != src
-                    ]
-                    if changed_files:
-                        files_text = "  ".join(
-                            f"[cyan]{fp}[/cyan]" for fp in sorted(changed_files)
+                if (
+                    accept
+                    and holdout_set
+                    and i % holdout_probe_interval == 0
+                    and best_cand is not None
+                ):
+                    self.console.print(f"  [dim]Holdout probe (iteration {i})…[/dim]")
+                    probe_path = self._write_candidate_to_disk(best_cand)
+                    try:
+                        probe_eval, _, _ = self._run_agent_on_dataset(
+                            str(probe_path),
+                            holdout_set,
+                            f"holdout_probe_{i:03d}",
                         )
-                        self.console.print(f"    [dim]Updated:[/dim]  {files_text}")
+                        probe_score = probe_eval["avg_total"]
+                        train_gap = best_cand_score - probe_score
+                        overfit_threshold = getattr(
+                            self.config, "holdout_probe_gap_threshold", 15.0
+                        )
+                        if train_gap > overfit_threshold:
+                            accept = False
+                            reason = (
+                                f"Holdout probe: train={best_cand_score:.1f} vs "
+                                f"holdout={probe_score:.1f} "
+                                f"(gap={train_gap:.1f} > {overfit_threshold:.1f}) "
+                                f"— likely overfitting"
+                            )
+                            self.console.print(
+                                f"    [yellow]Holdout gap {train_gap:.1f} exceeds "
+                                f"threshold — rejecting[/yellow]"
+                            )
+                        else:
+                            self.console.print(
+                                f"    [dim]Holdout probe OK: train={best_cand_score:.1f}, "
+                                f"holdout={probe_score:.1f} "
+                                f"(gap={train_gap:.1f})[/dim]"
+                            )
+                    except Exception:
+                        pass
+                    finally:
+                        self._cleanup_candidate(probe_path, best_cand)
 
-                self._animate_code_update(
-                    self.best_code,
-                    best_cand["updated_code"],
-                    resolved_files=resolved_files,
-                    prev_files=prev_files_snapshot,
+                set_tag(attrs.OPTIMIZE_ACCEPTED, bool(accept))
+                set_tag(
+                    attrs.OPTIMIZE_ITERATION_DECISION,
+                    "keep" if accept else "discard",
                 )
-                dim_deltas = self._compute_dimension_deltas(latest_eval, best_cand_eval)
-                change_record = {
-                    "suggestions": best_cand.get("suggestions", []),
-                    "improvement": (
-                        f"+{improvement:.1f} "
-                        f"({self.best_score:.1f} \u2192 {best_cand_score:.1f})"
-                    ),
-                    "score_before": self.best_score,
-                    "score_after": best_cand_score,
-                    "dimension_deltas": dim_deltas,
-                    "method": best_cand.get("method", ""),
-                }
-                self.successful_changes.append(change_record)
-                self._session_successful.append(change_record)
-                self.best_score = best_cand_score
-                self.best_code = best_cand["updated_code"]
-                self.best_case_scores = best_cand_case_scores
-                working_path.write_text(self.best_code)
+                set_tag(attrs.OPTIMIZE_ITERATION_REASON, str(reason or ""))
+                set_tag(attrs.OPTIMIZE_ITERATION_SCORE, float(best_cand_score))
+                set_tag(
+                    attrs.OPTIMIZE_ITERATION_IMPROVEMENT,
+                    float(best_cand_score - self.best_score),
+                )
 
-                # Update multi-file state
-                if best_cand.get("_resolved_files"):
-                    self._best_files.update(best_cand["_resolved_files"])
-                    if working_dir:
-                        self._write_file_set(working_dir, self._best_files)
-                    self._rebuild_bundle()
+                if accept:
+                    improvement = best_cand_score - self.best_score
+                    self.console.print(
+                        f"\n  [bold green]\u2713 Accepted: {self.best_score:.1f} \u2192 "
+                        f"{best_cand_score:.1f} (+{improvement:.1f})[/bold green]"
+                    )
+                    if reason:
+                        self.console.print(f"    [dim]{reason}[/dim]")
 
-                self.accepted_snapshots.append(
-                    {
-                        "code": self.best_code,
-                        "files": (dict(self._best_files) if self._best_files else None),
-                        "train_score": best_cand_score,
-                        "iteration": i,
+                    resolved_files = best_cand.get("_resolved_files")
+                    prev_files_snapshot = (
+                        dict(self._best_files) if self._best_files else None
+                    )
+
+                    if resolved_files and prev_files_snapshot:
+                        changed_files = [
+                            fp
+                            for fp, src in resolved_files.items()
+                            if prev_files_snapshot.get(fp) != src
+                        ]
+                        if changed_files:
+                            files_text = "  ".join(
+                                f"[cyan]{fp}[/cyan]" for fp in sorted(changed_files)
+                            )
+                            self.console.print(f"    [dim]Updated:[/dim]  {files_text}")
+
+                    self._animate_code_update(
+                        self.best_code,
+                        best_cand["updated_code"],
+                        resolved_files=resolved_files,
+                        prev_files=prev_files_snapshot,
+                    )
+                    dim_deltas = self._compute_dimension_deltas(
+                        latest_eval, best_cand_eval
+                    )
+                    change_record = {
+                        "suggestions": best_cand.get("suggestions", []),
+                        "improvement": (
+                            f"+{improvement:.1f} "
+                            f"({self.best_score:.1f} \u2192 {best_cand_score:.1f})"
+                        ),
+                        "score_before": self.best_score,
+                        "score_after": best_cand_score,
+                        "dimension_deltas": dim_deltas,
+                        "method": best_cand.get("method", ""),
                     }
-                )
-                latest_eval = best_cand_eval
-                latest_case_results = self._build_case_results(
-                    best_cand_items, train_set
-                )
+                    self.successful_changes.append(change_record)
+                    self._session_successful.append(change_record)
+                    self.best_score = best_cand_score
+                    self.best_code = best_cand["updated_code"]
+                    self.best_case_scores = best_cand_case_scores
+                    working_path.write_text(self.best_code)
 
-                # Update failure registry: ingest new results and check resolutions
-                if getattr(self.config, "failure_clustering", True):
-                    self._failure_registry.ingest_iteration(
-                        i,
-                        latest_case_results,
-                        self.evaluator.spec,
+                    # Update multi-file state
+                    if best_cand.get("_resolved_files"):
+                        self._best_files.update(best_cand["_resolved_files"])
+                        if working_dir:
+                            self._write_file_set(working_dir, self._best_files)
+                        self._rebuild_bundle()
+
+                    self.accepted_snapshots.append(
+                        {
+                            "code": self.best_code,
+                            "files": (
+                                dict(self._best_files) if self._best_files else None
+                            ),
+                            "train_score": best_cand_score,
+                            "iteration": i,
+                        }
                     )
-                    newly_resolved = self._failure_registry.update_resolution_status(
-                        i,
-                        latest_case_results,
-                        self.evaluator.spec,
-                        change_summary=desc,
+                    latest_eval = best_cand_eval
+                    latest_case_results = self._build_case_results(
+                        best_cand_items, train_set
                     )
-                    if newly_resolved:
-                        self.console.print(
-                            f"    [green]\u2713 Resolved {len(newly_resolved)} "
-                            f"failure cluster(s)[/green]"
-                        )
-                        self._promote_resolved_to_regression(
-                            newly_resolved,
-                            latest_case_results,
-                            train_set,
+
+                    # Update failure registry: ingest new results and check resolutions
+                    if getattr(self.config, "failure_clustering", True):
+                        self._failure_registry.ingest_iteration(
                             i,
+                            latest_case_results,
+                            self.evaluator.spec,
                         )
+                        newly_resolved = (
+                            self._failure_registry.update_resolution_status(
+                                i,
+                                latest_case_results,
+                                self.evaluator.spec,
+                                change_summary=desc,
+                            )
+                        )
+                        if newly_resolved:
+                            self.console.print(
+                                f"    [green]\u2713 Resolved {len(newly_resolved)} "
+                                f"failure cluster(s)[/green]"
+                            )
+                            self._promote_resolved_to_regression(
+                                newly_resolved,
+                                latest_case_results,
+                                train_set,
+                                i,
+                            )
 
-                self._log_result(f"iter_{i:03d}", best_cand_eval, "keep", desc)
-                if self._reporter:
-                    dim_scores = {
-                        key: float(best_cand_eval.get(key, 0))
-                        for _, key in self.evaluator.get_dimension_labels()
-                    }
-                    self._reporter.on_iteration(
-                        order=i,
-                        avg_score=float(best_cand_eval.get("avg_total", 0)),
-                        decision="keep",
-                        agent_code=self.best_code,
-                        description=desc,
-                        dimension_scores=dim_scores,
+                    self._log_result(f"iter_{i:03d}", best_cand_eval, "keep", desc)
+                    if self._reporter:
+                        dim_scores = {
+                            key: float(best_cand_eval.get(key, 0))
+                            for _, key in self.evaluator.get_dimension_labels()
+                        }
+                        self._reporter.on_iteration(
+                            order=i,
+                            avg_score=float(best_cand_eval.get("avg_total", 0)),
+                            decision="keep",
+                            agent_code=self.best_code,
+                            description=desc,
+                            dimension_scores=dim_scores,
+                        )
+                    self.stall_count = 0
+                else:
+                    self.console.print(
+                        f"\n  [red]\u2717 Rejected: {best_cand_score:.1f} "
+                        f"vs best {self.best_score:.1f}[/red]"
                     )
-                self.stall_count = 0
-            else:
-                self.console.print(
-                    f"\n  [red]\u2717 Rejected: {best_cand_score:.1f} "
-                    f"vs best {self.best_score:.1f}[/red]"
+                    if reason:
+                        self.console.print(f"    [dim]{reason}[/dim]")
+                    working_path.write_text(self.best_code)
+                    self._log_result(f"iter_{i:03d}", best_cand_eval, "discard", desc)
+                    if self._reporter:
+                        dim_scores = {
+                            key: float(best_cand_eval.get(key, 0))
+                            for _, key in self.evaluator.get_dimension_labels()
+                        }
+                        self._reporter.on_iteration(
+                            order=i,
+                            avg_score=float(best_cand_eval.get("avg_total", 0)),
+                            decision="discard",
+                            agent_code=best_cand.get("updated_code"),
+                            description=desc,
+                            dimension_scores=dim_scores,
+                        )
+                    dim_deltas = self._compute_dimension_deltas(
+                        latest_eval, best_cand_eval
+                    )
+                    fail_record = {
+                        "suggestions": best_cand.get("suggestions", []),
+                        "score": best_cand_score,
+                        "reason": reason or f"No improvement ({best_cand_score:.1f})",
+                        "dimension_deltas": dim_deltas,
+                        "method": best_cand.get("method", ""),
+                    }
+                    self.failed_attempts.append(fail_record)
+                    self._session_failed.append(fail_record)
+                    self.stall_count += 1
+
+                self._print_eval(
+                    best_cand_eval,
+                    f"Iteration {i} (best candidate)",
+                    prev_evaluation=prev_eval,
                 )
-                if reason:
-                    self.console.print(f"    [dim]{reason}[/dim]")
-                working_path.write_text(self.best_code)
-                self._log_result(f"iter_{i:03d}", best_cand_eval, "discard", desc)
-                if self._reporter:
-                    dim_scores = {
-                        key: float(best_cand_eval.get(key, 0))
-                        for _, key in self.evaluator.get_dimension_labels()
-                    }
-                    self._reporter.on_iteration(
-                        order=i,
-                        avg_score=float(best_cand_eval.get("avg_total", 0)),
-                        decision="discard",
-                        agent_code=best_cand.get("updated_code"),
-                        description=desc,
-                        dimension_scores=dim_scores,
-                    )
-                dim_deltas = self._compute_dimension_deltas(latest_eval, best_cand_eval)
-                fail_record = {
-                    "suggestions": best_cand.get("suggestions", []),
-                    "score": best_cand_score,
-                    "reason": reason or f"No improvement ({best_cand_score:.1f})",
-                    "dimension_deltas": dim_deltas,
-                    "method": best_cand.get("method", ""),
-                }
-                self.failed_attempts.append(fail_record)
-                self._session_failed.append(fail_record)
-                self.stall_count += 1
 
-            self._print_eval(
-                best_cand_eval,
-                f"Iteration {i} (best candidate)",
-                prev_evaluation=prev_eval,
-            )
-
-            self._logger.info(
-                "STAGE END   optimizer.iteration iter=%d/%d best_score=%.4f stall_count=%d best_cand_score=%.4f",
-                i,
-                self.config.iterations,
-                self.best_score,
-                self.stall_count,
-                float(best_cand_eval.get("avg_total", 0)) if best_cand_eval else 0.0,
-            )
-
-            # Early stopping
-            patience = getattr(self.config, "early_stopping_patience", 3)
-            if patience > 0 and self.stall_count >= patience:
                 self._logger.info(
-                    "Early stopping triggered stall_count=%d patience=%d",
+                    "STAGE END   optimizer.iteration iter=%d/%d best_score=%.4f stall_count=%d best_cand_score=%.4f",
+                    i,
+                    self.config.iterations,
+                    self.best_score,
                     self.stall_count,
-                    patience,
+                    float(best_cand_eval.get("avg_total", 0))
+                    if best_cand_eval
+                    else 0.0,
                 )
-                self.console.print(
-                    f"\n  [yellow]Early stopping: {self.stall_count} consecutive "
-                    f"iterations without improvement "
-                    f"(patience={patience}).[/yellow]"
-                )
-                break
+
+                # Early stopping
+                patience = getattr(self.config, "early_stopping_patience", 3)
+                if patience > 0 and self.stall_count >= patience:
+                    self._logger.info(
+                        "Early stopping triggered stall_count=%d patience=%d",
+                        self.stall_count,
+                        patience,
+                    )
+                    self.console.print(
+                        f"\n  [yellow]Early stopping: {self.stall_count} consecutive "
+                        f"iterations without improvement "
+                        f"(patience={patience}).[/yellow]"
+                    )
+                    break
 
         # Save best agent
         _ext = Path(self.config.agent_path).suffix or ".py"
@@ -1293,6 +1402,14 @@ class Optimizer:
                     rollback_target["iteration"] if rollback_target else None
                 ),
             }
+            set_tag(attrs.OPTIMIZE_HOLDOUT_SCORE, float(holdout_score))
+            set_tag(
+                attrs.OPTIMIZE_HOLDOUT_BASELINE_SCORE,
+                float(baseline_holdout_score),
+            )
+            set_tag(attrs.OPTIMIZE_HOLDOUT_IMPROVEMENT, float(holdout_improvement))
+            set_tag(attrs.OPTIMIZE_BLENDED_IMPROVEMENT, float(blended_improvement))
+            set_tag(attrs.OPTIMIZE_HOLDOUT_REVERTED, bool(reverted))
             if self._reporter:
                 self._reporter.on_holdout(self._holdout_results)
 
@@ -1314,6 +1431,7 @@ class Optimizer:
             self._run_backtesting(backtest_data)
 
         # ---- Phase 4: Report ----
+        set_tag(attrs.OPTIMIZE_FINAL_BEST_SCORE, float(self.best_score))
         self._generate_report()
         if self._reporter:
             report_md = (self.output_dir / "report.md").read_text(encoding="utf-8")
@@ -1363,6 +1481,7 @@ class Optimizer:
     # Commit optimized sources back to original agent files
     # ------------------------------------------------------------------
 
+    @traced("optimizer.collect_commit_targets")
     def _collect_commit_targets(self) -> list[tuple[Path, str, str]]:
         """Return ``[(abs_path, original, optimized), ...]`` for files to commit.
 
@@ -1409,6 +1528,7 @@ class Optimizer:
 
         return targets
 
+    @traced("optimizer.prompt_commit")
     def _prompt_commit_to_original_sources(self) -> None:
         """After optimization, show diffs and offer to write them to originals.
 
@@ -1502,6 +1622,7 @@ class Optimizer:
     # Complexity penalty (prompt bloat + code growth + override detection)
     # ------------------------------------------------------------------
 
+    @traced("optimizer.compute_complexity_penalty")
     def _compute_complexity_penalty(
         self,
         candidate_code: str,
@@ -1584,6 +1705,7 @@ class Optimizer:
 
         return penalty
 
+    @traced("optimizer.detect_data_leakage")
     def _detect_data_leakage(self, candidate_code: str, train_set: list[dict]) -> int:
         """Count expected-output literals that appear in new code but not the baseline.
 
@@ -1672,6 +1794,7 @@ class Optimizer:
     # Dataset splitting
     # ------------------------------------------------------------------
 
+    @traced("optimizer.split_dataset")
     @staticmethod
     def _split_dataset(
         dataset: list[dict], holdout_ratio: float
@@ -1696,6 +1819,7 @@ class Optimizer:
     # Holdout snapshot rollback
     # ------------------------------------------------------------------
 
+    @traced("optimizer.rollback_to_best_snapshot")
     def _rollback_to_best_snapshot(
         self,
         best_path: Path,
@@ -1802,6 +1926,7 @@ class Optimizer:
     # Dimension delta computation
     # ------------------------------------------------------------------
 
+    @traced("optimizer.compute_dimension_deltas")
     def _compute_dimension_deltas(
         self, old_eval: dict, new_eval: dict
     ) -> dict[str, float]:
@@ -1819,6 +1944,7 @@ class Optimizer:
     # Regression-aware acceptance
     # ------------------------------------------------------------------
 
+    @traced("optimizer.check_acceptance")
     def _check_acceptance(
         self,
         candidate_score: float,
@@ -1916,6 +2042,7 @@ class Optimizer:
     # Cross-run regression gate
     # ------------------------------------------------------------------
 
+    @traced("optimizer.check_regression_suite")
     def _check_regression_suite(
         self,
         candidate: dict,
@@ -1989,6 +2116,7 @@ class Optimizer:
         runner.cleanup()
         return failures
 
+    @traced("optimizer.promote_resolved_to_regression")
     def _promote_resolved_to_regression(
         self,
         resolved_clusters: list,
@@ -2019,6 +2147,7 @@ class Optimizer:
     # Multi-run evaluation
     # ------------------------------------------------------------------
 
+    @traced("optimizer.run_multi_eval")
     def _run_multi_eval(
         self,
         agent_path: str,
@@ -2083,6 +2212,7 @@ class Optimizer:
     # Baseline diagnostics
     # ------------------------------------------------------------------
 
+    @traced("optimizer.print_baseline_diagnostics")
     def _print_baseline_diagnostics(self, evaluation: dict, items: list[dict]):
         """Print smart diagnostics about the baseline run."""
         self.console.print()
@@ -2139,6 +2269,7 @@ class Optimizer:
     # Dataset loading
     # ------------------------------------------------------------------
 
+    @traced("optimizer.load_dataset")
     def _load_dataset(self) -> list[dict]:
         """Load the dataset from disk.
 
@@ -2179,12 +2310,14 @@ class Optimizer:
             rel = Path(self.config.agent_path).name
         return {rel: current_code}
 
+    @traced("optimizer.build_bundle")
     def _build_bundle(self) -> AgentBundle | None:
         """Build an ``AgentBundle`` from the current config."""
         from overclaw.optimize.bundle_factory import build_agent_bundle
 
         return build_agent_bundle(self.config)
 
+    @traced("optimizer.rebuild_bundle")
     def _rebuild_bundle(self) -> None:
         """Rebuild the bundle from current ``_best_files`` state.
 
@@ -2215,6 +2348,7 @@ class Optimizer:
         self._bundle.pieces = new_pieces
         self._bundle._assign_ids()
 
+    @traced("optimizer.resolve_bundle_candidate")
     def _resolve_bundle_candidate(self, bundle_updates: dict) -> dict | None:
         """Resolve bundle updates into modified files.
 
@@ -2251,6 +2385,7 @@ class Optimizer:
 
         return {"entry_code": entry_code, "files": modified}
 
+    @traced("optimizer.write_candidate_to_disk")
     def _write_candidate_to_disk(self, cand: dict) -> Path:
         """Write a candidate to disk for evaluation, handling both modes.
 
@@ -2286,6 +2421,7 @@ class Optimizer:
         tmp.write_text(code)
         return tmp
 
+    @traced("optimizer.cleanup_candidate")
     def _cleanup_candidate(self, tmp_path: Path, cand: dict) -> None:
         """Clean up temporary files/dirs created by ``_write_candidate_to_disk``."""
         resolved = cand.get("_resolved_files")
@@ -2316,6 +2452,7 @@ class Optimizer:
     # Agent loading & execution
     # ------------------------------------------------------------------
 
+    @traced("optimizer.build_runner")
     def _build_runner(
         self,
         agent_path: str,
@@ -2364,6 +2501,7 @@ class Optimizer:
             env_dir=original_agent_dir,
         )
 
+    @traced("optimizer.ensure_runner_env")
     def _ensure_runner_env(self) -> None:
         """Provision the runner's environment (deps install). Idempotent."""
         from overclaw.optimize.runner import MissingDependenciesError
@@ -2396,6 +2534,7 @@ class Optimizer:
         spec.loader.exec_module(module)
         return module
 
+    @traced("optimizer.run_agent_on_dataset")
     def _run_agent_on_dataset(
         self,
         agent_path: str,
@@ -2471,6 +2610,7 @@ class Optimizer:
             return False
         return bool(getattr(self.config, "enable_shadow", True))
 
+    @traced("optimizer.run_sequential_subprocess")
     def _run_sequential_subprocess(
         self,
         runner: AgentRunner,
@@ -2524,6 +2664,7 @@ class Optimizer:
             outputs, cases_data, run_name, trace_path, provenance_by_idx
         )
 
+    @traced("optimizer.run_parallel_subprocess")
     def _run_parallel_subprocess(
         self,
         runner: AgentRunner,
@@ -2591,6 +2732,7 @@ class Optimizer:
             outputs, dataset, run_name, trace_path, provenance_by_idx
         )
 
+    @traced("optimizer.run_case_with_plan")
     def _run_case_with_plan(
         self,
         plan: BackendPlan | None,
@@ -2629,6 +2771,7 @@ class Optimizer:
         assert last_output is not None
         return last_output
 
+    @traced("optimizer.build_eval_results")
     def _build_eval_results(
         self,
         outputs: list[dict | None],
@@ -2824,6 +2967,7 @@ class Optimizer:
     # Validation
     # ------------------------------------------------------------------
 
+    @traced("optimizer.validate_code")
     def _validate_code(self, code: str) -> bool:
         from overclaw.optimize.runner import (
             _validate_python_syntax,
@@ -2854,31 +2998,43 @@ class Optimizer:
     # Model backtesting
     # ------------------------------------------------------------------
 
+    @traced("optimizer.run_backtesting")
     def _run_backtesting(self, dataset: list[dict]):
         for model_id in self.config.backtest_models:
-            self.console.print(f"\n  Testing with [bold]{model_id}[/bold]…")
-            modified_code = re.sub(
-                r'MODEL\s*=\s*"[^"]*"',
-                f'MODEL = "{model_id}"',
-                self.best_code,
-            )
-            ext = Path(self.config.agent_path).suffix or ".py"
-            tmp_path = self.output_dir / f"agent_backtest{ext}"
-            tmp_path.write_text(modified_code)
+            with otel_span(
+                "optimizer.backtest_model",
+                attributes={attrs.OPTIMIZE_BACKTEST_MODEL: model_id},
+            ):
+                self.console.print(f"\n  Testing with [bold]{model_id}[/bold]…")
+                modified_code = re.sub(
+                    r'MODEL\s*=\s*"[^"]*"',
+                    f'MODEL = "{model_id}"',
+                    self.best_code,
+                )
+                ext = Path(self.config.agent_path).suffix or ".py"
+                tmp_path = self.output_dir / f"agent_backtest{ext}"
+                tmp_path.write_text(modified_code)
 
-            try:
-                bt_eval, _, _ = self._run_agent_on_dataset(
-                    str(tmp_path),
-                    dataset,
-                    f"backtest_{model_id.replace('/', '_')}",
-                )
-                self.backtest_results[model_id] = bt_eval
-                self.console.print(
-                    f"    Score: [cyan]{bt_eval['avg_total']:.1f}[/cyan] / 100"
-                )
-            except Exception as exc:
-                self.console.print(f"    [red]Failed: {exc}[/red]")
-                self.backtest_results[model_id] = {"avg_total": 0, "error": str(exc)}
+                try:
+                    bt_eval, _, _ = self._run_agent_on_dataset(
+                        str(tmp_path),
+                        dataset,
+                        f"backtest_{model_id.replace('/', '_')}",
+                    )
+                    self.backtest_results[model_id] = bt_eval
+                    self.console.print(
+                        f"    Score: [cyan]{bt_eval['avg_total']:.1f}[/cyan] / 100"
+                    )
+                    set_tag(
+                        attrs.OPTIMIZE_BACKTEST_SCORE,
+                        float(bt_eval.get("avg_total", 0)),
+                    )
+                except Exception as exc:
+                    self.console.print(f"    [red]Failed: {exc}[/red]")
+                    self.backtest_results[model_id] = {
+                        "avg_total": 0,
+                        "error": str(exc),
+                    }
 
         if self.backtest_results:
             dim_labels = self.evaluator.get_dimension_labels()
@@ -2906,6 +3062,7 @@ class Optimizer:
     # Logging & reporting
     # ------------------------------------------------------------------
 
+    @traced("optimizer.setup_output_dirs")
     def _setup_output_dirs(self):
         for d in (self.output_dir, self.traces_dir, self.analysis_dir):
             d.mkdir(parents=True, exist_ok=True)
@@ -2976,6 +3133,7 @@ class Optimizer:
             else:
                 self.console.print(f"    {display:>18}: {val:.1f} / {max_val:.0f}")
 
+    @traced("optimizer.generate_report")
     def _generate_report(self):
         self.console.print()
         self.console.print(Rule(style="dim"))
@@ -3082,6 +3240,7 @@ class Optimizer:
 
         self._write_report_md(baseline_score)
 
+    @traced("optimizer.write_report_md")
     def _write_report_md(self, baseline_score: float):
         dim_labels = self.evaluator.get_dimension_labels()
 

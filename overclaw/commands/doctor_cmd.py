@@ -16,6 +16,9 @@ from overclaw.core.paths import (
 from overclaw.core.registry import resolve_agent
 from overclaw.optimize.bundle_factory import build_agent_bundle
 from overclaw.optimize.config import Config, apply_eval_spec_scope
+from overmind import observe, SpanType, set_tag
+
+from overclaw import attrs
 
 logger = logging.getLogger("overclaw.commands.doctor")
 
@@ -31,11 +34,15 @@ def _detect_language(agent_path: str) -> str:
     }.get(ext, "python")
 
 
+@observe(span_name="overmind_doctor", type=SpanType.WORKFLOW)
 def main(agent_name: str) -> None:
     """Print how OverClaw resolves the bundle and eval spec (no LLM, no writes)."""
     logger.info("doctor: start agent=%s", agent_name)
     load_overclaw_dotenv()
     console = Console()
+
+    set_tag(attrs.COMMAND, "doctor")
+    set_tag(attrs.DOCTOR_AGENT_NAME, agent_name)
 
     agent_path, entrypoint_fn = resolve_agent(agent_name)
     cfg = Config(
@@ -87,11 +94,18 @@ def main(agent_name: str) -> None:
     bundle = build_agent_bundle(cfg)
     if bundle is None:
         console.print("[red]Could not build a file bundle from this agent.[/red]")
+        set_tag(attrs.DOCTOR_BUNDLE_BUILT, False)
         return
 
     n_files = len(bundle.original_files)
     raw_chars = sum(len(s) for s in bundle.original_files.values())
     prompt_chars = sum(len(p.source) for p in bundle.pieces)
+    set_tag(attrs.DOCTOR_BUNDLE_BUILT, True)
+    set_tag(attrs.DOCTOR_BUNDLE_FILES, n_files)
+    set_tag(attrs.DOCTOR_BUNDLE_RAW_CHARS, raw_chars)
+    set_tag(attrs.DOCTOR_BUNDLE_PROMPT_CHARS, prompt_chars)
+    set_tag(attrs.DOCTOR_HAS_EVAL_SPEC, spec_path.is_file())
+    set_tag(attrs.DOCTOR_HAS_INSTRUMENTED_COPY, has_inst)
 
     console.print("[bold]Bundle[/bold]")
     console.print(f"  Resolved files: {n_files}")

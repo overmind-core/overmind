@@ -1,7 +1,7 @@
-"""AST-based instrumentation for overmind-sdk observe() tracing.
+"""AST-based instrumentation for overmind observe() tracing.
 
 Transforms agent source code to:
-  1. Add ``from overmind_sdk import init as overmind_init, observe`` and
+  1. Add ``from overmind import init as overmind_init, observe`` and
      ``overmind_init()`` at the top of the file.
   2. Add ``@observe()`` decorator above every function definition.
   3. Remove ``from overclaw.core.tracer import ...`` imports.
@@ -30,10 +30,10 @@ def instrument_source(source: str) -> str:
 
 
 # ---------------------------------------------------------------------------
-# 1. Add overmind-sdk imports + init at the top
+# 1. Add overmind imports + init at the top
 # ---------------------------------------------------------------------------
 
-_OVERMIND_IMPORT = "from overmind_sdk import init as overmind_init, observe"
+_OVERMIND_IMPORT = "from overmind import init as overmind_init, observe"
 _OVERMIND_INIT = "overmind_init()"
 
 
@@ -42,16 +42,16 @@ def _add_overmind_imports(source: str) -> str:
     if _OVERMIND_IMPORT in source:
         return source
 
-    # If overmind_sdk is imported but without ``observe``, patch the import.
-    if "from overmind_sdk import" in source and "observe" not in source:
+    # If overmind is imported but without ``observe``, patch the import.
+    if "from overmind import" in source and "observe" not in source:
         return re.sub(
-            r"(from overmind_sdk import .+)",
+            r"(from overmind import .+)",
             r"\1, observe",
             source,
             count=1,
         )
 
-    if "from overmind_sdk import" in source or "import overmind_sdk" in source:
+    if "from overmind import" in source or "import overmind" in source:
         # Already imported (and observe is present or unused) — skip.
         return source
 
@@ -261,13 +261,13 @@ def _add_observe_decorators(source: str) -> str:
 
 
 def is_instrumented(source: str) -> bool:
-    """Return True if the source already has overmind-sdk instrumentation.
+    """Return True if the source already has overmind instrumentation.
 
     Requires both the import (with ``observe``) and at least one
     ``@observe()`` decorator to be present.
     """
     has_import = "observe" in source and (
-        "from overmind_sdk import" in source or "import overmind_sdk" in source
+        "from overmind import" in source or "import overmind" in source
     )
     has_decorator = "@observe()" in source
     return has_import and has_decorator
@@ -275,9 +275,9 @@ def is_instrumented(source: str) -> bool:
 
 _OBSERVE_DECORATOR_RE = re.compile(r"^[ \t]*@observe\(\s*\)\s*\n", re.MULTILINE)
 # Only match the exact import form we inject in :func:`instrument_source` so
-# we don't clobber a user's pre-existing ``from overmind_sdk import ...`` line.
+# we don't clobber a user's pre-existing ``from overmind import ...`` line.
 _OVERMIND_IMPORT_RE = re.compile(
-    r"^[ \t]*from\s+overmind_sdk\s+import\s+[^\n]*\b(?:overmind_init|observe)\b"
+    r"^[ \t]*from\s+overmind\s+import\s+[^\n]*\b(?:overmind_init|observe)\b"
     r"[^\n]*\n",
     re.MULTILINE,
 )
@@ -287,7 +287,7 @@ _OVERMIND_INIT_RE = re.compile(r"^[ \t]*overmind_init\s*\(\s*\)\s*\n", re.MULTIL
 def deinstrument_source(source: str) -> str:
     """Reverse the additions made by :func:`instrument_source`.
 
-    Strips ``@observe()`` decorators, the ``overmind_sdk`` import line,
+    Strips ``@observe()`` decorators, the ``overmind`` import line,
     and bare ``overmind_init()`` calls so the cleaned-up source matches
     what the user originally wrote (minus any pre-existing instrumentation
     they may have had, which is intentionally unsupported here).

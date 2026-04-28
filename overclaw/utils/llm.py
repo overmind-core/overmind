@@ -8,6 +8,10 @@ from typing import Any
 
 import litellm
 
+from overmind import SpanType, set_tag, start_span
+
+from overclaw import attrs
+
 logger = logging.getLogger("overclaw.llm")
 
 
@@ -123,37 +127,55 @@ def llm_completion(
         num_tools,
         kwarg_keys,
     )
-    t0 = time.monotonic()
-    try:
-        response = litellm.completion(
-            model=model,
-            messages=messages,
-            tools=tools or None,
-            **completion_kwargs_for_model(model, **kwargs),
-        )
-    except Exception as exc:
+    # Wrap each LLM call in its own child span so it flushes to the backend
+    # as soon as the call returns — long-running parent spans don't stall
+    # progress visibility in the trace UI.
+    with start_span("overmind_llm_completion", span_type=SpanType.TOOL):
+        set_tag(attrs.LLM_MODEL, model)
+        set_tag(attrs.LLM_PROVIDER, provider)
+        set_tag(attrs.LLM_REQUEST_MESSAGE_COUNT, str(num_msgs))
+        set_tag(attrs.LLM_REQUEST_MESSAGE_CHARS, str(total_chars))
+        set_tag(attrs.LLM_REQUEST_TOOL_COUNT, str(num_tools))
+        if kwarg_keys:
+            set_tag(attrs.LLM_REQUEST_KWARGS, kwarg_keys)
+
+        t0 = time.monotonic()
+        try:
+            response = litellm.completion(
+                model=model,
+                messages=messages,
+                tools=tools or None,
+                **completion_kwargs_for_model(model, **kwargs),
+            )
+        except Exception as exc:
+            elapsed = time.monotonic() - t0
+            set_tag(attrs.LLM_ELAPSED_SECONDS, f"{elapsed:.3f}")
+            set_tag(attrs.LLM_ERROR, type(exc).__name__)
+            logger.exception(
+                "llm_completion FAIL  model=%s provider=%s elapsed=%.2fs error=%s: %s",
+                model,
+                provider,
+                elapsed,
+                type(exc).__name__,
+                exc,
+            )
+            raise
+
         elapsed = time.monotonic() - t0
-        logger.exception(
-            "llm_completion FAIL  model=%s provider=%s elapsed=%.2fs error=%s: %s",
+        pt, ct, tt = _usage_tuple(response)
+        preview = _response_preview(response)
+        set_tag(attrs.LLM_ELAPSED_SECONDS, f"{elapsed:.3f}")
+        set_tag(attrs.LLM_USAGE_PROMPT_TOKENS, str(pt))
+        set_tag(attrs.LLM_USAGE_COMPLETION_TOKENS, str(ct))
+        set_tag(attrs.LLM_USAGE_TOTAL_TOKENS, str(tt))
+        logger.info(
+            "llm_completion OK    model=%s provider=%s elapsed=%.2fs tokens_in=%d tokens_out=%d total=%d preview=%r",
             model,
             provider,
             elapsed,
-            type(exc).__name__,
-            exc,
+            pt,
+            ct,
+            tt,
+            preview,
         )
-        raise
-
-    elapsed = time.monotonic() - t0
-    pt, ct, tt = _usage_tuple(response)
-    preview = _response_preview(response)
-    logger.info(
-        "llm_completion OK    model=%s provider=%s elapsed=%.2fs tokens_in=%d tokens_out=%d total=%d preview=%r",
-        model,
-        provider,
-        elapsed,
-        pt,
-        ct,
-        tt,
-        preview,
-    )
-    return response
+        return response

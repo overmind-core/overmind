@@ -8,6 +8,9 @@ refined evaluation criteria.
 import json
 import logging
 
+from overmind import set_tag, SpanType
+from overclaw import attrs
+from overclaw.utils.tracing import traced
 from rich.console import Console
 from rich.prompt import Prompt
 from rich.table import Table
@@ -21,6 +24,7 @@ from overclaw.prompts.questionnaire import REFINEMENT_PROMPT
 logger = logging.getLogger("overclaw.setup.questionnaire")
 
 
+@traced(span_name="overclaw_setup_questionnaire", type=SpanType.FUNCTION)
 def run_questionnaire(analysis: dict, model: str, console: Console) -> dict:
     """Collect domain knowledge conversationally and refine criteria via LLM.
 
@@ -123,6 +127,8 @@ def run_questionnaire(analysis: dict, model: str, console: Console) -> dict:
 
     # Show what changed
     _display_refined(refined_criteria, analysis, console)
+
+    set_tag(attrs.SETUP_CRITERIA_SOURCE, "questionnaire")
 
     # Return a modified copy of the analysis
     refined_analysis = {**analysis, "proposed_criteria": refined_criteria}

@@ -479,20 +479,20 @@ def _provision_with_agent(agent_dir: Path, language: Language) -> bool:
 # Overmind SDK injection
 # ---------------------------------------------------------------------------
 
-_OVERMIND_SDK_PACKAGE = "overmind-sdk==0.1.37"
+_OVERMIND_PACKAGE = "overmind>=0.1.39"
 
 
 def _ensure_overmind_sdk(venv_dir: Path, agent_dir: Path) -> None:
-    """Ensure the pinned overmind-sdk is installed in the agent's venv."""
+    """Ensure the pinned overmind is installed in the agent's venv."""
     py = _venv_python(venv_dir)
     if not py.is_file():
         return
 
-    logger.info("Installing %s into agent venv …", _OVERMIND_SDK_PACKAGE)
+    logger.info("Installing %s into agent venv …", _OVERMIND_PACKAGE)
     use_uv = bool(shutil.which("uv"))
     if use_uv:
         subprocess.run(
-            ["uv", "pip", "install", "--python", str(py), _OVERMIND_SDK_PACKAGE],
+            ["uv", "pip", "install", "--python", str(py), _OVERMIND_PACKAGE],
             cwd=str(agent_dir),
             capture_output=True,
             check=False,
@@ -500,7 +500,7 @@ def _ensure_overmind_sdk(venv_dir: Path, agent_dir: Path) -> None:
     else:
         pip = _venv_pip(venv_dir)
         subprocess.run(
-            [str(pip), "install", _OVERMIND_SDK_PACKAGE],
+            [str(pip), "install", _OVERMIND_PACKAGE],
             cwd=str(agent_dir),
             capture_output=True,
             check=False,
@@ -688,7 +688,7 @@ _cwd = os.getcwd()
 if _cwd not in sys.path:
     sys.path.insert(0, _cwd)
 try:
-    from overmind_sdk import init as overmind_init
+    from overmind import init as overmind_init
     overmind_init()
 except ImportError:
     pass
@@ -988,7 +988,7 @@ class AgentRunner:
         """Execute the agent in a subprocess. Returns structured output.
 
         If *trace_file* is given, ``OVERMIND_TRACE_FILE`` is set in the
-        child environment so the overmind-sdk writes spans there.
+        child environment so the overmind writes spans there.
 
         When *shadow_config* is provided and enabled, the subprocess is
         launched with the OverClaw shadow bootstrap active so external

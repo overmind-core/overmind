@@ -17,6 +17,7 @@ Usage:
     overclaw setup <agent-name> --fast
 """
 
+import hashlib
 import json
 import logging
 import os
@@ -33,6 +34,8 @@ from rich.panel import Panel
 from rich.prompt import IntPrompt, Prompt
 from rich.rule import Rule
 
+
+from overclaw import attrs
 from overclaw.utils.display import (
     BRAND,
     confirm_option,
@@ -94,7 +97,9 @@ from overclaw.setup.policy_generator import (
 from overclaw.setup.questionnaire import run_questionnaire
 from overclaw.setup.spec_generator import generate_spec_from_proposal, save_spec
 from overclaw.storage import configure_storage, get_storage
-from overclaw.storage.api import ApiBackend
+from overmind import observe, SpanType, set_tag
+
+from overclaw.utils.tracing import traced
 
 logger = logging.getLogger("overclaw.commands.setup")
 
@@ -376,25 +381,24 @@ def _validate_agent_entrypoint(
 def _clear_existing_eval_spec(
     agent_name: str, console: Console, *, fast: bool = False
 ) -> None:
-    with suppress(ValueError):
+    with suppress(Exception):
         storage = get_storage()
-        if isinstance(storage, ApiBackend):
-            if fast:
-                storage.clear_setup_spec()
-                console.print(
-                    "  [dim]Cleared setup artifacts in Overmind (fast mode).[/dim]"
-                )
-                return
-            if confirm_option(
-                "Delete existing setup artifacts in Overmind and start fresh?",
-                default=True,
-                console=console,
-            ):
-                storage.clear_setup_spec()
-                console.print("  [dim]Cleared Overmind setup artifacts.[/dim]")
-            else:
-                console.print("  [dim]Keeping existing Overmind setup artifacts.[/dim]")
+        if fast:
+            storage.clear_setup_spec()
+            console.print(
+                "  [dim]Cleared setup artifacts in Overmind (fast mode).[/dim]"
+            )
             return
+        if confirm_option(
+            "Delete existing setup artifacts in Overmind and start fresh?",
+            default=True,
+            console=console,
+        ):
+            storage.clear_setup_spec()
+            console.print("  [dim]Cleared Overmind setup artifacts.[/dim]")
+        else:
+            console.print("  [dim]Keeping existing Overmind setup artifacts.[/dim]")
+        return
 
     spec_dir = agent_setup_spec_dir(agent_name)
     if not spec_dir.exists():
@@ -452,9 +456,9 @@ def _save_and_finish(
         save_policy(policy_md, default_policy_path(agent_name))
 
     storage = None
-    with suppress(ValueError):
+    with suppress(Exception):
         storage = get_storage()
-    if isinstance(storage, ApiBackend):
+    if storage is not None:
         storage.save_spec(spec)
         if policy_md:
             storage.save_policy(policy_md, spec.get("policy"))
@@ -464,6 +468,25 @@ def _save_and_finish(
     has_consistency = bool(spec.get("consistency_rules"))
     has_judge = spec.get("llm_judge_weight", 0) > 0
     has_policy = bool(spec.get("policy"))
+
+    set_tag(attrs.SETUP_EVAL_SPEC_FIELD_COUNT, str(n_fields))
+    set_tag(attrs.SETUP_EVAL_SPEC_HAS_TOOLS, str(has_tools))
+    set_tag(attrs.SETUP_EVAL_SPEC_HAS_JUDGE, str(has_judge))
+    set_tag(attrs.SETUP_EVAL_SPEC_HAS_POLICY, str(has_policy))
+    set_tag(
+        attrs.SETUP_EVAL_SPEC_STRUCTURE_WEIGHT,
+        str(spec.get("structure_weight", 0)),
+    )
+    if has_tools:
+        set_tag(
+            attrs.SETUP_EVAL_SPEC_TOOL_COUNT,
+            str(len(spec["tool_config"]["expected_tools"])),
+        )
+    if has_consistency:
+        set_tag(
+            attrs.SETUP_EVAL_SPEC_CONSISTENCY_RULE_COUNT,
+            str(len(spec["consistency_rules"])),
+        )
 
     features: list[str] = [f"{n_fields} output field(s)"]
     if has_tools:
@@ -488,7 +511,7 @@ def _save_and_finish(
             f"  [bold green]\u2713[/bold green] Policy saved  "
             f"[dim]→ {rel(pol_path)}[/dim]"
         )
-    if isinstance(storage, ApiBackend):
+    if storage is not None:
         console.print("  [dim]Queued sync to Overmind backend.[/dim]")
     console.print(f"  [dim]Spec covers: {', '.join(features)}[/dim]")
     next_cmd = agent_name
@@ -536,6 +559,7 @@ def _smoke_test_agent(
             resolved_agent_dir,
             env_dir,
         )
+
         runner = AgentRunner(
             agent_dir=resolved_agent_dir,
             entry_file=entry_file,
@@ -559,6 +583,7 @@ def _smoke_test_agent(
             (result.error or "")[:300],
         )
         return False, "\n".join(parts) or "Unknown error"
+
     except Exception as exc:
         logger.exception("smoke_test: exception for agent=%s", agent_path)
         return False, str(exc)
@@ -919,26 +944,76 @@ def _prompt_expected_output_format(console: Console) -> str:
     return choice.split("(")[0].strip()
 
 
-def _save_dataset(cases: list[dict], agent_name: str, console: Console) -> str:
+def _save_dataset(
+    cases: list[dict],
+    agent_name: str,
+    console: Console,
+    *,
+    source: str = "synthetic",
+    generator_model: str = "",
+    policy_md: str | None = None,
+    metadata: dict | None = None,
+) -> str:
     """Write the final dataset to setup_spec/dataset.json. Returns the path."""
+    """Persist the final dataset.
+
+    Always writes ``setup_spec/dataset.json`` locally. When an API backend is
+    configured, also POSTs a new versioned ``Dataset`` to Overmind and records
+    the resulting ID as ``overclaw.setup.dataset_id`` so ingest can link the
+    trace to the dataset row.
+    """
     data_path = agent_setup_spec_dir(agent_name) / "dataset.json"
     data_path.parent.mkdir(parents=True, exist_ok=True)
     with open(data_path, "w") as f:
         json.dump(cases, f, indent=2)
 
     storage = None
-    with suppress(ValueError):
+    with suppress(Exception):
         storage = get_storage()
-    if isinstance(storage, ApiBackend):
-        storage.save_dataset(cases)
+
+    dataset_id: str | None = None
+    if storage is not None:
+        # If the caller didn't supply policy_md but a local policies.md exists,
+        # hash it so the dataset record is linked to the policy it was drafted
+        # against.  Avoids pushing every dataset call site to re-load the file.
+        resolved_policy_md = policy_md
+        if resolved_policy_md is None:
+            policy_path = Path(default_policy_path(agent_name))
+            if policy_path.exists():
+                with suppress(Exception):
+                    resolved_policy_md = policy_path.read_text(encoding="utf-8")
+        policy_hash = ""
+        if resolved_policy_md:
+            policy_hash = hashlib.sha256(
+                resolved_policy_md.encode("utf-8")
+            ).hexdigest()[:64]
+
+        dataset_id = storage.save_dataset(
+            cases,
+            source=source,
+            generator_model=generator_model,
+            policy_hash=policy_hash,
+            metadata=metadata or {},
+        )
+
+    set_tag(attrs.SETUP_DATASET_SOURCE, source)
+    if dataset_id:
+        set_tag(attrs.SETUP_DATASET_ID, dataset_id)
 
     console.print(
         f"\n  [bold {BRAND}]✓[/bold {BRAND}]"
         f"  Saved [bold]{len(cases)}[/bold] cases"
         f"  [dim]→ {rel(data_path)}[/dim]"
     )
-    if isinstance(storage, ApiBackend):
-        console.print("  [dim]Queued dataset sync to Overmind backend.[/dim]")
+    if storage is not None:
+        if dataset_id:
+            console.print(
+                f"  [dim]Uploaded dataset to Overmind (id: {dataset_id}).[/dim]"
+            )
+        else:
+            console.print(
+                "  [dim]Dataset upload to Overmind skipped or failed — local copy kept.[/dim]"
+            )
     return str(data_path)
 
 
@@ -1042,9 +1117,10 @@ def _sync_setup_artifacts(agent_name: str, agent_path: str, console: Console) ->
     if not agent_id:
         return
 
-    configure_storage(agent_path=agent_path, agent_id=agent_id, backend="api")
-    storage = get_storage()
-    if not isinstance(storage, ApiBackend):
+    configure_storage(agent_path=agent_path, agent_id=agent_id)
+    try:
+        storage = get_storage()
+    except Exception:
         return
 
     synced: list[str] = []
@@ -1062,7 +1138,13 @@ def _sync_setup_artifacts(agent_name: str, agent_path: str, console: Console) ->
             loaded = json.loads(dataset_path.read_text(encoding="utf-8"))
             cases = loaded.get("test_cases", []) if isinstance(loaded, dict) else loaded
             if isinstance(cases, list):
-                storage.save_dataset(cases)
+                # Uploading a pre-existing local dataset.json — provenance is
+                # unknown, so record it as ``seed`` (user-provided data).
+                storage.save_dataset(
+                    cases,
+                    source="seed",
+                    metadata={"synced_from": str(dataset_path)},
+                )
                 synced.append("dataset")
 
     if policy_path.exists():
@@ -1082,6 +1164,7 @@ def _sync_setup_artifacts(agent_name: str, agent_path: str, console: Console) ->
         )
 
 
+@traced(span_name="overclaw_setup_data_phase", type=SpanType.FUNCTION)
 def _run_data_phase(
     analysis: dict,
     policy_data: dict | None,
@@ -1098,6 +1181,9 @@ def _run_data_phase(
 
     This runs after policy is finalized and before eval criteria generation.
     """
+    set_tag(attrs.SETUP_AGENT_NAME, agent_name)
+    set_tag(attrs.SETUP_FAST, fast)
+    set_tag(attrs.SETUP_MODEL, model)
     agent_code = analysis.get("_agent_code_section") or Path(agent_path).read_text()
     description = analysis.get("description", "")
     policy_context = format_for_synthetic_data(policy_data) if policy_data else None
@@ -1125,6 +1211,7 @@ def _run_data_phase(
                 f"  [dim]Seed data found ({len(seed_cases)} cases)"
                 " — copying to setup_spec/dataset.json[/dim]"
             )
+
             # Validate seed data against the input schema before saving.
             from overclaw.optimize.data import validate_case_against_spec
 
@@ -1142,7 +1229,15 @@ def _run_data_phase(
                     f"  [yellow]{invalid_count}/{len(seed_cases)} cases have schema issues "
                     f"(input keys may not match entrypoint params).[/yellow]"
                 )
-            _save_dataset(seed_cases, agent_name, console)
+
+            _save_dataset(
+                seed_cases,
+                agent_name,
+                console,
+                source="seed",
+                metadata={"seed_file": str(seed_files[0])},
+            )
+
         else:
             with make_spinner_progress(console, transient=True) as progress:
                 progress.add_task(f"  Generating synthetic dataset ({datagen_model})…")
@@ -1154,7 +1249,14 @@ def _run_data_phase(
                     policy_context=policy_context,
                     expected_output_hint="",
                 )
-            _save_dataset(cases, agent_name, console)
+            _save_dataset(
+                cases,
+                agent_name,
+                console,
+                source="synthetic",
+                generator_model=datagen_model,
+                metadata={"num_samples": 15},
+            )
         return
 
     # ── Interactive mode ───────────────────────────────────────────────────
@@ -1233,7 +1335,13 @@ def _run_data_phase(
             console.print(
                 f"  [dim]Using seed data as-is ({len(seed_data)} cases).[/dim]"
             )
-            _save_dataset(seed_data, agent_name, console)
+            _save_dataset(
+                seed_data,
+                agent_name,
+                console,
+                source="seed",
+                metadata={"seed_file": str(seed_path)},
+            )
             return
 
         datagen_model = _resolve_datagen_model(console)
@@ -1335,7 +1443,16 @@ def _handle_seed_data_path(
             f"\n  [bold {BRAND}]✓[/bold {BRAND}]"
             "  [dim]Seed data has excellent coverage — no augmentation needed.[/dim]"
         )
-        _save_dataset(seed_data, agent_name, console)
+        _save_dataset(
+            seed_data,
+            agent_name,
+            console,
+            source="seed",
+            metadata={
+                "seed_file": str(seed_path),
+                "coverage_quality_score": quality_score,
+            },
+        )
         return
 
     num_to_generate = max(suggested, len(gaps) * 2, 5)
@@ -1375,7 +1492,20 @@ def _handle_seed_data_path(
         f"  {len(seed_data)} seed  +  {len(new_cases)} generated"
         f"  [bold]= {len(combined)} total[/bold]"
     )
-    _save_dataset(combined, agent_name, console)
+    _save_dataset(
+        combined,
+        agent_name,
+        console,
+        source="augmented",
+        generator_model=datagen_model,
+        metadata={
+            "seed_file": str(seed_path),
+            "seed_count": len(seed_data),
+            "generated_count": len(new_cases),
+            "coverage_gaps": len(gaps),
+            "coverage_quality_score": quality_score,
+        },
+    )
 
 
 def _handle_no_data_path(
@@ -1422,7 +1552,14 @@ def _handle_no_data_path(
         expected_output_hint=expected_output_hint,
     )
 
-    _save_dataset(cases, agent_name, console)
+    _save_dataset(
+        cases,
+        agent_name,
+        console,
+        source="synthetic",
+        generator_model=datagen_model,
+        metadata={"num_samples": num_samples, "num_personas": num_personas},
+    )
 
 
 def _display_proposed_criteria(analysis: dict, console: Console) -> None:
@@ -1514,6 +1651,7 @@ def _collect_agent_provider_config(agent_name: str, console: Console) -> None:
     collect_agent_provider_config(agent_name, console)
 
 
+@observe(span_name="overmind_setup", type=SpanType.WORKFLOW)
 def main(
     agent_name: str,
     fast: bool = False,
@@ -1531,6 +1669,17 @@ def main(
         data,
     )
     load_overclaw_dotenv()
+
+    # CLI-level flags — set as soon as the span is open
+    set_tag(attrs.COMMAND, "setup")
+    set_tag(attrs.SETUP_AGENT_NAME, agent_name)
+    set_tag(attrs.SETUP_FAST, str(fast))
+    set_tag(attrs.SETUP_HAS_POLICY, str(bool(policy)))
+    set_tag(attrs.SETUP_HAS_SEED_DATA, str(bool(data)))
+    if policy:
+        set_tag(attrs.SETUP_POLICY_PATH, policy)
+    if data:
+        set_tag(attrs.SETUP_DATA_PATH, data)
 
     console = Console()
     console.print()
@@ -1567,12 +1716,13 @@ def main(
     load_agent_dotenv(agent_name)
 
     agent_id = _ensure_remote_agent_id(agent_name, agent_path, console)
-    use_api_backend = bool(agent_id and get_client() and get_project_id())
     configure_storage(
         agent_path=agent_path,
         agent_id=agent_id,
-        backend="api" if use_api_backend else "fs",
     )
+    set_tag(attrs.SETUP_STORAGE_BACKEND, "api")
+    set_tag(attrs.SETUP_AGENT_PATH, agent_path)
+    set_tag(attrs.SETUP_ENTRYPOINT_FN, fn_name)
 
     _sigint_flushed = {"done": False}
 
@@ -1583,8 +1733,6 @@ def main(
         console.print(
             "\n  [yellow]Interrupted. Flushing pending Overmind updates...[/yellow]"
         )
-        with suppress(Exception):
-            _sync_setup_artifacts(agent_name, agent_path, console)
         flush_pending_api_updates(timeout=8.0)
         console.print("  [dim]Pending updates flushed. Exiting.[/dim]\n")
         raise SystemExit(130)
@@ -1644,6 +1792,7 @@ def main(
             )
             raise SystemExit(1)
         model = normalize_to_litellm_model_id(raw_model) or raw_model
+        set_tag(attrs.SETUP_ANALYZER_MODEL, model)
         _pin_model_to_agent_env(
             model, "ANALYZER_MODEL", agent_env_path(agent_name), agent_name
         )
@@ -1715,6 +1864,7 @@ def main(
             border_style=BRAND,
         )
     )
+
     analysis = analyze_agent(
         agent_path,
         model,
@@ -1729,6 +1879,12 @@ def main(
         list(analysis.get("output_schema", {}).keys()),
         list(analysis.get("proposed_criteria", {}).get("fields", {}).keys()),
     )
+
+    set_tag(attrs.SETUP_PHASE, "agent_analysis")
+    set_tag(attrs.SETUP_FAST, fast)
+    set_tag(attrs.SETUP_AGENT_PATH, agent_path)
+    set_tag(attrs.SETUP_ANALYZER_MODEL, model)
+    set_tag(attrs.SETUP_ENTRYPOINT_FN, fn_name)
 
     # ---- Phase 2: Policy Definition ----
     logger.info(
@@ -1749,6 +1905,7 @@ def main(
         )
     )
 
+    set_tag(attrs.SETUP_PHASE, "policy")
     policy_md: str | None = None
     policy_data: dict | None = None
 
@@ -1783,6 +1940,7 @@ def main(
                 border_style=BRAND,
             )
         )
+        set_tag(attrs.SETUP_PHASE, "dataset")
         _run_data_phase(
             analysis,
             policy_data,
@@ -1796,8 +1954,10 @@ def main(
         )
         logger.info("PHASE END   setup.phase3.dataset agent=%s fast=True", agent_name)
 
+        set_tag(attrs.SETUP_PHASE, "complete")
         spec = generate_spec_from_proposal(analysis, policy_data=policy_data)
         _save_and_finish(spec, agent_name, console, policy_md=policy_md)
+
         _run_end_smoke_test(
             agent_name,
             agent_path,
@@ -1807,6 +1967,7 @@ def main(
         )
         _sync_setup_artifacts(agent_name, agent_path, console)
         logger.info("setup: fast-mode complete agent=%s", agent_name)
+
         return
 
     pol_path = default_policy_path(agent_name)
@@ -1883,6 +2044,8 @@ def main(
             "Are you satisfied with this policy?", default=True, console=console
         ):
             save_policy(policy_md, pol_path)
+            set_tag(attrs.SETUP_AGENT_POLICY_MARKDOWN, policy_md)
+            set_tag(attrs.SETUP_AGENT_POLICY_DATA, policy_data)
             console.print(
                 f"\n  [dim]You can always edit the policy later at "
                 f"[cyan]{rel(pol_path)}[/cyan][/dim]"
@@ -1919,6 +2082,7 @@ def main(
             border_style=BRAND,
         )
     )
+    set_tag(attrs.SETUP_PHASE, "dataset")
     _run_data_phase(
         analysis,
         policy_data,
@@ -1944,9 +2108,8 @@ def main(
         )
     )
 
-    # Re-display the proposed criteria so the user sees what they're approving.
-    # The criteria were first shown during Phase 1 (agent analysis) but policy
-    # context may change the user's perspective.
+    set_tag(attrs.SETUP_PHASE, "eval_criteria")
+
     _display_proposed_criteria(analysis, console)
 
     iteration = 0
@@ -1970,6 +2133,7 @@ def main(
                 policy_md=policy_md,
                 policy_file_already_saved=True,
             )
+
             _run_end_smoke_test(
                 agent_name,
                 agent_path,
@@ -1979,6 +2143,7 @@ def main(
             )
             _sync_setup_artifacts(agent_name, agent_path, console)
             logger.info("setup: complete agent=%s", agent_name)
+
             return
 
         console.print()
@@ -2011,6 +2176,7 @@ def main(
                 f"  [dim]Edit [cyan]{spec_out}[/cyan] to fine-tune "
                 f"the criteria, then run the optimizer.[/dim]\n"
             )
+
             _run_end_smoke_test(
                 agent_name,
                 agent_path,
@@ -2020,6 +2186,7 @@ def main(
             )
             _sync_setup_artifacts(agent_name, agent_path, console)
             logger.info("setup: complete-save-manual agent=%s", agent_name)
+
             return
 
         iteration += 1

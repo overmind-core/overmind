@@ -11,6 +11,10 @@ from __future__ import annotations
 import json
 import logging
 
+from overmind import set_tag, SpanType
+
+from overclaw import attrs
+from overclaw.utils.tracing import traced
 from rich.console import Console
 from rich.rule import Rule
 from rich.table import Table
@@ -34,6 +38,7 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 
 
+@traced(span_name="overclaw_validate_seed_data", type=SpanType.FUNCTION)
 def validate_seed_data(
     cases: list[dict],
     eval_spec: dict,
@@ -59,6 +64,10 @@ def validate_seed_data(
         "invalid_count": len(issues),
         "issues": issues,
     }
+
+    set_tag(attrs.SEED_VALIDATION_TOTAL_CASES, str(len(cases)))
+    set_tag(attrs.SEED_VALIDATION_VALID_COUNT, str(valid))
+    set_tag(attrs.SEED_VALIDATION_INVALID_COUNT, str(len(issues)))
 
     if not issues:
         console.print(
@@ -86,6 +95,7 @@ def validate_seed_data(
 # ---------------------------------------------------------------------------
 
 
+@traced(span_name="overclaw_analyze_seed_coverage", type=SpanType.FUNCTION)
 def analyze_seed_coverage(
     cases: list[dict],
     eval_spec: dict,
@@ -133,6 +143,20 @@ def analyze_seed_coverage(
         logger.warning("Could not parse coverage analysis response")
         return _fallback_analysis(cases, eval_spec)
 
+    set_tag(
+        attrs.SEED_COVERAGE_QUALITY_SCORE,
+        str(parsed.get("overall_quality_score", "?")),
+    )
+    set_tag(attrs.SEED_COVERAGE_CASE_COUNT, str(parsed.get("case_count", len(cases))))
+    gaps = parsed.get("coverage_gaps", [])
+    set_tag(attrs.SEED_COVERAGE_GAP_COUNT, str(len(gaps)))
+    uncovered_rules = parsed.get("uncovered_policy_rules", [])
+    if uncovered_rules:
+        set_tag(attrs.SEED_COVERAGE_UNCOVERED_RULE_COUNT, str(len(uncovered_rules)))
+    set_tag(
+        attrs.SEED_COVERAGE_SUGGESTED_ADDITIONAL_CASES,
+        str(parsed.get("suggested_additional_cases", 0)),
+    )
     _display_analysis(parsed, console)
     return parsed
 
