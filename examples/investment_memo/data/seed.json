@@ -1,0 +1,62 @@
+[
+  {
+    "input": {
+      "ticker": "AAPL",
+      "thesis_question": "Does the services revenue mix shift meaningfully change the multiple Apple should trade at?",
+      "horizon": "long"
+    },
+    "expected_output": {
+      "must_include_sections": ["thesis", "key_drivers", "risks", "valuation_notes", "citations"],
+      "must_reference": ["services", "10-K"],
+      "min_citations": 3
+    }
+  },
+  {
+    "input": {
+      "ticker": "NVDA",
+      "thesis_question": "Is hyperscaler capex a tailwind or setting up an air-pocket risk over the next 12 months?",
+      "horizon": "short"
+    },
+    "expected_output": {
+      "must_include_sections": ["thesis", "key_drivers", "risks", "valuation_notes", "citations"],
+      "must_reference": ["capex", "hyperscaler"],
+      "min_citations": 3
+    }
+  },
+  {
+    "input": {
+      "ticker": "COST",
+      "thesis_question": "How durable is the membership-fee moat under a prolonged consumer slowdown?",
+      "horizon": "long"
+    },
+    "expected_output": {
+      "must_include_sections": ["thesis", "key_drivers", "risks", "valuation_notes", "citations"],
+      "must_reference": ["membership"],
+      "min_citations": 3
+    }
+  },
+  {
+    "input": {
+      "ticker": "TSLA",
+      "thesis_question": "Does the auto gross margin trajectory justify current autonomy-optionality multiples?",
+      "horizon": "short"
+    },
+    "expected_output": {
+      "must_include_sections": ["thesis", "key_drivers", "risks", "valuation_notes", "citations"],
+      "must_reference": ["gross margin"],
+      "min_citations": 3
+    }
+  },
+  {
+    "input": {
+      "ticker": "MSFT",
+      "thesis_question": "How much of the Azure growth is already in consensus estimates?",
+      "horizon": "long"
+    },
+    "expected_output": {
+      "must_include_sections": ["thesis", "key_drivers", "risks", "valuation_notes", "citations"],
+      "must_reference": ["Azure"],
+      "min_citations": 3
+    }
+  }
+]

@@ -83,8 +83,9 @@ class TestConfirmDuplicateEntrypoint:
 
 
 class TestCmdRegister:
+    @patch("overclaw.commands.agent_cmd.collect_code_detected_env_vars")
     @patch("overclaw.commands.agent_cmd.collect_agent_provider_config")
-    def test_register_new_agent(self, _mock_collect, tmp_project):
+    def test_register_new_agent(self, _mock_collect, _mock_env_scan, tmp_project):
         # Use a different entrypoint than the already-registered one to avoid
         # the duplicate-entrypoint interactive prompt.
         cmd_register("new-agent", "agents.agent1.sample_agent:helper")
@@ -107,10 +108,11 @@ class TestCmdRegister:
         with pytest.raises(SystemExit):
             cmd_register("test", "nonexistent.module:func")
 
+    @patch("overclaw.commands.agent_cmd.collect_code_detected_env_vars")
     @patch("overclaw.commands.agent_cmd.collect_agent_provider_config")
     @patch("overclaw.commands.agent_cmd.confirm_option", return_value=True)
     def test_register_duplicate_entrypoint_confirmed(
-        self, _mock_confirm, _mock_collect, tmp_project
+        self, _mock_confirm, _mock_collect, _mock_env_scan, tmp_project
     ):
         cmd_register("second-agent", "agents.agent1.sample_agent:run")
         from overclaw.core.registry import load_registry
@@ -162,8 +164,9 @@ class TestCmdRemove:
 
 
 class TestCmdUpdate:
+    @patch("overclaw.commands.agent_cmd.collect_code_detected_env_vars")
     @patch("overclaw.commands.agent_cmd.collect_agent_provider_config")
-    def test_update_existing(self, _mock_collect, tmp_project):
+    def test_update_existing(self, _mock_collect, _mock_env_scan, tmp_project):
         cmd_update("my-agent", "agents.agent1.sample_agent:helper")
         from overclaw.core.registry import load_registry
 
