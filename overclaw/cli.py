@@ -187,8 +187,7 @@ def _build_parser() -> argparse.ArgumentParser:
             "before the registry is updated."
         ),
         epilog=(
-            "Example:\n"
-            "  overclaw agent update lead-qualification agents.agent2.new_agent:run\n"
+            "Example:\n  overclaw agent update lead-qualification agents.agent2.new_agent:run\n"
         ),
     )
     upd_p.add_argument("name", metavar="NAME", help="Agent name to update")
@@ -203,8 +202,7 @@ def _build_parser() -> argparse.ArgumentParser:
         formatter_class=_FMT,
         help="Show agent registration and pipeline status",
         description=(
-            "Show the registration details and current pipeline status for\n"
-            "a single agent."
+            "Show the registration details and current pipeline status for\na single agent."
         ),
         epilog=(
             "Status fields:\n"
@@ -290,8 +288,7 @@ def _build_parser() -> argparse.ArgumentParser:
         "--fast",
         action="store_true",
         help=(
-            "skip all prompts; requires ANALYZER_MODEL and SYNTHETIC_DATAGEN_MODEL in "
-            f"{overclaw_rel('.env')}"
+            f"skip all prompts; requires ANALYZER_MODEL and SYNTHETIC_DATAGEN_MODEL in {overclaw_rel('.env')}"
         ),
     )
     setup_p.add_argument(
@@ -419,55 +416,19 @@ def _build_parser() -> argparse.ArgumentParser:
         help="registered agent name (see: overclaw agent list)",
     )
 
-    # ── sync ─────────────────────────────────────────────────────────────────
-    sync_p = subparsers.add_parser(
-        "sync",
-        formatter_class=_FMT,
-        help="Sync local setup artifacts to Overmind",
-        description=(
-            "Upload local setup artifacts (eval spec, dataset, policy) from "
-            f"{overclaw_rel('agents', '<name>', 'setup_spec')} to Overmind.\n"
-            "\n"
-            "Useful when artifacts were generated before Overmind API keys were configured."
-        ),
-        epilog=(
-            "Examples:\n"
-            "  overclaw sync                  # sync all registered agents\n"
-            "  overclaw sync lead-qualification  # sync one agent\n"
-        ),
-    )
-    sync_p.add_argument(
-        "agent",
-        nargs="?",
-        metavar="AGENT_NAME",
-        help="optional registered agent name (defaults to all registered agents)",
-    )
-
-    # ── sync-optimize ────────────────────────────────────────────────────────
-    sync_opt_p = subparsers.add_parser(
-        "sync-optimize",
-        formatter_class=_FMT,
-        help="Sync local optimize artifacts to Overmind",
-        description=(
-            "Upload local optimize artifacts from "
-            f"{overclaw_rel('agents', '<name>', 'experiments')} to Overmind.\n"
-            "\n"
-            "Useful when optimization ran before Overmind API keys were configured."
-        ),
-        epilog=(
-            "Examples:\n"
-            "  overclaw sync-optimize                  # sync all registered agents\n"
-            "  overclaw sync-optimize lead-qualification  # sync one agent\n"
-        ),
-    )
-    sync_opt_p.add_argument(
-        "agent",
-        nargs="?",
-        metavar="AGENT_NAME",
-        help="optional registered agent name (defaults to all registered agents)",
-    )
-
     return parser
+
+
+def _flush_traces() -> None:
+    """Flush all buffered OTel spans so nothing is lost on process exit."""
+    try:
+        from opentelemetry import trace as _otel_trace
+
+        provider = _otel_trace.get_tracer_provider()
+        if hasattr(provider, "force_flush"):
+            provider.force_flush(timeout_millis=10_000)
+    except Exception:
+        pass
 
 
 def main() -> None:
@@ -478,6 +439,13 @@ def main() -> None:
         from overclaw.core.registry import require_overclaw_initialized
 
         require_overclaw_initialized()
+
+    from overclaw.core.paths import load_overclaw_dotenv
+    import overmind
+
+    load_overclaw_dotenv()
+
+    overmind.init(service_name="overclaw", providers=[])
 
     # Wire up logging as early as possible so every module that gets
     # imported next (commands, optimizer, coding agent, …) can emit debug
@@ -548,19 +516,12 @@ def main() -> None:
 
             _doctor(agent_name=args.agent)
 
-        elif args.command == "sync":
-            from overclaw.commands.sync_cmd import main as _sync
-
-            _sync(agent_name=args.agent)
-
-        elif args.command == "sync-optimize":
-            from overclaw.commands.sync_optimize_cmd import main as _sync_optimize
-
-            _sync_optimize(agent_name=args.agent)
-
     except KeyboardInterrupt:
         print("\nAborted.", file=sys.stderr)
+        _flush_traces()
         raise SystemExit(130) from None
+    finally:
+        _flush_traces()
 
 
 if __name__ == "__main__":

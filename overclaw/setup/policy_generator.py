@@ -18,6 +18,9 @@ import logging
 import re
 from pathlib import Path
 
+from overmind import set_tag, SpanType
+from overclaw import attrs
+from overclaw.utils.tracing import traced
 from rich.console import Console
 from rich.markdown import Markdown
 from rich.panel import Panel
@@ -154,6 +157,7 @@ def _default_policy_data() -> dict:
 # ---------------------------------------------------------------------------
 
 
+@traced(span_name="overclaw_elicit_policy", type=SpanType.FUNCTION)
 def elicit_policy(
     analysis: dict,
     model: str,
@@ -272,6 +276,7 @@ def elicit_policy(
     return md_text, policy_data
 
 
+@traced(span_name="overclaw_policy_from_document", type=SpanType.FUNCTION)
 def generate_policy_from_document(
     analysis: dict,
     document_path: str,
@@ -325,9 +330,11 @@ def generate_policy_from_document(
         info["md_chars"] = len(md_text)
 
     display_policy(md_text, policy_data, console)
+    set_tag(attrs.SETUP_POLICY_SOURCE, "document")
     return md_text, policy_data
 
 
+@traced(span_name="overclaw_policy_from_code", type=SpanType.FUNCTION)
 def generate_policy_from_code(
     analysis: dict,
     model: str,
@@ -385,9 +392,11 @@ def generate_policy_from_code(
             )
         info["md_chars"] = len(md_text)
 
+    set_tag(attrs.SETUP_POLICY_SOURCE, "code")
     return md_text, policy_data
 
 
+@traced(span_name="overclaw_improve_policy", type=SpanType.FUNCTION)
 def improve_existing_policy(
     analysis: dict,
     existing_policy_path: str,
@@ -455,9 +464,11 @@ def improve_existing_policy(
         info["md_chars"] = len(md_text)
         info["change_lines"] = len(change_summary.splitlines()) if change_summary else 0
 
+    set_tag(attrs.SETUP_POLICY_SOURCE, "improved")
     return md_text, policy_data, change_summary
 
 
+@traced(span_name="overclaw_refine_policy", type=SpanType.FUNCTION)
 def refine_policy(
     current_md: str,
     current_data: dict,
@@ -527,6 +538,7 @@ def refine_policy(
         info["md_chars"] = len(md_text)
 
     display_policy(md_text, policy_data, console)
+    set_tag(attrs.SETUP_POLICY_SOURCE, "refined")
     return md_text, policy_data
 
 

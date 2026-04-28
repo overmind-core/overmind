@@ -15,6 +15,10 @@ import logging
 from dataclasses import dataclass, field
 from typing import Any
 
+from overmind import set_tag, SpanType
+
+from overclaw import attrs
+from overclaw.utils.tracing import traced
 from .providers import LiteLLMProvider
 from .system_prompt import build_system_prompt
 from .tools.base import ToolContext
@@ -47,6 +51,7 @@ class AgentResult:
     total_usage: dict[str, int]
 
 
+@traced(span_name="overclaw_coding_agent_run", type=SpanType.FUNCTION)
 def run(
     instruction: str,
     model: str,
@@ -112,6 +117,8 @@ def run(
         if not resp.tool_calls:
             steps.append(record)
             logger.debug("Coding agent finished (no tool calls)")
+            set_tag(attrs.CODING_AGENT_LOOP_STEPS, str(step_num + 1))
+            set_tag(attrs.CODING_AGENT_EXIT_REASON, "completed")
             return AgentResult(text=resp.text, steps=steps, total_usage=total_usage)
 
         # Doom-loop detection
@@ -175,6 +182,8 @@ def run(
         steps.append(record)
 
     logger.warning("Coding agent hit max_steps (%d)", max_steps)
+    set_tag(attrs.CODING_AGENT_LOOP_STEPS, str(max_steps))
+    set_tag(attrs.CODING_AGENT_EXIT_REASON, "max_steps_reached")
     return AgentResult(
         text="Agent reached maximum steps without completing.",
         steps=steps,

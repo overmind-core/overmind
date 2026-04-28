@@ -7,8 +7,30 @@ import textwrap
 from pathlib import Path
 
 import pytest
+from opentelemetry import trace as _otel_trace
+from opentelemetry.sdk.trace import TracerProvider
+
+import overmind.tracing as _overmind_tracing
 
 from overclaw.core.constants import OVERCLAW_DIR_NAME
+
+
+# ---------------------------------------------------------------------------
+# OTel / overmind SDK bootstrap for tests
+# ---------------------------------------------------------------------------
+#
+# ``overmind.start_span`` / ``overmind.observe`` / ``overmind.set_tag`` all
+# go through ``overmind.tracing.get_tracer()`` which raises until
+# ``overmind.init()`` is called.  We don't want test runs to actually
+# export anything, so we install a no-op ``TracerProvider`` (no exporter)
+# and flip the SDK's internal ``_initialized`` flag manually.  This lets
+# every traced/observed function in OverClaw run as-is during tests
+# without a real Overmind API key or HTTP exporter.
+
+_provider = TracerProvider()
+_otel_trace.set_tracer_provider(_provider)
+_overmind_tracing._tracer = _provider.get_tracer("overmind", "test")
+_overmind_tracing._initialized = True
 
 
 @pytest.fixture()

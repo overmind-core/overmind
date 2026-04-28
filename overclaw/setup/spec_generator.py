@@ -3,9 +3,13 @@
 import json
 from pathlib import Path
 
+from overmind import SpanType
+from overclaw.utils.tracing import traced
+
 IMPORTANCE_MULTIPLIERS = {"critical": 3, "important": 2, "minor": 1}
 
 
+@traced(span_name="overclaw_generate_spec", type=SpanType.FUNCTION)
 def generate_spec_from_proposal(
     analysis: dict, policy_data: dict | None = None
 ) -> dict:

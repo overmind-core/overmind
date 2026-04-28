@@ -1,36 +1,38 @@
 """API storage backend for OverClaw.
 
-Maps every ``StorageBackend`` operation to a call against the Overmind REST
-API (via the generated ``openapi_client``).  The mapping is:
+Maps every :class:`StorageBackend` operation to a call against the Overmind
+REST API via the generated ``overclaw.openapi_client`` SDK.  No hand-rolled
+URLs — every endpoint used here comes from the OpenAPI schema.
 
-  Artifact          API resource
-  ─────────         ────────────
-  eval spec         Agent fields (input_schema, output_fields, …)
-  dataset           Agent.eval_dataset.cases
-  policy            Prompt (label="policy", replace: delete old + one create)
-  trace             Trace + nested Span records
-  report / code     Job.report_markdown / Job.best_agent_code
-  artifact (other)  no-op — FS-only artifacts are ignored silently
-
-Writes are always fire-and-forget (non-blocking); reads block with a
-configurable timeout.  All failures are swallowed so that an unreachable
-API never breaks the optimizer.
+Mapping
+-------
+==========  ==================================================================
+Artifact    API surface (all from ``overclaw.openapi_client``)
+==========  ==================================================================
+eval spec   ``AgentsApi.agents_create`` / ``agents_partial_update`` /
+            ``agents_eval_spec_retrieve`` / ``agents_destroy``
+dataset     ``DatasetsApi.datasets_create`` / ``datasets_destroy`` /
+            ``datasets_datapoints_list``;
+            ``AgentsApi.agents_retrieve`` to resolve ``active_dataset``
+policy      ``AgentsApi.agents_partial_update`` —
+            ``policy_markdown`` + ``policy_data`` fields on the Agent record
+==========  ==================================================================
 """
 
 from __future__ import annotations
 
 import contextlib
-from pathlib import Path
+import logging
 from typing import Any
 from uuid import UUID
 
 from overclaw.client import (
     _fire,
-    _create_trace,
-    _patch_job,
     _run_async,
-    _submit_async,
-    create_policy_prompt,
+    create_dataset,
+    delete_dataset as _delete_dataset_via_api,
+    fetch_dataset_datapoints,
+    get_active_dataset_id,
     get_client,
     get_project_id,
     upsert_agent,
@@ -38,25 +40,26 @@ from overclaw.client import (
 from overclaw.openapi_client.models.patched_agent_request import PatchedAgentRequest
 from overclaw.storage.base import StorageBackend
 
+logger = logging.getLogger("overclaw.storage.api")
+
 
 class ApiBackend(StorageBackend):
-    """Stores OverClaw artifacts in the Overmind API.
+    """Stores OverClaw setup artifacts in the Overmind API.
 
     Parameters
     ----------
     agent_id:
-        Overmind agent UUID string.  May be updated in-place after
-        ``save_spec`` upserts the agent record.
+        Overmind agent UUID string.  Updated in-place after ``save_spec``
+        creates a new record.
     agent_path:
-        Local path to the agent file — used by slug derivation and by
-        ``save_policy`` to attach agent source code.
+        Local path to the agent file — used for slug derivation in
+        ``upsert_agent``.
     job_id:
-        Overmind job UUID string.  Required for report / iteration
-        persistence.  Can be set later via :attr:`job_id`.
+        Overmind job UUID string (optional; can be set later via
+        :meth:`set_job_id`).
     client:
-        Pre-built ``OverClawClient``.  When ``None`` (default), the client
-        is created lazily from ``OVERMIND_API_URL`` / ``OVERMIND_API_TOKEN``
-        environment variables.
+        Pre-built :class:`OverClawClient`.  When ``None`` (default) the
+        client is built lazily from ``OVERMIND_API_URL`` / ``OVERMIND_API_TOKEN``.
     """
 
     def __init__(
@@ -71,18 +74,15 @@ class ApiBackend(StorageBackend):
         self._agent_path = agent_path
         self._job_id = job_id
         self._client = client
-        self._dim_keys: list[str] = []
 
     # ------------------------------------------------------------------
-    # Identity helpers (StorageBackend interface + extras)
+    # Identity
     # ------------------------------------------------------------------
 
     def get_agent_id(self) -> str | None:
-        """Return the Overmind agent UUID, or ``None`` if not yet resolved."""
         return self._agent_id or None
 
     def set_job_id(self, job_id: str) -> None:
-        """Bind this backend to a specific optimization job."""
         self._job_id = job_id
 
     @property
@@ -106,41 +106,42 @@ class ApiBackend(StorageBackend):
     # ------------------------------------------------------------------
 
     def _client_(self):
-        """Return the API client, building it lazily if needed."""
         if self._client is not None:
             return self._client
-
         return get_client()
-
-    def _run(self, coro, timeout: float = 30.0) -> Any:
-        """Block until *coro* completes and return its result."""
-        return _run_async(coro, timeout=timeout)
-
-    def _fire(self, coro) -> None:
-        """Submit *coro* to the background event loop and return immediately."""
-        _submit_async(coro)
-
-    def _patch_job(self, **fields: Any) -> None:
-        """Patch the current job record (fire-and-forget)."""
-        if not self._job_id:
-            return
-        client = self._client_()
-        if not client:
-            return
-        with contextlib.suppress(Exception):
-            _patch_job(client, self._job_id, **fields)
 
     def _project_id(self) -> str | None:
         return get_project_id()
+
+    def _patch_agent(self, **fields: Any) -> bool:
+        """PATCH this agent record via ``agents_partial_update``."""
+        if not self._agent_id:
+            return False
+        client = self._client_()
+        if not client:
+            return False
+        try:
+            patch = PatchedAgentRequest(**fields)
+            _run_async(
+                client.agents_partial_update(
+                    id=UUID(self._agent_id), patched_agent_request=patch
+                )
+            )
+            return True
+        except Exception:
+            logger.exception("agents_partial_update failed agent_id=%s", self._agent_id)
+            return False
 
     # ------------------------------------------------------------------
     # Eval spec
     # ------------------------------------------------------------------
 
     def save_spec(self, spec: dict) -> None:
-        """Upsert the agent record with spec fields.
+        """Upsert the agent record with eval-spec fields.
 
-        Updates :attr:`agent_id` in-place if the API creates a new record.
+        First write is synchronous so the freshly minted agent UUID is captured
+        in :attr:`agent_id`; later writes for an existing agent run in the
+        background.
         """
         client = self._client_()
         if not client:
@@ -148,8 +149,6 @@ class ApiBackend(StorageBackend):
         project_id = self._project_id()
         if not project_id:
             return
-        # First-write bootstrap must be synchronous so we can capture and keep
-        # the remote agent id for subsequent non-blocking writes.
         if not self._agent_id:
             try:
                 result = upsert_agent(
@@ -159,13 +158,11 @@ class ApiBackend(StorageBackend):
                     spec=spec,
                 )
                 self._agent_id = str(result.id)
-                return
             except Exception:
-                return
+                logger.exception("save_spec: initial upsert_agent failed")
+            return
 
-        # Existing agent: patch in background to avoid user-facing latency.
-        _fire(
-            upsert_agent,
+        _submit_async_upsert(
             client,
             project_id=project_id,
             agent_path=self._agent_path,
@@ -173,309 +170,142 @@ class ApiBackend(StorageBackend):
         )
 
     def load_spec(self) -> dict | None:
-        """Fetch spec fields from the agent record."""
+        """Fetch eval-spec fields via ``agents_eval_spec_retrieve``."""
         if not self._agent_id:
             return None
         client = self._client_()
         if not client:
             return None
         try:
-            agent = self._run(client.agents_retrieve(id=UUID(self._agent_id)))
-            spec: dict = {
-                "agent_description": agent.description or "",
-                "agent_path": agent.agent_path or self._agent_path,
-                "input_schema": agent.input_schema or {},
-                "output_fields": agent.output_fields or {},
-                "structure_weight": (
-                    agent.structure_weight if agent.structure_weight is not None else 20
-                ),
-                "total_points": (
-                    agent.total_points if agent.total_points is not None else 100
-                ),
-            }
-            for key in (
-                "tool_config",
-                "consistency_rules",
-                "optimizable_elements",
-                "fixed_elements",
-            ):
-                val = getattr(agent, key, None)
-                if val:
-                    spec[key] = val
-            if agent.tool_usage_weight is not None:
-                spec["tool_usage_weight"] = agent.tool_usage_weight
-            # Embed policy stored alongside the dataset blob
-            if agent.eval_dataset and isinstance(agent.eval_dataset, dict):
-                policy_data = agent.eval_dataset.get("policy")
-                if policy_data:
-                    spec["policy"] = policy_data
-            return spec
+            response = _run_async(
+                client.agents_eval_spec_retrieve(id=UUID(self._agent_id))
+            )
         except Exception:
             return None
+        spec: dict[str, Any] = response.to_dict()
+        # Augment with policy/agent metadata that's stored on the Agent record
+        # but not exposed by the eval-spec endpoint.
+        with contextlib.suppress(Exception):
+            agent = _run_async(client.agents_retrieve(id=UUID(self._agent_id)))
+            if agent.policy_data:
+                spec["policy"] = agent.policy_data
+        return spec
 
     def delete_spec(self) -> None:
-        """Delete the agent record from the API."""
+        """Destroy the agent record via ``agents_destroy``."""
         if not self._agent_id:
             return
         client = self._client_()
         if not client:
             return
         try:
-            self._run(client.agents_destroy(id=UUID(self._agent_id)))
+            _run_async(client.agents_destroy(id=UUID(self._agent_id)))
             self._agent_id = ""
         except Exception:
-            pass
+            logger.exception("delete_spec: agents_destroy failed")
 
     # ------------------------------------------------------------------
     # Dataset
     # ------------------------------------------------------------------
 
-    def save_dataset(self, cases: list[dict]) -> None:
-        """Upsert the agent record with the dataset cases."""
-        if not self._agent_id:
-            return
-        client = self._client_()
-        if not client:
-            return
-        project_id = self._project_id()
-        if not project_id:
-            return
-        spec = self.load_spec() or {}
-        _fire(
-            upsert_agent,
-            client,
-            project_id=project_id,
-            agent_path=self._agent_path,
-            spec=spec,
-            dataset=cases,
-        )
-
-    def load_dataset(self) -> list[dict] | None:
-        """Fetch dataset cases from the agent record's eval_dataset blob."""
+    def save_dataset(
+        self,
+        datapoints: list[dict],
+        *,
+        source: str = "synthetic",
+        generator_model: str = "",
+        policy_hash: str = "",
+        metadata: dict | None = None,
+        make_active: bool = True,
+    ) -> str | None:
         if not self._agent_id:
             return None
         client = self._client_()
         if not client:
             return None
         try:
-            agent = self._run(client.agents_retrieve(id=UUID(self._agent_id)))
-            if not agent.eval_dataset:
-                return None
-            blob = agent.eval_dataset
-            if isinstance(blob, dict):
-                return blob.get("cases") or []
-            if isinstance(blob, list):
-                return blob
+            created = create_dataset(
+                client,
+                agent_id=self._agent_id,
+                datapoints=datapoints,
+                source=source,
+                generator_model=generator_model,
+                policy_hash=policy_hash,
+                metadata=metadata,
+                make_active=make_active,
+            )
+        except Exception:
             return None
+        if not created or not isinstance(created, dict):
+            return None
+        return created.get("id")
+
+    def load_dataset(self) -> list[dict] | None:
+        if not self._agent_id:
+            return None
+        client = self._client_()
+        if not client:
+            return None
+        dataset_id = get_active_dataset_id(client, self._agent_id)
+        if not dataset_id:
+            return None
+        try:
+            return fetch_dataset_datapoints(client, dataset_id)
         except Exception:
             return None
 
     def delete_dataset(self) -> None:
-        """Clear dataset cases from the agent record (sets eval_dataset to None)."""
         if not self._agent_id:
             return
         client = self._client_()
         if not client:
             return
-        try:
-            patch = PatchedAgentRequest(eval_dataset=None)
-            self._run(
-                client.agents_partial_update(
-                    id=UUID(self._agent_id),
-                    patched_agent_request=patch,
-                )
-            )
-        except Exception:
-            pass
+        dataset_id = get_active_dataset_id(client, self._agent_id)
+        if not dataset_id:
+            return
+        with contextlib.suppress(Exception):
+            _delete_dataset_via_api(client, dataset_id)
 
     # ------------------------------------------------------------------
     # Policy
     # ------------------------------------------------------------------
 
     def save_policy(self, policy_md: str, policy_data: dict | None = None) -> None:
-        """Upsert the Prompt with ``label="policy"`` (update in place when present)."""
-        if not self._agent_id:
-            return
-
-        client = self._client_()
-        if not client:
-            return
-        try:
-            agent_code: str | None = None
-            with contextlib.suppress(Exception):
-                agent_code = Path(self._agent_path).read_text(encoding="utf-8")
-            create_policy_prompt(
-                client,
-                agent_id=self._agent_id,
-                policy_md=policy_md,
-                agent_code=agent_code,
-            )
-        except Exception:
-            pass
+        """Patch ``Agent.policy_markdown`` (and ``policy_data`` when provided)."""
+        fields: dict[str, Any] = {"policy_markdown": policy_md}
+        if policy_data is not None:
+            fields["policy_data"] = policy_data
+        self._patch_agent(**fields)
 
     def load_policy(self) -> str | None:
-        """Fetch the most-recent policy prompt's Markdown from the API."""
         if not self._agent_id:
             return None
         client = self._client_()
         if not client:
             return None
         try:
-            page = self._run(client.prompts_list(agent=UUID(self._agent_id)))
-            # Return the first prompt with label="policy"
-            for prompt in page.results or []:
-                if getattr(prompt, "label", None) == "policy":
-                    return getattr(prompt, "system_prompt", None)
-            return None
+            agent = _run_async(client.agents_retrieve(id=UUID(self._agent_id)))
         except Exception:
             return None
+        return getattr(agent, "policy_markdown", None) or None
 
     def delete_policy(self) -> None:
-        """Delete all policy prompts for this agent."""
-        if not self._agent_id:
-            return
-        client = self._client_()
-        if not client:
-            return
-        try:
-            page = self._run(client.prompts_list(agent=UUID(self._agent_id)))
-            for prompt in page.results or []:
-                if getattr(prompt, "label", None) == "policy":
-                    with contextlib.suppress(Exception):
-                        self._run(client.prompts_destroy(id=prompt.id))
-        except Exception:
-            pass
+        """Clear ``policy_markdown`` and ``policy_data`` on the agent record."""
+        self._patch_agent(policy_markdown=None, policy_data=None)
 
-    # ------------------------------------------------------------------
-    # Traces
-    # ------------------------------------------------------------------
 
-    def save_trace(self, trace_data: dict, run_name: str, idx: int) -> None:
-        """Create a Trace record (with nested Span records) — fire-and-forget."""
-        client = self._client_()
-        if not client or not self._agent_id:
-            return
-
-        # Ensure trace_group is set to run_name for later filtering
-        payload = dict(trace_data)
-        payload["trace_group"] = payload.get("trace_group") or run_name
-        _create_trace(client, self._agent_id, self._job_id, payload)
-
-    def delete_traces(self, run_name: str | None = None) -> None:
-        """Delete traces from the API.
-
-        When *run_name* is given only traces whose ``trace_group`` matches
-        are deleted; otherwise all traces for this agent are removed.
-        """
-        if not self._agent_id:
-            return
-        client = self._client_()
-        if not client:
-            return
-        try:
-            kwargs: dict[str, Any] = {"agent": UUID(self._agent_id)}
-            if run_name:
-                kwargs["trace_group"] = run_name
-
-            page_num = 1
-            while True:
-                page = self._run(client.traces_list(**kwargs, page=page_num))
-                for trace in page.results or []:
-                    with contextlib.suppress(Exception):
-                        self._run(client.traces_destroy(id=trace.id))
-                if not page.next:
-                    break
-                page_num += 1
-                if page_num > 50:
-                    break
-        except Exception:
-            pass
-
-    # ------------------------------------------------------------------
-    # Generic artifacts
-    # ------------------------------------------------------------------
-
-    def save_artifact(self, content: str, name: str) -> None:
-        """Persist well-known artifacts to the job record; all others are no-ops.
-
-        Supported names:
-        * ``"best_agent.py"``  → ``Job.best_agent_code``
-        * ``"report.md"``      → ``Job.report_markdown``
-        """
-        if name == "best_agent.py":
-            self._patch_job(best_agent_code=content)
-        elif name == "report.md":
-            self._patch_job(report_markdown=content)
-        # All other artifact names are silently ignored — they are local
-        # working files with no API equivalent.
-
-    def load_artifact(self, name: str) -> str | None:
-        """Retrieve a well-known artifact from the job record."""
-        if not self._job_id:
-            return None
-        client = self._client_()
-        if not client:
-            return None
-        try:
-            job = self._run(client.jobs_retrieve(id=UUID(self._job_id)))
-            if name == "best_agent.py":
-                return getattr(job, "best_agent_code", None)
-            if name == "report.md":
-                return getattr(job, "report_markdown", None)
-            return None
-        except Exception:
-            return None
-
-    def delete_artifact(self, name: str) -> None:
-        """No-op for the API backend (no generic artifact storage)."""
-
-    # ------------------------------------------------------------------
-    # Results log  (in-memory accumulation; not pushed to API)
-    # ------------------------------------------------------------------
-
-    def init_results_log(self, dim_keys: list[str]) -> None:
-        """Reset the in-memory results buffer."""
-        self._dim_keys = list(dim_keys)
-        self._results: list[dict] = []
-
-    def append_result_row(self, row: dict, dim_keys: list[str]) -> None:
-        """Accumulate rows in memory.
-
-        The API backend does not push TSV rows to the backend; per-iteration
-        progress is already streamed via ``ApiReporter``.  This method exists
-        so callers can use the same interface regardless of backend.
-        """
-        if not hasattr(self, "_results"):
-            self._results = []
-        self._results.append(dict(row))
-
-    # ------------------------------------------------------------------
-    # Report
-    # ------------------------------------------------------------------
-
-    def save_report(self, report_md: str, best_code: str | None = None) -> None:
-        """Patch the job record with the report and best agent code."""
-        if not self._job_id:
-            return
-        fields: dict[str, Any] = {"report_markdown": report_md}
-        if best_code is not None:
-            fields["best_agent_code"] = best_code
-        self._patch_job(**fields)
-
-    def load_report(self) -> str | None:
-        """Fetch the report Markdown from the job record."""
-        return self.load_artifact("report.md")
-
-    # ------------------------------------------------------------------
-    # Bulk cleanup  (no-op — nothing to sweep in the API)
-    # ------------------------------------------------------------------
-
-    def clear_setup_spec(self) -> None:
-        """Delete the agent record entirely from the API."""
-        self.delete_spec()
-
-    def clear_experiments(self) -> None:
-        """Delete all traces for this agent and clear the job report fields."""
-        self.delete_traces()
-        if self._job_id:
-            self._patch_job(report_markdown=None, best_agent_code=None)
+def _submit_async_upsert(
+    client: Any,
+    *,
+    project_id: str,
+    agent_path: str,
+    spec: dict,
+) -> None:
+    """Run ``upsert_agent`` on a background thread (fire-and-forget)."""
+    _fire(
+        upsert_agent,
+        client,
+        project_id=project_id,
+        agent_path=agent_path,
+        spec=spec,
+    )

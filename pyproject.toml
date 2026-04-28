@@ -11,12 +11,9 @@ dependencies = [
     "tomlkit>=0.14.0",
     "pydantic>=2.0.0",
     "urllib3>=1.25.3",
-    "opentelemetry-api>=1.40.0",
-    "opentelemetry-sdk>=1.40.0",
-    "opentelemetry-exporter-otlp>=1.40.0",
     "python-dateutil",
     "simple-term-menu>=1.6.6",
-    "boto3>=1.42.87",
+    "overmind",
 ]
 
 [project.scripts]

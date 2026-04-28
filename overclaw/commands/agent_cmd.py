@@ -18,6 +18,7 @@ from rich.rule import Rule
 from rich.syntax import Syntax
 from rich.table import Table
 
+
 from overclaw.utils.display import BRAND, confirm_option, rel, select_option
 from overclaw.core.paths import (
     agent_experiments_dir,
@@ -25,6 +26,10 @@ from overclaw.core.paths import (
     load_agent_dotenv,
     load_overclaw_dotenv,
 )
+from overmind import observe, SpanType, set_tag
+
+from overclaw import attrs
+from overclaw.utils.tracing import traced
 from overclaw.core.constants import overclaw_rel
 from overclaw.core.registry import (
     EntrypointNotFoundError,
@@ -351,7 +356,11 @@ def _auto_generate_wrapper(
 # ---------------------------------------------------------------------------
 
 
+@observe(span_name="overmind_agent_register", type=SpanType.WORKFLOW)
 def cmd_register(name: str, entrypoint: str) -> None:
+    set_tag(attrs.COMMAND, "agent.register")
+    set_tag(attrs.AGENT_NAME, name)
+    set_tag(attrs.AGENT_ENTRYPOINT, entrypoint)
     console = Console()
     load_overclaw_dotenv()
     registry = load_registry()
@@ -463,6 +472,9 @@ def cmd_register(name: str, entrypoint: str) -> None:
     # ---- 4. Save to registry ----
     save_agent(name, entrypoint)
 
+    set_tag(attrs.AGENT_FILE_PATH, str(file_path))
+    set_tag(attrs.AGENT_FUNCTION_NAME, fn)
+
     console.print(
         f"\n  [bold green]\u2713[/bold green]  "
         f"Agent '[bold]{name}[/bold]' registered.\n"
@@ -473,9 +485,12 @@ def cmd_register(name: str, entrypoint: str) -> None:
     _print_post_register_next_step(console, name)
 
 
+@observe(span_name="overmind_agent_list", type=SpanType.WORKFLOW)
 def cmd_list() -> None:
+    set_tag(attrs.COMMAND, "agent.list")
     console = Console()
     registry = load_registry()
+    set_tag(attrs.AGENT_REGISTERED_COUNT, str(len(registry)))
 
     if not registry:
         console.print(
@@ -503,7 +518,10 @@ def cmd_list() -> None:
     console.print()
 
 
+@observe(span_name="overmind_agent_remove", type=SpanType.WORKFLOW)
 def cmd_remove(name: str) -> None:
+    set_tag(attrs.COMMAND, "agent.remove")
+    set_tag(attrs.AGENT_NAME, name)
     console = Console()
     registry = load_registry()
 
@@ -515,6 +533,8 @@ def cmd_remove(name: str) -> None:
             "    [bold]overclaw agent list[/bold]\n"
         )
         raise SystemExit(1)
+
+    set_tag(attrs.AGENT_ENTRYPOINT, registry[name]["entrypoint"])
 
     console.print(
         f"\n  Agent '[bold]{name}[/bold]'  [dim]{registry[name]['entrypoint']}[/dim]"
@@ -536,12 +556,17 @@ def cmd_remove(name: str) -> None:
         shutil.rmtree(inst_dir)
         console.print(f"  [dim]Removed instrumented copy at {rel(inst_dir)}[/dim]")
 
+    set_tag(attrs.AGENT_REMOVED, "true")
     console.print(
         f"\n  [bold green]\u2713[/bold green]  Agent '[bold]{name}[/bold]' removed.\n"
     )
 
 
+@observe(span_name="overmind_agent_update", type=SpanType.WORKFLOW)
 def cmd_update(name: str, entrypoint: str) -> None:
+    set_tag(attrs.COMMAND, "agent.update")
+    set_tag(attrs.AGENT_NAME, name)
+    set_tag(attrs.AGENT_NEW_ENTRYPOINT, entrypoint)
     console = Console()
     load_overclaw_dotenv()
     registry = load_registry()
@@ -556,6 +581,8 @@ def cmd_update(name: str, entrypoint: str) -> None:
         raise SystemExit(1)
 
     old_ep_raw = registry[name]["entrypoint"]
+    set_tag(attrs.AGENT_OLD_ENTRYPOINT, old_ep_raw)
+
     if old_ep_raw.strip() == entrypoint.strip():
         raise SystemExit(0)
 
@@ -600,7 +627,10 @@ def cmd_update(name: str, entrypoint: str) -> None:
     )
 
 
+@observe(span_name="overmind_agent_show", type=SpanType.WORKFLOW)
 def cmd_show(name: str) -> None:
+    set_tag(attrs.COMMAND, "agent.show")
+    set_tag(attrs.AGENT_NAME, name)
     console = Console()
     registry = load_registry()
 
@@ -630,6 +660,13 @@ def cmd_show(name: str) -> None:
     file_status = (
         "[green]\u2713 exists[/green]" if file_exists else "[red]\u2717 not found[/red]"
     )
+
+    set_tag(attrs.AGENT_ENTRYPOINT, data["entrypoint"])
+    set_tag(attrs.AGENT_FILE_PATH, data["file_path"])
+    set_tag(attrs.AGENT_FILE_EXISTS, str(file_exists))
+    set_tag(attrs.AGENT_SETUP_SPEC_READY, str(spec_exists))
+    set_tag(attrs.AGENT_EXPERIMENT_FILE_COUNT, str(len(exp_files)))
+
     spec_status = (
         "[green]\u2713 ready[/green]" if spec_exists else "[yellow]not run yet[/yellow]"
     )
@@ -664,6 +701,7 @@ def cmd_show(name: str) -> None:
 # ---------------------------------------------------------------------------
 
 
+@traced(span_name="overmind_agent_validate", type=SpanType.WORKFLOW)
 def cmd_validate(name: str, data: str) -> None:
     """Run the agent's entrypoint against test data to verify it works."""
     import json
@@ -676,6 +714,8 @@ def cmd_validate(name: str, data: str) -> None:
 
     console = Console()
     load_overclaw_dotenv()
+    set_tag(attrs.COMMAND, "agent.validate")
+    set_tag(attrs.AGENT_NAME, name)
 
     registry = load_registry()
     if name not in registry:

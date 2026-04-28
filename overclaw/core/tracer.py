@@ -1,193 +1,108 @@
-"""
-Tracing infrastructure for capturing LLM calls, tool calls, and agent execution.
+"""Thin tracing shims layered on top of ``overmind``.
 
-Provides a thread-local Tracer that records every LLM and tool invocation
-as structured Span objects. The optimizer sets the active tracer before each
-agent run and collects the resulting Trace afterwards.
+OverClaw used to ship a parallel in-process ``Tracer`` / ``Span`` /
+``Trace`` implementation along with hand-rolled ``call_llm`` and
+``call_tool`` helpers that recorded metadata into that local tracer.
+That entire abstraction has been retired — every span we emit now
+flows through ``overmind`` (OpenTelemetry under the hood) and LLM
+spans are produced by the SDK's auto-instrumentation
+(``OpenAIInstrumentor``, ``AnthropicInstrumentor``, …) enabled in
+``overmind.init(...)``.
+
+Two helpers remain because ``overclaw.utils.instrument`` rewrites them
+into ``litellm.completion`` / direct function calls when an agent is
+instrumented for an optimization run.  Pre-instrumentation, user agent
+code may still ``from overclaw.core.tracer import call_llm, call_tool``
+— those imports continue to work and now produce real OTel spans
+(``SpanType.FUNCTION`` / ``SpanType.TOOL``) via the SDK.
 """
 
-import json
+from __future__ import annotations
+
 import logging
-import os
-import threading
-import time
-from dataclasses import dataclass, field, asdict
-from typing import Any
+from typing import Any, Callable
 
 import litellm
 
+from overmind import SpanType, set_tag, start_span as _span
+
+from overclaw import attrs
 from overclaw.utils.llm import llm_completion
 
 logger = logging.getLogger("overclaw.core.tracer")
-
-_local = threading.local()
-
-
-@dataclass
-class Span:
-    span_type: str
-    name: str
-    start_time: float
-    end_time: float = 0.0
-    latency_ms: float = 0.0
-    metadata: dict = field(default_factory=dict)
-    error: str | None = None
-
-    def finish(self):
-        self.end_time = time.time()
-        self.latency_ms = (self.end_time - self.start_time) * 1000
-
-
-@dataclass
-class Trace:
-    trace_id: str
-    input_data: dict = field(default_factory=dict)
-    output_data: dict = field(default_factory=dict)
-    spans: list = field(default_factory=list)
-    start_time: float = 0.0
-    end_time: float = 0.0
-    total_latency_ms: float = 0.0
-    total_tokens: int = 0
-    total_cost: float = 0.0
-    score: float = 0.0
-    error: str | None = None
-
-    def to_dict(self) -> dict:
-        return asdict(self)
-
-    def save(self, path: str):
-        os.makedirs(os.path.dirname(path), exist_ok=True)
-        with open(path, "w") as f:
-            json.dump(self.to_dict(), f, indent=2, default=str)
-
-
-class Tracer:
-    """Collects spans for a single agent execution run."""
-
-    def __init__(self, trace_id: str):
-        self.trace = Trace(trace_id=trace_id, start_time=time.time())
-
-    def add_span(self, span: Span):
-        self.trace.spans.append(span)
-
-    def set_input(self, data: dict):
-        self.trace.input_data = data
-
-    def set_output(self, data: dict):
-        self.trace.output_data = data
-
-    def finish(self):
-        self.trace.end_time = time.time()
-        self.trace.total_latency_ms = (
-            self.trace.end_time - self.trace.start_time
-        ) * 1000
-
-
-def set_current_tracer(tracer: Tracer | None):
-    _local.tracer = tracer
-
-
-def get_current_tracer() -> Tracer | None:
-    return getattr(_local, "tracer", None)
 
 
 def call_llm(
     model: str,
     messages: list[dict],
     tools: list[dict] | None = None,
-    **kwargs,
+    **kwargs: Any,
 ) -> Any:
-    """Traced wrapper around litellm.completion. Captures model, tokens, cost, latency."""
-    tracer = get_current_tracer()
-    span = Span(span_type="llm_call", name=model, start_time=time.time())
+    """Call ``litellm.completion`` inside an OTel span.
 
-    logger.debug(
-        "call_llm start model=%s msgs=%d tools=%d has_tracer=%s",
-        model,
-        len(messages),
-        len(tools or []),
-        tracer is not None,
-    )
+    Token / cost metadata is attached to the active span via
+    :func:`overmind.set_tag` so it shows up in the trace UI without
+    relying on a custom in-process tracer.  The SDK's
+    ``OpenAIInstrumentor`` etc. still emit their own provider-level
+    spans inside this one when enabled.
+    """
+    with _span(model, span_type=SpanType.FUNCTION):
+        set_tag(attrs.LLM_MODEL, model)
+        set_tag(attrs.LLM_MESSAGES_COUNT, len(messages))
+        if tools:
+            set_tag(
+                attrs.LLM_TOOLS_PROVIDED,
+                [t["function"]["name"] for t in tools],
+            )
 
-    try:
-        response = llm_completion(model, messages, tools=tools, **kwargs)
-        span.finish()
+        try:
+            response = llm_completion(model, messages, tools=tools, **kwargs)
+        except Exception as exc:
+            logger.exception("call_llm failed model=%s", model)
+            set_tag(attrs.LLM_ERROR, str(exc))
+            raise
 
-        usage = response.usage
-        cost = 0.0
+        usage = getattr(response, "usage", None)
+        if usage is not None:
+            set_tag(attrs.LLM_PROMPT_TOKENS, getattr(usage, "prompt_tokens", 0) or 0)
+            set_tag(
+                attrs.LLM_COMPLETION_TOKENS,
+                getattr(usage, "completion_tokens", 0) or 0,
+            )
+            set_tag(attrs.LLM_TOTAL_TOKENS, getattr(usage, "total_tokens", 0) or 0)
+
         try:
             cost = litellm.completion_cost(completion_response=response)
+            set_tag(attrs.LLM_COST, float(cost))
         except Exception:
             pass
 
-        tool_calls_data = []
         msg = response.choices[0].message
-        if msg.tool_calls:
-            tool_calls_data = [
-                {"name": tc.function.name, "arguments": tc.function.arguments}
-                for tc in msg.tool_calls
-            ]
+        if getattr(msg, "tool_calls", None):
+            set_tag(
+                attrs.LLM_TOOL_CALLS,
+                [tc.function.name for tc in msg.tool_calls],
+            )
 
-        span.metadata = {
-            "model": model,
-            "messages_count": len(messages),
-            "tools_provided": [t["function"]["name"] for t in (tools or [])],
-            "response_content": msg.content,
-            "tool_calls": tool_calls_data,
-            "prompt_tokens": usage.prompt_tokens if usage else 0,
-            "completion_tokens": usage.completion_tokens if usage else 0,
-            "total_tokens": usage.total_tokens if usage else 0,
-            "cost": cost,
-        }
-
-        if tracer:
-            tracer.add_span(span)
-            tracer.trace.total_tokens += usage.total_tokens if usage else 0
-            tracer.trace.total_cost += cost
-
-        logger.debug(
-            "call_llm done model=%s latency_ms=%.1f tokens=%d cost=%.5f tool_calls=%d",
-            model,
-            span.latency_ms,
-            usage.total_tokens if usage else 0,
-            cost,
-            len(tool_calls_data),
-        )
         return response
 
-    except Exception as e:
-        span.finish()
-        span.error = str(e)
-        if tracer:
-            tracer.add_span(span)
-        logger.exception(
-            "call_llm failed model=%s latency_ms=%.1f", model, span.latency_ms
-        )
-        raise
+
+def call_tool(name: str, args: dict, fn: Callable[..., Any]) -> Any:
+    """Invoke a tool function inside an OTel ``SpanType.TOOL`` span.
+
+    Argument keys (not values) are surfaced as a span tag for triage;
+    the actual argument values are intentionally not tagged because
+    they may contain user data.
+    """
+    with _span(name, span_type=SpanType.TOOL):
+        set_tag(attrs.TOOL_NAME, name)
+        set_tag(attrs.TOOL_ARG_KEYS, sorted((args or {}).keys()))
+        try:
+            return fn(**args)
+        except Exception as exc:
+            set_tag(attrs.TOOL_ERROR, str(exc))
+            logger.exception("call_tool failed name=%s", name)
+            raise
 
 
-def call_tool(name: str, args: dict, fn: Any) -> Any:
-    """Traced wrapper for tool execution. Captures args, result, and latency."""
-    tracer = get_current_tracer()
-    span = Span(span_type="tool_call", name=name, start_time=time.time())
-    logger.debug(
-        "call_tool start name=%s args_keys=%s", name, list((args or {}).keys())
-    )
-
-    try:
-        result = fn(**args)
-        span.finish()
-        span.metadata = {"args": args, "result": result}
-        if tracer:
-            tracer.add_span(span)
-        logger.debug("call_tool done name=%s latency_ms=%.1f", name, span.latency_ms)
-        return result
-
-    except Exception as e:
-        span.finish()
-        span.error = str(e)
-        span.metadata = {"args": args}
-        if tracer:
-            tracer.add_span(span)
-        logger.exception("call_tool failed name=%s", name)
-        raise
+__all__ = ["call_llm", "call_tool"]

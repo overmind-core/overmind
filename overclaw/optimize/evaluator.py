@@ -18,6 +18,7 @@ import time
 import warnings
 from pathlib import Path
 
+
 from overclaw.optimize.provenance import (
     SourceTag,
     TraceSource,
@@ -25,6 +26,10 @@ from overclaw.optimize.provenance import (
 )
 from overclaw.optimize.runner import _validate_js_entrypoint
 from overclaw.utils.code import has_entrypoint_ast
+
+from overmind import set_tag
+
+from overclaw import attrs
 from overclaw.utils.llm import llm_completion
 from overclaw.prompts.evaluator import (
     LLM_JUDGE_BATCH_PROMPT,
@@ -495,6 +500,11 @@ class SpecEvaluator:
             for k, v in (s.get("_source_summary") or {}).items():
                 agg_summary[k] = agg_summary.get(k, 0) + int(v)
         avg["_source_summary"] = agg_summary  # type: ignore[assignment]
+
+        set_tag(attrs.EVAL_BATCH_SIZE, str(len(all_scores)))
+        set_tag(attrs.EVAL_AVG_TOTAL, f"{avg['avg_total']:.1f}")
+        set_tag(attrs.EVAL_USED_LLM_JUDGE, str(use_judge))
+
         return avg
 
     def get_dimension_labels(self) -> list[tuple[str, str]]:

@@ -7,20 +7,19 @@ Usage:
 """
 
 import logging
-
-from rich.console import Console
-
-from overclaw.client import get_client, get_project_id
-from overclaw.commands.setup_cmd import _sync_setup_artifacts
 from overclaw.core.paths import load_agent_dotenv
 from overclaw.core.registry import get_agent_id
 from overclaw.optimize.config import collect_config
 from overclaw.optimize.optimizer import Optimizer
 from overclaw.storage import configure_storage
+from overmind import observe, SpanType, set_tag
+
+from overclaw import attrs
 
 logger = logging.getLogger("overclaw.commands.optimize")
 
 
+@observe(span_name="overmind_optimize", type=SpanType.WORKFLOW)
 def main(
     agent_name: str,
     fast: bool = False,
@@ -29,6 +28,7 @@ def main(
     max_chars: int | None = None,
 ) -> None:
     logger.info("optimize: start agent=%s fast=%s", agent_name, fast)
+
     # Load agent-specific .env before anything else so the agent's credentials
     # are available throughout the entire optimize run (config collection,
     # agent execution, and evaluation).
@@ -48,23 +48,44 @@ def main(
         getattr(config, "parallel", False),
     )
 
-    # If API is configured, make sure setup artifacts are synced first and
-    # refresh agent_id from registry (sync may create/update it).
-    if get_client() and get_project_id():
-        _sync_setup_artifacts(agent_name, config.agent_path, Console())
-        config.agent_id = get_agent_id(agent_name)
+    # CLI-level flags
+    set_tag(attrs.COMMAND, "optimize")
+    set_tag(attrs.OPTIMIZE_AGENT_NAME, agent_name)
+    set_tag(attrs.OPTIMIZE_FAST, str(fast))
 
-    use_api_backend = bool(config.agent_id and get_client() and get_project_id())
-    logger.info(
-        "optimize: storage backend=%s agent_id=%s",
-        "api" if use_api_backend else "fs",
-        config.agent_id,
-    )
+    # Refresh agent_id from registry in case setup just created/updated it
+    config.agent_id = get_agent_id(agent_name)
+
+    logger.info("optimize: storage agent_id=%s", config.agent_id)
     configure_storage(
         agent_path=config.agent_path,
         agent_id=config.agent_id,
-        backend="api" if use_api_backend else "fs",
     )
+
+    # Config-level tags — everything the user chose or defaulted to
+    set_tag(attrs.OPTIMIZE_AGENT_PATH, config.agent_path)
+    set_tag(attrs.OPTIMIZE_ENTRYPOINT_FN, config.entrypoint_fn)
+    set_tag(attrs.OPTIMIZE_STORAGE_BACKEND, "api")
+    set_tag(attrs.OPTIMIZE_ANALYZER_MODEL, config.analyzer_model or "")
+    set_tag(attrs.OPTIMIZE_LLM_JUDGE_MODEL, config.llm_judge_model or "disabled")
+    set_tag(attrs.OPTIMIZE_ITERATIONS, config.iterations)
+    set_tag(attrs.OPTIMIZE_CANDIDATES_PER_ITERATION, config.candidates_per_iteration)
+    set_tag(attrs.OPTIMIZE_PARALLEL, config.parallel)
+    set_tag(attrs.OPTIMIZE_MAX_WORKERS, config.max_workers)
+    set_tag(attrs.OPTIMIZE_RUNS_PER_EVAL, config.runs_per_eval)
+    set_tag(attrs.OPTIMIZE_REGRESSION_THRESHOLD, config.regression_threshold)
+    set_tag(attrs.OPTIMIZE_HOLDOUT_RATIO, config.holdout_ratio)
+    set_tag(attrs.OPTIMIZE_HOLDOUT_ENFORCEMENT, config.holdout_enforcement)
+    set_tag(attrs.OPTIMIZE_EARLY_STOPPING_PATIENCE, config.early_stopping_patience)
+    set_tag(attrs.OPTIMIZE_CROSS_RUN_PERSISTENCE, config.cross_run_persistence)
+    set_tag(attrs.OPTIMIZE_FAILURE_CLUSTERING, config.failure_clustering)
+    set_tag(attrs.OPTIMIZE_ADAPTIVE_FOCUS, config.adaptive_focus)
+    set_tag(attrs.OPTIMIZE_MODEL_BACKTESTING, config.model_backtesting)
+    if config.backtest_models:
+        set_tag(attrs.OPTIMIZE_BACKTEST_MODELS, ",".join(config.backtest_models))
+    set_tag(attrs.OPTIMIZE_EVAL_SPEC_PATH, config.eval_spec_path or "")
+    set_tag(attrs.OPTIMIZE_DATA_PATH, config.data_path or "")
+
     optimizer = Optimizer(config)
     try:
         optimizer.run()

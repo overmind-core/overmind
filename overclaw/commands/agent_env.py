@@ -370,7 +370,7 @@ def instrument_agent_files(
     """Copy the agent's source tree to ``.overclaw/agents/<name>/instrumented/``.
 
     The original files are never modified.  This is a **plain copy** — no
-    ``@observe()`` decorators or overmind-sdk imports are added here.
+    ``@observe()`` decorators or overmind imports are added here.
     Instrumentation (imports + decorators) is applied later by the
     optimizer when it actually needs tracing.
 

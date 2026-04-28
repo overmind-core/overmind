@@ -31,6 +31,10 @@ from typing import Any
 
 import litellm
 
+from overmind import set_tag, SpanType, start_span
+
+from overclaw import attrs
+from overclaw.utils.tracing import traced
 from overclaw.utils.llm import llm_completion
 from rich.console import Console
 from rich.rule import Rule
@@ -421,6 +425,7 @@ def _is_near_duplicate(
 # ---------------------------------------------------------------------------
 
 
+@traced(span_name="overclaw_generate_synthetic_data", type=SpanType.FUNCTION)
 def generate_synthetic_data(
     agent_description: str,
     model: str,
@@ -483,6 +488,10 @@ def generate_synthetic_data(
     if start >= 0 and end > start:
         cases = json.loads(content[start:end])
         if isinstance(cases, list) and len(cases) > 0:
+            set_tag(attrs.DATAGEN_MODE, "legacy")
+            set_tag(attrs.DATAGEN_MODEL, model)
+            set_tag(attrs.DATAGEN_REQUESTED_SAMPLES, str(num_samples))
+            set_tag(attrs.DATAGEN_GENERATED_COUNT, str(len(cases)))
             return cases
 
     raise ValueError(
@@ -496,6 +505,7 @@ def generate_synthetic_data(
 # ===================================================================
 
 
+@traced(span_name="overclaw_generate_redteam_personas", type=SpanType.FUNCTION)
 def _generate_personas(
     agent_description: str,
     agent_code: str | None,
@@ -535,11 +545,16 @@ def _generate_personas(
     parsed = _safe_parse_json(raw)
     if isinstance(parsed, dict) and "personas" in parsed:
         personas = parsed["personas"]
+        set_tag(attrs.DATAGEN_PERSONA_COUNT, str(len(personas)))
+        set_tag(attrs.DATAGEN_PERSONA_SOURCE, "llm")
         if isinstance(personas, list) and len(personas) > 0:
             return personas
 
     logger.warning("Could not parse personas from LLM; falling back to defaults")
-    return _default_personas(num_personas)
+    fallback = _default_personas(num_personas)
+    set_tag(attrs.DATAGEN_PERSONA_COUNT, str(len(fallback)))
+    set_tag(attrs.DATAGEN_PERSONA_SOURCE, "fallback")
+    return fallback
 
 
 def _default_personas(n: int) -> list[dict]:
@@ -964,20 +979,25 @@ def _retry_dropped_slots(
 
         for attempt in range(max_attempts):
             directive = _retry_variation_directive(persona, anti_examples, attempt + 1)
-            batch = _generate_batch(
-                persona=persona,
-                agent_description=agent_description,
-                agent_code=agent_code,
-                eval_spec=eval_spec,
-                policy_context=policy_context,
-                model=model,
-                batch_size=1,
-                existing_cases=list(out) + existing_snapshot,
-                coverage_gaps=coverage_gaps,
-                expected_output_hint=expected_output_hint,
-                variation_directive=directive,
-                temperature=1.0,
-            )
+            with start_span("overclaw_datagen_retry", span_type=SpanType.FUNCTION):
+                set_tag(attrs.DATAGEN_PERSONA_IDX, str(persona_idx))
+                set_tag(attrs.DATAGEN_RETRY_ATTEMPT, str(attempt + 1))
+                set_tag(attrs.DATAGEN_RETRY_MAX_ATTEMPTS, str(max_attempts))
+                set_tag(attrs.DATAGEN_ANTI_EXAMPLES, str(len(anti_examples)))
+                batch = _generate_batch(
+                    persona=persona,
+                    agent_description=agent_description,
+                    agent_code=agent_code,
+                    eval_spec=eval_spec,
+                    policy_context=policy_context,
+                    model=model,
+                    batch_size=1,
+                    existing_cases=list(out) + existing_snapshot,
+                    coverage_gaps=coverage_gaps,
+                    expected_output_hint=expected_output_hint,
+                    variation_directive=directive,
+                    temperature=1.0,
+                )
             retry_rejected: list = []
             slot_added, _ = _apply_dedup(
                 batch,
@@ -1083,19 +1103,27 @@ def _per_persona_parallel_shards_round(
                 )
 
             merged: list[dict] = []
-            with stage(
-                "data.phase2.persona",
-                logger=logger,
-                round=round_num,
-                persona_idx=idx,
-                persona=pname,
-                intent=persona.get("intent", "?"),
-                shards=len(sizes),
-                batch_size=batch_size,
-                directives=[
-                    d.splitlines()[0] if d else "(none)" for d in shard_directives
-                ],
-            ) as pinfo:
+            with (
+                start_span("overclaw_datagen_persona", span_type=SpanType.FUNCTION),
+                stage(
+                    "data.phase2.persona",
+                    logger=logger,
+                    round=round_num,
+                    persona_idx=idx,
+                    persona=pname,
+                    intent=persona.get("intent", "?"),
+                    shards=len(sizes),
+                    batch_size=batch_size,
+                    directives=[
+                        d.splitlines()[0] if d else "(none)" for d in shard_directives
+                    ],
+                ) as pinfo,
+            ):
+                set_tag(attrs.DATAGEN_ROUND, str(round_num))
+                set_tag(attrs.DATAGEN_PERSONA_IDX, str(idx))
+                set_tag(attrs.DATAGEN_PERSONA_NAME, str(pname))
+                set_tag(attrs.DATAGEN_PERSONA_INTENT, str(persona.get("intent", "?")))
+                set_tag(attrs.DATAGEN_PERSONA_SHARDS, str(len(sizes)))
                 with ThreadPoolExecutor(max_workers=len(sizes)) as executor:
                     futures = [
                         executor.submit(_run_shard, sz, shard_directives[s])
@@ -1121,6 +1149,7 @@ def _per_persona_parallel_shards_round(
 # ---------------------------------------------------------------------------
 
 
+@traced(span_name="overclaw_generate_diverse_data", type=SpanType.WORKFLOW)
 def generate_diverse_synthetic_data(
     agent_description: str,
     model: str,
@@ -1240,16 +1269,27 @@ def generate_diverse_synthetic_data(
         round_num += 1
         snapshot = list(existing_cases + new_cases)
 
-        with stage(
-            "data.phase2.generation_round",
-            logger=logger,
-            round=round_num,
-            target=num_samples,
-            have=len(new_cases),
-            snapshot_size=len(snapshot),
-            quota_per_persona=quota_per_persona,
-            per_persona=dict(per_persona_added),
-        ) as phase2:
+        # Per-round child span so progress flushes to the trace UI even
+        # while the outer pipeline span is still open.
+        with (
+            start_span(
+                f"overclaw_datagen_round_{round_num}",
+                span_type=SpanType.FUNCTION,
+            ),
+            stage(
+                "data.phase2.generation_round",
+                logger=logger,
+                round=round_num,
+                target=num_samples,
+                have=len(new_cases),
+                snapshot_size=len(snapshot),
+                quota_per_persona=quota_per_persona,
+                per_persona=dict(per_persona_added),
+            ) as phase2,
+        ):
+            set_tag(attrs.DATAGEN_ROUND, str(round_num))
+            set_tag(attrs.DATAGEN_TARGET, str(num_samples))
+            set_tag(attrs.DATAGEN_HAVE_BEFORE, str(len(new_cases)))
             raw_batches = _per_persona_parallel_shards_round(
                 round_num=round_num,
                 personas=personas,
@@ -1405,6 +1445,16 @@ def generate_diverse_synthetic_data(
         f"{n_personas} personas/round (sequential) · "
         f"≤{PERSONA_INNER_PARALLEL_MAX} parallel shard(s)/persona[/dim]"
     )
+
+    set_tag(attrs.DATAGEN_MODE, "diverse_persona_pipeline")
+    set_tag(attrs.DATAGEN_MODEL, model)
+    set_tag(attrs.DATAGEN_REQUESTED_SAMPLES, str(num_samples))
+    set_tag(attrs.DATAGEN_GENERATED_COUNT, str(len(new_cases)))
+    set_tag(attrs.DATAGEN_ROUNDS, str(round_num))
+    set_tag(attrs.DATAGEN_ELAPSED_SECONDS, f"{elapsed:.1f}")
+    set_tag(attrs.DATAGEN_EXISTING_CASES, str(len(existing_cases)))
+    if coverage_gaps:
+        set_tag(attrs.DATAGEN_COVERAGE_GAP_COUNT, str(len(coverage_gaps)))
 
     # Phase 3: coverage report
     with stage(

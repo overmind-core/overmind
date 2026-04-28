@@ -1,6 +1,6 @@
-"""Parse overmind-sdk OTel JSONL trace files into structured data.
+"""Parse overmind OTel JSONL trace files into structured data.
 
-The overmind-sdk (via ``OVERMIND_TRACE_FILE``) writes one JSON object
+The overmind (via ``OVERMIND_TRACE_FILE``) writes one JSON object
 per line in OpenTelemetry ``resource_spans`` format.  Each line contains
 two scope groups:
 
@@ -31,7 +31,7 @@ logger = logging.getLogger(__name__)
 
 @dataclass
 class ParsedTrace:
-    """Aggregated data extracted from an overmind-sdk trace file."""
+    """Aggregated data extracted from an overmind trace file."""
 
     tool_trace: list[dict] = field(default_factory=list)
     """tool_trace items: {name, args, result, error, latency_ms, source?}"""
@@ -100,7 +100,7 @@ def _nano_to_ms(start_ns: str | int, end_ns: str | int) -> float:
 
 
 def parse_trace_file(path: str | Path) -> ParsedTrace:
-    """Parse an overmind-sdk JSONL trace file and return a single aggregated trace.
+    """Parse an overmind JSONL trace file and return a single aggregated trace.
 
     All JSONL lines are merged into one :class:`ParsedTrace`.
     """
@@ -116,7 +116,7 @@ def parse_trace_file(path: str | Path) -> ParsedTrace:
 
 
 def parse_trace_file_per_line(path: str | Path) -> list[ParsedTrace]:
-    """Parse an overmind-sdk JSONL trace file, returning one ParsedTrace per line.
+    """Parse an overmind JSONL trace file, returning one ParsedTrace per line.
 
     Each JSONL line corresponds to one subprocess invocation (one datapoint).
     Returns an empty list if the file doesn't exist or is empty.

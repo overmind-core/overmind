@@ -22,6 +22,10 @@ from typing import TYPE_CHECKING
 
 import logging
 
+from overmind import observe, set_tag, SpanType
+
+from overclaw import attrs
+from overclaw.utils.tracing import traced
 from overclaw.utils.llm import llm_completion
 from overclaw.prompts.analyzer import (
     AGENTIC_CODEGEN_FOCUS,
@@ -1404,6 +1408,7 @@ def format_component_weights(weights: dict[str, float]) -> str:
 # ---------------------------------------------------------------------------
 
 
+@traced(span_name="overclaw_generate_candidates", type=SpanType.FUNCTION)
 def generate_candidates(
     agent_code: str,
     case_results: list[dict],
@@ -1854,10 +1859,27 @@ def generate_candidates(
     has_any_output = any(
         r.get("updated_code") or r.get("bundle_updates") for r in all_results
     )
+
+    valid_count = sum(
+        1 for r in all_results if r.get("updated_code") or r.get("bundle_updates")
+    )
+    methods = [r.get("method", "unknown") for r in all_results]
+    set_tag(attrs.CANDIDATES_REQUESTED, str(num_candidates))
+    set_tag(attrs.CANDIDATES_PRODUCED, str(valid_count))
+    set_tag(attrs.CANDIDATES_METHODS, json.dumps(methods))
+    set_tag(attrs.CANDIDATES_HAS_DIAGNOSIS, str(diag is not None))
+    set_tag(attrs.CANDIDATES_USE_BUNDLE, str(use_bundle))
+    if diag:
+        # Note: root_cause text intentionally not tagged — it can echo agent
+        # code / policy snippets which we don't want to ship to the trace UI.
+        set_tag(attrs.CANDIDATES_HAS_ROOT_CAUSE, bool(diag.get("root_cause")))
+
     if not has_any_output:
         sp_result = _gen_single_pass()
         if sp_result.get("updated_code") or sp_result.get("bundle_updates"):
+            set_tag(attrs.CANDIDATES_FALLBACK, "single_pass")
             return [sp_result]
+        set_tag(attrs.CANDIDATES_FALLBACK, "failed")
         return [
             {
                 "analysis": "No candidates produced valid code.",

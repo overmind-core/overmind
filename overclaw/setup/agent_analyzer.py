@@ -11,6 +11,8 @@ import json
 import logging
 from pathlib import Path
 
+from overmind import set_tag, SpanType
+from overclaw.utils.tracing import traced
 from rich.console import Console
 from rich.panel import Panel
 from rich.rule import Rule
@@ -39,6 +41,7 @@ def _build_setup_code_section(agent_path: str, bundle: AgentBundle | None) -> st
     return f"```python\n{code}\n```"
 
 
+@traced(span_name="overclaw_analyze_agent", type=SpanType.FUNCTION)
 def analyze_agent(
     agent_path: str,
     model: str,

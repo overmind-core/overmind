@@ -14,6 +14,9 @@ import logging
 from dataclasses import dataclass
 from pathlib import Path
 
+from overmind import set_tag
+
+from overclaw import attrs
 from overclaw.optimize.failure_registry import FailureRegistry
 
 _log = logging.getLogger("overclaw.optimize.run_state")
@@ -173,6 +176,19 @@ class RunState:
         )
         tmp.replace(self.path)
         _log.info("Saved run state to %s", self.path)
+
+        set_tag(attrs.RUN_STATE_TOTAL_RUNS, str(len(self.run_history)))
+        set_tag(attrs.RUN_STATE_REGRESSION_CASES, str(len(self.regression_cases)))
+        set_tag(
+            attrs.RUN_STATE_FAILURE_CLUSTERS,
+            str(len(self.failure_registry.clusters)),
+        )
+        if self.run_history:
+            latest = self.run_history[-1]
+            set_tag(attrs.RUN_STATE_LATEST_BASELINE, f"{latest.baseline_score:.1f}")
+            set_tag(attrs.RUN_STATE_LATEST_FINAL, f"{latest.final_score:.1f}")
+            set_tag(attrs.RUN_STATE_LATEST_ACCEPTED, str(latest.accepted_changes))
+            set_tag(attrs.RUN_STATE_LATEST_REJECTED, str(latest.rejected_changes))
 
     # -- Run lifecycle --
 

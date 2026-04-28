@@ -13,6 +13,11 @@ import tempfile
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from overmind import set_tag, SpanType
+
+from overclaw import attrs
+from overclaw.utils.tracing import traced
+
 logger = logging.getLogger("overclaw.coding_agent")
 
 
@@ -26,6 +31,7 @@ class CodingAgentResult:
     usage: dict[str, int] = field(default_factory=dict)
 
 
+@traced(span_name="overclaw_apply_code_changes", type=SpanType.FUNCTION)
 def apply_code_changes(
     agent_files: dict[str, str],
     instruction: str,
@@ -93,6 +99,21 @@ def apply_code_changes(
                 rel = str(full.relative_to(tmp_dir))
                 if rel not in agent_files:
                     file_updates[rel] = full.read_text(encoding="utf-8")
+
+        set_tag(attrs.CODING_AGENT_MODEL, model)
+        set_tag(attrs.CODING_AGENT_INPUT_FILE_COUNT, str(len(agent_files)))
+        set_tag(attrs.CODING_AGENT_MODIFIED_FILE_COUNT, str(len(file_updates)))
+        set_tag(attrs.CODING_AGENT_STEPS_TAKEN, str(len(result.steps)))
+        set_tag(attrs.CODING_AGENT_MAX_STEPS, str(max_steps))
+        if result.total_usage:
+            set_tag(
+                attrs.CODING_AGENT_TOKENS_IN,
+                str(result.total_usage.get("input", 0)),
+            )
+            set_tag(
+                attrs.CODING_AGENT_TOKENS_OUT,
+                str(result.total_usage.get("output", 0)),
+            )
 
         return CodingAgentResult(
             file_updates=file_updates,
