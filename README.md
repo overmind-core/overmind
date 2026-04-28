@@ -90,6 +90,8 @@ entrypoint works end-to-end before investing time in setup.
 
 ```bash
 overclaw setup my-agent
+# or with seed data (JSON file or directory of *.json):
+overclaw setup my-agent --data data/seed.json
 # or with an existing policy document:
 overclaw setup my-agent --policy docs/my_policy.md
 # or non-interactive:
@@ -149,14 +151,15 @@ An interactive flow that prepares everything the optimizer needs:
 
 Setup produces two artifacts in `.overclaw/agents/<name>/setup_spec/`:
 
-- `**eval_spec.json`\*\* — machine-readable evaluation spec (used at runtime)
-- `**policies.md**` — human-readable policy document you maintain
+- **eval_spec.json** — machine-readable evaluation spec (used at runtime)
+- **policies.md** — human-readable policy document you maintain
 
 Both are editable after generation.
 
 | Flag            | Description                                                                                      |
 | --------------- | ------------------------------------------------------------------------------------------------ |
 | `--fast`        | Skip all prompts. Requires `ANALYZER_MODEL` and `SYNTHETIC_DATAGEN_MODEL` in `.env`.             |
+| `--data PATH`   | JSON seed dataset file or directory of `*.json` files (optional; wizard can pick data instead).  |
 | `--policy PATH` | Provide an existing policy document. OverClaw analyzes it against agent code and suggests edits. |
 
 ### 4. Optimize (`overclaw optimize`)
@@ -299,13 +302,11 @@ overclaw agent show <name>                           Show agent status
 overclaw agent update <name> <mod:fn>                Update entrypoint
 overclaw agent remove <name>                         Remove from registry
 overclaw agent validate <name> --data <path>         Run first test case to verify entrypoint
-overclaw setup <name> [--fast] [--policy PATH]       Analyze agent, build eval spec
-overclaw optimize <name> [--fast]                    Run optimization loop
-overclaw doctor <name>                               Diagnose bundle scope (read-only)
+overclaw setup <name> [--fast] [--data PATH] [--policy PATH]  Analyze agent, build eval spec
+overclaw optimize <name> [--fast] [--scope GLOB] [--max-files N] [--max-chars N]  Run optimization loop
+overclaw doctor <name>                               Diagnose bundle scope and eval spec (read-only)
+overclaw sync [name]                                 Sync local setup artifacts to Overmind
+overclaw sync-optimize [name]                        Sync local optimize artifacts to Overmind
 ```
 
 Run `overclaw <command> --help` for full documentation on any command.
-
-## License
-
-MIT
