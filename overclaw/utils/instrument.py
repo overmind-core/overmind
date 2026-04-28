@@ -4,10 +4,6 @@ Transforms agent source code to:
   1. Add ``from overmind import init as overmind_init, observe`` and
      ``overmind_init()`` at the top of the file.
   2. Add ``@observe()`` decorator above every function definition.
-  3. Remove ``from overclaw.core.tracer import ...`` imports.
-  4. Replace ``call_llm(model, messages, ...)`` with
-     ``litellm.completion(model, messages, ...)``.
-  5. Replace ``call_tool(name, args, fn)`` with ``fn(**args)``.
 
 The transform operates on source text (not AST rewriting) so it
 preserves formatting, comments, and decorators.
@@ -22,7 +18,6 @@ import re
 def instrument_source(source: str) -> str:
     """Apply all instrumentation transforms to *source* and return the result."""
     source = _add_overmind_imports(source)
-    source = _remove_overclaw_tracer_imports(source)
     source = _replace_call_llm(source)
     source = _replace_call_tool(source)
     source = _add_observe_decorators(source)
@@ -106,20 +101,7 @@ def _add_overmind_imports(source: str) -> str:
 
 
 # ---------------------------------------------------------------------------
-# 2. Remove overclaw tracer imports
-# ---------------------------------------------------------------------------
-
-_OVERCLAW_IMPORT_RE = re.compile(
-    r"^from\s+overclaw\.core\.tracer\s+import\s+[^\n]+\n?", re.MULTILINE
-)
-
-
-def _remove_overclaw_tracer_imports(source: str) -> str:
-    return _OVERCLAW_IMPORT_RE.sub("", source)
-
-
-# ---------------------------------------------------------------------------
-# 3. Replace call_llm(...) → litellm.completion(...)
+# 2. Replace call_llm(...) → litellm.completion(...)
 # ---------------------------------------------------------------------------
 
 
@@ -147,7 +129,7 @@ def _replace_call_llm(source: str) -> str:
 
 
 # ---------------------------------------------------------------------------
-# 4. Replace call_tool(name, args, fn) → fn(**args)
+# 3. Replace call_tool(name, args, fn) → fn(**args)
 # ---------------------------------------------------------------------------
 
 _CALL_TOOL_RE = re.compile(
@@ -174,7 +156,7 @@ def _replace_call_tool(source: str) -> str:
 
 
 # ---------------------------------------------------------------------------
-# 5. Add @observe() decorator to every function
+# 4. Add @observe() decorator to every function
 # ---------------------------------------------------------------------------
 
 

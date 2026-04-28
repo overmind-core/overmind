@@ -27,5 +27,7 @@ tmp/
 run.log
 .env
 .overclaw
+.overclaw_runners/
+.DS_Store
 .coverage
 testing_agents

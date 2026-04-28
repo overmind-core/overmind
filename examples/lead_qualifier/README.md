@@ -8,7 +8,8 @@ enrichment and light web research.
 ## Register
 
 ```bash
-overclaw agent register lead-qualifier examples.lead_qualifier.agent:run
+overclaw agent register lead-qualifier agent:run
+overclaw agent validate lead-qualifier --data data/seed.json
 overclaw setup lead-qualifier
 overclaw optimize lead-qualifier
 ```
