@@ -1,2 +1,0 @@
-langchain==1.2.15
-langchain-openai==1.2.15
