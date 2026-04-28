@@ -32,6 +32,11 @@ Scores are from a representative `overclaw optimize` run (train-side summary in 
 | contract_extractor | 74.3     | 94.1        | +19.8       |
 | support_triage     | 57.9     | 64.7        | +6.8        |
 
+**Contract extractor** is different: register and run it only from inside
+[`contract_extractor/`](./contract_extractor) (see that README). The other
+examples assume `.overclaw` at the **repository root** and entrypoints like
+`examples.<folder>.agent:run`.
+
 ## What OverClaw is expected to improve on each
 
 |          | Prompt | Tool descs | Model choice  | Tool ordering | Iter cap | Schema | Policy |

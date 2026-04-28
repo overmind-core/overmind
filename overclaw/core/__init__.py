@@ -1,1 +1,1 @@
-"""Core infrastructure: constants, paths, agent registry, and tracing."""
+"""Core infrastructure: constants, paths, and agent registry."""

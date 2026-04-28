@@ -158,7 +158,15 @@ def _format_output_schema(eval_spec: dict) -> str:
 
 
 def validate_case_against_spec(case: dict, eval_spec: dict) -> list[str]:
-    """Return a list of validation error strings (empty = valid)."""
+    """Return a list of validation error strings (empty = valid).
+
+    ``input`` may be a dict (mapped to entrypoint parameters via ``input_schema``)
+    or a plain string (e.g. single-message agents); string inputs skip key-level
+    ``input_schema`` checks.
+
+    ``expected_output`` may be a dict (validated against ``output_fields`` when
+    present) or a non-empty string (e.g. prose / markdown agents).
+    """
     errors: list[str] = []
     inp = case.get("input")
     out = case.get("expected_output")
@@ -171,12 +179,10 @@ def validate_case_against_spec(case: dict, eval_spec: dict) -> list[str]:
         errors.append("Missing 'expected_output'")
         return errors
 
-    if not isinstance(inp, dict):
-        errors.append("'input' must be a dict")
+    if not isinstance(inp, (dict, str)):
+        errors.append("'input' must be a dict or a string")
         return errors
 
-    # String-typed expected_output is valid for text/markdown agents —
-    # skip field-level output validation when it's not a dict.
     if isinstance(inp, dict):
         input_schema = eval_spec.get("input_schema", {})
         for field, info in input_schema.items():

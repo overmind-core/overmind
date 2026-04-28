@@ -688,6 +688,59 @@ class TestToolScoring:
         score = SpecEvaluator._score_tool_chaining(trace, deps)
         assert score == 0.0
 
+    def test_chaining_list_result_by_index(self):
+        deps = [
+            {
+                "from_tool": "list_tool",
+                "from_field": "0",
+                "to_tool": "next_tool",
+                "to_param": "item",
+            },
+        ]
+        trace = [
+            {"name": "list_tool", "args": {}, "result": ["first", "second"]},
+            {"name": "next_tool", "args": {"item": "first"}, "result": {}},
+        ]
+        score = SpecEvaluator._score_tool_chaining(trace, deps)
+        assert score == 1.0
+
+    def test_chaining_list_of_dicts_by_field(self):
+        deps = [
+            {
+                "from_tool": "fetch",
+                "from_field": "id",
+                "to_tool": "save",
+                "to_param": "record_id",
+            },
+        ]
+        trace = [
+            {
+                "name": "fetch",
+                "args": {},
+                "result": [{"id": "abc-1", "name": "x"}, {"id": "def-2", "name": "y"}],
+            },
+            {"name": "save", "args": {"record_id": "abc-1"}, "result": {}},
+        ]
+        score = SpecEvaluator._score_tool_chaining(trace, deps)
+        assert score == 1.0
+
+    def test_chaining_list_result_no_matching_field_skips_without_crash(self):
+        """List-shaped tool output must not assume .get() (regression)."""
+        deps = [
+            {
+                "from_tool": "a",
+                "from_field": "not_in_list_items",
+                "to_tool": "b",
+                "to_param": "x",
+            },
+        ]
+        trace = [
+            {"name": "a", "args": {}, "result": [{"other": 1}]},
+            {"name": "b", "args": {"x": "y"}, "result": {}},
+        ]
+        score = SpecEvaluator._score_tool_chaining(trace, deps)
+        assert isinstance(score, float)
+
 
 # ---------------------------------------------------------------------------
 # Cross-field consistency

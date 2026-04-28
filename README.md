@@ -84,7 +84,11 @@ overclaw agent validate my-agent --data tests/sample.json
 ```
 
 Runs the first case from your test data through the agent to make sure the
-entrypoint works end-to-end before investing time in setup.
+entrypoint works end-to-end before investing time in setup. For the bundled
+examples, paths look like `examples/<folder>/data/seed.json` — see
+[`examples/README.md`](examples/README.md). **Exception:** `contract_extractor`
+must be registered and run from `examples/contract_extractor/` (see that
+folder’s README).
 
 ### 5. Set up evaluation criteria
 
@@ -274,6 +278,18 @@ After optimization, results are saved under `.overclaw/agents/<name>/`:
 | `experiments/results.tsv`   | Score history for every iteration            |
 | `experiments/traces/`       | Detailed JSON traces of every agent run      |
 | `experiments/report.md`     | Summary report with scores and diffs         |
+
+Other paths under `.overclaw/` (not all exist until you run commands):
+
+| Path                                            | Required?              | Notes                                                                                                                                                                                                    |
+| ----------------------------------------------- | ---------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `agents.toml`                                   | Yes for `overclaw` CLI | Registry of agent names and `module:fn` entrypoints.                                                                                                                                                     |
+| `.env`                                          | Optional               | API keys and model defaults from `overclaw init`.                                                                                                                                                        |
+| `agents/<name>/.env`                            | Optional               | Per-agent overrides (written by setup when you save keys).                                                                                                                                               |
+| `agents/<name>/instrumented/`                   | Regenerated            | Full **mirror of the project root** (everything under the directory that contains `.overclaw/`, minus skips like `.git`, `venv`). Put `.overclaw` next to a small project root so this tree stays small. |
+| `agents/<name>/run_state.json`                  | Written by optimize    | Regression cases and run history across sessions.                                                                                                                                                        |
+| `logs/overclaw.log`                             | Auto                   | Rotating CLI log from `setup_logging`.                                                                                                                                                                   |
+| `agents/<name>/instrumented/.overclaw_runners/` | Ephemeral              | Generated subprocess wrappers (`_run_agent.py`, etc.); removed when the runner calls `cleanup()`; safe to delete manually.                                                                               |
 
 ### Bundle scope and caps
 
