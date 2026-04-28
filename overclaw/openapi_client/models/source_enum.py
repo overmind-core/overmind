@@ -18,20 +18,22 @@ from enum import Enum
 from typing_extensions import Self
 
 
-class SpanTypeEnum(str, Enum):
+class SourceEnum(str, Enum):
     """
-    * `llm_call` - Llm Call * `tool_call` - Tool Call
+    * `seed` - Seed * `synthetic` - Synthetic * `augmented` - Augmented * `production` - Production
     """
 
     """
     allowed enum values
     """
-    LLM_CALL = 'llm_call'
-    TOOL_CALL = 'tool_call'
+    SEED = 'seed'
+    SYNTHETIC = 'synthetic'
+    AUGMENTED = 'augmented'
+    PRODUCTION = 'production'
 
     @classmethod
     def from_json(cls, json_str: str) -> Self:
-        """Create an instance of SpanTypeEnum from a JSON string"""
+        """Create an instance of SourceEnum from a JSON string"""
         return cls(json.loads(json_str))
 
 

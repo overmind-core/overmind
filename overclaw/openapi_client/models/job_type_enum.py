@@ -18,20 +18,23 @@ from enum import Enum
 from typing_extensions import Self
 
 
-class SpanTypeEnum(str, Enum):
+class JobTypeEnum(str, Enum):
     """
-    * `llm_call` - Llm Call * `tool_call` - Tool Call
+    * `inference` - Inference * `uploaded_outputs_setup` - Uploaded Outputs Setup * `judge_scoring` - Judge Scoring * `prompt_tuning` - Prompt Tuning * `model_backtesting` - Model Backtesting
     """
 
     """
     allowed enum values
     """
-    LLM_CALL = 'llm_call'
-    TOOL_CALL = 'tool_call'
+    INFERENCE = 'inference'
+    UPLOADED_OUTPUTS_SETUP = 'uploaded_outputs_setup'
+    JUDGE_SCORING = 'judge_scoring'
+    PROMPT_TUNING = 'prompt_tuning'
+    MODEL_BACKTESTING = 'model_backtesting'
 
     @classmethod
     def from_json(cls, json_str: str) -> Self:
-        """Create an instance of SpanTypeEnum from a JSON string"""
+        """Create an instance of JobTypeEnum from a JSON string"""
         return cls(json.loads(json_str))
 
 
