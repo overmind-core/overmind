@@ -745,12 +745,43 @@ class SpecEvaluator:
         return valid / max(checks, 1)
 
     @staticmethod
+    def _resolve_chain_expected_value(
+        result: object, source_field: str
+    ) -> tuple[object | None, bool]:
+        """Resolve *source_field* on a tool *result* for dependency chaining.
+
+        Instrumentation stores arbitrary JSON as ``result`` (often a dict, but
+        tools may return a list or scalar). Returns ``(value, skip)``:
+        ``skip`` is True when this dependency cannot be evaluated for the
+        result shape (caller should not count it in the denominator).
+        """
+        if isinstance(result, dict):
+            return result.get(source_field), False
+
+        if isinstance(result, list):
+            if not source_field:
+                return None, True
+            try:
+                idx = int(source_field)
+            except (TypeError, ValueError):
+                idx = None
+            if idx is not None and 0 <= idx < len(result):
+                return result[idx], False
+            for item in result:
+                if isinstance(item, dict) and source_field in item:
+                    return item[source_field], False
+            return None, True
+
+        # Scalars / unexpected shapes — no keyed lookup
+        return None, True
+
+    @staticmethod
     def _score_tool_chaining(tool_trace: list[dict], dependencies: list[dict]) -> float:
         """Check if tool outputs were correctly propagated to dependent tools."""
         checks = 0
         correct = 0
 
-        tool_results: dict[str, dict] = {}
+        tool_results: dict[str, object] = {}
         for call in tool_trace:
             name = call.get("name", "")
             tool_results[name] = call.get("result", {})
@@ -770,8 +801,14 @@ class SpecEvaluator:
             if not target_call:
                 continue
 
+            raw_result = tool_results[source_tool]
+            expected_val, skip_dep = SpecEvaluator._resolve_chain_expected_value(
+                raw_result, source_field
+            )
+            if skip_dep:
+                continue
+
             checks += 1
-            expected_val = tool_results[source_tool].get(source_field)
             actual_val = target_call.get("args", {}).get(target_param)
 
             if (

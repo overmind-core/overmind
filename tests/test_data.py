@@ -101,11 +101,23 @@ class TestValidateCaseAgainstSpec:
         errors = validate_case_against_spec({"expected_output": {}}, SAMPLE_SPEC)
         assert any("input" in e.lower() for e in errors)
 
-    def test_non_dict_input(self):
+    def test_string_input_skips_input_schema(self):
+        case = {
+            "input": "Qualify this lead: Acme Corp, budget 50k",
+            "expected_output": {
+                "qualification": "hot",
+                "score": 85,
+                "reasoning": "Good match",
+            },
+        }
+        errors = validate_case_against_spec(case, SAMPLE_SPEC)
+        assert errors == []
+
+    def test_invalid_input_type_rejected(self):
         errors = validate_case_against_spec(
-            {"input": "string", "expected_output": {}}, SAMPLE_SPEC
+            {"input": ["not", "a", "dict"], "expected_output": {}}, SAMPLE_SPEC
         )
-        assert any("input" in e.lower() for e in errors)
+        assert any("dict or a string" in e for e in errors)
 
     def test_missing_expected_output(self):
         errors = validate_case_against_spec({"input": {}}, SAMPLE_SPEC)
