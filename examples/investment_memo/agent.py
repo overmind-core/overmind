@@ -81,7 +81,6 @@ def run(input_data: dict[str, Any]) -> dict[str, Any]:
             model=_MODEL,
             messages=messages,
             tools=TOOL_SCHEMAS,
-            temperature=0.3,
         )
         msg = resp.choices[0].message
         messages.append(msg.model_dump(exclude_none=True))
