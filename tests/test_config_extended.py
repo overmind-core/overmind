@@ -1,4 +1,4 @@
-"""Extended tests for overclaw.optimize.config — interactive config collection."""
+"""Extended tests for overmind.optimize.config — interactive config collection."""
 
 from __future__ import annotations
 
@@ -6,9 +6,9 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from overclaw.core.constants import OVERCLAW_DIR_NAME
-from overclaw.core.paths import agent_setup_spec_dir
-from overclaw.optimize.config import (
+from overmind.core.constants import OVERMIND_DIR_NAME
+from overmind.core.paths import agent_setup_spec_dir
+from overmind.optimize.config import (
     _analyzer_default_from_env,
     _collect_config_fast,
     _select_backtest_models,
@@ -32,28 +32,28 @@ class TestAnalyzerDefaultFromEnv:
 
 
 class TestDatasetPathResolution:
-    def test_returns_dataset_json(self, overclaw_tmp_project):
+    def test_returns_dataset_json(self, overmind_tmp_project):
         result = str(agent_setup_spec_dir("a1") / "dataset.json")
         assert result.endswith("dataset.json")
-        assert OVERCLAW_DIR_NAME in result
+        assert OVERMIND_DIR_NAME in result
 
 
 class TestSelectBacktestModels:
-    @patch("overclaw.optimize.config.Prompt")
+    @patch("overmind.optimize.config.Prompt")
     def test_select_none(self, mock_prompt):
         mock_prompt.ask.return_value = "none"
         console = MagicMock()
         result = _select_backtest_models(console)
         assert result == []
 
-    @patch("overclaw.optimize.config.Prompt")
+    @patch("overmind.optimize.config.Prompt")
     def test_select_all(self, mock_prompt):
         mock_prompt.ask.return_value = "all"
         console = MagicMock()
         result = _select_backtest_models(console)
         assert len(result) > 0
 
-    @patch("overclaw.optimize.config.Prompt")
+    @patch("overmind.optimize.config.Prompt")
     def test_select_specific(self, mock_prompt):
         mock_prompt.ask.return_value = "1"
         console = MagicMock()
@@ -70,7 +70,7 @@ class TestCollectConfigFast:
     def test_success(self, tmp_project, monkeypatch):
         monkeypatch.setenv("ANALYZER_MODEL", "gpt-5.4")
         spec_dir = (
-            tmp_project / OVERCLAW_DIR_NAME / "agents" / "my-agent" / "setup_spec"
+            tmp_project / OVERMIND_DIR_NAME / "agents" / "my-agent" / "setup_spec"
         )
         spec_dir.mkdir(parents=True, exist_ok=True)
         (spec_dir / "eval_spec.json").write_text(
@@ -84,7 +84,7 @@ class TestCollectConfigFast:
     def test_missing_dataset_exits(self, tmp_project, monkeypatch):
         monkeypatch.setenv("ANALYZER_MODEL", "gpt-5.4")
         spec_dir = (
-            tmp_project / OVERCLAW_DIR_NAME / "agents" / "my-agent" / "setup_spec"
+            tmp_project / OVERMIND_DIR_NAME / "agents" / "my-agent" / "setup_spec"
         )
         spec_dir.mkdir(parents=True, exist_ok=True)
         (spec_dir / "eval_spec.json").write_text(

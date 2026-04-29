@@ -1,4 +1,4 @@
-"""Tests for overclaw.setup.questionnaire — criteria refinement."""
+"""Tests for overmind.setup.questionnaire — criteria refinement."""
 
 from __future__ import annotations
 
@@ -6,13 +6,13 @@ import json
 from unittest.mock import MagicMock, patch
 
 
-from overclaw.setup.questionnaire import _display_refined, run_questionnaire
+from overmind.setup.questionnaire import _display_refined, run_questionnaire
 
 
 class TestRunQuestionnaire:
-    @patch("overclaw.setup.questionnaire.Prompt")
-    @patch("overclaw.setup.questionnaire.overmind_prompt")
-    @patch("overclaw.utils.llm.litellm")
+    @patch("overmind.setup.questionnaire.Prompt")
+    @patch("overmind.setup.questionnaire.overmind_prompt")
+    @patch("overmind.utils.llm.litellm")
     def test_success(self, mock_litellm, mock_prompt, mock_rich_prompt):
         mock_prompt.side_effect = ["change importance", "accuracy", "wrong enum"]
         mock_rich_prompt.ask.return_value = ""
@@ -36,9 +36,9 @@ class TestRunQuestionnaire:
             result["proposed_criteria"]["fields"]["status"]["importance"] == "critical"
         )
 
-    @patch("overclaw.setup.questionnaire.Prompt")
-    @patch("overclaw.setup.questionnaire.overmind_prompt")
-    @patch("overclaw.utils.llm.litellm")
+    @patch("overmind.setup.questionnaire.Prompt")
+    @patch("overmind.setup.questionnaire.overmind_prompt")
+    @patch("overmind.utils.llm.litellm")
     def test_parse_failure_keeps_original(
         self, mock_litellm, mock_prompt, mock_rich_prompt
     ):

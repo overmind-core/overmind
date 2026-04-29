@@ -1,7 +1,7 @@
 """Contract clause extractor.
 
-Intentionally single-file to demonstrate that OverClaw helps even for
-tool-less, long-context prompt agents. OverClaw has to earn its score
+Intentionally single-file to demonstrate that Overmind helps even for
+tool-less, long-context prompt agents. Overmind has to earn its score
 entirely from system-prompt / output-schema rewrites here.
 
 Deliberate sub-optimalities:

@@ -1,6 +1,6 @@
 """Tools for the lead qualifier agent.
 
-The docstrings / schemas here are deliberately minimal — OverClaw should be
+The docstrings / schemas here are deliberately minimal — Overmind should be
 able to rewrite them into something clearer and more actionable.
 """
 

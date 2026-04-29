@@ -1,4 +1,4 @@
-"""Tests for overclaw.optimize.config — interactive collect_config flow."""
+"""Tests for overmind.optimize.config — interactive collect_config flow."""
 
 from __future__ import annotations
 
@@ -6,15 +6,15 @@ from unittest.mock import patch
 
 import pytest
 
-from overclaw.core.constants import OVERCLAW_DIR_NAME
+from overmind.core.constants import OVERMIND_DIR_NAME
 
 
 class TestCollectConfigInteractive:
-    @patch("overclaw.optimize.config.confirm_option")
-    @patch("overclaw.optimize.config.IntPrompt")
-    @patch("overclaw.optimize.config.prompt_for_catalog_litellm_model")
-    @patch("overclaw.optimize.config.resolve_agent")
-    @patch("overclaw.optimize.config.load_overclaw_dotenv")
+    @patch("overmind.optimize.config.confirm_option")
+    @patch("overmind.optimize.config.IntPrompt")
+    @patch("overmind.optimize.config.prompt_for_catalog_litellm_model")
+    @patch("overmind.optimize.config.resolve_agent")
+    @patch("overmind.optimize.config.load_overmind_dotenv")
     def test_basic_flow(
         self,
         mock_load_env,
@@ -22,16 +22,16 @@ class TestCollectConfigInteractive:
         mock_picker,
         mock_int,
         mock_confirm,
-        overclaw_tmp_project,
+        overmind_tmp_project,
         monkeypatch,
     ):
-        agent_dir = overclaw_tmp_project / "agents" / "test"
+        agent_dir = overmind_tmp_project / "agents" / "test"
         agent_dir.mkdir(parents=True)
         agent_file = agent_dir / "sample.py"
         agent_file.write_text("def run(x): return {}\n")
 
         spec_dir = (
-            overclaw_tmp_project / OVERCLAW_DIR_NAME / "agents" / "test" / "setup_spec"
+            overmind_tmp_project / OVERMIND_DIR_NAME / "agents" / "test" / "setup_spec"
         )
         spec_dir.mkdir(parents=True)
         (spec_dir / "eval_spec.json").write_text(
@@ -51,18 +51,18 @@ class TestCollectConfigInteractive:
         ]
         monkeypatch.setenv("ANALYZER_MODEL", "gpt-5.4")
 
-        from overclaw.optimize.config import collect_config
+        from overmind.optimize.config import collect_config
 
         cfg = collect_config(agent_name="test", fast=False)
         assert cfg.agent_name == "test"
         assert cfg.iterations == 5
 
-    @patch("overclaw.optimize.config.confirm_option")
-    @patch("overclaw.optimize.config.IntPrompt")
-    @patch("overclaw.optimize.config.Prompt")
-    @patch("overclaw.optimize.config.prompt_for_catalog_litellm_model")
-    @patch("overclaw.optimize.config.resolve_agent")
-    @patch("overclaw.optimize.config.load_overclaw_dotenv")
+    @patch("overmind.optimize.config.confirm_option")
+    @patch("overmind.optimize.config.IntPrompt")
+    @patch("overmind.optimize.config.Prompt")
+    @patch("overmind.optimize.config.prompt_for_catalog_litellm_model")
+    @patch("overmind.optimize.config.resolve_agent")
+    @patch("overmind.optimize.config.load_overmind_dotenv")
     def test_with_advanced_settings(
         self,
         mock_load_env,
@@ -71,16 +71,16 @@ class TestCollectConfigInteractive:
         mock_prompt,
         mock_int,
         mock_confirm,
-        overclaw_tmp_project,
+        overmind_tmp_project,
         monkeypatch,
     ):
-        agent_dir = overclaw_tmp_project / "agents" / "test"
+        agent_dir = overmind_tmp_project / "agents" / "test"
         agent_dir.mkdir(parents=True)
         agent_file = agent_dir / "sample.py"
         agent_file.write_text("def run(x): return {}\n")
 
         spec_dir = (
-            overclaw_tmp_project / OVERCLAW_DIR_NAME / "agents" / "test" / "setup_spec"
+            overmind_tmp_project / OVERMIND_DIR_NAME / "agents" / "test" / "setup_spec"
         )
         spec_dir.mkdir(parents=True)
         (spec_dir / "eval_spec.json").write_text(
@@ -105,17 +105,17 @@ class TestCollectConfigInteractive:
         ]
         monkeypatch.setenv("ANALYZER_MODEL", "gpt-5.4")
 
-        from overclaw.optimize.config import collect_config
+        from overmind.optimize.config import collect_config
 
         cfg = collect_config(agent_name="test", fast=False)
         assert cfg.regression_threshold == 0.3
         assert cfg.holdout_ratio == 0.2
 
-    @patch("overclaw.optimize.config.confirm_option")
-    @patch("overclaw.optimize.config.IntPrompt")
-    @patch("overclaw.optimize.config.prompt_for_catalog_litellm_model")
-    @patch("overclaw.optimize.config.resolve_agent")
-    @patch("overclaw.optimize.config.load_overclaw_dotenv")
+    @patch("overmind.optimize.config.confirm_option")
+    @patch("overmind.optimize.config.IntPrompt")
+    @patch("overmind.optimize.config.prompt_for_catalog_litellm_model")
+    @patch("overmind.optimize.config.resolve_agent")
+    @patch("overmind.optimize.config.load_overmind_dotenv")
     def test_no_spec_exits(
         self,
         mock_load_env,
@@ -123,22 +123,22 @@ class TestCollectConfigInteractive:
         mock_picker,
         mock_int,
         mock_confirm,
-        overclaw_tmp_project,
+        overmind_tmp_project,
     ):
-        agent_file = overclaw_tmp_project / "agent.py"
+        agent_file = overmind_tmp_project / "agent.py"
         agent_file.write_text("def run(x): return {}\n")
         mock_resolve.return_value = (str(agent_file), "run")
 
-        from overclaw.optimize.config import collect_config
+        from overmind.optimize.config import collect_config
 
         with pytest.raises(SystemExit):
             collect_config(agent_name="test", fast=False)
 
-    @patch("overclaw.optimize.config.confirm_option")
-    @patch("overclaw.optimize.config.IntPrompt")
-    @patch("overclaw.optimize.config.prompt_for_catalog_litellm_model")
-    @patch("overclaw.optimize.config.resolve_agent")
-    @patch("overclaw.optimize.config.load_overclaw_dotenv")
+    @patch("overmind.optimize.config.confirm_option")
+    @patch("overmind.optimize.config.IntPrompt")
+    @patch("overmind.optimize.config.prompt_for_catalog_litellm_model")
+    @patch("overmind.optimize.config.resolve_agent")
+    @patch("overmind.optimize.config.load_overmind_dotenv")
     def test_user_aborts(
         self,
         mock_load_env,
@@ -146,16 +146,16 @@ class TestCollectConfigInteractive:
         mock_picker,
         mock_int,
         mock_confirm,
-        overclaw_tmp_project,
+        overmind_tmp_project,
         monkeypatch,
     ):
-        agent_dir = overclaw_tmp_project / "agents" / "test"
+        agent_dir = overmind_tmp_project / "agents" / "test"
         agent_dir.mkdir(parents=True)
         agent_file = agent_dir / "sample.py"
         agent_file.write_text("def run(x): return {}\n")
 
         spec_dir = (
-            overclaw_tmp_project / OVERCLAW_DIR_NAME / "agents" / "test" / "setup_spec"
+            overmind_tmp_project / OVERMIND_DIR_NAME / "agents" / "test" / "setup_spec"
         )
         spec_dir.mkdir(parents=True)
         (spec_dir / "eval_spec.json").write_text(
@@ -175,7 +175,7 @@ class TestCollectConfigInteractive:
         ]
         monkeypatch.setenv("ANALYZER_MODEL", "gpt-5.4")
 
-        from overclaw.optimize.config import collect_config
+        from overmind.optimize.config import collect_config
 
         with pytest.raises(SystemExit):
             collect_config(agent_name="test", fast=False)

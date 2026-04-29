@@ -1,17 +1,17 @@
-"""Tests for overclaw.commands.optimize_cmd — optimize command entry point."""
+"""Tests for overmind.commands.optimize_cmd — optimize command entry point."""
 
 from __future__ import annotations
 
 from unittest.mock import MagicMock, patch
 
 
-from overclaw.commands.optimize_cmd import main
+from overmind.commands.optimize_cmd import main
 
 
 class TestOptimizeMain:
-    @patch("overclaw.commands.optimize_cmd.Optimizer")
-    @patch("overclaw.commands.optimize_cmd.collect_config")
-    @patch("overclaw.commands.optimize_cmd.load_agent_dotenv")
+    @patch("overmind.commands.optimize_cmd.Optimizer")
+    @patch("overmind.commands.optimize_cmd.collect_config")
+    @patch("overmind.commands.optimize_cmd.load_agent_dotenv")
     def test_calls_optimizer(self, mock_load_dotenv, mock_config, mock_optimizer):
         mock_cfg = MagicMock()
         mock_config.return_value = mock_cfg

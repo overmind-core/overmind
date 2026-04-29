@@ -17,8 +17,8 @@ drafts a first reply. Uses an internal KB, a customer lookup, and public docs.
 ## Register
 
 ```bash
-overclaw agent register support-triage agent:run
-overclaw agent validate support-triage --data data/seed.json
-overclaw setup support-triage
-overclaw optimize support-triage
+overmind agent register support-triage agent:run
+overmind agent validate support-triage --data data/seed.json
+overmind setup support-triage
+overmind optimize support-triage
 ```

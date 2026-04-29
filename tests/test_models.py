@@ -1,8 +1,8 @@
-"""Tests for overclaw.utils.models — model catalog and helpers."""
+"""Tests for overmind.utils.models — model catalog and helpers."""
 
 from __future__ import annotations
 
-from overclaw.utils.models import (
+from overmind.utils.models import (
     SUPPORTED_LLM_MODELS,
     get_default_models_for_provider,
     get_litellm_model_ids,

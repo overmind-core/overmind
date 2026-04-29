@@ -1,18 +1,18 @@
-# OverClaw
+# Overmind
 
 Automatically optimize your AI agent's prompts, tool definitions, model selection, and pipeline logic through structured experimentation.
 
-**Documentation:** [OverClaw guide](https://docs.overmindlab.ai/guides/overclaw_doc/)
+**Documentation:** [Overmind guide](https://docs.overmindlab.ai/guides/overmind_doc/)
 
 ## What it does
 
-OverClaw runs your agent against a test dataset, traces every LLM call and
+Overmind runs your agent against a test dataset, traces every LLM call and
 tool invocation, scores the outputs, and uses a strong reasoning model to
 generate concrete improvements. Changes that raise the score are kept; the rest
 are reverted. After several rounds you get a measurably better agent — without
 manual prompt tweaking.
 
-What makes OverClaw different is **policy-driven optimization**. You define the
+What makes Overmind different is **policy-driven optimization**. You define the
 decision rules, constraints, and expectations your agent must follow, and those
 policies guide every stage: evaluation criteria, test data synthesis,
 optimization diagnosis, and scoring.
@@ -36,34 +36,34 @@ for at least one LLM provider (OpenAI, Anthropic).
 ### 1. Install
 
 ```bash
-uv tool install overclaw
+uv tool install overmind
 
 # or dev install
-git clone https://github.com/overmind-core/overclaw
-cd overclaw
+git clone https://github.com/overmind-core/overmind
+cd overmind
 uv tool install -e .
 ```
 
-> Using `uv run` instead? All commands work as `uv run overclaw <command>`
+> Using `uv run` instead? All commands work as `uv run overmind <command>`
 > after `uv sync`.
 
 ### 2. Initialize the project
 
 ```bash
 cd your-agent-project/
-overclaw init
+overmind init
 ```
 
-This creates `.overclaw/` in your project root and prompts for API keys and
+This creates `.overmind/` in your project root and prompts for API keys and
 default models. Safe to re-run anytime.
 
 ### 3. Register your agent
 
 ```bash
-overclaw agent register my-agent agents.my_agent:run
+overmind agent register my-agent agents.my_agent:run
 ```
 
-Point OverClaw at the Python function it should call. The function receives an
+Point Overmind at the Python function it should call. The function receives an
 input dict and must return a dict:
 
 ```python
@@ -73,14 +73,14 @@ def run(input_data: dict) -> dict:
 ```
 
 **Framework-based agents** (Google ADK, LangChain, CrewAI, etc.) often don't
-expose a simple callable. OverClaw detects this and offers to auto-generate an
+expose a simple callable. Overmind detects this and offers to auto-generate an
 entrypoint wrapper — no manual boilerplate needed. During registration it will
 also collect any API keys your agent needs.
 
 ### 4. Validate the entrypoint (optional)
 
 ```bash
-overclaw agent validate my-agent --data tests/sample.json
+overmind agent validate my-agent --data tests/sample.json
 ```
 
 Runs the first case from your test data through the agent to make sure the
@@ -93,13 +93,13 @@ folder’s README).
 ### 5. Set up evaluation criteria
 
 ```bash
-overclaw setup my-agent
+overmind setup my-agent
 # or with seed data (JSON file or directory of *.json):
-overclaw setup my-agent --data data/seed.json
+overmind setup my-agent --data data/seed.json
 # or with an existing policy document:
-overclaw setup my-agent --policy docs/my_policy.md
+overmind setup my-agent --policy docs/my_policy.md
 # or non-interactive:
-overclaw setup my-agent --fast
+overmind setup my-agent --fast
 ```
 
 An interactive flow that analyzes your code, defines policies, builds (or
@@ -108,7 +108,7 @@ imports) a test dataset, and generates scoring criteria.
 ### 6. Optimize
 
 ```bash
-overclaw optimize my-agent
+overmind optimize my-agent
 ```
 
 Iteratively runs your agent, scores outputs, diagnoses failures, and generates
@@ -116,17 +116,17 @@ code improvements. Changes that raise the score are kept; the rest are reverted.
 
 ## How it works
 
-### 1. Initialize (`overclaw init`)
+### 1. Initialize (`overmind init`)
 
-Configure API keys and default models. Writes `.overclaw/.env` in the current
+Configure API keys and default models. Writes `.overmind/.env` in the current
 directory. Safe to re-run.
 
-### 2. Register your agent (`overclaw agent register`)
+### 2. Register your agent (`overmind agent register`)
 
-Point OverClaw at the Python function it should call for each test case:
+Point Overmind at the Python function it should call for each test case:
 
 ```bash
-overclaw agent register <name> <module:function>
+overmind agent register <name> <module:function>
 ```
 
 The module path is resolved relative to the project root. Your function
@@ -136,13 +136,13 @@ Other registry commands:
 
 | Command                                        | Description                                        |
 | ---------------------------------------------- | -------------------------------------------------- |
-| `overclaw agent list`                          | List all registered agents                         |
-| `overclaw agent show <name>`                   | Show registration details and pipeline status      |
-| `overclaw agent update <name> <mod:fn>`        | Update the entrypoint (e.g. after renaming a file) |
-| `overclaw agent remove <name>`                 | Remove from registry and instrumented copy         |
-| `overclaw agent validate <name> --data <path>` | Run the first test case to verify the entrypoint   |
+| `overmind agent list`                          | List all registered agents                         |
+| `overmind agent show <name>`                   | Show registration details and pipeline status      |
+| `overmind agent update <name> <mod:fn>`        | Update the entrypoint (e.g. after renaming a file) |
+| `overmind agent remove <name>`                 | Remove from registry and instrumented copy         |
+| `overmind agent validate <name> --data <path>` | Run the first test case to verify the entrypoint   |
 
-### 3. Setup (`overclaw setup`)
+### 3. Setup (`overmind setup`)
 
 An interactive flow that prepares everything the optimizer needs:
 
@@ -150,10 +150,10 @@ An interactive flow that prepares everything the optimizer needs:
 | ----------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | **Agent analysis**      | An LLM reads your agent code to detect the input/output schema, tools, and decision logic.                                                                                                                                                   |
 | **Policy generation**   | If you pass `--policy`, your document is analyzed against the code and improvements are suggested. Otherwise, a policy is inferred from the code automatically. You can refine either version in a conversational loop until you approve it. |
-| **Dataset**             | OverClaw either uses your existing test data or generates diverse synthetic cases based on the policy and agent description.                                                                                                                 |
+| **Dataset**             | Overmind either uses your existing test data or generates diverse synthetic cases based on the policy and agent description.                                                                                                                 |
 | **Evaluation criteria** | Scoring rules are proposed for each output field. Policy constraints inform stricter scoring where relevant. You can accept, refine, or edit manually.                                                                                       |
 
-Setup produces two artifacts in `.overclaw/agents/<name>/setup_spec/`:
+Setup produces two artifacts in `.overmind/agents/<name>/setup_spec/`:
 
 - **eval_spec.json** — machine-readable evaluation spec (used at runtime)
 - **policies.md** — human-readable policy document you maintain
@@ -164,9 +164,9 @@ Both are editable after generation.
 | --------------- | ------------------------------------------------------------------------------------------------ |
 | `--fast`        | Skip all prompts. Requires `ANALYZER_MODEL` and `SYNTHETIC_DATAGEN_MODEL` in `.env`.             |
 | `--data PATH`   | JSON seed dataset file or directory of `*.json` files (optional; wizard can pick data instead).  |
-| `--policy PATH` | Provide an existing policy document. OverClaw analyzes it against agent code and suggests edits. |
+| `--policy PATH` | Provide an existing policy document. Overmind analyzes it against agent code and suggests edits. |
 
-### 4. Optimize (`overclaw optimize`)
+### 4. Optimize (`overmind optimize`)
 
 The iterative optimization loop. You configure a few settings interactively
 (or use `--fast` for defaults):
@@ -199,7 +199,7 @@ patience, and diagnosis visibility controls.
 
 ### Multi-file agents
 
-By default OverClaw optimizes the single registered entry file. For agents
+By default Overmind optimizes the single registered entry file. For agents
 split across multiple modules, it automatically resolves local imports,
 extracts individual functions and classes, and applies targeted edits back to
 the original files — so your project structure stays intact.
@@ -260,13 +260,13 @@ Data files are JSON arrays where each element has an `input` and
 ]
 ```
 
-Place data files in your agent directory under `data/` and OverClaw will
-detect them during setup. If you don't have data, OverClaw generates realistic
+Place data files in your agent directory under `data/` and Overmind will
+detect them during setup. If you don't have data, Overmind generates realistic
 synthetic test cases using the policy and agent description.
 
 ## Output
 
-After optimization, results are saved under `.overclaw/agents/<name>/`:
+After optimization, results are saved under `.overmind/agents/<name>/`:
 
 | Path                        | Description                                  |
 | --------------------------- | -------------------------------------------- |
@@ -279,50 +279,50 @@ After optimization, results are saved under `.overclaw/agents/<name>/`:
 | `experiments/traces/`       | Detailed JSON traces of every agent run      |
 | `experiments/report.md`     | Summary report with scores and diffs         |
 
-Other paths under `.overclaw/` (not all exist until you run commands):
+Other paths under `.overmind/` (not all exist until you run commands):
 
 | Path                                            | Required?              | Notes                                                                                                                                                                                                    |
 | ----------------------------------------------- | ---------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `agents.toml`                                   | Yes for `overclaw` CLI | Registry of agent names and `module:fn` entrypoints.                                                                                                                                                     |
-| `.env`                                          | Optional               | API keys and model defaults from `overclaw init`.                                                                                                                                                        |
+| `agents.toml`                                   | Yes for `overmind` CLI | Registry of agent names and `module:fn` entrypoints.                                                                                                                                                     |
+| `.env`                                          | Optional               | API keys and model defaults from `overmind init`.                                                                                                                                                        |
 | `agents/<name>/.env`                            | Optional               | Per-agent overrides (written by setup when you save keys).                                                                                                                                               |
-| `agents/<name>/instrumented/`                   | Regenerated            | Full **mirror of the project root** (everything under the directory that contains `.overclaw/`, minus skips like `.git`, `venv`). Put `.overclaw` next to a small project root so this tree stays small. |
+| `agents/<name>/instrumented/`                   | Regenerated            | Full **mirror of the project root** (everything under the directory that contains `.overmind/`, minus skips like `.git`, `venv`). Put `.overmind` next to a small project root so this tree stays small. |
 | `agents/<name>/run_state.json`                  | Written by optimize    | Regression cases and run history across sessions.                                                                                                                                                        |
-| `logs/overclaw.log`                             | Auto                   | Rotating CLI log from `setup_logging`.                                                                                                                                                                   |
-| `agents/<name>/instrumented/.overclaw_runners/` | Ephemeral              | Generated subprocess wrappers (`_run_agent.py`, etc.); removed when the runner calls `cleanup()`; safe to delete manually.                                                                               |
+| `logs/overmind.log`                             | Auto                   | Rotating CLI log from `setup_logging`.                                                                                                                                                                   |
+| `agents/<name>/instrumented/.overmind_runners/` | Ephemeral              | Generated subprocess wrappers (`_run_agent.py`, etc.); removed when the runner calls `cleanup()`; safe to delete manually.                                                                               |
 
 ### Bundle scope and caps
 
-For large repositories, the optimizer resolves a **bounded** import closure (defaults: 24 files, 60k characters) and skips common paths (`tests/`, `docs/`, `.overclaw/`, etc.) using built-in rules plus optional `.overclawignore` / `.gitignore`.
+For large repositories, the optimizer resolves a **bounded** import closure (defaults: 24 files, 60k characters) and skips common paths (`tests/`, `docs/`, `.overmind/`, etc.) using built-in rules plus optional `.overmindignore` / `.gitignore`.
 
-After `overclaw setup`, `eval_spec.json` may include a `scope` block (`optimizable_paths`, `context_paths`, `exclude_paths` as globs relative to the project root). Inspect what will load without running an LLM:
+After `overmind setup`, `eval_spec.json` may include a `scope` block (`optimizable_paths`, `context_paths`, `exclude_paths` as globs relative to the project root). Inspect what will load without running an LLM:
 
 ```bash
-overclaw doctor my-agent
+overmind doctor my-agent
 ```
 
 One-off overrides:
 
 ```bash
-overclaw optimize my-agent --scope "myagent/prompts/**/*.py" --max-files 32 --max-chars 80000
-overclaw setup my-agent --scope "agents/core/*.py"   # hints for the analyzer
+overmind optimize my-agent --scope "myagent/prompts/**/*.py" --max-files 32 --max-chars 80000
+overmind setup my-agent --scope "agents/core/*.py"   # hints for the analyzer
 ```
 
 ## CLI reference
 
 ```
-overclaw init                                        Configure API keys and models
-overclaw agent register <name> <mod:fn>              Register an agent
-overclaw agent list                                  List registered agents
-overclaw agent show <name>                           Show agent status
-overclaw agent update <name> <mod:fn>                Update entrypoint
-overclaw agent remove <name>                         Remove from registry
-overclaw agent validate <name> --data <path>         Run first test case to verify entrypoint
-overclaw setup <name> [--fast] [--data PATH] [--policy PATH]  Analyze agent, build eval spec
-overclaw optimize <name> [--fast] [--scope GLOB] [--max-files N] [--max-chars N]  Run optimization loop
-overclaw doctor <name>                               Diagnose bundle scope and eval spec (read-only)
-overclaw sync [name]                                 Sync local setup artifacts to Overmind
-overclaw sync-optimize [name]                        Sync local optimize artifacts to Overmind
+overmind init                                        Configure API keys and models
+overmind agent register <name> <mod:fn>              Register an agent
+overmind agent list                                  List registered agents
+overmind agent show <name>                           Show agent status
+overmind agent update <name> <mod:fn>                Update entrypoint
+overmind agent remove <name>                         Remove from registry
+overmind agent validate <name> --data <path>         Run first test case to verify entrypoint
+overmind setup <name> [--fast] [--data PATH] [--policy PATH]  Analyze agent, build eval spec
+overmind optimize <name> [--fast] [--scope GLOB] [--max-files N] [--max-chars N]  Run optimization loop
+overmind doctor <name>                               Diagnose bundle scope and eval spec (read-only)
+overmind sync [name]                                 Sync local setup artifacts to Overmind
+overmind sync-optimize [name]                        Sync local optimize artifacts to Overmind
 ```
 
-Run `overclaw <command> --help` for full documentation on any command.
+Run `overmind <command> --help` for full documentation on any command.

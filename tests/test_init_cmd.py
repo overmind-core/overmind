@@ -1,10 +1,10 @@
-"""Tests for overclaw.commands.init_cmd — environment setup wizard helpers."""
+"""Tests for overmind.commands.init_cmd — environment setup wizard helpers."""
 
 from __future__ import annotations
 
 from unittest.mock import MagicMock, patch
 
-from overclaw.commands.init_cmd import (
+from overmind.commands.init_cmd import (
     _collect_missing_key_for_model,
     _key_configured,
     _model_provider,
@@ -88,7 +88,7 @@ class TestPrimaryEnvFromOs:
 
 
 class TestCollectMissingKeyForModel:
-    @patch("overclaw.commands.init_cmd.read_api_key_masked", return_value="")
+    @patch("overmind.commands.init_cmd.read_api_key_masked", return_value="")
     def test_prompts_when_key_missing(self, _mock_read, monkeypatch):
         monkeypatch.delenv("OPENAI_API_KEY", raising=False)
         console = MagicMock()
@@ -155,4 +155,4 @@ class TestWriteEnv:
             },
         )
         content = env_path.read_text()
-        assert "overclaw init" in content.lower() or "OverClaw" in content
+        assert "overmind init" in content.lower() or "Overmind" in content

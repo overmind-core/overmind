@@ -1,9 +1,9 @@
-"""Tests for overclaw.utils.policy — policy loading and formatting."""
+"""Tests for overmind.utils.policy — policy loading and formatting."""
 
 from __future__ import annotations
 
-from overclaw.core.constants import OVERCLAW_DIR_NAME
-from overclaw.utils.policy import (
+from overmind.core.constants import OVERMIND_DIR_NAME
+from overmind.utils.policy import (
     _get_constraints,
     _get_edge_cases,
     _get_quality_expectations,
@@ -243,10 +243,10 @@ class TestFormatForJudge:
 
 
 class TestDefaultPolicyPath:
-    def test_returns_setup_spec_path(self, overclaw_tmp_project):
+    def test_returns_setup_spec_path(self, overmind_tmp_project):
         result = default_policy_path("agent1")
         assert "setup_spec" in result
-        assert OVERCLAW_DIR_NAME in result
+        assert OVERMIND_DIR_NAME in result
         assert "agent1" in result
         assert result.endswith("policies.md")
 
@@ -264,9 +264,9 @@ class TestLoadPolicyData:
 
 
 class TestLoadPolicyMarkdown:
-    def test_file_exists(self, overclaw_tmp_project):
+    def test_file_exists(self, overmind_tmp_project):
         setup_dir = (
-            overclaw_tmp_project / OVERCLAW_DIR_NAME / "agents" / "p1" / "setup_spec"
+            overmind_tmp_project / OVERMIND_DIR_NAME / "agents" / "p1" / "setup_spec"
         )
         setup_dir.mkdir(parents=True)
         policy_file = setup_dir / "policies.md"
@@ -274,6 +274,6 @@ class TestLoadPolicyMarkdown:
         result = load_policy_markdown("p1")
         assert "Rule 1" in result
 
-    def test_file_missing(self, overclaw_tmp_project):
+    def test_file_missing(self, overmind_tmp_project):
         result = load_policy_markdown("missing-agent")
         assert result is None

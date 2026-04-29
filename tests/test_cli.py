@@ -1,4 +1,4 @@
-"""Tests for overclaw.cli — parser construction, command routing, help output."""
+"""Tests for overmind.cli — parser construction, command routing, help output."""
 
 from __future__ import annotations
 
@@ -6,7 +6,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from overclaw.cli import _build_parser, main
+from overmind.cli import _build_parser, main
 
 
 # ---------------------------------------------------------------------------
@@ -17,14 +17,14 @@ from overclaw.cli import _build_parser, main
 class TestBuildParser:
     def test_parser_returns_argument_parser(self):
         parser = _build_parser()
-        assert parser.prog == "overclaw"
+        assert parser.prog == "overmind"
 
     def test_top_level_help_contains_workflow(self, capsys):
         parser = _build_parser()
         with pytest.raises(SystemExit):
             parser.parse_args(["--help"])
         out = capsys.readouterr().out
-        assert "overclaw" in out.lower()
+        assert "overmind" in out.lower()
 
     def test_no_command_raises(self):
         parser = _build_parser()
@@ -258,79 +258,79 @@ class TestBuildParser:
 
 class TestMainDispatch:
     @pytest.fixture(autouse=True)
-    def _stub_require_overclaw(self, monkeypatch: pytest.MonkeyPatch) -> None:
+    def _stub_require_overmind(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setattr(
-            "overclaw.core.registry.require_overclaw_initialized",
+            "overmind.core.registry.require_overmind_initialized",
             lambda: None,
         )
 
     def test_init_dispatches(self):
-        with patch("overclaw.cli._build_parser") as mock_parser:
+        with patch("overmind.cli._build_parser") as mock_parser:
             mock_args = MagicMock()
             mock_args.command = "init"
             mock_parser.return_value.parse_args.return_value = mock_args
-            with patch("overclaw.commands.init_cmd.main") as mock_init:
+            with patch("overmind.commands.init_cmd.main") as mock_init:
                 main()
                 mock_init.assert_called_once()
 
     def test_agent_register_dispatches(self):
-        with patch("overclaw.cli._build_parser") as mock_parser:
+        with patch("overmind.cli._build_parser") as mock_parser:
             mock_args = MagicMock()
             mock_args.command = "agent"
             mock_args.agent_command = "register"
             mock_args.name = "test"
             mock_args.entrypoint = "m:f"
             mock_parser.return_value.parse_args.return_value = mock_args
-            with patch("overclaw.commands.agent_cmd.cmd_register") as mock_fn:
+            with patch("overmind.commands.agent_cmd.cmd_register") as mock_fn:
                 main()
                 mock_fn.assert_called_once_with("test", "m:f")
 
     def test_agent_list_dispatches(self):
-        with patch("overclaw.cli._build_parser") as mock_parser:
+        with patch("overmind.cli._build_parser") as mock_parser:
             mock_args = MagicMock()
             mock_args.command = "agent"
             mock_args.agent_command = "list"
             mock_parser.return_value.parse_args.return_value = mock_args
-            with patch("overclaw.commands.agent_cmd.cmd_list") as mock_fn:
+            with patch("overmind.commands.agent_cmd.cmd_list") as mock_fn:
                 main()
                 mock_fn.assert_called_once()
 
     def test_agent_remove_dispatches(self):
-        with patch("overclaw.cli._build_parser") as mock_parser:
+        with patch("overmind.cli._build_parser") as mock_parser:
             mock_args = MagicMock()
             mock_args.command = "agent"
             mock_args.agent_command = "remove"
             mock_args.name = "test"
             mock_parser.return_value.parse_args.return_value = mock_args
-            with patch("overclaw.commands.agent_cmd.cmd_remove") as mock_fn:
+            with patch("overmind.commands.agent_cmd.cmd_remove") as mock_fn:
                 main()
                 mock_fn.assert_called_once_with("test")
 
     def test_agent_update_dispatches(self):
-        with patch("overclaw.cli._build_parser") as mock_parser:
+        with patch("overmind.cli._build_parser") as mock_parser:
             mock_args = MagicMock()
             mock_args.command = "agent"
             mock_args.agent_command = "update"
             mock_args.name = "test"
             mock_args.entrypoint = "m:f"
             mock_parser.return_value.parse_args.return_value = mock_args
-            with patch("overclaw.commands.agent_cmd.cmd_update") as mock_fn:
+            with patch("overmind.commands.agent_cmd.cmd_update") as mock_fn:
                 main()
                 mock_fn.assert_called_once_with("test", "m:f")
 
     def test_agent_show_dispatches(self):
-        with patch("overclaw.cli._build_parser") as mock_parser:
+        with patch("overmind.cli._build_parser") as mock_parser:
             mock_args = MagicMock()
             mock_args.command = "agent"
             mock_args.agent_command = "show"
             mock_args.name = "test"
             mock_parser.return_value.parse_args.return_value = mock_args
-            with patch("overclaw.commands.agent_cmd.cmd_show") as mock_fn:
+            with patch("overmind.commands.agent_cmd.cmd_show") as mock_fn:
                 main()
                 mock_fn.assert_called_once_with("test")
 
     def test_setup_dispatches(self):
-        with patch("overclaw.cli._build_parser") as mock_parser:
+        with patch("overmind.cli._build_parser") as mock_parser:
             mock_args = MagicMock()
             mock_args.command = "setup"
             mock_args.agent = "my-agent"
@@ -338,7 +338,7 @@ class TestMainDispatch:
             mock_args.policy = None
             mock_args.data = None
             mock_parser.return_value.parse_args.return_value = mock_args
-            with patch("overclaw.commands.setup_cmd.main") as mock_fn:
+            with patch("overmind.commands.setup_cmd.main") as mock_fn:
                 main()
                 mock_fn.assert_called_once_with(
                     agent_name="my-agent",
@@ -351,13 +351,13 @@ class TestMainDispatch:
                 )
 
     def test_optimize_dispatches(self):
-        with patch("overclaw.cli._build_parser") as mock_parser:
+        with patch("overmind.cli._build_parser") as mock_parser:
             mock_args = MagicMock()
             mock_args.command = "optimize"
             mock_args.agent = "my-agent"
             mock_args.fast = False
             mock_parser.return_value.parse_args.return_value = mock_args
-            with patch("overclaw.commands.optimize_cmd.main") as mock_fn:
+            with patch("overmind.commands.optimize_cmd.main") as mock_fn:
                 main()
                 mock_fn.assert_called_once_with(
                     agent_name="my-agent",
@@ -368,42 +368,42 @@ class TestMainDispatch:
                 )
 
     def test_doctor_dispatches(self):
-        with patch("overclaw.cli._build_parser") as mock_parser:
+        with patch("overmind.cli._build_parser") as mock_parser:
             mock_args = MagicMock()
             mock_args.command = "doctor"
             mock_args.agent = "my-agent"
             mock_parser.return_value.parse_args.return_value = mock_args
-            with patch("overclaw.commands.doctor_cmd.main") as mock_fn:
+            with patch("overmind.commands.doctor_cmd.main") as mock_fn:
                 main()
                 mock_fn.assert_called_once_with(agent_name="my-agent")
 
     def test_sync_dispatches(self):
-        with patch("overclaw.cli._build_parser") as mock_parser:
+        with patch("overmind.cli._build_parser") as mock_parser:
             mock_args = MagicMock()
             mock_args.command = "sync"
             mock_args.agent = "my-agent"
             mock_parser.return_value.parse_args.return_value = mock_args
-            with patch("overclaw.commands.sync_cmd.main") as mock_fn:
+            with patch("overmind.commands.sync_cmd.main") as mock_fn:
                 main()
                 mock_fn.assert_called_once_with(agent_name="my-agent")
 
     def test_sync_optimize_dispatches(self):
-        with patch("overclaw.cli._build_parser") as mock_parser:
+        with patch("overmind.cli._build_parser") as mock_parser:
             mock_args = MagicMock()
             mock_args.command = "sync-optimize"
             mock_args.agent = "my-agent"
             mock_parser.return_value.parse_args.return_value = mock_args
-            with patch("overclaw.commands.sync_optimize_cmd.main") as mock_fn:
+            with patch("overmind.commands.sync_optimize_cmd.main") as mock_fn:
                 main()
                 mock_fn.assert_called_once_with(agent_name="my-agent")
 
     def test_keyboard_interrupt_exits_130(self):
-        with patch("overclaw.cli._build_parser") as mock_parser:
+        with patch("overmind.cli._build_parser") as mock_parser:
             mock_args = MagicMock()
             mock_args.command = "init"
             mock_parser.return_value.parse_args.return_value = mock_args
             with patch(
-                "overclaw.commands.init_cmd.main", side_effect=KeyboardInterrupt
+                "overmind.commands.init_cmd.main", side_effect=KeyboardInterrupt
             ):
                 with pytest.raises(SystemExit) as exc_info:
                     main()
@@ -411,14 +411,14 @@ class TestMainDispatch:
 
 
 # ---------------------------------------------------------------------------
-# .overclaw gate (CLI)
+# .overmind gate (CLI)
 # ---------------------------------------------------------------------------
 
 
 class TestMainRequiresOverclawDir:
-    def test_agent_list_exits_when_overclaw_missing(self, tmp_path, monkeypatch):
+    def test_agent_list_exits_when_overmind_missing(self, tmp_path, monkeypatch):
         monkeypatch.chdir(tmp_path)
-        with patch("overclaw.cli._build_parser") as mock_parser:
+        with patch("overmind.cli._build_parser") as mock_parser:
             mock_args = MagicMock()
             mock_args.command = "agent"
             mock_args.agent_command = "list"
@@ -427,12 +427,12 @@ class TestMainRequiresOverclawDir:
                 main()
             assert exc.value.code == 1
 
-    def test_init_runs_when_overclaw_missing(self, tmp_path, monkeypatch):
+    def test_init_runs_when_overmind_missing(self, tmp_path, monkeypatch):
         monkeypatch.chdir(tmp_path)
-        with patch("overclaw.cli._build_parser") as mock_parser:
+        with patch("overmind.cli._build_parser") as mock_parser:
             mock_args = MagicMock()
             mock_args.command = "init"
             mock_parser.return_value.parse_args.return_value = mock_args
-            with patch("overclaw.commands.init_cmd.main") as mock_init:
+            with patch("overmind.commands.init_cmd.main") as mock_init:
                 main()
                 mock_init.assert_called_once()

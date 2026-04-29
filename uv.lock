@@ -1,6 +1,6 @@
 version = 1
 revision = 3
-requires-python = ">=3.10"
+requires-python = ">=3.10, <4"
 
 [[package]]
 name = "aiohappyeyeballs"
@@ -1377,6 +1377,50 @@ wheels = [
 ]
 
 [[package]]
+name = "opentelemetry-instrumentation-httpx"
+version = "0.60b1"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "opentelemetry-api" },
+    { name = "opentelemetry-instrumentation" },
+    { name = "opentelemetry-semantic-conventions" },
+    { name = "opentelemetry-util-http" },
+    { name = "wrapt" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/86/08/11208bcfcab4fc2023252c3f322aa397fd9ad948355fea60f5fc98648603/opentelemetry_instrumentation_httpx-0.60b1.tar.gz", hash = "sha256:a506ebaf28c60112cbe70ad4f0338f8603f148938cb7b6794ce1051cd2b270ae", size = 20611, upload-time = "2025-12-11T13:37:01.661Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/43/59/b98e84eebf745ffc75397eaad4763795bff8a30cbf2373a50ed4e70646c5/opentelemetry_instrumentation_httpx-0.60b1-py3-none-any.whl", hash = "sha256:f37636dd742ad2af83d896ba69601ed28da51fa4e25d1ab62fde89ce413e275b", size = 15701, upload-time = "2025-12-11T13:36:04.56Z" },
+]
+
+[[package]]
+name = "opentelemetry-instrumentation-logging"
+version = "0.60b1"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "opentelemetry-api" },
+    { name = "opentelemetry-instrumentation" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/60/a6/4515895b383113677fd2ad21813df5e56108a2df14ebb7916c962c9a0234/opentelemetry_instrumentation_logging-0.60b1.tar.gz", hash = "sha256:98f4b9c7aeb9314a30feee7c002c7ea9abea07c90df5f97fb058b850bc45b89a", size = 9968, upload-time = "2025-12-11T13:37:03.974Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/f1/f9/8a4ce3901bc52277794e4b18c4ac43dc5929806eff01d22812364132f45f/opentelemetry_instrumentation_logging-0.60b1-py3-none-any.whl", hash = "sha256:f2e18cbc7e1dd3628c80e30d243897fdc93c5b7e0c8ae60abd2b9b6a99f82343", size = 12577, upload-time = "2025-12-11T13:36:08.123Z" },
+]
+
+[[package]]
+name = "opentelemetry-instrumentation-requests"
+version = "0.60b1"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "opentelemetry-api" },
+    { name = "opentelemetry-instrumentation" },
+    { name = "opentelemetry-semantic-conventions" },
+    { name = "opentelemetry-util-http" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/9d/4a/bb9d47d7424fc33aeba75275256ae6e6031f44b6a9a3f778d611c0c3ac27/opentelemetry_instrumentation_requests-0.60b1.tar.gz", hash = "sha256:9a1063c16c44a3ba6e81870c4fa42a0fac3ecef5a4d60a11d0976eec9046f3d4", size = 16366, upload-time = "2025-12-11T13:37:12.456Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/f2/7f/969b59a5acccb4c35317421843d63d7853ad7a18078ca3a9b80c248be448/opentelemetry_instrumentation_requests-0.60b1-py3-none-any.whl", hash = "sha256:eec9fac3fab84737f663a2e08b12cb095b4bd67643b24587a8ecfa3cf4d0ca4c", size = 13141, upload-time = "2025-12-11T13:36:23.696Z" },
+]
+
+[[package]]
 name = "opentelemetry-overmind"
 version = "0.53.0"
 source = { registry = "https://pypi.org/simple" }
@@ -1447,18 +1491,33 @@ wheels = [
 ]
 
 [[package]]
-name = "overclaw"
+name = "overmind"
 version = "0.2.2"
 source = { editable = "." }
 dependencies = [
     { name = "litellm" },
-    { name = "overmind" },
+    { name = "opentelemetry-api" },
+    { name = "opentelemetry-exporter-otlp-proto-http" },
+    { name = "opentelemetry-instrumentation" },
+    { name = "opentelemetry-instrumentation-fastapi" },
+    { name = "opentelemetry-overmind" },
+    { name = "opentelemetry-sdk" },
+    { name = "opentelemetry-semantic-conventions" },
+    { name = "opentelemetry-semantic-conventions-ai" },
+    { name = "overmind-instrumentation-agno" },
+    { name = "overmind-instrumentation-anthropic" },
+    { name = "overmind-instrumentation-google-generativeai" },
+    { name = "overmind-instrumentation-openai" },
+    { name = "packaging" },
     { name = "pydantic" },
     { name = "python-dateutil" },
     { name = "python-dotenv" },
+    { name = "requests" },
     { name = "rich" },
     { name = "simple-term-menu" },
     { name = "tomlkit" },
+    { name = "tqdm" },
+    { name = "typing-extensions" },
     { name = "urllib3" },
 ]
 
@@ -1480,20 +1539,40 @@ test = [
     { name = "pytest-cov" },
     { name = "pytest-xdist" },
 ]
+tracing-full = [
+    { name = "opentelemetry-instrumentation-httpx" },
+    { name = "opentelemetry-instrumentation-logging" },
+    { name = "opentelemetry-instrumentation-requests" },
+]
 
 [package.metadata]
 requires-dist = [
     { name = "litellm", specifier = ">=1.40.0" },
-    { name = "overmind" },
+    { name = "opentelemetry-api", specifier = ">=1.35.0" },
+    { name = "opentelemetry-exporter-otlp-proto-http", specifier = ">=1.35.0" },
+    { name = "opentelemetry-instrumentation", specifier = ">=0.60b1" },
+    { name = "opentelemetry-instrumentation-fastapi", specifier = ">=0.60b1" },
+    { name = "opentelemetry-overmind", specifier = ">=0.53.0" },
+    { name = "opentelemetry-sdk", specifier = ">=1.35.0" },
+    { name = "opentelemetry-semantic-conventions", specifier = ">=0.60b1" },
+    { name = "opentelemetry-semantic-conventions-ai", specifier = ">=0.4.13" },
+    { name = "overmind-instrumentation-agno", specifier = ">=0.53.0" },
+    { name = "overmind-instrumentation-anthropic", specifier = ">=0.53.0" },
+    { name = "overmind-instrumentation-google-generativeai", specifier = ">=0.53.0" },
+    { name = "overmind-instrumentation-openai", specifier = ">=0.53.1" },
+    { name = "packaging", specifier = ">=23.0" },
     { name = "pydantic", specifier = ">=2.0.0" },
     { name = "pytest", marker = "extra == 'test'", specifier = ">=8.0" },
     { name = "pytest-cov", marker = "extra == 'test'", specifier = ">=5.0" },
     { name = "pytest-xdist", marker = "extra == 'test'", specifier = ">=3.5" },
     { name = "python-dateutil" },
     { name = "python-dotenv", specifier = ">=1.0.0" },
-    { name = "rich", specifier = ">=13.0.0" },
+    { name = "requests", specifier = ">=2.31.0" },
+    { name = "rich", specifier = ">=14.0.0" },
     { name = "simple-term-menu", specifier = ">=1.6.6" },
     { name = "tomlkit", specifier = ">=0.14.0" },
+    { name = "tqdm", specifier = ">=4.67.3" },
+    { name = "typing-extensions", specifier = ">=4.0.0" },
     { name = "urllib3", specifier = ">=1.25.3" },
 ]
 provides-extras = ["test"]
@@ -1505,39 +1584,14 @@ dev = [
     { name = "ydiff", specifier = ">=1.5" },
 ]
 test = [
-    { name = "pytest", specifier = ">=8.0" },
+    { name = "pytest", specifier = ">=9.0.3" },
     { name = "pytest-cov", specifier = ">=5.0" },
     { name = "pytest-xdist", specifier = ">=3.5" },
 ]
-
-[[package]]
-name = "overmind"
-version = "0.1.39"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "opentelemetry-api" },
-    { name = "opentelemetry-exporter-otlp-proto-http" },
-    { name = "opentelemetry-instrumentation" },
-    { name = "opentelemetry-instrumentation-fastapi" },
-    { name = "opentelemetry-overmind" },
-    { name = "opentelemetry-sdk" },
-    { name = "opentelemetry-semantic-conventions" },
-    { name = "opentelemetry-semantic-conventions-ai" },
-    { name = "overmind-instrumentation-agno" },
-    { name = "overmind-instrumentation-anthropic" },
-    { name = "overmind-instrumentation-google-generativeai" },
-    { name = "overmind-instrumentation-openai" },
-    { name = "packaging" },
-    { name = "pydantic" },
-    { name = "requests" },
-    { name = "rich" },
-    { name = "tqdm" },
-    { name = "typing-extensions" },
-    { name = "wrapt" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/42/65/cbe8dc2dc7bc02c20364ae05d0b1a107dd770889e8230fe22ab1bea061c2/overmind-0.1.39.tar.gz", hash = "sha256:274c7e5a86538ae9dade3207658873dd653cac4c90e0e6e2fbe47255cee1526d", size = 15286, upload-time = "2026-04-28T12:25:30.55Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/f6/ca/e0a81ad3a505efb42fc0f2950f4b602d5bd7823fa0d8bfe84302ebd9f508/overmind-0.1.39-py3-none-any.whl", hash = "sha256:130af398986c5de78b39a9d74eaf3ca3e4b948c89618c8ab1fa809b3f8c5bd02", size = 16068, upload-time = "2026-04-28T12:25:28.962Z" },
+tracing-full = [
+    { name = "opentelemetry-instrumentation-httpx", specifier = ">=0.60b1" },
+    { name = "opentelemetry-instrumentation-logging", specifier = ">=0.60b1" },
+    { name = "opentelemetry-instrumentation-requests", specifier = ">=0.60b1" },
 ]
 
 [[package]]

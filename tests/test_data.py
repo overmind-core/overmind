@@ -1,4 +1,4 @@
-"""Tests for overclaw.optimize.data — data loading, validation, dedup, generation."""
+"""Tests for overmind.optimize.data — data loading, validation, dedup, generation."""
 
 from __future__ import annotations
 
@@ -6,7 +6,7 @@ import json
 
 import pytest
 
-from overclaw.optimize.data import (
+from overmind.optimize.data import (
     _apply_dedup,
     _canonicalize,
     _default_personas,

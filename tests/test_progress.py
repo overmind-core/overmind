@@ -1,4 +1,4 @@
-"""Tests for overclaw.utils.display — display utilities."""
+"""Tests for overmind.utils.display — display utilities."""
 
 from __future__ import annotations
 
@@ -6,7 +6,7 @@ from pathlib import Path
 
 from rich.console import Console
 
-from overclaw.utils.display import make_spinner_progress, rel
+from overmind.utils.display import make_spinner_progress, rel
 
 
 class TestRel:

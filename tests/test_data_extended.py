@@ -1,4 +1,4 @@
-"""Extended tests for overclaw.optimize.data — LLM-dependent generation paths."""
+"""Extended tests for overmind.optimize.data — LLM-dependent generation paths."""
 
 from __future__ import annotations
 
@@ -7,7 +7,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from overclaw.optimize.data import (
+from overmind.optimize.data import (
     _generate_batch,
     _generate_personas,
     _llm_call,
@@ -16,7 +16,7 @@ from overclaw.optimize.data import (
 
 
 class TestLlmCall:
-    @patch("overclaw.utils.llm.litellm")
+    @patch("overmind.utils.llm.litellm")
     def test_success(self, mock_litellm):
         mock_resp = MagicMock()
         mock_resp.choices = [MagicMock()]
@@ -26,8 +26,8 @@ class TestLlmCall:
         result = _llm_call("model", "prompt", max_retries=1)
         assert result == "response"
 
-    @patch("overclaw.utils.llm.litellm")
-    @patch("overclaw.optimize.data.time.sleep")
+    @patch("overmind.utils.llm.litellm")
+    @patch("overmind.optimize.data.time.sleep")
     def test_rate_limit_retry(self, mock_sleep, mock_litellm):
         import litellm as real_litellm
 
@@ -39,7 +39,7 @@ class TestLlmCall:
         result = _llm_call("model", "prompt", max_retries=2)
         assert result == "ok"
 
-    @patch("overclaw.utils.llm.litellm")
+    @patch("overmind.utils.llm.litellm")
     def test_all_retries_fail(self, mock_litellm):
         import litellm as real_litellm
 
@@ -51,7 +51,7 @@ class TestLlmCall:
 
 
 class TestGeneratePersonas:
-    @patch("overclaw.optimize.data._llm_call")
+    @patch("overmind.optimize.data._llm_call")
     def test_success(self, mock_call):
         mock_call.return_value = json.dumps(
             {
@@ -64,13 +64,13 @@ class TestGeneratePersonas:
         assert len(result) == 1
         assert result[0]["name"] == "Tester"
 
-    @patch("overclaw.optimize.data._llm_call")
+    @patch("overmind.optimize.data._llm_call")
     def test_fallback_on_failure(self, mock_call):
         mock_call.return_value = None
         result = _generate_personas("desc", None, {}, None, "model", 3)
         assert len(result) == 3
 
-    @patch("overclaw.optimize.data._llm_call")
+    @patch("overmind.optimize.data._llm_call")
     def test_fallback_on_bad_json(self, mock_call):
         mock_call.return_value = "not json"
         result = _generate_personas("desc", None, {}, None, "model", 2)
@@ -78,7 +78,7 @@ class TestGeneratePersonas:
 
 
 class TestGenerateBatch:
-    @patch("overclaw.optimize.data._llm_call")
+    @patch("overmind.optimize.data._llm_call")
     def test_success(self, mock_call):
         cases = [{"input": {"x": 1}, "expected_output": {"y": 2}}]
         mock_call.return_value = json.dumps({"cases": cases})
@@ -87,7 +87,7 @@ class TestGenerateBatch:
         )
         assert len(result) == 1
 
-    @patch("overclaw.optimize.data._llm_call")
+    @patch("overmind.optimize.data._llm_call")
     def test_returns_empty_on_failure(self, mock_call):
         mock_call.return_value = None
         result = _generate_batch(
@@ -95,7 +95,7 @@ class TestGenerateBatch:
         )
         assert result == []
 
-    @patch("overclaw.optimize.data._llm_call")
+    @patch("overmind.optimize.data._llm_call")
     def test_parses_bare_array(self, mock_call):
         cases = [{"input": {"x": 1}, "expected_output": {"y": 2}}]
         mock_call.return_value = json.dumps(cases)
@@ -106,7 +106,7 @@ class TestGenerateBatch:
 
 
 class TestGenerateSyntheticData:
-    @patch("overclaw.utils.llm.litellm")
+    @patch("overmind.utils.llm.litellm")
     def test_success(self, mock_litellm):
         cases = [{"input": {"x": 1}, "expected_output": {"y": 2}}]
         mock_resp = MagicMock()
@@ -117,7 +117,7 @@ class TestGenerateSyntheticData:
         result = generate_synthetic_data("desc", "model", num_samples=1)
         assert len(result) == 1
 
-    @patch("overclaw.utils.llm.litellm")
+    @patch("overmind.utils.llm.litellm")
     def test_parse_failure_raises(self, mock_litellm):
         mock_resp = MagicMock()
         mock_resp.choices = [MagicMock()]
@@ -127,7 +127,7 @@ class TestGenerateSyntheticData:
         with pytest.raises(ValueError, match="Failed to parse"):
             generate_synthetic_data("desc", "model")
 
-    @patch("overclaw.utils.llm.litellm")
+    @patch("overmind.utils.llm.litellm")
     def test_with_agent_code_and_policy(self, mock_litellm):
         cases = [{"input": {"x": 1}, "expected_output": {"y": 2}}]
         mock_resp = MagicMock()

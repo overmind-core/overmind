@@ -1,4 +1,4 @@
-"""Tests for overclaw.core.registry — agents.toml registry CRUD."""
+"""Tests for overmind.core.registry — agents.toml registry CRUD."""
 
 from __future__ import annotations
 
@@ -7,9 +7,9 @@ from pathlib import Path
 
 import pytest
 
-from overclaw.utils.code import AgentBundle
-from overclaw.core.constants import OVERCLAW_DIR_NAME
-from overclaw.core.registry import (
+from overmind.utils.code import AgentBundle
+from overmind.core.constants import OVERMIND_DIR_NAME
+from overmind.core.registry import (
     _entries_to_toml_array,
     _module_to_file,
     _raw_agents_to_entries,
@@ -20,7 +20,7 @@ from overclaw.core.registry import (
     project_root,
     project_root_from_agent_file,
     remove_agent,
-    require_overclaw_initialized,
+    require_overmind_initialized,
     resolve_agent,
     save_agent,
     validate_entrypoint,
@@ -174,19 +174,19 @@ class TestModuleToFile:
 
 
 class TestProjectRoot:
-    def test_resolves_overclaw_in_cwd(self, tmp_path, monkeypatch):
-        (tmp_path / OVERCLAW_DIR_NAME).mkdir()
+    def test_resolves_overmind_in_cwd(self, tmp_path, monkeypatch):
+        (tmp_path / OVERMIND_DIR_NAME).mkdir()
         monkeypatch.chdir(tmp_path)
         assert project_root() == tmp_path.resolve()
 
-    def test_resolves_overclaw_in_parent(self, tmp_path, monkeypatch):
-        (tmp_path / OVERCLAW_DIR_NAME).mkdir()
+    def test_resolves_overmind_in_parent(self, tmp_path, monkeypatch):
+        (tmp_path / OVERMIND_DIR_NAME).mkdir()
         child = tmp_path / "sub" / "dir"
         child.mkdir(parents=True)
         monkeypatch.chdir(child)
         assert project_root() == tmp_path.resolve()
 
-    def test_exits_when_no_overclaw(self, tmp_path, monkeypatch):
+    def test_exits_when_no_overmind(self, tmp_path, monkeypatch):
         monkeypatch.chdir(tmp_path)
         with pytest.raises(SystemExit) as exc_info:
             project_root()
@@ -203,21 +203,21 @@ class TestProjectRoot:
 
 
 class TestProjectRootFromAgentFile:
-    def test_finds_overclaw_above_deep_entry(self, tmp_path):
-        (tmp_path / OVERCLAW_DIR_NAME).mkdir()
+    def test_finds_overmind_above_deep_entry(self, tmp_path):
+        (tmp_path / OVERMIND_DIR_NAME).mkdir()
         runner = tmp_path / "agents" / "agent3" / "original_agent" / "runner.py"
         runner.parent.mkdir(parents=True)
         runner.write_text("# entry\n", encoding="utf-8")
         assert project_root_from_agent_file(runner) == tmp_path.resolve()
 
-    def test_returns_none_without_overclaw_ancestor(self, tmp_path):
+    def test_returns_none_without_overmind_ancestor(self, tmp_path):
         runner = tmp_path / "nested" / "runner.py"
         runner.parent.mkdir(parents=True)
         runner.write_text("#\n", encoding="utf-8")
         assert project_root_from_agent_file(runner) is None
 
     def test_bundler_sees_multiple_agent_files_for_nested_entry(self, tmp_path):
-        (tmp_path / OVERCLAW_DIR_NAME).mkdir()
+        (tmp_path / OVERMIND_DIR_NAME).mkdir()
         pkg = tmp_path / "agents" / "demo" / "original_agent"
         pkg.mkdir(parents=True)
         (pkg / "config.py").write_text('MODEL = "x"\n', encoding="utf-8")
@@ -240,20 +240,20 @@ class TestProjectRootFromAgentFile:
 
 
 # ---------------------------------------------------------------------------
-# require_overclaw_initialized
+# require_overmind_initialized
 # ---------------------------------------------------------------------------
 
 
 class TestRequireOverclawInitialized:
-    def test_no_op_when_overclaw_present(self, tmp_path, monkeypatch):
-        (tmp_path / OVERCLAW_DIR_NAME).mkdir()
+    def test_no_op_when_overmind_present(self, tmp_path, monkeypatch):
+        (tmp_path / OVERMIND_DIR_NAME).mkdir()
         monkeypatch.chdir(tmp_path)
-        require_overclaw_initialized()
+        require_overmind_initialized()
 
-    def test_exits_when_no_overclaw(self, tmp_path, monkeypatch):
+    def test_exits_when_no_overmind(self, tmp_path, monkeypatch):
         monkeypatch.chdir(tmp_path)
         with pytest.raises(SystemExit) as exc:
-            require_overclaw_initialized()
+            require_overmind_initialized()
         assert exc.value.code == 1
 
 
@@ -304,7 +304,7 @@ class TestLoadRegistry:
         assert registry == {}
 
     def test_malformed_entrypoint_still_loads(self, tmp_path, monkeypatch):
-        oc = tmp_path / OVERCLAW_DIR_NAME
+        oc = tmp_path / OVERMIND_DIR_NAME
         oc.mkdir()
         (oc / "agents.toml").write_text(
             textwrap.dedent("""\
@@ -343,7 +343,7 @@ class TestSaveAgent:
         save_agent("test-agent", "agents.test.mod:f")
         registry = load_registry()
         assert "test-agent" in registry
-        assert (Path.cwd() / OVERCLAW_DIR_NAME / "agents.toml").is_file()
+        assert (Path.cwd() / OVERMIND_DIR_NAME / "agents.toml").is_file()
 
 
 # ---------------------------------------------------------------------------
@@ -378,7 +378,7 @@ class TestResolveAgent:
             resolve_agent("not-registered")
 
     def test_missing_file_exits(self, tmp_path, monkeypatch):
-        oc = tmp_path / OVERCLAW_DIR_NAME
+        oc = tmp_path / OVERMIND_DIR_NAME
         oc.mkdir()
         (oc / "agents.toml").write_text(
             'agents = [{ name = "ghost", entrypoint = "gone.module:run" }]\n',

@@ -8,13 +8,13 @@ enrichment and light web research.
 ## Register
 
 ```bash
-overclaw agent register lead-qualifier agent:run
-overclaw agent validate lead-qualifier --data data/seed.json
-overclaw setup lead-qualifier
-overclaw optimize lead-qualifier
+overmind agent register lead-qualifier agent:run
+overmind agent validate lead-qualifier --data data/seed.json
+overmind setup lead-qualifier
+overmind optimize lead-qualifier
 ```
 
-## Seeded sub-optimalities (what OverClaw should fix)
+## Seeded sub-optimalities (what Overmind should fix)
 
 - System prompt has no calibration bands (hot/warm/cold thresholds).
 - `lookup_company_size` / `exa_search_company` tool descriptions are one-liners.

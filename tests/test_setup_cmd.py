@@ -1,4 +1,4 @@
-"""Tests for overclaw.commands.setup_cmd — setup command helpers."""
+"""Tests for overmind.commands.setup_cmd — setup command helpers."""
 
 from __future__ import annotations
 
@@ -8,9 +8,9 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from overclaw.core.constants import OVERCLAW_DIR_NAME
-from overclaw.core.paths import agent_setup_spec_dir
-from overclaw.commands.setup_cmd import (
+from overmind.core.constants import OVERMIND_DIR_NAME
+from overmind.core.paths import agent_setup_spec_dir
+from overmind.commands.setup_cmd import (
     _build_eval_spec_stub,
     _clear_existing_eval_spec,
     _data_dir,
@@ -49,16 +49,16 @@ class TestValidateAgentEntrypoint:
 
 
 class TestPathHelpers:
-    def test_agent_setup_spec_dir(self, overclaw_tmp_project: Path):
+    def test_agent_setup_spec_dir(self, overmind_tmp_project: Path):
         result = agent_setup_spec_dir("a1")
         assert str(result).endswith("setup_spec")
-        assert OVERCLAW_DIR_NAME in str(result)
+        assert OVERMIND_DIR_NAME in str(result)
 
-    def test_eval_spec_under_setup_spec(self, overclaw_tmp_project: Path):
+    def test_eval_spec_under_setup_spec(self, overmind_tmp_project: Path):
         result = agent_setup_spec_dir("a1") / "eval_spec.json"
         assert str(result).endswith("eval_spec.json")
 
-    def test_dataset_under_setup_spec(self, overclaw_tmp_project: Path):
+    def test_dataset_under_setup_spec(self, overmind_tmp_project: Path):
         result = agent_setup_spec_dir("a1") / "dataset.json"
         assert str(result).endswith("dataset.json")
 
@@ -68,17 +68,17 @@ class TestPathHelpers:
 
 
 class TestClearExistingEvalSpec:
-    def test_no_dir(self, overclaw_tmp_project: Path):
+    def test_no_dir(self, overmind_tmp_project: Path):
         console = MagicMock()
         _clear_existing_eval_spec("nope", console)
 
-    def test_empty_dir(self, overclaw_tmp_project: Path):
+    def test_empty_dir(self, overmind_tmp_project: Path):
         spec_dir = agent_setup_spec_dir("x")
         spec_dir.mkdir(parents=True)
         console = MagicMock()
         _clear_existing_eval_spec("x", console)
 
-    def test_fast_clears(self, overclaw_tmp_project: Path):
+    def test_fast_clears(self, overmind_tmp_project: Path):
         spec_dir = agent_setup_spec_dir("x")
         spec_dir.mkdir(parents=True)
         (spec_dir / "spec.json").write_text("{}")
@@ -86,16 +86,16 @@ class TestClearExistingEvalSpec:
         _clear_existing_eval_spec("x", console, fast=True)
         assert not (spec_dir / "spec.json").exists()
 
-    @patch("overclaw.commands.setup_cmd.confirm_option", return_value=True)
-    def test_interactive_confirm(self, _mock_confirm, overclaw_tmp_project: Path):
+    @patch("overmind.commands.setup_cmd.confirm_option", return_value=True)
+    def test_interactive_confirm(self, _mock_confirm, overmind_tmp_project: Path):
         spec_dir = agent_setup_spec_dir("x")
         spec_dir.mkdir(parents=True)
         (spec_dir / "spec.json").write_text("{}")
         console = MagicMock()
         _clear_existing_eval_spec("x", console)
 
-    @patch("overclaw.commands.setup_cmd.confirm_option", return_value=False)
-    def test_interactive_decline(self, _mock_confirm, overclaw_tmp_project: Path):
+    @patch("overmind.commands.setup_cmd.confirm_option", return_value=False)
+    def test_interactive_decline(self, _mock_confirm, overmind_tmp_project: Path):
         spec_dir = agent_setup_spec_dir("x")
         spec_dir.mkdir(parents=True)
         (spec_dir / "spec.json").write_text("{}")
@@ -126,24 +126,24 @@ class TestBuildEvalSpecStub:
 
 
 class TestSaveAndFinish:
-    def test_saves_spec(self, overclaw_tmp_project: Path):
+    def test_saves_spec(self, overmind_tmp_project: Path):
         spec = {"output_fields": {"x": {"weight": 10}}, "total_points": 100}
         console = MagicMock()
         _save_and_finish(spec, "myagent", console)
         spec_path = agent_setup_spec_dir("myagent") / "eval_spec.json"
         assert spec_path.exists()
 
-    def test_saves_policy(self, overclaw_tmp_project: Path):
+    def test_saves_policy(self, overmind_tmp_project: Path):
         spec = {"output_fields": {}, "policy": {"domain_rules": ["r1"]}}
         console = MagicMock()
         _save_and_finish(spec, "myagent", console, policy_md="# Policy")
-        from overclaw.utils.policy import default_policy_path
+        from overmind.utils.policy import default_policy_path
 
         assert Path(default_policy_path("myagent")).exists()
 
 
 class TestSaveDataset:
-    def test_saves(self, overclaw_tmp_project: Path):
+    def test_saves(self, overmind_tmp_project: Path):
         console = MagicMock()
         cases = [{"input": {"x": 1}, "expected_output": {"y": 2}}]
         path = _save_dataset(cases, "dsagent", console)
@@ -165,7 +165,7 @@ class TestResolveDategenModel:
         with pytest.raises(SystemExit):
             _resolve_datagen_model(console, fast=True)
 
-    @patch("overclaw.commands.setup_cmd.confirm_option", return_value=True)
+    @patch("overmind.commands.setup_cmd.confirm_option", return_value=True)
     def test_interactive_with_env(self, _mock_confirm, monkeypatch):
         monkeypatch.setenv("SYNTHETIC_DATAGEN_MODEL", "gpt-5.4")
         console = MagicMock()
@@ -249,14 +249,14 @@ class TestSmokeTestAgent:
 
 
 class TestPromptSeedDataFlagEarly:
-    @patch("overclaw.commands.setup_cmd.confirm_option", return_value=True)
+    @patch("overmind.commands.setup_cmd.confirm_option", return_value=True)
     def test_yes_prints_command_and_exits_zero(self, _mock_confirm):
         console = MagicMock()
         with pytest.raises(SystemExit) as exc:
             _prompt_seed_data_flag_early("my-agent", console=console)
         assert exc.value.code == 0
 
-    @patch("overclaw.commands.setup_cmd.confirm_option", return_value=False)
+    @patch("overmind.commands.setup_cmd.confirm_option", return_value=False)
     def test_no_does_not_exit(self, _mock_confirm):
         console = MagicMock()
         _prompt_seed_data_flag_early("my-agent", console=console)
@@ -377,16 +377,16 @@ class TestRunBeginningSmokTest:
 
 
 class TestRunEndSmokeTest:
-    def test_no_dataset_skips(self, overclaw_tmp_project):
-        agent = overclaw_tmp_project / "agent.py"
+    def test_no_dataset_skips(self, overmind_tmp_project):
+        agent = overmind_tmp_project / "agent.py"
         agent.write_text("def run(x): return {}\n")
         console = MagicMock()
         # dataset.json doesn't exist — should return silently
         _run_end_smoke_test("myagent", str(agent), "run", console)
         console.print.assert_not_called()
 
-    def test_success(self, overclaw_tmp_project):
-        from overclaw.core.paths import agent_setup_spec_dir
+    def test_success(self, overmind_tmp_project):
+        from overmind.core.paths import agent_setup_spec_dir
 
         spec_dir = agent_setup_spec_dir("myagent")
         spec_dir.mkdir(parents=True)
@@ -394,15 +394,15 @@ class TestRunEndSmokeTest:
         dataset_path.write_text(
             json.dumps([{"input": {"x": 1}, "expected_output": {"y": 2}}])
         )
-        agent = overclaw_tmp_project / "agent.py"
+        agent = overmind_tmp_project / "agent.py"
         agent.write_text("def run(x): return {'y': x.get('x')}\n")
         console = MagicMock()
         _run_end_smoke_test("myagent", str(agent), "run", console)
         # Should print success, not raise
         console.print.assert_called()
 
-    def test_failure_warns_does_not_exit(self, overclaw_tmp_project):
-        from overclaw.core.paths import agent_setup_spec_dir
+    def test_failure_warns_does_not_exit(self, overmind_tmp_project):
+        from overmind.core.paths import agent_setup_spec_dir
 
         spec_dir = agent_setup_spec_dir("myagent")
         spec_dir.mkdir(parents=True)
@@ -410,20 +410,20 @@ class TestRunEndSmokeTest:
         dataset_path.write_text(
             json.dumps([{"input": {"x": 1}, "expected_output": {}}])
         )
-        agent = overclaw_tmp_project / "agent.py"
+        agent = overmind_tmp_project / "agent.py"
         agent.write_text("def run(x): raise ValueError('oops')\n")
         console = MagicMock()
         # Must NOT raise SystemExit — just warn
         _run_end_smoke_test("myagent", str(agent), "run", console)
         console.print.assert_called()
 
-    def test_empty_dataset_skips(self, overclaw_tmp_project):
-        from overclaw.core.paths import agent_setup_spec_dir
+    def test_empty_dataset_skips(self, overmind_tmp_project):
+        from overmind.core.paths import agent_setup_spec_dir
 
         spec_dir = agent_setup_spec_dir("myagent")
         spec_dir.mkdir(parents=True)
         (spec_dir / "dataset.json").write_text("[]")
-        agent = overclaw_tmp_project / "agent.py"
+        agent = overmind_tmp_project / "agent.py"
         agent.write_text("def run(x): return {}\n")
         console = MagicMock()
         _run_end_smoke_test("myagent", str(agent), "run", console)

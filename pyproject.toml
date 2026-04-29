@@ -1,51 +1,77 @@
 [project]
-name = "overclaw"
-version = "0.2.2"
-description = "OverClaw — autonomous agent optimization through structured experimentation"
-readme = "README.md"
-requires-python = ">=3.10"
+authors = [{ name = "Overmind Ltd" }]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+]
 dependencies = [
     "litellm>=1.40.0",
     "python-dotenv>=1.0.0",
-    "rich>=13.0.0",
+    "rich>=14.0.0",
     "tomlkit>=0.14.0",
     "pydantic>=2.0.0",
+    "requests>=2.31.0",
     "urllib3>=1.25.3",
     "python-dateutil",
     "simple-term-menu>=1.6.6",
-    "overmind",
+    "opentelemetry-api>=1.35.0",
+    "opentelemetry-sdk>=1.35.0",
+    "opentelemetry-exporter-otlp-proto-http>=1.35.0",
+    "opentelemetry-instrumentation-fastapi>=0.60b1",
+    # Dependencies for vendored opentelemetry-instrumentation-openai (patched)
+    "opentelemetry-instrumentation>=0.60b1",
+    "opentelemetry-semantic-conventions>=0.60b1",
+    "opentelemetry-semantic-conventions-ai>=0.4.13",
+    "typing-extensions>=4.0.0",
+    "packaging>=23.0",
+    "tqdm>=4.67.3",
+    # Optional: additional instrumentations for richer traces
+    "overmind-instrumentation-anthropic>=0.53.0",
+    "overmind-instrumentation-google-generativeai>=0.53.0",
+    "overmind-instrumentation-agno>=0.53.0",
+    "overmind-instrumentation-openai>=0.53.1",
+    "opentelemetry-overmind>=0.53.0",
 ]
+description = "Overmind — autonomous agent optimization through structured experimentation"
+keywords = ["overmind", "ai", "api", "client", "policy", "enforcement"]
+name = "overmind"
+readme = "README.md"
+requires-python = ">=3.10,<4" # todo; remove the upper bound
+urls = { Homepage = "https://github.com/overmind-core/overmind-python", Repository = "https://github.com/overmind-core/overmind-python" }
+version = "0.2.2"
 
-[project.scripts]
-overclaw = "overclaw.cli:main"
 
-[project.optional-dependencies]
-test = [
-    "pytest>=8.0",
-    "pytest-xdist>=3.5",
-    "pytest-cov>=5.0",
-]
+    [project.scripts]
+    overmind = "overmind.cli:main"
+
+
+    [project.optional-dependencies]
+    test = ["pytest>=8.0", "pytest-xdist>=3.5", "pytest-cov>=5.0"]
 
 [tool.hatch.build.targets.wheel]
-packages = ["overclaw", "agents"]
+packages = ["overmind", "agents"]
 
 [tool.coverage.report]
 sort = "Cover"
 
 [build-system]
-requires = ["hatchling"]
 build-backend = "hatchling.build"
+requires      = ["hatchling"]
 
 [dependency-groups]
-dev = [
-    "pre-commit>=4.5.1",
-    "ruff>=0.15.7",
-    "ydiff>=1.5",
-]
-test = [
-    "pytest>=8.0",
-    "pytest-xdist>=3.5",
-    "pytest-cov>=5.0",
+dev = ["pre-commit>=4.5.1", "ruff>=0.15.7", "ydiff>=1.5"]
+test = ["pytest>=9.0.3", "pytest-xdist>=3.5", "pytest-cov>=5.0"]
+tracing-full = [
+    "opentelemetry-instrumentation-requests>=0.60b1",
+    "opentelemetry-instrumentation-httpx>=0.60b1",
+    "opentelemetry-instrumentation-logging>=0.60b1",
 ]
 
 
@@ -62,7 +88,21 @@ exclude = [
     "openapi_client",
     "tests",
     "agents",
-    "**/.overclaw_runners",
-    "**/.overclaw",
+    "**/.overmind_runners",
+    "**/.overmind",
 ]
 fix = true
+include = ["overmind/**/*.py", "tests/**/*.py"]
+indent-width = 4
+line-length = 120
+preview = true
+target-version = "py310"
+
+    [tool.ruff.format]
+    indent-style              = "space"
+    line-ending               = "auto"
+    quote-style               = "double"
+    skip-magic-trailing-comma = false
+
+    [tool.ruff.lint]
+    ignore = ["BLE001", "SIM103", "S112", "PLW0602"]

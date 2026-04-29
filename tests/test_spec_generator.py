@@ -1,4 +1,4 @@
-"""Tests for overclaw.setup.spec_generator — eval spec construction."""
+"""Tests for overmind.setup.spec_generator — eval spec construction."""
 
 from __future__ import annotations
 
@@ -6,7 +6,7 @@ import json
 from pathlib import Path
 
 
-from overclaw.setup.spec_generator import (
+from overmind.setup.spec_generator import (
     IMPORTANCE_MULTIPLIERS,
     _build_spec,
     generate_spec_from_proposal,

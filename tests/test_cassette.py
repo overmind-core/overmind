@@ -1,11 +1,11 @@
-"""Tests for overclaw.optimize.cassette — record/replay store."""
+"""Tests for overmind.optimize.cassette — record/replay store."""
 
 from __future__ import annotations
 
 import json
 from pathlib import Path
 
-from overclaw.optimize.cassette import (
+from overmind.optimize.cassette import (
     Cassette,
     CassetteEntry,
     NullCassette,

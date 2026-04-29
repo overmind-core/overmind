@@ -1,11 +1,11 @@
-"""Tests for overclaw.optimize.data_analyzer — seed data validation and coverage."""
+"""Tests for overmind.optimize.data_analyzer — seed data validation and coverage."""
 
 from __future__ import annotations
 
 from unittest.mock import MagicMock
 
 
-from overclaw.optimize.data_analyzer import (
+from overmind.optimize.data_analyzer import (
     _display_analysis,
     _fallback_analysis,
     validate_seed_data,

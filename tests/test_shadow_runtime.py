@@ -1,11 +1,11 @@
-"""Tests for overclaw.optimize.shadow_runtime — bootstrap generation + sidecar IO."""
+"""Tests for overmind.optimize.shadow_runtime — bootstrap generation + sidecar IO."""
 
 from __future__ import annotations
 
 import json
 from pathlib import Path
 
-from overclaw.optimize.shadow_runtime import (
+from overmind.optimize.shadow_runtime import (
     ShadowConfig,
     bootstrap_source,
     read_provenance_file,
@@ -16,7 +16,7 @@ class TestShadowConfig:
     def test_env_disabled(self):
         cfg = ShadowConfig(enabled=False)
         env = cfg.env()
-        assert "OVERCLAW_SHADOW_MODE" not in env
+        assert "OVERMIND_SHADOW_MODE" not in env
 
     def test_env_enabled_full(self):
         cfg = ShadowConfig(
@@ -25,17 +25,17 @@ class TestShadowConfig:
             provenance_path="/tmp/p.jsonl",
         )
         env = cfg.env()
-        assert env["OVERCLAW_SHADOW_MODE"] == "1"
-        assert env["OVERCLAW_CASSETTE_FILE"] == "/tmp/c.jsonl"
-        assert env["OVERCLAW_PROVENANCE_FILE"] == "/tmp/p.jsonl"
-        assert env["OVERCLAW_SIMULATE_BROWSER"] == "1"
-        assert env["OVERCLAW_SIMULATE_NETWORK"] == "1"
+        assert env["OVERMIND_SHADOW_MODE"] == "1"
+        assert env["OVERMIND_CASSETTE_FILE"] == "/tmp/c.jsonl"
+        assert env["OVERMIND_PROVENANCE_FILE"] == "/tmp/p.jsonl"
+        assert env["OVERMIND_SIMULATE_BROWSER"] == "1"
+        assert env["OVERMIND_SIMULATE_NETWORK"] == "1"
 
     def test_env_can_disable_browser_network(self):
         cfg = ShadowConfig(enabled=True, simulate_browser=False, simulate_network=False)
         env = cfg.env()
-        assert "OVERCLAW_SIMULATE_BROWSER" not in env
-        assert "OVERCLAW_SIMULATE_NETWORK" not in env
+        assert "OVERMIND_SIMULATE_BROWSER" not in env
+        assert "OVERMIND_SIMULATE_NETWORK" not in env
 
 
 class TestBootstrapSource:
@@ -50,7 +50,7 @@ class TestBootstrapSource:
     def test_enabled_gets_full_bootstrap(self):
         cfg = ShadowConfig(enabled=True)
         src = bootstrap_source(cfg)
-        assert "OVERCLAW_SHADOW_MODE" in src
+        assert "OVERMIND_SHADOW_MODE" in src
         assert "litellm" in src
         # Valid Python.
         compile(src, "<shadow>", "exec")
