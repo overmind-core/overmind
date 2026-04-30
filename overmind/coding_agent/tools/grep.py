@@ -65,9 +65,7 @@ class GrepTool:
                 cwd=ctx.cwd,
             )
         except FileNotFoundError:
-            return ToolResult(
-                output="Error: ripgrep (rg) is not installed. Install it first."
-            )
+            return ToolResult(output="Error: ripgrep (rg) is not installed. Install it first.")
         except subprocess.TimeoutExpired:
             return ToolResult(output="Search timed out after 30 seconds.")
 

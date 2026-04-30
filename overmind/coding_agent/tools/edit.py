@@ -361,10 +361,7 @@ def replace(content: str, old: str, new: str, replace_all: bool = False) -> str:
             "Could not find oldString in the file. "
             "It must match exactly, including whitespace, indentation, and line endings."
         )
-    raise ValueError(
-        "Found multiple matches for oldString. "
-        "Provide more surrounding context to make the match unique."
-    )
+    raise ValueError("Found multiple matches for oldString. Provide more surrounding context to make the match unique.")
 
 
 # ---------------------------------------------------------------------------

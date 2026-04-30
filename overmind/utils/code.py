@@ -139,9 +139,7 @@ def _lang_tag_for_path(rel_path: str) -> str:
     }.get(ext, "python")
 
 
-_STDLIB_TOP: frozenset[str] = getattr(
-    sys, "stdlib_module_names", frozenset()
-) | frozenset(sys.builtin_module_names)
+_STDLIB_TOP: frozenset[str] = getattr(sys, "stdlib_module_names", frozenset()) | frozenset(sys.builtin_module_names)
 
 
 def _is_local_module(module_name: str, project_root: Path) -> bool:
@@ -364,11 +362,7 @@ def _extract_import_block(source: str, tree: ast.Module) -> tuple[str, int, int]
     Returns ``(source_text, start_line_1indexed, end_line_1indexed)`` or None.
     """
     lines = source.splitlines(keepends=True)
-    import_nodes = [
-        n
-        for n in ast.iter_child_nodes(tree)
-        if isinstance(n, (ast.Import, ast.ImportFrom))
-    ]
+    import_nodes = [n for n in ast.iter_child_nodes(tree) if isinstance(n, (ast.Import, ast.ImportFrom))]
     if not import_nodes:
         return None
 
@@ -655,9 +649,7 @@ class AgentBundle:
         """
         sections: list[str] = []
 
-        ordered_paths = [self.entry_file] + [
-            p for p in self.original_files if p != self.entry_file
-        ]
+        ordered_paths = [self.entry_file] + [p for p in self.original_files if p != self.entry_file]
 
         for rel_path in ordered_paths:
             source = self.original_files.get(rel_path)
@@ -677,15 +669,9 @@ class AgentBundle:
             lang_tag = _lang_tag_for_path(rel_path)
             if has_signature_only and not is_opt:
                 sig_text = "\n\n".join(p.source for p in file_pieces)
-                sections.append(
-                    f"\n# ===== FILE: {rel_path} [{tag}] =====\n"
-                    f"```{lang_tag}\n{sig_text}\n```"
-                )
+                sections.append(f"\n# ===== FILE: {rel_path} [{tag}] =====\n```{lang_tag}\n{sig_text}\n```")
             else:
-                sections.append(
-                    f"\n# ===== FILE: {rel_path} [{tag}] =====\n"
-                    f"```{lang_tag}\n{source}\n```"
-                )
+                sections.append(f"\n# ===== FILE: {rel_path} [{tag}] =====\n```{lang_tag}\n{source}\n```")
 
         return "\n".join(sections)
 
@@ -696,9 +682,7 @@ class AgentBundle:
     def get_all_optimizable_code(self) -> str:
         """Concatenated source of all optimizable files (for metrics)."""
         return "\n\n".join(
-            source
-            for rel_path, source in self.original_files.items()
-            if rel_path in self.optimizable_files
+            source for rel_path, source in self.original_files.items() if rel_path in self.optimizable_files
         )
 
     def get_optimizable_piece_ids(self) -> list[str]:
@@ -823,13 +807,9 @@ class AgentBundle:
         if new_pieces:
             for target_file, new_code in new_pieces:
                 if target_file in modified:
-                    modified[target_file] = append_piece(
-                        modified[target_file], new_code
-                    )
+                    modified[target_file] = append_piece(modified[target_file], new_code)
                 elif target_file in self.original_files:
-                    modified[target_file] = append_piece(
-                        self.original_files[target_file], new_code
-                    )
+                    modified[target_file] = append_piece(self.original_files[target_file], new_code)
 
         for rel_path, source in modified.items():
             if rel_path.endswith(".py"):
@@ -986,10 +966,10 @@ def _extract_signature(source: str) -> str | None:
                         in_class = True
                 elif in_class:
                     stripped = line.strip()
-                    if stripped.startswith("def ") or stripped.startswith("async def "):
+                    if stripped.startswith(("def ", "async def ")):
                         result_lines.append(line)
                         result_lines.append("        ...")
-                    elif stripped.startswith('"""') or stripped.startswith("'''"):
+                    elif stripped.startswith(('"""', "'''")):
                         result_lines.append(line)
                     elif stripped and not stripped.startswith("#"):
                         if "=" in stripped:

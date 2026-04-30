@@ -7,7 +7,7 @@ of what to change and applies targeted code edits to an agent codebase.
 from __future__ import annotations
 
 import platform
-from datetime import datetime
+from datetime import datetime, timezone
 
 BASE_PROMPT = """\
 You are an expert coding agent that improves AI agent codebases.
@@ -53,17 +53,15 @@ def build_system_prompt(
     """Build the full system prompt for the coding agent."""
     parts = [BASE_PROMPT]
 
-    env_block = "\n".join(
-        [
-            "",
-            f"Model: {model_id}" if model_id else "",
-            "<env>",
-            f"  Working directory: {cwd}",
-            f"  Platform: {platform.system().lower()}",
-            f"  Date: {datetime.now().strftime('%A %b %d, %Y')}",
-            "</env>",
-        ]
-    )
+    env_block = "\n".join([
+        "",
+        f"Model: {model_id}" if model_id else "",
+        "<env>",
+        f"  Working directory: {cwd}",
+        f"  Platform: {platform.system().lower()}",
+        f"  Date: {datetime.now(timezone.utc).strftime('%A %b %d, %Y')}",
+        "</env>",
+    ])
     parts.append(env_block)
 
     return "\n".join(parts)

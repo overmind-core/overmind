@@ -329,9 +329,7 @@ class ShadowBackend:
 
         confidence = aggregate_confidence(tags)
         confidence.reason = (
-            f"shadow execution ({confidence.reason})"
-            if tags
-            else "shadow execution (no external calls intercepted)"
+            f"shadow execution ({confidence.reason})" if tags else "shadow execution (no external calls intercepted)"
         )
         return BackendOutput(
             run_output=ro,
@@ -360,9 +358,7 @@ def _load_source_tags(path: Path) -> list[SourceTag]:
         if not source:
             continue
         try:
-            tags.append(
-                SourceTag(source=TraceSource(source), reason=raw.get("reason", ""))
-            )
+            tags.append(SourceTag(source=TraceSource(source), reason=raw.get("reason", "")))
         except ValueError:
             continue
     return tags

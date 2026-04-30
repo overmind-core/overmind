@@ -478,10 +478,7 @@ def bootstrap_source(config: ShadowConfig | None = None) -> str:
     return _BOOTSTRAP
 
 
-_SYS_ARGV_GUARD = (
-    "import sys as _ocl_sys\n"
-    "_ocl_sys.argv = [_ocl_sys.argv[0] if _ocl_sys.argv else '_overmind_agent']\n"
-)
+_SYS_ARGV_GUARD = "import sys as _ocl_sys\n_ocl_sys.argv = [_ocl_sys.argv[0] if _ocl_sys.argv else '_overmind_agent']\n"
 
 
 def read_provenance_file(path: str | os.PathLike) -> list[dict]:

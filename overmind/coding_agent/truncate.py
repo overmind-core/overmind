@@ -6,9 +6,7 @@ MAX_LINES = 1500
 MAX_BYTES = 48_000
 
 
-def truncate(
-    text: str, max_lines: int = MAX_LINES, max_bytes: int = MAX_BYTES
-) -> tuple[str, bool]:
+def truncate(text: str, max_lines: int = MAX_LINES, max_bytes: int = MAX_BYTES) -> tuple[str, bool]:
     """Truncate text to fit within limits.
 
     Returns (output, was_truncated).

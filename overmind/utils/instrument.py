@@ -67,11 +67,7 @@ def _add_overmind_imports(source: str) -> str:
         body = tree.body
         i = 0
         first = body[0]
-        if (
-            isinstance(first, ast.Expr)
-            and isinstance(first.value, ast.Constant)
-            and isinstance(first.value.value, str)
-        ):
+        if isinstance(first, ast.Expr) and isinstance(first.value, ast.Constant) and isinstance(first.value.value, str):
             insert_idx = first.end_lineno or insert_idx
             i = 1
         while i < len(body):
@@ -160,17 +156,15 @@ def _replace_call_tool(source: str) -> str:
 # ---------------------------------------------------------------------------
 
 
-_ENUM_LIKE_BASES = frozenset(
-    {
-        "Enum",
-        "IntEnum",
-        "StrEnum",
-        "Flag",
-        "IntFlag",
-        "NamedTuple",
-        "TypedDict",
-    }
-)
+_ENUM_LIKE_BASES = frozenset({
+    "Enum",
+    "IntEnum",
+    "StrEnum",
+    "Flag",
+    "IntFlag",
+    "NamedTuple",
+    "TypedDict",
+})
 
 
 def _add_observe_decorators(source: str) -> str:
@@ -210,17 +204,9 @@ def _add_observe_decorators(source: str) -> str:
 
         if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and not inside_skip:
             already_has = any(
-                (
-                    isinstance(d, ast.Call)
-                    and isinstance(d.func, ast.Name)
-                    and d.func.id == "observe"
-                )
+                (isinstance(d, ast.Call) and isinstance(d.func, ast.Name) and d.func.id == "observe")
                 or (isinstance(d, ast.Name) and d.id == "observe")
-                or (
-                    isinstance(d, ast.Call)
-                    and isinstance(d.func, ast.Attribute)
-                    and d.func.attr == "observe"
-                )
+                or (isinstance(d, ast.Call) and isinstance(d.func, ast.Attribute) and d.func.attr == "observe")
                 for d in node.decorator_list
             )
             if not already_has:
@@ -247,9 +233,7 @@ def is_instrumented(source: str) -> bool:
     Requires both the import (with ``observe``) and at least one
     ``@observe()`` decorator to be present.
     """
-    has_import = "observe" in source and (
-        "from overmind import" in source or "import overmind" in source
-    )
+    has_import = "observe" in source and ("from overmind import" in source or "import overmind" in source)
     has_decorator = "@observe()" in source
     return has_import and has_decorator
 

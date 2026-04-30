@@ -121,15 +121,9 @@ class RunState:
             "agent_name": self.agent_name,
             "run_history": [r.to_dict() for r in self.run_history],
             "failure_registry": self.failure_registry.to_dict(),
-            "cumulative_failed_attempts": self.cumulative_failed_attempts[
-                -_MAX_FAILED_ATTEMPTS:
-            ],
-            "cumulative_successful_changes": self.cumulative_successful_changes[
-                -_MAX_SUCCESSFUL_CHANGES:
-            ],
-            "regression_cases": [
-                rc.to_dict() for rc in self.regression_cases[-_MAX_REGRESSION_CASES:]
-            ],
+            "cumulative_failed_attempts": self.cumulative_failed_attempts[-_MAX_FAILED_ATTEMPTS:],
+            "cumulative_successful_changes": self.cumulative_successful_changes[-_MAX_SUCCESSFUL_CHANGES:],
+            "regression_cases": [rc.to_dict() for rc in self.regression_cases[-_MAX_REGRESSION_CASES:]],
             "component_failure_weights": self.component_failure_weights,
         }
 
@@ -140,9 +134,7 @@ class RunState:
             self.failure_registry = FailureRegistry.from_dict(reg_data)
         self.cumulative_failed_attempts = d.get("cumulative_failed_attempts", [])
         self.cumulative_successful_changes = d.get("cumulative_successful_changes", [])
-        self.regression_cases = [
-            RegressionCase.from_dict(rc) for rc in d.get("regression_cases", [])
-        ]
+        self.regression_cases = [RegressionCase.from_dict(rc) for rc in d.get("regression_cases", [])]
         self.component_failure_weights = d.get("component_failure_weights", {})
 
     # -- Load / Save --
@@ -155,8 +147,7 @@ class RunState:
                 data = json.loads(path.read_text(encoding="utf-8"))
                 state._load_from_dict(data)
                 _log.info(
-                    "Loaded run state: %d prior run(s), %d regression case(s), "
-                    "%d failure cluster(s)",
+                    "Loaded run state: %d prior run(s), %d regression case(s), %d failure cluster(s)",
                     len(state.run_history),
                     len(state.regression_cases),
                     len(state.failure_registry.clusters),
@@ -196,9 +187,7 @@ class RunState:
 
     def end_run(self, summary: RunSummary) -> None:
         self.run_history.append(summary)
-        self.component_failure_weights = (
-            self.failure_registry.compute_component_weights()
-        )
+        self.component_failure_weights = self.failure_registry.compute_component_weights()
 
     # -- Seed session state from accumulated history --
 
@@ -214,15 +203,11 @@ class RunState:
 
     def accumulate_failed(self, attempts: list[dict]) -> None:
         self.cumulative_failed_attempts.extend(attempts)
-        self.cumulative_failed_attempts = self.cumulative_failed_attempts[
-            -_MAX_FAILED_ATTEMPTS:
-        ]
+        self.cumulative_failed_attempts = self.cumulative_failed_attempts[-_MAX_FAILED_ATTEMPTS:]
 
     def accumulate_successful(self, changes: list[dict]) -> None:
         self.cumulative_successful_changes.extend(changes)
-        self.cumulative_successful_changes = self.cumulative_successful_changes[
-            -_MAX_SUCCESSFUL_CHANGES:
-        ]
+        self.cumulative_successful_changes = self.cumulative_successful_changes[-_MAX_SUCCESSFUL_CHANGES:]
 
     # -- Regression suite --
 
@@ -237,10 +222,7 @@ class RunState:
     ) -> None:
         input_key = json.dumps(case_input, sort_keys=True, default=str)
         for existing in self.regression_cases:
-            if (
-                json.dumps(existing.case_input, sort_keys=True, default=str)
-                == input_key
-            ):
+            if json.dumps(existing.case_input, sort_keys=True, default=str) == input_key:
                 existing.min_score = max(existing.min_score, min_score)
                 return
 

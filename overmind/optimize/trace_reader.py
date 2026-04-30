@@ -160,9 +160,7 @@ def _process_resource_spans(data: dict, result: ParsedTrace) -> None:
 
             if scope_name == "overmind":
                 _process_overmind_spans(spans, result)
-            elif (
-                "openai" in scope_name or "opentelemetry.instrumentation" in scope_name
-            ):
+            elif "openai" in scope_name or "opentelemetry.instrumentation" in scope_name:
                 _process_llm_spans(spans, result)
 
 
@@ -245,9 +243,7 @@ def _process_llm_spans(spans: list[dict], result: ParsedTrace) -> None:
 # ---------------------------------------------------------------------------
 
 
-def attach_shadow_provenance(
-    traces: list[ParsedTrace], sidecar_tags: list[list[dict]]
-) -> None:
+def attach_shadow_provenance(traces: list[ParsedTrace], sidecar_tags: list[list[dict]]) -> None:
     """Copy per-case shadow sidecar tags onto matching :class:`ParsedTrace`s.
 
     The shadow runtime writes one provenance JSONL file per subprocess call

@@ -10,9 +10,7 @@ IMPORTANCE_MULTIPLIERS = {"critical": 3, "important": 2, "minor": 1}
 
 
 @traced(span_name="overmind_generate_spec", type=SpanType.FUNCTION)
-def generate_spec_from_proposal(
-    analysis: dict, policy_data: dict | None = None
-) -> dict:
+def generate_spec_from_proposal(analysis: dict, policy_data: dict | None = None) -> dict:
     """Build an eval spec directly from the LLM's proposed criteria.
 
     When *policy_data* is provided, it is embedded into the spec so that
@@ -24,9 +22,7 @@ def generate_spec_from_proposal(
     fields_criteria = criteria.get("fields", {})
     structure_weight = criteria.get("structure_weight", 20)
 
-    field_importance = {
-        name: fc.get("importance", "important") for name, fc in fields_criteria.items()
-    }
+    field_importance = {name: fc.get("importance", "important") for name, fc in fields_criteria.items()}
 
     field_settings: dict[str, dict] = {}
     for field_name, fc in fields_criteria.items():
@@ -38,9 +34,7 @@ def generate_spec_from_proposal(
             settings["tolerance"] = fc.get("tolerance", 10)
         elif ftype == "text":
             importance = fc.get("importance", "important")
-            default_mode = (
-                "similarity" if importance in ("critical", "important") else "non_empty"
-            )
+            default_mode = "similarity" if importance in ("critical", "important") else "non_empty"
             settings["eval_mode"] = fc.get("eval_mode", default_mode)
         field_settings[field_name] = settings
 
@@ -72,12 +66,9 @@ def _build_spec(
         tool_usage_weight = 10
 
     # Auto-allocate LLM judge weight when text or complex fields exist
-    text_fields = [
-        name for name, info in output_schema.items() if info.get("type") == "text"
-    ]
+    text_fields = [name for name, info in output_schema.items() if info.get("type") == "text"]
     text_weight_sum = sum(
-        IMPORTANCE_MULTIPLIERS.get(field_importance.get(name, "important"), 2)
-        for name in text_fields
+        IMPORTANCE_MULTIPLIERS.get(field_importance.get(name, "important"), 2) for name in text_fields
     )
     llm_judge_weight = 0
     if text_weight_sum > 0 or policy_data:
@@ -206,9 +197,7 @@ def _generate_consistency_rules(
     - Number-vs-enum correlations (with direction derived from enum ordering)
     """
     rules: list[dict] = []
-    number_fields = [
-        n for n, info in output_schema.items() if info.get("type") == "number"
-    ]
+    number_fields = [n for n, info in output_schema.items() if info.get("type") == "number"]
     enum_fields = [n for n, info in output_schema.items() if info.get("type") == "enum"]
 
     _ORDERING_PAIRS = [
@@ -224,26 +213,22 @@ def _generate_consistency_rules(
         for lo_f in lo_matches:
             for hi_f in hi_matches:
                 if lo_f != hi_f:
-                    rules.append(
-                        {
-                            "field_a": lo_f,
-                            "field_b": hi_f,
-                            "type": "ordering",
-                            "operator": "<=",
-                            "penalty": 3.0,
-                        }
-                    )
+                    rules.append({
+                        "field_a": lo_f,
+                        "field_b": hi_f,
+                        "type": "ordering",
+                        "operator": "<=",
+                        "penalty": 3.0,
+                    })
 
     for nf in number_fields:
         for ef in enum_fields:
-            rules.append(
-                {
-                    "field_a": nf,
-                    "field_b": ef,
-                    "type": "correlation",
-                    "penalty": 3.0,
-                }
-            )
+            rules.append({
+                "field_a": nf,
+                "field_b": ef,
+                "type": "correlation",
+                "penalty": 3.0,
+            })
 
     return rules
 

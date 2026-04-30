@@ -61,7 +61,7 @@ class ApiBackend(StorageBackend):
         :meth:`set_job_id`).
     client:
         Pre-built :class:`OvermindClient`.  When ``None`` (default) the
-        client is built lazily from ``OVERMIND_API_URL`` / ``OVERMIND_API_TOKEN``.
+        client is built lazily from ``OVERMIND_API_URL`` / ``OVERMIND_API_KEY``.
     """
 
     def __init__(
@@ -126,11 +126,7 @@ class ApiBackend(StorageBackend):
             return False
         try:
             patch = PatchedAgentRequest(**fields)
-            _run_async(
-                client.agents_partial_update(
-                    id=UUID(self._agent_id), patched_agent_request=patch
-                )
-            )
+            _run_async(client.agents_partial_update(id=UUID(self._agent_id), patched_agent_request=patch))
             return True
         except Exception:
             logger.exception("agents_partial_update failed agent_id=%s", self._agent_id)
@@ -183,9 +179,7 @@ class ApiBackend(StorageBackend):
         if not client:
             return None
         try:
-            response = _run_async(
-                client.agents_eval_spec_retrieve(id=UUID(self._agent_id))
-            )
+            response = _run_async(client.agents_eval_spec_retrieve(id=UUID(self._agent_id)))
         except Exception:
             return None
         spec: dict[str, Any] = response.to_dict()

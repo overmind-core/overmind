@@ -234,9 +234,7 @@ class Optimizer:
         self._instrument_agent_copy()
 
         # --- Process-isolated agent runner ---
-        self._runner = self._build_runner(
-            self._instrumented_agent_path, config.entrypoint_fn
-        )
+        self._runner = self._build_runner(self._instrumented_agent_path, config.entrypoint_fn)
         self._logger = logging.getLogger("overmind.optimize.optimizer")
 
         # --- Cross-run state & failure clustering ---
@@ -316,10 +314,10 @@ class Optimizer:
     def _use_local_traces(self) -> bool:
         """Whether to use local OVERMIND_TRACE_FILE for tracing.
 
-        Returns True when OVERMIND_API_TOKEN is NOT set, meaning traces
+        Returns True when OVERMIND_API_KEY is NOT set, meaning traces
         should be stored locally via OVERMIND_TRACE_FILE.
         """
-        return not os.environ.get("OVERMIND_API_TOKEN")
+        return not os.environ.get("OVERMIND_API_KEY")
 
     # ------------------------------------------------------------------
     # Public entry point
@@ -367,36 +365,22 @@ class Optimizer:
         )
 
         self.console.print()
-        self.console.print(
-            Rule(f"[bold {BRAND}]Overmind Agent Optimizer[/bold {BRAND}]", style=BRAND)
-        )
+        self.console.print(Rule(f"[bold {BRAND}]Overmind Agent Optimizer[/bold {BRAND}]", style=BRAND))
         agent_label = (
             f"{self.config.agent_name}  [dim]({self.config.agent_path})[/dim]"
             if getattr(self.config, "agent_name", "")
             else self.config.agent_path
         )
-        info_lines = (
-            f"  [dim]Agent:[/dim]  {agent_label}\n"
-            f"  [dim]Cases:[/dim]  {len(dataset)} total"
-        )
+        info_lines = f"  [dim]Agent:[/dim]  {agent_label}\n  [dim]Cases:[/dim]  {len(dataset)} total"
         if holdout_set:
             info_lines += f" ({len(train_set)} train, {len(holdout_set)} holdout)"
         info_lines += f"\n  [dim]Model:[/dim]  {self.config.analyzer_model}"
         if self._policy_data:
-            n_rules = len(
-                self._policy_data.get(
-                    "domain_rules", self._policy_data.get("decision_rules", [])
-                )
-            )
+            n_rules = len(self._policy_data.get("domain_rules", self._policy_data.get("decision_rules", [])))
             n_constraints = len(
-                self._policy_data.get(
-                    "output_constraints", self._policy_data.get("hard_constraints", [])
-                )
+                self._policy_data.get("output_constraints", self._policy_data.get("hard_constraints", []))
             )
-            info_lines += (
-                f"\n  [dim]Policy:[/dim] {n_rules} rule(s), "
-                f"{n_constraints} constraint(s)"
-            )
+            info_lines += f"\n  [dim]Policy:[/dim] {n_rules} rule(s), {n_constraints} constraint(s)"
         if self._run_state.has_prior_runs:
             n_runs = len(self._run_state.run_history)
             n_reg = len(self._run_state.regression_cases)
@@ -447,20 +431,15 @@ class Optimizer:
                     f"{n_ro} read-only, {total_chars}/{cap} chars"
                 )
             else:
-                self.console.print(
-                    f"  [dim]Bundle:[/dim] {n_files} file(s), {total_chars}/{cap} chars"
-                )
+                self.console.print(f"  [dim]Bundle:[/dim] {n_files} file(s), {total_chars}/{cap} chars")
 
         # Provision agent environment (install deps into venv / node_modules)
         with make_spinner_progress(self.console, transient=True) as _prov:
             _prov.add_task(f"  Provisioning {self._runner.language.value} environment…")
             self._ensure_runner_env()
-        self.console.print(
-            f"  [dim]Runtime:[/dim] {self._runner.language.value} "
-            f"(subprocess isolation)"
-        )
+        self.console.print(f"  [dim]Runtime:[/dim] {self._runner.language.value} (subprocess isolation)")
 
-        baseline_eval, baseline_traces, baseline_items = self._run_agent_on_dataset(
+        baseline_eval, _, baseline_items = self._run_agent_on_dataset(
             self._instrumented_agent_path, train_set, "baseline"
         )
         self.best_score = baseline_eval["avg_total"]
@@ -498,10 +477,7 @@ class Optimizer:
             )
             if touched:
                 open_n = self._failure_registry.get_open_count()
-                self.console.print(
-                    f"  [dim]Failure clusters: {len(touched)} identified, "
-                    f"{open_n} open[/dim]"
-                )
+                self.console.print(f"  [dim]Failure clusters: {len(touched)} identified, {open_n} open[/dim]")
 
         # Baseline diagnostics
         self._print_baseline_diagnostics(baseline_eval, baseline_items)
@@ -567,16 +543,12 @@ class Optimizer:
 
                 # Temperature annealing
                 t_start, t_end = 0.8, 0.4
-                temperature = t_start - (t_start - t_end) * (i - 1) / max(
-                    self.config.iterations - 1, 1
-                )
+                temperature = t_start - (t_start - t_end) * (i - 1) / max(self.config.iterations - 1, 1)
 
                 # Stall detection: increase exploration
                 if self.stall_count >= 2:
                     temperature = min(temperature + 0.2, 1.0)
-                    self.console.print(
-                        "  [yellow]Detected stall — increasing exploration[/yellow]"
-                    )
+                    self.console.print("  [yellow]Detected stall — increasing exploration[/yellow]")
                 set_tag(attrs.OPTIMIZE_TEMPERATURE, float(temperature))
 
                 # --- Compute focus weights & cluster context ---
@@ -597,17 +569,13 @@ class Optimizer:
                         self._failure_registry,
                         self.successful_changes,
                         self.failed_attempts,
-                        is_multi_file=(
-                            self._bundle is not None and self._bundle.is_multi_file()
-                        ),
+                        is_multi_file=(self._bundle is not None and self._bundle.is_multi_file()),
                     )
                     _component_ctx = format_component_weights(_focus_weights)
 
                     top_focus = max(_focus_weights, key=_focus_weights.get)  # type: ignore[arg-type]
                     top_pct = _focus_weights[top_focus] * 100
-                    self.console.print(
-                        f"  [dim]Focus targeting:[/dim] {top_focus} ({top_pct:.0f}%)"
-                    )
+                    self.console.print(f"  [dim]Focus targeting:[/dim] {top_focus} ({top_pct:.0f}%)")
 
                 # --- Step 1: Diagnosis & candidate generation ---
                 self.console.print(
@@ -615,9 +583,7 @@ class Optimizer:
                     f"{n_candidates} candidates (temp={temperature:.2f})"
                 )
                 with make_spinner_progress(self.console) as progress:
-                    task = progress.add_task(
-                        "  Diagnosing and generating improvements…"
-                    )
+                    task = progress.add_task("  Diagnosing and generating improvements…")
 
                     try:
                         # Build agent_files for the coding agent: use the
@@ -633,15 +599,10 @@ class Optimizer:
                             eval_spec=self.evaluator.spec,
                             failed_attempts=self.failed_attempts,
                             successful_changes=self.successful_changes,
-                            allow_model_change=bool(
-                                self.config.model_backtesting
-                                and self.config.backtest_models
-                            ),
+                            allow_model_change=bool(self.config.model_backtesting and self.config.backtest_models),
                             num_candidates=n_candidates,
                             temperature=temperature,
-                            diagnosis_case_fraction=getattr(
-                                self.config, "diagnosis_case_fraction", 0.7
-                            ),
+                            diagnosis_case_fraction=getattr(self.config, "diagnosis_case_fraction", 0.7),
                             iteration_seed=i * 7919,
                             policy_context=self._policy_diagnosis,
                             policy_constraints=self._policy_codegen,
@@ -649,20 +610,14 @@ class Optimizer:
                             bundle=self._bundle,
                             agent_files=_agent_files,
                             codegen_model=getattr(self.config, "codegen_model", ""),
-                            codegen_max_steps=getattr(
-                                self.config, "codegen_max_steps", 50
-                            ),
+                            codegen_max_steps=getattr(self.config, "codegen_max_steps", 50),
                             cluster_context=_cluster_ctx,
                             component_weights_context=_component_ctx,
                             focus_weights=_focus_weights,
                         )
                     except Exception as exc:
-                        self._logger.exception(
-                            "Iteration %d analyzer error: %s", i, exc
-                        )
-                        progress.update(
-                            task, description=f"  [red]Analyzer error: {exc}"
-                        )
+                        self._logger.exception("Iteration %d analyzer error", i)
+                        progress.update(task, description=f"  [red]Analyzer error: {exc}")
                         self._log_result(
                             f"iter_{i:03d}",
                             latest_eval,
@@ -673,9 +628,7 @@ class Optimizer:
                         continue
 
                     progress.update(task, completed=True)
-                    self._logger.info(
-                        "Iteration %d generated %d candidate(s)", i, len(candidates)
-                    )
+                    self._logger.info("Iteration %d generated %d candidate(s)", i, len(candidates))
                     set_tag(attrs.OPTIMIZE_N_CANDIDATES_GENERATED, len(candidates))
 
                 # Show diagnosis if available (full text; wrap inside panel)
@@ -722,8 +675,7 @@ class Optimizer:
                             cand["_resolved_files"] = resolved["files"]
                         else:
                             self.console.print(
-                                f"    Candidate {idx + 1} ({method}): "
-                                f"[yellow]bundle splice validation failed[/yellow]"
+                                f"    Candidate {idx + 1} ({method}): [yellow]bundle splice validation failed[/yellow]"
                             )
                             continue
 
@@ -738,19 +690,14 @@ class Optimizer:
                             reason = "response truncated"
                         elif debug.get("response_len", 0) > 0:
                             reason = "parsing failed"
-                        self.console.print(
-                            f"    Candidate {idx + 1} ({method}): [yellow]{reason}[/yellow]"
-                        )
+                        self.console.print(f"    Candidate {idx + 1} ({method}): [yellow]{reason}[/yellow]")
                         continue
                     if not self._validate_code(code):
                         ext = Path(self.config.agent_path).suffix or ".txt"
-                        failed_path = (
-                            self.output_dir / f"failed_iter_{i:03d}_c{idx}{ext}"
-                        )
+                        failed_path = self.output_dir / f"failed_iter_{i:03d}_c{idx}{ext}"
                         failed_path.write_text(code)
                         self.console.print(
-                            f"    Candidate {idx + 1} ({method}): "
-                            f"[yellow]syntax/interface validation failed[/yellow]"
+                            f"    Candidate {idx + 1} ({method}): [yellow]syntax/interface validation failed[/yellow]"
                         )
                         continue
                     valid.append((idx, cand))
@@ -790,18 +737,14 @@ class Optimizer:
                     )
                     if all_same_summary:
                         for vidx, vcand in valid:
-                            cand_table.add_row(
-                                str(vidx + 1), vcand.get("method", "unknown")
-                            )
+                            cand_table.add_row(str(vidx + 1), vcand.get("method", "unknown"))
                     else:
                         cand_table.add_column("Change summary", overflow="fold")
                         for vidx, vcand in valid:
                             method = vcand.get("method", "unknown")
                             sugs = vcand.get("suggestions") or []
                             if sugs:
-                                summary_cell = Text(
-                                    "; ".join(str(s) for s in sugs), overflow="fold"
-                                )
+                                summary_cell = Text("; ".join(str(s) for s in sugs), overflow="fold")
                             else:
                                 summary_cell = Text("—", style="dim")
                             cand_table.add_row(str(vidx + 1), method, summary_cell)
@@ -809,12 +752,8 @@ class Optimizer:
 
                 set_tag(attrs.OPTIMIZE_N_CANDIDATES_VALID, len(valid))
                 if not valid:
-                    self.console.print(
-                        "  [yellow]No valid candidates this iteration.[/yellow]"
-                    )
-                    self._log_result(
-                        f"iter_{i:03d}", latest_eval, "skip", "No valid candidates"
-                    )
+                    self.console.print("  [yellow]No valid candidates this iteration.[/yellow]")
+                    self._log_result(f"iter_{i:03d}", latest_eval, "skip", "No valid candidates")
                     self.stall_count += 1
                     continue
 
@@ -839,9 +778,7 @@ class Optimizer:
                             self._cleanup_candidate(tmp_path, cand)
 
                         if s_eval is None:
-                            self.console.print(
-                                f"    Candidate {idx + 1}: [red]crashed in smoke test[/red]"
-                            )
+                            self.console.print(f"    Candidate {idx + 1}: [red]crashed in smoke test[/red]")
                         elif s_eval["avg_total"] >= smoke_threshold:
                             surviving.append((idx, cand))
                         else:
@@ -855,15 +792,11 @@ class Optimizer:
                         valid = surviving
                     elif valid:
                         self.console.print(
-                            "  [yellow]All candidates failed smoke test, "
-                            "proceeding with full eval anyway.[/yellow]"
+                            "  [yellow]All candidates failed smoke test, proceeding with full eval anyway.[/yellow]"
                         )
 
                 # --- Step 3: Evaluate candidates ---
-                self.console.print(
-                    f"  [dim]Step 3:[/dim] Evaluating {len(valid)} candidate(s) "
-                    f"against test cases"
-                )
+                self.console.print(f"  [dim]Step 3:[/dim] Evaluating {len(valid)} candidate(s) against test cases")
                 best_cand = None
                 best_cand_eval = None
                 best_cand_score = -1.0
@@ -876,9 +809,7 @@ class Optimizer:
                         attributes={
                             attrs.OPTIMIZE_ITERATION: i,
                             attrs.OPTIMIZE_CANDIDATE_INDEX: int(orig_idx),
-                            attrs.OPTIMIZE_CANDIDATE_METHOD: str(
-                                cand.get("method", "")
-                            ),
+                            attrs.OPTIMIZE_CANDIDATE_METHOD: str(cand.get("method", "")),
                         },
                     ):
                         tmp_path = self._write_candidate_to_disk(cand)
@@ -917,16 +848,12 @@ class Optimizer:
                             self._cleanup_candidate(tmp_path, cand)
 
                         if c_eval is None:
-                            self.console.print(
-                                f"    Candidate {orig_idx + 1}: [red]crashed[/red]"
-                            )
+                            self.console.print(f"    Candidate {orig_idx + 1}: [red]crashed[/red]")
                             set_tag(attrs.OPTIMIZE_ITERATION_DECISION, "crash")
                             continue
 
                         c_score = c_eval["avg_total"]
-                        self.console.print(
-                            f"    Candidate {orig_idx + 1}: [cyan]{c_score:.1f}[/cyan] / 100"
-                        )
+                        self.console.print(f"    Candidate {orig_idx + 1}: [cyan]{c_score:.1f}[/cyan] / 100")
                         set_tag(attrs.OPTIMIZE_CANDIDATE_SCORE, float(c_score))
 
                         complexity_penalty = self._compute_complexity_penalty(
@@ -945,8 +872,7 @@ class Optimizer:
                         )
                         if complexity_penalty > 0:
                             self.console.print(
-                                f"      [dim]Complexity penalty: "
-                                f"-{complexity_penalty:.1f} → {adjusted_score:.1f}[/dim]"
+                                f"      [dim]Complexity penalty: -{complexity_penalty:.1f} → {adjusted_score:.1f}[/dim]"
                             )
 
                         if adjusted_score > best_cand_score:
@@ -954,14 +880,10 @@ class Optimizer:
                             best_cand_eval = c_eval
                             best_cand_score = adjusted_score
                             best_cand_items = c_items
-                            best_cand_case_scores = [
-                                item["score"]["total"] for item in c_items
-                            ]
+                            best_cand_case_scores = [item["score"]["total"] for item in c_items]
 
                 if best_cand is None or best_cand_eval is None:
-                    self.console.print(
-                        "  [yellow]All candidates crashed. Reverting.[/yellow]"
-                    )
+                    self.console.print("  [yellow]All candidates crashed. Reverting.[/yellow]")
                     working_path.write_text(self.best_code)
                     self._log_result(
                         f"iter_{i:03d}",
@@ -1002,16 +924,13 @@ class Optimizer:
                         )
                         confirmed_adjusted = confirmed_score - confirm_penalty
                         self.console.print(
-                            f"  [dim]Confirmed score: {confirmed_score:.1f} "
-                            f"(adjusted: {confirmed_adjusted:.1f})[/dim]"
+                            f"  [dim]Confirmed score: {confirmed_score:.1f} (adjusted: {confirmed_adjusted:.1f})[/dim]"
                         )
                         best_cand_eval = confirm_eval
                         best_cand_score = confirmed_adjusted
                         best_cand_items = confirm_items
-                        best_cand_case_scores = [
-                            item["score"]["total"] for item in confirm_items
-                        ]
-                    except Exception:
+                        best_cand_case_scores = [item["score"]["total"] for item in confirm_items]
+                    except Exception:  # noqa: S110
                         pass
                     finally:
                         self._cleanup_candidate(tmp_path, best_cand)
@@ -1032,9 +951,7 @@ class Optimizer:
                 # stay fixed (only when the within-run gate passed).
                 if accept and self._run_state.regression_cases:
                     reg_fail = self._check_regression_suite(best_cand, train_set)
-                    reg_threshold = getattr(
-                        self.config, "regression_gate_threshold", 0.2
-                    )
+                    reg_threshold = getattr(self.config, "regression_gate_threshold", 0.2)
                     n_reg = len(self._run_state.regression_cases)
                     if reg_fail > n_reg * reg_threshold:
                         accept = False
@@ -1043,21 +960,11 @@ class Optimizer:
                             f"cases regressed (threshold: {reg_threshold:.0%})"
                         )
                     elif reg_fail > 0:
-                        reason = (
-                            f"{reason}; regression gate: {reg_fail}/{n_reg} minor "
-                            f"regressions (within threshold)"
-                        )
+                        reason = f"{reason}; regression gate: {reg_fail}/{n_reg} minor regressions (within threshold)"
 
                 # --- Step 4.5: Periodic holdout probe (overfitting early detection) ---
-                holdout_probe_interval = getattr(
-                    self.config, "holdout_probe_interval", 3
-                )
-                if (
-                    accept
-                    and holdout_set
-                    and i % holdout_probe_interval == 0
-                    and best_cand is not None
-                ):
+                holdout_probe_interval = getattr(self.config, "holdout_probe_interval", 3)
+                if accept and holdout_set and i % holdout_probe_interval == 0 and best_cand is not None:
                     self.console.print(f"  [dim]Holdout probe (iteration {i})…[/dim]")
                     probe_path = self._write_candidate_to_disk(best_cand)
                     try:
@@ -1068,9 +975,7 @@ class Optimizer:
                         )
                         probe_score = probe_eval["avg_total"]
                         train_gap = best_cand_score - probe_score
-                        overfit_threshold = getattr(
-                            self.config, "holdout_probe_gap_threshold", 15.0
-                        )
+                        overfit_threshold = getattr(self.config, "holdout_probe_gap_threshold", 15.0)
                         if train_gap > overfit_threshold:
                             accept = False
                             reason = (
@@ -1080,8 +985,7 @@ class Optimizer:
                                 f"— likely overfitting"
                             )
                             self.console.print(
-                                f"    [yellow]Holdout gap {train_gap:.1f} exceeds "
-                                f"threshold — rejecting[/yellow]"
+                                f"    [yellow]Holdout gap {train_gap:.1f} exceeds threshold — rejecting[/yellow]"
                             )
                         else:
                             self.console.print(
@@ -1089,7 +993,7 @@ class Optimizer:
                                 f"holdout={probe_score:.1f} "
                                 f"(gap={train_gap:.1f})[/dim]"
                             )
-                    except Exception:
+                    except Exception:  # noqa: S110
                         pass
                     finally:
                         self._cleanup_candidate(probe_path, best_cand)
@@ -1116,20 +1020,12 @@ class Optimizer:
                         self.console.print(f"    [dim]{reason}[/dim]")
 
                     resolved_files = best_cand.get("_resolved_files")
-                    prev_files_snapshot = (
-                        dict(self._best_files) if self._best_files else None
-                    )
+                    prev_files_snapshot = dict(self._best_files) if self._best_files else None
 
                     if resolved_files and prev_files_snapshot:
-                        changed_files = [
-                            fp
-                            for fp, src in resolved_files.items()
-                            if prev_files_snapshot.get(fp) != src
-                        ]
+                        changed_files = [fp for fp, src in resolved_files.items() if prev_files_snapshot.get(fp) != src]
                         if changed_files:
-                            files_text = "  ".join(
-                                f"[cyan]{fp}[/cyan]" for fp in sorted(changed_files)
-                            )
+                            files_text = "  ".join(f"[cyan]{fp}[/cyan]" for fp in sorted(changed_files))
                             self.console.print(f"    [dim]Updated:[/dim]  {files_text}")
 
                     self._animate_code_update(
@@ -1138,15 +1034,10 @@ class Optimizer:
                         resolved_files=resolved_files,
                         prev_files=prev_files_snapshot,
                     )
-                    dim_deltas = self._compute_dimension_deltas(
-                        latest_eval, best_cand_eval
-                    )
+                    dim_deltas = self._compute_dimension_deltas(latest_eval, best_cand_eval)
                     change_record = {
                         "suggestions": best_cand.get("suggestions", []),
-                        "improvement": (
-                            f"+{improvement:.1f} "
-                            f"({self.best_score:.1f} \u2192 {best_cand_score:.1f})"
-                        ),
+                        "improvement": (f"+{improvement:.1f} ({self.best_score:.1f} \u2192 {best_cand_score:.1f})"),
                         "score_before": self.best_score,
                         "score_after": best_cand_score,
                         "dimension_deltas": dim_deltas,
@@ -1166,20 +1057,14 @@ class Optimizer:
                             self._write_file_set(working_dir, self._best_files)
                         self._rebuild_bundle()
 
-                    self.accepted_snapshots.append(
-                        {
-                            "code": self.best_code,
-                            "files": (
-                                dict(self._best_files) if self._best_files else None
-                            ),
-                            "train_score": best_cand_score,
-                            "iteration": i,
-                        }
-                    )
+                    self.accepted_snapshots.append({
+                        "code": self.best_code,
+                        "files": (dict(self._best_files) if self._best_files else None),
+                        "train_score": best_cand_score,
+                        "iteration": i,
+                    })
                     latest_eval = best_cand_eval
-                    latest_case_results = self._build_case_results(
-                        best_cand_items, train_set
-                    )
+                    latest_case_results = self._build_case_results(best_cand_items, train_set)
 
                     # Update failure registry: ingest new results and check resolutions
                     if getattr(self.config, "failure_clustering", True):
@@ -1188,18 +1073,15 @@ class Optimizer:
                             latest_case_results,
                             self.evaluator.spec,
                         )
-                        newly_resolved = (
-                            self._failure_registry.update_resolution_status(
-                                i,
-                                latest_case_results,
-                                self.evaluator.spec,
-                                change_summary=desc,
-                            )
+                        newly_resolved = self._failure_registry.update_resolution_status(
+                            i,
+                            latest_case_results,
+                            self.evaluator.spec,
+                            change_summary=desc,
                         )
                         if newly_resolved:
                             self.console.print(
-                                f"    [green]\u2713 Resolved {len(newly_resolved)} "
-                                f"failure cluster(s)[/green]"
+                                f"    [green]\u2713 Resolved {len(newly_resolved)} failure cluster(s)[/green]"
                             )
                             self._promote_resolved_to_regression(
                                 newly_resolved,
@@ -1211,8 +1093,7 @@ class Optimizer:
                     self._log_result(f"iter_{i:03d}", best_cand_eval, "keep", desc)
                     if self._reporter:
                         dim_scores = {
-                            key: float(best_cand_eval.get(key, 0))
-                            for _, key in self.evaluator.get_dimension_labels()
+                            key: float(best_cand_eval.get(key, 0)) for _, key in self.evaluator.get_dimension_labels()
                         }
                         self._reporter.on_iteration(
                             order=i,
@@ -1225,8 +1106,7 @@ class Optimizer:
                     self.stall_count = 0
                 else:
                     self.console.print(
-                        f"\n  [red]\u2717 Rejected: {best_cand_score:.1f} "
-                        f"vs best {self.best_score:.1f}[/red]"
+                        f"\n  [red]\u2717 Rejected: {best_cand_score:.1f} vs best {self.best_score:.1f}[/red]"
                     )
                     if reason:
                         self.console.print(f"    [dim]{reason}[/dim]")
@@ -1234,8 +1114,7 @@ class Optimizer:
                     self._log_result(f"iter_{i:03d}", best_cand_eval, "discard", desc)
                     if self._reporter:
                         dim_scores = {
-                            key: float(best_cand_eval.get(key, 0))
-                            for _, key in self.evaluator.get_dimension_labels()
+                            key: float(best_cand_eval.get(key, 0)) for _, key in self.evaluator.get_dimension_labels()
                         }
                         self._reporter.on_iteration(
                             order=i,
@@ -1245,9 +1124,7 @@ class Optimizer:
                             description=desc,
                             dimension_scores=dim_scores,
                         )
-                    dim_deltas = self._compute_dimension_deltas(
-                        latest_eval, best_cand_eval
-                    )
+                    dim_deltas = self._compute_dimension_deltas(latest_eval, best_cand_eval)
                     fail_record = {
                         "suggestions": best_cand.get("suggestions", []),
                         "score": best_cand_score,
@@ -1271,9 +1148,7 @@ class Optimizer:
                     self.config.iterations,
                     self.best_score,
                     self.stall_count,
-                    float(best_cand_eval.get("avg_total", 0))
-                    if best_cand_eval
-                    else 0.0,
+                    float(best_cand_eval.get("avg_total", 0)) if best_cand_eval else 0.0,
                 )
 
                 # Early stopping
@@ -1300,10 +1175,7 @@ class Optimizer:
         if self._best_files and self._bundle and self._bundle.is_multi_file():
             best_dir = self.output_dir / "best_agent"
             self._write_file_set(best_dir, self._best_files)
-            self.console.print(
-                f"  [dim]Multi-file output: {best_dir}/ "
-                f"({len(self._best_files)} files)[/dim]"
-            )
+            self.console.print(f"  [dim]Multi-file output: {best_dir}/ ({len(self._best_files)} files)[/dim]")
 
         # ---- Holdout evaluation (blended-score generalization check) ----
         if holdout_set:
@@ -1318,9 +1190,7 @@ class Optimizer:
                     border_style="yellow",
                 )
             )
-            holdout_eval, _, holdout_items = self._run_agent_on_dataset(
-                str(best_path), holdout_set, "holdout"
-            )
+            holdout_eval, _, _ = self._run_agent_on_dataset(str(best_path), holdout_set, "holdout")
             holdout_score = holdout_eval["avg_total"]
 
             baseline_holdout_eval, _, _ = self._run_agent_on_dataset(
@@ -1331,9 +1201,7 @@ class Optimizer:
             holdout_improvement = holdout_score - baseline_holdout_score
 
             holdout_w = getattr(self.config, "holdout_weight", 0.3)
-            blended_improvement = (
-                1 - holdout_w
-            ) * train_improvement + holdout_w * holdout_improvement
+            blended_improvement = (1 - holdout_w) * train_improvement + holdout_w * holdout_improvement
 
             self.console.print(
                 f"  [bold]Train improvement:[/bold]   "
@@ -1353,18 +1221,13 @@ class Optimizer:
 
             overfit_gap = train_improvement - holdout_improvement
             holdout_enforcement = getattr(self.config, "holdout_enforcement", True)
-            catastrophic_threshold = getattr(
-                self.config, "catastrophic_holdout_threshold", 0.5
-            )
+            catastrophic_threshold = getattr(self.config, "catastrophic_holdout_threshold", 0.5)
 
             is_catastrophic = (
-                baseline_holdout_score > 0
-                and holdout_score < baseline_holdout_score * catastrophic_threshold
+                baseline_holdout_score > 0 and holdout_score < baseline_holdout_score * catastrophic_threshold
             )
 
-            needs_rollback = holdout_enforcement and (
-                is_catastrophic or blended_improvement < 0
-            )
+            needs_rollback = holdout_enforcement and (is_catastrophic or blended_improvement < 0)
 
             reverted = False
             rollback_target = None
@@ -1413,9 +1276,7 @@ class Optimizer:
                     holdout_score = rollback_target["holdout_score"]
                     holdout_improvement = holdout_score - baseline_holdout_score
                     train_improvement = self.best_score - self._baseline_train_score
-                    blended_improvement = (
-                        1 - holdout_w
-                    ) * train_improvement + holdout_w * holdout_improvement
+                    blended_improvement = (1 - holdout_w) * train_improvement + holdout_w * holdout_improvement
                     overfit_gap = train_improvement - holdout_improvement
                     reverted = True
                 else:
@@ -1442,9 +1303,7 @@ class Optimizer:
                     f"({blended_improvement:+.1f}), so keeping the result."
                 )
             else:
-                self.console.print(
-                    "\n  [green]Holdout performance confirms generalization.[/green]"
-                )
+                self.console.print("\n  [green]Holdout performance confirms generalization.[/green]")
 
             self._print_eval(
                 holdout_eval,
@@ -1461,9 +1320,7 @@ class Optimizer:
                 "overfit_gap": overfit_gap,
                 "holdout_weight": holdout_w,
                 "reverted": reverted,
-                "rollback_iteration": (
-                    rollback_target["iteration"] if rollback_target else None
-                ),
+                "rollback_iteration": (rollback_target["iteration"] if rollback_target else None),
             }
             set_tag(attrs.OPTIMIZE_HOLDOUT_SCORE, float(holdout_score))
             set_tag(
@@ -1528,17 +1385,14 @@ class Optimizer:
             n_reg = len(self._run_state.regression_cases)
             n_clusters = len(self._failure_registry.clusters)
             self.console.print(
-                f"\n  [dim]Cross-run state saved: {n_clusters} cluster(s), "
-                f"{n_reg} regression case(s)[/dim]"
+                f"\n  [dim]Cross-run state saved: {n_clusters} cluster(s), {n_reg} regression case(s)[/dim]"
             )
 
         # ---- Offer to commit optimized code back to the original agent ----
         try:
             self._prompt_commit_to_original_sources()
         except Exception:
-            self._logger.exception(
-                "Failed to prompt/commit optimized sources back to originals"
-            )
+            self._logger.exception("Failed to prompt/commit optimized sources back to originals")
 
     # ------------------------------------------------------------------
     # Commit optimized sources back to original agent files
@@ -1557,11 +1411,7 @@ class Optimizer:
         """
         targets: list[tuple[Path, str, str]] = []
 
-        use_bundle = (
-            self._bundle is not None
-            and self._best_files
-            and self._bundle.is_multi_file()
-        )
+        use_bundle = self._bundle is not None and self._best_files and self._bundle.is_multi_file()
 
         if use_bundle:
             root = Path(self._bundle.project_root).resolve()
@@ -1571,11 +1421,7 @@ class Optimizer:
                     original = abs_path.read_text(encoding="utf-8")
                 except Exception:
                     continue
-                cleaned = (
-                    deinstrument_source(new_src)
-                    if rel_path.endswith(".py")
-                    else new_src
-                )
+                cleaned = deinstrument_source(new_src) if rel_path.endswith(".py") else new_src
                 targets.append((abs_path, original, cleaned))
         else:
             abs_path = Path(self.config.agent_path).resolve()
@@ -1584,9 +1430,7 @@ class Optimizer:
             except Exception:
                 return targets
             new_src = self.best_code or original
-            cleaned = (
-                deinstrument_source(new_src) if abs_path.suffix == ".py" else new_src
-            )
+            cleaned = deinstrument_source(new_src) if abs_path.suffix == ".py" else new_src
             targets.append((abs_path, original, cleaned))
 
         return targets
@@ -1777,9 +1621,7 @@ class Optimizer:
         minimum string length to 6 to avoid false positives on short generic
         words like "warm", "high", "cold".
         """
-        new_lines = set(candidate_code.splitlines()) - set(
-            self._baseline_code.splitlines()
-        )
+        new_lines = set(candidate_code.splitlines()) - set(self._baseline_code.splitlines())
         new_code_text = "\n".join(new_lines)
         if not new_code_text.strip():
             return 0
@@ -1838,20 +1680,12 @@ class Optimizer:
     @staticmethod
     def _count_conditional_branches(code: str) -> int:
         """Count if/elif branches as a proxy for post-processing complexity."""
-        return sum(
-            1
-            for line in code.splitlines()
-            if line.strip().startswith(("if ", "elif ", "if(", "elif("))
-        )
+        return sum(1 for line in code.splitlines() if line.strip().startswith(("if ", "elif ", "if(", "elif(")))
 
     @staticmethod
     def _count_function_defs(code: str) -> int:
         """Count top-level and nested function/method definitions."""
-        return sum(
-            1
-            for line in code.splitlines()
-            if line.strip().startswith(("def ", "async def "))
-        )
+        return sum(1 for line in code.splitlines() if line.strip().startswith(("def ", "async def ")))
 
     # ------------------------------------------------------------------
     # Dataset splitting
@@ -1859,9 +1693,7 @@ class Optimizer:
 
     @traced("optimizer.split_dataset")
     @staticmethod
-    def _split_dataset(
-        dataset: list[dict], holdout_ratio: float
-    ) -> tuple[list[dict], list[dict]]:
+    def _split_dataset(dataset: list[dict], holdout_ratio: float) -> tuple[list[dict], list[dict]]:
         """Split dataset into train and holdout sets.
 
         Shuffles with a fixed seed for reproducibility.
@@ -1923,10 +1755,7 @@ class Optimizer:
         scored: list[tuple[float, dict]] = []
 
         for snap in candidates:
-            self.console.print(
-                f"    [dim]Iteration {snap['iteration']} "
-                f"(train: {snap['train_score']:.1f})\u2026[/dim]"
-            )
+            self.console.print(f"    [dim]Iteration {snap['iteration']} (train: {snap['train_score']:.1f})\u2026[/dim]")
             best_path.write_text(snap["code"])
             try:
                 snap_eval, _, _ = self._run_agent_on_dataset(
@@ -1942,8 +1771,7 @@ class Optimizer:
             snap_train_imp = snap["train_score"] - self._baseline_train_score
 
             snap_is_catastrophic = (
-                baseline_holdout_score > 0
-                and snap_holdout_score < baseline_holdout_score * catastrophic_threshold
+                baseline_holdout_score > 0 and snap_holdout_score < baseline_holdout_score * catastrophic_threshold
             )
             if snap_is_catastrophic:
                 self.console.print(
@@ -1954,30 +1782,24 @@ class Optimizer:
                 )
                 continue
 
-            blended = (
-                1 - holdout_weight
-            ) * snap_train_imp + holdout_weight * snap_holdout_imp
+            blended = (1 - holdout_weight) * snap_train_imp + holdout_weight * snap_holdout_imp
             self.console.print(
-                f"      holdout: {snap_holdout_score:.1f} "
-                f"({snap_holdout_imp:+.1f}), "
-                f"blended: {blended:+.1f}"
+                f"      holdout: {snap_holdout_score:.1f} ({snap_holdout_imp:+.1f}), blended: {blended:+.1f}"
             )
 
             if blended > 0:
-                scored.append(
-                    (
-                        blended,
-                        {
-                            "code": snap["code"],
-                            "files": snap.get("files"),
-                            "train_score": snap["train_score"],
-                            "holdout_score": snap_holdout_score,
-                            "holdout_eval": snap_eval,
-                            "iteration": snap["iteration"],
-                            "blended_improvement": blended,
-                        },
-                    )
-                )
+                scored.append((
+                    blended,
+                    {
+                        "code": snap["code"],
+                        "files": snap.get("files"),
+                        "train_score": snap["train_score"],
+                        "holdout_score": snap_holdout_score,
+                        "holdout_eval": snap_eval,
+                        "iteration": snap["iteration"],
+                        "blended_improvement": blended,
+                    },
+                ))
 
         if not scored:
             return None
@@ -1990,9 +1812,7 @@ class Optimizer:
     # ------------------------------------------------------------------
 
     @traced("optimizer.compute_dimension_deltas")
-    def _compute_dimension_deltas(
-        self, old_eval: dict, new_eval: dict
-    ) -> dict[str, float]:
+    def _compute_dimension_deltas(self, old_eval: dict, new_eval: dict) -> dict[str, float]:
         """Per-dimension score deltas (only includes changes > 0.5)."""
         deltas: dict[str, float] = {}
         for _, key in self.evaluator.get_dimension_labels():
@@ -2038,9 +1858,7 @@ class Optimizer:
         threshold = getattr(self.config, "regression_threshold", 0.35)
 
         if candidate_score <= self.best_score:
-            return False, (
-                f"No improvement ({candidate_score:.1f} vs best {self.best_score:.1f})"
-            )
+            return False, (f"No improvement ({candidate_score:.1f} vs best {self.best_score:.1f})")
 
         net_improvement = candidate_score - self.best_score
 
@@ -2092,14 +1910,9 @@ class Optimizer:
                     f"(improvement magnitude {improvement_magnitude:.1f} "
                     f"outweighs regression {regression_magnitude:.1f})"
                 )
-            return False, (
-                f"Too many regressions: {regressions}/{n} cases regressed "
-                f"(threshold: {threshold:.0%})"
-            )
+            return False, (f"Too many regressions: {regressions}/{n} cases regressed (threshold: {threshold:.0%})")
 
-        return True, (
-            f"{improvements} improved, {regressions} regressed out of {n} cases"
-        )
+        return True, (f"{improvements} improved, {regressions} regressed out of {n} cases")
 
     # ------------------------------------------------------------------
     # Cross-run regression gate
@@ -2156,11 +1969,7 @@ class Optimizer:
                 failures += 1
                 continue
 
-            parsed_trace = (
-                per_line_traces[trace_line_idx]
-                if trace_line_idx < len(per_line_traces)
-                else ParsedTrace()
-            )
+            parsed_trace = per_line_traces[trace_line_idx] if trace_line_idx < len(per_line_traces) else ParsedTrace()
             trace_line_idx += 1
 
             tool_trace = parsed_trace.tool_trace
@@ -2197,9 +2006,7 @@ class Optimizer:
                 score = case_result.get("score", {}).get("total", 60.0)
                 self._run_state.add_regression_case(
                     case_input=case_data.get("input", {}),
-                    expected_output=case_data.get(
-                        "expected_output", case_data.get("expected", {})
-                    ),
+                    expected_output=case_data.get("expected_output", case_data.get("expected", {})),
                     min_score=max(score * 0.8, 50.0),
                     run_id=self._run_id,
                     iteration=iteration,
@@ -2226,9 +2033,7 @@ class Optimizer:
         runs: list[tuple[float, dict, list[dict]]] = []
 
         for r in range(num_runs):
-            r_eval, _, r_items = self._run_agent_on_dataset(
-                agent_path, dataset, f"{run_name}_r{r}"
-            )
+            r_eval, _, r_items = self._run_agent_on_dataset(agent_path, dataset, f"{run_name}_r{r}")
             runs.append((r_eval["avg_total"], r_eval, r_items))
 
         all_scores = [t for t, _, _ in runs]
@@ -2236,10 +2041,7 @@ class Optimizer:
         if num_runs > 1:
             mean = statistics.mean(all_scores)
             stdev = statistics.stdev(all_scores) if len(all_scores) > 1 else 0
-            self.console.print(
-                f"      [dim]Multi-run: mean={mean:.1f}, "
-                f"stdev={stdev:.1f}, runs={all_scores}[/dim]"
-            )
+            self.console.print(f"      [dim]Multi-run: mean={mean:.1f}, stdev={stdev:.1f}, runs={all_scores}[/dim]")
 
         runs.sort(key=lambda x: x[0])
         median_idx = len(runs) // 2
@@ -2259,16 +2061,14 @@ class Optimizer:
     def _build_case_results(eval_items: list[dict], dataset: list[dict]) -> list[dict]:
         results: list[dict] = []
         for item, case in zip(eval_items, dataset):
-            results.append(
-                {
-                    "input": case.get("input", {}),
-                    "expected": item["expected"],
-                    "output": item["output"],
-                    "score": item["score"],
-                    "tool_calls": item.get("tool_calls", []),
-                    "tool_trace": item.get("tool_trace", []),
-                }
-            )
+            results.append({
+                "input": case.get("input", {}),
+                "expected": item["expected"],
+                "output": item["output"],
+                "score": item["score"],
+                "tool_calls": item.get("tool_calls", []),
+                "tool_trace": item.get("tool_trace", []),
+            })
         return results
 
     # ------------------------------------------------------------------
@@ -2295,18 +2095,11 @@ class Optimizer:
                     weak.append((display, val, mx))
 
         if saturated:
-            self.console.print(
-                f"  [dim]Saturated dimensions (already near-perfect): "
-                f"{', '.join(saturated)}[/dim]"
-            )
+            self.console.print(f"  [dim]Saturated dimensions (already near-perfect): {', '.join(saturated)}[/dim]")
         if weak:
-            self.console.print(
-                "  [yellow]Weak dimensions (biggest improvement room):[/yellow]"
-            )
+            self.console.print("  [yellow]Weak dimensions (biggest improvement room):[/yellow]")
             for name, val, mx in weak:
-                self.console.print(
-                    f"    {name}: {val:.1f}/{mx:.0f} ({val / mx * 100:.0f}%)"
-                )
+                self.console.print(f"    {name}: {val:.1f}/{mx:.0f} ({val / mx * 100:.0f}%)")
 
         # Tool usage summary
         all_tools_used: dict[str, int] = {}
@@ -2324,9 +2117,7 @@ class Optimizer:
             for name, count in sorted(all_tools_used.items(), key=lambda x: -x[1]):
                 self.console.print(f"    {name}: {count}/{len(items)} cases")
             if cases_with_no_tools:
-                self.console.print(
-                    f"    [yellow]{cases_with_no_tools} cases used no tools[/yellow]"
-                )
+                self.console.print(f"    [yellow]{cases_with_no_tools} cases used no tools[/yellow]")
 
     # ------------------------------------------------------------------
     # Dataset loading
@@ -2396,9 +2187,7 @@ class Optimizer:
         new_pieces = []
         opt_files = set(self._bundle.optimizable_files)
 
-        ordered_paths = [self._bundle.entry_file] + [
-            p for p in self._best_files if p != self._bundle.entry_file
-        ]
+        ordered_paths = [self._bundle.entry_file] + [p for p in self._best_files if p != self._bundle.entry_file]
 
         for rel_path in ordered_paths:
             if rel_path not in self._best_files:
@@ -2462,9 +2251,7 @@ class Optimizer:
 
         resolved = cand.get("_resolved_files")
         if resolved and self._bundle:
-            tmp_dir = Path(
-                tempfile.mkdtemp(prefix="overmind_", dir=str(self.output_dir))
-            )
+            tmp_dir = Path(tempfile.mkdtemp(prefix="overmind_", dir=str(self.output_dir)))
             all_files = self._bundle.get_full_file_set(resolved)
             for rel_path, source in all_files.items():
                 dest = tmp_dir / rel_path
@@ -2550,11 +2337,7 @@ class Optimizer:
                 entry_file = p.name
 
         original_pr = project_root_from_agent_file(self.config.agent_path)
-        original_agent_dir = (
-            original_pr
-            if original_pr is not None
-            else Path(self.config.agent_path).resolve().parent
-        )
+        original_agent_dir = original_pr if original_pr is not None else Path(self.config.agent_path).resolve().parent
         cfg = RunnerConfig(extra_env=extra_env or {})
         return AgentRunner(
             agent_dir=agent_dir,
@@ -2583,10 +2366,7 @@ class Optimizer:
             stderr = exc.stderr
             if isinstance(stderr, bytes):
                 stderr = stderr.decode(errors="replace")
-            self.console.print(
-                f"  [bold red]Failed to provision agent environment:[/bold red]\n"
-                f"  [dim]{stderr}[/dim]"
-            )
+            self.console.print(f"  [bold red]Failed to provision agent environment:[/bold red]\n  [dim]{stderr}[/dim]")
             raise
 
     @staticmethod
@@ -2632,9 +2412,7 @@ class Optimizer:
                 trace_path,
                 len(plan),
             )
-            return self._run_parallel_subprocess(
-                runner, dataset, run_name, trace_path, plan
-            )
+            return self._run_parallel_subprocess(runner, dataset, run_name, trace_path, plan)
         self._logger.debug(
             "Running agent sequentially: run=%s cases=%d trace=%s backends=%d",
             run_name,
@@ -2642,9 +2420,7 @@ class Optimizer:
             trace_path,
             len(plan),
         )
-        return self._run_sequential_subprocess(
-            runner, dataset, run_name, trace_path, plan
-        )
+        return self._run_sequential_subprocess(runner, dataset, run_name, trace_path, plan)
 
     def _cassette_path_for(self, run_name: str) -> Path:
         """Cassette file used to record/replay external calls for *run_name*."""
@@ -2697,12 +2473,8 @@ class Optimizer:
             task = progress.add_task("  Running agent…", total=len(dataset))
 
             for idx, case in enumerate(dataset):
-                self._logger.debug(
-                    "[%s] Sequential case %d/%d", run_name, idx + 1, len(dataset)
-                )
-                backend_output = self._run_case_with_plan(
-                    plan, case["input"], trace_path, idx, run_name
-                )
+                self._logger.debug("[%s] Sequential case %d/%d", run_name, idx + 1, len(dataset))
+                backend_output = self._run_case_with_plan(plan, case["input"], trace_path, idx, run_name)
                 run_output = backend_output.run_output
                 if run_output.success:
                     outputs.append(run_output.data)
@@ -2717,15 +2489,11 @@ class Optimizer:
                     )
                     outputs.append({"error": run_output.error})
                 if backend_output.provenance:
-                    provenance_by_idx[idx] = [
-                        t.to_dict() for t in backend_output.provenance
-                    ]
+                    provenance_by_idx[idx] = [t.to_dict() for t in backend_output.provenance]
                 cases_data.append(case)
                 progress.advance(task)
 
-        return self._build_eval_results(
-            outputs, cases_data, run_name, trace_path, provenance_by_idx
-        )
+        return self._build_eval_results(outputs, cases_data, run_name, trace_path, provenance_by_idx)
 
     @traced("optimizer.run_parallel_subprocess")
     def _run_parallel_subprocess(
@@ -2740,12 +2508,8 @@ class Optimizer:
         provenance_by_idx: dict[int, list[dict]] = {}
 
         def _run_one(case: dict, idx: int) -> tuple[int, dict | None, list[dict]]:
-            self._logger.debug(
-                "[%s] Dispatching case %d on worker thread", run_name, idx
-            )
-            backend_output = self._run_case_with_plan(
-                plan, case["input"], trace_path, idx, run_name
-            )
+            self._logger.debug("[%s] Dispatching case %d on worker thread", run_name, idx)
+            backend_output = self._run_case_with_plan(plan, case["input"], trace_path, idx, run_name)
             run_output = backend_output.run_output
             prov = [t.to_dict() for t in backend_output.provenance]
             if run_output.success:
@@ -2785,8 +2549,7 @@ class Optimizer:
                 # / workflow span instead of becoming orphan roots.
                 parent_ctx = contextvars.copy_context()
                 futures = {
-                    pool.submit(parent_ctx.copy().run, _run_one, case, idx): idx
-                    for idx, case in enumerate(dataset)
+                    pool.submit(parent_ctx.copy().run, _run_one, case, idx): idx for idx, case in enumerate(dataset)
                 }
                 last_trace_flush = time.monotonic()
                 for future in as_completed(futures):
@@ -2802,9 +2565,7 @@ class Optimizer:
                 force_flush_traces(timeout_millis=1000)
 
         outputs = [results_by_idx[i] for i in range(len(dataset))]
-        return self._build_eval_results(
-            outputs, dataset, run_name, trace_path, provenance_by_idx
-        )
+        return self._build_eval_results(outputs, dataset, run_name, trace_path, provenance_by_idx)
 
     @traced("optimizer.run_case_with_plan")
     def _run_case_with_plan(
@@ -2833,8 +2594,7 @@ class Optimizer:
             if out.success:
                 if i > 0:
                     self._logger.info(
-                        "[%s] Case %d recovered via backend=%s after "
-                        "subprocess failure.",
+                        "[%s] Case %d recovered via backend=%s after subprocess failure.",
                         run_name,
                         idx,
                         backend.name,
@@ -2916,17 +2676,15 @@ class Optimizer:
                 source_tags=case_prov,
             )
 
-            eval_items.append(
-                {
-                    "input": case.get("input"),
-                    "output": output,
-                    "expected": expected,
-                    "score": score,
-                    "tool_calls": tool_calls,
-                    "tool_trace": tool_trace,
-                    "source_tags": case_prov,
-                }
-            )
+            eval_items.append({
+                "input": case.get("input"),
+                "output": output,
+                "expected": expected,
+                "score": score,
+                "tool_calls": tool_calls,
+                "tool_trace": tool_trace,
+                "source_tags": case_prov,
+            })
 
         batch_eval = self.evaluator.evaluate_batch(eval_items)
         return batch_eval, traces, eval_items
@@ -2948,9 +2706,7 @@ class Optimizer:
         title.append(label, style="cyan")
         return title
 
-    def _animate_single_file_diff(
-        self, old_code: str, new_code: str, label: str | None = None
-    ) -> None:
+    def _animate_single_file_diff(self, old_code: str, new_code: str, label: str | None = None) -> None:
         """Render an animated diff panel for a single file."""
         old_lines = old_code.splitlines(keepends=True)
         new_lines = new_code.splitlines(keepends=True)
@@ -2982,10 +2738,7 @@ class Optimizer:
             near_change = False
             for offset in range(-context, context + 1):
                 neighbor = vi + offset
-                if (
-                    0 <= neighbor < len(diff_lines)
-                    and diff_lines[neighbor][0] != "equal"
-                ):
+                if 0 <= neighbor < len(diff_lines) and diff_lines[neighbor][0] != "equal":
                     near_change = True
                     break
             if near_change:
@@ -3031,9 +2784,7 @@ class Optimizer:
             for file_path, new_source in sorted(resolved_files.items()):
                 old_source = prev_files.get(file_path, "")
                 if old_source != new_source:
-                    self._animate_single_file_diff(
-                        old_source, new_source, label=file_path
-                    )
+                    self._animate_single_file_diff(old_source, new_source, label=file_path)
         else:
             self._animate_single_file_diff(old_code, new_code)
 
@@ -3096,9 +2847,7 @@ class Optimizer:
                         f"backtest_{model_id.replace('/', '_')}",
                     )
                     self.backtest_results[model_id] = bt_eval
-                    self.console.print(
-                        f"    Score: [cyan]{bt_eval['avg_total']:.1f}[/cyan] / 100"
-                    )
+                    self.console.print(f"    Score: [cyan]{bt_eval['avg_total']:.1f}[/cyan] / 100")
                     set_tag(
                         attrs.OPTIMIZE_BACKTEST_SCORE,
                         float(bt_eval.get("avg_total", 0)),
@@ -3143,9 +2892,7 @@ class Optimizer:
 
         results_tsv = self.output_dir / "results.tsv"
         if not results_tsv.exists():
-            dim_cols = "\t".join(
-                key for _, key in self.evaluator.get_dimension_labels()
-            )
+            dim_cols = "\t".join(key for _, key in self.evaluator.get_dimension_labels())
             header = f"iteration\tavg_score\t{dim_cols}\tstatus\tdescription\n"
             results_tsv.write_text(header)
 
@@ -3184,10 +2931,7 @@ class Optimizer:
                 f"[{d_color}]({sign}{delta:.1f})[/{d_color}] / 100"
             )
         else:
-            self.console.print(
-                f"  [bold]{label}[/bold] — avg score: "
-                f"[{color}]{score:.1f}[/{color}] / 100"
-            )
+            self.console.print(f"  [bold]{label}[/bold] — avg score: [{color}]{score:.1f}[/{color}] / 100")
 
         max_scores = self.evaluator.get_max_scores()
         for display, key in self.evaluator.get_dimension_labels():
@@ -3201,8 +2945,7 @@ class Optimizer:
                 d_color = "green" if delta > 0 else "red" if delta < 0 else "dim"
                 sign = "+" if delta > 0 else ""
                 self.console.print(
-                    f"    {display:>18}: {val:.1f} / {max_val:.0f}"
-                    f"  [{d_color}]({sign}{delta:.1f})[/{d_color}]"
+                    f"    {display:>18}: {val:.1f} / {max_val:.0f}  [{d_color}]({sign}{delta:.1f})[/{d_color}]"
                 )
             else:
                 self.console.print(f"    {display:>18}: {val:.1f} / {max_val:.0f}")
@@ -3227,13 +2970,7 @@ class Optimizer:
 
         for row in self.results:
             status = row["status"]
-            style = (
-                "green"
-                if status == "keep"
-                else "red"
-                if status in ("discard", "crash")
-                else "yellow"
-            )
+            style = "green" if status == "keep" else "red" if status in ("discard", "crash") else "yellow"
             table.add_row(
                 row["iteration"],
                 row["avg_score"],
@@ -3252,9 +2989,7 @@ class Optimizer:
         summary.add_column(style="bold")
         summary.add_column()
         summary.add_row("Baseline score:", f"{baseline_score:.1f}")
-        summary.add_row(
-            "Best score:", f"[bold green]{self.best_score:.1f}[/bold green]"
-        )
+        summary.add_row("Best score:", f"[bold green]{self.best_score:.1f}[/bold green]")
         if improvement > 0:
             summary.add_row("Improvement:", f"[bold]+{improvement:.1f} points[/bold]")
         holdout = getattr(self, "_holdout_results", None)
@@ -3266,13 +3001,11 @@ class Optimizer:
             ho_w = holdout.get("holdout_weight", 0.3)
             summary.add_row(
                 "Holdout score:",
-                f"{holdout['holdout_score']:.1f} "
-                f"({holdout['holdout_improvement']:+.1f})",
+                f"{holdout['holdout_score']:.1f} ({holdout['holdout_improvement']:+.1f})",
             )
             summary.add_row(
                 "Blended improvement:",
-                f"[{bl_style}]{blended:+.1f}[/{bl_style}] "
-                f"({1 - ho_w:.0%} train, {ho_w:.0%} holdout)",
+                f"[{bl_style}]{blended:+.1f}[/{bl_style}] ({1 - ho_w:.0%} train, {ho_w:.0%} holdout)",
             )
             summary.add_row(
                 "Overfit gap:",
@@ -3289,9 +3022,7 @@ class Optimizer:
                 else:
                     summary.add_row(
                         "Action:",
-                        "[bold red]Reverted to baseline "
-                        "(no snapshot with positive blended improvement)"
-                        "[/bold red]",
+                        "[bold red]Reverted to baseline (no snapshot with positive blended improvement)[/bold red]",
                     )
         rel_out = self.output_dir
         try:
@@ -3305,9 +3036,7 @@ class Optimizer:
             )
         else:
             _ext = Path(self.config.agent_path).suffix or ".py"
-            summary.add_row(
-                "Best agent:", f"[cyan]{rel_out / f'best_agent{_ext}'}[/cyan]"
-            )
+            summary.add_row("Best agent:", f"[cyan]{rel_out / f'best_agent{_ext}'}[/cyan]")
         summary.add_row("Results log:", f"[cyan]{rel_out / 'results.tsv'}[/cyan]")
         summary.add_row("Traces:", f"[cyan]{rel_out / 'traces/'}[/cyan]")
         self.console.print(Panel(summary, border_style="green", title="Summary"))
@@ -3320,26 +3049,17 @@ class Optimizer:
 
         policy_line = ""
         if self._policy_data:
-            n_rules = len(
-                self._policy_data.get(
-                    "domain_rules", self._policy_data.get("decision_rules", [])
-                )
-            )
+            n_rules = len(self._policy_data.get("domain_rules", self._policy_data.get("decision_rules", [])))
             n_constraints = len(
-                self._policy_data.get(
-                    "output_constraints", self._policy_data.get("hard_constraints", [])
-                )
+                self._policy_data.get("output_constraints", self._policy_data.get("hard_constraints", []))
             )
-            policy_line = (
-                f"**Policy:** {n_rules} domain rule(s), {n_constraints} constraint(s)\n"
-            )
+            policy_line = f"**Policy:** {n_rules} domain rule(s), {n_constraints} constraint(s)\n"
 
         lines = [
             "# Overmind Optimization Report\n",
             f"**Agent:** `{self.config.agent_path}`\n",
             f"**Iterations:** {self.config.iterations}\n",
-            f"**Candidates per iteration:** "
-            f"{getattr(self.config, 'candidates_per_iteration', 1)}\n",
+            f"**Candidates per iteration:** {getattr(self.config, 'candidates_per_iteration', 1)}\n",
             f"**Analyzer model:** `{self.config.analyzer_model}`\n",
         ]
         if policy_line:
@@ -3349,30 +3069,24 @@ class Optimizer:
             "## Results\n",
             "| Baseline | Best | Improvement |",
             "|----------|------|-------------|",
-            f"| {baseline_score:.1f} | {self.best_score:.1f} "
-            f"| +{self.best_score - baseline_score:.1f} |",
+            f"| {baseline_score:.1f} | {self.best_score:.1f} | +{self.best_score - baseline_score:.1f} |",
             "",
             "## Iteration Log\n",
             "| Iteration | Score | Status | Description |",
             "|-----------|-------|--------|-------------|",
         ]
         for row in self.results:
-            lines.append(
-                f"| {row['iteration']} | {row['avg_score']} | {row['status']} "
-                f"| {row['description'][:80]} |"
-            )
+            lines.append(f"| {row['iteration']} | {row['avg_score']} | {row['status']} | {row['description'][:80]} |")
 
         if self.backtest_results:
             bt_header_cols = " | ".join(d for d, _ in dim_labels)
             bt_sep_cols = " | ".join("---" for _ in dim_labels)
-            lines.extend(
-                [
-                    "",
-                    "## Model Backtesting\n",
-                    f"| Model | Score | {bt_header_cols} |",
-                    f"|-------|-------| {bt_sep_cols} |",
-                ]
-            )
+            lines.extend([
+                "",
+                "## Model Backtesting\n",
+                f"| Model | Score | {bt_header_cols} |",
+                f"|-------|-------| {bt_sep_cols} |",
+            ])
             for mid, res in sorted(
                 self.backtest_results.items(),
                 key=lambda x: x[1].get("avg_total", 0),

@@ -56,8 +56,7 @@ def _other_agents_with_entrypoint(
     return sorted(
         n
         for n, data in registry.items()
-        if (exclude_name is None or n != exclude_name)
-        and data.get("entrypoint", "").strip() == ep
+        if (exclude_name is None or n != exclude_name) and data.get("entrypoint", "").strip() == ep
     )
 
 
@@ -120,10 +119,7 @@ def _ensure_model_for_wrapper(console: Console) -> None:
     except ImportError:
         pass
 
-    console.print(
-        "\n  [dim]Wrapper generation requires an LLM model. "
-        "Select one to continue.[/dim]"
-    )
+    console.print("\n  [dim]Wrapper generation requires an LLM model. Select one to continue.[/dim]")
     model = prompt_for_catalog_litellm_model(
         console,
         select_prompt="  Select model for wrapper generation (number)",
@@ -249,12 +245,8 @@ def _offer_wrapper_generation(
         )
 
     console.print()
-    if not confirm_option(
-        "Register with this entrypoint?", default=True, console=console
-    ):
-        console.print(
-            f"\n  [dim]Edit [cyan]{rel(wp)}[/cyan] and re-run register.[/dim]\n"
-        )
+    if not confirm_option("Register with this entrypoint?", default=True, console=console):
+        console.print(f"\n  [dim]Edit [cyan]{rel(wp)}[/cyan] and re-run register.[/dim]\n")
         return None
 
     new_ep = wrapper_entrypoint(name)
@@ -337,12 +329,8 @@ def _auto_generate_wrapper(
         )
 
     console.print()
-    if not confirm_option(
-        "Register with this entrypoint?", default=True, console=console
-    ):
-        console.print(
-            f"\n  [dim]Edit [cyan]{rel(wp)}[/cyan] and re-run register.[/dim]\n"
-        )
+    if not confirm_option("Register with this entrypoint?", default=True, console=console):
+        console.print(f"\n  [dim]Edit [cyan]{rel(wp)}[/cyan] and re-run register.[/dim]\n")
         return None
 
     new_ep = wrapper_entrypoint(name)
@@ -394,9 +382,7 @@ def cmd_register(name: str, entrypoint: str) -> None:
             f"  Since no entrypoint was specified, an overmind entrypoint wrapper\n"
             f"  will be generated automatically for this agent.\n"
         )
-        if not confirm_option(
-            "Generate entrypoint automatically?", default=True, console=console
-        ):
+        if not confirm_option("Generate entrypoint automatically?", default=True, console=console):
             console.print(
                 f"\n  [dim]Re-register with an explicit entrypoint:\n"
                 f"    [bold]overmind agent register {name} {entrypoint}:run[/bold][/dim]\n"
@@ -504,11 +490,7 @@ def cmd_list() -> None:
     table.add_column("FILE", justify="center")
 
     for name, data in registry.items():
-        file_ok = (
-            "[green]\u2713[/green]"
-            if Path(data["file_path"]).exists()
-            else "[red]\u2717[/red]"
-        )
+        file_ok = "[green]\u2713[/green]" if Path(data["file_path"]).exists() else "[red]\u2717[/red]"
         table.add_row(name, data["entrypoint"], file_ok)
 
     console.print()
@@ -534,12 +516,8 @@ def cmd_remove(name: str) -> None:
 
     set_tag(attrs.AGENT_ENTRYPOINT, registry[name]["entrypoint"])
 
-    console.print(
-        f"\n  Agent '[bold]{name}[/bold]'  [dim]{registry[name]['entrypoint']}[/dim]"
-    )
-    if not confirm_option(
-        f"Remove '{name}' from the registry?", default=True, console=console
-    ):
+    console.print(f"\n  Agent '[bold]{name}[/bold]'  [dim]{registry[name]['entrypoint']}[/dim]")
+    if not confirm_option(f"Remove '{name}' from the registry?", default=True, console=console):
         console.print("  [dim]Aborted.[/dim]\n")
         raise SystemExit(0)
 
@@ -555,9 +533,7 @@ def cmd_remove(name: str) -> None:
         console.print(f"  [dim]Removed instrumented copy at {rel(inst_dir)}[/dim]")
 
     set_tag(attrs.AGENT_REMOVED, "true")
-    console.print(
-        f"\n  [bold green]\u2713[/bold green]  Agent '[bold]{name}[/bold]' removed.\n"
-    )
+    console.print(f"\n  [bold green]\u2713[/bold green]  Agent '[bold]{name}[/bold]' removed.\n")
 
 
 @observe(span_name="overmind_agent_update", type=SpanType.WORKFLOW)
@@ -619,10 +595,7 @@ def cmd_update(name: str, entrypoint: str) -> None:
     # 4. Save
     save_agent(name, entrypoint)
 
-    console.print(
-        f"\n  [dim]Old entrypoint:[/dim] {old_ep_raw}\n"
-        f"  [dim]New entrypoint:[/dim] {entrypoint}\n"
-    )
+    console.print(f"\n  [dim]Old entrypoint:[/dim] {old_ep_raw}\n  [dim]New entrypoint:[/dim] {entrypoint}\n")
 
 
 @observe(span_name="overmind_agent_show", type=SpanType.WORKFLOW)
@@ -655,9 +628,7 @@ def cmd_show(name: str) -> None:
         else []
     )
 
-    file_status = (
-        "[green]\u2713 exists[/green]" if file_exists else "[red]\u2717 not found[/red]"
-    )
+    file_status = "[green]\u2713 exists[/green]" if file_exists else "[red]\u2717 not found[/red]"
 
     set_tag(attrs.AGENT_ENTRYPOINT, data["entrypoint"])
     set_tag(attrs.AGENT_FILE_PATH, data["file_path"])
@@ -665,14 +636,8 @@ def cmd_show(name: str) -> None:
     set_tag(attrs.AGENT_SETUP_SPEC_READY, str(spec_exists))
     set_tag(attrs.AGENT_EXPERIMENT_FILE_COUNT, str(len(exp_files)))
 
-    spec_status = (
-        "[green]\u2713 ready[/green]" if spec_exists else "[yellow]not run yet[/yellow]"
-    )
-    exp_status = (
-        f"[green]\u2713 {len(exp_files)} file(s)[/green]"
-        if exp_files
-        else "[yellow]not run yet[/yellow]"
-    )
+    spec_status = "[green]\u2713 ready[/green]" if spec_exists else "[yellow]not run yet[/yellow]"
+    exp_status = f"[green]\u2713 {len(exp_files)} file(s)[/green]" if exp_files else "[yellow]not run yet[/yellow]"
 
     lines = (
         f"[bold]Name:[/bold]        {name}\n"
@@ -730,20 +695,14 @@ def cmd_validate(name: str, data: str) -> None:
 
     data_path = Path(data)
     if not data_path.exists():
-        console.print(
-            f"\n  [bold red]Error:[/bold red] "
-            f"Data path not found: [cyan]{data}[/cyan]\n"
-        )
+        console.print(f"\n  [bold red]Error:[/bold red] Data path not found: [cyan]{data}[/cyan]\n")
         raise SystemExit(1)
 
     json_files: list[Path] = []
     if data_path.is_dir():
         json_files = sorted(data_path.glob("*.json"))
         if not json_files:
-            console.print(
-                f"\n  [bold red]Error:[/bold red] "
-                f"No .json files found in [cyan]{data}[/cyan]\n"
-            )
+            console.print(f"\n  [bold red]Error:[/bold red] No .json files found in [cyan]{data}[/cyan]\n")
             raise SystemExit(1)
     else:
         json_files = [data_path]
@@ -753,17 +712,11 @@ def cmd_validate(name: str, data: str) -> None:
         try:
             cases.extend(load_data(str(jf)))
         except Exception as exc:
-            console.print(
-                f"\n  [bold red]Error:[/bold red] "
-                f"Could not load [cyan]{jf}[/cyan]: {exc}\n"
-            )
+            console.print(f"\n  [bold red]Error:[/bold red] Could not load [cyan]{jf}[/cyan]: {exc}\n")
             raise SystemExit(1)
 
     if not cases:
-        console.print(
-            f"\n  [bold yellow]Warning:[/bold yellow] "
-            f"No test cases found in [cyan]{data}[/cyan]\n"
-        )
+        console.print(f"\n  [bold yellow]Warning:[/bold yellow] No test cases found in [cyan]{data}[/cyan]\n")
         raise SystemExit(1)
 
     first_case = cases[0]
@@ -817,16 +770,10 @@ def cmd_validate(name: str, data: str) -> None:
     console.print()
     console.print(Rule(style="dim"))
     if error:
-        console.print(
-            f"\n  [bold red]✗[/bold red]  Validation failed.\n"
-            f"      [dim red]{error}[/dim red]\n"
-        )
+        console.print(f"\n  [bold red]✗[/bold red]  Validation failed.\n      [dim red]{error}[/dim red]\n")
         raise SystemExit(1)
     else:
         output_str = json.dumps(result.data, indent=2, default=str)
         if len(output_str) > 500:
             output_str = output_str[:497] + "..."
-        console.print(
-            f"\n  [bold green]✓[/bold green]  Validation passed.\n"
-            f"  [dim]Output:[/dim]\n  {output_str}\n"
-        )
+        console.print(f"\n  [bold green]✓[/bold green]  Validation passed.\n  [dim]Output:[/dim]\n  {output_str}\n")

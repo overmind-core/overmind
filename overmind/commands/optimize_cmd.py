@@ -50,7 +50,7 @@ def main(
     # CLI-level flags
     set_tag(attrs.COMMAND, "optimize")
     set_tag(attrs.OPTIMIZE_AGENT_NAME, agent_name)
-    set_tag(attrs.OPTIMIZE_FAST, str(fast))
+    set_tag(attrs.OPTIMIZE_FAST, fast)
 
     # Refresh agent_id from registry in case setup just created/updated it
     config.agent_id = get_agent_id(agent_name)

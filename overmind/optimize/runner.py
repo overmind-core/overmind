@@ -97,10 +97,7 @@ class Language(str, Enum):
         }
         lang = _MAP.get(ext)
         if lang is None:
-            raise ValueError(
-                f"Unsupported agent file extension '{ext}'. "
-                f"Supported: {', '.join(_MAP)}"
-            )
+            raise ValueError(f"Unsupported agent file extension '{ext}'. Supported: {', '.join(_MAP)}")
         return lang
 
 
@@ -169,14 +166,12 @@ _IMPORT_TO_PYPI: dict[str, str] = {
 _PYTHON_STDLIB: frozenset[str] = (
     getattr(sys, "stdlib_module_names", frozenset())
     | frozenset(sys.builtin_module_names)
-    | frozenset(
-        {
-            "pkg_resources",
-            "setuptools",
-            "pip",
-            "_thread",
-        }
-    )
+    | frozenset({
+        "pkg_resources",
+        "setuptools",
+        "pip",
+        "_thread",
+    })
 )
 
 
@@ -188,16 +183,11 @@ _PYTHON_STDLIB: frozenset[str] = (
 def has_dep_manifest(agent_dir: Path, language: Language) -> bool:
     """Return True if the agent directory has a dependency manifest file."""
     if language == Language.PYTHON:
-        return any(
-            (agent_dir / f).is_file()
-            for f in ("requirements.txt", "pyproject.toml", "setup.py")
-        )
+        return any((agent_dir / f).is_file() for f in ("requirements.txt", "pyproject.toml", "setup.py"))
     return (agent_dir / "package.json").is_file()
 
 
-def detect_external_imports(
-    agent_dir: Path, entry_file: str, language: Language
-) -> list[str]:
+def detect_external_imports(agent_dir: Path, entry_file: str, language: Language) -> list[str]:
     """Scan the entry file for non-stdlib, non-relative imports.
 
     Returns a de-duped list of top-level package names that appear to be
@@ -216,9 +206,7 @@ def detect_external_imports(
     raw_imports = extract_imports(code, language)
 
     if language == Language.PYTHON:
-        local_modules = {
-            p.stem for p in agent_dir.rglob("*.py") if p.stem != "__init__"
-        }
+        local_modules = {p.stem for p in agent_dir.rglob("*.py") if p.stem != "__init__"}
 
         project_root = _find_project_root(agent_dir)
         if project_root:
@@ -230,9 +218,7 @@ def detect_external_imports(
 
         local_modules.add("overmind")
 
-        return [
-            m for m in raw_imports if m not in _PYTHON_STDLIB and m not in local_modules
-        ]
+        return [m for m in raw_imports if m not in _PYTHON_STDLIB and m not in local_modules]
 
     if language in (Language.JAVASCRIPT, Language.TYPESCRIPT):
         return [m for m in raw_imports if m not in (".", "..")]
@@ -284,11 +270,7 @@ class MissingDependenciesError(Exception):
         self.agent_dir = agent_dir
         self.language = language
         self.imports = imports
-        manifest = (
-            "requirements.txt / pyproject.toml"
-            if language == Language.PYTHON
-            else "package.json"
-        )
+        manifest = "requirements.txt / pyproject.toml" if language == Language.PYTHON else "package.json"
         super().__init__(
             f"Agent in {agent_dir} imports {len(imports)} external package(s) "
             f"({', '.join(imports[:5])}{'…' if len(imports) > 5 else ''}) "
@@ -436,9 +418,7 @@ def _gather_project_context(agent_dir: Path) -> tuple[str, str]:
         if (agent_dir / name).is_file():
             manifests.append(f"--- {name} --- (present, not shown)")
 
-    manifest_contents = (
-        "\n\n".join(manifests) if manifests else "(no manifest files found)"
-    )
+    manifest_contents = "\n\n".join(manifests) if manifests else "(no manifest files found)"
     return file_listing, manifest_contents
 
 
@@ -675,9 +655,7 @@ def _provision_js(agent_dir: Path) -> None:
     marker = agent_dir / "node_modules" / ".overmind_deps_hash"
     current_hash = _hash_dep_files(agent_dir, _JS_DEP_FILES)
 
-    if (agent_dir / "node_modules").is_dir() and _read_cached_hash(
-        marker
-    ) == current_hash:
+    if (agent_dir / "node_modules").is_dir() and _read_cached_hash(marker) == current_hash:
         logger.debug("node_modules up-to-date for %s", agent_dir)
         return
 
@@ -983,9 +961,7 @@ class AgentRunner:
         )
 
         if not has_dep_manifest(self.env_dir, self.language):
-            ext_imports = detect_external_imports(
-                self.env_dir, self.entry_file, self.language
-            )
+            ext_imports = detect_external_imports(self.env_dir, self.entry_file, self.language)
             if ext_imports:
                 logger.error(
                     "Missing dependency manifest for %s; detected external imports: %s",
@@ -1063,18 +1039,10 @@ class AgentRunner:
             )
             partial_stderr = ""
             if exc.stderr:
-                partial_stderr = (
-                    exc.stderr
-                    if isinstance(exc.stderr, str)
-                    else exc.stderr.decode(errors="replace")
-                )
+                partial_stderr = exc.stderr if isinstance(exc.stderr, str) else exc.stderr.decode(errors="replace")
             partial_stdout = ""
             if exc.stdout:
-                partial_stdout = (
-                    exc.stdout
-                    if isinstance(exc.stdout, str)
-                    else exc.stdout.decode(errors="replace")
-                )
+                partial_stdout = exc.stdout if isinstance(exc.stdout, str) else exc.stdout.decode(errors="replace")
             return RunOutput(
                 success=False,
                 error=f"Agent timed out after {effective_timeout}s",
@@ -1083,9 +1051,7 @@ class AgentRunner:
                 returncode=-1,
             )
         except FileNotFoundError as exc:
-            logger.error(
-                "AgentRunner.run interpreter not found cmd=%s err=%s", cmd, exc
-            )
+            logger.error("AgentRunner.run interpreter not found cmd=%s err=%s", cmd, exc)
             return RunOutput(
                 success=False,
                 error=f"Interpreter not found: {exc}",
@@ -1107,9 +1073,7 @@ class AgentRunner:
             )
             return RunOutput(
                 success=False,
-                error=proc.stderr[-4000:]
-                if proc.stderr
-                else f"Exit code {proc.returncode}",
+                error=proc.stderr[-4000:] if proc.stderr else f"Exit code {proc.returncode}",
                 stdout=proc.stdout,
                 stderr=proc.stderr,
                 returncode=proc.returncode,
@@ -1332,9 +1296,7 @@ def _validate_js_syntax(code: str, agent_dir: Path) -> bool:
     """
     if not shutil.which("node"):
         return True
-    with tempfile.NamedTemporaryFile(
-        suffix=".js", dir=str(agent_dir), mode="w", delete=False
-    ) as f:
+    with tempfile.NamedTemporaryFile(suffix=".js", dir=str(agent_dir), mode="w", delete=False) as f:
         f.write(code)
         tmp = f.name
     try:
@@ -1398,9 +1360,7 @@ def _extract_python_imports(code: str) -> list[str]:
 
 def _extract_js_imports(code: str) -> list[str]:
     modules: list[str] = []
-    for m in re.finditer(
-        r"""(?:import\s+.*?\s+from\s+|require\s*\(\s*)['"]([^'"]+)['"]""", code
-    ):
+    for m in re.finditer(r"""(?:import\s+.*?\s+from\s+|require\s*\(\s*)['"]([^'"]+)['"]""", code):
         mod = m.group(1)
         if not mod.startswith("."):
             modules.append(mod.split("/")[0])

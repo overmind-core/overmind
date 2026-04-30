@@ -5,6 +5,7 @@ Overmind: autonomous agent optimization through structured experimentation.
 Overmind: automatic observability for LLM applications.
 
 """
+
 __version__ = "0.1.41"
 
 from opentelemetry.overmind.prompt import PromptString

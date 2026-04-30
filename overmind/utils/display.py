@@ -76,9 +76,7 @@ def _load_logo_grid() -> list[list[str | None]]:
 
     try:
         root_el = ET.parse(_SVG_PATH).getroot()
-        grid: list[list[str | None]] = [
-            [None] * _SVG_GRID_SIZE for _ in range(_SVG_GRID_SIZE)
-        ]
+        grid: list[list[str | None]] = [[None] * _SVG_GRID_SIZE for _ in range(_SVG_GRID_SIZE)]
         for rect in root_el.iter(f"{{{_SVG_NS}}}rect"):
             fill = rect.get("fill", "").strip()
             if not fill.startswith("#"):

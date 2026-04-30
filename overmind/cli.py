@@ -18,10 +18,28 @@ Commands:
 from __future__ import annotations
 
 import argparse
+import logging
 import sys
 from unittest.mock import MagicMock
 
+from opentelemetry import trace as _otel_trace
+
+import overmind
+from overmind.commands.agent_cmd import (
+    cmd_list,
+    cmd_register,
+    cmd_remove,
+    cmd_show,
+    cmd_update,
+    cmd_validate,
+)
+from overmind.commands.init_cmd import main as _init
+from overmind.commands.optimize_cmd import main as _optimize
+from overmind.commands.setup_cmd import main as _setup
 from overmind.core.constants import OVERMIND_DIR_NAME, overmind_rel
+from overmind.core.logging import setup_logging
+from overmind.core.paths import load_overmind_dotenv
+from overmind.core.registry import require_overmind_initialized
 
 _FMT = argparse.RawDescriptionHelpFormatter
 
@@ -134,9 +152,7 @@ def _build_parser() -> argparse.ArgumentParser:
             "  overmind setup <name>\n"
         ),
     )
-    reg_p.add_argument(
-        "name", metavar="NAME", help="Short agent name (e.g. lead-qualification)"
-    )
+    reg_p.add_argument("name", metavar="NAME", help="Short agent name (e.g. lead-qualification)")
     reg_p.add_argument(
         "entrypoint",
         metavar="MODULE:FUNCTION",
@@ -186,9 +202,7 @@ def _build_parser() -> argparse.ArgumentParser:
             "The new entrypoint is validated (file exists, function defined)\n"
             "before the registry is updated."
         ),
-        epilog=(
-            "Example:\n  overmind agent update lead-qualification agents.agent2.new_agent:run\n"
-        ),
+        epilog=("Example:\n  overmind agent update lead-qualification agents.agent2.new_agent:run\n"),
     )
     upd_p.add_argument("name", metavar="NAME", help="Agent name to update")
     upd_p.add_argument(
@@ -201,9 +215,7 @@ def _build_parser() -> argparse.ArgumentParser:
         "show",
         formatter_class=_FMT,
         help="Show agent registration and pipeline status",
-        description=(
-            "Show the registration details and current pipeline status for\na single agent."
-        ),
+        description=("Show the registration details and current pipeline status for\na single agent."),
         epilog=(
             "Status fields:\n"
             "  File         — whether the registered file exists on disk\n"
@@ -287,9 +299,7 @@ def _build_parser() -> argparse.ArgumentParser:
     setup_p.add_argument(
         "--fast",
         action="store_true",
-        help=(
-            f"skip all prompts; requires ANALYZER_MODEL and SYNTHETIC_DATAGEN_MODEL in {overmind_rel('.env')}"
-        ),
+        help=(f"skip all prompts; requires ANALYZER_MODEL and SYNTHETIC_DATAGEN_MODEL in {overmind_rel('.env')}"),
     )
     setup_p.add_argument(
         "--policy",
@@ -422,12 +432,10 @@ def _build_parser() -> argparse.ArgumentParser:
 def _flush_traces() -> None:
     """Flush all buffered OTel spans so nothing is lost on process exit."""
     try:
-        from opentelemetry import trace as _otel_trace
-
         provider = _otel_trace.get_tracer_provider()
         if hasattr(provider, "force_flush"):
             provider.force_flush(timeout_millis=10_000)
-    except Exception:
+    except Exception:  # noqa: S110
         pass
 
 
@@ -436,50 +444,27 @@ def main() -> None:
     args = parser.parse_args()
 
     if args.command != "init":
-        from overmind.core.registry import require_overmind_initialized
-
         require_overmind_initialized()
+        load_overmind_dotenv()
 
-    import overmind
-    from overmind.core.paths import load_overmind_dotenv
-
-    load_overmind_dotenv()
-
-    overmind.init(service_name="overmind", providers=[])
+    overmind.init(service_name="overmind.cli", providers=None)
 
     # Wire up logging as early as possible so every module that gets
     # imported next (commands, optimizer, coding agent, …) can emit debug
     # traces from its module-level loggers.  ``overmind init`` configures
     # its logger after it creates ``.overmind/`` so the log lands there.
     if args.command != "init":
-        from overmind.core.logging import setup_logging
-
         log_path = setup_logging()
-        import logging
 
         logging.getLogger("overmind.cli").info(
-            "CLI invoked command=%s argv=%s log_file=%s",
-            args.command,
-            sys.argv[1:],
-            log_path,
+            "CLI invoked command=%s argv=%s log_file=%s", args.command, sys.argv[1:], log_path
         )
 
     try:
         if args.command == "init":
-            from overmind.commands.init_cmd import main as _init
-
             _init()
 
         elif args.command == "agent":
-            from overmind.commands.agent_cmd import (
-                cmd_list,
-                cmd_register,
-                cmd_remove,
-                cmd_show,
-                cmd_update,
-                cmd_validate,
-            )
-
             if args.agent_command == "register":
                 cmd_register(args.name, args.entrypoint)
             elif args.agent_command == "list":
@@ -494,8 +479,6 @@ def main() -> None:
                 cmd_validate(args.name, args.data)
 
         elif args.command == "setup":
-            from overmind.commands.setup_cmd import main as _setup
-
             _kw = _bundle_cli_kwargs(args)
             _setup(
                 agent_name=args.agent,
@@ -506,19 +489,11 @@ def main() -> None:
             )
 
         elif args.command == "optimize":
-            from overmind.commands.optimize_cmd import main as _optimize
-
             _kw = _bundle_cli_kwargs(args)
             _optimize(agent_name=args.agent, fast=args.fast, **_kw)
 
-        elif args.command == "doctor":
-            from overmind.commands.doctor_cmd import main as _doctor
-
-            _doctor(agent_name=args.agent)
-
     except KeyboardInterrupt:
         print("\nAborted.", file=sys.stderr)
-        _flush_traces()
         raise SystemExit(130) from None
     finally:
         _flush_traces()

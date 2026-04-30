@@ -34,9 +34,7 @@ def update_agent_env(path: Path, agent_name: str, updates: dict[str, str]) -> No
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
-def ensure_provider_api_keys(
-    model: str, env_path: Path, agent_name: str, console: Console
-) -> None:
+def ensure_provider_api_keys(model: str, env_path: Path, agent_name: str, console: Console) -> None:
     """Prompt for any provider credentials missing from both the global environment
     and the agent's ``.env``, then persist and reload them.
 
@@ -51,16 +49,10 @@ def ensure_provider_api_keys(
         return
 
     existing_agent: dict[str, str] = (
-        {k: (v or "") for k, v in (dotenv_values(env_path) or {}).items()}
-        if env_path.exists()
-        else {}
+        {k: (v or "") for k, v in (dotenv_values(env_path) or {}).items()} if env_path.exists() else {}
     )
 
-    missing = [
-        k
-        for k in key_names
-        if not os.getenv(k, "").strip() and not existing_agent.get(k, "").strip()
-    ]
+    missing = [k for k in key_names if not os.getenv(k, "").strip() and not existing_agent.get(k, "").strip()]
     if not missing:
         return
 
@@ -81,8 +73,5 @@ def ensure_provider_api_keys(
     if updates:
         update_agent_env(env_path, agent_name, updates)
         for key_name in updates:
-            console.print(
-                f"  [bold green]✓[/bold green] Saved [bold]{key_name}[/bold]"
-                f"  [dim]→ {rel(env_path)}[/dim]"
-            )
+            console.print(f"  [bold green]✓[/bold green] Saved [bold]{key_name}[/bold]  [dim]→ {rel(env_path)}[/dim]")
         load_agent_dotenv(agent_name)

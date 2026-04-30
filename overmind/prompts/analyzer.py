@@ -29,17 +29,12 @@ FOCUS_LABELS = {
     "format_input": "restructuring how input data is formatted for the LLM",
     "system_prompt": "refining system prompt instructions (but keep it concise)",
     "tool_implementation": (
-        "improving tool execution logic, fixing tool functions in supporting "
-        "modules, adding data processing helpers"
+        "improving tool execution logic, fixing tool functions in supporting modules, adding data processing helpers"
     ),
     "helper_module": (
-        "adding or modifying utility functions in supporting files "
-        "(data validation, parsing, transformation)"
+        "adding or modifying utility functions in supporting files (data validation, parsing, transformation)"
     ),
-    "error_handling": (
-        "adding retry logic, fallback strategies, input validation, "
-        "and graceful error recovery"
-    ),
+    "error_handling": ("adding retry logic, fallback strategies, input validation, and graceful error recovery"),
 }
 
 DIAGNOSIS_FOCUS_DIRECTIVE = (

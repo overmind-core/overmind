@@ -66,18 +66,12 @@ class FileTracker:
 
 class FileNotReadError(Exception):
     def __init__(self, path: str) -> None:
-        super().__init__(
-            f"You must read file {path} before overwriting it. Use the read tool first."
-        )
+        super().__init__(f"You must read file {path} before overwriting it. Use the read tool first.")
 
 
 class FileStaleError(Exception):
     def __init__(self, path: str, read_at: datetime, mtime: float | None) -> None:
-        modified = (
-            datetime.fromtimestamp(mtime, tz=timezone.utc).isoformat()
-            if mtime
-            else "unknown"
-        )
+        modified = datetime.fromtimestamp(mtime, tz=timezone.utc).isoformat() if mtime else "unknown"
         super().__init__(
             f"File {path} has been modified since it was last read.\n"
             f"Last modification: {modified}\n"

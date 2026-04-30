@@ -102,26 +102,22 @@ def describe_configured_agent_llm_provider(existing: dict[str, str]) -> str | No
 
 
 # Env names that are almost always inherited from the OS, not agent-specific.
-_SKIP_DISCOVER_KEYS = frozenset(
-    {
-        "PATH",
-        "HOME",
-        "USER",
-        "LOGNAME",
-        "SHELL",
-        "TERM",
-        "LANG",
-        "PWD",
-        "TMPDIR",
-        "TMP",
-        "TEMP",
-    }
-)
+_SKIP_DISCOVER_KEYS = frozenset({
+    "PATH",
+    "HOME",
+    "USER",
+    "LOGNAME",
+    "SHELL",
+    "TERM",
+    "LANG",
+    "PWD",
+    "TMPDIR",
+    "TMP",
+    "TEMP",
+})
 
 
-def collect_code_detected_env_vars(
-    agent_name: str, entry_path: str, console: Console
-) -> None:
+def collect_code_detected_env_vars(agent_name: str, entry_path: str, console: Console) -> None:
     """Scan the agent import closure for ``os.environ`` / ``os.getenv`` reads.
 
     For each discovered name, prompts with the literal default from source
@@ -170,9 +166,7 @@ def collect_code_detected_env_vars(
 
     console.print()
     console.print(Rule(style="dim"))
-    console.print(
-        Rule("[bold]Environment variables from your agent code[/bold]", style=BRAND)
-    )
+    console.print(Rule("[bold]Environment variables from your agent code[/bold]", style=BRAND))
     console.print(
         "  [dim]Scanned your entrypoint and local imports for "
         "[cyan]os.environ.get[/cyan] / [cyan]os.getenv[/cyan] / "
@@ -184,23 +178,13 @@ def collect_code_detected_env_vars(
     updates: dict[str, str] = {}
     for key in sorted(discovered.keys()):
         if existing.get(key, "").strip():
-            console.print(
-                f"  [dim]{escape(key)}[/dim]  [dim]— already set in "
-                f"{rel(env_path)}; leaving as-is.[/dim]"
-            )
+            console.print(f"  [dim]{escape(key)}[/dim]  [dim]— already set in {rel(env_path)}; leaving as-is.[/dim]")
             continue
 
         code_default = discovered[key]
         if code_default is not None:
-            display = (
-                escape(code_default)
-                if len(code_default) < 120
-                else escape(code_default[:117] + "...")
-            )
-            console.print(
-                f"\n  [bold]{escape(key)}[/bold]  [dim](code default: "
-                f"[cyan]{display}[/cyan])[/dim]"
-            )
+            display = escape(code_default) if len(code_default) < 120 else escape(code_default[:117] + "...")
+            console.print(f"\n  [bold]{escape(key)}[/bold]  [dim](code default: [cyan]{display}[/cyan])[/dim]")
             val = Prompt.ask(
                 "  Value",
                 default=code_default,
@@ -209,9 +193,7 @@ def collect_code_detected_env_vars(
             )
             updates[key] = val
         else:
-            console.print(
-                f"\n  [bold]{escape(key)}[/bold]  [dim](no literal default in code)[/dim]"
-            )
+            console.print(f"\n  [bold]{escape(key)}[/bold]  [dim](no literal default in code)[/dim]")
             val = Prompt.ask(
                 "  Value (leave empty to skip)",
                 default="",
@@ -236,11 +218,7 @@ def collect_agent_provider_config(agent_name: str, console: Console) -> None:
     env_path = agent_env_path(agent_name)
 
     if env_path.exists() and env_path.stat().st_size > 0:
-        existing = {
-            k: v
-            for k, v in (dotenv_values(env_path) or {}).items()
-            if (v or "").strip()
-        }
+        existing = {k: v for k, v in (dotenv_values(env_path) or {}).items() if (v or "").strip()}
         if existing:
             console.print(
                 f"\n  [dim]Agent env already configured at [cyan]{rel(env_path)}[/cyan] "
@@ -248,13 +226,8 @@ def collect_agent_provider_config(agent_name: str, console: Console) -> None:
             )
             provider_hint = describe_configured_agent_llm_provider(existing)
             if provider_hint:
-                console.print(
-                    f"  [dim]Looks like this agent is set up for:[/dim] "
-                    f"{escape(provider_hint)}"
-                )
-            if not confirm_option(
-                "Reconfigure agent model provider?", default=False, console=console
-            ):
+                console.print(f"  [dim]Looks like this agent is set up for:[/dim] {escape(provider_hint)}")
+            if not confirm_option("Reconfigure agent model provider?", default=False, console=console):
                 return
 
     console.print()
@@ -278,8 +251,7 @@ def collect_agent_provider_config(agent_name: str, console: Console) -> None:
         existing_key = os.getenv("OPENAI_API_KEY", "").strip()
         if existing_key:
             console.print(
-                f"\n  [dim]OPENAI_API_KEY is already set in "
-                f"{overmind_rel('.env')} — using it for this agent.[/dim]"
+                f"\n  [dim]OPENAI_API_KEY is already set in {overmind_rel('.env')} — using it for this agent.[/dim]"
             )
             key = existing_key
         else:
@@ -287,16 +259,14 @@ def collect_agent_provider_config(agent_name: str, console: Console) -> None:
             key = read_api_key_masked("OPENAI_API_KEY")
         write_agent_env(env_path, agent_name, {"OPENAI_API_KEY": key})
         console.print(
-            f"  [bold green]\u2713[/bold green] Saved [bold]OPENAI_API_KEY[/bold]"
-            f" \u2192 [dim]{rel(env_path)}[/dim]"
+            f"  [bold green]\u2713[/bold green] Saved [bold]OPENAI_API_KEY[/bold] \u2192 [dim]{rel(env_path)}[/dim]"
         )
 
     elif pick == 1:  # Anthropic
         existing_key = os.getenv("ANTHROPIC_API_KEY", "").strip()
         if existing_key:
             console.print(
-                f"\n  [dim]ANTHROPIC_API_KEY is already set in "
-                f"{overmind_rel('.env')} — using it for this agent.[/dim]"
+                f"\n  [dim]ANTHROPIC_API_KEY is already set in {overmind_rel('.env')} — using it for this agent.[/dim]"
             )
             key = existing_key
         else:
@@ -304,8 +274,7 @@ def collect_agent_provider_config(agent_name: str, console: Console) -> None:
             key = read_api_key_masked("ANTHROPIC_API_KEY")
         write_agent_env(env_path, agent_name, {"ANTHROPIC_API_KEY": key})
         console.print(
-            f"  [bold green]\u2713[/bold green] Saved [bold]ANTHROPIC_API_KEY[/bold]"
-            f" \u2192 [dim]{rel(env_path)}[/dim]"
+            f"  [bold green]\u2713[/bold green] Saved [bold]ANTHROPIC_API_KEY[/bold] \u2192 [dim]{rel(env_path)}[/dim]"
         )
 
     else:  # Other provider
@@ -363,9 +332,7 @@ _SKIP_DIRS = {
 }
 
 
-def instrument_agent_files(
-    agent_path: str, agent_name: str, console: Console
-) -> tuple[str, Path]:
+def instrument_agent_files(agent_path: str, agent_name: str, console: Console) -> tuple[str, Path]:
     """Copy the agent's source tree to ``.overmind/agents/<name>/instrumented/``.
 
     The original files are never modified.  This is a **plain copy** — no
@@ -406,7 +373,6 @@ def instrument_agent_files(
 
     instrumented_entry = str(dest_dir / entry_relpath)
     console.print(
-        f"  [bold green]\u2713[/bold green] Copied agent source "
-        f"({file_count} file(s)) to [dim]{rel(dest_dir)}[/dim]"
+        f"  [bold green]\u2713[/bold green] Copied agent source ({file_count} file(s)) to [dim]{rel(dest_dir)}[/dim]"
     )
     return instrumented_entry, dest_dir

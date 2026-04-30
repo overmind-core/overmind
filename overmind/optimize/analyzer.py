@@ -74,8 +74,7 @@ def _format_scoring_mechanics(eval_spec: dict | None) -> str:
     lines: list[str] = []
     sw = eval_spec.get("structure_weight", 20)
     lines.append(
-        f"**Structure: {sw} pts** — All expected fields present and non-empty. "
-        f"Score = (present / total) * {sw}."
+        f"**Structure: {sw} pts** — All expected fields present and non-empty. Score = (present / total) * {sw}."
     )
 
     for field_name, config in eval_spec.get("output_fields", {}).items():
@@ -88,14 +87,10 @@ def _format_scoring_mechanics(eval_spec: dict | None) -> str:
             if config.get("partial_credit"):
                 ps = config.get("partial_score", 0)
                 lines.append(
-                    f"**{label}: {weight} pts** (enum: {vals}) — "
-                    f"Exact match = {weight}. Valid but wrong = {ps}."
+                    f"**{label}: {weight} pts** (enum: {vals}) — Exact match = {weight}. Valid but wrong = {ps}."
                 )
             else:
-                lines.append(
-                    f"**{label}: {weight} pts** (enum: {vals}) — "
-                    f"Exact match = {weight}. Any mismatch = 0."
-                )
+                lines.append(f"**{label}: {weight} pts** (enum: {vals}) — Exact match = {weight}. Any mismatch = 0.")
         elif ftype == "number":
             bands = config.get("tolerance_bands", [])
             field_range = config.get("range", [])
@@ -145,15 +140,11 @@ def _format_scoring_mechanics(eval_spec: dict | None) -> str:
 
     tw = eval_spec.get("tool_usage_weight", 0)
     if tw > 0:
-        lines.append(
-            f"**Tool Usage: {tw} pts** — Correct tool calls, arguments, chaining."
-        )
+        lines.append(f"**Tool Usage: {tw} pts** — Correct tool calls, arguments, chaining.")
 
     jw = eval_spec.get("llm_judge_weight", 0)
     if jw > 0:
-        lines.append(
-            f"**LLM Judge: {jw} pts** — Semantic correctness, consistency, reasoning."
-        )
+        lines.append(f"**LLM Judge: {jw} pts** — Semantic correctness, consistency, reasoning.")
 
     lines.append(
         "**Type Correctness: penalty** — Each field with wrong type "
@@ -181,9 +172,7 @@ def _format_per_case_results(
     if not case_results:
         return "(no results available)"
 
-    sorted_cases = sorted(
-        case_results, key=lambda c: c.get("score", {}).get("total", 0)
-    )
+    sorted_cases = sorted(case_results, key=lambda c: c.get("score", {}).get("total", 0))
 
     # Partially blind diagnosis: only show a fraction of cases, with a
     # different random subset each iteration to prevent memorization.
@@ -194,9 +183,7 @@ def _format_per_case_results(
         n_from_rest = max(0, n_keep - 3)
         if n_from_rest < len(rest):
             rest = random.Random(iteration_seed).sample(rest, n_from_rest)
-        sorted_cases = worst + sorted(
-            rest, key=lambda c: c.get("score", {}).get("total", 0)
-        )
+        sorted_cases = worst + sorted(rest, key=lambda c: c.get("score", {}).get("total", 0))
 
     if len(sorted_cases) > max_cases:
         worst = sorted_cases[: max_cases - 5]
@@ -222,9 +209,7 @@ def _format_per_case_results(
         input_data = case.get("input", {})
 
         if isinstance(input_data, dict):
-            input_summary = ", ".join(
-                f"{k}={json.dumps(v)}" for k, v in input_data.items()
-            )[:400]
+            input_summary = ", ".join(f"{k}={json.dumps(v)}" for k, v in input_data.items())[:400]
         else:
             input_summary = str(input_data)[:400]
 
@@ -258,9 +243,7 @@ def _format_per_case_results(
                     lines.append(f"  [{mark}] {fname}: FAIL — {hint} ({fs:.1f}/{mx})")
                 elif ftype == "number":
                     if act in (None, "", "MISSING"):
-                        lines.append(
-                            f"  [{mark}] {fname}: FAIL — MISSING ({fs:.1f}/{mx})"
-                        )
+                        lines.append(f"  [{mark}] {fname}: FAIL — MISSING ({fs:.1f}/{mx})")
                     else:
                         pct = fs / mx * 100 if mx > 0 else 0
                         exp_val = case.get("expected", {}).get(fname)
@@ -282,24 +265,15 @@ def _format_per_case_results(
                                 )
                         else:
                             lines.append(
-                                f"  [{mark}] {fname}: FAIL — "
-                                f"got {act!r}, off target ({pct:.0f}% credit, "
-                                f"{fs:.1f}/{mx})"
+                                f"  [{mark}] {fname}: FAIL — got {act!r}, off target ({pct:.0f}% credit, {fs:.1f}/{mx})"
                             )
                 elif ftype == "text":
                     if act and str(act).strip():
-                        lines.append(
-                            f"  [{mark}] {fname}: FAIL — present but "
-                            f"insufficient ({fs:.1f}/{mx})"
-                        )
+                        lines.append(f"  [{mark}] {fname}: FAIL — present but insufficient ({fs:.1f}/{mx})")
                     else:
-                        lines.append(
-                            f"  [{mark}] {fname}: FAIL — empty/missing ({fs:.1f}/{mx})"
-                        )
+                        lines.append(f"  [{mark}] {fname}: FAIL — empty/missing ({fs:.1f}/{mx})")
                 else:
-                    lines.append(
-                        f"  [{mark}] {fname}: FAIL — got {act!r} ({fs:.1f}/{mx})"
-                    )
+                    lines.append(f"  [{mark}] {fname}: FAIL — got {act!r} ({fs:.1f}/{mx})")
 
         struct_score = score.get("structure", 0)
         s_mark = "\u2713" if struct_score >= struct_max * 0.8 else "\u2717"
@@ -317,15 +291,9 @@ def _format_per_case_results(
                     result_str = result_str[:200] + "\u2026"
                 err = tc.get("error")
                 if err:
-                    lines.append(
-                        f"    {t_idx}. {tc.get('name', '?')}({args_str}) "
-                        f"\u2192 ERROR: {err}"
-                    )
+                    lines.append(f"    {t_idx}. {tc.get('name', '?')}({args_str}) \u2192 ERROR: {err}")
                 else:
-                    lines.append(
-                        f"    {t_idx}. {tc.get('name', '?')}({args_str}) "
-                        f"\u2192 {result_str}"
-                    )
+                    lines.append(f"    {t_idx}. {tc.get('name', '?')}({args_str}) \u2192 {result_str}")
         elif case.get("tool_calls"):
             lines.append(f"  Tools used: {', '.join(case['tool_calls'])}")
 
@@ -379,10 +347,7 @@ def _format_tool_usage_analysis(case_results: list[dict]) -> str:
                 lines.append(f"  - {tool_name}.{param}: {sorted(unique)}")
             else:
                 sample = sorted(unique)[:5]
-                lines.append(
-                    f"  - {tool_name}.{param}: {len(unique)} unique values "
-                    f"(sample: {sample})"
-                )
+                lines.append(f"  - {tool_name}.{param}: {len(unique)} unique values (sample: {sample})")
 
     if errors:
         lines.append("")
@@ -396,11 +361,7 @@ def _format_tool_usage_analysis(case_results: list[dict]) -> str:
 def _format_score_breakdown(evaluation: dict, eval_spec: dict | None) -> str:
     lines: list[str] = []
     for key, val in evaluation.items():
-        if (
-            key.startswith("avg_")
-            and key != "avg_total"
-            and isinstance(val, (int, float))
-        ):
+        if key.startswith("avg_") and key != "avg_total" and isinstance(val, (int, float)):
             nice = key.replace("avg_", "").replace("_", " ").title()
             field_key = key.replace("avg_", "")
             max_val = 0.0
@@ -408,9 +369,7 @@ def _format_score_breakdown(evaluation: dict, eval_spec: dict | None) -> str:
                 if field_key == "structure":
                     max_val = float(eval_spec.get("structure_weight", 20))
                 elif field_key in eval_spec.get("output_fields", {}):
-                    max_val = float(
-                        eval_spec["output_fields"][field_key].get("weight", 0)
-                    )
+                    max_val = float(eval_spec["output_fields"][field_key].get("weight", 0))
                 elif field_key == "tool_usage":
                     max_val = float(eval_spec.get("tool_usage_weight", 0))
                 elif field_key == "llm_judge":
@@ -421,9 +380,7 @@ def _format_score_breakdown(evaluation: dict, eval_spec: dict | None) -> str:
     return "\n".join(lines) or "  (no breakdown)"
 
 
-def _find_weakest_dimension(
-    evaluation: dict, eval_spec: dict | None
-) -> tuple[str, float, float]:
+def _find_weakest_dimension(evaluation: dict, eval_spec: dict | None) -> tuple[str, float, float]:
     if not eval_spec:
         return ("unknown", 0.0, 0.0)
 
@@ -513,14 +470,10 @@ def _format_failed_attempts(failed: list[dict] | None, max_entries: int = 8) -> 
     ]:
         count = sum(1 for s in sugg_lower if keyword in s)
         if count >= 2:
-            repeated_patterns.append(
-                f"'{label}' attempted {count}x and FAILED every time"
-            )
+            repeated_patterns.append(f"'{label}' attempted {count}x and FAILED every time")
 
     if repeated_patterns:
-        lines.append(
-            "⚠️  REPEATEDLY FAILED APPROACHES (try something fundamentally different):"
-        )
+        lines.append("⚠️  REPEATEDLY FAILED APPROACHES (try something fundamentally different):")
         for rp in repeated_patterns:
             lines.append(f"  - {rp}")
         lines.append(
@@ -596,10 +549,7 @@ def _extract_code_and_analysis(
             end = text.rfind("}")
             if start >= 0 and end > start:
                 candidate = text[start : end + 1]
-                if (
-                    not _matches_fingerprint(candidate, fingerprints)
-                    and len(candidate) < 3000
-                ):
+                if not _matches_fingerprint(candidate, fingerprints) and len(candidate) < 3000:
                     parsed = json.loads(candidate)
                     analysis = parsed.get("analysis", parsed.get("root_cause", ""))
                     suggestions = parsed.get(
@@ -829,9 +779,7 @@ def _run_diagnosis(
     representation instead of a flat code string.
     """
     agent_model, capability = _detect_agent_model(agent_code)
-    weak_name, weak_score, weak_max = _find_weakest_dimension(
-        evaluation_results, eval_spec
-    )
+    weak_name, weak_score, weak_max = _find_weakest_dimension(evaluation_results, eval_spec)
 
     mcr = (
         "You MAY suggest changing the MODEL constant."
@@ -883,10 +831,7 @@ def _run_diagnosis(
         )
 
     if focus_area:
-        labels = {
-            k: v.format(entrypoint_fn=entrypoint_fn) if "{" in v else v
-            for k, v in FOCUS_LABELS.items()
-        }
+        labels = {k: v.format(entrypoint_fn=entrypoint_fn) if "{" in v else v for k, v in FOCUS_LABELS.items()}
         focus_desc = labels.get(focus_area, focus_area)
         prompt += DIAGNOSIS_FOCUS_DIRECTIVE.format(
             focus_area=focus_area,
@@ -917,7 +862,7 @@ def _run_diagnosis(
         end = content.rfind("}") + 1
         if start >= 0 and end > start:
             return json.loads(content[start:end])
-    except Exception:
+    except Exception:  # noqa: S110
         pass
     return None
 
@@ -951,10 +896,7 @@ def _run_codegen(
     """
     focus_directive = ""
     if focus_area:
-        labels = {
-            k: v.format(entrypoint_fn=entrypoint_fn) if "{" in v else v
-            for k, v in FOCUS_LABELS.items()
-        }
+        labels = {k: v.format(entrypoint_fn=entrypoint_fn) if "{" in v else v for k, v in FOCUS_LABELS.items()}
         focus_desc = labels.get(focus_area, focus_area)
         focus_directive = CODEGEN_FOCUS_DIRECTIVE.format(
             focus_area=focus_area,
@@ -1082,9 +1024,7 @@ def _build_import_graph(agent_files: dict[str, str]) -> str:
     for rel, src in agent_files.items():
         imports = _extract_imports_from_source(src, known - {rel})
         if imports:
-            lines.append(
-                f"- `{rel}` imports from: {', '.join(f'`{i}`' for i in imports)}"
-            )
+            lines.append(f"- `{rel}` imports from: {', '.join(f'`{i}`' for i in imports)}")
     return "\n".join(lines) if lines else "(single file — no cross-file imports)"
 
 
@@ -1107,23 +1047,15 @@ def _build_agentic_instruction(
             for rel, src in agent_files.items()
         )
     else:
-        file_listing = "\n".join(
-            f"- `{rel}` ({len(src.splitlines())} lines)"
-            for rel, src in agent_files.items()
-        )
+        file_listing = "\n".join(f"- `{rel}` ({len(src.splitlines())} lines)" for rel, src in agent_files.items())
 
     import_graph = _build_import_graph(agent_files)
 
-    policy_section = (
-        f"- Policy constraints: {policy_constraints}" if policy_constraints else ""
-    )
+    policy_section = f"- Policy constraints: {policy_constraints}" if policy_constraints else ""
 
     focus_directive = ""
     if focus_area:
-        labels = {
-            k: v.format(entrypoint_fn=entrypoint_fn) if "{" in v else v
-            for k, v in FOCUS_LABELS.items()
-        }
+        labels = {k: v.format(entrypoint_fn=entrypoint_fn) if "{" in v else v for k, v in FOCUS_LABELS.items()}
         focus_desc = labels.get(focus_area, focus_area)
         focus_directive = AGENTIC_CODEGEN_FOCUS.format(
             focus_area=focus_area,
@@ -1213,9 +1145,7 @@ def _run_codegen_agentic(
         "analysis": diagnosis.get("root_cause", ""),
         "suggestions": suggestions,
         "updated_code": entry_source,
-        "bundle_updates": (
-            {"file_updates": result.file_updates} if is_multi_file else None
-        ),
+        "bundle_updates": ({"file_updates": result.file_updates} if is_multi_file else None),
         "_resolved_files": result.file_updates if is_multi_file else None,
         "method": f"agentic({focus_area or 'general'})",
         "diagnosis": diagnosis,
@@ -1293,9 +1223,7 @@ def compute_focus_weights(
         for t in trace:
             if t.get("error"):
                 tool_errors += 1
-        expected_tools = (
-            (eval_spec or {}).get("tool_config", {}).get("expected_tools", [])
-        )
+        expected_tools = (eval_spec or {}).get("tool_config", {}).get("expected_tools", [])
         called = {t.get("name") for t in trace}
         for et in expected_tools:
             name = et if isinstance(et, str) else et.get("name", "")
@@ -1329,9 +1257,7 @@ def compute_focus_weights(
             weights["helper_module"] += min(severe_field_failures * 0.3, 1.0)
 
     # Signal 3: Runtime errors / crashes → error_handling
-    crash_count = sum(
-        1 for c in case_results if c.get("output") is None or c.get("output") == {}
-    )
+    crash_count = sum(1 for c in case_results if c.get("output") is None or c.get("output") == {})
     if crash_count > 0:
         weights["error_handling"] += min(crash_count / n_cases, 1.0)
 
@@ -1374,7 +1300,7 @@ def compute_focus_weights(
     # Normalize to 0-1 range
     max_w = max(weights.values()) if weights else 1.0
     if max_w > 0:
-        for k in weights:
+        for k in weights:  # noqa: PLC0206
             weights[k] = max(0.0, min(1.0, weights[k] / max_w))
 
     return weights
@@ -1451,9 +1377,7 @@ def generate_candidates(
     """
 
     agent_model, capability = _detect_agent_model(agent_code)
-    weak_name, weak_score, weak_max = _find_weakest_dimension(
-        evaluation_results, eval_spec
-    )
+    weak_name, weak_score, weak_max = _find_weakest_dimension(evaluation_results, eval_spec)
     mcr = (
         "You MAY change the MODEL constant if a different model would clearly help."
         if allow_model_change
@@ -1578,12 +1502,8 @@ def generate_candidates(
         adaptive_max_cases = 10
         adaptive_history_cap = 4
 
-    trimmed_failed = (
-        failed_attempts[-adaptive_history_cap:] if failed_attempts else None
-    )
-    trimmed_successful = (
-        successful_changes[-adaptive_history_cap:] if successful_changes else None
-    )
+    trimmed_failed = failed_attempts[-adaptive_history_cap:] if failed_attempts else None
+    trimmed_successful = successful_changes[-adaptive_history_cap:] if successful_changes else None
 
     # --- Shared diagnosis (single LLM call) ---
     diag = _run_diagnosis(
@@ -1671,11 +1591,7 @@ def generate_candidates(
 
     # Resolve the entry file path for the agentic path
     _entry_file = (
-        bundle.entry_file
-        if bundle is not None
-        else next(iter(agent_files), "agent.py")
-        if agent_files
-        else "agent.py"
+        bundle.entry_file if bundle is not None else next(iter(agent_files), "agent.py") if agent_files else "agent.py"
     )
 
     # Choose the codegen model — fall back to the diagnosis model
@@ -1733,30 +1649,22 @@ def generate_candidates(
                             )
                         )
                     else:
-                        futures.append(
-                            pool.submit(
-                                parent_ctx.copy().run, _agentic_fork, focus
-                            )
-                        )
+                        futures.append(pool.submit(parent_ctx.copy().run, _agentic_fork, focus))
                 all_results = []
                 for i, fut in enumerate(futures):
                     try:
                         all_results.append(fut.result())
                     except Exception:
                         _log.exception("Agentic codegen fork %d failed", i)
-                        all_results.append(
-                            {
-                                "analysis": "agentic fork crashed",
-                                "suggestions": [],
-                                "updated_code": None,
-                                "method": "failed",
-                                "_debug": {"fork_crash": True},
-                            }
-                        )
+                        all_results.append({
+                            "analysis": "agentic fork crashed",
+                            "suggestions": [],
+                            "updated_code": None,
+                            "method": "failed",
+                            "_debug": {"fork_crash": True},
+                        })
 
-        has_any_output = any(
-            r.get("updated_code") or r.get("bundle_updates") for r in all_results
-        )
+        has_any_output = any(r.get("updated_code") or r.get("bundle_updates") for r in all_results)
         if not has_any_output:
             sp_result = _gen_single_pass()
             if sp_result.get("updated_code") or sp_result.get("bundle_updates"):
@@ -1776,9 +1684,7 @@ def generate_candidates(
 
     def _codegen_for_focus(focus: str | None, use_diag: dict | None = None) -> dict:
         effective_diag = use_diag or diag
-        effective_suggestions = [
-            c.get("action", "") for c in effective_diag.get("changes", [])
-        ]
+        effective_suggestions = [c.get("action", "") for c in effective_diag.get("changes", [])]
         result = _run_codegen(
             agent_code,
             effective_diag,
@@ -1798,10 +1704,7 @@ def generate_candidates(
                 "suggestions": effective_suggestions,
                 "updated_code": None,
                 "bundle_updates": result,
-                "method": (
-                    f"two_pass_bundle("
-                    f"{'independent' if is_independent else focus or 'general'})"
-                ),
+                "method": (f"two_pass_bundle({'independent' if is_independent else focus or 'general'})"),
                 "diagnosis": effective_diag,
                 "_debug": {
                     "two_pass": True,
@@ -1818,11 +1721,7 @@ def generate_candidates(
             "analysis": effective_diag.get("root_cause", ""),
             "suggestions": effective_suggestions,
             "updated_code": code,
-            "method": (
-                f"two_pass({'independent' if is_independent else focus or 'general'})"
-                if code
-                else "failed"
-            ),
+            "method": (f"two_pass({'independent' if is_independent else focus or 'general'})" if code else "failed"),
             "diagnosis": effective_diag,
             "_debug": {
                 "two_pass": True,
@@ -1859,34 +1758,24 @@ def generate_candidates(
                         )
                     )
                 else:
-                    futures.append(
-                        pool.submit(
-                            parent_ctx.copy().run, _codegen_for_focus, focus
-                        )
-                    )
+                    futures.append(pool.submit(parent_ctx.copy().run, _codegen_for_focus, focus))
             all_results = []
             for i, fut in enumerate(futures):
                 try:
                     all_results.append(fut.result())
                 except Exception:
                     _log.exception("Legacy codegen fork %d failed", i)
-                    all_results.append(
-                        {
-                            "analysis": "codegen crashed",
-                            "suggestions": [],
-                            "updated_code": None,
-                            "method": "failed",
-                            "_debug": {"fork_crash": True},
-                        }
-                    )
+                    all_results.append({
+                        "analysis": "codegen crashed",
+                        "suggestions": [],
+                        "updated_code": None,
+                        "method": "failed",
+                        "_debug": {"fork_crash": True},
+                    })
 
-    has_any_output = any(
-        r.get("updated_code") or r.get("bundle_updates") for r in all_results
-    )
+    has_any_output = any(r.get("updated_code") or r.get("bundle_updates") for r in all_results)
 
-    valid_count = sum(
-        1 for r in all_results if r.get("updated_code") or r.get("bundle_updates")
-    )
+    valid_count = sum(1 for r in all_results if r.get("updated_code") or r.get("bundle_updates"))
     methods = [r.get("method", "unknown") for r in all_results]
     set_tag(attrs.CANDIDATES_REQUESTED, str(num_candidates))
     set_tag(attrs.CANDIDATES_PRODUCED, str(valid_count))

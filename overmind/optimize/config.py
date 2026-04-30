@@ -54,9 +54,7 @@ def _agent_dataset_path(agent_name: str) -> Path:
     return agent_setup_spec_dir(agent_name) / "dataset.json"
 
 
-def _clear_existing_experiments(
-    agent_name: str, console: Console, *, fast: bool = False
-) -> None:
+def _clear_existing_experiments(agent_name: str, console: Console, *, fast: bool = False) -> None:
     """If experiments/ already has files, ask the user before wiping them (unless fast)."""
     exp_dir = agent_experiments_dir(agent_name)
     if not exp_dir.exists():
@@ -67,9 +65,7 @@ def _clear_existing_experiments(
     if not files:
         return
 
-    console.print(
-        f"\n  [yellow]Found {len(files)} existing file(s) in experiments/[/yellow]"
-    )
+    console.print(f"\n  [yellow]Found {len(files)} existing file(s) in experiments/[/yellow]")
 
     if fast:
         shutil.rmtree(exp_dir)
@@ -86,9 +82,7 @@ def _clear_existing_experiments(
         exp_dir.mkdir(parents=True, exist_ok=True)
         console.print("  [dim]Cleared.[/dim]")
     else:
-        console.print(
-            "  [dim]Keeping existing files. New results will overwrite them.[/dim]"
-        )
+        console.print("  [dim]Keeping existing files. New results will overwrite them.[/dim]")
 
 
 @dataclass
@@ -185,7 +179,8 @@ def _select_backtest_models(console: Console) -> list[str]:
             console.print(f"    [{i}] {name}{tag}")
 
         raw = (
-            Prompt.ask(
+            Prompt
+            .ask(
                 "  Select models (comma-separated numbers, 'all', or 'none')",
                 default=",".join(default_indices),
             )
@@ -220,9 +215,7 @@ def _require_analyzer_model_env_fast(console: Console) -> str:
     """Fast mode must not guess a model; require ANALYZER_MODEL explicitly."""
     raw = os.getenv("ANALYZER_MODEL", "").strip()
     if not raw:
-        console.print(
-            "\n[red]Fast mode requires ANALYZER_MODEL in the environment.[/red]"
-        )
+        console.print("\n[red]Fast mode requires ANALYZER_MODEL in the environment.[/red]")
         console.print(
             f"[dim]Set it in {overmind_rel('.env')} or your shell (see .env.example). "
             "Interactive mode can pick a model without this variable.[/dim]\n"
@@ -260,9 +253,7 @@ def _collect_config_fast(
 
     spec_path = _agent_eval_spec_path(cfg.agent_name)
     if not spec_path.exists():
-        console.print(
-            f"\n[red]No evaluation spec found at [bold]{rel(spec_path)}[/bold].[/red]"
-        )
+        console.print(f"\n[red]No evaluation spec found at [bold]{rel(spec_path)}[/bold].[/red]")
         console.print(
             "Run Overmind setup first: "
             f"[bold]overmind setup --fast {agent_name}[/bold] "
@@ -280,9 +271,7 @@ def _collect_config_fast(
 
     data_path = _agent_dataset_path(cfg.agent_name)
     if not data_path.exists():
-        console.print(
-            f"\n[red]No dataset found at [bold]{rel(data_path)}[/bold].[/red]"
-        )
+        console.print(f"\n[red]No dataset found at [bold]{rel(data_path)}[/bold].[/red]")
         console.print(
             "Run Overmind setup first: "
             f"[bold]overmind setup --fast {agent_name}[/bold] "
@@ -356,9 +345,7 @@ def collect_config(
     # ---- Eval spec (under per-agent setup_spec) ----
     spec_path = _agent_eval_spec_path(cfg.agent_name)
     if not spec_path.exists():
-        console.print(
-            f"\n[red]No evaluation spec found at [bold]{rel(spec_path)}[/bold].[/red]"
-        )
+        console.print(f"\n[red]No evaluation spec found at [bold]{rel(spec_path)}[/bold].[/red]")
         console.print(
             "Run Overmind setup first: "
             f"[bold]overmind setup {agent_name}[/bold] "
@@ -390,13 +377,9 @@ def collect_config(
     # ---- Data path (auto-resolved from setup_spec/) ----
     data_path = _agent_dataset_path(cfg.agent_name)
     if not data_path.exists():
+        console.print(f"\n[red]No dataset found at [bold]{rel(data_path)}[/bold].[/red]")
         console.print(
-            f"\n[red]No dataset found at [bold]{rel(data_path)}[/bold].[/red]"
-        )
-        console.print(
-            "Run Overmind setup first: "
-            f"[bold]overmind setup {agent_name}[/bold] "
-            "to generate the evaluation dataset.\n"
+            f"Run Overmind setup first: [bold]overmind setup {agent_name}[/bold] to generate the evaluation dataset.\n"
         )
         raise SystemExit(1)
     cfg.data_path = str(data_path)
@@ -406,9 +389,7 @@ def collect_config(
     console.print()
     console.print(Rule(style="dim"))
     console.print(Rule("[bold]Analyzer Model[/bold]", style=BRAND))
-    console.print(
-        "  [dim]The analyzer model diagnoses failures and generates improvements.[/dim]"
-    )
+    console.print("  [dim]The analyzer model diagnoses failures and generates improvements.[/dim]")
 
     env_analyzer = os.getenv("ANALYZER_MODEL", "").strip()
     if env_analyzer:
@@ -435,9 +416,7 @@ def collect_config(
                 console,
             )
     else:
-        console.print(
-            f"  [yellow]No ANALYZER_MODEL found in {overmind_rel('.env')}[/yellow]"
-        )
+        console.print(f"  [yellow]No ANALYZER_MODEL found in {overmind_rel('.env')}[/yellow]")
         cfg.analyzer_model = prompt_for_catalog_litellm_model(
             console,
             select_prompt="  Select analyzer model (number)",
@@ -445,17 +424,13 @@ def collect_config(
             default_model=DEFAULT_ANALYZER_MODEL,
             no_catalog_prompt="  Enter analyzer model",
         )
-        ensure_provider_api_keys(
-            cfg.analyzer_model, agent_env_path(cfg.agent_name), cfg.agent_name, console
-        )
+        ensure_provider_api_keys(cfg.analyzer_model, agent_env_path(cfg.agent_name), cfg.agent_name, console)
 
     # ---- LLM-as-Judge ----
     console.print()
     console.print(Rule(style="dim"))
     console.print(Rule("[bold]Evaluation Settings[/bold]", style=BRAND))
-    console.print(
-        "  [dim]LLM-as-Judge adds semantic quality scoring alongside mechanical matching.[/dim]"
-    )
+    console.print("  [dim]LLM-as-Judge adds semantic quality scoring alongside mechanical matching.[/dim]")
     use_judge = confirm_option(
         "Enable LLM-as-Judge scoring? (adds ~10% eval cost)",
         default=False,
@@ -488,13 +463,9 @@ def collect_config(
         "If N≥3, the last uses a second diagnosis for diversity. Higher N costs more "
         "but improves best-of-N odds.[/dim]"
     )
-    cfg.candidates_per_iteration = IntPrompt.ask(
-        "  Candidates per iteration (best-of-N)", default=3
-    )
+    cfg.candidates_per_iteration = IntPrompt.ask("  Candidates per iteration (best-of-N)", default=3)
 
-    cfg.parallel = confirm_option(
-        "Run agent in parallel?", default=True, console=console
-    )
+    cfg.parallel = confirm_option("Run agent in parallel?", default=True, console=console)
     if cfg.parallel:
         cfg.max_workers = IntPrompt.ask("  Max parallel workers", default=5)
 
@@ -503,22 +474,15 @@ def collect_config(
     if confirm_option("Configure advanced settings?", default=False, console=console):
         console.print()
         console.print(Rule("[bold]Advanced[/bold]", style="dim"))
-        cfg.runs_per_eval = IntPrompt.ask(
-            "  Runs per evaluation (for stability, 1=fast, 2-3=robust)", default=1
-        )
-        console.print(
-            "  [dim]Regression threshold: max fraction of cases that can regress.[/dim]"
-        )
+        cfg.runs_per_eval = IntPrompt.ask("  Runs per evaluation (for stability, 1=fast, 2-3=robust)", default=1)
+        console.print("  [dim]Regression threshold: max fraction of cases that can regress.[/dim]")
         threshold_str = Prompt.ask("  Regression threshold (0.0-1.0)", default="0.2")
         try:
             cfg.regression_threshold = float(threshold_str)
         except ValueError:
             cfg.regression_threshold = 0.2
 
-        console.print(
-            "  [dim]Holdout ratio: fraction of data withheld from the optimizer "
-            "to detect overfitting.[/dim]"
-        )
+        console.print("  [dim]Holdout ratio: fraction of data withheld from the optimizer to detect overfitting.[/dim]")
         holdout_str = Prompt.ask("  Holdout ratio (0.0-0.4, 0=disabled)", default="0.2")
         try:
             cfg.holdout_ratio = max(0.0, min(0.4, float(holdout_str)))
@@ -531,10 +495,7 @@ def collect_config(
             console=console,
         )
 
-        console.print(
-            "  [dim]Early stopping patience: stop after N consecutive "
-            "iterations without improvement.[/dim]"
-        )
+        console.print("  [dim]Early stopping patience: stop after N consecutive iterations without improvement.[/dim]")
         patience_str = Prompt.ask("  Early stopping patience (0=disabled)", default="3")
         try:
             cfg.early_stopping_patience = max(0, int(patience_str))
@@ -598,15 +559,12 @@ def collect_config(
     if cfg.holdout_enforcement:
         table.add_row(
             "Holdout enforcement",
-            f"Blended ({1 - cfg.holdout_weight:.0%} train, "
-            f"{cfg.holdout_weight:.0%} holdout)",
+            f"Blended ({1 - cfg.holdout_weight:.0%} train, {cfg.holdout_weight:.0%} holdout)",
         )
     if cfg.early_stopping_patience > 0:
         table.add_row("Early stopping", f"After {cfg.early_stopping_patience} stalls")
     if cfg.diagnosis_case_fraction < 1.0:
-        table.add_row(
-            "Diagnosis visibility", f"{cfg.diagnosis_case_fraction:.0%} of cases"
-        )
+        table.add_row("Diagnosis visibility", f"{cfg.diagnosis_case_fraction:.0%} of cases")
     features: list[str] = []
     if cfg.cross_run_persistence:
         features.append("cross-run persistence")
@@ -619,9 +577,7 @@ def collect_config(
     console.print(table)
     console.print()
 
-    if not confirm_option(
-        "Proceed with these settings?", default=True, console=console
-    ):
+    if not confirm_option("Proceed with these settings?", default=True, console=console):
         raise SystemExit("Aborted by user.")
 
     if scope_globs:

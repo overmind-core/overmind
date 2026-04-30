@@ -93,12 +93,8 @@ def parse_patch(text: str) -> list[Hunk]:
     cleaned = _strip_heredoc(text.strip())
     lines = cleaned.split("\n")
 
-    begin = next(
-        (i for i, line in enumerate(lines) if line.strip() == "*** Begin Patch"), None
-    )
-    end = next(
-        (i for i, line in enumerate(lines) if line.strip() == "*** End Patch"), None
-    )
+    begin = next((i for i, line in enumerate(lines) if line.strip() == "*** Begin Patch"), None)
+    end = next((i for i, line in enumerate(lines) if line.strip() == "*** End Patch"), None)
     if begin is None or end is None or begin >= end:
         raise ValueError("Invalid patch format: missing Begin/End markers")
 
@@ -138,11 +134,7 @@ def parse_patch(text: str) -> list[Hunk]:
                     old: list[str] = []
                     new: list[str] = []
                     is_eof = False
-                    while (
-                        i < end
-                        and not lines[i].startswith("@@")
-                        and not lines[i].startswith("***")
-                    ):
+                    while i < end and not lines[i].startswith("@@") and not lines[i].startswith("***"):
                         cl = lines[i]
                         if cl == "*** End of File":
                             is_eof = True
@@ -156,9 +148,7 @@ def parse_patch(text: str) -> list[Hunk]:
                         elif cl.startswith("+"):
                             new.append(cl[1:])
                         i += 1
-                    chunks.append(
-                        Chunk(old_lines=old, new_lines=new, context=ctx, is_eof=is_eof)
-                    )
+                    chunks.append(Chunk(old_lines=old, new_lines=new, context=ctx, is_eof=is_eof))
                 else:
                     i += 1
             hunks.append(UpdateHunk(path=path, move_path=move_path, chunks=chunks))
@@ -175,7 +165,8 @@ def parse_patch(text: str) -> list[Hunk]:
 
 def _normalize_unicode(s: str) -> str:
     return (
-        s.replace("\u2018", "'")
+        s
+        .replace("\u2018", "'")
         .replace("\u2019", "'")
         .replace("\u201a", "'")
         .replace("\u201b", "'")
@@ -203,9 +194,7 @@ def _try_match(
 ) -> int:
     if eof:
         from_end = len(lines) - len(pattern)
-        if from_end >= start and all(
-            compare(lines[from_end + j], pattern[j]) for j in range(len(pattern))
-        ):
+        if from_end >= start and all(compare(lines[from_end + j], pattern[j]) for j in range(len(pattern))):
             return from_end
     for i in range(start, len(lines) - len(pattern) + 1):
         if all(compare(lines[i + j], pattern[j]) for j in range(len(pattern))):
@@ -254,17 +243,11 @@ def _apply_update(filepath: str, chunks: list[Chunk]) -> str:
         if chunk.context:
             ci = _seek(orig_lines, [chunk.context], idx)
             if ci == -1:
-                raise ValueError(
-                    f"Failed to find context '{chunk.context}' in {filepath}"
-                )
+                raise ValueError(f"Failed to find context '{chunk.context}' in {filepath}")
             idx = ci + 1
 
         if not chunk.old_lines:
-            ins = (
-                len(orig_lines) - 1
-                if orig_lines and orig_lines[-1] == ""
-                else len(orig_lines)
-            )
+            ins = len(orig_lines) - 1 if orig_lines and orig_lines[-1] == "" else len(orig_lines)
             replacements.append((ins, 0, chunk.new_lines))
             continue
 
@@ -279,10 +262,7 @@ def _apply_update(filepath: str, chunks: list[Chunk]) -> str:
             found = _seek(orig_lines, pattern, idx, chunk.is_eof)
 
         if found == -1:
-            raise ValueError(
-                f"Failed to find expected lines in {filepath}:\n"
-                + "\n".join(chunk.old_lines)
-            )
+            raise ValueError(f"Failed to find expected lines in {filepath}:\n" + "\n".join(chunk.old_lines))
 
         replacements.append((found, len(pattern), new_slice))
         idx = found + len(pattern)
@@ -317,11 +297,7 @@ class ApplyPatchTool:
 
         for hunk in hunks:
             if isinstance(hunk, AddHunk):
-                fp = (
-                    hunk.path
-                    if os.path.isabs(hunk.path)
-                    else os.path.join(ctx.cwd, hunk.path)
-                )
+                fp = hunk.path if os.path.isabs(hunk.path) else os.path.join(ctx.cwd, hunk.path)
                 os.makedirs(os.path.dirname(fp), exist_ok=True)
                 with open(fp, "w") as f:
                     f.write(hunk.contents)
@@ -329,29 +305,17 @@ class ApplyPatchTool:
                 results.append(f"Added: {hunk.path}")
 
             elif isinstance(hunk, DeleteHunk):
-                fp = (
-                    hunk.path
-                    if os.path.isabs(hunk.path)
-                    else os.path.join(ctx.cwd, hunk.path)
-                )
+                fp = hunk.path if os.path.isabs(hunk.path) else os.path.join(ctx.cwd, hunk.path)
                 os.remove(fp)
                 results.append(f"Deleted: {hunk.path}")
 
             elif isinstance(hunk, UpdateHunk):
-                fp = (
-                    hunk.path
-                    if os.path.isabs(hunk.path)
-                    else os.path.join(ctx.cwd, hunk.path)
-                )
+                fp = hunk.path if os.path.isabs(hunk.path) else os.path.join(ctx.cwd, hunk.path)
                 ctx.assert_read(fp)
                 new_content = _apply_update(fp, hunk.chunks)
                 target = fp
                 if hunk.move_path:
-                    target = (
-                        hunk.move_path
-                        if os.path.isabs(hunk.move_path)
-                        else os.path.join(ctx.cwd, hunk.move_path)
-                    )
+                    target = hunk.move_path if os.path.isabs(hunk.move_path) else os.path.join(ctx.cwd, hunk.move_path)
                     os.makedirs(os.path.dirname(target), exist_ok=True)
                 with open(target, "w") as f:
                     f.write(new_content)

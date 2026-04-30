@@ -187,15 +187,9 @@ def _write_registry_entries(entries: list[dict[str, str]]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
 
     doc = tomlkit.document()
-    doc.add(
-        tomlkit.comment(
-            " Overmind agent registry — use: overmind agent register / list / remove / update "
-        )
-    )
+    doc.add(tomlkit.comment(" Overmind agent registry — use: overmind agent register / list / remove / update "))
     doc.add(tomlkit.nl())
-    doc["agents"] = (
-        _entries_to_toml_array(entries) if entries else _empty_agents_array()
-    )
+    doc["agents"] = _entries_to_toml_array(entries) if entries else _empty_agents_array()
     path.write_text(tomlkit.dumps(doc), encoding="utf-8")
 
 
@@ -218,10 +212,7 @@ def parse_entrypoint(entrypoint: str) -> tuple[str, str]:
     module, fn = entrypoint.rsplit(":", 1)
     module, fn = module.strip(), fn.strip()
     if not module or not fn:
-        raise ValueError(
-            f"Invalid entrypoint '{entrypoint}'. "
-            "Both module path and function name must be non-empty."
-        )
+        raise ValueError(f"Invalid entrypoint '{entrypoint}'. Both module path and function name must be non-empty.")
     return module, fn
 
 
@@ -378,11 +369,7 @@ def validate_entrypoint(entrypoint: str) -> tuple[Path, str]:
     except EntrypointNotFoundError as exc:
         ext = exc.file_path.suffix.lower()
         fn = exc.fn_name
-        hint = (
-            f"'def {fn}(input)'"
-            if ext == ".py"
-            else f"'function {fn}(input)' or 'module.exports = {{ {fn} }}'"
-        )
+        hint = f"'def {fn}(input)'" if ext == ".py" else f"'function {fn}(input)' or 'module.exports = {{ {fn} }}'"
         print(
             f"\n  Error: Function '{fn}' not found in '{exc.file_path}'.\n"
             f"  Make sure your agent file defines {hint}.\n",
@@ -391,8 +378,7 @@ def validate_entrypoint(entrypoint: str) -> tuple[Path, str]:
         raise SystemExit(1) from exc
     except EntrypointSignatureError as exc:
         print(
-            f"\n  Error: Entrypoint '{exc.fn_name}' in '{exc.file_path}' "
-            f"{exc.reason}.\n",
+            f"\n  Error: Entrypoint '{exc.fn_name}' in '{exc.file_path}' {exc.reason}.\n",
             file=sys.stderr,
         )
         raise SystemExit(1) from exc
@@ -419,8 +405,10 @@ def _validate_python_entrypoint(code: str, fn: str, file_path: Path) -> None:
 
         has_meaningful_return = False
         for child in ast.walk(node):
-            if isinstance(child, ast.Return) and child.value is not None and not (
-                isinstance(child.value, ast.Constant) and child.value.value is None
+            if (
+                isinstance(child, ast.Return)
+                and child.value is not None
+                and not (isinstance(child.value, ast.Constant) and child.value.value is None)
             ):
                 has_meaningful_return = True
                 break
@@ -512,10 +500,7 @@ def resolve_agent(name: str) -> tuple[str, str]:
     registry = load_registry()
 
     if name not in registry:
-        console.print(
-            f"\n  [bold red]Error:[/bold red] "
-            f"'[bold]{name}[/bold]' is not a registered agent.\n"
-        )
+        console.print(f"\n  [bold red]Error:[/bold red] '[bold]{name}[/bold]' is not a registered agent.\n")
         console.print(
             f"  Register it first:\n"
             f"    [bold]overmind agent register {name} <module:function>[/bold]\n\n"

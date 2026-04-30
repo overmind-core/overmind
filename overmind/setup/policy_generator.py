@@ -65,9 +65,7 @@ def _extract_markdown_and_json(text: str) -> tuple[str, dict]:
             md_content = md_blocks[0].strip()
 
     if not md_content:
-        for m in re.finditer(
-            r"```(?!json|changes)[a-zA-Z]*\s*\n(.*?)```", text, re.DOTALL
-        ):
+        for m in re.finditer(r"```(?!json|changes)[a-zA-Z]*\s*\n(.*?)```", text, re.DOTALL):
             block = m.group(1).strip()
             if block.startswith("#"):
                 md_content = block
@@ -86,11 +84,7 @@ def _extract_markdown_and_json(text: str) -> tuple[str, dict]:
     for block in json_blocks:
         try:
             candidate = json.loads(block.strip())
-            if (
-                "domain_rules" in candidate
-                or "decision_rules" in candidate
-                or "purpose" in candidate
-            ):
+            if "domain_rules" in candidate or "decision_rules" in candidate or "purpose" in candidate:
                 policy_data = candidate
                 break
         except json.JSONDecodeError:
@@ -216,8 +210,7 @@ def elicit_policy(
     edge_cases = Prompt.ask(" ", default="")
 
     console.print(
-        "\n  [dim]Define any key terms, categories, or thresholds the agent "
-        "must understand. Press Enter to skip.[/dim]"
+        "\n  [dim]Define any key terms, categories, or thresholds the agent must understand. Press Enter to skip.[/dim]"
     )
     terminology = Prompt.ask(" ", default="")
 
@@ -267,9 +260,7 @@ def elicit_policy(
             info["markdown_missing"] = True
 
         info["md_chars"] = len(md_text)
-        info["policy_keys"] = (
-            list(policy_data.keys()) if isinstance(policy_data, dict) else []
-        )
+        info["policy_keys"] = list(policy_data.keys()) if isinstance(policy_data, dict) else []
 
     display_policy(md_text, policy_data, console)
     return md_text, policy_data
@@ -479,19 +470,14 @@ def refine_policy(
 
     Returns ``(updated_markdown, updated_policy_dict)``.
     """
-    console.print(
-        "\n  [dim]Tell me what you'd like to change about the policy.[/dim]\n"
-    )
+    console.print("\n  [dim]Tell me what you'd like to change about the policy.[/dim]\n")
 
     feedback = overmind_prompt(
         console,
         "[bold]What would you like to add, remove, or change?[/bold]\n ",
     )
 
-    console.print(
-        "\n  [dim]Any additional domain rules or edge cases to include? "
-        "Press Enter to skip.[/dim]"
-    )
+    console.print("\n  [dim]Any additional domain rules or edge cases to include? Press Enter to skip.[/dim]")
     additions = Prompt.ask(" ", default="")
 
     description = analysis.get("description", "AI agent")

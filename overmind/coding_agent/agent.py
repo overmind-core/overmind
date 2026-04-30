@@ -133,16 +133,14 @@ def run(
                     tail[0][0],
                     DOOM_THRESHOLD,
                 )
-                messages.append(
-                    {
-                        "role": "user",
-                        "content": (
-                            f"You have called {tail[0][0]} with the same arguments "
-                            f"{DOOM_THRESHOLD} times. This appears to be a loop. "
-                            "Try a different approach."
-                        ),
-                    }
-                )
+                messages.append({
+                    "role": "user",
+                    "content": (
+                        f"You have called {tail[0][0]} with the same arguments "
+                        f"{DOOM_THRESHOLD} times. This appears to be a loop. "
+                        "Try a different approach."
+                    ),
+                })
                 recent_calls.clear()
                 continue
 
@@ -170,13 +168,11 @@ def run(
             record.tool_calls.append({"name": tc.name, "args": tc.arguments})
             record.tool_results.append({"name": tc.name, "output": output[:500]})
 
-            messages.append(
-                {
-                    "role": "tool",
-                    "tool_call_id": tc.id,
-                    "content": output,
-                }
-            )
+            messages.append({
+                "role": "tool",
+                "tool_call_id": tc.id,
+                "content": output,
+            })
 
         steps.append(record)
 

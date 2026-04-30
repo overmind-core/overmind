@@ -82,9 +82,7 @@ def discover_env_var_defaults(sources: dict[str, str]) -> dict[str, str | None]:
             continue
 
         for node in ast.walk(tree):
-            if isinstance(node, ast.Call) and (
-                _is_os_getenv(node) or _is_os_environ_get(node)
-            ):
+            if isinstance(node, ast.Call) and (_is_os_getenv(node) or _is_os_environ_get(node)):
                 if not node.args:
                     continue
                 key = _literal_to_str(node.args[0])

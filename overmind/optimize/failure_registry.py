@@ -281,11 +281,7 @@ class FailureRegistry:
 
     def get_priority_clusters(self, top_k: int = 5) -> list[FailureCluster]:
         """Rank open/regressed clusters by impact (occurrences * recency)."""
-        candidates = [
-            c
-            for c in self.clusters.values()
-            if c.resolution_status in ("open", "regressed")
-        ]
+        candidates = [c for c in self.clusters.values() if c.resolution_status in ("open", "regressed")]
         candidates.sort(
             key=lambda c: (
                 c.total_occurrences * (1 + c.last_seen_iteration),
@@ -299,16 +295,10 @@ class FailureRegistry:
         return [c for c in self.clusters.values() if c.resolution_status == "resolved"]
 
     def get_open_count(self) -> int:
-        return sum(
-            1
-            for c in self.clusters.values()
-            if c.resolution_status in ("open", "regressed")
-        )
+        return sum(1 for c in self.clusters.values() if c.resolution_status in ("open", "regressed"))
 
     def get_resolved_count(self) -> int:
-        return sum(
-            1 for c in self.clusters.values() if c.resolution_status == "resolved"
-        )
+        return sum(1 for c in self.clusters.values() if c.resolution_status == "resolved")
 
     def compute_component_weights(self) -> dict[str, float]:
         """Derive focus-area weights from open failure cluster mechanisms.
@@ -363,10 +353,7 @@ def format_clusters_for_diagnosis(
             "resolved": "\u2713",  # ✓
         }.get(c.resolution_status, "?")
 
-        lines.append(
-            f"{i}. [{status_icon} {c.resolution_status.upper()}] "
-            f"**{c.root_cause[:120]}**"
-        )
+        lines.append(f"{i}. [{status_icon} {c.resolution_status.upper()}] **{c.root_cause[:120]}**")
         lines.append(
             f"   Mechanism: {c.mechanism} | "
             f"Fields: {', '.join(c.affected_fields) or 'n/a'} | "
@@ -378,9 +365,7 @@ def format_clusters_for_diagnosis(
             lines.append(f"   Previously fixed by: {c.resolved_by_change[:100]}")
         lines.append("")
 
-    open_count = sum(
-        1 for c in clusters if c.resolution_status in ("open", "regressed")
-    )
+    open_count = sum(1 for c in clusters if c.resolution_status in ("open", "regressed"))
     lines.append(
         f"**{open_count} unresolved cluster(s)** out of "
         f"{len(clusters)} shown. Prioritize the highest-occurrence "

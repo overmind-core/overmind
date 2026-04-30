@@ -26,7 +26,7 @@ def check_for_signature(signature: str) -> list[bool]:
             "root_only": True,
         },
         headers={
-            "X-API-Token": os.getenv("OVERMIND_API_KEY"),
+            "X-Api-Key": os.getenv("OVERMIND_API_KEY"),
         },
     )
     assert traces_response.status_code == 200

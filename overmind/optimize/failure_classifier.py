@@ -111,8 +111,7 @@ _PATTERNS: list[tuple[FailureMode, re.Pattern[str], str, str, bool]] = [
             r"no such element|DISPLAY environment variable)",
             re.IGNORECASE,
         ),
-        "Browser runtime failed — the headless browser could not be started "
-        "or an automation step errored.",
+        "Browser runtime failed — the headless browser could not be started or an automation step errored.",
         "Install the browser (e.g. ``playwright install chromium``) or run "
         "the agent in a container with the browser preinstalled.  Overmind "
         "will fall back to shadow execution with simulated browser responses.",
@@ -125,8 +124,7 @@ _PATTERNS: list[tuple[FailureMode, re.Pattern[str], str, str, bool]] = [
             r"ImportError: cannot import name ['\"]([\w_.-]+)['\"])",
         ),
         "A Python dependency is missing from the agent's environment.",
-        "Add the missing package to requirements.txt / pyproject.toml and "
-        "let Overmind reprovision the environment.",
+        "Add the missing package to requirements.txt / pyproject.toml and let Overmind reprovision the environment.",
         True,
     ),
     (
@@ -169,8 +167,7 @@ _PATTERNS: list[tuple[FailureMode, re.Pattern[str], str, str, bool]] = [
             r"urllib3[^\n]*MaxRetryError|requests\.exceptions\.ConnectionError)",
             re.IGNORECASE,
         ),
-        "The agent could not reach a network endpoint (DNS / connection / "
-        "SSL failure).",
+        "The agent could not reach a network endpoint (DNS / connection / SSL failure).",
         "Check the agent's internet access.  Overmind will fall back to "
         "shadow execution with cassette replay for network calls.",
         True,
@@ -182,8 +179,7 @@ _PATTERNS: list[tuple[FailureMode, re.Pattern[str], str, str, bool]] = [
             r"attempted relative import with no known parent package)",
         ),
         "The agent module failed to import (syntax error or broken import statement).",
-        "Fix the import / syntax error surfaced in stderr.  Shadow execution "
-        "cannot help here — the code must parse.",
+        "Fix the import / syntax error surfaced in stderr.  Shadow execution cannot help here — the code must parse.",
         False,
     ),
 ]

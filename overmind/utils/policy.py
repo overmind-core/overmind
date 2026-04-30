@@ -132,9 +132,7 @@ def format_for_diagnosis(policy: dict) -> str:
     # Legacy support
     priorities = policy.get("priority_order", [])
     if priorities:
-        lines.append(
-            "**Priority order (when rules conflict):** " + " > ".join(priorities)
-        )
+        lines.append("**Priority order (when rules conflict):** " + " > ".join(priorities))
 
     return "\n".join(lines)
 

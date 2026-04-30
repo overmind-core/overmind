@@ -31,7 +31,7 @@ Configuration
 ``get_storage()`` requires the standard Overmind environment variables:
 
 * ``OVERMIND_API_URL``  — backend base URL.
-* ``OVERMIND_API_TOKEN`` — bearer token.
+* ``OVERMIND_API_KEY`` — bearer token.
 * ``OVERMIND_PROJECT_ID`` — project the agent belongs to (only required
   when creating a new agent record).
 
@@ -52,7 +52,7 @@ from overmind.storage.base import StorageBackend
 
 
 class StorageNotConfiguredError(RuntimeError):
-    """Raised when ``OVERMIND_API_URL`` / ``OVERMIND_API_TOKEN`` are not set."""
+    """Raised when ``OVERMIND_API_URL`` / ``OVERMIND_API_KEY`` are not set."""
 
 
 @dataclass
@@ -107,12 +107,8 @@ def _resolve_storage_identity() -> tuple[str, str | None]:
     env_agent_path = os.getenv("OVERMIND_AGENT_PATH", "").strip() or None
     env_agent_id = os.getenv("OVERMIND_AGENT_ID", "").strip() or None
 
-    final_agent_path = (
-        (bound.agent_path if bound else None) or env_agent_path or ""
-    ).strip()
-    final_agent_id = (
-        (bound.agent_id if bound else None) or env_agent_id or ""
-    ).strip() or None
+    final_agent_path = ((bound.agent_path if bound else None) or env_agent_path or "").strip()
+    final_agent_id = ((bound.agent_id if bound else None) or env_agent_id or "").strip() or None
 
     if not final_agent_path:
         raise ValueError(
@@ -129,7 +125,7 @@ def get_storage() -> StorageBackend:
     Raises
     ------
     StorageNotConfiguredError
-        If ``OVERMIND_API_URL`` or ``OVERMIND_API_TOKEN`` is not set.
+        If ``OVERMIND_API_URL`` or ``OVERMIND_API_KEY`` is not set.
     ValueError
         If no agent path can be resolved (neither bound nor in env).
     """
@@ -137,7 +133,7 @@ def get_storage() -> StorageBackend:
     if not is_configured():
         raise StorageNotConfiguredError(
             "Overmind API is not configured. Set OVERMIND_API_URL and "
-            "OVERMIND_API_TOKEN (in .overmind/.env or process env) before "
+            "OVERMIND_API_KEY (in .overmind/.env or process env) before "
             "calling get_storage()."
         )
 

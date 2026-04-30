@@ -5,6 +5,7 @@ Provides SDK initialization, provider auto-instrumentation, and helpers
 (decorators and a context manager) for creating custom OpenTelemetry spans.
 """
 
+import dataclasses
 import importlib.metadata
 import importlib.util
 import inspect
@@ -51,7 +52,37 @@ _providers: set[str] = set()
 _MAX_ATTR_LEN = 32_000
 
 
+def serialize_dataclass(obj: Any) -> Any:
+    """
+    Recursively serialize dataclass and nested dataclasses into
+    JSON-serializable objects (dicts, lists, primitives).
+
+    Falls back to str(obj) if not serializable.
+    Handles nested dataclasses, lists/tuples/sets of dataclasses, and dicts.
+    """
+    if dataclasses.is_dataclass(obj) and not isinstance(obj, type):
+        result = {}
+        for field in dataclasses.fields(obj):
+            value = getattr(obj, field.name)
+            result[field.name] = serialize(value)
+        return result
+    elif isinstance(obj, (list, tuple, set)):
+        return [serialize(item) for item in obj]
+    elif isinstance(obj, dict):
+        # Only serialize keys if they're strings or basic types
+        return {str(k): serialize(v) for k, v in obj.items()}
+    elif isinstance(obj, (str, int, float, bool)) or obj is None:
+        return obj
+    else:
+        # Fallback: try to get __dict__, else use str
+        if hasattr(obj, "__dict__"):
+            return serialize(vars(obj))
+        return str(obj)
+
+
 def _default_serializer(obj):
+    if dataclasses.is_dataclass(obj) and not isinstance(obj, type):
+        return serialize_dataclass(obj)
     if isinstance(obj, PurePath):
         return str(obj)
     if isinstance(obj, (set, frozenset)):
@@ -169,12 +200,14 @@ def enable_google_genai():
     logger.info("%s instrumentation enabled", name)
 
 
-def enable_tracing(providers: list[str]):
+def enable_tracing(providers: list[str] | None = None):
     if providers == []:
         # if no providers are provided, enable all supported providers
         providers = ["openai", "anthropic", "google", "agno"]
-
     logger.info("Enabling tracing for providers: %s", providers)
+
+    if providers is None:
+        return
     if "agno" in providers:
         enable_agno()
     if "openai" in providers:
@@ -252,9 +285,6 @@ def init(
     """
     global _initialized, _tracer
 
-    if providers is None:
-        providers = []
-
     if _initialized:
         # user can call init again with different providers, so we should not skip
         # there is no such thing as remove initialization
@@ -262,10 +292,6 @@ def init(
         enable_tracing(providers)
         return
 
-    # Resolve service name and environment
-    service_name = (
-        service_name or os.environ.get("OVERMIND_SERVICE_NAME") or os.environ.get("SERVICE_NAME") or "unknown-service"
-    )
     environment = (
         environment or os.environ.get("OVERMIND_ENVIRONMENT") or os.environ.get("ENVIRONMENT") or "development"
     )
@@ -276,7 +302,7 @@ def init(
 
     # Configure OpenTelemetry Provider with rich resource attributes
     resource = Resource.create({
-        "service.name": service_name,
+        "service.name": service_name or os.environ.get("OVERMIND_SERVICE_NAME") or "overmind-telemetry",
         "service.version": os.environ.get("SERVICE_VERSION", "unknown"),
         "deployment.environment": environment,
         "overmind.sdk.name": "overmind-python",
@@ -286,7 +312,7 @@ def init(
     provider = TracerProvider(resource=resource)
 
     # Configure OTLP Exporter
-    headers = {"X-API-Token": overmind_api_key}
+    headers = {"X-Api-Key": overmind_api_key}
 
     otlp_exporter = OTLPSpanExporter(endpoint=endpoint, headers=headers)
 

@@ -112,11 +112,7 @@ class ReadTool:
                             break
             except OSError:
                 pass
-            hint = (
-                "\n\nDid you mean one of these?\n" + "\n".join(suggestions)
-                if suggestions
-                else ""
-            )
+            hint = "\n\nDid you mean one of these?\n" + "\n".join(suggestions) if suggestions else ""
             raise FileNotFoundError(f"File not found: {fp}{hint}")
 
         title = os.path.relpath(fp, ctx.worktree)
@@ -165,10 +161,7 @@ class ReadTool:
                     continue
                 line_text = line_text.rstrip("\n").rstrip("\r")
                 if len(line_text) > MAX_LINE_LEN:
-                    line_text = (
-                        line_text[:MAX_LINE_LEN]
-                        + f"... (truncated to {MAX_LINE_LEN} chars)"
-                    )
+                    line_text = line_text[:MAX_LINE_LEN] + f"... (truncated to {MAX_LINE_LEN} chars)"
                 size = len(line_text.encode()) + 1
                 if byte_count + size > MAX_BYTES:
                     truncated_by_bytes = True
@@ -191,10 +184,7 @@ class ReadTool:
                 f"Lines {offset}-{last_read}. Use offset={next_offset} to continue.)"
             )
         elif has_more:
-            out.append(
-                f"\n\n(Showing lines {offset}-{last_read} of {total}. "
-                f"Use offset={next_offset} to continue.)"
-            )
+            out.append(f"\n\n(Showing lines {offset}-{last_read} of {total}. Use offset={next_offset} to continue.)")
         else:
             out.append(f"\n\n(End of file - total {total} lines)")
         out.append("\n</content>")

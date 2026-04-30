@@ -66,7 +66,7 @@ def test_sdk_init_configures_tracing(mock_opentelemetry):
 
     # Verify Exporter configuration
     mock_opentelemetry["exporter"].assert_called_with(
-        endpoint="http://localhost:4318/api/v1/traces", headers={"X-API-Token": "test_key"}
+        endpoint="http://localhost:4318/api/v1/traces", headers={"X-Api-Key": "test_key"}
     )
 
     # Verify tracer provider was set

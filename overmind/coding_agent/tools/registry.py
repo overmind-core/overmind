@@ -36,9 +36,7 @@ class ToolRegistry:
     def openai_schemas(self, model_id: str) -> list[dict[str, Any]]:
         return [schema_to_openai(t) for t in self.tools_for_model(model_id)]
 
-    def execute(
-        self, name: str, params: dict[str, Any], ctx: ToolContext
-    ) -> ToolResult:
+    def execute(self, name: str, params: dict[str, Any], ctx: ToolContext) -> ToolResult:
         tool = self._tools.get(name)
         if not tool:
             return ToolResult(output=f"Unknown tool: {name}")

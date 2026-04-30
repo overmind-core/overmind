@@ -36,8 +36,10 @@ from overmind.utils.models import (
 )
 
 # Keys we may set or clear; other keys from the state-dir .env are preserved on write.
+# OVERMIND_API_KEY is intentionally excluded — it must be set as a system/shell
+# environment variable and is never written to the project .env file.
 PRIMARY_ENV_KEYS = [
-    "OVERMIND_API_TOKEN",
+    "OVERMIND_API_KEY",
     "OPENAI_API_KEY",
     "ANTHROPIC_API_KEY",
     "OPENROUTER_API_KEY",
@@ -55,7 +57,7 @@ PROVIDER_ENV_KEY = {
 }
 
 KEYS_TO_COLLECT = (
-    "OVERMIND_API_TOKEN",
+    "OVERMIND_API_KEY",
     "OPENAI_API_KEY",
     "ANTHROPIC_API_KEY",
     "OPENROUTER_API_KEY",
@@ -83,9 +85,7 @@ def _model_provider(litellm_model: str) -> str:
     return canonical.lower().strip()
 
 
-def _collect_missing_key_for_model(
-    console: Console, model: str, env: dict[str, str]
-) -> None:
+def _collect_missing_key_for_model(console: Console, model: str, env: dict[str, str]) -> None:
     """If the provider credential for *model* is absent from both *env* and the
     live process environment, prompt the user to enter it now and save it into
     *env* so it gets written to ``.env``.
@@ -109,10 +109,7 @@ def _collect_missing_key_for_model(
     val = read_api_key_masked(ek)
     if val.strip():
         env[ek] = val.strip()
-        console.print(
-            f"  [bold green]✓[/bold green] Saved [bold]{ek}[/bold] "
-            f"[dim]→ will be written to .env[/dim]"
-        )
+        console.print(f"  [bold green]✓[/bold green] Saved [bold]{ek}[/bold] [dim]→ will be written to .env[/dim]")
     else:
         console.print(
             f"  [yellow]Skipped.[/yellow] [dim]Set [bold]{ek}[/bold] in "
@@ -128,10 +125,7 @@ def _prompt_optional_api_key(
     env: dict[str, str],
 ) -> None:
     """Ask for an API key; empty input means this provider is not used (key cleared)."""
-    console.print(
-        f"  [dim]Enter your {label} API key, or press Enter to skip if you are not "
-        f"using {label}.[/dim]"
-    )
+    console.print(f"  [dim]Enter your {label} API key, or press Enter to skip if you are not using {label}.[/dim]")
     key = read_api_key_masked(f"{label} API key")
     if key:
         env[env_key] = key
@@ -139,16 +133,13 @@ def _prompt_optional_api_key(
     else:
         env[env_key] = ""
         console.print(
-            f"  [dim]Left empty (not using this provider). You can run init again or "
-            f"edit {overmind_rel('.env')}.[/dim]"
+            f"  [dim]Left empty (not using this provider). You can run init again or edit {overmind_rel('.env')}.[/dim]"
         )
 
 
 def _collect_openai(console: Console, env: dict[str, str]) -> None:
     if _key_configured(env.get("OPENAI_API_KEY", "")):
-        console.print(
-            "  [dim]OPENAI_API_KEY is already set — skipping OpenAI setup.[/dim]"
-        )
+        console.print("  [dim]OPENAI_API_KEY is already set — skipping OpenAI setup.[/dim]")
         return
     console.print()
     console.print(Rule(style="dim"))
@@ -158,75 +149,29 @@ def _collect_openai(console: Console, env: dict[str, str]) -> None:
 
 def _collect_anthropic(console: Console, env: dict[str, str]) -> None:
     if _key_configured(env.get("ANTHROPIC_API_KEY", "")):
-        console.print(
-            "  [dim]ANTHROPIC_API_KEY is already set — skipping Anthropic setup.[/dim]"
-        )
+        console.print("  [dim]ANTHROPIC_API_KEY is already set — skipping Anthropic setup.[/dim]")
         return
     console.print()
     console.print(Rule(style="dim"))
     console.print(Rule("[bold]Anthropic[/bold]", style=BRAND))
-    _prompt_optional_api_key(
-        console, label="Anthropic", env_key="ANTHROPIC_API_KEY", env=env
-    )
+    _prompt_optional_api_key(console, label="Anthropic", env_key="ANTHROPIC_API_KEY", env=env)
 
 
-def _collect_overmind_backend(console: Console, env: dict[str, str]) -> None:
-    """Configure Overmind API token used by storage backend auto-selection."""
+def _collect_overmind_api_key(console: Console, env: dict[str, str]) -> None:
+    if _key_configured(env.get("OVERMIND_API_KEY", "")):
+        console.print("  [dim]OVERMIND_API_KEY is already set — skipping Overmind API key setup.[/dim]")
+        return
     console.print()
     console.print(Rule(style="dim"))
-    console.print(Rule("[bold]Overmind backend (recommended)[/bold]", style=BRAND))
-    console.print(
-        "  [dim]Overmind can store setup/optimization artifacts in Overmind for tracking "
-        "and visualization. If not configured, it stores artifacts on local disk.[/dim]"
-    )
-
-    existing = env.get("OVERMIND_API_TOKEN", "")
-    if _key_configured(existing):
-        console.print(
-            "  [dim]OVERMIND_API_TOKEN is already set — Overmind backend will be preferred "
-            "when OVERMIND_API_URL is also configured.[/dim]"
-        )
-        if confirm_option(
-            "Replace existing Overmind API token?", default=False, console=console
-        ):
-            token = read_api_key_masked("Overmind API key")
-            env["OVERMIND_API_TOKEN"] = token
-            if token:
-                console.print("  [dim]Saved as[/dim] [green]*******[/green]")
-            else:
-                console.print(
-                    "  [dim]Cleared token. Storage will fall back to local disk unless set later.[/dim]"
-                )
-        return
-
-    console.print(
-        "  [dim]Enter your Overmind API key to prefer remote storage "
-        "(or press Enter to keep local disk storage).[/dim]"
-    )
-    console.print("  [dim]Expected token prefix: [bold]ovr_[/bold][/dim]")
-    token = read_api_key_masked("Overmind API key")
-    if token:
-        env["OVERMIND_API_TOKEN"] = token
-        console.print("  [dim]Saved as[/dim] [green]*******[/green]")
-        if not _key_configured(os.getenv("OVERMIND_API_URL", "")):
-            console.print(
-                "  [yellow]Note:[/yellow] OVERMIND_API_URL is empty. Set it in "
-                f"{overmind_rel('.env')} to enable Overmind backend."
-            )
-    else:
-        env["OVERMIND_API_TOKEN"] = ""
-        console.print(
-            "  [dim]No token set. Overmind will use local disk storage.[/dim]"
-        )
+    console.print(Rule("[bold]Overmind API key[/bold]", style=BRAND))
+    _prompt_optional_api_key(console, label="Overmind API key", env_key="OVERMIND_API_KEY", env=env)
 
 
 def _collect_analyzer_model(console: Console, env: dict[str, str]) -> str:
     console.print()
     console.print(Rule(style="dim"))
     console.print(Rule("[bold]Analyzer model[/bold]", style=BRAND))
-    console.print(
-        "  [dim]Used to diagnose failures and propose code changes during optimization.[/dim]"
-    )
+    console.print("  [dim]Used to diagnose failures and propose code changes during optimization.[/dim]")
     raw = env.get("ANALYZER_MODEL", "").strip()
     if raw:
         normalized = normalize_to_litellm_model_id(raw) or raw
@@ -251,9 +196,7 @@ def _collect_analyzer_model(console: Console, env: dict[str, str]) -> str:
     return chosen
 
 
-def _collect_synthetic_datagen_model(
-    console: Console, env: dict[str, str]
-) -> str | None:
+def _collect_synthetic_datagen_model(console: Console, env: dict[str, str]) -> str | None:
     console.print()
     console.print(Rule(style="dim"))
     console.print(Rule("[bold]Synthetic data generation[/bold]", style=BRAND))
@@ -279,9 +222,7 @@ def _collect_synthetic_datagen_model(
         ):
             return normalized or raw
     else:
-        console.print(
-            "  [yellow]No SYNTHETIC_DATAGEN_MODEL in the environment — pick a model.[/yellow]"
-        )
+        console.print("  [yellow]No SYNTHETIC_DATAGEN_MODEL in the environment — pick a model.[/yellow]")
 
     chosen = prompt_for_catalog_litellm_model(
         console,
@@ -297,14 +238,10 @@ def _collect_synthetic_datagen_model(
 def _write_env(path: Path, env: dict[str, str]) -> None:
     """Merge wizard state into the existing env file (via ``dotenv_values``), then write."""
     file_vals = dotenv_values(path) or {}
-    merged: dict[str, str] = {
-        k: (v if v is not None else "") for k, v in file_vals.items()
-    }
+    merged: dict[str, str] = {k: (v if v is not None else "") for k, v in file_vals.items()}
     for k in KEYS_TO_COLLECT:
         if k in env:
             merged[k] = env[k]
-    if not (merged.get("OVERMIND_API_TOKEN") or "").strip():
-        merged.pop("OVERMIND_API_TOKEN", None)
     merged["ANALYZER_MODEL"] = env["ANALYZER_MODEL"]
     if env.get("SYNTHETIC_DATAGEN_MODEL", "").strip():
         merged["SYNTHETIC_DATAGEN_MODEL"] = env["SYNTHETIC_DATAGEN_MODEL"]
@@ -343,9 +280,7 @@ def main() -> None:
     from overmind.core.logging import setup_logging
 
     log_path = setup_logging()
-    logging.getLogger("overmind.init").info(
-        "Running overmind init in %s (log_file=%s)", oc_dir, log_path
-    )
+    logging.getLogger("overmind.init").info("Running overmind init in %s (log_file=%s)", oc_dir, log_path)
 
     env_path = oc_dir / ".env"
     console = Console()
@@ -363,18 +298,15 @@ def main() -> None:
     load_dotenv(env_path)
     env = _primary_env_from_os()
     console.print(
-        f"\n  [dim]Loaded environment from [bold]{env_path}[/bold] "
-        "(python-dotenv) and current process env[/dim]"
+        f"\n  [dim]Loaded environment from [bold]{env_path}[/bold] (python-dotenv) and current process env[/dim]"
     )
 
     _collect_openai(console, env)
     _collect_anthropic(console, env)
-    _collect_overmind_backend(console, env)
+    _collect_overmind_api_key(console, env)
 
     analyzer = _collect_analyzer_model(console, env)
-    env["ANALYZER_MODEL"] = model_name_for_env_storage(
-        normalize_to_litellm_model_id(analyzer) or analyzer
-    )
+    env["ANALYZER_MODEL"] = model_name_for_env_storage(normalize_to_litellm_model_id(analyzer) or analyzer)
 
     synthetic = _collect_synthetic_datagen_model(console, env)
     if synthetic:
@@ -392,9 +324,7 @@ def main() -> None:
 
     _write_env(env_path, env)
 
-    logging.getLogger("overmind.init").info(
-        "Wrote env file %s (keys=%s)", env_path, sorted(env.keys())
-    )
+    logging.getLogger("overmind.init").info("Wrote env file %s (keys=%s)", env_path, sorted(env.keys()))
 
     # Capture what was configured so it shows up in traces
     set_tag(attrs.INIT_ENV_PATH, str(env_path))
@@ -408,7 +338,7 @@ def main() -> None:
     )
     set_tag(
         attrs.INIT_HAS_OVERMIND_TOKEN,
-        str(bool((env.get("OVERMIND_API_TOKEN") or "").strip())),
+        str(bool((os.getenv("OVERMIND_API_KEY") or "").strip())),
     )
     set_tag(attrs.INIT_ANALYZER_MODEL, env.get("ANALYZER_MODEL") or "")
     set_tag(
@@ -417,6 +347,4 @@ def main() -> None:
     )
 
     console.print(f"\n  [green]Wrote[/green] {env_path}")
-    console.print(
-        "  [dim]Run setup / optimize as usual; keys are read on startup.[/dim]\n"
-    )
+    console.print("  [dim]Run setup / optimize as usual; keys are read on startup.[/dim]\n")

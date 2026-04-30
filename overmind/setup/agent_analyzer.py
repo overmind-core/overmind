@@ -88,9 +88,7 @@ def analyze_agent(
                 len(bundle.pieces),
             )
     except Exception:
-        logger.debug(
-            "Bundle construction failed; falling back to single-file", exc_info=True
-        )
+        logger.debug("Bundle construction failed; falling back to single-file", exc_info=True)
         bundle = None
 
     agent_code_section = _build_setup_code_section(agent_path, bundle)
@@ -140,16 +138,14 @@ def analyze_agent(
             else:
                 raise ValueError("No JSON object found in LLM response")
         except (json.JSONDecodeError, ValueError) as exc:
-            logger.exception("Failed to parse analyzer response: %s", exc)
+            logger.exception("Failed to parse analyzer response")
             console.print(f"[red]Failed to parse analysis: {exc}[/red]")
             console.print("[dim]Raw response:[/dim]")
             console.print(content[:500])
             raise SystemExit(1)
 
         info["fields"] = list(analysis.get("output_schema", {}).keys())
-        info["criteria_fields"] = list(
-            analysis.get("proposed_criteria", {}).get("fields", {}).keys()
-        )
+        info["criteria_fields"] = list(analysis.get("proposed_criteria", {}).get("fields", {}).keys())
 
     _display_analysis(analysis, console)
 
@@ -219,22 +215,12 @@ def _display_analysis(analysis: dict, console: Console):
 
         for field_name, fc in fields_criteria.items():
             importance = fc.get("importance", "important")
-            imp_style = (
-                "red"
-                if importance == "critical"
-                else "yellow"
-                if importance == "important"
-                else "dim"
-            )
+            imp_style = "red" if importance == "critical" else "yellow" if importance == "important" else "dim"
             output_schema = analysis.get("output_schema", {})
             ftype = output_schema.get(field_name, {}).get("type", "text")
 
             if ftype == "enum":
-                detail = (
-                    "partial credit"
-                    if fc.get("partial_credit", True)
-                    else "exact match only"
-                )
+                detail = "partial credit" if fc.get("partial_credit", True) else "exact match only"
             elif ftype == "number":
                 detail = f"tolerance \u00b1{fc.get('tolerance', 10)}"
             elif ftype == "text":
@@ -243,9 +229,7 @@ def _display_analysis(analysis: dict, console: Console):
             else:
                 detail = "exact match"
 
-            criteria_table.add_row(
-                field_name, f"[{imp_style}]{importance}[/{imp_style}]", detail
-            )
+            criteria_table.add_row(field_name, f"[{imp_style}]{importance}[/{imp_style}]", detail)
 
         sw = criteria.get("structure_weight", 20)
         criteria_table.add_row(
@@ -275,9 +259,7 @@ def _display_analysis(analysis: dict, console: Console):
 
             lines = f"  [bold]Quality:[/bold]  [{q_style}]{quality}[/{q_style}]"
             if constraints:
-                constraint_parts = [
-                    f"[cyan]{p}[/cyan]: {v}" for p, v in constraints.items()
-                ]
+                constraint_parts = [f"[cyan]{p}[/cyan]: {v}" for p, v in constraints.items()]
                 lines += f"\n  [bold]Params:[/bold]   {', '.join(constraint_parts)}"
             if issues:
                 lines += "\n  [bold]Issues:[/bold]"
@@ -342,10 +324,7 @@ def _display_analysis(analysis: dict, console: Console):
             field_b = rule.get("field_b", "?")
             penalty = rule.get("penalty", 0)
             desc_text = rule.get("description", "")
-            console.print(
-                f"    [cyan]{field_a}[/cyan] \u2194 [cyan]{field_b}[/cyan]  "
-                f"[dim](penalty: {penalty})[/dim]"
-            )
+            console.print(f"    [cyan]{field_a}[/cyan] \u2194 [cyan]{field_b}[/cyan]  [dim](penalty: {penalty})[/dim]")
             if desc_text:
                 console.print(f"    [dim]{desc_text}[/dim]")
 

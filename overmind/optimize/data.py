@@ -71,10 +71,7 @@ def load_data(path: str) -> list[dict]:
     if isinstance(data, dict) and "test_cases" in data:
         return data["test_cases"]
 
-    raise ValueError(
-        f"Unrecognized data format in {path}. "
-        "Expected a JSON array or an object with a 'test_cases' key."
-    )
+    raise ValueError(f"Unrecognized data format in {path}. Expected a JSON array or an object with a 'test_cases' key.")
 
 
 # ---------------------------------------------------------------------------
@@ -183,9 +180,7 @@ def validate_case_against_spec(case: dict, eval_spec: dict) -> list[str]:
     if isinstance(inp, dict):
         input_schema = eval_spec.get("input_schema", {})
         for field, info in input_schema.items():
-            is_optional = (
-                info.get("optional", False) if isinstance(info, dict) else False
-            )
+            is_optional = info.get("optional", False) if isinstance(info, dict) else False
             if field not in inp and not is_optional:
                 errors.append(f"input missing required field '{field}'")
         # Reject unexpected keys — the runner dispatches via **kwargs so
@@ -194,8 +189,7 @@ def validate_case_against_spec(case: dict, eval_spec: dict) -> list[str]:
             extra = set(inp.keys()) - set(input_schema.keys())
             if extra:
                 errors.append(
-                    f"input has unexpected keys {sorted(extra)} "
-                    f"not in entrypoint schema {sorted(input_schema.keys())}"
+                    f"input has unexpected keys {sorted(extra)} not in entrypoint schema {sorted(input_schema.keys())}"
                 )
 
     if isinstance(out, dict):
@@ -219,15 +213,11 @@ def validate_case_against_spec(case: dict, eval_spec: dict) -> list[str]:
                     errors.append(f"expected_output.{field} = {val!r} not in {allowed}")
             elif ftype == "number":
                 if not isinstance(val, (int, float)):
-                    errors.append(
-                        f"expected_output.{field} must be a number, got {type(val).__name__}"
-                    )
+                    errors.append(f"expected_output.{field} must be a number, got {type(val).__name__}")
                 else:
                     rng = cfg.get("range")
                     if rng and (val < rng[0] or val > rng[1]):
-                        errors.append(
-                            f"expected_output.{field} = {val} outside range {rng}"
-                        )
+                        errors.append(f"expected_output.{field} = {val} outside range {rng}")
             elif ftype == "text":
                 if cfg.get("eval_mode") == "non_empty" and not val:
                     errors.append(f"expected_output.{field} must be non-empty")
@@ -360,13 +350,9 @@ def _llm_call(
             )
             time.sleep(wait)
         except litellm.Timeout:
-            logger.warning(
-                "Timeout on LLM call (attempt %d/%d)", attempt + 1, max_retries
-            )
+            logger.warning("Timeout on LLM call (attempt %d/%d)", attempt + 1, max_retries)
         except Exception:
-            logger.exception(
-                "Unexpected error on LLM call (attempt %d/%d)", attempt + 1, max_retries
-            )
+            logger.exception("Unexpected error on LLM call (attempt %d/%d)", attempt + 1, max_retries)
             if attempt == max_retries - 1:
                 raise
     return None
@@ -392,11 +378,7 @@ def _format_code_for_prompt(agent_code: str, *, max_chars: int | None = None) ->
             f"{agent_code}\n"
             "</AgentCode>\n"
         )
-    trimmed = (
-        agent_code[:max_chars]
-        if max_chars and len(agent_code) > max_chars
-        else agent_code
-    )
+    trimmed = agent_code[:max_chars] if max_chars and len(agent_code) > max_chars else agent_code
     return f"\n<AgentCode>\n```python\n{trimmed}\n```\n</AgentCode>\n"
 
 
@@ -498,8 +480,7 @@ def generate_synthetic_data(
             return cases
 
     raise ValueError(
-        "Failed to parse synthetic data from the LLM response. "
-        "Try running again or use a different model."
+        "Failed to parse synthetic data from the LLM response. Try running again or use a different model."
     )
 
 
@@ -540,9 +521,7 @@ def _generate_personas(
 
     raw = _llm_call(model, prompt, temperature=0.7, max_tokens=4000)
     if not raw:
-        logger.warning(
-            "Persona generation returned nothing; falling back to default personas"
-        )
+        logger.warning("Persona generation returned nothing; falling back to default personas")
         return _default_personas(num_personas)
 
     parsed = _safe_parse_json(raw)
@@ -653,19 +632,11 @@ def _generate_batch(
 
     variation_section = ""
     if variation_directive:
-        variation_section = (
-            "\n<VariationDirective>\n"
-            f"{variation_directive.strip()}\n"
-            "</VariationDirective>\n"
-        )
+        variation_section = f"\n<VariationDirective>\n{variation_directive.strip()}\n</VariationDirective>\n"
 
     existing_section = ""
     if existing_cases:
-        sample = (
-            existing_cases
-            if len(existing_cases) <= 15
-            else random.sample(existing_cases, 15)
-        )
+        sample = existing_cases if len(existing_cases) <= 15 else random.sample(existing_cases, 15)
         inputs_only = [c.get("input", {}) for c in sample]
         existing_section = (
             "\n<ExistingCases>\n"
@@ -687,9 +658,7 @@ def _generate_batch(
                 f"  - [{gap.get('severity', 'medium')}] {gap.get('area', '')}: {gap.get('description', '')}"
             )
         gap_section = (
-            "\n**Priority**: Generate cases that specifically cover these gaps:\n"
-            + "\n".join(gap_lines)
-            + "\n"
+            "\n**Priority**: Generate cases that specifically cover these gaps:\n" + "\n".join(gap_lines) + "\n"
         )
 
     output_format_section = ""
@@ -735,8 +704,7 @@ def _generate_batch(
     parsed = _safe_parse_json(raw)
     if parsed is None:
         logger.warning(
-            "Failed to parse batch JSON for persona %s (response length: %d, "
-            "first 500 chars: %.500s)",
+            "Failed to parse batch JSON for persona %s (response length: %d, first 500 chars: %.500s)",
             persona_name,
             len(raw),
             raw,
@@ -748,9 +716,7 @@ def _generate_batch(
     elif isinstance(parsed, list):
         cases = parsed
     else:
-        logger.warning(
-            "Unexpected batch response structure for persona %s", persona_name
-        )
+        logger.warning("Unexpected batch response structure for persona %s", persona_name)
         return []
 
     if not isinstance(cases, list):
@@ -785,9 +751,7 @@ _GENERIC_VARIATION_AXES = (
 )
 
 
-def _shard_variation_directive(
-    persona: dict, shard_idx: int, num_shards: int, round_num: int = 1
-) -> str:
+def _shard_variation_directive(persona: dict, shard_idx: int, num_shards: int, round_num: int = 1) -> str:
     """Build a shard-specific scenario focus so parallel shards don't collide.
 
     Each shard for a persona is pinned to a distinct ``typical_scenarios``
@@ -795,11 +759,7 @@ def _shard_variation_directive(
     the persona has fewer scenarios than shards, generic orthogonal axes
     fill the gap.
     """
-    scenarios = [
-        s
-        for s in (persona.get("typical_scenarios") or [])
-        if isinstance(s, str) and s.strip()
-    ]
+    scenarios = [s for s in (persona.get("typical_scenarios") or []) if isinstance(s, str) and s.strip()]
     rotation = max(0, round_num - 1)
     if scenarios:
         focus = scenarios[(shard_idx + rotation) % len(scenarios)]
@@ -808,9 +768,7 @@ def _shard_variation_directive(
     else:
         return ""
 
-    axis = _GENERIC_VARIATION_AXES[
-        (shard_idx + rotation) % len(_GENERIC_VARIATION_AXES)
-    ]
+    axis = _GENERIC_VARIATION_AXES[(shard_idx + rotation) % len(_GENERIC_VARIATION_AXES)]
     return (
         f"Within this persona's behavior space, focus THIS batch on: **{focus}**.\n"
         f"- Generate cases that specifically exercise that sub-scenario.\n"
@@ -820,9 +778,7 @@ def _shard_variation_directive(
     )
 
 
-def _retry_variation_directive(
-    persona: dict, rejected_inputs: list, attempt: int
-) -> str:
+def _retry_variation_directive(persona: dict, rejected_inputs: list, attempt: int) -> str:
     """Build a retry directive that shows the model what NOT to produce.
 
     The most-recent rejected inputs (deduped) are serialized so the LLM has
@@ -1012,9 +968,7 @@ def _retry_dropped_slots(
             )
             if slot_added > 0:
                 added += slot_added
-                per_persona_added[persona_idx] = (
-                    per_persona_added.get(persona_idx, 0) + slot_added
-                )
+                per_persona_added[persona_idx] = per_persona_added.get(persona_idx, 0) + slot_added
                 logger.debug(
                     "Retry succeeded for persona %d on attempt %d/%d",
                     persona_idx,
@@ -1082,9 +1036,7 @@ def _per_persona_parallel_shards_round(
             )
 
             shard_directives = [
-                _shard_variation_directive(
-                    persona, shard_idx=s, num_shards=len(sizes), round_num=round_num
-                )
+                _shard_variation_directive(persona, shard_idx=s, num_shards=len(sizes), round_num=round_num)
                 for s in range(len(sizes))
             ]
 
@@ -1092,7 +1044,7 @@ def _per_persona_parallel_shards_round(
                 if shard_sz <= 0:
                     return []
                 return _generate_batch(
-                    persona=persona,
+                    persona=persona,  # noqa: B023
                     agent_description=agent_description,
                     agent_code=agent_code,
                     eval_spec=eval_spec,
@@ -1117,9 +1069,7 @@ def _per_persona_parallel_shards_round(
                     intent=persona.get("intent", "?"),
                     shards=len(sizes),
                     batch_size=batch_size,
-                    directives=[
-                        d.splitlines()[0] if d else "(none)" for d in shard_directives
-                    ],
+                    directives=[d.splitlines()[0] if d else "(none)" for d in shard_directives],
                 ) as pinfo,
             ):
                 set_tag(attrs.DATAGEN_ROUND, str(round_num))
@@ -1146,9 +1096,7 @@ def _per_persona_parallel_shards_round(
                         try:
                             merged.extend(fut.result())
                         except Exception:
-                            logger.exception(
-                                "Synthetic shard failed for persona idx=%s", idx
-                            )
+                            logger.exception("Synthetic shard failed for persona idx=%s", idx)
                 pinfo["raw_cases"] = len(merged)
 
             raw_batches[idx] = merged
@@ -1194,10 +1142,7 @@ def generate_diverse_synthetic_data(
 
     # Phase 1: generate personas (red-team–style diversity before batch case gen)
     console.print()
-    console.print(
-        f"  [bold {BRAND}]Phase 1 · Red-team personas[/bold {BRAND}]"
-        f"  [dim](synthetic test design)[/dim]"
-    )
+    console.print(f"  [bold {BRAND}]Phase 1 · Red-team personas[/bold {BRAND}]  [dim](synthetic test design)[/dim]")
     console.print(
         "  [dim]This step runs one LLM call that invents several fictional users who might "
         "interact with your agent: different roles, skill levels, and communication styles. "
@@ -1216,9 +1161,7 @@ def generate_diverse_synthetic_data(
         ) as phase1,
         make_spinner_progress(console, transient=True) as progress,
     ):
-        progress.add_task(
-            "  Phase 1 · Red teaming: drafting persona profiles with the model…"
-        )
+        progress.add_task("  Phase 1 · Red teaming: drafting persona profiles with the model…")
         personas = _generate_personas(
             agent_description,
             agent_code,
@@ -1362,8 +1305,7 @@ def generate_diverse_synthetic_data(
                     if len(unique_patterns) >= 3:
                         break
                 logger.warning(
-                    "Schema validation dropped %d/%d raw case(s) this round; "
-                    "distinct error patterns: %s",
+                    "Schema validation dropped %d/%d raw case(s) this round; distinct error patterns: %s",
                     schema_drops,
                     len(all_raw),
                     unique_patterns,
@@ -1384,9 +1326,7 @@ def generate_diverse_synthetic_data(
             # Skip retries for personas that have already met quota: they're
             # statistically more likely to keep producing duplicates and
             # burning retry budget.
-            skip_personas = {
-                idx for idx, n in per_persona_added.items() if n >= quota_per_persona
-            }
+            skip_personas = {idx for idx, n in per_persona_added.items() if n >= quota_per_persona}
 
             retry_added = 0
             if retry_slots:
@@ -1414,22 +1354,16 @@ def generate_diverse_synthetic_data(
             phase2["added_unique"] = added
             phase2["schema_drops"] = schema_drops
             phase2["retry_slots"] = len(retry_slots)
-            phase2["retry_skipped"] = sum(
-                1 for idx in retry_slots if idx in skip_personas
-            )
+            phase2["retry_skipped"] = sum(1 for idx in retry_slots if idx in skip_personas)
             phase2["retry_added"] = retry_added
             phase2["total_after"] = len(new_cases)
             phase2["per_persona_after"] = dict(per_persona_added)
 
         pct = int(len(new_cases) / num_samples * 100)
         bar_filled = pct // 5
-        bar = (
-            f"[{BRAND}]{'█' * bar_filled}[/{BRAND}][dim]{'░' * (20 - bar_filled)}[/dim]"
-        )
+        bar = f"[{BRAND}]{'█' * bar_filled}[/{BRAND}][dim]{'░' * (20 - bar_filled)}[/dim]"
         retry_note = f"  [dim]+{retry_added} retried[/dim]" if retry_added else ""
-        schema_note = (
-            f"  [dim red]-{schema_drops} schema[/dim red]" if schema_drops else ""
-        )
+        schema_note = f"  [dim red]-{schema_drops} schema[/dim red]" if schema_drops else ""
         console.print(
             f"  [bold {BRAND}]+{added:>3}[/bold {BRAND}] unique  "
             f"{bar}  [dim]{len(new_cases)}/{num_samples}"
@@ -1491,9 +1425,7 @@ def _stratified_sample(cases: list[dict], n: int) -> list[dict]:
     return cases[:n]
 
 
-def _print_coverage_report(
-    cases: list[dict], eval_spec: dict, console: Console
-) -> None:
+def _print_coverage_report(cases: list[dict], eval_spec: dict, console: Console) -> None:
     """Print a summary of what the generated dataset covers."""
     if not cases:
         return
@@ -1529,9 +1461,7 @@ def _print_coverage_report(
         return
 
     if enum_coverage:
-        table = Table(
-            border_style=f"{BRAND}", show_header=True, header_style=f"bold {BRAND}"
-        )
+        table = Table(border_style=f"{BRAND}", show_header=True, header_style=f"bold {BRAND}")
         table.add_column("Field", style="bold")
         table.add_column("Covered values")
         table.add_column("Missing")
@@ -1544,17 +1474,13 @@ def _print_coverage_report(
             table.add_row(
                 field,
                 ", ".join(sorted(covered)),
-                f"[yellow]{', '.join(sorted(missing))}[/yellow]"
-                if missing
-                else "[dim]—[/dim]",
+                f"[yellow]{', '.join(sorted(missing))}[/yellow]" if missing else "[dim]—[/dim]",
                 f"[{pct_style}]{pct:.0f}%[/{pct_style}]",
             )
         console.print(table)
 
     if number_stats:
-        table = Table(
-            border_style=f"{BRAND}", show_header=True, header_style=f"bold {BRAND}"
-        )
+        table = Table(border_style=f"{BRAND}", show_header=True, header_style=f"bold {BRAND}")
         table.add_column("Field", style="bold")
         table.add_column("Min", justify="right")
         table.add_column("Max", justify="right")

@@ -36,10 +36,7 @@ def run_questionnaire(analysis: dict, model: str, console: Console) -> dict:
         list(output_schema.keys()),
     )
 
-    console.print(
-        "\n  [dim]Tell me about your expectations so I can build better "
-        "evaluation criteria.[/dim]\n"
-    )
+    console.print("\n  [dim]Tell me about your expectations so I can build better evaluation criteria.[/dim]\n")
 
     # --- Open-ended questions ---
     feedback = overmind_prompt(
@@ -58,10 +55,7 @@ def run_questionnaire(analysis: dict, model: str, console: Console) -> dict:
         "What mistakes should cost the agent the most points?\n ",
     )
 
-    console.print(
-        "\n  [dim]Any other context about your domain or scoring preferences? "
-        "(press Enter to skip)[/dim]"
-    )
+    console.print("\n  [dim]Any other context about your domain or scoring preferences? (press Enter to skip)[/dim]")
     additional_context = Prompt.ask(" ", default="")
 
     # --- Send to LLM for refinement ---
@@ -114,10 +108,7 @@ def run_questionnaire(analysis: dict, model: str, console: Console) -> dict:
             info["parsed_ok"] = True
         except (json.JSONDecodeError, ValueError) as exc:
             logger.warning("Refined-criteria JSON parse failed: %s", exc)
-            console.print(
-                f"\n  [yellow]Could not parse refined criteria ({exc}). "
-                f"Using original proposal.[/yellow]"
-            )
+            console.print(f"\n  [yellow]Could not parse refined criteria ({exc}). Using original proposal.[/yellow]")
             refined_criteria = original_criteria
             info["parsed_ok"] = False
 
@@ -151,11 +142,7 @@ def _display_refined(criteria: dict, analysis: dict, console: Console):
         ftype = output_schema.get(field_name, {}).get("type", "text")
 
         if ftype == "enum":
-            detail = (
-                "partial credit"
-                if fc.get("partial_credit", True)
-                else "exact match only"
-            )
+            detail = "partial credit" if fc.get("partial_credit", True) else "exact match only"
         elif ftype == "number":
             detail = f"tolerance ±{fc.get('tolerance', 10)}"
         elif ftype == "text":

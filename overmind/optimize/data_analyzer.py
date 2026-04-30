@@ -67,20 +67,13 @@ def validate_seed_data(
     set_tag(attrs.SEED_VALIDATION_INVALID_COUNT, str(len(issues)))
 
     if not issues:
-        console.print(
-            f"  [bold {BRAND}]✓[/bold {BRAND}]"
-            f"  [dim]Validated {len(cases)} cases — all valid[/dim]"
-        )
+        console.print(f"  [bold {BRAND}]✓[/bold {BRAND}]  [dim]Validated {len(cases)} cases — all valid[/dim]")
     else:
         console.print(
-            f"  [yellow]⚠[/yellow]"
-            f"  [dim]Validated {len(cases)} cases —"
-            f" {valid} valid, {len(issues)} invalid[/dim]"
+            f"  [yellow]⚠[/yellow]  [dim]Validated {len(cases)} cases — {valid} valid, {len(issues)} invalid[/dim]"
         )
         for item in issues[:5]:
-            console.print(
-                f"    [dim]Case {item['index']}:[/dim]  " + "  ·  ".join(item["errors"])
-            )
+            console.print(f"    [dim]Case {item['index']}:[/dim]  " + "  ·  ".join(item["errors"]))
         if len(issues) > 5:
             console.print(f"    [dim]… and {len(issues) - 5} more[/dim]")
 
@@ -184,13 +177,11 @@ def _fallback_analysis(cases: list[dict], eval_spec: dict) -> dict:
 
     gaps = []
     for field, missing_vals in uncovered_enum.items():
-        gaps.append(
-            {
-                "area": f"enum:{field}",
-                "description": f"Missing values: {', '.join(missing_vals)}",
-                "severity": "medium",
-            }
-        )
+        gaps.append({
+            "area": f"enum:{field}",
+            "description": f"Missing values: {', '.join(missing_vals)}",
+            "severity": "medium",
+        })
 
     return {
         "overall_quality_score": 5,
@@ -221,8 +212,7 @@ def _display_analysis(analysis: dict, console: Console) -> None:
     console.print()
     console.print(
         Rule(
-            f"[bold {BRAND}]Dataset Analysis[/bold {BRAND}]  "
-            f"[dim]{case_count} cases[/dim]",
+            f"[bold {BRAND}]Dataset Analysis[/bold {BRAND}]  [dim]{case_count} cases[/dim]",
             style="dim",
         )
     )
@@ -253,9 +243,7 @@ def _display_analysis(analysis: dict, console: Console) -> None:
         table.add_column("Description")
         for gap in gaps[:10]:
             sev = gap.get("severity", "medium")
-            sev_style = {"high": "red", "medium": "yellow", "low": "dim"}.get(
-                sev, "dim"
-            )
+            sev_style = {"high": "red", "medium": "yellow", "low": "dim"}.get(sev, "dim")
             table.add_row(
                 f"[{sev_style}]{sev}[/{sev_style}]",
                 f"[dim]{gap.get('area', '')}[/dim]",
@@ -263,9 +251,7 @@ def _display_analysis(analysis: dict, console: Console) -> None:
             )
         console.print(table)
     else:
-        console.print(
-            f"  [bold {BRAND}]✓[/bold {BRAND}]  [dim]No significant coverage gaps[/dim]"
-        )
+        console.print(f"  [bold {BRAND}]✓[/bold {BRAND}]  [dim]No significant coverage gaps[/dim]")
 
     uncovered_rules = analysis.get("uncovered_policy_rules", [])
     if uncovered_rules:
@@ -279,9 +265,7 @@ def _display_analysis(analysis: dict, console: Console) -> None:
     if quality_issues:
         console.print(f"\n  [yellow]Quality issues ({len(quality_issues)})[/yellow]")
         for qi in quality_issues[:5]:
-            console.print(
-                f"    [dim]Case {qi.get('case_index', '?')}[/dim]  {qi.get('issue', '')}"
-            )
+            console.print(f"    [dim]Case {qi.get('case_index', '?')}[/dim]  {qi.get('issue', '')}")
         if len(quality_issues) > 5:
             console.print(f"    [dim]… and {len(quality_issues) - 5} more[/dim]")
 

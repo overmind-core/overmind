@@ -134,9 +134,7 @@ IMPORTANT:
 
 WRAPPER_REFUSED_MARKER = "# OVERMIND_WRAPPER_REFUSED"
 
-_SYS_PATH_BOOTSTRAP_BEGIN = (
-    "# --- OVERMIND_SYS_PATH_BOOTSTRAP (auto-generated, do not edit) ---"
-)
+_SYS_PATH_BOOTSTRAP_BEGIN = "# --- OVERMIND_SYS_PATH_BOOTSTRAP (auto-generated, do not edit) ---"
 _SYS_PATH_BOOTSTRAP_END = "# --- END OVERMIND_SYS_PATH_BOOTSTRAP ---"
 
 
@@ -168,12 +166,10 @@ def _render_sys_path_bootstrap(agent_relpath: Path) -> str:
     """
     parts = agent_relpath.parts if agent_relpath != Path(".") else ()
     path_parts = [repr(p) for p in parts] or ["'.'"]
-    join_args = ", ".join(
-        [
-            "_overmind_os.path.dirname(_overmind_os.path.abspath(__file__))",
-            *path_parts,
-        ]
-    )
+    join_args = ", ".join([
+        "_overmind_os.path.dirname(_overmind_os.path.abspath(__file__))",
+        *path_parts,
+    ])
     return (
         f"{_SYS_PATH_BOOTSTRAP_BEGIN}\n"
         "import os as _overmind_os\n"
@@ -232,9 +228,7 @@ def _prepend_sys_path_bootstrap(wp: Path, agent_relpath: Path) -> None:
             if stripped == "" or stripped.startswith("#"):
                 preamble_lines.append(line)
                 continue
-            if not in_docstring and (
-                stripped.startswith('"""') or stripped.startswith("'''")
-            ):
+            if not in_docstring and (stripped.startswith(('"""', "'''"))):
                 quote = stripped[:3]
                 preamble_lines.append(line)
                 # Single-line docstring (opened and closed on same line)
@@ -451,9 +445,7 @@ def generate_entrypoint_wrapper(
 
     content = wp.read_text(encoding="utf-8")
     if content.strip().startswith(WRAPPER_REFUSED_MARKER):
-        logger.info(
-            "Coding agent declined to generate wrapper — agent needs manual restructuring"
-        )
+        logger.info("Coding agent declined to generate wrapper — agent needs manual restructuring")
         wp.unlink(missing_ok=True)
         return "refused"
 

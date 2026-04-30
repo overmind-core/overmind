@@ -65,13 +65,9 @@ class BashTool:
             exit_code = result.returncode
         except subprocess.TimeoutExpired as exc:
             timed_out = True
-            output = (exc.stdout or b"").decode(errors="replace") + (
-                exc.stderr or b""
-            ).decode(errors="replace")
+            output = (exc.stdout or b"").decode(errors="replace") + (exc.stderr or b"").decode(errors="replace")
             exit_code = -1
-            output += (
-                f"\n\nbash tool terminated command after exceeding timeout {timeout}s"
-            )
+            output += f"\n\nbash tool terminated command after exceeding timeout {timeout}s"
 
         output, was_truncated = truncate(output)
         return ToolResult(

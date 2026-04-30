@@ -84,9 +84,7 @@ SETUP_EVAL_SPEC_HAS_JUDGE = "overmind.setup.eval_spec_has_judge"
 SETUP_EVAL_SPEC_HAS_POLICY = "overmind.setup.eval_spec_has_policy"
 SETUP_EVAL_SPEC_STRUCTURE_WEIGHT = "overmind.setup.eval_spec_structure_weight"
 SETUP_EVAL_SPEC_TOOL_COUNT = "overmind.setup.eval_spec_tool_count"
-SETUP_EVAL_SPEC_CONSISTENCY_RULE_COUNT = (
-    "overmind.setup.eval_spec_consistency_rule_count"
-)
+SETUP_EVAL_SPEC_CONSISTENCY_RULE_COUNT = "overmind.setup.eval_spec_consistency_rule_count"
 SETUP_DATASET_SOURCE = "overmind.setup.dataset_source"
 SETUP_DATASET_ID = "overmind.setup.dataset_id"
 SETUP_CRITERIA_SOURCE = "overmind.setup.criteria_source"
@@ -235,9 +233,7 @@ SEED_COVERAGE_QUALITY_SCORE = "overmind.seed_coverage.quality_score"
 SEED_COVERAGE_CASE_COUNT = "overmind.seed_coverage.case_count"
 SEED_COVERAGE_GAP_COUNT = "overmind.seed_coverage.gap_count"
 SEED_COVERAGE_UNCOVERED_RULE_COUNT = "overmind.seed_coverage.uncovered_rule_count"
-SEED_COVERAGE_SUGGESTED_ADDITIONAL_CASES = (
-    "overmind.seed_coverage.suggested_additional_cases"
-)
+SEED_COVERAGE_SUGGESTED_ADDITIONAL_CASES = "overmind.seed_coverage.suggested_additional_cases"
 
 # ---------------------------------------------------------------------------
 # Coding agent (overmind/coding_agent/{__init__,agent}.py)

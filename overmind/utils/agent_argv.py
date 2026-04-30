@@ -17,9 +17,7 @@ _lock = threading.Lock()
 
 
 @contextlib.contextmanager
-def isolated_agent_argv(
-    agent_path: str | None = None, argv0: str | None = None
-) -> Iterator[None]:
+def isolated_agent_argv(agent_path: str | None = None, argv0: str | None = None) -> Iterator[None]:
     """Replace ``sys.argv`` with ``[<basename>]`` for the duration of the block."""
     label = argv0 if argv0 is not None else Path(agent_path or "agent.py").name
     with _lock:

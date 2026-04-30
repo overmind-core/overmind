@@ -2,7 +2,7 @@
 
 Configure via environment variables:
     OVERMIND_API_URL      Base URL of the Overmind backend (e.g. http://localhost:8000)
-    OVERMIND_API_TOKEN    Bearer token  (ovr_core_... or any JWT)
+    OVERMIND_API_KEY    Bearer token  (ovr_core_... or any JWT)
     OVERMIND_PROJECT_ID   UUID of the project to associate agents with
 
 Every helper here is a thin wrapper around the generated
@@ -93,9 +93,7 @@ def _get_bg_loop() -> asyncio.AbstractEventLoop:
                     name="overmind-async",
                 )
                 t.start()
-                logger.debug(
-                    f"Started background asyncio loop thread={t.name} loop={_bg_loop!r}"
-                )
+                logger.debug(f"Started background asyncio loop thread={t.name} loop={_bg_loop!r}")
     return _bg_loop
 
 
@@ -107,9 +105,7 @@ def _submit_async(coro) -> Future:
 
 def _run_async(coro, timeout: float = 30.0) -> Any:
     """Submit a coroutine to the background loop and wait for its result."""
-    return asyncio.run_coroutine_threadsafe(coro, _get_bg_loop()).result(
-        timeout=timeout
-    )
+    return asyncio.run_coroutine_threadsafe(coro, _get_bg_loop()).result(timeout=timeout)
 
 
 def _fire(fn, *args, **kwargs) -> None:
@@ -134,9 +130,7 @@ def flush_pending_api_updates(timeout: float = 8.0) -> None:
     if not pending:
         logger.debug("flush_pending_api_updates: nothing to flush")
         return
-    logger.info(
-        f"Flushing {len(pending)} pending API update(s) (timeout={timeout:.1f}s)"
-    )
+    logger.info(f"Flushing {len(pending)} pending API update(s) (timeout={timeout:.1f}s)")
     done, not_done = wait(pending, timeout=timeout)
     logger.info(f"Flush complete: done={len(done)} not_done={len(not_done)}")
     for fut in not_done:
@@ -164,14 +158,11 @@ class OvermindClient(
 
 
 def get_client() -> OvermindClient | None:
-    """Return a configured client if ``OVERMIND_API_URL`` and ``OVERMIND_API_TOKEN`` are set."""
+    """Return a configured client if ``OVERMIND_API_URL`` and ``OVERMIND_API_KEY`` are set."""
     base_url = os.getenv("OVERMIND_API_URL", "").strip().rstrip("/")
-    token = os.getenv("OVERMIND_API_TOKEN", "").strip()
+    token = os.getenv("OVERMIND_API_KEY", "").strip()
     if not base_url or not token:
-        logger.debug(
-            "get_client: API not configured "
-            f"(base_url_set={bool(base_url)} token_set={bool(token)})"
-        )
+        logger.debug(f"get_client: API not configured (base_url_set={bool(base_url)} token_set={bool(token)})")
         return None
     cfg = Configuration(host=base_url, api_key=token)
     cfg.access_token = token
@@ -181,11 +172,8 @@ def get_client() -> OvermindClient | None:
 
 
 def is_configured() -> bool:
-    """Return True if both ``OVERMIND_API_URL`` and ``OVERMIND_API_TOKEN`` are set."""
-    return bool(
-        os.getenv("OVERMIND_API_URL", "").strip()
-        and os.getenv("OVERMIND_API_TOKEN", "").strip()
-    )
+    """Return True if both ``OVERMIND_API_URL`` and ``OVERMIND_API_KEY`` are set."""
+    return bool(os.getenv("OVERMIND_API_URL", "").strip() and os.getenv("OVERMIND_API_KEY", "").strip())
 
 
 def get_project_id() -> str | None:
@@ -251,7 +239,7 @@ def write_project_toml(agent_path: str, data: dict) -> None:
 
         _flatten_and_set(existing, data, [])
         p.write_text(tomlkit.dumps(existing), encoding="utf-8")
-    except Exception:
+    except Exception:  # noqa: S110
         pass
 
 
@@ -263,7 +251,7 @@ def write_project_toml(agent_path: str, data: dict) -> None:
 def _agent_shared_fields(spec: dict, agent_path: str) -> dict[str, Any]:
     """Build the common Agent / PatchedAgent payload fields from a spec dict."""
     description = (spec.get("agent_description") or "")[:512] or None
-    return dict(
+    return dict(  # noqa: C408
         description=description,
         agent_path=(agent_path or "")[:512] or None,
         input_schema=spec.get("input_schema"),
@@ -337,19 +325,12 @@ def upsert_agent(
 
     if existing:
         patch = PatchedAgentRequest(**shared)
-        result = _run_async(
-            client.agents_partial_update(id=existing.id, patched_agent_request=patch)
-        )
-        logger.info(
-            f"upsert_agent: updated existing agent id={existing.id} slug={slug}"
-        )
+        result = _run_async(client.agents_partial_update(id=existing.id, patched_agent_request=patch))
+        logger.info(f"upsert_agent: updated existing agent id={existing.id} slug={slug}")
     else:
         req = AgentRequest(name=name, slug=slug, project=UUID(project_id), **shared)
         result = _run_async(client.agents_create(agent_request=req))
-        logger.info(
-            "upsert_agent: created new agent "
-            f"id={getattr(result, 'id', '?')} slug={slug}"
-        )
+        logger.info(f"upsert_agent: created new agent id={getattr(result, 'id', '?')} slug={slug}")
     return result
 
 
@@ -423,9 +404,7 @@ def fetch_dataset_datapoints(client: OvermindClient, dataset_id: str) -> list[di
     page_num = 1
     while page_num <= 200:
         try:
-            page = _run_async(
-                client.datasets_datapoints_list(id=UUID(dataset_id), page=page_num)
-            )
+            page = _run_async(client.datasets_datapoints_list(id=UUID(dataset_id), page=page_num))
         except Exception:
             logger.debug(
                 "fetch_dataset_datapoints: page=%d failed dataset_id=%s",
@@ -487,10 +466,7 @@ def _create_job(
             data_source="dataset",
         )
         job = _run_async(client.jobs_create(job_request=req))
-        logger.info(
-            "_create_job: created job "
-            f"id={job.id} agent_id={agent_id} iterations={num_iterations}"
-        )
+        logger.info(f"_create_job: created job id={job.id} agent_id={agent_id} iterations={num_iterations}")
         return str(job.id)
     except Exception:
         logger.exception(f"_create_job: failed to create job for agent_id={agent_id}")
@@ -500,9 +476,7 @@ def _create_job(
 def _patch_job(client: OvermindClient, job_id: str, **fields: Any) -> None:
     try:
         patch = PatchedJobRequest(**fields)
-        _submit_async(
-            client.jobs_partial_update(id=UUID(job_id), patched_job_request=patch)
-        )
+        _submit_async(client.jobs_partial_update(id=UUID(job_id), patched_job_request=patch))
         logger.debug(f"_patch_job: job_id={job_id} fields={list(fields)}")
     except Exception:
         logger.exception(f"_patch_job: failed job_id={job_id}")
@@ -531,10 +505,7 @@ def _create_iteration(
             dimension_scores=dimension_scores or {},
         )
         iteration = _run_async(client.job_iterations_create(job_iteration_request=req))
-        logger.info(
-            "_create_iteration: "
-            f"job_id={job_id} order={order} status={status} avg_score={avg_score:.4f}"
-        )
+        logger.info(f"_create_iteration: job_id={job_id} order={order} status={status} avg_score={avg_score:.4f}")
         return str(iteration.id)
     except Exception:
         logger.exception(f"_create_iteration: failed job_id={job_id} order={order}")
@@ -612,9 +583,7 @@ class ApiReporter:
         """Called once the baseline has been evaluated."""
         import time
 
-        self._logs.append(
-            {"ts": time.time(), "level": "info", "msg": f"Baseline evaluated: score {score:.2f}"}
-        )
+        self._logs.append({"ts": time.time(), "level": "info", "msg": f"Baseline evaluated: score {score:.2f}"})
         _fire(
             _patch_job,
             self._client,
@@ -637,11 +606,7 @@ class ApiReporter:
         """Called after each iteration is accepted or rejected."""
         import time
 
-        status = (
-            JobIterationStatusEnum.KEEP
-            if decision == "keep"
-            else JobIterationStatusEnum.DISCARD
-        )
+        status = JobIterationStatusEnum.KEEP if decision == "keep" else JobIterationStatusEnum.DISCARD
         _fire(
             _create_iteration,
             self._client,
@@ -659,14 +624,12 @@ class ApiReporter:
         if decision == "keep":
             patch_fields["best_score"] = avg_score
         decision_label = "accepted" if decision == "keep" else "discarded"
-        self._logs.append(
-            {
-                "ts": time.time(),
-                "level": "info",
-                "msg": f"Experiment {order}: {decision_label} (score {avg_score:.2f})"
-                + (f" — {description}" if description else ""),
-            }
-        )
+        self._logs.append({
+            "ts": time.time(),
+            "level": "info",
+            "msg": f"Experiment {order}: {decision_label} (score {avg_score:.2f})"
+            + (f" — {description}" if description else ""),
+        })
         patch_fields["logs"] = list(self._logs)
         _fire(_patch_job, self._client, self._job_id, **patch_fields)
 
@@ -682,16 +645,11 @@ class ApiReporter:
         import time
 
         improvement = best_score - baseline_score
-        self._logs.append(
-            {
-                "ts": time.time(),
-                "level": "info",
-                "msg": (
-                    f"Optimization complete — best score {best_score:.2f} "
-                    f"(improvement {improvement:+.2f})"
-                ),
-            }
-        )
+        self._logs.append({
+            "ts": time.time(),
+            "level": "info",
+            "msg": (f"Optimization complete — best score {best_score:.2f} (improvement {improvement:+.2f})"),
+        })
         fields: dict[str, Any] = {
             "status": JobStatusEnum.COMPLETED,
             "best_score": best_score,
@@ -719,9 +677,7 @@ class ApiReporter:
         """Called if the optimization run aborts with an error."""
         import time
 
-        self._logs.append(
-            {"ts": time.time(), "level": "error", "msg": f"Run failed: {reason}"}
-        )
+        self._logs.append({"ts": time.time(), "level": "error", "msg": f"Run failed: {reason}"})
         _fire(
             _patch_job,
             self._client,

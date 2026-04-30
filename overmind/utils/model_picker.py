@@ -34,9 +34,7 @@ def prompt_for_catalog_litellm_model(
 
     providers = get_providers()
 
-    effective_default = env_default or (
-        default_model if default_model and default_model in models else None
-    )
+    effective_default = env_default or (default_model if default_model and default_model in models else None)
 
     # ── Step 1: pick provider ────────────────────────────────────────────────
     default_provider_idx = 0
@@ -92,9 +90,7 @@ def prompt_for_catalog_litellm_model(
 
         prompt_text = f"  Enter {provider_label} model name"
         if default_hint:
-            chosen_model = Prompt.ask(
-                prompt_text, default=default_hint, console=console
-            )
+            chosen_model = Prompt.ask(prompt_text, default=default_hint, console=console)
         else:
             chosen_model = Prompt.ask(prompt_text, console=console)
         chosen_model = chosen_model.strip()

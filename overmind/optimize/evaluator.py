@@ -55,9 +55,7 @@ def _annotate_confidence(scores: dict, source_tags: list[dict] | None) -> None:
         if not source:
             continue
         try:
-            tags.append(
-                SourceTag(source=TraceSource(source), reason=raw.get("reason", ""))
-            )
+            tags.append(SourceTag(source=TraceSource(source), reason=raw.get("reason", "")))
         except ValueError:
             continue
 
@@ -71,104 +69,102 @@ def _annotate_confidence(scores: dict, source_tags: list[dict] | None) -> None:
     scores["_source_summary"] = confidence.summary
 
 
-_STOPWORDS = frozenset(
-    {
-        "the",
-        "a",
-        "an",
-        "is",
-        "are",
-        "was",
-        "were",
-        "be",
-        "been",
-        "being",
-        "have",
-        "has",
-        "had",
-        "do",
-        "does",
-        "did",
-        "will",
-        "would",
-        "could",
-        "should",
-        "may",
-        "might",
-        "can",
-        "shall",
-        "to",
-        "of",
-        "in",
-        "for",
-        "on",
-        "with",
-        "at",
-        "by",
-        "from",
-        "as",
-        "into",
-        "through",
-        "during",
-        "before",
-        "after",
-        "above",
-        "below",
-        "between",
-        "and",
-        "but",
-        "or",
-        "nor",
-        "not",
-        "so",
-        "yet",
-        "both",
-        "either",
-        "neither",
-        "each",
-        "every",
-        "all",
-        "any",
-        "few",
-        "more",
-        "most",
-        "other",
-        "some",
-        "such",
-        "no",
-        "only",
-        "own",
-        "same",
-        "than",
-        "too",
-        "very",
-        "this",
-        "that",
-        "these",
-        "those",
-        "it",
-        "its",
-        "i",
-        "me",
-        "my",
-        "we",
-        "our",
-        "you",
-        "your",
-        "he",
-        "him",
-        "his",
-        "she",
-        "her",
-        "they",
-        "them",
-        "their",
-        "what",
-        "which",
-        "who",
-        "whom",
-    }
-)
+_STOPWORDS = frozenset({
+    "the",
+    "a",
+    "an",
+    "is",
+    "are",
+    "was",
+    "were",
+    "be",
+    "been",
+    "being",
+    "have",
+    "has",
+    "had",
+    "do",
+    "does",
+    "did",
+    "will",
+    "would",
+    "could",
+    "should",
+    "may",
+    "might",
+    "can",
+    "shall",
+    "to",
+    "of",
+    "in",
+    "for",
+    "on",
+    "with",
+    "at",
+    "by",
+    "from",
+    "as",
+    "into",
+    "through",
+    "during",
+    "before",
+    "after",
+    "above",
+    "below",
+    "between",
+    "and",
+    "but",
+    "or",
+    "nor",
+    "not",
+    "so",
+    "yet",
+    "both",
+    "either",
+    "neither",
+    "each",
+    "every",
+    "all",
+    "any",
+    "few",
+    "more",
+    "most",
+    "other",
+    "some",
+    "such",
+    "no",
+    "only",
+    "own",
+    "same",
+    "than",
+    "too",
+    "very",
+    "this",
+    "that",
+    "these",
+    "those",
+    "it",
+    "its",
+    "i",
+    "me",
+    "my",
+    "we",
+    "our",
+    "you",
+    "your",
+    "he",
+    "him",
+    "his",
+    "she",
+    "her",
+    "they",
+    "them",
+    "their",
+    "what",
+    "which",
+    "who",
+    "whom",
+})
 
 _JUDGE_MAX_RETRIES = 3
 _JUDGE_RETRY_BACKOFF = 1.5
@@ -202,9 +198,7 @@ class SpecEvaluator:
             if field_sum > 0:
                 for cfg in self.fields.values():
                     old_w = float(cfg.get("weight", 0))
-                    cfg["weight"] = round(
-                        old_w + (old_w / field_sum) * spec_judge_weight, 1
-                    )
+                    cfg["weight"] = round(old_w + (old_w / field_sum) * spec_judge_weight, 1)
         else:
             self._effective_judge_weight = 0.0
 
@@ -214,11 +208,7 @@ class SpecEvaluator:
         """Sanity-check that spec weights are internally consistent."""
         total_declared = self.spec.get("total_points", 100)
         field_sum = sum(float(cfg.get("weight", 0)) for cfg in self.fields.values())
-        other = (
-            self.structure_weight
-            + float(self.spec.get("tool_usage_weight", 0))
-            + self._effective_judge_weight
-        )
+        other = self.structure_weight + float(self.spec.get("tool_usage_weight", 0)) + self._effective_judge_weight
         actual_total = field_sum + other
         if abs(actual_total - total_declared) > 1.0:
             warnings.warn(
@@ -279,35 +269,24 @@ class SpecEvaluator:
 
         # --- Structure scoring (presence check) ---
         expected_fields = list(self.fields.keys())
-        field_importances = {
-            name: cfg.get("importance", "important")
-            for name, cfg in self.fields.items()
-        }
+        field_importances = {name: cfg.get("importance", "important") for name, cfg in self.fields.items()}
         weighted_present = 0.0
         weighted_total = 0.0
         for f in expected_fields:
-            imp_mult = {"critical": 3, "important": 2, "minor": 1}.get(
-                field_importances.get(f, "important"), 2
-            )
+            imp_mult = {"critical": 3, "important": 2, "minor": 1}.get(field_importances.get(f, "important"), 2)
             weighted_total += imp_mult
             val = output.get(f)
             if val is not None and val != "":
                 weighted_present += imp_mult
-        scores["structure"] = (
-            weighted_present / max(weighted_total, 1)
-        ) * self.structure_weight
+        scores["structure"] = (weighted_present / max(weighted_total, 1)) * self.structure_weight
 
         # --- Per-field mechanical scoring ---
         for field_name, config in self.fields.items():
             ftype = config["type"]
             if ftype == "enum":
-                scores[field_name] = self._score_enum(
-                    output.get(field_name), expected.get(field_name), config
-                )
+                scores[field_name] = self._score_enum(output.get(field_name), expected.get(field_name), config)
             elif ftype == "number":
-                scores[field_name] = self._score_number(
-                    output.get(field_name), expected.get(field_name), config
-                )
+                scores[field_name] = self._score_number(output.get(field_name), expected.get(field_name), config)
             elif ftype == "text":
                 scores[field_name] = self._score_text(
                     output.get(field_name),
@@ -446,9 +425,7 @@ class SpecEvaluator:
 
                 if len(batch_items) == 1:
                     idx, r = batch_items[0]
-                    js = self._score_with_llm_judge(
-                        r.get("input", {}), r.get("expected", {}), r.get("output", {})
-                    )
+                    js = self._score_with_llm_judge(r.get("input", {}), r.get("expected", {}), r.get("output", {}))
                     if js == _JUDGE_FALLBACK_SCORE:
                         judge_fail_count += 1
                     all_scores[idx]["llm_judge"] = js * judge_weight
@@ -459,15 +436,12 @@ class SpecEvaluator:
                         if js == _JUDGE_FALLBACK_SCORE:
                             judge_fail_count += 1
                         all_scores[idx]["llm_judge"] = js * judge_weight
-                        all_scores[idx]["total"] = max(
-                            0.0, sum(all_scores[idx].values())
-                        )
+                        all_scores[idx]["total"] = max(0.0, sum(all_scores[idx].values()))
 
             if judge_fail_count > 0:
                 fail_pct = judge_fail_count / len(needs_judge) * 100
                 logger.warning(
-                    "LLM judge failed on %d/%d cases (%.0f%%). "
-                    "Fallback score %.1f used for failed cases.",
+                    "LLM judge failed on %d/%d cases (%.0f%%). Fallback score %.1f used for failed cases.",
                     judge_fail_count,
                     len(needs_judge),
                     fail_pct,
@@ -488,9 +462,7 @@ class SpecEvaluator:
         # over ``avg_*`` dimension scores skip it the same way they skip
         # other metadata.
         confidences = [float(s.get("_confidence", 1.0)) for s in all_scores]
-        avg["_avg_confidence"] = (
-            sum(confidences) / len(confidences) if confidences else 1.0
-        )
+        avg["_avg_confidence"] = sum(confidences) / len(confidences) if confidences else 1.0
         agg_summary: dict[str, int] = {}
         for s in all_scores:
             for k, v in (s.get("_source_summary") or {}).items():
@@ -554,9 +526,8 @@ class SpecEvaluator:
                 except (ValueError, TypeError):
                     errors += 1
             elif ftype == "boolean":
-                if not isinstance(actual, bool):
-                    if not (isinstance(actual, (int, float)) and actual in (0, 1)):
-                        errors += 1
+                if not isinstance(actual, bool) and not (isinstance(actual, (int, float)) and actual in (0, 1)):
+                    errors += 1
             elif ftype == "enum":
                 valid = {v.lower() for v in config.get("values", [])}
                 if str(actual).lower().strip() not in valid:
@@ -601,7 +572,16 @@ class SpecEvaluator:
                     continue
                 op = rule.get("operator", "<=")
                 violated = False
-                if op == "<=" and num_a > num_b or op == "<" and num_a >= num_b or op == ">=" and num_a < num_b or op == ">" and num_a <= num_b:
+                if (
+                    op == "<="
+                    and num_a > num_b
+                    or op == "<"
+                    and num_a >= num_b
+                    or op == ">="
+                    and num_a < num_b
+                    or op == ">"
+                    and num_a <= num_b
+                ):
                     violated = True
                 if violated:
                     penalty -= rule.get("penalty", 3.0)
@@ -616,14 +596,12 @@ class SpecEvaluator:
 
         for nf in number_fields:
             for ef in enum_fields:
-                rules.append(
-                    {
-                        "field_a": nf,
-                        "field_b": ef,
-                        "type": "correlation",
-                        "penalty": 3.0,
-                    }
-                )
+                rules.append({
+                    "field_a": nf,
+                    "field_b": ef,
+                    "type": "correlation",
+                    "penalty": 3.0,
+                })
         return rules
 
     def _is_contradictory(self, field_a: str, val_a, field_b: str, val_b) -> bool:
@@ -696,9 +674,7 @@ class SpecEvaluator:
         # Completeness: were all expected tools called?
         if expected_tools:
             called_tools = {t.get("name", "") for t in tool_trace}
-            completeness = len(called_tools & set(expected_tools)) / max(
-                len(expected_tools), 1
-            )
+            completeness = len(called_tools & set(expected_tools)) / max(len(expected_tools), 1)
             sub_scores.append(completeness)
 
         # Argument quality: were enum-like args valid?
@@ -727,16 +703,12 @@ class SpecEvaluator:
                 if param not in args:
                     continue
                 checks += 1
-                if str(args[param]).lower().strip() in [
-                    str(v).lower() for v in allowed
-                ]:
+                if str(args[param]).lower().strip() in [str(v).lower() for v in allowed]:
                     valid += 1
         return valid / max(checks, 1)
 
     @staticmethod
-    def _resolve_chain_expected_value(
-        result: object, source_field: str
-    ) -> tuple[object | None, bool]:
+    def _resolve_chain_expected_value(result: object, source_field: str) -> tuple[object | None, bool]:
         """Resolve *source_field* on a tool *result* for dependency chaining.
 
         Instrumentation stores arbitrary JSON as ``result`` (often a dict, but
@@ -784,26 +756,19 @@ class SpecEvaluator:
             if source_tool not in tool_results:
                 continue
 
-            target_call = next(
-                (c for c in tool_trace if c.get("name") == target_tool), None
-            )
+            target_call = next((c for c in tool_trace if c.get("name") == target_tool), None)
             if not target_call:
                 continue
 
             raw_result = tool_results[source_tool]
-            expected_val, skip_dep = SpecEvaluator._resolve_chain_expected_value(
-                raw_result, source_field
-            )
+            expected_val, skip_dep = SpecEvaluator._resolve_chain_expected_value(raw_result, source_field)
             if skip_dep:
                 continue
 
             checks += 1
             actual_val = target_call.get("args", {}).get(target_param)
 
-            if (
-                expected_val is not None
-                and str(expected_val).lower() == str(actual_val or "").lower()
-            ):
+            if expected_val is not None and str(expected_val).lower() == str(actual_val or "").lower():
                 correct += 1
 
         return correct / max(checks, 1)
@@ -812,9 +777,7 @@ class SpecEvaluator:
     # LLM-as-Judge
     # ------------------------------------------------------------------
 
-    def _score_with_llm_judge(
-        self, input_data: dict, expected: dict, output: dict
-    ) -> float:
+    def _score_with_llm_judge(self, input_data: dict, expected: dict, output: dict) -> float:
         """Use a strong model to assess semantic quality. Returns 0.0–1.0.
 
         Retries up to ``_JUDGE_MAX_RETRIES`` times with exponential backoff
@@ -828,9 +791,7 @@ class SpecEvaluator:
 
         policy_section = ""
         if self.policy_judge_rubric:
-            policy_section = (
-                "\n## Agent Policy Rules\n" + self.policy_judge_rubric + "\n"
-            )
+            policy_section = "\n## Agent Policy Rules\n" + self.policy_judge_rubric + "\n"
 
         prompt = LLM_JUDGE_PROMPT.format(
             input_json=json.dumps(input_data, indent=2),
@@ -867,9 +828,7 @@ class SpecEvaluator:
         )
         return _JUDGE_FALLBACK_SCORE
 
-    def _score_batch_with_llm_judge(
-        self, batch_items: list[tuple[int, dict]]
-    ) -> list[float]:
+    def _score_batch_with_llm_judge(self, batch_items: list[tuple[int, dict]]) -> list[float]:
         """Score multiple cases in a single LLM judge call. Returns list of 0.0–1.0.
 
         Retries on failure with exponential backoff.
@@ -882,9 +841,7 @@ class SpecEvaluator:
 
         policy_section = ""
         if self.policy_judge_rubric:
-            policy_section = (
-                "\n## Agent Policy Rules\n" + self.policy_judge_rubric + "\n"
-            )
+            policy_section = "\n## Agent Policy Rules\n" + self.policy_judge_rubric + "\n"
 
         case_blocks = []
         for case_num, (idx, r) in enumerate(batch_items):
@@ -918,10 +875,7 @@ class SpecEvaluator:
                 if start >= 0 and end > start:
                     parsed = json.loads(content[start:end])
                     if isinstance(parsed, list) and len(parsed) >= len(batch_items):
-                        return [
-                            self._compute_judge_score(p)
-                            for p in parsed[: len(batch_items)]
-                        ]
+                        return [self._compute_judge_score(p) for p in parsed[: len(batch_items)]]
             except Exception as exc:
                 last_exc = exc
                 if attempt < _JUDGE_MAX_RETRIES - 1:
@@ -1018,10 +972,7 @@ class SpecEvaluator:
         if mode == "keyword_coverage":
             return self._text_keyword_coverage(actual, expected) * weight
         if mode == "llm_judge":
-            return (
-                self._text_field_judge(actual, expected, config, field_name, input_data)
-                * weight
-            )
+            return self._text_field_judge(actual, expected, config, field_name, input_data) * weight
         return 0.0
 
     @staticmethod

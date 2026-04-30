@@ -1354,8 +1354,7 @@ def _handle_seed_data_path(
 
     if not gaps and quality_score >= 8:
         console.print(
-            f"\n  [bold {BRAND}]✓[/bold {BRAND}]"
-            "  [dim]Seed data has excellent coverage — no augmentation needed.[/dim]"
+            f"\n  [bold {BRAND}]✓[/bold {BRAND}]  [dim]Seed data has excellent coverage — no augmentation needed.[/dim]"
         )
         _save_dataset(
             seed_data,
