@@ -1,4 +1,4 @@
-"""Tests for overclaw.setup.policy_generator — policy generation and parsing."""
+"""Tests for overmind.setup.policy_generator — policy generation and parsing."""
 
 from __future__ import annotations
 
@@ -6,7 +6,7 @@ from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 
-from overclaw.setup.policy_generator import (
+from overmind.setup.policy_generator import (
     _default_policy_data,
     _extract_markdown_and_json,
     _migrate_legacy_policy,
@@ -123,7 +123,7 @@ class TestDisplayPolicy:
 
 
 class TestGeneratePolicyFromCode:
-    @patch("overclaw.utils.llm.litellm")
+    @patch("overmind.utils.llm.litellm")
     def test_success(self, mock_litellm):
         mock_resp = MagicMock()
         mock_resp.choices = [MagicMock()]
@@ -139,7 +139,7 @@ class TestGeneratePolicyFromCode:
         assert "Policy" in md
         assert data["domain_rules"] == ["r1"]
 
-    @patch("overclaw.utils.llm.litellm")
+    @patch("overmind.utils.llm.litellm")
     def test_fallback_on_parse_failure(self, mock_litellm):
         mock_resp = MagicMock()
         mock_resp.choices = [MagicMock()]
@@ -153,7 +153,7 @@ class TestGeneratePolicyFromCode:
 
 
 class TestGeneratePolicyFromDocument:
-    @patch("overclaw.utils.llm.litellm")
+    @patch("overmind.utils.llm.litellm")
     def test_success(self, mock_litellm, tmp_path):
         doc = tmp_path / "policy.md"
         doc.write_text("# My Rules\nRule 1\n")
@@ -173,7 +173,7 @@ class TestGeneratePolicyFromDocument:
 
 
 class TestImproveExistingPolicy:
-    @patch("overclaw.utils.llm.litellm")
+    @patch("overmind.utils.llm.litellm")
     def test_success(self, mock_litellm, tmp_path):
         doc = tmp_path / "policy.md"
         doc.write_text("# Old Policy\nOld rules\n")

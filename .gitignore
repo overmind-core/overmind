@@ -26,8 +26,13 @@ dev/
 tmp/
 run.log
 .env
-.overclaw
-.overclaw_runners/
+.overmind
+.overmind_runners/
 .DS_Store
 .coverage
 testing_agents
+
+.pytest_cache
+.vscode
+.ruff_cache
+.ipynb_checkpoints

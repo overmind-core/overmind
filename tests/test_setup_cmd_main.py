@@ -1,4 +1,4 @@
-"""Tests for overclaw.commands.setup_cmd.main — the full setup wizard."""
+"""Tests for overmind.commands.setup_cmd.main — the full setup wizard."""
 
 from __future__ import annotations
 
@@ -6,15 +6,15 @@ from unittest.mock import patch
 
 import pytest
 
-from overclaw.core.constants import OVERCLAW_DIR_NAME
+from overmind.core.constants import OVERMIND_DIR_NAME
 
 
 class TestSetupCmdMainFast:
-    @patch("overclaw.commands.setup_cmd.generate_synthetic_data")
-    @patch("overclaw.commands.setup_cmd.generate_policy_from_code")
-    @patch("overclaw.commands.setup_cmd.analyze_agent")
-    @patch("overclaw.commands.setup_cmd.resolve_agent")
-    @patch("overclaw.commands.setup_cmd.load_overclaw_dotenv")
+    @patch("overmind.commands.setup_cmd.generate_synthetic_data")
+    @patch("overmind.commands.setup_cmd.generate_policy_from_code")
+    @patch("overmind.commands.setup_cmd.analyze_agent")
+    @patch("overmind.commands.setup_cmd.resolve_agent")
+    @patch("overmind.commands.setup_cmd.load_overmind_dotenv")
     def test_fast_mode_no_seed(
         self,
         mock_load_env,
@@ -25,7 +25,7 @@ class TestSetupCmdMainFast:
         tmp_path,
         monkeypatch,
     ):
-        (tmp_path / OVERCLAW_DIR_NAME).mkdir(parents=True)
+        (tmp_path / OVERMIND_DIR_NAME).mkdir(parents=True)
         agent_dir = tmp_path / "agents" / "test"
         agent_dir.mkdir(parents=True)
         agent_file = agent_dir / "sample.py"
@@ -52,13 +52,13 @@ class TestSetupCmdMainFast:
         monkeypatch.setenv("SYNTHETIC_DATAGEN_MODEL", "gpt-5.4")
         monkeypatch.chdir(tmp_path)
 
-        from overclaw.commands.setup_cmd import main
+        from overmind.commands.setup_cmd import main
 
         main(agent_name="test", fast=True)
 
         spec_path = (
             tmp_path
-            / OVERCLAW_DIR_NAME
+            / OVERMIND_DIR_NAME
             / "agents"
             / "test"
             / "setup_spec"
@@ -66,11 +66,11 @@ class TestSetupCmdMainFast:
         )
         assert spec_path.exists()
 
-    @patch("overclaw.commands.setup_cmd.generate_synthetic_data")
-    @patch("overclaw.commands.setup_cmd.improve_existing_policy")
-    @patch("overclaw.commands.setup_cmd.analyze_agent")
-    @patch("overclaw.commands.setup_cmd.resolve_agent")
-    @patch("overclaw.commands.setup_cmd.load_overclaw_dotenv")
+    @patch("overmind.commands.setup_cmd.generate_synthetic_data")
+    @patch("overmind.commands.setup_cmd.improve_existing_policy")
+    @patch("overmind.commands.setup_cmd.analyze_agent")
+    @patch("overmind.commands.setup_cmd.resolve_agent")
+    @patch("overmind.commands.setup_cmd.load_overmind_dotenv")
     def test_fast_mode_with_policy(
         self,
         mock_load_env,
@@ -81,7 +81,7 @@ class TestSetupCmdMainFast:
         tmp_path,
         monkeypatch,
     ):
-        (tmp_path / OVERCLAW_DIR_NAME).mkdir(parents=True)
+        (tmp_path / OVERMIND_DIR_NAME).mkdir(parents=True)
         agent_dir = tmp_path / "agents" / "test"
         agent_dir.mkdir(parents=True)
         agent_file = agent_dir / "sample.py"
@@ -107,16 +107,16 @@ class TestSetupCmdMainFast:
         monkeypatch.setenv("SYNTHETIC_DATAGEN_MODEL", "gpt-5.4")
         monkeypatch.chdir(tmp_path)
 
-        from overclaw.commands.setup_cmd import main
+        from overmind.commands.setup_cmd import main
 
         main(agent_name="test", fast=True, policy=str(policy_file))
 
-    @patch("overclaw.commands.setup_cmd.resolve_agent")
-    @patch("overclaw.commands.setup_cmd.load_overclaw_dotenv")
+    @patch("overmind.commands.setup_cmd.resolve_agent")
+    @patch("overmind.commands.setup_cmd.load_overmind_dotenv")
     def test_fast_no_analyzer_model(
         self, mock_load_env, mock_resolve, tmp_path, monkeypatch
     ):
-        (tmp_path / OVERCLAW_DIR_NAME).mkdir(parents=True)
+        (tmp_path / OVERMIND_DIR_NAME).mkdir(parents=True)
         agent_file = tmp_path / "agent.py"
         agent_file.write_text("def run(x): return {}\n")
         mock_resolve.return_value = (str(agent_file), "run")
@@ -124,17 +124,17 @@ class TestSetupCmdMainFast:
         monkeypatch.delenv("ANALYZER_MODEL", raising=False)
         monkeypatch.chdir(tmp_path)
 
-        from overclaw.commands.setup_cmd import main
+        from overmind.commands.setup_cmd import main
 
         with pytest.raises(SystemExit):
             main(agent_name="test", fast=True)
 
-    @patch("overclaw.commands.setup_cmd.resolve_agent")
-    @patch("overclaw.commands.setup_cmd.load_overclaw_dotenv")
+    @patch("overmind.commands.setup_cmd.resolve_agent")
+    @patch("overmind.commands.setup_cmd.load_overmind_dotenv")
     def test_fast_no_datagen_model(
         self, mock_load_env, mock_resolve, tmp_path, monkeypatch
     ):
-        (tmp_path / OVERCLAW_DIR_NAME).mkdir(parents=True)
+        (tmp_path / OVERMIND_DIR_NAME).mkdir(parents=True)
         agent_file = tmp_path / "agent.py"
         agent_file.write_text("def run(x): return {}\n")
         mock_resolve.return_value = (str(agent_file), "run")
@@ -143,25 +143,25 @@ class TestSetupCmdMainFast:
         monkeypatch.delenv("SYNTHETIC_DATAGEN_MODEL", raising=False)
         monkeypatch.chdir(tmp_path)
 
-        from overclaw.commands.setup_cmd import main
+        from overmind.commands.setup_cmd import main
 
         with pytest.raises(SystemExit):
             main(agent_name="test", fast=True)
 
 
 class TestSetupCmdMainInteractive:
-    @patch("overclaw.commands.setup_cmd._collect_agent_provider_config")
-    @patch("overclaw.commands.setup_cmd.run_questionnaire")
-    @patch("overclaw.commands.setup_cmd.confirm_option")
-    @patch("overclaw.commands.setup_cmd.select_option")
-    @patch("overclaw.commands.setup_cmd._run_data_phase")
-    @patch("overclaw.commands.setup_cmd.generate_policy_from_code")
-    @patch("overclaw.commands.setup_cmd.analyze_agent")
-    @patch("overclaw.commands.setup_cmd.prompt_for_catalog_litellm_model")
-    @patch("overclaw.commands.setup_cmd.resolve_agent")
-    @patch("overclaw.commands.setup_cmd.load_overclaw_dotenv")
+    @patch("overmind.commands.setup_cmd._collect_agent_provider_config")
+    @patch("overmind.commands.setup_cmd.run_questionnaire")
+    @patch("overmind.commands.setup_cmd.confirm_option")
+    @patch("overmind.commands.setup_cmd.select_option")
+    @patch("overmind.commands.setup_cmd._run_data_phase")
+    @patch("overmind.commands.setup_cmd.generate_policy_from_code")
+    @patch("overmind.commands.setup_cmd.analyze_agent")
+    @patch("overmind.commands.setup_cmd.prompt_for_catalog_litellm_model")
+    @patch("overmind.commands.setup_cmd.resolve_agent")
+    @patch("overmind.commands.setup_cmd.load_overmind_dotenv")
     @patch(
-        "overclaw.utils.provider_keys.read_api_key_masked",
+        "overmind.utils.provider_keys.read_api_key_masked",
         return_value="sk-ant-api03-test-placeholder",
     )
     def test_interactive_auto_policy(
@@ -180,7 +180,7 @@ class TestSetupCmdMainInteractive:
         tmp_path,
         monkeypatch,
     ):
-        (tmp_path / OVERCLAW_DIR_NAME).mkdir(parents=True)
+        (tmp_path / OVERMIND_DIR_NAME).mkdir(parents=True)
         agent_dir = tmp_path / "agents" / "test"
         agent_dir.mkdir(parents=True)
         agent_file = agent_dir / "sample.py"
@@ -212,13 +212,13 @@ class TestSetupCmdMainInteractive:
         monkeypatch.delenv("ANALYZER_MODEL", raising=False)
         monkeypatch.chdir(tmp_path)
 
-        from overclaw.commands.setup_cmd import main
+        from overmind.commands.setup_cmd import main
 
         main(agent_name="test", fast=False)
 
         spec_path = (
             tmp_path
-            / OVERCLAW_DIR_NAME
+            / OVERMIND_DIR_NAME
             / "agents"
             / "test"
             / "setup_spec"

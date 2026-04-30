@@ -1,4 +1,4 @@
-"""Tests for overclaw.setup.agent_analyzer — LLM-based code analysis."""
+"""Tests for overmind.setup.agent_analyzer — LLM-based code analysis."""
 
 from __future__ import annotations
 
@@ -8,19 +8,19 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from overclaw.core.constants import OVERCLAW_DIR_NAME
-from overclaw.setup.agent_analyzer import _display_analysis, analyze_agent
+from overmind.core.constants import OVERMIND_DIR_NAME
+from overmind.setup.agent_analyzer import _display_analysis, analyze_agent
 
 
-def _ensure_overclaw_root(base: Path) -> None:
-    """analyze_agent requires a project root containing the OverClaw state dir."""
-    (base / OVERCLAW_DIR_NAME).mkdir(parents=True, exist_ok=True)
+def _ensure_overmind_root(base: Path) -> None:
+    """analyze_agent requires a project root containing the Overmind state dir."""
+    (base / OVERMIND_DIR_NAME).mkdir(parents=True, exist_ok=True)
 
 
 class TestAnalyzeAgent:
-    @patch("overclaw.utils.llm.litellm")
+    @patch("overmind.utils.llm.litellm")
     def test_success(self, mock_litellm, tmp_path):
-        _ensure_overclaw_root(tmp_path)
+        _ensure_overmind_root(tmp_path)
         agent = tmp_path / "agent.py"
         agent.write_text("def run(x):\n    return {'status': 'ok'}\n")
 
@@ -40,9 +40,9 @@ class TestAnalyzeAgent:
         assert result["_agent_path"] == str(agent)
         assert "_agent_code" in result
 
-    @patch("overclaw.utils.llm.litellm")
+    @patch("overmind.utils.llm.litellm")
     def test_parse_failure_exits(self, mock_litellm, tmp_path):
-        _ensure_overclaw_root(tmp_path)
+        _ensure_overmind_root(tmp_path)
         agent = tmp_path / "agent.py"
         agent.write_text("def run(x): pass\n")
 
@@ -55,9 +55,9 @@ class TestAnalyzeAgent:
         with pytest.raises(SystemExit):
             analyze_agent(str(agent), "model", console, entrypoint_fn="run")
 
-    @patch("overclaw.utils.llm.litellm")
+    @patch("overmind.utils.llm.litellm")
     def test_json_embedded_in_text(self, mock_litellm, tmp_path):
-        _ensure_overclaw_root(tmp_path)
+        _ensure_overmind_root(tmp_path)
         agent = tmp_path / "agent.py"
         agent.write_text("def run(x): return {}\n")
 

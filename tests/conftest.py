@@ -1,10 +1,11 @@
-"""Shared fixtures for the OverClaw test suite."""
+"""Shared fixtures for the Overmind test suite."""
 
 from __future__ import annotations
 
 import json
 import textwrap
 from pathlib import Path
+from unittest.mock import Mock
 
 import pytest
 from opentelemetry import trace as _otel_trace
@@ -12,7 +13,7 @@ from opentelemetry.sdk.trace import TracerProvider
 
 import overmind.tracing as _overmind_tracing
 
-from overclaw.core.constants import OVERCLAW_DIR_NAME
+from overmind.core.constants import OVERMIND_DIR_NAME
 
 
 # ---------------------------------------------------------------------------
@@ -24,7 +25,7 @@ from overclaw.core.constants import OVERCLAW_DIR_NAME
 # ``overmind.init()`` is called.  We don't want test runs to actually
 # export anything, so we install a no-op ``TracerProvider`` (no exporter)
 # and flip the SDK's internal ``_initialized`` flag manually.  This lets
-# every traced/observed function in OverClaw run as-is during tests
+# every traced/observed function in Overmind run as-is during tests
 # without a real Overmind API key or HTTP exporter.
 
 _provider = TracerProvider()
@@ -35,12 +36,12 @@ _overmind_tracing._initialized = True
 
 @pytest.fixture()
 def tmp_project(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
-    """Create a minimal project with OverClaw state dir and a sample agent."""
-    overclaw_dir = tmp_path / OVERCLAW_DIR_NAME
-    overclaw_dir.mkdir(parents=True)
-    (overclaw_dir / "agents.toml").write_text(
+    """Create a minimal project with Overmind state dir and a sample agent."""
+    overmind_dir = tmp_path / OVERMIND_DIR_NAME
+    overmind_dir.mkdir(parents=True)
+    (overmind_dir / "agents.toml").write_text(
         textwrap.dedent("""\
-        # OverClaw agent registry
+        # Overmind agent registry
 
         agents = [
             { name = "my-agent", entrypoint = "agents.agent1.sample_agent:run" },
@@ -68,9 +69,9 @@ def tmp_project(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
 
 
 @pytest.fixture()
-def overclaw_tmp_project(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+def overmind_tmp_project(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     """Minimal project + chdir so ``project_root()`` resolves here."""
-    (tmp_path / OVERCLAW_DIR_NAME).mkdir(parents=True)
+    (tmp_path / OVERMIND_DIR_NAME).mkdir(parents=True)
     monkeypatch.chdir(tmp_path)
     return tmp_path
 
@@ -78,7 +79,7 @@ def overclaw_tmp_project(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Pat
 @pytest.fixture()
 def tmp_project_empty(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     """Project with state dir but no ``agents.toml`` (empty registry)."""
-    (tmp_path / OVERCLAW_DIR_NAME).mkdir(parents=True)
+    (tmp_path / OVERMIND_DIR_NAME).mkdir(parents=True)
     monkeypatch.chdir(tmp_path)
     return tmp_path
 
@@ -204,3 +205,12 @@ def sample_dataset(tmp_path: Path) -> str:
     data_path = tmp_path / "dataset.json"
     data_path.write_text(json.dumps(cases, indent=2), encoding="utf-8")
     return str(data_path)
+
+@pytest.fixture
+def mock_response():
+    """Create a mock response object."""
+    response = Mock()
+    response.status_code = 200
+    response.content = b'{"status": "success"}'
+    response.json.return_value = {"status": "success"}
+    return response

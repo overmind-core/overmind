@@ -1,4 +1,4 @@
-"""Tests for overclaw.optimize.execution_backend."""
+"""Tests for overmind.optimize.execution_backend."""
 
 from __future__ import annotations
 
@@ -7,7 +7,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from overclaw.optimize.execution_backend import (
+from overmind.optimize.execution_backend import (
     BackendOutput,
     BackendPlan,
     ShadowBackend,
@@ -15,12 +15,12 @@ from overclaw.optimize.execution_backend import (
     build_default_plan,
     should_try_next,
 )
-from overclaw.optimize.failure_classifier import (
+from overmind.optimize.failure_classifier import (
     FailureDiagnosis,
     FailureMode,
 )
-from overclaw.optimize.provenance import Confidence, SourceTag, TraceSource
-from overclaw.optimize.runner import RunOutput
+from overmind.optimize.provenance import Confidence, SourceTag, TraceSource
+from overmind.optimize.runner import RunOutput
 
 
 def _mk_runner(ok: bool = True, stderr: str = "", err: str = "") -> MagicMock:
@@ -62,7 +62,7 @@ class TestSubprocessBackend:
         would silently drop the caller's cassette every time it started
         empty — blocking record-only mode on the first run.
         """
-        from overclaw.optimize.cassette import Cassette, NullCassette
+        from overmind.optimize.cassette import Cassette, NullCassette
 
         cass_path = tmp_path / "c.jsonl"
         fresh = Cassette(cass_path)
@@ -101,7 +101,7 @@ class TestSubprocessBackend:
 class TestShadowBackend:
     def test_success_reads_empty_sidecar_as_tagless(self, tmp_path: Path):
         runner = _mk_runner(ok=True)
-        from overclaw.optimize.cassette import open_cassette
+        from overmind.optimize.cassette import open_cassette
 
         cass = open_cassette(tmp_path / "c.jsonl")
         backend = ShadowBackend(runner, cassette=cass, provenance_dir=tmp_path)
@@ -116,7 +116,7 @@ class TestShadowBackend:
 
     def test_success_with_provenance(self, tmp_path: Path):
         runner = _mk_runner(ok=True)
-        from overclaw.optimize.cassette import open_cassette
+        from overmind.optimize.cassette import open_cassette
 
         cass = open_cassette(tmp_path / "c.jsonl")
         prov_dir = tmp_path / "prov"
@@ -148,7 +148,7 @@ class TestShadowBackend:
             stderr="playwright not installed",
             err="Browser launch failed",
         )
-        from overclaw.optimize.cassette import open_cassette
+        from overmind.optimize.cassette import open_cassette
 
         cass = open_cassette(tmp_path / "c.jsonl")
         backend = ShadowBackend(runner, cassette=cass, provenance_dir=tmp_path)

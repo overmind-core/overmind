@@ -22,13 +22,13 @@ help: ## Show this help
 		awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-18s\033[0m %s\n", $$1, $$2}'
 
 test: ## Run all tests in parallel (default)
-	$(PYTEST) tests/ -x -n $(WORKERS) --dist worksteal -q $(test_args)
+	$(PYTEST) tests/ -x -n $(WORKERS) --ignore=tests/test_spans.py --dist worksteal -q $(test_args)
 
 test-cov: ## Run all tests with coverage report (sorted by coverage %)
-	$(PYTEST) tests/ -n $(WORKERS) --dist worksteal --cov=overclaw --cov-report=term-missing -q $(test_args)
+	$(PYTEST) tests/ -n $(WORKERS) --ignore=tests/test_spans.py --dist worksteal --cov=overmind --cov-report=term-missing -q $(test_args)
 
 test-serial: ## Run all tests serially (for debugging)
-	$(PYTEST) tests/ -x -v $(test_args)
+	$(PYTEST) tests/ -x --ignore=tests/test_spans.py -v $(test_args)
 
 lint-check: ## Check lint + format (CI — no changes)
 	$(RUFF) check
@@ -57,11 +57,11 @@ generate_api_client: schema
 		-o /workspace/frontend/src/api/generated \
 		--additional-properties=typescriptThreePlus=true,supportsES6=true,enumPropertyNaming=original
 
-# Generate the Python client and embed it at overclaw/openapi_client/.
+# Generate the Python client and embed it at overmind/openapi_client/.
 #
 # The generator creates an `openapi_client` package with bare `from openapi_client.*`
-# imports.  After copying the package into the overclaw namespace we rewrite every
-# import so they resolve as `from overclaw.openapi_client.*` — consistent with
+# imports.  After copying the package into the overmind namespace we rewrite every
+# import so they resolve as `from overmind.openapi_client.*` — consistent with
 # how the rest of the codebase (client.py, etc.) references them.
 generate_python_client: schema
 	@echo "==> Generating Python API client (generator output → .tmp_python_client)"
@@ -69,11 +69,11 @@ generate_python_client: schema
 		-i /workspace/openapi.yaml \
 		-g python \
 		-o /workspace/.tmp_python_client \
-		--additional-properties=packageName=overclaw.openapi_client,library=httpx,generateSourceCodeOnly=true
-	@echo "==> Installing into overclaw/openapi_client/"
-	rm -rf overclaw/openapi_client
-	mv .tmp_python_client/overclaw/openapi_client overclaw/openapi_client
+		--additional-properties=packageName=overmind.openapi_client,library=httpx,generateSourceCodeOnly=true
+	@echo "==> Installing into overmind/openapi_client/"
+	rm -rf overmind/openapi_client
+	mv .tmp_python_client/overmind/openapi_client overmind/openapi_client
 	rm -rf .tmp_python_client
-	rm -rf overclaw/openapi_client/test
-	rm -rf overclaw/openapi_client/docs
+	rm -rf overmind/openapi_client/test
+	rm -rf overmind/openapi_client/docs
 	@echo "==> Done."

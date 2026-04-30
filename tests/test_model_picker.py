@@ -1,15 +1,15 @@
-"""Tests for overclaw.utils.model_picker — interactive model selection."""
+"""Tests for overmind.utils.model_picker — interactive model selection."""
 
 from __future__ import annotations
 
 from unittest.mock import MagicMock, patch
 
 
-from overclaw.utils.model_picker import prompt_for_catalog_litellm_model
+from overmind.utils.model_picker import prompt_for_catalog_litellm_model
 
 
 class TestPromptForCatalogLitellmModel:
-    @patch("overclaw.utils.model_picker.select_option", return_value=0)
+    @patch("overmind.utils.model_picker.select_option", return_value=0)
     def test_picks_model(self, _mock_select):
         console = MagicMock()
         result = prompt_for_catalog_litellm_model(
@@ -17,7 +17,7 @@ class TestPromptForCatalogLitellmModel:
         )
         assert "/" in result
 
-    @patch("overclaw.utils.model_picker.select_option", return_value=0)
+    @patch("overmind.utils.model_picker.select_option", return_value=0)
     def test_with_env_default(self, _mock_select):
         console = MagicMock()
         result = prompt_for_catalog_litellm_model(
@@ -27,8 +27,8 @@ class TestPromptForCatalogLitellmModel:
         )
         assert result
 
-    @patch("overclaw.utils.model_picker.get_litellm_model_ids", return_value=[])
-    @patch("overclaw.utils.model_picker.Prompt")
+    @patch("overmind.utils.model_picker.get_litellm_model_ids", return_value=[])
+    @patch("overmind.utils.model_picker.Prompt")
     def test_empty_catalog_fallback(self, mock_prompt, mock_ids):
         mock_prompt.ask.return_value = "custom/model"
         console = MagicMock()

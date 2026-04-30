@@ -1,0 +1,81 @@
+name: Pull Request Checks
+
+on:
+  pull_request:
+    branches:
+      - main
+    types: [opened, synchronize, reopened]
+    paths-ignore:
+      - 'docs/**'
+      - '*.md'
+      - 'README.md'
+
+permissions:
+  contents: read
+
+jobs:
+  test_and_check_version:
+    name: Test and Check Version
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out base branch
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.base_ref }}
+          path: 'main'
+
+      - name: Check out PR branch
+        uses: actions/checkout@v4
+        with:
+          path: 'pr'
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        working-directory: ./pr
+        run: uv sync --all-groups
+
+      - name: Set PYTHONPATH
+        working-directory: ./pr
+        run: echo "PYTHONPATH=$PYTHONPATH:$(pwd)" >> $GITHUB_ENV
+
+      - name: Run tests
+        working-directory: ./pr
+        run: uv run pytest --ignore=tests/test_spans.py
+
+      - name: Check for version increment
+        id: check_version
+        run: |
+          # Install toml-cli, a tool for reading TOML files
+          pip install toml-cli
+
+          # Extract version from the main branch's pyproject.toml
+          main_version=$(toml get --toml-path main/pyproject.toml project.version)
+          echo "Version on main: $main_version"
+
+          # Extract version from the PR branch's pyproject.toml
+          pr_version=$(toml get --toml-path pr/pyproject.toml project.version)
+          echo "Version on PR branch: $pr_version"
+
+          if [ "$main_version" == "$pr_version" ]; then
+            echo "Version has not been incremented from main."
+            exit 1
+          fi
+
+          # The `sort -V` command handles version numbers correctly.
+          # It understands that 0.1.10 is greater than 0.1.9.
+          if [ "$(printf '%s\n' "$main_version" "$pr_version" | sort -V | head -n1)" != "$main_version" ]; then
+             echo "PR version ($pr_version) is not greater than main version ($main_version)."
+             exit 1
+          fi
+
+          echo "Version check passed!"

@@ -1,8 +1,8 @@
-"""Tests for overclaw.utils.env_scan."""
+"""Tests for overmind.utils.env_scan."""
 
 from __future__ import annotations
 
-from overclaw.utils.env_scan import discover_env_var_defaults
+from overmind.utils.env_scan import discover_env_var_defaults
 
 
 def test_discover_getenv_with_default():

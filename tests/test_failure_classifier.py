@@ -1,8 +1,8 @@
-"""Tests for overclaw.optimize.failure_classifier."""
+"""Tests for overmind.optimize.failure_classifier."""
 
 from __future__ import annotations
 
-from overclaw.optimize.failure_classifier import (
+from overmind.optimize.failure_classifier import (
     FailureMode,
     classify_failure,
     is_recoverable_via_shadow,

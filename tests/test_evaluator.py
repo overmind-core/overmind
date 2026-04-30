@@ -1,4 +1,4 @@
-"""Tests for overclaw.optimize.evaluator — spec-driven scoring."""
+"""Tests for overmind.optimize.evaluator — spec-driven scoring."""
 
 from __future__ import annotations
 
@@ -8,7 +8,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from overclaw.optimize.evaluator import (
+from overmind.optimize.evaluator import (
     SpecEvaluator,
     _JUDGE_FALLBACK_SCORE,
     has_entrypoint,
@@ -864,7 +864,7 @@ class TestIsContradictory:
 
 
 class TestLlmJudge:
-    @patch("overclaw.utils.llm.litellm")
+    @patch("overmind.utils.llm.litellm")
     def test_judge_success(self, mock_litellm, sample_eval_spec):
         ev = SpecEvaluator(sample_eval_spec, llm_judge_model="test-model")
         mock_resp = MagicMock()
@@ -883,7 +883,7 @@ class TestLlmJudge:
         )
         assert 0.0 <= score <= 1.0
 
-    @patch("overclaw.utils.llm.litellm")
+    @patch("overmind.utils.llm.litellm")
     def test_judge_with_policy(self, mock_litellm, sample_eval_spec):
         ev = SpecEvaluator(
             sample_eval_spec,
@@ -905,7 +905,7 @@ class TestLlmJudge:
         score = ev._score_with_llm_judge({"input": "test"}, {}, {})
         assert 0.0 <= score <= 1.0
 
-    @patch("overclaw.utils.llm.litellm")
+    @patch("overmind.utils.llm.litellm")
     def test_judge_retries_on_parse_failure(self, mock_litellm, sample_eval_spec):
         ev = SpecEvaluator(sample_eval_spec, llm_judge_model="model")
         fail_resp = MagicMock()
@@ -927,7 +927,7 @@ class TestLlmJudge:
         assert score != _JUDGE_FALLBACK_SCORE
         assert 0.0 <= score <= 1.0
 
-    @patch("overclaw.utils.llm.litellm")
+    @patch("overmind.utils.llm.litellm")
     def test_judge_parse_failure_returns_fallback(self, mock_litellm, sample_eval_spec):
         ev = SpecEvaluator(sample_eval_spec, llm_judge_model="model")
         mock_resp = MagicMock()
@@ -938,7 +938,7 @@ class TestLlmJudge:
         score = ev._score_with_llm_judge({}, {}, {})
         assert score == _JUDGE_FALLBACK_SCORE
 
-    @patch("overclaw.utils.llm.litellm")
+    @patch("overmind.utils.llm.litellm")
     def test_judge_exception_retries_then_fallback(
         self, mock_litellm, sample_eval_spec
     ):
@@ -957,7 +957,7 @@ class TestLlmJudge:
 
 class TestSpecGenerator:
     def test_auto_judge_weight_with_text_fields(self):
-        from overclaw.setup.spec_generator import generate_spec_from_proposal
+        from overmind.setup.spec_generator import generate_spec_from_proposal
 
         analysis = {
             "output_schema": {
@@ -977,7 +977,7 @@ class TestSpecGenerator:
         assert spec["total_points"] == 100
 
     def test_auto_judge_weight_with_policy(self):
-        from overclaw.setup.spec_generator import generate_spec_from_proposal
+        from overmind.setup.spec_generator import generate_spec_from_proposal
 
         analysis = {
             "output_schema": {
@@ -994,7 +994,7 @@ class TestSpecGenerator:
         assert spec.get("llm_judge_weight", 0) == 10
 
     def test_no_judge_weight_without_text_or_policy(self):
-        from overclaw.setup.spec_generator import generate_spec_from_proposal
+        from overmind.setup.spec_generator import generate_spec_from_proposal
 
         analysis = {
             "output_schema": {
@@ -1011,7 +1011,7 @@ class TestSpecGenerator:
         assert spec.get("llm_judge_weight", 0) == 0
 
     def test_text_default_eval_mode_similarity(self):
-        from overclaw.setup.spec_generator import generate_spec_from_proposal
+        from overmind.setup.spec_generator import generate_spec_from_proposal
 
         analysis = {
             "output_schema": {
@@ -1028,7 +1028,7 @@ class TestSpecGenerator:
         assert spec["output_fields"]["reason"]["eval_mode"] == "similarity"
 
     def test_auto_consistency_rules_generated(self):
-        from overclaw.setup.spec_generator import generate_spec_from_proposal
+        from overmind.setup.spec_generator import generate_spec_from_proposal
 
         analysis = {
             "output_schema": {
@@ -1049,7 +1049,7 @@ class TestSpecGenerator:
         assert any(r["type"] == "correlation" for r in rules)
 
     def test_ordering_rules_for_min_max(self):
-        from overclaw.setup.spec_generator import generate_spec_from_proposal
+        from overmind.setup.spec_generator import generate_spec_from_proposal
 
         analysis = {
             "output_schema": {

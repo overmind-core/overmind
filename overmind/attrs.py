@@ -1,0 +1,294 @@
+"""Span attribute / tag keys used across Overmind.
+
+Every tag attached to an Overmind trace span (via ``overmind.set_tag`` or
+``start_span(..., attributes=...)``) is defined here so the schema of
+attributes we emit is auditable from a single file.  Add new tags here
+first, then import the constant at the call site — never inline a raw
+``"overmind.*"`` / ``"llm.*"`` / ``"tool.*"`` string elsewhere.
+
+Constants are grouped by the subsystem that emits them so it's easy to
+see which area of the codebase produces which tags.
+"""
+
+from __future__ import annotations
+
+# ---------------------------------------------------------------------------
+# Top-level command tag (set on every CLI entry-point span).
+# ---------------------------------------------------------------------------
+COMMAND = "overmind.command"
+
+# ---------------------------------------------------------------------------
+# Top-level resource / context tags (link spans to server-side entities).
+# ---------------------------------------------------------------------------
+AGENT_ID = "overmind.agent_id"
+PROJECT_ID = "overmind.project_id"
+JOB_ID = "overmind.job_id"
+ITERATION_ID = "overmind.iteration_id"
+
+# ---------------------------------------------------------------------------
+# Agent registry / `overmind agent ...` commands
+# (overmind/commands/agent_cmd.py)
+# ---------------------------------------------------------------------------
+AGENT_NAME = "overmind.agent.name"
+AGENT_ENTRYPOINT = "overmind.agent.entrypoint"
+AGENT_NEW_ENTRYPOINT = "overmind.agent.new_entrypoint"
+AGENT_OLD_ENTRYPOINT = "overmind.agent.old_entrypoint"
+AGENT_FILE_PATH = "overmind.agent.file_path"
+AGENT_FUNCTION_NAME = "overmind.agent.function_name"
+AGENT_REGISTERED_COUNT = "overmind.agent.registered_count"
+AGENT_REMOVED = "overmind.agent.removed"
+AGENT_FILE_EXISTS = "overmind.agent.file_exists"
+AGENT_SETUP_SPEC_READY = "overmind.agent.setup_spec_ready"
+AGENT_EXPERIMENT_FILE_COUNT = "overmind.agent.experiment_file_count"
+
+# ---------------------------------------------------------------------------
+# `overmind init` (overmind/commands/init_cmd.py)
+# ---------------------------------------------------------------------------
+INIT_ENV_PATH = "overmind.init.env_path"
+INIT_HAS_OPENAI_KEY = "overmind.init.has_openai_key"
+INIT_HAS_ANTHROPIC_KEY = "overmind.init.has_anthropic_key"
+INIT_HAS_OVERMIND_TOKEN = "overmind.init.has_overmind_token"
+INIT_ANALYZER_MODEL = "overmind.init.analyzer_model"
+INIT_HAS_SYNTHETIC_DATAGEN_MODEL = "overmind.init.has_synthetic_datagen_model"
+
+# ---------------------------------------------------------------------------
+# `overmind doctor` (overmind/commands/doctor_cmd.py)
+# ---------------------------------------------------------------------------
+DOCTOR_AGENT_NAME = "overmind.doctor.agent_name"
+DOCTOR_BUNDLE_BUILT = "overmind.doctor.bundle_built"
+DOCTOR_BUNDLE_FILES = "overmind.doctor.bundle_files"
+DOCTOR_BUNDLE_RAW_CHARS = "overmind.doctor.bundle_raw_chars"
+DOCTOR_BUNDLE_PROMPT_CHARS = "overmind.doctor.bundle_prompt_chars"
+DOCTOR_HAS_EVAL_SPEC = "overmind.doctor.has_eval_spec"
+DOCTOR_HAS_INSTRUMENTED_COPY = "overmind.doctor.has_instrumented_copy"
+
+# ---------------------------------------------------------------------------
+# `overmind setup` (overmind/commands/setup_cmd.py +
+# overmind/setup/{questionnaire,policy_generator}.py)
+# ---------------------------------------------------------------------------
+SETUP_AGENT_NAME = "overmind.setup.agent_name"
+SETUP_FAST = "overmind.setup.fast"
+SETUP_MODEL = "overmind.setup.model"
+SETUP_HAS_POLICY = "overmind.setup.has_policy"
+SETUP_HAS_SEED_DATA = "overmind.setup.has_seed_data"
+SETUP_POLICY_PATH = "overmind.setup.policy_path"
+SETUP_DATA_PATH = "overmind.setup.data_path"
+SETUP_STORAGE_BACKEND = "overmind.setup.storage_backend"
+SETUP_AGENT_PATH = "overmind.setup.agent_path"
+SETUP_ENTRYPOINT_FN = "overmind.setup.entrypoint_fn"
+SETUP_ANALYZER_MODEL = "overmind.setup.analyzer_model"
+SETUP_PHASE = "overmind.setup.phase"
+SETUP_EVAL_SPEC_FIELD_COUNT = "overmind.setup.eval_spec_field_count"
+SETUP_EVAL_SPEC_HAS_TOOLS = "overmind.setup.eval_spec_has_tools"
+SETUP_EVAL_SPEC_HAS_JUDGE = "overmind.setup.eval_spec_has_judge"
+SETUP_EVAL_SPEC_HAS_POLICY = "overmind.setup.eval_spec_has_policy"
+SETUP_EVAL_SPEC_STRUCTURE_WEIGHT = "overmind.setup.eval_spec_structure_weight"
+SETUP_EVAL_SPEC_TOOL_COUNT = "overmind.setup.eval_spec_tool_count"
+SETUP_EVAL_SPEC_CONSISTENCY_RULE_COUNT = (
+    "overmind.setup.eval_spec_consistency_rule_count"
+)
+SETUP_DATASET_SOURCE = "overmind.setup.dataset_source"
+SETUP_DATASET_ID = "overmind.setup.dataset_id"
+SETUP_CRITERIA_SOURCE = "overmind.setup.criteria_source"
+SETUP_POLICY_SOURCE = "overmind.setup.policy_source"
+SETUP_AGENT_POLICY_MARKDOWN = "overmind.agent_policy_markdown"
+SETUP_AGENT_POLICY_DATA = "overmind.agent_policy_data"
+# Alternate policy keys emitted under the setup namespace (older flows use
+# the agent_policy_* keys above; newer flows prefer these).
+SETUP_POLICY_MARKDOWN = "overmind.setup.policy_markdown"
+SETUP_POLICY_DATA = "overmind.setup.policy_data"
+# Agent description and full eval spec snapshot (text / JSON string).
+SETUP_AGENT_DESCRIPTION = "overmind.setup.agent_description"
+SETUP_EVAL_SPEC = "overmind.setup.eval_spec"
+# Post-analysis artefacts from the setup pipeline.
+SETUP_PROPOSED_CRITERIA = "overmind.setup.proposed_criteria"
+SETUP_REFINED_CRITERIA = "overmind.setup.refined_criteria"
+SETUP_TOOL_ANALYSIS = "overmind.setup.tool_analysis"
+SETUP_OUTPUT_SCHEMA = "overmind.setup.output_schema"
+
+# ---------------------------------------------------------------------------
+# `overmind optimize` (overmind/commands/optimize_cmd.py)
+# ---------------------------------------------------------------------------
+OPTIMIZE_AGENT_NAME = "overmind.optimize.agent_name"
+OPTIMIZE_AGENT_PATH = "overmind.optimize.agent_path"
+OPTIMIZE_FAST = "overmind.optimize.fast"
+OPTIMIZE_ENTRYPOINT_FN = "overmind.optimize.entrypoint_fn"
+OPTIMIZE_STORAGE_BACKEND = "overmind.optimize.storage_backend"
+OPTIMIZE_ANALYZER_MODEL = "overmind.optimize.analyzer_model"
+OPTIMIZE_LLM_JUDGE_MODEL = "overmind.optimize.llm_judge_model"
+OPTIMIZE_ITERATIONS = "overmind.optimize.iterations"
+OPTIMIZE_CANDIDATES_PER_ITERATION = "overmind.optimize.candidates_per_iteration"
+OPTIMIZE_PARALLEL = "overmind.optimize.parallel"
+OPTIMIZE_MAX_WORKERS = "overmind.optimize.max_workers"
+OPTIMIZE_RUNS_PER_EVAL = "overmind.optimize.runs_per_eval"
+OPTIMIZE_REGRESSION_THRESHOLD = "overmind.optimize.regression_threshold"
+OPTIMIZE_HOLDOUT_RATIO = "overmind.optimize.holdout_ratio"
+OPTIMIZE_HOLDOUT_ENFORCEMENT = "overmind.optimize.holdout_enforcement"
+OPTIMIZE_EARLY_STOPPING_PATIENCE = "overmind.optimize.early_stopping_patience"
+OPTIMIZE_CROSS_RUN_PERSISTENCE = "overmind.optimize.cross_run_persistence"
+OPTIMIZE_FAILURE_CLUSTERING = "overmind.optimize.failure_clustering"
+OPTIMIZE_ADAPTIVE_FOCUS = "overmind.optimize.adaptive_focus"
+OPTIMIZE_MODEL_BACKTESTING = "overmind.optimize.model_backtesting"
+OPTIMIZE_BACKTEST_MODELS = "overmind.optimize.backtest_models"
+OPTIMIZE_EVAL_SPEC_PATH = "overmind.optimize.eval_spec_path"
+OPTIMIZE_DATA_PATH = "overmind.optimize.data_path"
+# Full eval_spec.json (JSON string) for OTLP ingest to refresh Agent eval fields during optimize.
+OPTIMIZE_EVAL_SPEC = "overmind.optimize.eval_spec"
+
+# Optimizer pipeline (overmind/optimize/optimizer.py) — runtime tags emitted
+# from the optimizer's spans during a run.
+OPTIMIZE_PHASE = "overmind.optimize.phase"
+OPTIMIZE_DATASET_TOTAL = "overmind.optimize.dataset_total"
+OPTIMIZE_DATASET_TRAIN = "overmind.optimize.dataset_train"
+OPTIMIZE_DATASET_HOLDOUT = "overmind.optimize.dataset_holdout"
+OPTIMIZE_BASELINE_SCORE = "overmind.optimize.baseline_score"
+OPTIMIZE_RUN_NAME = "overmind.optimize.run_name"
+OPTIMIZE_ITERATION = "overmind.optimize.iteration"
+OPTIMIZE_TOTAL_ITERATIONS = "overmind.optimize.total_iterations"
+OPTIMIZE_BEST_SCORE_BEFORE = "overmind.optimize.best_score_before"
+OPTIMIZE_BEST_SCORE_AFTER = "overmind.optimize.best_score_after"
+OPTIMIZE_STALL_COUNT = "overmind.optimize.stall_count"
+OPTIMIZE_TEMPERATURE = "overmind.optimize.temperature"
+OPTIMIZE_N_CANDIDATES_GENERATED = "overmind.optimize.n_candidates_generated"
+OPTIMIZE_N_CANDIDATES_VALID = "overmind.optimize.n_candidates_valid"
+OPTIMIZE_CANDIDATE_INDEX = "overmind.optimize.candidate_index"
+OPTIMIZE_CANDIDATE_METHOD = "overmind.optimize.candidate_method"
+OPTIMIZE_CANDIDATE_SCORE = "overmind.optimize.candidate_score"
+OPTIMIZE_CANDIDATE_ADJUSTED_SCORE = "overmind.optimize.candidate_adjusted_score"
+OPTIMIZE_COMPLEXITY_PENALTY = "overmind.optimize.complexity_penalty"
+OPTIMIZE_DATA_LEAKAGE_COUNT = "overmind.optimize.data_leakage_count"
+OPTIMIZE_REGRESSION_FAILURES = "overmind.optimize.regression_failures"
+OPTIMIZE_ITERATION_DECISION = "overmind.optimize.iteration_decision"
+OPTIMIZE_ITERATION_SCORE = "overmind.optimize.iteration_score"
+OPTIMIZE_ITERATION_IMPROVEMENT = "overmind.optimize.iteration_improvement"
+OPTIMIZE_ITERATION_REASON = "overmind.optimize.iteration_reason"
+OPTIMIZE_ACCEPTED = "overmind.optimize.accepted"
+OPTIMIZE_FINAL_BEST_SCORE = "overmind.optimize.final_best_score"
+OPTIMIZE_HOLDOUT_SCORE = "overmind.optimize.holdout_score"
+OPTIMIZE_HOLDOUT_BASELINE_SCORE = "overmind.optimize.holdout_baseline_score"
+OPTIMIZE_HOLDOUT_IMPROVEMENT = "overmind.optimize.holdout_improvement"
+OPTIMIZE_BLENDED_IMPROVEMENT = "overmind.optimize.blended_improvement"
+OPTIMIZE_HOLDOUT_REVERTED = "overmind.optimize.holdout_reverted"
+OPTIMIZE_BACKTEST_MODEL = "overmind.optimize.backtest_model"
+OPTIMIZE_BACKTEST_SCORE = "overmind.optimize.backtest_score"
+
+# ---------------------------------------------------------------------------
+# Evaluator (overmind/optimize/evaluator.py)
+# ---------------------------------------------------------------------------
+EVAL_BATCH_SIZE = "overmind.eval.batch_size"
+EVAL_AVG_TOTAL = "overmind.eval.avg_total"
+EVAL_USED_LLM_JUDGE = "overmind.eval.used_llm_judge"
+
+# ---------------------------------------------------------------------------
+# Cross-run optimization state (overmind/optimize/run_state.py)
+# ---------------------------------------------------------------------------
+RUN_STATE_TOTAL_RUNS = "overmind.run_state.total_runs"
+RUN_STATE_REGRESSION_CASES = "overmind.run_state.regression_cases"
+RUN_STATE_FAILURE_CLUSTERS = "overmind.run_state.failure_clusters"
+RUN_STATE_LATEST_BASELINE = "overmind.run_state.latest_baseline"
+RUN_STATE_LATEST_FINAL = "overmind.run_state.latest_final"
+RUN_STATE_LATEST_ACCEPTED = "overmind.run_state.latest_accepted"
+RUN_STATE_LATEST_REJECTED = "overmind.run_state.latest_rejected"
+
+# ---------------------------------------------------------------------------
+# Candidate generation (overmind/optimize/analyzer.py)
+# ---------------------------------------------------------------------------
+CANDIDATES_REQUESTED = "overmind.candidates.requested"
+CANDIDATES_PRODUCED = "overmind.candidates.produced"
+CANDIDATES_METHODS = "overmind.candidates.methods"
+CANDIDATES_HAS_DIAGNOSIS = "overmind.candidates.has_diagnosis"
+CANDIDATES_USE_BUNDLE = "overmind.candidates.use_bundle"
+CANDIDATES_HAS_ROOT_CAUSE = "overmind.candidates.has_root_cause"
+CANDIDATES_FALLBACK = "overmind.candidates.fallback"
+
+# ---------------------------------------------------------------------------
+# Synthetic data generation (overmind/optimize/data.py)
+# ---------------------------------------------------------------------------
+DATAGEN_MODE = "overmind.datagen.mode"
+DATAGEN_MODEL = "overmind.datagen.model"
+DATAGEN_REQUESTED_SAMPLES = "overmind.datagen.requested_samples"
+DATAGEN_GENERATED_COUNT = "overmind.datagen.generated_count"
+DATAGEN_PERSONA_COUNT = "overmind.datagen.persona_count"
+DATAGEN_PERSONA_SOURCE = "overmind.datagen.persona_source"
+DATAGEN_PERSONA_IDX = "overmind.datagen.persona_idx"
+DATAGEN_PERSONA_NAME = "overmind.datagen.persona_name"
+DATAGEN_PERSONA_INTENT = "overmind.datagen.persona_intent"
+DATAGEN_PERSONA_SHARDS = "overmind.datagen.persona_shards"
+DATAGEN_RETRY_ATTEMPT = "overmind.datagen.retry_attempt"
+DATAGEN_RETRY_MAX_ATTEMPTS = "overmind.datagen.retry_max_attempts"
+DATAGEN_ANTI_EXAMPLES = "overmind.datagen.anti_examples"
+DATAGEN_ROUND = "overmind.datagen.round"
+DATAGEN_ROUNDS = "overmind.datagen.rounds"
+DATAGEN_TARGET = "overmind.datagen.target"
+DATAGEN_HAVE_BEFORE = "overmind.datagen.have_before"
+DATAGEN_ELAPSED_SECONDS = "overmind.datagen.elapsed_seconds"
+DATAGEN_EXISTING_CASES = "overmind.datagen.existing_cases"
+DATAGEN_COVERAGE_GAP_COUNT = "overmind.datagen.coverage_gap_count"
+
+# ---------------------------------------------------------------------------
+# Seed data validation / coverage (overmind/optimize/data_analyzer.py)
+# ---------------------------------------------------------------------------
+SEED_VALIDATION_TOTAL_CASES = "overmind.seed_validation.total_cases"
+SEED_VALIDATION_VALID_COUNT = "overmind.seed_validation.valid_count"
+SEED_VALIDATION_INVALID_COUNT = "overmind.seed_validation.invalid_count"
+SEED_COVERAGE_QUALITY_SCORE = "overmind.seed_coverage.quality_score"
+SEED_COVERAGE_CASE_COUNT = "overmind.seed_coverage.case_count"
+SEED_COVERAGE_GAP_COUNT = "overmind.seed_coverage.gap_count"
+SEED_COVERAGE_UNCOVERED_RULE_COUNT = "overmind.seed_coverage.uncovered_rule_count"
+SEED_COVERAGE_SUGGESTED_ADDITIONAL_CASES = (
+    "overmind.seed_coverage.suggested_additional_cases"
+)
+
+# ---------------------------------------------------------------------------
+# Coding agent (overmind/coding_agent/{__init__,agent}.py)
+# ---------------------------------------------------------------------------
+CODING_AGENT_MODEL = "overmind.coding_agent.model"
+CODING_AGENT_INPUT_FILE_COUNT = "overmind.coding_agent.input_file_count"
+CODING_AGENT_MODIFIED_FILE_COUNT = "overmind.coding_agent.modified_file_count"
+CODING_AGENT_STEPS_TAKEN = "overmind.coding_agent.steps_taken"
+CODING_AGENT_MAX_STEPS = "overmind.coding_agent.max_steps"
+CODING_AGENT_TOKENS_IN = "overmind.coding_agent.tokens_in"
+CODING_AGENT_TOKENS_OUT = "overmind.coding_agent.tokens_out"
+CODING_AGENT_LOOP_STEPS = "overmind.coding_agent.loop_steps"
+CODING_AGENT_EXIT_REASON = "overmind.coding_agent.exit_reason"
+
+# ---------------------------------------------------------------------------
+# LLM call metadata (overmind/core/tracer.py + overmind/utils/llm.py)
+# ---------------------------------------------------------------------------
+LLM_MODEL = "genai.model"
+LLM_PROVIDER = "genai.provider"
+LLM_MESSAGES_COUNT = "genai.messages_count"
+LLM_TOOLS_PROVIDED = "genai.tools_provided"
+LLM_TOOL_CALLS = "genai.tool_calls"
+LLM_PROMPT_TOKENS = "genai.prompt_tokens"
+LLM_COMPLETION_TOKENS = "genai.completion_tokens"
+LLM_TOTAL_TOKENS = "genai.total_tokens"
+LLM_COST = "genai.cost"
+LLM_ERROR = "genai.error"
+LLM_ELAPSED_SECONDS = "genai.elapsed_seconds"
+LLM_REQUEST_MESSAGE_COUNT = "genai.request.message_count"
+LLM_REQUEST_MESSAGE_CHARS = "genai.request.message_chars"
+LLM_REQUEST_TOOL_COUNT = "genai.request.tool_count"
+LLM_REQUEST_KWARGS = "genai.request.kwargs"
+LLM_USAGE_PROMPT_TOKENS = "genai.usage.prompt_tokens"
+LLM_USAGE_COMPLETION_TOKENS = "genai.usage.completion_tokens"
+LLM_USAGE_TOTAL_TOKENS = "genai.usage.total_tokens"
+
+# ---------------------------------------------------------------------------
+# Tool call metadata (overmind/core/tracer.py)
+# ---------------------------------------------------------------------------
+TOOL_NAME = "tool.name"
+TOOL_ARG_KEYS = "tool.arg_keys"
+TOOL_ERROR = "tool.error"
+
+# ---------------------------------------------------------------------------
+# Span-level input / output / scoring / classification
+# (set via overmind.set_tag or the @observe decorator on any span)
+# ---------------------------------------------------------------------------
+INPUT_DATA = "overmind.input_data"
+OUTPUT_DATA = "overmind.output_data"
+SCORE = "overmind.score"
+ERROR = "overmind.error"
+# Explicit span-type override — set to SpanType values when the heuristic
+# classification would be wrong (e.g. "entry_point", "tool", "workflow").
+SPAN_TYPE = "overmind.span_type"

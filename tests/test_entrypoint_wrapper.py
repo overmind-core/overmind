@@ -1,4 +1,4 @@
-"""Tests for overclaw.entrypoint_wrapper — wrapper injection helpers.
+"""Tests for overmind.entrypoint_wrapper — wrapper injection helpers.
 
 Focus on :func:`_prepend_sys_path_bootstrap`: it must preserve ``from
 __future__`` imports at the top of the file, survive re-runs, and keep
@@ -11,7 +11,7 @@ from pathlib import Path
 
 import pytest
 
-from overclaw.entrypoint_wrapper import _prepend_sys_path_bootstrap
+from overmind.entrypoint_wrapper import _prepend_sys_path_bootstrap
 
 
 @pytest.fixture()
@@ -78,7 +78,7 @@ class TestPrependSysPathBootstrap:
         out = wp.read_text(encoding="utf-8")
         # The docstring block must appear before our bootstrap marker.
         assert out.find('"""Wrapper docstring.') < out.find(
-            "OVERCLAW_SYS_PATH_BOOTSTRAP"
+            "OVERMIND_SYS_PATH_BOOTSTRAP"
         )
         compile(out, str(wp), "exec")
 
@@ -110,7 +110,7 @@ class TestPrependSysPathBootstrap:
         second = wp.read_text(encoding="utf-8")
         # Must not double-inject.
         assert first == second
-        assert second.count("OVERCLAW_SYS_PATH_BOOTSTRAP") == 2  # begin + end marker
+        assert second.count("OVERMIND_SYS_PATH_BOOTSTRAP") == 2  # begin + end marker
 
     def test_no_future_import_path(self, tmp_path: Path, agent_relpath: Path):
         wp = tmp_path / "wrapper.py"
@@ -122,5 +122,5 @@ class TestPrependSysPathBootstrap:
         out = wp.read_text(encoding="utf-8")
         # Bootstrap block lands ahead of the first real code statement.
         lines = out.splitlines()
-        assert lines[0].startswith("# --- OVERCLAW_SYS_PATH_BOOTSTRAP")
+        assert lines[0].startswith("# --- OVERMIND_SYS_PATH_BOOTSTRAP")
         compile(out, str(wp), "exec")

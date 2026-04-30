@@ -2,7 +2,7 @@
 
 Classifies an inbound sales lead using company enrichment.
 
-Deliberate sub-optimalities OverClaw should be able to improve:
+Deliberate sub-optimalities Overmind should be able to improve:
 - System prompt has no calibration bands for hot/warm/cold
 - Tool descriptions are vague
 - Uses an expensive model for a small classification task

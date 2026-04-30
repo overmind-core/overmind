@@ -5,7 +5,7 @@ behaviour, and red flags from a contract — entirely from long-context LLM
 inference (no tools).
 
 **Stack:** OpenAI SDK (chat completions). Intentionally single-file — this is
-the "OverClaw helps even when you have no tools" demo.
+the "Overmind helps even when you have no tools" demo.
 
 ## Seeded sub-optimalities
 
@@ -17,11 +17,11 @@ the "OverClaw helps even when you have no tools" demo.
 
 ## Register and run
 
-un `overclaw init` once if needed, then register with **`agent:run`** (entry file `agent.py`).
+un `overmind init` once if needed, then register with **`agent:run`** (entry file `agent.py`).
 
 ```bash
-overclaw agent register contract-extractor agent:run
-overclaw agent validate contract-extractor --data data/seed.json
-overclaw setup contract-extractor
-overclaw optimize contract-extractor
+overmind agent register contract-extractor agent:run
+overmind agent validate contract-extractor --data data/seed.json
+overmind setup contract-extractor
+overmind optimize contract-extractor
 ```

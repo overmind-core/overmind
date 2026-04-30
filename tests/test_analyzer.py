@@ -1,9 +1,9 @@
-"""Tests for overclaw.optimize.analyzer — code analysis and generation helpers."""
+"""Tests for overmind.optimize.analyzer — code analysis and generation helpers."""
 
 from __future__ import annotations
 
 
-from overclaw.optimize.analyzer import (
+from overmind.optimize.analyzer import (
     _build_fingerprints,
     _detect_agent_model,
     _extract_code_and_analysis,

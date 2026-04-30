@@ -1,4 +1,4 @@
-"""Tests for overclaw.optimize.optimizer — the core optimization loop."""
+"""Tests for overmind.optimize.optimizer — the core optimization loop."""
 
 from __future__ import annotations
 
@@ -9,14 +9,14 @@ from unittest.mock import patch
 
 import pytest
 
-from overclaw.core.constants import OVERCLAW_DIR_NAME
-from overclaw.optimize.config import Config
-from overclaw.optimize.optimizer import Optimizer
+from overmind.core.constants import OVERMIND_DIR_NAME
+from overmind.optimize.config import Config
+from overmind.optimize.optimizer import Optimizer
 
 
 @pytest.fixture(autouse=True)
 def _optimizer_project_root(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    (tmp_path / OVERCLAW_DIR_NAME).mkdir(parents=True)
+    (tmp_path / OVERMIND_DIR_NAME).mkdir(parents=True)
     monkeypatch.chdir(tmp_path)
 
 
@@ -419,7 +419,7 @@ class TestAnimateCodeUpdate:
         opt = Optimizer(cfg)
         opt._animate_code_update("same", "same")
 
-    @patch("overclaw.optimize.optimizer.time.sleep")
+    @patch("overmind.optimize.optimizer.time.sleep")
     def test_with_changes(self, mock_sleep, tmp_path):
         cfg = _make_config(tmp_path)
         opt = Optimizer(cfg)
@@ -482,7 +482,7 @@ class TestGenerateReport:
         report = opt.output_dir / "report.md"
         assert report.exists()
         content = report.read_text()
-        assert "OverClaw" in content
+        assert "Overmind" in content
 
     def test_report_with_backtest(self, tmp_path):
         cfg = _make_config(tmp_path)
@@ -505,7 +505,7 @@ class TestGenerateReport:
 
 
 class TestRunBacktesting:
-    @patch("overclaw.optimize.optimizer.Optimizer._run_agent_on_dataset")
+    @patch("overmind.optimize.optimizer.Optimizer._run_agent_on_dataset")
     def test_backtesting(self, mock_run, tmp_path):
         cfg = _make_config(tmp_path)
         cfg.model_backtesting = True

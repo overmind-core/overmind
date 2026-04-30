@@ -6,9 +6,9 @@ import pytest
 
 
 class TestSyncCmd:
-    @patch("overclaw.commands.sync_cmd.load_overclaw_dotenv")
-    @patch("overclaw.commands.sync_cmd.get_client")
-    @patch("overclaw.commands.sync_cmd.get_project_id")
+    @patch("overmind.commands.sync_cmd.load_overmind_dotenv")
+    @patch("overmind.commands.sync_cmd.get_client")
+    @patch("overmind.commands.sync_cmd.get_project_id")
     def test_exits_when_api_not_configured(
         self,
         mock_project_id,
@@ -17,17 +17,17 @@ class TestSyncCmd:
     ):
         mock_client.return_value = None
         mock_project_id.return_value = None
-        from overclaw.commands.sync_cmd import main
+        from overmind.commands.sync_cmd import main
 
         with pytest.raises(SystemExit) as exc:
             main()
         assert exc.value.code == 1
 
-    @patch("overclaw.commands.sync_cmd.load_overclaw_dotenv")
-    @patch("overclaw.commands.sync_cmd.get_client")
-    @patch("overclaw.commands.sync_cmd.get_project_id")
-    @patch("overclaw.commands.sync_cmd.load_registry")
-    @patch("overclaw.commands.sync_cmd._sync_setup_artifacts")
+    @patch("overmind.commands.sync_cmd.load_overmind_dotenv")
+    @patch("overmind.commands.sync_cmd.get_client")
+    @patch("overmind.commands.sync_cmd.get_project_id")
+    @patch("overmind.commands.sync_cmd.load_registry")
+    @patch("overmind.commands.sync_cmd._sync_setup_artifacts")
     def test_syncs_registered_agent_with_existing_file(
         self,
         mock_sync,
@@ -51,10 +51,10 @@ class TestSyncCmd:
                 "fn_name": "run",
             }
         }
-        (tmp_path / ".overclaw").mkdir()
+        (tmp_path / ".overmind").mkdir()
         monkeypatch.chdir(tmp_path)
 
-        from overclaw.commands.sync_cmd import main
+        from overmind.commands.sync_cmd import main
 
         main()
         mock_sync.assert_called_once()

@@ -1,6 +1,6 @@
-# OverClaw Example Agents
+# Overmind Example Agents
 
-A curated set of **deliberately sub-optimal** agents across different industries, agent patterns, and tool mixes. Each one is intended as a showcase for running`overclaw setup` + `overclaw optimize` and watching scores improve.
+A curated set of **deliberately sub-optimal** agents across different industries, agent patterns, and tool mixes. Each one is intended as a showcase for running`overmind setup` + `overmind optimize` and watching scores improve.
 
 Every agent exposes a single entrypoint:
 
@@ -11,7 +11,7 @@ def run(input_data: dict) -> dict: ...
 so you can register it with:
 
 ```bash
-overclaw agent register agent:run
+overmind agent register agent:run
 ```
 
 ## The portfolio
@@ -24,7 +24,7 @@ overclaw agent register agent:run
 
 ## Optimization runs (example results)
 
-Scores are from a representative `overclaw optimize` run (train-side summary in each agent’s `report.md`). **Final score** is the reported best average (same as the **Best** column in `report.md`).
+Scores are from a representative `overmind optimize` run (train-side summary in each agent’s `report.md`). **Final score** is the reported best average (same as the **Best** column in `report.md`).
 
 | Example            | Baseline | Final score | Improvement |
 | ------------------ | -------- | ----------- | ----------- |
@@ -34,10 +34,10 @@ Scores are from a representative `overclaw optimize` run (train-side summary in 
 
 **Contract extractor** is different: register and run it only from inside
 [`contract_extractor/`](./contract_extractor) (see that README). The other
-examples assume `.overclaw` at the **repository root** and entrypoints like
+examples assume `.overmind` at the **repository root** and entrypoints like
 `examples.<folder>.agent:run`.
 
-## What OverClaw is expected to improve on each
+## What Overmind is expected to improve on each
 
 |          | Prompt | Tool descs | Model choice  | Tool ordering | Iter cap | Schema | Policy |
 | -------- | ------ | ---------- | ------------- | ------------- | -------- | ------ | ------ |
@@ -49,18 +49,18 @@ examples assume `.overclaw` at the **repository root** and entrypoints like
 
 ```bash
 cd examples/lead_qualifier
-overclaw agent register lead-qualifier agent:run
-overclaw agent validate lead-qualifier --data data/seed.json
-overclaw setup lead-qualifier --data data/seed.json
-overclaw optimize lead-qualifier
+overmind agent register lead-qualifier agent:run
+overmind agent validate lead-qualifier --data data/seed.json
+overmind setup lead-qualifier --data data/seed.json
+overmind optimize lead-qualifier
 ```
 
-Run **validate** before **setup** so you can smoke-test the entrypoint on seed data. Paths are relative to the repo root; if you work inside an example folder instead, adjust accordingly (e.g. from `examples/support_triage/` with the agent registered as `tria`: `overclaw agent validate tria --data data/seed.json`).
+Run **validate** before **setup** so you can smoke-test the entrypoint on seed data. Paths are relative to the repo root; if you work inside an example folder instead, adjust accordingly (e.g. from `examples/support_triage/` with the agent registered as `tria`: `overmind agent validate tria --data data/seed.json`).
 
 (Agent **names** can be anything — they're just registry keys. The folder name must be a valid Python identifier, so we use `lead_qualifier` on disk and `lead-qualifier` as the pretty registry name.)
 
 ## Design notes
 
-- No `policies.md` ships with these examples — `overclaw setup` will infer one from the agent code, or you can drop in your own via `--policy`.
+- No `policies.md` ships with these examples — `overmind setup` will infer one from the agent code, or you can drop in your own via `--policy`.
 - Baselines are intentionally leaky (vague prompts, thin tool docstrings, wrong model tier, unbounded iteration) — but in realistic ways. They aren't straw-manned.
-- Seed datasets (`data/seed.json`) are small (5–10 cases). Let`overclaw setup` synthesise more from the policy.
+- Seed datasets (`data/seed.json`) are small (5–10 cases). Let`overmind setup` synthesise more from the policy.

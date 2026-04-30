@@ -1,10 +1,10 @@
-"""Tests for overclaw.optimize.provenance — source tags + confidence."""
+"""Tests for overmind.optimize.provenance — source tags + confidence."""
 
 from __future__ import annotations
 
 import pytest
 
-from overclaw.optimize.provenance import (
+from overmind.optimize.provenance import (
     Confidence,
     SourceTag,
     TraceSource,

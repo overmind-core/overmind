@@ -9,16 +9,16 @@ from unittest.mock import patch
 
 import pytest
 
-from overclaw.core.constants import OVERCLAW_DIR_NAME
-from overclaw.optimize.config import Config
-from overclaw.optimize.optimizer import Optimizer
+from overmind.core.constants import OVERMIND_DIR_NAME
+from overmind.optimize.config import Config
+from overmind.optimize.optimizer import Optimizer
 
 
 @pytest.fixture(autouse=True)
 def _optimizer_run_project_root(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    (tmp_path / OVERCLAW_DIR_NAME).mkdir(parents=True)
+    (tmp_path / OVERMIND_DIR_NAME).mkdir(parents=True)
     monkeypatch.chdir(tmp_path)
 
 
@@ -131,8 +131,8 @@ def _make_config(tmp_path: Path) -> Config:
 
 
 class TestOptimizerRun:
-    @patch("overclaw.optimize.optimizer.time.sleep")
-    @patch("overclaw.optimize.optimizer.generate_candidates")
+    @patch("overmind.optimize.optimizer.time.sleep")
+    @patch("overmind.optimize.optimizer.generate_candidates")
     def test_full_run_with_improvement(self, mock_gen, mock_sleep, tmp_path):
         cfg = _make_config(tmp_path)
         opt = Optimizer(cfg)
@@ -156,7 +156,7 @@ class TestOptimizerRun:
         assert (opt.output_dir / "best_agent.py").exists()
         assert (opt.output_dir / "report.md").exists()
 
-    @patch("overclaw.optimize.optimizer.generate_candidates")
+    @patch("overmind.optimize.optimizer.generate_candidates")
     def test_run_with_no_valid_candidates(self, mock_gen, tmp_path):
         cfg = _make_config(tmp_path)
         opt = Optimizer(cfg)
@@ -166,7 +166,7 @@ class TestOptimizerRun:
         opt.run()
         assert (opt.output_dir / "best_agent.py").exists()
 
-    @patch("overclaw.optimize.optimizer.generate_candidates")
+    @patch("overmind.optimize.optimizer.generate_candidates")
     def test_run_with_analyzer_error(self, mock_gen, tmp_path):
         cfg = _make_config(tmp_path)
         opt = Optimizer(cfg)
@@ -176,8 +176,8 @@ class TestOptimizerRun:
         opt.run()
         assert opt.stall_count >= 1
 
-    @patch("overclaw.optimize.optimizer.time.sleep")
-    @patch("overclaw.optimize.optimizer.generate_candidates")
+    @patch("overmind.optimize.optimizer.time.sleep")
+    @patch("overmind.optimize.optimizer.generate_candidates")
     def test_run_with_holdout(self, mock_gen, mock_sleep, tmp_path):
         cfg = _make_config(tmp_path)
         cfg.holdout_ratio = 0.2
@@ -194,7 +194,7 @@ class TestOptimizerRun:
         opt.run()
         assert hasattr(opt, "_holdout_results")
 
-    @patch("overclaw.optimize.optimizer.generate_candidates")
+    @patch("overmind.optimize.optimizer.generate_candidates")
     def test_run_with_syntax_error_candidate(self, mock_gen, tmp_path):
         cfg = _make_config(tmp_path)
         opt = Optimizer(cfg)

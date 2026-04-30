@@ -1,4 +1,4 @@
-"""Tests for overclaw.optimize.data — diverse generation pipeline."""
+"""Tests for overmind.optimize.data — diverse generation pipeline."""
 
 from __future__ import annotations
 
@@ -6,7 +6,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from overclaw.optimize.data import (
+from overmind.optimize.data import (
     DatasetGenerationError,
     _apply_dedup,
     _canonicalize,
@@ -112,7 +112,7 @@ class TestStratifiedSample:
 
 
 class TestRetryDroppedSlots:
-    @patch("overclaw.optimize.data._generate_batch")
+    @patch("overmind.optimize.data._generate_batch")
     def test_retries_and_succeeds(self, mock_batch):
         mock_batch.return_value = [{"input": {"x": 99}, "expected_output": {"y": 1}}]
         out: list[dict] = []
@@ -154,8 +154,8 @@ class TestPrintCoverageReport:
 
 
 class TestGenerateDiverseSyntheticData:
-    @patch("overclaw.optimize.data._per_persona_parallel_shards_round")
-    @patch("overclaw.optimize.data._generate_personas")
+    @patch("overmind.optimize.data._per_persona_parallel_shards_round")
+    @patch("overmind.optimize.data._generate_personas")
     def test_success(self, mock_personas, mock_round):
         mock_personas.return_value = [
             {"name": "Tester", "skill_level": "expert", "intent": "standard"}
@@ -170,8 +170,8 @@ class TestGenerateDiverseSyntheticData:
         )
         assert len(result) == 3
 
-    @patch("overclaw.optimize.data._per_persona_parallel_shards_round")
-    @patch("overclaw.optimize.data._generate_personas")
+    @patch("overmind.optimize.data._per_persona_parallel_shards_round")
+    @patch("overmind.optimize.data._generate_personas")
     def test_empty_raises(self, mock_personas, mock_round):
         mock_personas.return_value = [{"name": "T"}]
         mock_round.return_value = [[]]
