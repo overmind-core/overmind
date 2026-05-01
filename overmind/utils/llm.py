@@ -129,7 +129,7 @@ def llm_completion(
     # Wrap each LLM call in its own child span so it flushes to the backend
     # as soon as the call returns — long-running parent spans don't stall
     # progress visibility in the trace UI.
-    with start_child_span("overmind_llm_completion", span_type=SpanType.TOOL):
+    with start_child_span("overmind_llm_completion", span_type=SpanType.LLM):
         set_tag(attrs.LLM_MODEL, model)
         set_tag("type", "llm_call")
         set_tag(attrs.LLM_PROVIDER, provider)
