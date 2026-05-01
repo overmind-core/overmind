@@ -466,7 +466,8 @@ class SpanType(str, Enum):
     FUNCTION = "function"
     ENTRY_POINT = "entry_point"
     WORKFLOW = "workflow"
-    TOOL = "tool"
+    TOOL = "tool_call"
+    LLM = "llm_call"
 
 
 _SKIP_INPUT_TYPES = (
