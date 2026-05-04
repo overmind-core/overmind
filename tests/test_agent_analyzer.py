@@ -18,6 +18,16 @@ def _ensure_overmind_root(base: Path) -> None:
 
 
 class TestAnalyzeAgent:
+    @pytest.fixture(autouse=True)
+    def _stub_spinner(self, monkeypatch):
+        mock_progress = MagicMock()
+        mock_progress.__enter__ = MagicMock(return_value=mock_progress)
+        mock_progress.__exit__ = MagicMock(return_value=False)
+        monkeypatch.setattr(
+            "overmind.setup.agent_analyzer.make_spinner_progress",
+            lambda *args, **kwargs: mock_progress,
+        )
+
     @patch("overmind.utils.llm.litellm")
     def test_success(self, mock_litellm, tmp_path):
         _ensure_overmind_root(tmp_path)

@@ -25,6 +25,7 @@ import shutil
 import statistics
 import subprocess
 import tempfile
+import threading
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
@@ -175,6 +176,7 @@ class Optimizer:
         self.config = config
         self.console = Console()
         set_tag(attrs.OPTIMIZE_AGENT_NAME, getattr(config, "agent_name", "") or "")
+        set_tag(attrs.AGENT_NAME, getattr(config, "agent_name", "") or "")
         set_tag(attrs.OPTIMIZE_AGENT_PATH, str(getattr(config, "agent_path", "") or ""))
         set_tag(attrs.OPTIMIZE_ITERATIONS, int(getattr(config, "iterations", 0) or 0))
         set_tag(
@@ -333,6 +335,7 @@ class Optimizer:
             getattr(self.config, "max_workers", None),
         )
         set_tag(attrs.OPTIMIZE_AGENT_NAME, getattr(self.config, "agent_name", "") or "")
+        set_tag(attrs.AGENT_NAME, getattr(self.config, "agent_name", "") or "")
         set_tag(attrs.OPTIMIZE_ITERATIONS, int(self.config.iterations))
         set_tag(attrs.OPTIMIZE_PARALLEL, bool(getattr(self.config, "parallel", False)))
         set_tag(
@@ -448,6 +451,27 @@ class Optimizer:
         self.best_case_scores = [item["score"]["total"] for item in baseline_items]
         set_tag(attrs.OPTIMIZE_BASELINE_SCORE, float(self.best_score))
 
+        # Emit a short-lived "milestone" span that flushes immediately with
+        # the baseline score so the platform UI can surface it without
+        # waiting for the (long-running) root ``overmind_optimize`` span to
+        # end.  The OTel BatchSpanProcessor only exports finished spans, so
+        # tags written on the root span aren't visible until the whole run
+        # completes — a child span like this gives us per-phase real-time
+        # progress for free.
+        with otel_span(
+            "optimizer.baseline_complete",
+            attributes={
+                attrs.OPTIMIZE_PHASE: "baseline_complete",
+                attrs.OPTIMIZE_BASELINE_SCORE: float(self.best_score),
+                attrs.OPTIMIZE_DATASET_TRAIN: len(train_set),
+                attrs.OPTIMIZE_DATASET_HOLDOUT: len(holdout_set),
+                attrs.PROGRESS_PHASE: "baseline_complete",
+                attrs.PROGRESS_CURRENT: 0,
+                attrs.PROGRESS_TOTAL: self.config.iterations,
+            },
+        ):
+            pass
+
         # Start real-time API reporting once we know baseline score.
         if self.config.agent_id:
             self._reporter = ApiReporter.create(
@@ -522,6 +546,11 @@ class Optimizer:
                     attrs.OPTIMIZE_TOTAL_ITERATIONS: self.config.iterations,
                     attrs.OPTIMIZE_BEST_SCORE_BEFORE: float(self.best_score),
                     attrs.OPTIMIZE_STALL_COUNT: int(self.stall_count),
+                    # Generic progress tags so the platform can render a
+                    # uniform progress bar without optimizer-specific keys.
+                    attrs.PROGRESS_PHASE: "iteration",
+                    attrs.PROGRESS_CURRENT: i,
+                    attrs.PROGRESS_TOTAL: self.config.iterations,
                 },
             ):
                 self._logger.info(
@@ -2403,6 +2432,12 @@ class Optimizer:
             enable_shadow_fallback=self._shadow_fallback_enabled(),
         )
 
+        set_tag(attrs.RUN_AGENT_RUN_NAME, run_name)
+        set_tag(attrs.RUN_AGENT_CASES_TOTAL, len(dataset))
+        set_tag(attrs.RUN_AGENT_PARALLEL, bool(self.config.parallel))
+        set_tag(attrs.RUN_AGENT_MAX_WORKERS, int(self.config.max_workers or 0))
+        set_tag(attrs.RUN_AGENT_BACKENDS, [b.name for b in plan])
+
         if self.config.parallel:
             self._logger.debug(
                 "Running agent in parallel: run=%s cases=%d workers=%s trace=%s backends=%d",
@@ -2461,6 +2496,9 @@ class Optimizer:
         outputs: list[dict | None] = []
         cases_data: list[dict] = []
         provenance_by_idx: dict[int, list[dict]] = {}
+        success_count = 0
+        fail_count = 0
+        backends_used: dict[str, int] = {}
 
         with Progress(
             SpinnerColumn(style=BRAND),
@@ -2476,8 +2514,10 @@ class Optimizer:
                 self._logger.debug("[%s] Sequential case %d/%d", run_name, idx + 1, len(dataset))
                 backend_output = self._run_case_with_plan(plan, case["input"], trace_path, idx, run_name)
                 run_output = backend_output.run_output
+                backends_used[backend_output.backend] = backends_used.get(backend_output.backend, 0) + 1
                 if run_output.success:
                     outputs.append(run_output.data)
+                    success_count += 1
                 else:
                     self._logger.warning(
                         "[%s] Sequential case %d failed backend=%s rc=%s err=%s",
@@ -2488,11 +2528,18 @@ class Optimizer:
                         (run_output.error or "")[:300],
                     )
                     outputs.append({"error": run_output.error})
+                    fail_count += 1
                 if backend_output.provenance:
                     provenance_by_idx[idx] = [t.to_dict() for t in backend_output.provenance]
                 cases_data.append(case)
                 progress.advance(task)
 
+        set_tag(attrs.RUN_AGENT_RUN_NAME, run_name)
+        set_tag(attrs.RUN_AGENT_CASES_TOTAL, len(dataset))
+        set_tag(attrs.RUN_AGENT_CASES_SUCCEEDED, success_count)
+        set_tag(attrs.RUN_AGENT_CASES_FAILED, fail_count)
+        set_tag(attrs.RUN_AGENT_CASES_WITH_PROVENANCE, len(provenance_by_idx))
+        set_tag(attrs.RUN_AGENT_BACKEND_USED, backends_used)
         return self._build_eval_results(outputs, cases_data, run_name, trace_path, provenance_by_idx)
 
     @traced("optimizer.run_parallel_subprocess")
@@ -2506,8 +2553,12 @@ class Optimizer:
     ) -> tuple[dict, list[ParsedTrace], list[dict]]:
         results_by_idx: dict[int, dict | None] = {}
         provenance_by_idx: dict[int, list[dict]] = {}
+        backends_used: dict[str, int] = {}
+        success_count = 0
+        fail_count = 0
+        counters_lock = threading.Lock()
 
-        def _run_one(case: dict, idx: int) -> tuple[int, dict | None, list[dict]]:
+        def _run_one(case: dict, idx: int) -> tuple[int, dict | None, list[dict], str, bool]:
             self._logger.debug("[%s] Dispatching case %d on worker thread", run_name, idx)
             backend_output = self._run_case_with_plan(plan, case["input"], trace_path, idx, run_name)
             run_output = backend_output.run_output
@@ -2521,7 +2572,7 @@ class Optimizer:
                     len(run_output.stderr or ""),
                     len(prov),
                 )
-                return idx, run_output.data, prov
+                return idx, run_output.data, prov, backend_output.backend, True
             self._logger.warning(
                 "[%s] Case %d failed backend=%s rc=%s err=%s",
                 run_name,
@@ -2530,7 +2581,7 @@ class Optimizer:
                 run_output.returncode,
                 (run_output.error or "")[:300],
             )
-            return idx, {"error": run_output.error}, prov
+            return idx, {"error": run_output.error}, prov, backend_output.backend, False
 
         with Progress(
             SpinnerColumn(style=BRAND),
@@ -2553,10 +2604,16 @@ class Optimizer:
                 }
                 last_trace_flush = time.monotonic()
                 for future in as_completed(futures):
-                    idx_result, output, prov = future.result()
+                    idx_result, output, prov, backend_name, ok = future.result()
                     results_by_idx[idx_result] = output
                     if prov:
                         provenance_by_idx[idx_result] = prov
+                    with counters_lock:
+                        backends_used[backend_name] = backends_used.get(backend_name, 0) + 1
+                        if ok:
+                            success_count += 1
+                        else:
+                            fail_count += 1
                     progress.advance(task)
                     now = time.monotonic()
                     if now - last_trace_flush >= 1.0:
@@ -2565,6 +2622,12 @@ class Optimizer:
                 force_flush_traces(timeout_millis=1000)
 
         outputs = [results_by_idx[i] for i in range(len(dataset))]
+        set_tag(attrs.RUN_AGENT_RUN_NAME, run_name)
+        set_tag(attrs.RUN_AGENT_CASES_TOTAL, len(dataset))
+        set_tag(attrs.RUN_AGENT_CASES_SUCCEEDED, success_count)
+        set_tag(attrs.RUN_AGENT_CASES_FAILED, fail_count)
+        set_tag(attrs.RUN_AGENT_CASES_WITH_PROVENANCE, len(provenance_by_idx))
+        set_tag(attrs.RUN_AGENT_BACKEND_USED, backends_used)
         return self._build_eval_results(outputs, dataset, run_name, trace_path, provenance_by_idx)
 
     @traced("optimizer.run_case_with_plan")
@@ -2687,6 +2750,10 @@ class Optimizer:
             })
 
         batch_eval = self.evaluator.evaluate_batch(eval_items)
+
+        set_tag(attrs.RUN_AGENT_RUN_NAME, run_name)
+        set_tag(attrs.RUN_AGENT_CASES_TOTAL, len(dataset))
+        set_tag(attrs.RUN_AGENT_CASES_WITH_PROVENANCE, len(provenance_by_idx))
         return batch_eval, traces, eval_items
 
     # ------------------------------------------------------------------

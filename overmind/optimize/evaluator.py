@@ -36,6 +36,21 @@ from overmind.utils.llm import llm_completion
 logger = logging.getLogger(__name__)
 
 
+def _sum_score_components(scores: dict) -> float:
+    """Sum numeric score components, skipping ``total`` and metadata keys.
+
+    Keys prefixed with ``_`` (e.g. ``_source_summary``) hold non-numeric
+    metadata and must be excluded from the running total.
+    """
+    total = 0.0
+    for k, v in scores.items():
+        if k == "total" or k.startswith("_"):
+            continue
+        if isinstance(v, (int, float)):
+            total += float(v)
+    return total
+
+
 def _annotate_confidence(scores: dict, source_tags: list[dict] | None) -> None:
     """Attach confidence metadata to *scores* in-place.
 
@@ -416,8 +431,8 @@ class SpecEvaluator:
                     needs_judge.append(idx)
 
         # Batch LLM judge calls
+        judge_fail_count = 0
         if needs_judge:
-            judge_fail_count = 0
             BATCH_SIZE = 5
             for batch_start in range(0, len(needs_judge), BATCH_SIZE):
                 batch_indices = needs_judge[batch_start : batch_start + BATCH_SIZE]
@@ -429,14 +444,14 @@ class SpecEvaluator:
                     if js == _JUDGE_FALLBACK_SCORE:
                         judge_fail_count += 1
                     all_scores[idx]["llm_judge"] = js * judge_weight
-                    all_scores[idx]["total"] = max(0.0, sum(all_scores[idx].values()))
+                    all_scores[idx]["total"] = max(0.0, _sum_score_components(all_scores[idx]))
                 else:
                     judge_scores = self._score_batch_with_llm_judge(batch_items)
                     for (idx, _), js in zip(batch_items, judge_scores):
                         if js == _JUDGE_FALLBACK_SCORE:
                             judge_fail_count += 1
                         all_scores[idx]["llm_judge"] = js * judge_weight
-                        all_scores[idx]["total"] = max(0.0, sum(all_scores[idx].values()))
+                        all_scores[idx]["total"] = max(0.0, _sum_score_components(all_scores[idx]))
 
             if judge_fail_count > 0:
                 fail_pct = judge_fail_count / len(needs_judge) * 100
@@ -469,9 +484,17 @@ class SpecEvaluator:
                 agg_summary[k] = agg_summary.get(k, 0) + int(v)
         avg["_source_summary"] = agg_summary  # type: ignore[assignment]
 
-        set_tag(attrs.EVAL_BATCH_SIZE, str(len(all_scores)))
-        set_tag(attrs.EVAL_AVG_TOTAL, f"{avg['avg_total']:.1f}")
-        set_tag(attrs.EVAL_USED_LLM_JUDGE, str(use_judge))
+        set_tag(attrs.EVAL_BATCH_SIZE, len(all_scores))
+        set_tag(attrs.EVAL_AVG_TOTAL, round(float(avg["avg_total"]), 4))
+        set_tag(attrs.EVAL_USED_LLM_JUDGE, bool(use_judge))
+        if use_judge:
+            set_tag(attrs.EVAL_JUDGE_NEEDS_COUNT, len(needs_judge))
+            set_tag(attrs.EVAL_JUDGE_FAIL_COUNT, judge_fail_count)
+            judge_fail_pct = (judge_fail_count / len(needs_judge) * 100) if needs_judge else 0.0
+            set_tag(attrs.EVAL_JUDGE_FAIL_PCT, round(judge_fail_pct, 2))
+        set_tag(attrs.EVAL_AVG_CONFIDENCE, round(float(avg["_avg_confidence"]), 4))
+        if agg_summary:
+            set_tag(attrs.EVAL_SOURCE_SUMMARY, agg_summary)
 
         return avg
 
