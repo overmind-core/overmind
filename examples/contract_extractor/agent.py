@@ -61,19 +61,21 @@ def _extract_json(text: str) -> dict[str, Any]:
     text = text.strip()
     if text.startswith("```"):
         text = text.split("```", 2)[1]
-        if text.startswith("json"):
-            text = text[4:]
+        text = text.removeprefix("json")
         text = text.rsplit("```", 1)[0]
-    try:
-        return json.loads(text)
-    except Exception:
-        start = text.find("{")
-        end = text.rfind("}")
-        if start != -1 and end != -1:
-            try:
-                return json.loads(text[start : end + 1])
-            except Exception:
-                pass
+
+    candidates = [text]
+    start = text.find("{")
+    end = text.rfind("}")
+    if start != -1 and end != -1 and end >= start:
+        candidates.append(text[start : end + 1])
+
+    for chunk in candidates:
+        try:
+            return json.loads(chunk)
+        except json.JSONDecodeError:
+            continue
+
     return {
         "parties": [],
         "effective_date": None,
@@ -123,9 +125,7 @@ def _post_process(data: dict[str, Any]) -> dict[str, Any]:
             result[field] = [] if val is None else [str(val)]
 
     if not result["red_flags"]:
-        result["red_flags"] = [
-            "No explicit red flags identified by extractor — manual review recommended"
-        ]
+        result["red_flags"] = ["No explicit red flags identified by extractor — manual review recommended"]
 
     return result
 

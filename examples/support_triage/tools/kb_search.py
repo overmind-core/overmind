@@ -22,13 +22,7 @@ def search_kb(query: str) -> dict[str, Any]:
     docs = _load_kb()
     scored: list[tuple[int, dict[str, Any]]] = []
     for doc in docs:
-        hay = (
-            doc.get("title", "")
-            + " "
-            + doc.get("body", "")
-            + " "
-            + " ".join(doc.get("tags", []))
-        ).lower()
+        hay = (doc.get("title", "") + " " + doc.get("body", "") + " " + " ".join(doc.get("tags", []))).lower()
         score = sum(1 for tok in q.split() if tok in hay)
         if score:
             scored.append((score, doc))

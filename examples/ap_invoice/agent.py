@@ -1,13 +1,17 @@
-"""Lead qualifier agent.
+"""Accounts Payable invoice triage agent.
 
-Classifies an inbound sales lead using company enrichment.
+Given a parsed invoice (vendor, line items, totals, optional PO), decides
+approve / hold / reject, assigns GL codes, lists exceptions and an approver tier.
 
-Deliberate sub-optimalities Overmind should be able to improve:
-- System prompt has no calibration bands for hot/warm/cold
-- Tool descriptions are vague
-- Uses an expensive model for a small classification task
-- No schema validation; JSON parsing is best-effort
-- Always calls exa_search even when the CRM lookup already answered it
+Deliberate sub-optimalities:
+- System prompt has no 3-way-match rule, no segregation-of-duties thresholds,
+  no calibration on what a P1/P2/P3 approver tier actually means.
+- Tool ordering is wrong: model calls `fraud_signals` after deciding, so
+  duplicate-invoice bait doesn't trigger holds.
+- `fetch_purchase_order` description doesn't say to skip when no PO number is
+  present — so the model fetches anyway and wastes a round.
+- Defaults to gpt-4o for every invoice; 80% are clean PO matches.
+- No JSON schema; `gl_codes` sometimes returned as comma-string.
 """
 
 from __future__ import annotations
@@ -23,8 +27,8 @@ from tools import TOOL_FNS, TOOL_SCHEMAS
 
 load_dotenv()
 
-_MODEL = os.environ.get("LEAD_QUALIFIER_MODEL", "gpt-4o")
-_MAX_TOOL_ROUNDS = 6
+_MODEL = os.environ.get("AP_INVOICE_MODEL", "gpt-4o")
+_MAX_TOOL_ROUNDS = 8
 
 
 def _client() -> OpenAI:
@@ -51,19 +55,17 @@ def _extract_json(text: str) -> dict[str, Any]:
             continue
 
     return {
-        "category": "warm",
-        "lead_score": 50,
+        "decision": "hold",
+        "gl_codes": [],
+        "exceptions": ["parse_error"],
+        "approver_tier": "T2",
         "reasoning": text,
-        "next_action": "follow up",
     }
 
 
 def run(input_data: dict[str, Any]) -> dict[str, Any]:
-    company = input_data.get("company_name", "")
-    inquiry = input_data.get("inquiry_text", "")
-    role = input_data.get("contact_role", "unknown")
-
-    user_msg = f"Company: {company}\nContact role: {role}\nInquiry: {inquiry}\n\nQualify this lead."
+    invoice = input_data.get("invoice", input_data)
+    user_msg = f"Process this invoice:\n{json.dumps(invoice, indent=2)}\n\nDecide approve / hold / reject."
 
     client = _client()
     messages: list[dict[str, Any]] = [
@@ -98,8 +100,9 @@ def run(input_data: dict[str, Any]) -> dict[str, Any]:
             })
 
     return {
-        "category": "warm",
-        "lead_score": 50,
+        "decision": "hold",
+        "gl_codes": [],
+        "exceptions": ["max_rounds"],
+        "approver_tier": "T2",
         "reasoning": "Max tool rounds reached without a final answer.",
-        "next_action": "manual review",
     }
