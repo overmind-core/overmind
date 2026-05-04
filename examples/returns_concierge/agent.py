@@ -1,13 +1,18 @@
-"""Lead qualifier agent.
+"""Returns / RMA concierge agent.
 
-Classifies an inbound sales lead using company enrichment.
+Decides refund / replace / deny / escalate on a customer return request and
+drafts the customer-facing response.
 
-Deliberate sub-optimalities Overmind should be able to improve:
-- System prompt has no calibration bands for hot/warm/cold
-- Tool descriptions are vague
-- Uses an expensive model for a small classification task
-- No schema validation; JSON parsing is best-effort
-- Always calls exa_search even when the CRM lookup already answered it
+Deliberate sub-optimalities:
+- System prompt has no policy table for final-sale items, abuse patterns, or
+  LTV-based goodwill thresholds.
+- `customer_message` has no tone or length guidance — replies come back
+  robotic and inconsistent.
+- Always calls `inspect_condition_photos`, even when the customer didn't
+  attach photos (sometimes hallucinates damage from a None URL).
+- Defaults to gpt-4o; 90% of requests are within-window same-decision cases.
+- Schema drift: `amount` returned as "19.99", 19.99, or "$19.99" depending on
+  the case.
 """
 
 from __future__ import annotations
@@ -23,8 +28,8 @@ from tools import TOOL_FNS, TOOL_SCHEMAS
 
 load_dotenv()
 
-_MODEL = os.environ.get("LEAD_QUALIFIER_MODEL", "gpt-4o")
-_MAX_TOOL_ROUNDS = 6
+_MODEL = os.environ.get("RETURNS_MODEL", "gpt-4o")
+_MAX_TOOL_ROUNDS = 8
 
 
 def _client() -> OpenAI:
@@ -51,19 +56,16 @@ def _extract_json(text: str) -> dict[str, Any]:
             continue
 
     return {
-        "category": "warm",
-        "lead_score": 50,
-        "reasoning": text,
-        "next_action": "follow up",
+        "decision": "escalate",
+        "amount": 0,
+        "restocking_fee": 0,
+        "customer_message": text,
+        "reasoning": "parse_error",
     }
 
 
 def run(input_data: dict[str, Any]) -> dict[str, Any]:
-    company = input_data.get("company_name", "")
-    inquiry = input_data.get("inquiry_text", "")
-    role = input_data.get("contact_role", "unknown")
-
-    user_msg = f"Company: {company}\nContact role: {role}\nInquiry: {inquiry}\n\nQualify this lead."
+    user_msg = f"Return request:\n{json.dumps(input_data, indent=2)}\n\nMake a decision and reply to the customer."
 
     client = _client()
     messages: list[dict[str, Any]] = [
@@ -76,7 +78,7 @@ def run(input_data: dict[str, Any]) -> dict[str, Any]:
             model=_MODEL,
             messages=messages,
             tools=TOOL_SCHEMAS,
-            temperature=0.2,
+            temperature=0.3,
         )
         msg = resp.choices[0].message
         messages.append(msg.model_dump(exclude_none=True))
@@ -98,8 +100,9 @@ def run(input_data: dict[str, Any]) -> dict[str, Any]:
             })
 
     return {
-        "category": "warm",
-        "lead_score": 50,
+        "decision": "escalate",
+        "amount": 0,
+        "restocking_fee": 0,
+        "customer_message": "Our team is looking into your request and will follow up.",
         "reasoning": "Max tool rounds reached without a final answer.",
-        "next_action": "manual review",
     }

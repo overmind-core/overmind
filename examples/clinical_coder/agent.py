@@ -1,13 +1,15 @@
-"""Lead qualifier agent.
+"""Clinical coding + prior-auth triage agent.
 
-Classifies an inbound sales lead using company enrichment.
+Given a clinical note and a planned procedure, produces ICD-10 / CPT codes,
+modifiers, prior-auth determination and a denial-risk score.
 
 Deliberate sub-optimalities Overmind should be able to improve:
-- System prompt has no calibration bands for hot/warm/cold
-- Tool descriptions are vague
-- Uses an expensive model for a small classification task
-- No schema validation; JSON parsing is best-effort
-- Always calls exa_search even when the CRM lookup already answered it
+- System prompt has no calibration bands for `denial_risk` (0-100 with no buckets)
+- Tool descriptions don't say when to skip the payer-policy call
+- Always calls all four tools, even for simple routine codes
+- Uses an expensive frontier model for what is mostly a classifier
+- No JSON schema enforcement; modifiers come back as free text
+- No PHI-redaction guardrail in the system prompt
 """
 
 from __future__ import annotations
@@ -23,8 +25,8 @@ from tools import TOOL_FNS, TOOL_SCHEMAS
 
 load_dotenv()
 
-_MODEL = os.environ.get("LEAD_QUALIFIER_MODEL", "gpt-4o")
-_MAX_TOOL_ROUNDS = 6
+_MODEL = os.environ.get("CLINICAL_CODER_MODEL", "gpt-4o")
+_MAX_TOOL_ROUNDS = 8
 
 
 def _client() -> OpenAI:
@@ -51,19 +53,28 @@ def _extract_json(text: str) -> dict[str, Any]:
             continue
 
     return {
-        "category": "warm",
-        "lead_score": 50,
+        "icd10": [],
+        "cpt": [],
+        "modifiers": [],
+        "auth_required": False,
+        "denial_risk": 50,
         "reasoning": text,
-        "next_action": "follow up",
     }
 
 
 def run(input_data: dict[str, Any]) -> dict[str, Any]:
-    company = input_data.get("company_name", "")
-    inquiry = input_data.get("inquiry_text", "")
-    role = input_data.get("contact_role", "unknown")
+    note = input_data.get("clinical_note", "")
+    procedure = input_data.get("procedure", "")
+    payer = input_data.get("payer", "unknown")
+    member_id = input_data.get("member_id", "unknown")
 
-    user_msg = f"Company: {company}\nContact role: {role}\nInquiry: {inquiry}\n\nQualify this lead."
+    user_msg = (
+        f"Member ID: {member_id}\n"
+        f"Payer: {payer}\n"
+        f"Procedure: {procedure}\n\n"
+        f"Clinical note:\n{note}\n\n"
+        "Code this encounter."
+    )
 
     client = _client()
     messages: list[dict[str, Any]] = [
@@ -76,7 +87,7 @@ def run(input_data: dict[str, Any]) -> dict[str, Any]:
             model=_MODEL,
             messages=messages,
             tools=TOOL_SCHEMAS,
-            temperature=0.2,
+            temperature=0.1,
         )
         msg = resp.choices[0].message
         messages.append(msg.model_dump(exclude_none=True))
@@ -98,8 +109,10 @@ def run(input_data: dict[str, Any]) -> dict[str, Any]:
             })
 
     return {
-        "category": "warm",
-        "lead_score": 50,
+        "icd10": [],
+        "cpt": [],
+        "modifiers": [],
+        "auth_required": True,
+        "denial_risk": 60,
         "reasoning": "Max tool rounds reached without a final answer.",
-        "next_action": "manual review",
     }

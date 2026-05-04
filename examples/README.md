@@ -16,34 +16,38 @@ overmind agent register agent:run
 
 ## The portfolio
 
-| #   | Folder                                        | Industry         | Pattern                   | Models    | External APIs   |
-| --- | --------------------------------------------- | ---------------- | ------------------------- | --------- | --------------- |
-| 1   | `[lead_qualifier/](./lead_qualifier)`         | Sales / SaaS     | Classifier + enrichment   | OpenAI    | EXA + local CSV |
-| 2   | `[support_triage/](./support_triage)`         | Customer Support | Router + response drafter | Anthropic | Local KB + EXA  |
-| 3   | `[contract_extractor/](./contract_extractor)` | Legal            | Long-context extraction   | OpenAI    | *none*          |
+Each example’s code lives under `examples/<id>/` in this repo (for example `examples/lead_qualifier/`). The table below uses short labels; scores use the directory `<id>` (`lead_qualifier`, `support_triage`, …).
+
+| #   | Example            | Industry         | Pattern                                            | Models             | External APIs    |
+| --- | ------------------ | ---------------- | -------------------------------------------------- | ------------------ | ---------------- |
+| 1   | Lead qualifier     | Sales / SaaS     | Classifier + enrichment                            | OpenAI             | EXA + local CSV  |
+| 2   | Support triage     | Customer Support | Router + response drafter                          | Anthropic          | Local KB + EXA   |
+| 3   | Contract extractor | Legal            | Long-context extraction                            | OpenAI             | *none*           |
+| 4   | Clinical coder     | Healthcare / RCM | Classifier + 4 lookups                             | OpenAI             | local JSON       |
+| 5   | AP invoice         | Finance / AP     | Decisioning + policy + fraud signals               | OpenAI             | local JSON       |
+| 6   | On-call triage     | DevOps / SRE     | **Multi-agent**: router → investigator → responder | OpenAI + Anthropic | local JSON       |
+| 7   | Returns concierge  | E-commerce       | Policy-driven decisioning + customer copy          | OpenAI             | local JSON       |
+| 8   | Research brief     | Marketing / SEO  | **Multi-agent**: researcher → outliner → editor    | OpenAI             | EXA + local JSON |
 
 ## Optimization runs (example results)
 
-Scores are from a representative `overmind optimize` run (train-side summary in each agent’s `report.md`). **Final score** is the reported best average (same as the **Best** column in `report.md`).
+Scores are from a representative `overmind optimize` run (train-side summary in each agent’s `experiments/report.md` under `.overmind` or `.overclaw`, depending on where you ran it). **Final score** is the reported best average (same as the **Best** column in that report).
 
 | Example            | Baseline | Final score | Improvement |
 | ------------------ | -------- | ----------- | ----------- |
 | lead_qualifier     | 52.5     | 73.9        | +21.4       |
-| contract_extractor | 74.3     | 94.1        | +19.8       |
 | support_triage     | 57.9     | 64.7        | +6.8        |
+| contract_extractor | 74.3     | 94.1        | +19.8       |
+| clinical_coder     | 38.7     | 46.2        | +7.5        |
+| ap_invoice         | 36.5     | 57.0        | +20.5       |
+| oncall_triage      | 49.5     | 70.8        | +21.3       |
+| returns_concierge  | 47.4     | 65.5        | +18.1       |
+| research_brief     | 59.5     | 74.0        | +14.5       |
 
-**Contract extractor** is different: register and run it only from inside
-[`contract_extractor/`](./contract_extractor) (see that README). The other
+**Contract extractor** is different: register and run it only from the
+`examples/contract_extractor/` directory (see that folder’s README). The other
 examples assume `.overmind` at the **repository root** and entrypoints like
 `examples.<folder>.agent:run`.
-
-## What Overmind is expected to improve on each
-
-|          | Prompt | Tool descs | Model choice  | Tool ordering | Iter cap | Schema | Policy |
-| -------- | ------ | ---------- | ------------- | ------------- | -------- | ------ | ------ |
-| Lead     | x      | x          | x (downgrade) |               |          | x      | x      |
-| Support  | x      | x          | x (downgrade) | x             |          | x      | x      |
-| Contract | x      |            |               |               |          | x      | x      |
 
 ## Running
 

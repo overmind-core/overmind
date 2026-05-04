@@ -17,7 +17,6 @@ from typing import Any
 
 from anthropic import Anthropic
 from dotenv import load_dotenv
-
 from prompts import SYSTEM_PROMPT
 from tools import TOOL_FNS, TOOL_SCHEMAS
 
@@ -35,26 +34,28 @@ def _extract_json(text: str) -> dict[str, Any]:
     text = text.strip()
     if text.startswith("```"):
         text = text.split("```", 2)[1]
-        if text.startswith("json"):
-            text = text[4:]
+        text = text.removeprefix("json")
         text = text.rsplit("```", 1)[0]
-    try:
-        return json.loads(text)
-    except Exception:
-        start = text.find("{")
-        end = text.rfind("}")
-        if start != -1 and end != -1:
-            try:
-                return json.loads(text[start : end + 1])
-            except Exception:
-                pass
-        return {
-            "category": "other",
-            "priority": "P3",
-            "escalate": False,
-            "suggested_response": text,
-            "tags": [],
-        }
+
+    candidates = [text]
+    start = text.find("{")
+    end = text.rfind("}")
+    if start != -1 and end != -1 and end >= start:
+        candidates.append(text[start : end + 1])
+
+    for chunk in candidates:
+        try:
+            return json.loads(chunk)
+        except json.JSONDecodeError:
+            continue
+
+    return {
+        "category": "other",
+        "priority": "P3",
+        "escalate": False,
+        "suggested_response": text,
+        "tags": [],
+    }
 
 
 def run(input_data: dict[str, Any]) -> dict[str, Any]:
@@ -63,8 +64,7 @@ def run(input_data: dict[str, Any]) -> dict[str, Any]:
     body = input_data.get("body", "")
 
     user_text = (
-        f"Ticket\nCustomer: {customer_id}\nSubject: {subject}\n\n{body}\n\n"
-        "Triage this ticket and return the JSON."
+        f"Ticket\nCustomer: {customer_id}\nSubject: {subject}\n\n{body}\n\nTriage this ticket and return the JSON."
     )
 
     client = _client()
@@ -81,9 +81,7 @@ def run(input_data: dict[str, Any]) -> dict[str, Any]:
         messages.append({"role": "assistant", "content": resp.content})
 
         if resp.stop_reason != "tool_use":
-            text_parts = [
-                b.text for b in resp.content if getattr(b, "type", None) == "text"
-            ]
+            text_parts = [b.text for b in resp.content if getattr(b, "type", None) == "text"]
             return _extract_json("\n".join(text_parts))
 
         tool_results: list[dict[str, Any]] = []
@@ -92,18 +90,14 @@ def run(input_data: dict[str, Any]) -> dict[str, Any]:
                 continue
             fn = TOOL_FNS.get(block.name)
             try:
-                result = (
-                    fn(**block.input) if fn else {"error": f"unknown tool {block.name}"}
-                )
+                result = fn(**block.input) if fn else {"error": f"unknown tool {block.name}"}
             except Exception as e:
                 result = {"error": str(e)}
-            tool_results.append(
-                {
-                    "type": "tool_result",
-                    "tool_use_id": block.id,
-                    "content": json.dumps(result),
-                }
-            )
+            tool_results.append({
+                "type": "tool_result",
+                "tool_use_id": block.id,
+                "content": json.dumps(result),
+            })
         messages.append({"role": "user", "content": tool_results})
 
     return {
