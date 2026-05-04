@@ -106,7 +106,62 @@ def _format_input_schema(eval_spec: dict) -> str:
         ftype = info.get("type", "string")
         desc = info.get("description", "")
         lines.append(f"  - {field} ({ftype}): {desc}")
+
+    # When any param is type object/array, sub-keys mentioned in its
+    # description can mislead LLMs into flattening them into the top-level
+    # input dict.  Render an explicit example shape so the wrapping is
+    # unambiguous.
+    has_complex = any(
+        (info.get("type") if isinstance(info, dict) else "string") in ("object", "array") for info in schema.values()
+    )
+    if has_complex:
+        example: dict[str, Any] = {}
+        for field, info in schema.items():
+            ftype = info.get("type", "string") if isinstance(info, dict) else "string"
+            if ftype == "object":
+                example[field] = {"<sub_key>": "<value>", "...": "..."}
+            elif ftype == "array":
+                example[field] = ["<item>", "..."]
+            elif ftype == "number":
+                example[field] = 0
+            elif ftype == "boolean":
+                example[field] = False
+            else:
+                example[field] = "<value>"
+        lines.append("")
+        lines.append(
+            "  Example input shape (top-level keys MUST be the entrypoint param "
+            "names above; do NOT flatten sub-keys of object/array params into "
+            "the top level):"
+        )
+        lines.append(f"    {json.dumps(example)}")
     return "\n".join(lines)
+
+
+def _maybe_repair_case_input(case: dict, eval_spec: dict) -> None:
+    """Best-effort fix for a common LLM mistake: when the entrypoint takes a
+    single ``object``-typed parameter (e.g. ``run(input_data: dict)``), models
+    often flatten the sub-keys (``company_name``, ``inquiry_text``, …) into
+    the top-level ``input`` dict instead of nesting them under the param
+    name.  Detect that exact shape and wrap it.  Mutates *case* in place.
+    """
+    if not isinstance(case, dict):
+        return
+    inp = case.get("input")
+    if not isinstance(inp, dict):
+        return
+    schema = eval_spec.get("input_schema") or {}
+    if len(schema) != 1:
+        return
+    (only_field, info) = next(iter(schema.items()))
+    ftype = info.get("type", "string") if isinstance(info, dict) else "string"
+    if ftype not in ("object", "array"):
+        return
+    # If the input already conforms (has the wrapping key) leave it alone.
+    if only_field in inp and len(inp) == 1:
+        return
+    # Otherwise wrap whatever the LLM produced as the param value.
+    case["input"] = {only_field: inp}
 
 
 def _format_output_schema(eval_spec: dict) -> str:
@@ -841,6 +896,7 @@ def _apply_dedup(
         case.pop("_meta", None)
 
         if eval_spec:
+            _maybe_repair_case_input(case, eval_spec)
             errors = validate_case_against_spec(case, eval_spec)
             if errors:
                 logger.debug("Discarding invalid case: %s", errors)

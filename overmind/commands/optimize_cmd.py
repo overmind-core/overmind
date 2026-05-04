@@ -8,17 +8,19 @@ Usage:
 
 import logging
 
-from overmind import SpanType, attrs, observe, set_tag
+from overmind import SpanType, attrs, set_tag
+from overmind.client import flush_pending_api_updates
 from overmind.core.paths import load_agent_dotenv
 from overmind.core.registry import get_agent_id
 from overmind.optimize.config import collect_config
 from overmind.optimize.optimizer import Optimizer
 from overmind.storage import configure_storage
+from overmind.utils.tracing import force_flush_traces, traced
 
 logger = logging.getLogger("overmind.commands.optimize")
 
 
-@observe(span_name="overmind_optimize", type=SpanType.WORKFLOW)
+@traced(span_name="overmind_optimize", type=SpanType.WORKFLOW)
 def main(
     agent_name: str,
     fast: bool = False,
@@ -50,6 +52,7 @@ def main(
     # CLI-level flags
     set_tag(attrs.COMMAND, "optimize")
     set_tag(attrs.OPTIMIZE_AGENT_NAME, agent_name)
+    set_tag(attrs.AGENT_NAME, agent_name)
     set_tag(attrs.OPTIMIZE_FAST, fast)
 
     # Refresh agent_id from registry in case setup just created/updated it
@@ -89,7 +92,39 @@ def main(
     optimizer = Optimizer(config)
     try:
         optimizer.run()
-    except Exception:
+    except KeyboardInterrupt:
+        logger.warning("optimize: interrupted by user (KeyboardInterrupt) agent=%s", agent_name)
+        _finalize_failed_job(optimizer, reason="Interrupted by user (KeyboardInterrupt)")
+        raise
+    except BaseException as exc:
         logger.exception("optimize: run failed for agent=%s", agent_name)
+        reason = f"{type(exc).__name__}: {exc}" if str(exc) else type(exc).__name__
+        _finalize_failed_job(optimizer, reason=reason)
         raise
     logger.info("optimize: run complete agent=%s", agent_name)
+
+
+def _finalize_failed_job(optimizer: Optimizer, *, reason: str) -> None:
+    """Mark the optimize Job as FAILED on the API and flush partial progress.
+
+    Called when the optimize loop is interrupted (Ctrl-C) or aborts with an
+    exception. Whatever iterations / experiments have run up until that
+    point are already streamed to the backend via :class:`ApiReporter` and
+    OTLP spans; this final hook just (a) flips the Job status to ``failed``
+    so the UI stops showing it as ``running`` and (b) blocks long enough for
+    in-flight HTTP / OTLP traffic to drain so partial state is durable.
+    """
+    reporter = getattr(optimizer, "_reporter", None)
+    if reporter is not None:
+        try:
+            reporter.on_failed(reason=reason)
+        except Exception:
+            logger.exception("optimize: reporter.on_failed raised; continuing teardown")
+    try:
+        flush_pending_api_updates(timeout=10.0)
+    except Exception:
+        logger.exception("optimize: flush_pending_api_updates raised; continuing teardown")
+    try:
+        force_flush_traces(timeout_millis=10_000)
+    except Exception:
+        logger.exception("optimize: force_flush_traces raised; continuing teardown")

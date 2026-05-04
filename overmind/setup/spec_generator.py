@@ -183,6 +183,7 @@ def _build_spec(
     if policy_data:
         spec["policy"] = policy_data
 
+    # set_tag("overmind.setup.spec", json.dumps(spec))
     return spec
 
 

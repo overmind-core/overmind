@@ -18,7 +18,7 @@ from rich.rule import Rule
 from rich.syntax import Syntax
 from rich.table import Table
 
-from overmind import SpanType, attrs, observe, set_tag
+from overmind import SpanType, attrs, set_tag
 from overmind.commands.agent_env import (
     collect_agent_provider_config,
     collect_code_detected_env_vars,
@@ -342,7 +342,7 @@ def _auto_generate_wrapper(
 # ---------------------------------------------------------------------------
 
 
-@observe(span_name="overmind_agent_register", type=SpanType.WORKFLOW)
+@traced(span_name="overmind_agent_register", type=SpanType.WORKFLOW)
 def cmd_register(name: str, entrypoint: str) -> None:
     set_tag(attrs.COMMAND, "agent.register")
     set_tag(attrs.AGENT_NAME, name)
@@ -469,7 +469,7 @@ def cmd_register(name: str, entrypoint: str) -> None:
     _print_post_register_next_step(console, name)
 
 
-@observe(span_name="overmind_agent_list", type=SpanType.WORKFLOW)
+@traced(span_name="overmind_agent_list", type=SpanType.WORKFLOW)
 def cmd_list() -> None:
     set_tag(attrs.COMMAND, "agent.list")
     console = Console()
@@ -498,7 +498,7 @@ def cmd_list() -> None:
     console.print()
 
 
-@observe(span_name="overmind_agent_remove", type=SpanType.WORKFLOW)
+@traced(span_name="overmind_agent_remove", type=SpanType.WORKFLOW)
 def cmd_remove(name: str) -> None:
     set_tag(attrs.COMMAND, "agent.remove")
     set_tag(attrs.AGENT_NAME, name)
@@ -536,7 +536,7 @@ def cmd_remove(name: str) -> None:
     console.print(f"\n  [bold green]\u2713[/bold green]  Agent '[bold]{name}[/bold]' removed.\n")
 
 
-@observe(span_name="overmind_agent_update", type=SpanType.WORKFLOW)
+@traced(span_name="overmind_agent_update", type=SpanType.WORKFLOW)
 def cmd_update(name: str, entrypoint: str) -> None:
     set_tag(attrs.COMMAND, "agent.update")
     set_tag(attrs.AGENT_NAME, name)
@@ -598,7 +598,7 @@ def cmd_update(name: str, entrypoint: str) -> None:
     console.print(f"\n  [dim]Old entrypoint:[/dim] {old_ep_raw}\n  [dim]New entrypoint:[/dim] {entrypoint}\n")
 
 
-@observe(span_name="overmind_agent_show", type=SpanType.WORKFLOW)
+@traced(span_name="overmind_agent_show", type=SpanType.WORKFLOW)
 def cmd_show(name: str) -> None:
     set_tag(attrs.COMMAND, "agent.show")
     set_tag(attrs.AGENT_NAME, name)

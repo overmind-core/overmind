@@ -154,6 +154,16 @@ class TestPrintCoverageReport:
 
 
 class TestGenerateDiverseSyntheticData:
+    @pytest.fixture(autouse=True)
+    def _stub_spinner(self, monkeypatch):
+        mock_progress = MagicMock()
+        mock_progress.__enter__ = MagicMock(return_value=mock_progress)
+        mock_progress.__exit__ = MagicMock(return_value=False)
+        monkeypatch.setattr(
+            "overmind.optimize.data.make_spinner_progress",
+            lambda *args, **kwargs: mock_progress,
+        )
+
     @patch("overmind.optimize.data._per_persona_parallel_shards_round")
     @patch("overmind.optimize.data._generate_personas")
     def test_success(self, mock_personas, mock_round):

@@ -16,7 +16,7 @@ from rich.panel import Panel
 from rich.rule import Rule
 from rich.table import Table
 
-from overmind import SpanType
+from overmind import SpanType, attrs, set_tag
 from overmind.core.logging import stage
 from overmind.core.registry import project_root, project_root_from_agent_file
 from overmind.prompts.agent_analyzer import ANALYSIS_PROMPT
@@ -153,6 +153,17 @@ def analyze_agent(
     analysis["_agent_code"] = code
     analysis["_agent_code_section"] = agent_code_section
     analysis["_entrypoint_fn"] = entrypoint_fn
+
+    set_tag(attrs.SETUP_AGENT_DESCRIPTION, analysis.get("description", ""))
+    set_tag(attrs.SETUP_INPUT_SCHEMA, analysis.get("input_schema", {}))
+    set_tag(attrs.SETUP_OUTPUT_SCHEMA, analysis.get("output_schema", {}))
+    set_tag(attrs.SETUP_PROPOSED_CRITERIA, analysis.get("proposed_criteria", {}))
+    set_tag(attrs.SETUP_TOOL_ANALYSIS, analysis.get("tool_analysis", {}))
+    set_tag(attrs.SETUP_CONSISTENCY_RULES, analysis.get("consistency_rules", []))
+    set_tag(attrs.SETUP_TOOLS_SUMMARY, analysis.get("tools_summary", ""))
+    set_tag(attrs.SETUP_DECISION_LOGIC, analysis.get("decision_logic", ""))
+    set_tag(attrs.SETUP_SCOPE, analysis.get("scope", {}))
+    set_tag(attrs.SETUP_OPTIMIZABLE_ELEMENTS, analysis.get("optimizable_elements", []))
     return analysis
 
 

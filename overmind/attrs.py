@@ -6,8 +6,9 @@ attributes we emit is auditable from a single file.  Add new tags here
 first, then import the constant at the call site — never inline a raw
 ``"overmind.*"`` / ``"llm.*"`` / ``"tool.*"`` string elsewhere.
 
-Constants are grouped by the subsystem that emits them so it's easy to
-see which area of the codebase produces which tags.
+Keys under ``overmind.*`` use dotted segments (``overmind.agent.id``,
+``overmind.error.type``, …) — never a single underscore-blob like
+``overmind.agent_id``.  Keep ``overbae/api/overmind_attrs.py`` in lockstep.
 """
 
 from __future__ import annotations
@@ -18,12 +19,27 @@ from __future__ import annotations
 COMMAND = "overmind.command"
 
 # ---------------------------------------------------------------------------
+# Generic lifecycle tags — explicit status / progress markers we set on any
+# span so the platform can surface "what's happening?" without parsing the
+# OTel ``status_code`` directly.
+# ---------------------------------------------------------------------------
+STATUS = "overmind.status"  # "running" | "success" | "failed" | "cancelled"
+ERROR_TYPE = "overmind.error.type"  # exception class name, when STATUS == "failed"
+ERROR_MESSAGE = "overmind.error.message"  # short, scrubbed message
+PROGRESS_PHASE = "overmind.progress.phase"  # human label for current pipeline step
+PROGRESS_CURRENT = "overmind.progress.current"  # current step index (1-based)
+PROGRESS_TOTAL = "overmind.progress.total"  # total number of steps
+DURATION_SECONDS = "overmind.duration.seconds"  # walltime of the wrapped span
+
+# ---------------------------------------------------------------------------
 # Top-level resource / context tags (link spans to server-side entities).
 # ---------------------------------------------------------------------------
-AGENT_ID = "overmind.agent_id"
-PROJECT_ID = "overmind.project_id"
-JOB_ID = "overmind.job_id"
-ITERATION_ID = "overmind.iteration_id"
+AGENT_ID = "overmind.agent.id"
+PROJECT_ID = "overmind.project.id"
+JOB_ID = "overmind.job.id"
+ITERATION_ID = "overmind.iteration.id"
+EXPERIMENT_ID = "overmind.experiment.id"
+EXPERIMENT_NAME = "overmind.experiment.name"
 
 # ---------------------------------------------------------------------------
 # Agent registry / `overmind agent ...` commands
@@ -89,8 +105,8 @@ SETUP_DATASET_SOURCE = "overmind.setup.dataset_source"
 SETUP_DATASET_ID = "overmind.setup.dataset_id"
 SETUP_CRITERIA_SOURCE = "overmind.setup.criteria_source"
 SETUP_POLICY_SOURCE = "overmind.setup.policy_source"
-SETUP_AGENT_POLICY_MARKDOWN = "overmind.agent_policy_markdown"
-SETUP_AGENT_POLICY_DATA = "overmind.agent_policy_data"
+SETUP_AGENT_POLICY_MARKDOWN = "overmind.agent.policy.markdown"
+SETUP_AGENT_POLICY_DATA = "overmind.agent.policy.data"
 # Alternate policy keys emitted under the setup namespace (older flows use
 # the agent_policy_* keys above; newer flows prefer these).
 SETUP_POLICY_MARKDOWN = "overmind.setup.policy_markdown"
@@ -102,7 +118,14 @@ SETUP_EVAL_SPEC = "overmind.setup.eval_spec"
 SETUP_PROPOSED_CRITERIA = "overmind.setup.proposed_criteria"
 SETUP_REFINED_CRITERIA = "overmind.setup.refined_criteria"
 SETUP_TOOL_ANALYSIS = "overmind.setup.tool_analysis"
+SETUP_INPUT_SCHEMA = "overmind.setup.input_schema"
 SETUP_OUTPUT_SCHEMA = "overmind.setup.output_schema"
+SETUP_CONSISTENCY_RULES = "overmind.setup.consistency_rules"
+SETUP_TOOLS_SUMMARY = "overmind.setup.tools_summary"
+SETUP_DECISION_LOGIC = "overmind.setup.decision_logic"
+SETUP_SCOPE = "overmind.setup.scope"
+SETUP_OPTIMIZABLE_ELEMENTS = "overmind.setup.optimizable_elements"
+SETUP_FIXED_ELEMENTS = "overmind.setup.fixed_elements"
 
 # ---------------------------------------------------------------------------
 # `overmind optimize` (overmind/commands/optimize_cmd.py)
@@ -176,6 +199,23 @@ OPTIMIZE_BACKTEST_SCORE = "overmind.optimize.backtest_score"
 EVAL_BATCH_SIZE = "overmind.eval.batch_size"
 EVAL_AVG_TOTAL = "overmind.eval.avg_total"
 EVAL_USED_LLM_JUDGE = "overmind.eval.used_llm_judge"
+EVAL_JUDGE_NEEDS_COUNT = "overmind.eval.judge_needs_count"
+EVAL_JUDGE_FAIL_COUNT = "overmind.eval.judge_fail_count"
+EVAL_JUDGE_FAIL_PCT = "overmind.eval.judge_fail_pct"
+EVAL_AVG_CONFIDENCE = "overmind.eval.avg_confidence"
+EVAL_SOURCE_SUMMARY = "overmind.eval.source_summary"
+# Per-run agent execution telemetry (run_agent_on_dataset / parallel /
+# sequential subprocess spans).  These let the platform UI distinguish
+# baseline / candidate / holdout runs and surface backend health.
+RUN_AGENT_RUN_NAME = "overmind.run.run_name"
+RUN_AGENT_CASES_TOTAL = "overmind.run.cases_total"
+RUN_AGENT_CASES_SUCCEEDED = "overmind.run.cases_succeeded"
+RUN_AGENT_CASES_FAILED = "overmind.run.cases_failed"
+RUN_AGENT_CASES_WITH_PROVENANCE = "overmind.run.cases_with_provenance"
+RUN_AGENT_PARALLEL = "overmind.run.parallel"
+RUN_AGENT_MAX_WORKERS = "overmind.run.max_workers"
+RUN_AGENT_BACKENDS = "overmind.run.backends"
+RUN_AGENT_BACKEND_USED = "overmind.run.backend_used"
 
 # ---------------------------------------------------------------------------
 # Cross-run optimization state (overmind/optimize/run_state.py)
@@ -278,13 +318,25 @@ TOOL_ARG_KEYS = "tool.arg_keys"
 TOOL_ERROR = "tool.error"
 
 # ---------------------------------------------------------------------------
+# Dataset creation event — emitted as a dedicated child span
+# ``overmind_dataset_created`` when a dataset is persisted to the platform.
+# Contains only metadata (never raw datapoints).
+# ---------------------------------------------------------------------------
+DATASET_ID = "overmind.dataset.id"
+DATASET_VERSION = "overmind.dataset.version"
+DATASET_SOURCE = "overmind.dataset.source"
+DATASET_NUM_DATAPOINTS = "overmind.dataset.num_datapoints"
+DATASET_AGENT_ID = "overmind.dataset.agent.id"
+DATASET_GENERATOR_MODEL = "overmind.dataset.generator_model"
+
+# ---------------------------------------------------------------------------
 # Span-level input / output / scoring / classification
 # (set via overmind.set_tag or the @observe decorator on any span)
 # ---------------------------------------------------------------------------
-INPUT_DATA = "overmind.input_data"
-OUTPUT_DATA = "overmind.output_data"
+INPUT_DATA = "overmind.input.data"
+OUTPUT_DATA = "overmind.output.data"
 SCORE = "overmind.score"
 ERROR = "overmind.error"
 # Explicit span-type override — set to SpanType values when the heuristic
 # classification would be wrong (e.g. "entry_point", "tool", "workflow").
-SPAN_TYPE = "overmind.span_type"
+SPAN_TYPE = "overmind.span.type"

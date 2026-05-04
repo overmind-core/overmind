@@ -62,10 +62,13 @@ class StorageBackend(ABC):
         policy_hash: str = "",
         metadata: dict | None = None,
         make_active: bool = True,
-    ) -> str | None:
+    ) -> dict | None:
         """Persist a dataset version.
 
-        Returns the new dataset's UUID on success, or ``None`` on failure.
+        Returns a dict with at minimum ``{"id": str, "version": int}`` on
+        success, or ``None`` on failure.  Callers should use ``result["id"]``
+        for the dataset UUID and ``result.get("version")`` for the version
+        number.
         """
 
     @abstractmethod

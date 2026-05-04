@@ -22,9 +22,12 @@ import logging
 import sys
 from unittest.mock import MagicMock
 
+from opentelemetry import context
 from opentelemetry import trace as _otel_trace
+from opentelemetry.trace import Status, StatusCode
 
 import overmind
+from overmind import attrs
 from overmind.commands.agent_cmd import (
     cmd_list,
     cmd_register,
@@ -466,20 +469,26 @@ def main() -> None:
 
         elif args.command == "agent":
             if args.agent_command == "register":
+                context.attach(context.set_value(attrs.AGENT_NAME, args.name))
                 cmd_register(args.name, args.entrypoint)
             elif args.agent_command == "list":
                 cmd_list()
             elif args.agent_command == "remove":
+                context.attach(context.set_value(attrs.AGENT_NAME, args.name))
                 cmd_remove(args.name)
             elif args.agent_command == "update":
+                context.attach(context.set_value(attrs.AGENT_NAME, args.name))
                 cmd_update(args.name, args.entrypoint)
             elif args.agent_command == "show":
+                context.attach(context.set_value(attrs.AGENT_NAME, args.name))
                 cmd_show(args.name)
             elif args.agent_command == "validate":
+                context.attach(context.set_value(attrs.AGENT_NAME, args.name))
                 cmd_validate(args.name, args.data)
 
         elif args.command == "setup":
             _kw = _bundle_cli_kwargs(args)
+            context.attach(context.set_value(attrs.AGENT_NAME, args.agent))
             _setup(
                 agent_name=args.agent,
                 fast=args.fast,
@@ -490,9 +499,14 @@ def main() -> None:
 
         elif args.command == "optimize":
             _kw = _bundle_cli_kwargs(args)
+            context.attach(context.set_value(attrs.AGENT_NAME, args.agent))
             _optimize(agent_name=args.agent, fast=args.fast, **_kw)
 
     except KeyboardInterrupt:
+        span = _otel_trace.get_current_span()
+        if span.is_recording():
+            span.record_exception(KeyboardInterrupt())
+            span.set_status(Status(StatusCode.ERROR, "Interrupted by user (KeyboardInterrupt)"))
         print("\nAborted.", file=sys.stderr)
         raise SystemExit(130) from None
     finally:

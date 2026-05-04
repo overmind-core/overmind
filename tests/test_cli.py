@@ -197,59 +197,6 @@ class TestBuildParser:
         out = capsys.readouterr().out
         assert "optimize" in out.lower()
 
-    # ── doctor ───────────────────────────────────────────────────────────
-
-    def test_doctor_parsed(self):
-        parser = _build_parser()
-        args = parser.parse_args(["doctor", "my-agent"])
-        assert args.command == "doctor"
-        assert args.agent == "my-agent"
-
-    def test_doctor_missing_agent(self):
-        parser = _build_parser()
-        with pytest.raises(SystemExit):
-            parser.parse_args(["doctor"])
-
-    # ── sync ──────────────────────────────────────────────────────────────
-
-    def test_sync_parsed_all(self):
-        parser = _build_parser()
-        args = parser.parse_args(["sync"])
-        assert args.command == "sync"
-        assert args.agent is None
-
-    def test_sync_parsed_single_agent(self):
-        parser = _build_parser()
-        args = parser.parse_args(["sync", "my-agent"])
-        assert args.command == "sync"
-        assert args.agent == "my-agent"
-
-    def test_sync_help(self, capsys):
-        parser = _build_parser()
-        with pytest.raises(SystemExit):
-            parser.parse_args(["sync", "--help"])
-        out = capsys.readouterr().out
-        assert "sync" in out.lower()
-
-    def test_sync_optimize_parsed_all(self):
-        parser = _build_parser()
-        args = parser.parse_args(["sync-optimize"])
-        assert args.command == "sync-optimize"
-        assert args.agent is None
-
-    def test_sync_optimize_parsed_single_agent(self):
-        parser = _build_parser()
-        args = parser.parse_args(["sync-optimize", "my-agent"])
-        assert args.command == "sync-optimize"
-        assert args.agent == "my-agent"
-
-    def test_sync_optimize_help(self, capsys):
-        parser = _build_parser()
-        with pytest.raises(SystemExit):
-            parser.parse_args(["sync-optimize", "--help"])
-        out = capsys.readouterr().out
-        assert "sync" in out.lower()
-
 
 # ---------------------------------------------------------------------------
 # Main dispatch
@@ -258,18 +205,17 @@ class TestBuildParser:
 
 class TestMainDispatch:
     @pytest.fixture(autouse=True)
-    def _stub_require_overmind(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.setattr(
-            "overmind.core.registry.require_overmind_initialized",
-            lambda: None,
-        )
+    def _stub_cli_side_effects(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr("overmind.cli.require_overmind_initialized", lambda: None)
+        monkeypatch.setattr("overmind.cli.load_overmind_dotenv", lambda: None)
+        monkeypatch.setattr("overmind.cli.setup_logging", lambda: "/dev/null")
 
     def test_init_dispatches(self):
         with patch("overmind.cli._build_parser") as mock_parser:
             mock_args = MagicMock()
             mock_args.command = "init"
             mock_parser.return_value.parse_args.return_value = mock_args
-            with patch("overmind.commands.init_cmd.main") as mock_init:
+            with patch("overmind.cli._init") as mock_init:
                 main()
                 mock_init.assert_called_once()
 
@@ -281,7 +227,7 @@ class TestMainDispatch:
             mock_args.name = "test"
             mock_args.entrypoint = "m:f"
             mock_parser.return_value.parse_args.return_value = mock_args
-            with patch("overmind.commands.agent_cmd.cmd_register") as mock_fn:
+            with patch("overmind.cli.cmd_register") as mock_fn:
                 main()
                 mock_fn.assert_called_once_with("test", "m:f")
 
@@ -291,7 +237,7 @@ class TestMainDispatch:
             mock_args.command = "agent"
             mock_args.agent_command = "list"
             mock_parser.return_value.parse_args.return_value = mock_args
-            with patch("overmind.commands.agent_cmd.cmd_list") as mock_fn:
+            with patch("overmind.cli.cmd_list") as mock_fn:
                 main()
                 mock_fn.assert_called_once()
 
@@ -302,7 +248,7 @@ class TestMainDispatch:
             mock_args.agent_command = "remove"
             mock_args.name = "test"
             mock_parser.return_value.parse_args.return_value = mock_args
-            with patch("overmind.commands.agent_cmd.cmd_remove") as mock_fn:
+            with patch("overmind.cli.cmd_remove") as mock_fn:
                 main()
                 mock_fn.assert_called_once_with("test")
 
@@ -314,7 +260,7 @@ class TestMainDispatch:
             mock_args.name = "test"
             mock_args.entrypoint = "m:f"
             mock_parser.return_value.parse_args.return_value = mock_args
-            with patch("overmind.commands.agent_cmd.cmd_update") as mock_fn:
+            with patch("overmind.cli.cmd_update") as mock_fn:
                 main()
                 mock_fn.assert_called_once_with("test", "m:f")
 
@@ -325,7 +271,7 @@ class TestMainDispatch:
             mock_args.agent_command = "show"
             mock_args.name = "test"
             mock_parser.return_value.parse_args.return_value = mock_args
-            with patch("overmind.commands.agent_cmd.cmd_show") as mock_fn:
+            with patch("overmind.cli.cmd_show") as mock_fn:
                 main()
                 mock_fn.assert_called_once_with("test")
 
@@ -338,7 +284,7 @@ class TestMainDispatch:
             mock_args.policy = None
             mock_args.data = None
             mock_parser.return_value.parse_args.return_value = mock_args
-            with patch("overmind.commands.setup_cmd.main") as mock_fn:
+            with patch("overmind.cli._setup") as mock_fn:
                 main()
                 mock_fn.assert_called_once_with(
                     agent_name="my-agent",
@@ -357,7 +303,7 @@ class TestMainDispatch:
             mock_args.agent = "my-agent"
             mock_args.fast = False
             mock_parser.return_value.parse_args.return_value = mock_args
-            with patch("overmind.commands.optimize_cmd.main") as mock_fn:
+            with patch("overmind.cli._optimize") as mock_fn:
                 main()
                 mock_fn.assert_called_once_with(
                     agent_name="my-agent",
@@ -367,44 +313,12 @@ class TestMainDispatch:
                     max_chars=None,
                 )
 
-    def test_doctor_dispatches(self):
-        with patch("overmind.cli._build_parser") as mock_parser:
-            mock_args = MagicMock()
-            mock_args.command = "doctor"
-            mock_args.agent = "my-agent"
-            mock_parser.return_value.parse_args.return_value = mock_args
-            with patch("overmind.commands.doctor_cmd.main") as mock_fn:
-                main()
-                mock_fn.assert_called_once_with(agent_name="my-agent")
-
-    def test_sync_dispatches(self):
-        with patch("overmind.cli._build_parser") as mock_parser:
-            mock_args = MagicMock()
-            mock_args.command = "sync"
-            mock_args.agent = "my-agent"
-            mock_parser.return_value.parse_args.return_value = mock_args
-            with patch("overmind.commands.sync_cmd.main") as mock_fn:
-                main()
-                mock_fn.assert_called_once_with(agent_name="my-agent")
-
-    def test_sync_optimize_dispatches(self):
-        with patch("overmind.cli._build_parser") as mock_parser:
-            mock_args = MagicMock()
-            mock_args.command = "sync-optimize"
-            mock_args.agent = "my-agent"
-            mock_parser.return_value.parse_args.return_value = mock_args
-            with patch("overmind.commands.sync_optimize_cmd.main") as mock_fn:
-                main()
-                mock_fn.assert_called_once_with(agent_name="my-agent")
-
     def test_keyboard_interrupt_exits_130(self):
         with patch("overmind.cli._build_parser") as mock_parser:
             mock_args = MagicMock()
             mock_args.command = "init"
             mock_parser.return_value.parse_args.return_value = mock_args
-            with patch(
-                "overmind.commands.init_cmd.main", side_effect=KeyboardInterrupt
-            ):
+            with patch("overmind.cli._init", side_effect=KeyboardInterrupt):
                 with pytest.raises(SystemExit) as exc_info:
                     main()
                 assert exc_info.value.code == 130
@@ -433,6 +347,6 @@ class TestMainRequiresOverclawDir:
             mock_args = MagicMock()
             mock_args.command = "init"
             mock_parser.return_value.parse_args.return_value = mock_args
-            with patch("overmind.commands.init_cmd.main") as mock_init:
+            with patch("overmind.cli._init") as mock_init:
                 main()
                 mock_init.assert_called_once()

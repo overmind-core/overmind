@@ -34,7 +34,7 @@ from rich.panel import Panel
 from rich.prompt import IntPrompt, Prompt
 from rich.rule import Rule
 
-from overmind import SpanType, attrs, observe, set_tag
+from overmind import SpanType, attrs, set_tag
 from overmind.client import (
     _run_async,
     flush_pending_api_updates,
@@ -100,7 +100,7 @@ from overmind.utils.provider_keys import (
 from overmind.utils.provider_keys import (
     update_agent_env as _update_agent_env,
 )
-from overmind.utils.tracing import traced
+from overmind.utils.tracing import force_flush_traces, start_child_span, traced
 
 logger = logging.getLogger("overmind.commands.setup")
 
@@ -918,7 +918,7 @@ def _save_dataset(
     with suppress(Exception):
         storage = get_storage()
 
-    dataset_id: str | None = None
+    dataset_meta: dict | None = None
     if storage is not None:
         # If the caller didn't supply policy_md but a local policies.md exists,
         # hash it so the dataset record is linked to the policy it was drafted
@@ -933,7 +933,7 @@ def _save_dataset(
         if resolved_policy_md:
             policy_hash = hashlib.sha256(resolved_policy_md.encode("utf-8")).hexdigest()[:64]
 
-        dataset_id = storage.save_dataset(
+        dataset_meta = storage.save_dataset(
             cases,
             source=source,
             generator_model=generator_model,
@@ -941,16 +941,34 @@ def _save_dataset(
             metadata=metadata or {},
         )
 
+    dataset_id: str | None = dataset_meta.get("id") if dataset_meta else None
+
     set_tag(attrs.SETUP_DATASET_SOURCE, source)
     if dataset_id:
         set_tag(attrs.SETUP_DATASET_ID, dataset_id)
+
+    # Emit a single dedicated span with dataset metadata (no raw data).
+    # This is the canonical signal the platform uses to display dataset
+    # creation in the trace timeline and link it to the agent.
+    if dataset_meta and dataset_id:
+        with start_child_span("overmind_dataset_created", span_type=SpanType.WORKFLOW):
+            set_tag(attrs.DATASET_ID, dataset_id)
+            set_tag(attrs.DATASET_SOURCE, dataset_meta.get("source") or source)
+            set_tag(attrs.DATASET_NUM_DATAPOINTS, str(dataset_meta.get("num_datapoints") or len(cases)))
+            set_tag(attrs.DATASET_AGENT_ID, str(dataset_meta.get("agent_id") or ""))
+            if dataset_meta.get("version") is not None:
+                set_tag(attrs.DATASET_VERSION, str(dataset_meta["version"]))
+            if dataset_meta.get("generator_model"):
+                set_tag(attrs.DATASET_GENERATOR_MODEL, str(dataset_meta["generator_model"]))
+        force_flush_traces()
 
     console.print(
         f"\n  [bold {BRAND}]✓[/bold {BRAND}]  Saved [bold]{len(cases)}[/bold] cases  [dim]→ {rel(data_path)}[/dim]"
     )
     if storage is not None:
         if dataset_id:
-            console.print(f"  [dim]Uploaded dataset to Overmind (id: {dataset_id}).[/dim]")
+            version_str = f"v{dataset_meta['version']}  " if dataset_meta and dataset_meta.get("version") else ""
+            console.print(f"  [dim]Dataset {version_str}uploaded to Overmind (id: {dataset_id}).[/dim]")
         else:
             console.print("  [dim]Dataset upload to Overmind skipped or failed — local copy kept.[/dim]")
     return str(data_path)
@@ -1113,7 +1131,6 @@ def _run_data_phase(
 
     This runs after policy is finalized and before eval criteria generation.
     """
-    set_tag(attrs.SETUP_AGENT_NAME, agent_name)
     set_tag(attrs.SETUP_FAST, fast)
     set_tag(attrs.SETUP_MODEL, model)
     agent_code = analysis.get("_agent_code_section") or Path(agent_path).read_text()
@@ -1550,7 +1567,7 @@ def _collect_agent_provider_config(agent_name: str, console: Console) -> None:
     collect_agent_provider_config(agent_name, console)
 
 
-@observe(span_name="overmind_setup", type=SpanType.WORKFLOW)
+@traced(span_name="overmind_setup", type=SpanType.WORKFLOW)
 def main(
     agent_name: str,
     fast: bool = False,
@@ -1571,7 +1588,6 @@ def main(
 
     # CLI-level flags — set as soon as the span is open
     set_tag(attrs.COMMAND, "setup")
-    set_tag(attrs.SETUP_AGENT_NAME, agent_name)
     set_tag(attrs.SETUP_FAST, str(fast))
     set_tag(attrs.SETUP_HAS_POLICY, str(bool(policy)))
     set_tag(attrs.SETUP_HAS_SEED_DATA, str(bool(data)))

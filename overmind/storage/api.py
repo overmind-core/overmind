@@ -217,7 +217,7 @@ class ApiBackend(StorageBackend):
         policy_hash: str = "",
         metadata: dict | None = None,
         make_active: bool = True,
-    ) -> str | None:
+    ) -> dict | None:
         if not self._agent_id:
             return None
         client = self._client_()
@@ -238,7 +238,14 @@ class ApiBackend(StorageBackend):
             return None
         if not created or not isinstance(created, dict):
             return None
-        return created.get("id")
+        return {
+            "id": created.get("id"),
+            "version": created.get("version"),
+            "source": created.get("source") or source,
+            "num_datapoints": created.get("num_datapoints") or len(datapoints),
+            "agent_id": self._agent_id,
+            "generator_model": created.get("generator_model") or generator_model,
+        }
 
     def load_dataset(self) -> list[dict] | None:
         if not self._agent_id:

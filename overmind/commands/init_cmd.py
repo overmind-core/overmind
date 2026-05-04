@@ -21,7 +21,7 @@ from rich.console import Console
 from rich.panel import Panel
 from rich.rule import Rule
 
-from overmind import SpanType, attrs, observe, set_tag
+from overmind import SpanType, attrs, set_tag
 from overmind.core.constants import OVERMIND_DIR_NAME, overmind_rel
 from overmind.core.registry import init_project_root
 from overmind.utils.display import BRAND, confirm_option
@@ -34,6 +34,7 @@ from overmind.utils.models import (
     model_name_for_env_storage,
     normalize_to_litellm_model_id,
 )
+from overmind.utils.tracing import traced
 
 # Keys we may set or clear; other keys from the state-dir .env are preserved on write.
 # OVERMIND_API_KEY is intentionally excluded — it must be set as a system/shell
@@ -269,7 +270,7 @@ def _write_env(path: Path, env: dict[str, str]) -> None:
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
-@observe(span_name="overmind_init", type=SpanType.WORKFLOW)
+@traced(span_name="overmind_init", type=SpanType.WORKFLOW)
 def main() -> None:
     set_tag(attrs.COMMAND, "init")
     oc_dir = init_project_root() / OVERMIND_DIR_NAME

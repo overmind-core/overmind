@@ -28,6 +28,7 @@ from opentelemetry.sdk.trace.export import BatchSpanProcessor
 from opentelemetry.semconv_ai import SpanAttributes
 from opentelemetry.trace import Status, StatusCode
 
+from overmind import attrs
 from overmind.api_settings import get_api_settings
 
 logger = logging.getLogger(__name__)
@@ -221,6 +222,8 @@ def enable_tracing(providers: list[str] | None = None):
 def _span_processor_on_start(span: trace.Span, parent_context: trace.Context | None = None):
     if value := get_value("workflow_name"):
         span.set_attribute(SpanAttributes.TRACELOOP_WORKFLOW_NAME, str(value))
+    if agent_name := get_value(attrs.AGENT_NAME):
+        span.set_attribute(attrs.AGENT_NAME, str(agent_name))
 
 
 # ---------------------------------------------------------------------------
@@ -404,23 +407,32 @@ def set_tag(key: str, value) -> None:
     """
     Add a custom tag to the current span.
 
-    Accepts str, int, float, bool, or list[str] values.  Other types are
-    coerced to str automatically.
+    Accepts str, int, float, bool, list[str], dict, or any JSON-serialisable
+    value. Dicts / lists with non-string entries are serialised as JSON so
+    the receiving end (overbae OTLP ingest) can round-trip them with
+    ``json.loads`` instead of receiving a Python ``repr`` blob.
 
     Example:
         overmind.set_tag("feature.flag", "new-checkout-flow")
         overmind.set_tag("iteration", 3)
         overmind.set_tag("score", 85.2)
+        overmind.set_tag("overmind.setup.scope", {"optimizable_paths": [...]})
     """
     span = trace.get_current_span()
     if not span.is_recording():
+        logger.warning("failed to set tag %s on ended span %s", key, span)
         return
-    if isinstance(value, (str, int, float, bool)):
+    if isinstance(value, (bool, str, int, float)):
         span.set_attribute(key, value)
     elif value is None:
         span.set_attribute(key, "")
     elif isinstance(value, (list, tuple)) and all(isinstance(v, str) for v in value):
         span.set_attribute(key, list(value))
+    elif isinstance(value, (dict, list, tuple)):
+        try:
+            span.set_attribute(key, json.dumps(value))
+        except (TypeError, ValueError):
+            span.set_attribute(key, str(value))
     else:
         span.set_attribute(key, str(value))
 
@@ -574,19 +586,23 @@ def observe(span_name: str | None = None, type: SpanType = SpanType.FUNCTION):
                         otel_span.set_attribute("inputs", serialized_inputs)
                         # Also tag under the overmind namespace so the backend
                         # can extract I/O for dataset collection from any span.
-                        otel_span.set_attribute("overmind.input_data", serialized_inputs)
+                        otel_span.set_attribute(attrs.INPUT_DATA, serialized_inputs)
 
                         result = await func(*args, **kwargs)
 
                         output = _prepare_for_otel(result)
                         serialized_output = serialize(output)
                         otel_span.set_attribute("outputs", serialized_output)
-                        otel_span.set_attribute("overmind.output_data", serialized_output)
+                        otel_span.set_attribute(attrs.OUTPUT_DATA, serialized_output)
 
                         otel_span.set_status(Status(StatusCode.OK))
 
                         return result
 
+                    except KeyboardInterrupt as e:
+                        otel_span.record_exception(e)
+                        otel_span.set_status(Status(StatusCode.ERROR, "Interrupted by user (KeyboardInterrupt)"))
+                        raise
                     except Exception as e:
                         otel_span.record_exception(e)
                         otel_span.set_status(Status(StatusCode.ERROR, str(e)))
@@ -625,19 +641,23 @@ def observe(span_name: str | None = None, type: SpanType = SpanType.FUNCTION):
                         otel_span.set_attribute("inputs", serialized_inputs)
                         # Also tag under the overmind namespace so the backend
                         # can extract I/O for dataset collection from any span.
-                        otel_span.set_attribute("overmind.input_data", serialized_inputs)
+                        otel_span.set_attribute(attrs.INPUT_DATA, serialized_inputs)
 
                         result = func(*args, **kwargs)
 
                         output = _prepare_for_otel(result)
                         serialized_output = serialize(output)
                         otel_span.set_attribute("outputs", serialized_output)
-                        otel_span.set_attribute("overmind.output_data", serialized_output)
+                        otel_span.set_attribute(attrs.OUTPUT_DATA, serialized_output)
 
                         otel_span.set_status(Status(StatusCode.OK))
 
                         return result
 
+                    except KeyboardInterrupt as e:
+                        otel_span.record_exception(e)
+                        otel_span.set_status(Status(StatusCode.ERROR, "Interrupted by user (KeyboardInterrupt)"))
+                        raise
                     except Exception as e:
                         otel_span.record_exception(e)
                         otel_span.set_status(Status(StatusCode.ERROR, str(e)))
@@ -671,6 +691,10 @@ def start_span(name: str, span_type: SpanType = SpanType.FUNCTION, attributes: d
                 _safe_set_attribute(otel_span, key, value)
         try:
             yield otel_span
+        except KeyboardInterrupt as e:
+            otel_span.record_exception(e)
+            otel_span.set_status(Status(StatusCode.ERROR, "Interrupted by user (KeyboardInterrupt)"))
+            raise
         except Exception as e:
             otel_span.record_exception(e)
             otel_span.set_status(Status(StatusCode.ERROR, str(e)))
