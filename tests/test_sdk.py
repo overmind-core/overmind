@@ -6,14 +6,23 @@ import pytest
 
 @pytest.fixture(autouse=True)
 def reset_sdk_state():
-    """Reset SDK state before each test."""
+    """Reset SDK state before each test, restoring it afterwards.
+
+    Each test in this module needs a clean slate so it can call init() and
+    observe the result.  We save the pre-test state and put it back on
+    teardown so that tests in *other* modules (which rely on the no-op
+    tracer installed by conftest.py) are not broken when they run after
+    these tests.
+    """
     import overmind.tracing as sdk
 
+    saved_initialized = sdk._initialized
+    saved_tracer = sdk._tracer
     sdk._initialized = False
     sdk._tracer = None
     yield
-    sdk._initialized = False
-    sdk._tracer = None
+    sdk._initialized = saved_initialized
+    sdk._tracer = saved_tracer
 
 
 @pytest.fixture

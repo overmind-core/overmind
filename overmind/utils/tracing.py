@@ -74,7 +74,6 @@ def traced(
     function for the specific scalar / categorical metadata you do want
     to surface in traces.
     """
-    return observe(span_name=span_name, type=type)
 
     def decorator(func: F) -> F:
         name = span_name or func.__name__
