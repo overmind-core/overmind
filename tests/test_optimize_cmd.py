@@ -9,12 +9,22 @@ from overmind.commands.optimize_cmd import main
 
 
 class TestOptimizeMain:
+    @patch("overmind.commands.optimize_cmd.configure_storage")
+    @patch("overmind.commands.optimize_cmd.get_agent_id")
     @patch("overmind.commands.optimize_cmd.Optimizer")
     @patch("overmind.commands.optimize_cmd.collect_config")
     @patch("overmind.commands.optimize_cmd.load_agent_dotenv")
-    def test_calls_optimizer(self, mock_load_dotenv, mock_config, mock_optimizer):
+    def test_calls_optimizer(
+        self,
+        mock_load_dotenv,
+        mock_config,
+        mock_optimizer,
+        mock_get_agent_id,
+        mock_configure_storage,
+    ):
         mock_cfg = MagicMock()
         mock_config.return_value = mock_cfg
+        mock_get_agent_id.return_value = "agent-id-123"
         main(agent_name="test", fast=True)
         mock_load_dotenv.assert_called_once_with("test")
         mock_config.assert_called_once_with(

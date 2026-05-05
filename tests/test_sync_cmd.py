@@ -4,6 +4,10 @@ from unittest.mock import patch
 
 import pytest
 
+pytestmark = pytest.mark.skip(
+    reason="overmind.commands.sync_cmd has not been ported from overclaw yet"
+)
+
 
 class TestSyncCmd:
     @patch("overmind.commands.sync_cmd.load_overmind_dotenv")

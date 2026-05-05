@@ -83,7 +83,7 @@ from overmind.optimize.trace_reader import (
     attach_shadow_provenance,
     parse_trace_file_per_line,
 )
-from overmind.storage import get_storage
+from overmind.storage import StorageNotConfiguredError, get_storage
 from overmind.utils.code import AgentBundle
 from overmind.utils.display import BRAND, confirm_option, make_spinner_progress, rel
 from overmind.utils.instrument import deinstrument_source
@@ -190,7 +190,7 @@ class Optimizer:
         set_tag(attrs.OPTIMIZE_PARALLEL, bool(getattr(config, "parallel", False)))
         try:
             self._storage = get_storage()
-        except ValueError:
+        except (ValueError, StorageNotConfiguredError):
             self._storage = None
         self._reporter: ApiReporter | None = None
 

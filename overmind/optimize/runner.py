@@ -689,7 +689,10 @@ if _cwd not in sys.path:
 try:
     from overmind import init as overmind_init
     overmind_init()
-except ImportError:
+except (ImportError, SystemExit):
+    # ImportError  — overmind SDK not installed in this environment.
+    # SystemExit   — overmind.init() calls sys.exit(1) when OVERMIND_API_KEY
+    #               is absent; swallow it so the agent itself can still run.
     pass
 
 def _ocl_force_flush():

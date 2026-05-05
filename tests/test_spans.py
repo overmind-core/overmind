@@ -1,19 +1,43 @@
+"""Integration tests for end-to-end span ingestion.
+
+These tests require live API keys (OVERMIND_API_KEY, OPENAI_API_KEY) and
+network access to api.overmindlab.ai.  They are skipped automatically in
+environments where those conditions are not met so they never block the
+unit-test suite.
+"""
+
 import json
 import os
 from datetime import datetime
 from time import sleep
 
-import requests
-from openai import OpenAI
-from opentelemetry import trace as otel_trace
+import pytest
 
-from overmind.tracing import init
+requests = pytest.importorskip("requests")
+
+pytestmark = pytest.mark.skipif(
+    not os.environ.get("OVERMIND_API_KEY") or not os.environ.get("OPENAI_API_KEY"),
+    reason="Integration test: requires OVERMIND_API_KEY and OPENAI_API_KEY",
+)
+
+from openai import OpenAI  # noqa: E402
+from opentelemetry import trace as otel_trace  # noqa: E402
+
+from overmind.tracing import init  # noqa: E402
 
 project_id = os.environ.get("OVERMIND_PROJECT_ID", "e5445c2d-0e4b-4cb1-8a0c-26c18d0ba19f")
 
 base_url = "https://api.overmindlab.ai"
-init(service_name="test-spans", environment="local", providers=["openai"])
-openai_client = OpenAI()
+
+
+@pytest.fixture(scope="module", autouse=True)
+def _init_overmind():
+    init(service_name="test-spans", environment="local", providers=["openai"])
+
+
+@pytest.fixture(scope="module")
+def openai_client():
+    return OpenAI()
 
 
 def check_for_signature(signature: str) -> list[bool]:
@@ -28,6 +52,7 @@ def check_for_signature(signature: str) -> list[bool]:
         headers={
             "X-Api-Key": os.getenv("OVERMIND_API_KEY"),
         },
+        timeout=30,
     )
     assert traces_response.status_code == 200
     traces = traces_response.json()["traces"]
@@ -61,7 +86,7 @@ Leather free sneaker microfiber and rhinestones complex 3-layered outsole embroi
 Upper: nylon, polyurethane - Sole: tpu - Insole: foam."""
 
 
-def test_spans():
+def test_spans(openai_client):
     openai_client.chat.completions.create(
         model="gpt-5-mini",
         reasoning_effort="minimal",
@@ -77,7 +102,7 @@ def test_spans():
             },
         ],
     )
-    otel_trace.get_tracer_provider().force_flush()
+    otel_trace.get_tracer_provider().force_flush(timeout_millis=10_000)
 
     retries = 4
     for i in range(retries):
