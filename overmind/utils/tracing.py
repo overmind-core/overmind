@@ -25,7 +25,7 @@ from typing import TypeVar
 from opentelemetry import context as otel_context
 from opentelemetry import trace as otel_trace
 
-from overmind import SpanType, observe, start_span
+from overmind import SpanType, start_span
 
 F = TypeVar("F", bound=Callable)
 
