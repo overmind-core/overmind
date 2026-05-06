@@ -58,9 +58,11 @@ from overmind.core.registry import (
     save_agent,
 )
 from overmind.optimize.data import (
+    check_consistent_fields,
     generate_diverse_synthetic_data,
     generate_synthetic_data,
     load_data,
+    normalize_data_fields,
 )
 from overmind.optimize.data_analyzer import analyze_seed_coverage, validate_seed_data
 from overmind.optimize.evaluator import has_entrypoint
@@ -666,6 +668,22 @@ def _run_beginning_smoke_test(
     if not cases:
         console.print(f"  [dim][cyan]{existing_json[0].name}[/cyan] is empty — skipping pre-setup smoke test.[/dim]")
         return
+
+    # ── Field-consistency check ───────────────────────────────────────────
+    consistent, common_fields, bad_indices = check_consistent_fields(cases)
+    if not consistent:
+        console.print(
+            f"\n  [bold red]Error:[/bold red] Not all data points in "
+            f"[cyan]{existing_json[0].name}[/cyan] have the same fields.\n"
+            f"  First case fields: {sorted(common_fields)}\n"
+            f"  Mismatched at indices: {bad_indices[:10]}"
+            + ("  …" if len(bad_indices) > 10 else "")
+            + "\n  Please ensure every entry in your seed file has identical top-level keys.\n"
+        )
+        raise SystemExit(1)
+
+    # ── Field mapping (prompt once, then persisted for validate / optimize) ─
+    cases = normalize_data_fields(cases, console, require_output=False, agent_name=agent_name)
 
     run_path = instrumented_entry or agent_path
     env_dir: str | Path | None = None

@@ -671,7 +671,7 @@ def cmd_validate(name: str, data: str) -> None:
 
     from overmind.core.paths import agent_instrumented_dir
     from overmind.core.registry import project_root_from_agent_file, resolve_agent
-    from overmind.optimize.data import load_data
+    from overmind.optimize.data import check_consistent_fields, load_data, normalize_data_fields
     from overmind.optimize.runner import AgentRunner, RunnerConfig
     from overmind.utils.display import make_spinner_progress
 
@@ -718,6 +718,21 @@ def cmd_validate(name: str, data: str) -> None:
     if not cases:
         console.print(f"\n  [bold yellow]Warning:[/bold yellow] No test cases found in [cyan]{data}[/cyan]\n")
         raise SystemExit(1)
+
+    # ── Field-consistency check ───────────────────────────────────────────
+    consistent, common_fields, bad_indices = check_consistent_fields(cases)
+    if not consistent:
+        console.print(
+            f"\n  [bold red]Error:[/bold red] Not all data points have the same fields.\n"
+            f"  First case fields: {sorted(common_fields)}\n"
+            f"  Mismatched at indices: {bad_indices[:10]}"
+            + ("  …" if len(bad_indices) > 10 else "")
+            + "\n  Please ensure every entry in your data file has identical top-level keys.\n"
+        )
+        raise SystemExit(1)
+
+    # ── Field mapping (prompt if data lacks standard 'input' key) ────────
+    cases = normalize_data_fields(cases, console, require_output=False, agent_name=name)
 
     first_case = cases[0]
     test_input = first_case.get("input", first_case)

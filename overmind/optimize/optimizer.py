@@ -2159,8 +2159,17 @@ class Optimizer:
         Data is prepared during ``overmind setup`` (generated synthetically
         or analyzed/augmented from seed data).  The optimizer only loads it.
         """
+        from overmind.optimize.data import normalize_data_fields
+
         self.console.print(f"  [dim]Loading data from {self.config.data_path}…[/dim]")
-        return load_data(self.config.data_path)
+        cases = load_data(self.config.data_path)
+        cases = normalize_data_fields(
+            cases,
+            self.console,
+            require_output=True,
+            agent_name=getattr(self.config, "agent_name", None) or None,
+        )
+        return cases
 
     # ------------------------------------------------------------------
     # Multi-file bundle helpers

@@ -28,6 +28,7 @@ import random
 import re
 import time
 from concurrent.futures import ThreadPoolExecutor
+from pathlib import Path
 from typing import Any
 
 import litellm
@@ -72,6 +73,222 @@ def load_data(path: str) -> list[dict]:
         return data["test_cases"]
 
     raise ValueError(f"Unrecognized data format in {path}. Expected a JSON array or an object with a 'test_cases' key.")
+
+
+def check_consistent_fields(cases: list[dict]) -> tuple[bool, set[str], list[int]]:
+    """Check whether all cases share the same top-level field names.
+
+    Returns ``(consistent, common_fields, bad_indices)`` where
+    *bad_indices* lists the positions of cases whose field set differs from
+    the first case.
+    """
+    if not cases:
+        return True, set(), []
+    reference = set(cases[0].keys())
+    bad: list[int] = []
+    for i, case in enumerate(cases[1:], start=1):
+        if set(case.keys()) != reference:
+            bad.append(i)
+    return (not bad), reference, bad
+
+
+def _field_mapping_path(agent_name: str) -> Path:
+    """Return the path for the persisted field-mapping file for *agent_name*."""
+
+    from overmind.core.paths import agent_setup_spec_dir
+
+    return agent_setup_spec_dir(agent_name) / "field_mapping.json"
+
+
+def normalize_data_fields(
+    cases: list[dict],
+    console: Console,
+    *,
+    require_output: bool = True,
+    agent_name: str | None = None,
+) -> list[dict]:
+    """Remap arbitrary data fields to the standard ``input`` / ``expected_output`` keys.
+
+    If the data already uses ``input`` (and, when *require_output* is True,
+    ``expected_output``) the cases are returned unchanged.  Otherwise the
+    user is shown the available field names and asked to pick which one
+    is the agent's input and which is the expected output.
+
+    When the user selects a single field as the input, its value is used
+    directly as the ``input`` value (good for data where one field already
+    holds a dict of agent parameters).  When they choose
+    ``"(all fields except output)"``, all fields other than the selected
+    output field are kept as the ``input`` dict — the right default for
+    flat datasets where every column is an agent parameter.
+
+    When *agent_name* is provided:
+    - If a field-mapping file already exists for that agent, the saved
+      mapping is applied silently (no interactive prompt).
+    - If no file exists and the user makes a selection, the mapping is
+      persisted so subsequent calls (validate, optimize) skip the prompt.
+    """
+
+    from overmind.utils.display import BRAND, select_option
+
+    if not cases:
+        return cases
+
+    # ── Alias normalisation: inputs → input, outputs → expected_output ────
+    # Applied silently before any other check so the rest of the function
+    # sees only the canonical key names.
+    _INPUT_ALIASES = ("inputs",)
+    _OUTPUT_ALIASES = ("outputs",)
+
+    first_keys = set(cases[0].keys())
+    rename: dict[str, str] = {}
+    if "input" not in first_keys:
+        for alias in _INPUT_ALIASES:
+            if alias in first_keys:
+                rename[alias] = "input"
+                break
+    if "expected_output" not in first_keys:
+        for alias in _OUTPUT_ALIASES:
+            if alias in first_keys:
+                rename[alias] = "expected_output"
+                break
+
+    if rename:
+        cases = [{rename.get(k, k): v for k, v in case.items()} for case in cases]
+
+    fields = list(cases[0].keys())
+
+    has_input = "input" in fields
+    has_output = "expected_output" in fields
+
+    if has_input and (has_output or not require_output):
+        return cases
+
+    mapping_path: Path | None = _field_mapping_path(agent_name) if agent_name else None
+
+    # ── Try to load a previously saved mapping ────────────────────────────
+    if mapping_path is not None and mapping_path.exists():
+        try:
+            saved = json.loads(mapping_path.read_text(encoding="utf-8"))
+            input_field: str | None = saved.get("input_field")
+            use_all_as_input: bool = bool(saved.get("use_all_as_input", False))
+            output_field: str | None = saved.get("output_field")
+
+            # Validate the saved mapping still applies to the current fields
+            saved_fields_ok = (use_all_as_input or input_field in fields or input_field == "input") and (
+                output_field is None or output_field in fields or output_field == "expected_output"
+            )
+            if saved_fields_ok:
+                console.print(
+                    f"  [dim]Using saved field mapping from "
+                    f"[cyan]{mapping_path.relative_to(mapping_path.parents[2])}[/cyan]"
+                    f" — input: [bold]{input_field if not use_all_as_input else '(all fields except output)'}[/bold]"
+                    + (f", output: [bold]{output_field}[/bold]" if output_field else "")
+                    + "[/dim]"
+                )
+                return _apply_field_mapping(cases, input_field, use_all_as_input, output_field)
+        except Exception:
+            logger.debug("Could not load saved field mapping from %s", mapping_path)
+
+    # ── Interactive selection ─────────────────────────────────────────────
+    console.print()
+    console.print(
+        f"  [bold {BRAND}]Data field mapping[/bold {BRAND}]  "
+        "[dim]Your data does not use the standard 'input' / 'expected_output' keys.[/dim]"
+    )
+    console.print(f"  [dim]Available fields: {', '.join(fields)}[/dim]")
+    console.print()
+
+    if not has_input:
+        ALL_FIELDS_OPTION = "(all fields except output)"
+        input_choices = fields + [ALL_FIELDS_OPTION]
+        input_idx = select_option(
+            input_choices,
+            title="Which field is the agent's input?  (single field → its value becomes 'input'; last option → all non-output fields become 'input')",
+            default_index=0,
+            console=console,
+        )
+        input_field = input_choices[input_idx]
+        use_all_as_input = input_field == ALL_FIELDS_OPTION
+        if use_all_as_input:
+            input_field = None
+    else:
+        input_field = "input"
+        use_all_as_input = False
+
+    output_field = None
+    if not has_output and require_output:
+        remaining = [f for f in fields if f != input_field] if not use_all_as_input else fields
+        SKIP_OPTION = "(none — skip expected_output)"
+        output_choices = remaining + [SKIP_OPTION]
+        output_idx = select_option(
+            output_choices,
+            title="Which field is the expected output?",
+            default_index=0,
+            console=console,
+        )
+        chosen = output_choices[output_idx]
+        output_field = None if chosen == SKIP_OPTION else chosen
+    elif has_output:
+        output_field = "expected_output"
+
+    # ── Persist the mapping for future calls ─────────────────────────────
+    if mapping_path is not None:
+        try:
+            mapping_path.parent.mkdir(parents=True, exist_ok=True)
+            mapping_path.write_text(
+                json.dumps(
+                    {
+                        "input_field": input_field,
+                        "use_all_as_input": use_all_as_input,
+                        "output_field": output_field,
+                    },
+                    indent=2,
+                ),
+                encoding="utf-8",
+            )
+            logger.debug("Saved field mapping to %s", mapping_path)
+        except Exception:
+            logger.debug("Could not save field mapping to %s", mapping_path)
+
+    return _apply_field_mapping(cases, input_field, use_all_as_input, output_field)
+
+
+def _apply_field_mapping(
+    cases: list[dict],
+    input_field: str | None,
+    use_all_as_input: bool,
+    output_field: str | None,
+) -> list[dict]:
+    """Remap *cases* to standard ``input`` / ``expected_output`` keys using a resolved mapping."""
+    normalized: list[dict] = []
+    for case in cases:
+        new_case: dict = {}
+
+        if use_all_as_input:
+            new_case["input"] = {k: v for k, v in case.items() if k != output_field}
+        elif input_field == "input":
+            new_case["input"] = case["input"]
+        else:
+            new_case["input"] = case.get(input_field)
+
+        if output_field == "expected_output":
+            new_case["expected_output"] = case["expected_output"]
+        elif output_field is not None:
+            new_case["expected_output"] = case.get(output_field)
+
+        # When a single field was selected as input, carry any remaining
+        # fields (other than input_field and output_field) through as metadata.
+        # When use_all_as_input is True every non-output field is already
+        # inside new_case["input"], so nothing extra needs to be carried.
+        if not use_all_as_input:
+            consumed = {input_field, output_field, "input", "expected_output"} - {None}  # type: ignore[arg-type]
+            for k, v in case.items():
+                if k not in consumed:
+                    new_case[k] = v
+
+        normalized.append(new_case)
+
+    return normalized
 
 
 # ---------------------------------------------------------------------------
