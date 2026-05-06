@@ -453,7 +453,7 @@ def main() -> None:
 
     load_dotenv(".env")
     load_dotenv(".overmind/.env", override=True)
-    overmind.init(service_name="overmind.cli", providers=None)
+    overmind.init(service_name="overmind.cli")
 
     # Wire up logging as early as possible so every module that gets
     # imported next (commands, optimizer, coding agent, …) can emit debug
