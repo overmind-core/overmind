@@ -1172,6 +1172,7 @@ def _run_data_phase(
         )
         if has_seed_data:
             seed_cases = load_data(str(seed_files[0]))
+            seed_cases = normalize_data_fields(seed_cases, console, require_output=False, agent_name=agent_name)
             console.print(
                 f"  [dim]Seed data found ({len(seed_cases)} cases) — copying to setup_spec/dataset.json[/dim]"
             )
@@ -1225,6 +1226,7 @@ def _run_data_phase(
     if has_seed_data:
         seed_path = seed_files[0]
         seed_data = load_data(str(seed_path))
+        seed_data = normalize_data_fields(seed_data, console, require_output=False, agent_name=agent_name)
         console.print(
             f"  [bold {BRAND}]Seed data found[/bold {BRAND}]  [dim]{seed_path.name}  ·  {len(seed_data)} cases[/dim]"
         )
