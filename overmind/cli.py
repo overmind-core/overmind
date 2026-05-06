@@ -22,6 +22,7 @@ import logging
 import sys
 from unittest.mock import MagicMock
 
+from dotenv import load_dotenv
 from opentelemetry import context
 from opentelemetry import trace as _otel_trace
 from opentelemetry.trace import Status, StatusCode
@@ -450,6 +451,8 @@ def main() -> None:
         require_overmind_initialized()
         load_overmind_dotenv()
 
+    load_dotenv(".env")
+    load_dotenv(".overmind/.env", override=True)
     overmind.init(service_name="overmind.cli", providers=None)
 
     # Wire up logging as early as possible so every module that gets
