@@ -50,8 +50,6 @@ _providers: set[str] = set()
 # utility functions
 # ---------------------------------------------------------------------------
 
-_MAX_ATTR_LEN = 32_000
-
 
 def serialize_dataclass(obj: Any) -> Any:
     """
@@ -106,8 +104,6 @@ def serialize(obj) -> str:
     except (TypeError, ValueError, OverflowError):
         raw = repr(obj)
 
-    if len(raw) > _MAX_ATTR_LEN:
-        return raw[:_MAX_ATTR_LEN] + "…[truncated]"
     return raw
 
 

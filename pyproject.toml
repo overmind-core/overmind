@@ -13,7 +13,7 @@ classifiers = [
 ]
 dependencies = [
     "litellm>=1.40.0",
-    "python-dotenv>=1.0.0",
+    "python-dotenv>=1.2.2",
     "rich>=14.0.0",
     "tomlkit>=0.14.0",
     "pydantic>=2.0.0",
@@ -45,7 +45,7 @@ name = "overmind"
 readme = "README.md"
 requires-python = ">=3.10,<4" # todo; remove the upper bound
 urls = { Homepage = "https://github.com/overmind-core/overmind-python", Repository = "https://github.com/overmind-core/overmind-python" }
-version = "0.1.42"
+version = "0.1.43"
 
 
     [project.scripts]
