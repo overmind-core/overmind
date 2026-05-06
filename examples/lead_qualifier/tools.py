@@ -75,10 +75,30 @@ TOOL_SCHEMAS = [
         "type": "function",
         "function": {
             "name": "lookup_company_size",
-            "description": "Look up company size from internal CRM data.",
+            "description": (
+                "Look up company size and enrichment data from internal CRM. "
+                "MUST be called first for every lead before scoring. "
+                "The 'domain' parameter must be a bare domain derived from the company name: "
+                "lowercase the name, remove common suffixes (Corp, Inc, Industries, LLC, Ltd, Solutions, Technologies, Tech, Co), "
+                "remove all spaces and special characters, then append '.com'. "
+                "Examples: 'Acme Corp' → 'acme.com', 'Dunder Mifflin' → 'dundermifflin.com', "
+                "'Tech Solutions Inc' → 'techsolutions.com', 'Initech Industries' → 'initech.com'. "
+                "Returns: employees (int or null), industry (str or null), is_competitor (bool). "
+                "Use employees count as the primary scoring signal for lead classification."
+            ),
             "parameters": {
                 "type": "object",
-                "properties": {"domain": {"type": "string"}},
+                "properties": {
+                    "domain": {
+                        "type": "string",
+                        "description": (
+                            "Bare domain only (e.g., 'acme.com'). "
+                            "Do NOT include 'https://', 'www.', or the full company name. "
+                            "Derive by: lowercase name → remove Corp/Inc/LLC/Ltd/Industries/Solutions/Technologies/Tech/Co → "
+                            "remove spaces → append .com"
+                        ),
+                    }
+                },
                 "required": ["domain"],
             },
         },
@@ -87,10 +107,21 @@ TOOL_SCHEMAS = [
         "type": "function",
         "function": {
             "name": "exa_search_company",
-            "description": "Search the web for a company.",
+            "description": (
+                "Search the web for company information. "
+                "ONLY call this if lookup_company_size returned employees: null or missing employee data. "
+                "Do NOT call if CRM already returned a non-null employees value. "
+                "Do NOT call if is_competitor is true. "
+                "Pass the full company name as the query to get the best results."
+            ),
             "parameters": {
                 "type": "object",
-                "properties": {"company": {"type": "string"}},
+                "properties": {
+                    "company": {
+                        "type": "string",
+                        "description": "Full company name to search for (e.g., 'Dunder Mifflin Paper Company')",
+                    }
+                },
                 "required": ["company"],
             },
         },
