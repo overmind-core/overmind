@@ -1,0 +1,187 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Virtual Environment
+venv/
+env/
+ENV/
+.env
+.venv
+.python-version
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.project
+.pydevproject
+.settings/
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+.nox/
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+*.py,cover
+.hypothesis/
+.pytest_cache/
+tests/e2e/reports/
+
+# Logs
+*.log
+logs/
+debug_initialization.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Local development
+.DS_Store
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+.env.*.local
+media/
+
+# AWS
+.aws/
+amplify/
+.ebextensions/
+.elasticbeanstalk/
+
+# Docker
+.docker/
+docker-compose.override.yml
+
+# Database
+*.sqlite3
+*.db
+
+# Distribution / packaging
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+/node_modules
+
+# Jupyter Notebook
+.ipynb_checkpoints
+*.ipynb
+
+# mypy
+.mypy_cache/
+.dmypy.json
+dmypy.json
+
+# Rope project settings
+.ropeproject
+
+# mkdocs documentation
+/site
+
+# Temporary files
+*.tmp
+*.bak
+*.swp
+*~
+
+# System Files
+.DS_Store
+Thumbs.db
+
+# Elastic Beanstalk Files
+.elasticbeanstalk/*
+!.elasticbeanstalk/*.cfg.yml
+!.elasticbeanstalk/*.global.yml
+app/tests/nlp/adversarial/__pycache__/character_attacks.cpython-312.pyc
+app/tests/nlp/adversarial/__pycache__/advanced_attacks.cpython-312.pyc
+app/tests/nlp/__pycache__/data_providers.cpython-312.pyc
+app/tests/nlp/__pycache__/__init__.cpython-312.pyc
+app/test_registry/__pycache__/registry.cpython-312.pyc
+app/services/__pycache__/test_service.cpython-312.pyc
+app/model_adapters/__pycache__/nlp_adapter.cpython-312.pyc
+app/__pycache__/main.cpython-312.pyc
+app/__pycache__/__init__.cpython-312.pyc
+
+# Celery
+celerybeat-schedule*
+
+# Development
+tmp/
+overmind-python/
+
+# Local sample datasets (uploaded via UI, not loaded by code/tests)
+/databricks-dolly-15k.jsonl
+/medical_o1_sft.json
+
+# Generated MCP tool-audit log (written to cwd by workshop tool servers/tests)
+_tool_audit.jsonl
+
+# Local sample trace export (referenced only by local task docs)
+/dataagent_trace.csv
+
+# Stray duplicate of public/A2.png (the served copy lives in frontend/public/)
+/frontend/A2.png
+
+# Holds a plaintext project API key for the local MCP server
+.cursor/mcp.json
+
+# Local agent tooling bundles (not required to build/deploy/run)
+.cursor/plans/
+.cursor/skills/
+.github/skills/
+.agents/
+.worktrees/
+skills-lock.json
+skills.lock
+
+# Product spec doc (local only)
+merps
+finetuning_data
+/langfuse
+trajectory_sdk
+/flowmap
+/tasks/
+
+# Claude Code local state
+.claude/settings.local.json
+.impeccable/

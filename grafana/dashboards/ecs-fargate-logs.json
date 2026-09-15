@@ -1,0 +1,403 @@
+{
+  "__inputs": [
+    {
+      "name": "DS_CLOUDWATCH",
+      "label": "CloudWatch",
+      "type": "datasource",
+      "pluginId": "cloudwatch",
+      "pluginName": "CloudWatch"
+    }
+  ],
+  "__requires": [
+    {
+      "type": "datasource",
+      "id": "cloudwatch",
+      "name": "CloudWatch",
+      "version": "1.0.0"
+    },
+    {
+      "type": "panel",
+      "id": "logs",
+      "name": "Logs",
+      "version": ""
+    },
+    {
+      "type": "panel",
+      "id": "timeseries",
+      "name": "Time series",
+      "version": ""
+    },
+    {
+      "type": "panel",
+      "id": "table",
+      "name": "Table",
+      "version": ""
+    }
+  ],
+  "title": "ECS Fargate Logs",
+  "uid": "ecs-fargate-logs",
+  "description": "CloudWatch Logs Insights viewer for ECS Fargate task logs (overmind-prod)",
+  "tags": [
+    "aws",
+    "ecs",
+    "fargate",
+    "logs",
+    "cloudwatch"
+  ],
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "30s",
+  "time": {
+    "from": "now-1h",
+    "to": "now"
+  },
+  "timepicker": {},
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 0,
+  "editable": true,
+  "links": [],
+  "annotations": {
+    "list": []
+  },
+  "templating": {
+    "list": [
+      {
+        "name": "datasource",
+        "type": "datasource",
+        "label": "Data source",
+        "pluginId": "cloudwatch",
+        "query": "cloudwatch",
+        "refresh": 1,
+        "hide": 0,
+        "includeAll": false,
+        "multi": false,
+        "options": [],
+        "current": {}
+      },
+      {
+        "name": "region",
+        "type": "custom",
+        "label": "Region",
+        "hide": 0,
+        "query": "eu-west-1,us-east-1,us-west-2,eu-west-2,eu-central-1,ap-southeast-1",
+        "current": {
+          "selected": true,
+          "text": "eu-west-1",
+          "value": "eu-west-1"
+        },
+        "options": [
+          {
+            "selected": true,
+            "text": "eu-west-1",
+            "value": "eu-west-1"
+          },
+          {
+            "selected": false,
+            "text": "us-east-1",
+            "value": "us-east-1"
+          },
+          {
+            "selected": false,
+            "text": "us-west-2",
+            "value": "us-west-2"
+          },
+          {
+            "selected": false,
+            "text": "eu-west-2",
+            "value": "eu-west-2"
+          },
+          {
+            "selected": false,
+            "text": "eu-central-1",
+            "value": "eu-central-1"
+          }
+        ],
+        "includeAll": false,
+        "multi": false
+      },
+      {
+        "name": "log_group",
+        "type": "custom",
+        "label": "Log Group",
+        "hide": 0,
+        "query": "/ecs/overmind-prod/api,/ecs/overmind-prod/celery-worker,/ecs/overmind-prod/celery-beat,/ecs/overmind-prod",
+        "current": {
+          "selected": true,
+          "text": "/ecs/overmind-prod/api",
+          "value": "/ecs/overmind-prod/api"
+        },
+        "options": [
+          {
+            "selected": true,
+            "text": "/ecs/overmind-prod/api",
+            "value": "/ecs/overmind-prod/api"
+          },
+          {
+            "selected": false,
+            "text": "/ecs/overmind-prod/celery-worker",
+            "value": "/ecs/overmind-prod/celery-worker"
+          },
+          {
+            "selected": false,
+            "text": "/ecs/overmind-prod/celery-beat",
+            "value": "/ecs/overmind-prod/celery-beat"
+          },
+          {
+            "selected": false,
+            "text": "/ecs/overmind-prod",
+            "value": "/ecs/overmind-prod"
+          }
+        ],
+        "includeAll": false,
+        "multi": false
+      }
+    ]
+  },
+  "panels": [
+    {
+      "id": 1,
+      "type": "timeseries",
+      "title": "Log Volume (events/min)",
+      "gridPos": {
+        "x": 0,
+        "y": 0,
+        "w": 12,
+        "h": 7
+      },
+      "datasource": {
+        "type": "cloudwatch",
+        "uid": "${datasource}"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "options": {
+        "tooltip": {
+          "mode": "single"
+        },
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "cloudwatch",
+            "uid": "${datasource}"
+          },
+          "queryMode": "Logs",
+          "region": "${region}",
+          "logGroupNames": [
+            "${log_group}"
+          ],
+          "expression": "stats count(*) as events by bin(1min)",
+          "statsGroups": [
+            "bin(1min)"
+          ],
+          "id": ""
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "type": "timeseries",
+      "title": "Error Rate (events/min)",
+      "gridPos": {
+        "x": 12,
+        "y": 0,
+        "w": 12,
+        "h": 7
+      },
+      "datasource": {
+        "type": "cloudwatch",
+        "uid": "${datasource}"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "fixedColor": "red",
+            "mode": "fixed"
+          },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "options": {
+        "tooltip": {
+          "mode": "single"
+        },
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "cloudwatch",
+            "uid": "${datasource}"
+          },
+          "queryMode": "Logs",
+          "region": "${region}",
+          "logGroupNames": [
+            "${log_group}"
+          ],
+          "expression": "filter @message like /(?i)(error|exception|critical|fatal|traceback)/ | stats count(*) as errors by bin(1min)",
+          "statsGroups": [
+            "bin(1min)"
+          ],
+          "id": ""
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "type": "logs",
+      "title": "Recent Logs \u2014 ${log_group}",
+      "description": "All log lines newest-first. Use the time range picker to zoom in.",
+      "gridPos": {
+        "x": 0,
+        "y": 7,
+        "w": 24,
+        "h": 14
+      },
+      "datasource": {
+        "type": "cloudwatch",
+        "uid": "${datasource}"
+      },
+      "options": {
+        "dedupStrategy": "none",
+        "enableLogDetails": true,
+        "prettifyLogMessage": false,
+        "showCommonLabels": false,
+        "showLabels": false,
+        "showTime": true,
+        "sortOrder": "Descending",
+        "wrapLogMessage": true
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "cloudwatch",
+            "uid": "${datasource}"
+          },
+          "queryMode": "Logs",
+          "region": "${region}",
+          "logGroupNames": [
+            "${log_group}"
+          ],
+          "expression": "fields @timestamp, @logStream, @message | sort @timestamp desc | limit 500",
+          "statsGroups": [],
+          "id": ""
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "type": "logs",
+      "title": "Errors & Exceptions",
+      "description": "Lines matching ERROR, Exception, Traceback, critical, fatal (case-insensitive). Mirrors the CloudWatch alarm filter.",
+      "gridPos": {
+        "x": 0,
+        "y": 21,
+        "w": 24,
+        "h": 10
+      },
+      "datasource": {
+        "type": "cloudwatch",
+        "uid": "${datasource}"
+      },
+      "options": {
+        "dedupStrategy": "none",
+        "enableLogDetails": true,
+        "prettifyLogMessage": false,
+        "showCommonLabels": false,
+        "showLabels": false,
+        "showTime": true,
+        "sortOrder": "Descending",
+        "wrapLogMessage": true
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "cloudwatch",
+            "uid": "${datasource}"
+          },
+          "queryMode": "Logs",
+          "region": "${region}",
+          "logGroupNames": [
+            "${log_group}"
+          ],
+          "expression": "fields @timestamp, @logStream, @message | filter @message like /(?i)(error|exception|traceback|critical|fatal)/ | sort @timestamp desc | limit 200",
+          "statsGroups": [],
+          "id": ""
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "type": "table",
+      "title": "Top Log Streams by Volume",
+      "description": "Which ECS task / container is loudest in the selected time range",
+      "gridPos": {
+        "x": 0,
+        "y": 31,
+        "w": 24,
+        "h": 8
+      },
+      "datasource": {
+        "type": "cloudwatch",
+        "uid": "${datasource}"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "auto",
+            "cellOptions": {
+              "type": "auto"
+            }
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "sortBy": [
+          {
+            "displayName": "count",
+            "desc": true
+          }
+        ]
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "cloudwatch",
+            "uid": "${datasource}"
+          },
+          "queryMode": "Logs",
+          "region": "${region}",
+          "logGroupNames": [
+            "${log_group}"
+          ],
+          "expression": "stats count(*) as count by @logStream | sort count desc | limit 20",
+          "statsGroups": [
+            "@logStream"
+          ],
+          "id": ""
+        }
+      ]
+    }
+  ]
+}

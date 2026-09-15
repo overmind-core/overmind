@@ -1,0 +1,795 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+
+@custom-variant dark (&:is(.dark *));
+
+/* Geist Pixel — SIL OFL 1.1, vendored from the `geist` npm package. The metric
+   overrides pin a 1.20em line box over the face's own 1.30em, so anything
+   inheriting `line-height: normal` doesn't gain 8.3% leading. */
+@font-face {
+  font-family: "Geist Pixel";
+  src: url("/fonts/GeistPixel-Square.woff2") format("woff2");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+  ascent-override: 95.8%;
+  descent-override: 24.2%;
+}
+
+@font-face {
+  font-family: "PP Mondwest";
+  src: url("/fonts/PPMondwest-Regular.otf") format("opentype");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+/* NeueBit — sidebar nav rows and the breadcrumb only (DESIGN.md § Typography).
+   Real Regular + Bold masters, so `font-weight: 700` is a genuine cut. */
+@font-face {
+  font-family: "NeueBit";
+  src: url("/fonts/PPNeueBit-Regular.otf") format("opentype");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+  ascent-override: 80%;
+  descent-override: 20%;
+}
+
+@font-face {
+  font-family: "NeueBit";
+  src: url("/fonts/PPNeueBit-Bold.otf") format("opentype");
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+  ascent-override: 80%;
+  descent-override: 20%;
+}
+
+body {
+  --font-sidebar: "NeueBit", system-ui, sans-serif;
+  /* The app shell owns all scrolling (the outlet's overflow-y-auto); anything
+     leaking past the h-screen frame must clip rather than hand the document a
+     second scrollbar that moves the whole shell. */
+  overflow: hidden;
+  font-family: "Geist Pixel", system-ui, -apple-system, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  /* Geist Pixel has one 400 master, so every bold synthesises. Do NOT suppress
+     that with `font-weight: 400 700` on the @font-face — it renders bold
+     identical to regular and silently deletes emphasis product-wide. */
+  font-synthesis: weight;
+  @apply m-0;
+}
+
+/* Deliberately no `h1–h4 { font-family: display }` rule: tying the face to the
+   tag put PP Mondwest on ~30 small UI headings by accident. The display face is
+   opt-in through the title ramp (named in lib/typography.ts). */
+
+code {
+  font-family: var(--font-mono);
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+
+  body {
+    @apply bg-background text-foreground;
+  }
+}
+
+@layer components {
+  .page-wrapper {
+    @apply space-y-6 pb-8;
+  }
+
+  .sidebar-label {
+    font-family: var(--font-sidebar);
+    font-size: 1.46em;
+    font-weight: 400;
+    line-height: 1;
+    letter-spacing: 0.05em;
+  }
+
+  /* 22px sizes NeueBit's caps (0.5em) to the 11px caps of the top bar's 14px
+     Geist Pixel controls. */
+  .crumb-label {
+    font-family: var(--font-sidebar);
+    font-size: 22px;
+    line-height: 1;
+  }
+
+  /* Tracking Geist Pixel by anything but a whole multiple of --tracking-cell
+     lands glyphs off-grid; applies anywhere else that tracks this face. */
+  .chip-label {
+    font-family: var(--font-sans);
+    line-height: 1;
+    letter-spacing: var(--tracking-cell);
+  }
+
+  .pixel-label {
+    font-family: var(--font-sans);
+    letter-spacing: var(--tracking-cell);
+  }
+
+  /* Weight is NOT a hierarchy lever: all four steps share it, so size and the
+     face are the only things separating a page title from a card title
+     (`check:design` forbids a per-call-site weight utility). 700 is synthesised
+     — PP Mondwest ships a Regular master only. */
+  .title-hero,
+  .page-title,
+  .title-section,
+  .title-card {
+    font-family: var(--font-display);
+    font-weight: 700;
+    letter-spacing: -0.015em;
+  }
+
+  .title-hero {
+    font-size: 2.25rem;
+    line-height: 2.5rem;
+  }
+
+  .page-title {
+    font-size: 1.8225rem;
+    line-height: 2.025rem;
+  }
+
+  .title-section {
+    font-size: 1.25rem;
+    line-height: 1.75rem;
+  }
+
+  .title-card {
+    font-size: 1.125rem;
+    line-height: 1.5rem;
+  }
+
+  /* `letter-spacing: normal` is load-bearing: a prose block nested in a chip or
+     label context would otherwise inherit tracking off the 0.038em grid.
+     Leading stays with the caller so this composes with `text-*`. */
+  .prose-body {
+    font-family: var(--font-prose);
+    letter-spacing: normal;
+  }
+
+  /* One masked box with two mask layers, so a single background-color drives
+     both segments (active rows override --elbow-color). The vertical layer
+     stops 12px short so the corner reads as pixel steps, not a filled square.
+     Shared by sidebar sub-nav (fixed --elbow-h pitch math) and agent-activity
+     plan steps (live-measured row centers). */
+  .sidebar-elbow::before {
+    position: absolute;
+    bottom: 50%;
+    left: -10px;
+    width: 12px;
+    height: var(--elbow-h);
+    content: "";
+    background-color: var(--elbow-color, var(--sidebar-elbow));
+    -webkit-mask-image:
+      linear-gradient(#000 0 0),
+      url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12'%3E%3Crect x='0' y='0' width='2' height='8'/%3E%3Crect x='2' y='8' width='2' height='2'/%3E%3Crect x='4' y='10' width='2' height='2'/%3E%3Crect x='6' y='10' width='6' height='2'/%3E%3C/svg%3E");
+    mask-image:
+      linear-gradient(#000 0 0),
+      url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12'%3E%3Crect x='0' y='0' width='2' height='8'/%3E%3Crect x='2' y='8' width='2' height='2'/%3E%3Crect x='4' y='10' width='2' height='2'/%3E%3Crect x='6' y='10' width='6' height='2'/%3E%3C/svg%3E");
+    -webkit-mask-repeat: no-repeat;
+    mask-repeat: no-repeat;
+    -webkit-mask-position:
+      top left,
+      bottom left;
+    mask-position:
+      top left,
+      bottom left;
+    -webkit-mask-size:
+      2px calc(100% - 12px),
+      12px 12px;
+    mask-size:
+      2px calc(100% - 12px),
+      12px 12px;
+  }
+
+  [data-active="true"] .sidebar-label {
+    font-weight: 700;
+  }
+
+  [data-sidebar="menu-button"][data-active="true"] {
+    color: var(--foreground) !important;
+    background: color-mix(in srgb, var(--foreground) 8%, transparent) !important;
+    border-radius: var(--radius-sm);
+  }
+
+  [data-sidebar="menu-button"][data-active="true"] svg {
+    color: var(--foreground) !important;
+  }
+
+  [data-sidebar="menu-button"] {
+    transition:
+      background 150ms ease,
+      color 150ms ease;
+  }
+
+  [data-sidebar="menu-button"]:hover {
+    background: color-mix(in srgb, var(--foreground) 4%, transparent) !important;
+    border-radius: var(--radius-sm);
+  }
+}
+
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes fade-in-up {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-fade-in {
+  opacity: 0;
+  animation: fade-in 800ms ease-out forwards;
+}
+
+.animate-fade-in-up {
+  opacity: 0;
+  animation: fade-in-up 600ms ease-out forwards;
+}
+
+/* Total duration must match DELTA_MS in header-credits.tsx. */
+@keyframes credits-delta-bubble {
+  0% {
+    opacity: 0;
+    transform: translateY(-6px);
+  }
+  14% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+  86% {
+    opacity: 1;
+    transform: translateY(0);
+    animation-timing-function: ease-in;
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(0);
+  }
+}
+
+.animate-credits-delta {
+  animation: credits-delta-bubble 2500ms ease-out both;
+}
+
+/* No exit animation needed: the timer removes the element. */
+@media (prefers-reduced-motion: reduce) {
+  .animate-credits-delta {
+    animation: none;
+  }
+}
+
+@keyframes blink {
+  0%,
+  50% {
+    opacity: 1;
+  }
+  50.01%,
+  100% {
+    opacity: 0;
+  }
+}
+
+/* Fixed categorical chart slots, never per-render or hash-derived, so a given
+   slot is always the same colour. Tuned for ≥AA as text on the warm panels.
+   `--cat-N` and `--chart-N` alias them. */
+:root {
+  --instrument-cat-1: #2f6aa8;
+  --instrument-cat-2: #1f7257;
+  --instrument-cat-3: #0f6d78;
+  --instrument-cat-4: #6a49b0;
+  --instrument-cat-5: #9c3f80;
+  --instrument-cat-6: #6e6257;
+}
+
+.dark {
+  /* Same qualitative scale, lightened for ≥AA contrast on the dark ink. */
+  --instrument-cat-1: #6fa8dc;
+  --instrument-cat-2: #4cc59a;
+  --instrument-cat-3: #5fc3cf;
+  --instrument-cat-4: #b29ae8;
+  --instrument-cat-5: #e08abf;
+  --instrument-cat-6: #a4988b;
+}
+
+/* Desktop-required gate: vertical scan band across the faux monitor screen. */
+@keyframes desktop-required-scan {
+  0% {
+    transform: translateY(-100%);
+  }
+  100% {
+    transform: translateY(420%);
+  }
+}
+.desktop-required-scan {
+  animation: desktop-required-scan 5s linear infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .desktop-required-scan {
+    animation: none;
+  }
+}
+
+@keyframes progress-sweep {
+  0% {
+    left: -35%;
+  }
+  100% {
+    left: 100%;
+  }
+}
+.progress-indeterminate {
+  position: relative;
+  width: 35%;
+  animation: progress-sweep 1.15s ease-in-out infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .progress-indeterminate {
+    left: 0;
+    width: 100%;
+    opacity: 0.5;
+    animation: none;
+  }
+}
+
+/* THE ONE HUE AXIS RULE: every neutral here sits on h≈75° (CIELCh) at a chroma
+ * held FLAT as the value darkens, capped at ~5 (the dark ramp tops out at C=3.5).
+ * Tiers are spaced by ΔL*, floor ~1.5, not by contrast ratio — adjacent surfaces
+ * are 1.08:1 either way. check:contrast asserts both.
+ *
+ * Ladder, lightest to deepest:
+ *   popover 100 · card 98.7 · wash-subtle 96.1 · background 95.7 · sidebar 93.7
+ *   wash-raised 93.3 · muted 93.6 · accent 92.7 · secondary 91.9 · control 89.9
+ *   control-hover 85.6 · border 81.0
+ */
+:root {
+  --background: #f7f2ed;
+  --foreground: #201b15;
+  --card: #fdfbf8;
+  --card-foreground: #201b15;
+  --popover: #ffffff;
+  --popover-foreground: #201b15;
+  --primary: #201b15;
+  --primary-foreground: #f7f2ed;
+  --secondary: #ede7e0;
+  --secondary-foreground: #201b15;
+  /* A step deeper than --secondary so a control stays visible on the card AND on
+     the canvas. */
+  --control: #e8e1da;
+  --control-hover: #dcd5cd;
+  --muted: #f1ece6;
+  --muted-foreground: #706962;
+  /* The hover wash: 3.0 L* below the canvas and on the neutral axis. It must stay
+     off h≈66, the warning hue the Copper Eye Rule reserves. */
+  --accent: #efe9e4;
+  --accent-foreground: #201b15;
+  --accent-warm: #201b15;
+  /* The ONLY two elevation steps (Wash Ladder Rule, DESIGN.md). Light recesses,
+     dark lifts, so one class works in both themes with no `dark:` variant. */
+  --wash-subtle: #f8f3ef;
+  --wash-raised: #f0ebe5;
+  /* Tinted from the ink, not black: pure black at 50% over the warm canvas
+     composites to a dead olive-brown. */
+  --scrim: rgb(32 27 21 / 0.42);
+  --destructive: #b91c1c;
+  --destructive-foreground: #ffffff;
+  /* Status hues, shared with the workshop `--instrument-*` scale. Canonical usage
+     is the tint triplet `border-success/40 bg-success/10 text-success`; the
+     -foreground pairs are only for the rare solid fill. Each is dark enough for
+     AA text on the cream surfaces, --success by the narrowest margin — lightening
+     it, or moving --background down the ramp, drops it under AA. */
+  --success: #2a7b50;
+  --success-foreground: #ffffff;
+  --warning: #b45309;
+  --warning-foreground: #ffffff;
+  --info: #2f6aa8;
+  --info-foreground: #ffffff;
+  --auth-panel: #f7f2ed;
+  --auth-field: #fdfbf8;
+  --auth-field-hover: #f1ece6;
+  --auth-border: #e0d9d2;
+  --auth-border-strong: #d2cbc3;
+  --auth-border-hover: #bab2aa;
+  --auth-text: #201b15;
+  --auth-text-label: #706962;
+  --auth-accent: #201b15;
+  /* The splash base under the SplashArt artwork, which is authored light-on-dark
+     and inverts per theme, so this token has to invert with it. */
+  --auth-splash: #f0eae4;
+  --border: #cfc8c1;
+  --input: #8f8881;
+  --ring: #201b15;
+  --chart-1: var(--instrument-cat-1);
+  --chart-2: var(--instrument-cat-2);
+  --chart-3: var(--instrument-cat-3);
+  --chart-4: var(--instrument-cat-4);
+  --chart-5: var(--instrument-cat-5);
+  /* Runtime aliases for `seriesColor`: `@theme inline` never emits real custom
+     properties, so without these `stroke: var(--cat-N)` resolves to nothing and
+     chart lines vanish. */
+  --cat-1: var(--instrument-cat-1);
+  --cat-2: var(--instrument-cat-2);
+  --cat-3: var(--instrument-cat-3);
+  --cat-4: var(--instrument-cat-4);
+  --cat-5: var(--instrument-cat-5);
+  --cat-6: var(--instrument-cat-6);
+  /* One step BELOW the canvas (sidebar 93.7 → background 95.7 → card 98.7) so the
+     shell has a left edge without leaning on a border. */
+  --sidebar: #f2ece7;
+  --sidebar-foreground: #201b15;
+  --sidebar-primary: #201b15;
+  --sidebar-primary-foreground: #f7f2ed;
+  --sidebar-accent: transparent;
+  --sidebar-accent-foreground: #201b15;
+  --sidebar-border: #ddd6cf;
+  --sidebar-ring: #201b15;
+  /* A token because the elbow is drawn with a mask and cannot reach a Tailwind
+     class; see .sidebar-elbow above. */
+  --sidebar-elbow: #c4bcb4;
+
+  /* Theme-pinned: declared here and deliberately NOT overridden in .dark, so
+     both themes share the value. The inline mention chip stays light in both, so
+     a mention reads as an embedded object rather than a status. */
+  --chip-inline: #fdfbf8;
+  --chip-inline-hover: #f0ebe5;
+  --chip-inline-border: #e0d9d2;
+  --chip-inline-border-hover: #cfc8c1;
+  --chip-inline-fg: #201b15;
+  --chip-inline-icon: #706962;
+  /* Dark in both themes, like a real terminal. */
+  --code-surface: #161512;
+  --code-fg: #ece7df;
+  --code-action: #9b938a;
+  --code-action-hover: #ece7df;
+  /* `--font-mono` is NOT monospaced: Geist Pixel's advances are proportional and
+     it ships no `tnum`, so `tabular-nums` is inert. A surface that needs figures
+     to line up must name a real monospace family itself. */
+  --font-sans: "Geist Pixel", system-ui, -apple-system, sans-serif;
+  --font-mono: "Geist Pixel", ui-monospace, SFMono-Regular, Menlo, monospace;
+  --shadow-2xs: none;
+  --shadow-xs: none;
+  --shadow-sm: none;
+  --shadow: none;
+  --shadow-md: none;
+  --shadow-lg: none;
+  --shadow-xl: none;
+  --shadow-2xl: none;
+  --tracking-normal: 0em;
+  /* One Geist Pixel grid cell (38/1000em). The face quantises every advance to
+     this grid, so tracking by anything that isn't a whole multiple lands glyphs
+     off-grid. It is the only tracking step the face has. */
+  --tracking-cell: 0.038em;
+  --spacing: 0.25rem;
+}
+
+/* Same two rules as the light block: ONE hue axis (h≈75) under a chroma ceiling,
+ * and tiers spaced by ΔL* rather than by contrast ratio. */
+.dark {
+  --background: #0e0c09;
+  --foreground: #f6f3ef;
+
+  --sidebar: #080604;
+
+  --card: #151311;
+  --card-foreground: #f6f3ef;
+  --popover: #1e1c1a;
+  --popover-foreground: #f6f3ef;
+
+  --primary: #f6f3ef;
+  --primary-foreground: #181614;
+
+  --secondary: #1a1816;
+  --secondary-foreground: #f6f3ef;
+
+  --control: #262320;
+  --control-hover: #2f2c29;
+
+  --muted: #191715;
+  --muted-foreground: #a9a39c;
+
+  --accent: #201e1b;
+  --accent-foreground: #f6f3ef;
+  --accent-warm: #f6f3ef;
+  /* The same two elevation steps as light: +2.9 / +5.9 L* over --card. */
+  --wash-subtle: #1b1917;
+  --wash-raised: #211f1c;
+  --scrim: rgb(0 0 0 / 0.5);
+  /* Held in the status family's L* 67–73 band, so error doesn't read hotter and
+     heavier than every other state. */
+  --destructive: #f65d57;
+  --destructive-foreground: #0c0a08;
+  /* Status hues, dark variants — mirror the dark `--instrument-*` scale. */
+  --success: #3ac28a;
+  --success-foreground: #0c0a08;
+  --warning: #e6a647;
+  --warning-foreground: #0c0a08;
+  --info: #6fa8dc;
+  --info-foreground: #0c0a08;
+  --auth-panel: #1c1917;
+  --auth-field: #252220;
+  --auth-field-hover: #302e2c;
+  --auth-border: #2e2a27;
+  --auth-border-strong: #3a3530;
+  --auth-border-hover: #4a4540;
+  --auth-text: #f6f3ef;
+  --auth-text-label: #8a8580;
+  --auth-accent: #f6f3ef;
+  /* Pure black on purpose — the artwork is authored against it. The one
+     deliberate C=0 surface in the theme. */
+  --auth-splash: #000000;
+  /* L*23, not L*21: at L*21 the /60 faint-rule level sat at 1.17 against
+     --popover, under the DECOR floor. The border ramp is bare/70/60 and has no
+     headroom left below that. */
+  --border: #3a3633;
+  --input: #6a645d;
+  --ring: #f6f3ef;
+  --chart-1: var(--instrument-cat-1);
+  --chart-2: var(--instrument-cat-2);
+  --chart-3: var(--instrument-cat-3);
+  --chart-4: var(--instrument-cat-4);
+  --chart-5: var(--instrument-cat-5);
+  --sidebar-foreground: #f6f3ef;
+  --sidebar-primary: #f6f3ef;
+  --sidebar-primary-foreground: #181614;
+  --sidebar-accent: transparent;
+  --sidebar-accent-foreground: #f6f3ef;
+  --sidebar-border: #2c2a27;
+  --sidebar-ring: #f6f3ef;
+  --sidebar-elbow: #56514d;
+  --font-sans: "Geist Pixel", system-ui, -apple-system, sans-serif;
+  --font-mono: "Geist Pixel", ui-monospace, SFMono-Regular, Menlo, monospace;
+  --shadow-2xs: none;
+  --shadow-xs: none;
+  --shadow-sm: none;
+  --shadow: none;
+  --shadow-md: none;
+  --shadow-lg: none;
+  --shadow-xl: none;
+  --shadow-2xl: none;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-control: var(--control);
+  --color-control-hover: var(--control-hover);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-wash-subtle: var(--wash-subtle);
+  --color-wash-raised: var(--wash-raised);
+  --color-chip-inline: var(--chip-inline);
+  --color-chip-inline-hover: var(--chip-inline-hover);
+  --color-chip-inline-border: var(--chip-inline-border);
+  --color-chip-inline-border-hover: var(--chip-inline-border-hover);
+  --color-chip-inline-fg: var(--chip-inline-fg);
+  --color-chip-inline-icon: var(--chip-inline-icon);
+  --color-code-surface: var(--code-surface);
+  --color-code-fg: var(--code-fg);
+  --color-code-action: var(--code-action);
+  --color-code-action-hover: var(--code-action-hover);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-success: var(--success);
+  --color-success-foreground: var(--success-foreground);
+  --color-warning: var(--warning);
+  --color-warning-foreground: var(--warning-foreground);
+  --color-info: var(--info);
+  --color-info-foreground: var(--info-foreground);
+  /* Categorical, never status: aliases the AA-tuned instrument scale so
+     `text-cat-N` works app-wide. Assign stable slots per entity type. */
+  --color-cat-1: var(--instrument-cat-1);
+  --color-cat-2: var(--instrument-cat-2);
+  --color-cat-3: var(--instrument-cat-3);
+  --color-cat-4: var(--instrument-cat-4);
+  --color-cat-5: var(--instrument-cat-5);
+  --color-cat-6: var(--instrument-cat-6);
+  --color-auth-panel: var(--auth-panel);
+  --color-auth-field: var(--auth-field);
+  --color-auth-field-hover: var(--auth-field-hover);
+  --color-auth-border: var(--auth-border);
+  --color-auth-border-strong: var(--auth-border-strong);
+  --color-auth-border-hover: var(--auth-border-hover);
+  --color-auth-text: var(--auth-text);
+  --color-auth-text-label: var(--auth-text-label);
+  --color-auth-accent: var(--auth-accent);
+  --color-auth-splash: var(--auth-splash);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-ring: var(--sidebar-ring);
+
+  /* Self-referential only in appearance: `@theme inline` registers the Tailwind
+     token on the left and reads the runtime custom property from `:root` /
+     `.dark` / `body` on the right. Repoint a family there, never here. */
+  --font-sans: var(--font-sans);
+  --font-mono: var(--font-mono);
+  --font-sidebar: var(--font-sidebar);
+  --tracking-cell: var(--tracking-cell);
+  --font-display: "PP Mondwest", system-ui, sans-serif;
+  /* Geist Pixel covers 420 codepoints (Latin plus prose punctuation; no
+     box-drawing, Greek or Cyrillic), so the system fallback is load-bearing for
+     stray glyphs in user content. */
+  --font-prose: "Geist Pixel", system-ui, -apple-system, sans-serif;
+
+  /* The type scale is Tailwind's default rem values, unmodified. Arbitrary
+     `text-[Npx]` is banned by check:design. `text-2xs` is deliberately absent —
+     it sat 0.006rem from `text-xs`, which is the floor. */
+
+  /* Three steps, and nothing above them. `lg`, `xl` and `full` are deliberately
+     absent rather than aliased to something smaller, which would let an uncapped
+     name keep appearing in code while quietly meaning 3px. Bare `rounded` is
+     defined here so Tailwind can't fall through to its own 0.25rem default. */
+  --radius: 2px;
+  --radius-xs: 1px;
+  --radius-sm: 2px;
+  --radius-md: 3px;
+
+  --shadow-2xs: var(--shadow-2xs);
+  --shadow-xs: var(--shadow-xs);
+  --shadow-sm: var(--shadow-sm);
+  --shadow: var(--shadow);
+  --shadow-md: var(--shadow-md);
+  --shadow-lg: var(--shadow-lg);
+  --shadow-xl: var(--shadow-xl);
+  --shadow-2xl: var(--shadow-2xl);
+}
+
+body {
+  letter-spacing: var(--tracking-normal);
+}
+
+*,
+*::before,
+*::after {
+  cursor:
+    url("/cursor-default.svg") 3 2,
+    auto !important;
+}
+
+a,
+a *,
+button,
+button *,
+[role="button"],
+[role="button"] *,
+[type="button"],
+[type="submit"],
+[type="reset"],
+label[for],
+select,
+option,
+summary,
+[tabindex]:not([tabindex="-1"]),
+input[type="checkbox"],
+input[type="radio"],
+.cursor-pointer,
+.cursor-pointer * {
+  cursor:
+    url("/cursor-pointer.svg") 3 2,
+    pointer !important;
+}
+
+a:active,
+a:active *,
+button:active,
+button:active *,
+[role="button"]:active,
+[role="button"]:active *,
+[type="button"]:active,
+[type="submit"]:active,
+[type="reset"]:active,
+.cursor-pointer:active,
+.cursor-pointer:active * {
+  cursor:
+    url("/cursor-active.svg") 3 2,
+    pointer !important;
+}
+
+/* Clerk renders its own DOM, so its token contract is the only way into the
+ * system. It resolves these at runtime and accepts any CSS colour, so var()
+ * aliases work and the block flips with the theme — keep them aliases, never
+ * literals. */
+:root {
+  --clerk-color-primary: var(--primary);
+  --clerk-color-primary-foreground: var(--primary-foreground);
+  --clerk-color-danger: var(--destructive);
+  --clerk-color-success: var(--success);
+  --clerk-color-warning: var(--warning);
+  --clerk-color-neutral: var(--foreground);
+  --clerk-color-foreground: var(--foreground);
+  --clerk-color-muted-foreground: var(--muted-foreground);
+  --clerk-color-background: var(--popover);
+  --clerk-color-input: var(--input);
+  --clerk-color-input-foreground: var(--foreground);
+  --clerk-color-ring: var(--ring);
+  --clerk-color-shimmer: var(--wash-raised);
+  --clerk-color-modal-backdrop: var(--scrim);
+  --clerk-border-radius: 0rem;
+  --clerk-spacing: 1rem;
+  --clerk-color-muted: var(--muted);
+}
+
+/* Overlay-style scrollbar: transparent at rest, painted only while the element
+ * is being scrolled (`data-scrolling`, stamped by lib/autohide-scrollbars) or
+ * while the pointer is on the bar. The gutter is always reserved, so appearing
+ * and disappearing never reflows content. */
+@layer base {
+  * {
+    scrollbar-color: transparent transparent;
+    scrollbar-width: thin;
+  }
+  *[data-scrolling] {
+    scrollbar-color: color-mix(in srgb, var(--foreground) 22%, transparent) transparent;
+  }
+  *::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+  *::-webkit-scrollbar-track,
+  *::-webkit-scrollbar-corner {
+    background: transparent;
+  }
+  *::-webkit-scrollbar-thumb {
+    background-color: transparent;
+    background-clip: padding-box;
+    /* Transparent border + padding-box clip insets the thumb into a slim pill. */
+    border: 3px solid transparent;
+    border-radius: var(--radius-xs);
+    transition: background-color 0.2s ease;
+  }
+  *[data-scrolling]::-webkit-scrollbar-thumb {
+    background-color: color-mix(in srgb, var(--foreground) 20%, transparent);
+  }
+  *::-webkit-scrollbar-thumb:hover {
+    background-color: color-mix(in srgb, var(--foreground) 38%, transparent);
+  }
+  *::-webkit-scrollbar-thumb:vertical:active,
+  *::-webkit-scrollbar-thumb:horizontal:active {
+    background-color: color-mix(in srgb, var(--foreground) 48%, transparent);
+  }
+}
+
+.react-flow .react-flow__edges svg {
+  overflow: visible !important;
+}

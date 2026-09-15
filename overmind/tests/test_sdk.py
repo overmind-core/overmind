@@ -1,0 +1,263 @@
+import os
+from unittest.mock import MagicMock, patch
+
+import pytest
+
+
+@pytest.fixture(autouse=True)
+def reset_sdk_state():
+    """Reset SDK state before each test, restoring it afterwards.
+
+    Each test in this module needs a clean slate so it can call init() and
+    observe the result.  We save the pre-test state and put it back on
+    teardown so that tests in *other* modules (which rely on the no-op
+    tracer installed by conftest.py) are not broken when they run after
+    these tests.
+    """
+    import overmind.tracing as sdk
+
+    saved_initialized = sdk._initialized
+    saved_tracer = sdk._tracer
+    sdk._initialized = False
+    sdk._tracer = None
+    yield
+    sdk._initialized = saved_initialized
+    sdk._tracer = saved_tracer
+
+
+@pytest.fixture
+def mock_opentelemetry():
+    """Mock only the process-global boundaries — the exporter (network), the
+    batch processor (threads), and the trace API (global provider slot). The
+    ``TracerProvider`` stays real so ``init()`` exercises the class the SDK
+    ships against."""
+    with (
+        patch("overmind.tracing.OTLPSpanExporter") as mock_exporter,
+        patch("overmind.tracing.BatchSpanProcessor") as mock_processor,
+        patch("overmind.tracing.trace") as mock_trace,
+    ):
+        # Set up tracer mock
+        mock_tracer = MagicMock()
+        mock_trace.get_tracer.return_value = mock_tracer
+
+        yield {
+            "exporter": mock_exporter,
+            "processor": mock_processor,
+            "trace": mock_trace,
+            "tracer": mock_tracer,
+        }
+
+
+def test_sdk_init_configures_tracing(mock_opentelemetry):
+    from overmind import tracing
+
+    with (
+        patch.object(tracing, "FastAPIInstrumentor", create=True) as mock_fastapi,
+        patch.object(tracing, "OpenAIInstrumentor", create=True) as mock_openai,
+        patch.dict(
+            "sys.modules",
+            {
+                "opentelemetry.instrumentation.fastapi": MagicMock(FastAPIInstrumentor=mock_fastapi),
+                "opentelemetry.instrumentation.openai": MagicMock(OpenAIInstrumentor=mock_openai),
+            },
+        ),
+    ):
+        # Mock the dynamic imports
+        tracing.init(
+            overmind_api_key="test_key",
+            overmind_base_url="http://localhost:4318",
+            service_name="test-service",
+            environment="testing",
+        )
+
+    # Verify Exporter configuration
+    mock_opentelemetry["exporter"].assert_called_with(
+        endpoint="http://localhost:4318/api/v1/traces", headers={"X-Api-Key": "test_key"}
+    )
+
+    # Verify tracer provider was set
+    mock_opentelemetry["trace"].set_tracer_provider.assert_called_once()
+
+
+def test_sdk_init_only_once():
+    from overmind import tracing
+
+    with (
+        patch("overmind.tracing.OTLPSpanExporter"),
+        patch("overmind.tracing.BatchSpanProcessor"),
+        patch("overmind.tracing.trace") as mock_trace,
+    ):
+        assert tracing.init(overmind_api_key="test_key", overmind_base_url="http://localhost:4318") is True
+        assert tracing.init(overmind_api_key="test_key", overmind_base_url="http://localhost:4318") is True
+
+        # Should only be called once
+        assert mock_trace.set_tracer_provider.call_count == 1
+
+
+@pytest.fixture
+def no_api_key(monkeypatch):
+    monkeypatch.delenv("OVERMIND_API_KEY", raising=False)
+    monkeypatch.delenv("OVERMIND_TRACE_FILE", raising=False)
+
+
+def test_init_without_key_returns_false(no_api_key):
+    from overmind import tracing
+
+    assert tracing.init() is False
+    assert tracing._initialized is False
+
+
+def test_init_without_key_logs_once_then_debug(no_api_key, caplog, monkeypatch):
+    """Libraries init() at their entry point, so a keyless user must see the
+    disabled line once per process, not on every call."""
+    import logging
+
+    from overmind import tracing
+
+    monkeypatch.setattr(tracing, "_keyless_logged", False)
+    with caplog.at_level(logging.DEBUG, logger="overmind.tracing"):
+        assert tracing.init() is False
+        assert tracing.init() is False
+    levels = [r.levelno for r in caplog.records if "tracing disabled" in r.getMessage()]
+    assert levels == [logging.INFO, logging.DEBUG]
+
+
+def test_init_without_key_raises_in_strict_mode(no_api_key, monkeypatch):
+    from overmind import tracing
+
+    monkeypatch.setattr(tracing, "_strict_mode", True)
+    with pytest.raises(RuntimeError, match="project credential"):
+        tracing.init()
+
+
+def test_init_uses_synced_local_credential(no_api_key, mock_opentelemetry, tmp_path, monkeypatch):
+    from overmind import tracing
+    from overmind.config import Config, dump
+
+    monkeypatch.chdir(tmp_path)
+    dump(
+        Config(
+            api_key="ovr_project_key",
+            base_url="https://api.example",
+            project_id="11111111-1111-1111-1111-111111111111",
+        ),
+        tmp_path / "overmind.toml",
+    )
+    monkeypatch.setenv("OVERMIND_API_KEY", "stale-account-key")
+
+    assert tracing.init() is True
+    mock_opentelemetry["exporter"].assert_called_with(
+        endpoint="https://api.example/api/v1/traces",
+        headers={"X-Api-Key": "ovr_project_key"},
+    )
+
+
+def test_observe_calls_through_when_uninitialised(no_api_key):
+    from overmind import tracing
+
+    @tracing.observe()
+    def add(a, b):
+        return a + b
+
+    assert add(2, 3) == 5
+
+
+def test_start_span_yields_non_recording_span_when_uninitialised(no_api_key):
+    from overmind import tracing
+
+    with tracing.start_span("step", span_type="tool") as span:
+        span.set_attribute("inputs", "ignored")  # must not raise
+        assert not span.is_recording()
+
+
+def test_deliver_is_noop_when_uninitialised(no_api_key):
+    from overmind import tracing
+
+    tracing.deliver({"answer": 1})
+
+
+def test_sdk_init_handles_missing_deps():
+    from overmind import tracing
+
+    with (
+        patch("overmind.tracing.OTLPSpanExporter"),
+        patch("overmind.tracing.BatchSpanProcessor"),
+        patch("overmind.tracing.trace"),
+    ):
+        # Should not raise exception even if instrumentors fail to import
+        tracing.init(overmind_api_key="test_key", overmind_base_url="http://localhost:4318")
+
+
+def test_get_tracer_before_init():
+    from overmind import tracing
+
+    with pytest.raises(RuntimeError, match="not initialised"):
+        tracing.get_tracer()
+
+
+def test_get_tracer_after_init(mock_opentelemetry):
+    from overmind import tracing
+
+    tracing.init(overmind_api_key="test_key", overmind_base_url="http://localhost:4318")
+
+    tracer = tracing.get_tracer()
+    assert tracer is not None
+
+
+def test_set_user(mock_opentelemetry):
+    from overmind import tracing
+
+    mock_span = MagicMock()
+    mock_span.is_recording.return_value = True
+    mock_opentelemetry["trace"].get_current_span.return_value = mock_span
+
+    tracing.init(overmind_api_key="test_key", overmind_base_url="http://localhost:4318")
+    tracing.set_user(user_id="user123", email="test@example.com")
+
+    mock_span.set_attribute.assert_any_call("user.id", "user123")
+    mock_span.set_attribute.assert_any_call("user.email", "test@example.com")
+
+
+def test_set_tag(mock_opentelemetry):
+    from overmind import tracing
+
+    mock_span = MagicMock()
+    mock_span.is_recording.return_value = True
+    mock_opentelemetry["trace"].get_current_span.return_value = mock_span
+
+    tracing.init(overmind_api_key="test_key", overmind_base_url="http://localhost:4318")
+    tracing.set_tag("tenant.id", "tenant123")
+
+    mock_span.set_attribute.assert_called_with("tenant.id", "tenant123")
+
+
+def test_capture_exception(mock_opentelemetry):
+    from overmind import tracing
+
+    mock_span = MagicMock()
+    mock_span.is_recording.return_value = True
+    mock_opentelemetry["trace"].get_current_span.return_value = mock_span
+
+    tracing.init(overmind_api_key="test_key", overmind_base_url="http://localhost:4318")
+
+    test_exception = ValueError("test error")
+    tracing.capture_exception(test_exception)
+
+    mock_span.record_exception.assert_called_once_with(test_exception)
+
+
+def test_service_name_from_env():
+    from overmind import tracing
+
+    with (
+        patch("overmind.tracing.OTLPSpanExporter"),
+        patch("overmind.tracing.BatchSpanProcessor"),
+        patch("overmind.tracing.trace"),
+        patch("overmind.tracing.Resource") as mock_resource,
+        patch.dict(os.environ, {"OVERMIND_SERVICE_NAME": "env-service"}),
+    ):
+        tracing.init(overmind_api_key="test_key", overmind_base_url="http://localhost:4318")
+
+        # Check that Resource.create was called with the env service name
+        call_args = mock_resource.create.call_args[0][0]
+        assert call_args["service.name"] == "env-service"

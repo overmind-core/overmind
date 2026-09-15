@@ -1,0 +1,200 @@
+name: overmind-dev
+
+x-env-common: &env-common
+  DJANGO_SETTINGS_MODULE: overbae.settings
+  DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY:-change-me-in-production}
+  DJANGO_DEBUG: "True"
+  DJANGO_ALLOWED_HOSTS: ${DJANGO_ALLOWED_HOSTS:-localhost,127.0.0.1,api}
+  DATABASE_URL: postgresql://overbae:overbae@postgres:5432/overbae
+  CELERY_BROKER_URL: redis://redis:6379/0
+  CELERY_RESULT_BACKEND: redis://redis:6379/0
+  DATA_ROOT: /data
+  MEDIA_ROOT: /data/media
+  TMPDIR: /data/tmp
+  HOME: /data/tmp
+  OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+  ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+  GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+  CURSOR_API_KEY: ${CURSOR_API_KEY:-}
+  OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
+  TOGETHER_API_KEY: ${TOGETHER_API_KEY:-}
+  HF_TOKEN: ${HF_TOKEN:-}
+  INFERENCE_API_URL: ${INFERENCE_API_URL:-}
+  INFERENCE_API_KEY: ${INFERENCE_API_KEY:-}
+  FINETUNING_BACKEND: ${FINETUNING_BACKEND:-baseten}
+  USE_UNSLOTH: ${USE_UNSLOTH:-false}
+  MODAL_TOKEN_ID: ${MODAL_TOKEN_ID:-}
+  MODAL_TOKEN_SECRET: ${MODAL_TOKEN_SECRET:-}
+  MODAL_ENVIRONMENT: ${MODAL_ENVIRONMENT:-overmind-dev}
+  # Fine-tuning checkpoint S3 archive — AWS_BUCKET_NAME / AWS_ACCESS_KEY_ID /
+  # AWS_SECRET_ACCESS_KEY / AWS_REGION come from env_file (.env).
+  # Media-file S3Boto3Storage still uses AWS_PROFILE via session_profile.
+  AWS_SHARED_CREDENTIALS_FILE: /data/tmp/.aws/credentials
+  AWS_CONFIG_FILE: /data/tmp/.aws/config
+  AWS_PROFILE: ${AWS_PROFILE:-administrator}
+
+x-build-common: &build-common
+  image: overmind-dev
+  build:
+    context: .
+    dockerfile: Dockerfile
+  env_file:
+    - ./.env
+  volumes:
+    - ./overbae:/code/overbae
+    - ./modal_shared:/code/modal_shared
+    - ./manage.py:/code/manage.py
+    - app_data:/data
+    - ${HOME}/.aws:/data/tmp/.aws:ro
+
+services:
+  postgres:
+    # pgvector-enabled Postgres 16: migration 0001 still creates the `vector`
+    # extension for a column 0142 drops, so replay from zero needs it. Prod (RDS)
+    # ships it.
+    image: pgvector/pgvector:pg16
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: overbae
+      POSTGRES_USER: overbae
+      POSTGRES_PASSWORD: overbae
+    ports:
+      - "5432:5432"
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U overbae"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  api:
+    <<: *build-common
+    entrypoint: ["/usr/local/bin/docker-entrypoint.sh"]
+    # --timeout-graceful-shutdown: open SSE streams otherwise hold reloads hostage
+    command: sh -c "python manage.py collectstatic --noinput && uvicorn overbae.asgi:application --host 0.0.0.0 --port 8000 --reload --reload-dir /code/overbae --timeout-graceful-shutdown 5"
+    restart: unless-stopped
+    environment:
+      <<: *env-common
+    ports:
+      - "8000:8000"
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "python -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=2)\"",
+        ]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 120s
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  # Celery has no built-in autoreloader; watchmedo restarts on .py changes under overbae/.
+  celery-control-worker:
+    <<: *build-common
+    entrypoint: ["/usr/local/bin/worker-entrypoint.sh"]
+    command: watchmedo auto-restart --directory=/code/overbae --pattern='*.py' --recursive --signal SIGTERM -- celery -A overbae worker -l info --pool=threads --concurrency=8 -Q control
+    restart: unless-stopped
+    environment:
+      <<: *env-common
+    depends_on:
+      api:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  celery-io-worker:
+    <<: *build-common
+    command: watchmedo auto-restart --directory=/code/overbae --pattern='*.py' --recursive --signal SIGTERM -- celery -A overbae worker -l info --pool=threads --concurrency=24 -Q io,io_traces
+    restart: unless-stopped
+    environment:
+      <<: *env-common
+    depends_on:
+      api:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  celery-batch-worker:
+    <<: *build-common
+    command: watchmedo auto-restart --directory=/code/overbae --pattern='*.py' --recursive --signal SIGTERM -- celery -A overbae worker -l info --pool=prefork --concurrency=6 -Q batch
+    restart: unless-stopped
+    environment:
+      <<: *env-common
+    depends_on:
+      api:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  celery-interactive-worker:
+    <<: *build-common
+    command: watchmedo auto-restart --directory=/code/overbae --pattern='*.py' --recursive --signal SIGTERM -- celery -A overbae worker -l info --pool=prefork --concurrency=4 --prefetch-multiplier=1 -Q interactive
+    restart: unless-stopped
+    environment:
+      <<: *env-common
+    depends_on:
+      api:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  celery-beat:
+    <<: *build-common
+    command: watchmedo auto-restart --directory=/code/overbae --pattern='*.py' --recursive --signal SIGTERM -- celery -A overbae beat -l info --scheduler django_celery_beat.schedulers:DatabaseScheduler
+    restart: unless-stopped
+    environment:
+      <<: *env-common
+    depends_on:
+      api:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  grafana:
+    image: grafana/grafana:11.5.0
+    restart: unless-stopped
+    ports:
+      - "3001:3000"
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-admin}
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Viewer
+      # AWS SSO profile — matches the profile you log in with via `aws sso login --profile`
+      AWS_SDK_LOAD_CONFIG: "1"
+      AWS_PROFILE: ${AWS_PROFILE:-administrator}
+      AWS_REGION: ${AWS_REGION:-eu-west-1}
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./grafana/dashboards:/var/lib/grafana/dashboards:ro
+      # Mount ~/.aws so Grafana can read SSO token cache and config
+      - ${HOME}/.aws:/usr/share/grafana/.aws:ro
+
+volumes:
+  # Pin explicit physical names so renaming the compose project (name:
+  # overmind-dev) keeps mounting the EXISTING data volumes — which were created
+  # under the old ``overclaw`` project prefix — instead of silently creating
+  # fresh empty ones and losing the Postgres database.
+  app_data:
+    name: overclaw_app_data
+  pg_data:
+    name: overclaw_pg_data
+  grafana_data:

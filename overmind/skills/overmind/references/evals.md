@@ -1,0 +1,53 @@
+# Evaluations
+
+An **evaluator** is a rubric (code check or LLM judge). An **eval set** is a
+named grouping of evaluators on an agent. An **eval run** scores a chosen
+dataset cell with the **eval** contracts using those evaluators.
+
+The dataset's intent **must** be eval and the chosen cell must fit. Call
+`list_datasets`, pass its dataset UUID to `inspect_dataset`, and use
+`query_dataset` to verify the chosen cell. Eval runs and optimizer experiments
+refuse `train` and `pending` datasets — see
+[SKILL.md](../SKILL.md#dataset-contracts--read-first-they-gate-every-workflow)
+and [datasets.md](datasets.md) to land one. The run uses the version it
+read, which freezes it.
+
+Use `prepare-evaluation` for readiness and `evaluate-change` for a run versus
+a baseline. Evaluation datasets must have `intent="eval"`.
+
+## Prepare
+
+1. Call `check_evaluation_readiness` with the dataset UUID, chosen cell UUID,
+   optional eval set, and `mode="existing"` or `mode="generate"`.
+1. Read `ready`, evaluator applicability, variable binding status, eval-set
+   state, and credit availability.
+1. If an evaluator is missing or needs revision, collect the human rubric and
+   call `upsert_evaluator`. It supports `llm_judge`, `trajectory`,
+   `deterministic`, `statistical`, and `agentic` kinds, with the schema and
+   scope values in its MCP input contract.
+
+Do not guess evaluator ids or bindings. Use the evaluator and eval-set data
+returned by readiness and keep sensitive values out of rubric/config JSON.
+
+## Run and compare
+
+Call `run_evaluation` only after readiness is green. Supply a run name, eval
+dataset UUID, chosen cell UUID, optional eval set/evaluator ids, variants, and
+bounded `max_items` or sampling as appropriate. It returns a run id, variants, and an
+`overmind://eval-runs/{eval_run}` resource.
+
+Poll an asynchronous run with `get_job(kind="eval_run", id=...)` and read its
+resource. The run statuses are `pending`, `running`, `completed`, `failed`,
+and `cancelled`.
+
+Call `compare_evaluations` with the current run and a baseline. Report the
+authoritative `overall`, evaluator rows, and `trust` fields. Comparison status
+is `improved`, `regressed`, `unchanged`, `added`, or `removed`.
+
+Use `annotate_evaluation_sample` only for an explicit human label. It creates
+or updates the supplied sample annotation; it is not a judge replacement.
+
+Finetune and optimizer loops create their own incumbent / experiment
+baselines — a manual eval run beforehand is only for eval-vs-eval
+comparisons you drive yourself. See [finetuning.md](finetuning.md) and
+[optimizer.md](optimizer.md).

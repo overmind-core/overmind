@@ -1,0 +1,149 @@
+[project]
+authors = [{ name = "Overmindlab.ai" }]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.13",
+]
+dependencies = [
+    "openai>=1.0.0",
+    "django>=6.0.7",
+    "django-cors-headers>=4.9.0",
+    "django-filter>=25.2",
+    "cryptography>=50.0.0",
+    "pyjwt>=2.11.0,<3",
+    "djangorestframework>=3.17.2",
+    "djangorestframework-simplejwt>=5.5.1",
+    "drf-spectacular>=0.29.0",
+    "httpx>=0.28.0",
+    "uvicorn[standard]>=0.42.0",
+    "protobuf>=6.33.5,<7",
+    "opentelemetry-proto",
+    "requests>=2.31.0",
+    "tenacity>=9.0.0",
+    "json-repair>=0.56.0",
+    "celery[redis]>=5.4.0",
+    "django-celery-beat>=2.7.0",
+    "boto3>=1.38.0",
+    "psycopg2-binary>=2.9.10",
+    "clerk-backend-api>=5.0.6",
+    # Data Workshop / AI engineer feature (pre-installed for Cursor SDK agent scripts)
+    "cursor-sdk>=1.0.26",
+    # Overmind OTel SDK — internal pipeline observability (code analysis agent tracing)
+    "overmind>=0.1.49",
+    "pandas>=2.2.0",
+    "scikit-learn>=1.5.0",
+    "scipy>=1.14.0",
+    "python-json-logger>=3.3.0",
+    "redis>=5.0.0",
+    "together>=1.3.0",
+    "django-storages>=1.14.6",
+    "watchdog>=4.0.0",
+    "modal>=1.4.3",
+    # Only migration 0001 imports it, to replay the extension 0142 drops.
+    "pgvector>=0.4.2",
+    "genai-prices>=0.0.69",
+    "django-debug-toolbar>=7.0.0",
+    "stripe>=15.3.1",
+    "newrelic>=13.4.0",
+    "pyarrow>=17",
+    "duckdb>=1.1",
+    "rapidfuzz>=3.14.6",
+    "langdetect>=1.0.9",
+    "datasketch>=2.0.0",
+    "pytz>=2026.2",
+    "mcp>=1.26.0,<2",
+    "gunicorn>=26.2.0",
+    "uvicorn-worker>=0.4.0",
+]
+description = "Overbae — unified Django API for the Overclaw / Overmind platform"
+name = "bae"
+readme = "README.md"
+requires-python = ">=3.13"
+version = "0.2.0"
+
+[build-system]
+build-backend = "hatchling.build"
+requires      = ["hatchling"]
+
+[tool.hatch.metadata]
+allow-direct-references = true
+
+[tool.hatch.build.targets.wheel]
+packages = ["overbae", "modal_shared"]
+
+[dependency-groups]
+dev = [
+    "ruff>=0.12.0",
+    "pre-commit>=4.5.1",
+    "python-dotenv>=1.2.1",
+    # Deploy/manage the hosted GLiNER PII NER service (overbae/modal/modal_pii_ner.py).
+    # The gliner/torch/transformers weights live in the Modal image only — never
+    # in this venv — so only the lightweight `modal` client is a dev dependency.
+    "modal>=0.64",
+]
+test = [
+    "pytest>=7.4.0",
+    "pytest-asyncio>=0.21.0",
+    "pytest-cov>=4.1.0",
+    "pytest-django>=4.11.0",
+    "pytest-xdist>=3.8.0,<4",
+]
+test-e2e = [
+    "pytest>=7.4.0",
+    "pytest-asyncio>=0.21.0",
+    "pytest-cov>=4.1.0",
+    "pytest-html>=4.0",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py313"
+extend-exclude = [
+    "overbae/migrations/*",
+    "__pycache__/*",
+    "merps",
+    "baseten_testing/*",
+    "experiments/*",
+    # SDK has its own pyproject / ruff / CI job under overmind/
+    "overmind",
+]
+# Enable autofix for lint and format.
+fix = true
+
+[tool.ruff.lint]
+select = [
+    "E",    # pycodestyle errors
+    "F",    # Pyflakes
+    "W",    # pycodestyle warnings
+    "B",    # flake8-bugbear
+    "I",    # isort
+    "UP",   # pyupgrade
+    "C4",   # flake8-comprehensions
+    "N",    # pep8-naming
+    "SIM",  # flake8-simplify
+]
+ignore = [
+    "E501",    # Line too long (handled by formatter)
+    "B008",    # Do not perform function calls in argument defaults
+    "W191",    # Indentation contains tabs
+    "C408"
+]
+
+[tool.ruff.format]
+quote-style = "double"
+
+[tool.pytest.ini_options]
+DJANGO_SETTINGS_MODULE = "tests.settings"
+testpaths = ["tests"]
+# Model-state tables instead of replaying the squashed migration (~4s/worker).
+# No migration-specific tests live under tests/.
+addopts = "--nomigrations"
+
+[tool.uv]
+# aiohttp is transitive (litellm, modal); floor it for the CVE fix in 3.14.3.
+constraint-dependencies = ["aiohttp>=3.14.3"]
+override-dependencies = ["cryptography>=50.0.0"]
+
+
+[tool.uv.workspace]
+members = []

@@ -1,0 +1,50 @@
+{
+	"extensions": {},
+	"folders": [
+		{
+			"name": "overmind-platform",
+			"path": "."
+		},
+		{
+			"name": "overmind-docs",
+			"path": "../docs"
+		},
+	],
+	"launch": {
+		"compounds": [],
+		"configurations": [],
+		"version": "0.2.0"
+	},
+	"settings": {
+		"files.exclude": {
+			"**/.git": true,
+			"**/.svn": true,
+			"**/.hg": true,
+			"**/.DS_Store": true,
+			"**/Thumbs.db": true,
+		},
+		"search.exclude": {
+			"**/node_modules": true,
+			"**/bower_components": true,
+			"**/*.code-search": true,
+			"**/openapi_client": true,
+			"**/openapi": true
+		},
+		"biome.enabled": true,
+		"[json]": {
+			"editor.defaultFormatter": "vscode.json-language-features"
+		},
+		"ruff.lint.ignore": [
+			"PLW0602",
+			"BLE001"
+		],
+		"editor.fontFamily": "'Fira Code', 'Consolas', 'monospace'",
+		"editor.fontSize": 14,
+		"editor.tabSize": 2,
+		"workbench.panel.defaultLocation": "bottom",
+		"workbench.sideBar.location": "left",
+	},
+	"tasks": {
+		"version": "2.0.0"
+	}
+}

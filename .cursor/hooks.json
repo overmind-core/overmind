@@ -1,0 +1,11 @@
+{
+  "version": 1,
+  "hooks": {
+    "beforeShellExecution": [
+      { "command": ".claude/hooks/cursor_shell_guard.py", "timeout": 5 }
+    ],
+    "afterFileEdit": [
+      { "command": ".claude/hooks/cursor_format_file.py", "timeout": 30 }
+    ]
+  }
+}
