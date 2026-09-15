@@ -42,7 +42,7 @@ jobs:
 
       - name: Install SDK dependencies
         working-directory: ./pr/overmind
-        run: uv sync --frozen --all-groups
+        run: uv sync --frozen --extra tracing --group dev
 
       - name: Run SDK tests
         working-directory: ./pr/overmind
