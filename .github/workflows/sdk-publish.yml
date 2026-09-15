@@ -4,16 +4,13 @@ name: SDK Build and Publish
 # only on explicit version tags or published releases.
 on:
   push:
-    tags:
+    branches: [main]
     paths:
       - "overmind/**"
-      - ".github/workflows/sdk-publish.yml"
   release:
     types: [published]
     paths:
       - "overmind/**"
-      - ".github/workflows/sdk-publish.yml"
-  workflow_dispatch:
 
 jobs:
   deploy:
