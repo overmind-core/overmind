@@ -1,11 +1,18 @@
 name: SDK Build and Publish
 
 # Publishes the in-repo SDK. Never runs on ordinary pushes to platform main —
-# only on explicit version tags or manual dispatch.
+# only on explicit version tags or published releases.
 on:
   push:
     tags:
-      - "overmind-v*"
+    paths:
+      - "overmind/**"
+      - ".github/workflows/sdk-publish.yml"
+  release:
+    types: [published]
+    paths:
+      - "overmind/**"
+      - ".github/workflows/sdk-publish.yml"
   workflow_dispatch:
 
 jobs:
