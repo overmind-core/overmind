@@ -6,6 +6,7 @@ Commands:
     chassis                   Print the deterministic AST digest the local scan uses as ground truth.
     dataset upload FILE       Upload a local dataset and start a build.
     dataset export DATASET    Download a committed dataset locally.
+    connector add TYPE        Add a tracing connector from env or a TTY prompt.
     model download-checkpoint DEPLOYMENT
                               Download a deployed model checkpoint locally.
     optimise                  Client-driven optimiser loop (skill generates diffs; server scores).
@@ -23,6 +24,7 @@ try:
 
     from overmind.analytics import cli_command_from_argv, track_cli_invocation
     from overmind.chassis import chassis as chassis_cmd
+    from overmind.connector_cmd import connector_app
     from overmind.dataset_cmd import dataset_app
     from overmind.init_cmd import init as init_cmd
     from overmind.model_cmd import model_app
@@ -83,6 +85,7 @@ app.add_typer(optimise_app, name="optimise", help=OPTIMISE_HELP)
 
 app.add_typer(skills_app, name="skills")
 app.add_typer(dataset_app, name="dataset")
+app.add_typer(connector_app, name="connector")
 app.add_typer(model_app, name="model")
 app.command("init")(init_cmd)
 app.command("sync")(sync_cmd)

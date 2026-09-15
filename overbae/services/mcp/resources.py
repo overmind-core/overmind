@@ -83,6 +83,57 @@ _FINETUNE_PROGRESS_REDACTED_PARTS = (
 _CONNECTOR_MAPPING_SOURCES = frozenset({"observation_name", "metadata", "tag", "trace_name"})
 
 
+def _connector_setup_resource(uri: str) -> dict:
+    return {
+        "uri": uri,
+        "kind": "connector_setup",
+        "command": "overmind connector add langfuse --json",
+        "types": [
+            {
+                "connector_type": "langfuse",
+                "auth": "pair",
+                "command": "overmind connector add langfuse --json",
+                "env": ["LANGFUSE_PUBLIC_KEY", "LANGFUSE_SECRET_KEY"],
+            },
+            {
+                "connector_type": "langsmith",
+                "auth": "bearer",
+                "command": "overmind connector add langsmith --json",
+                "env": ["LANGSMITH_API_KEY"],
+            },
+            {
+                "connector_type": "braintrust",
+                "auth": "bearer",
+                "command": "overmind connector add braintrust --json",
+                "env": ["BRAINTRUST_API_KEY"],
+            },
+            {
+                "connector_type": "galileo",
+                "auth": "bearer",
+                "command": "overmind connector add galileo --json",
+                "env": ["GALILEO_API_KEY"],
+            },
+        ],
+        "auth": (
+            "Overmind key from --api-key, .overmind/credentials.toml, or OVERMIND_API_KEY. "
+            "project-id must be this MCP project."
+        ),
+        "provider_env": (
+            "Provider keys come from those env names or a TTY prompt. Generic fallback: "
+            "OVERMIND_CONNECTOR_API_KEY and OVERMIND_CONNECTOR_API_SECRET."
+        ),
+        "boundary": (
+            "The human runs the CLI in a terminal. Never paste provider keys in chat. "
+            "Do not have the agent export keys or run the command in a non-TTY sandbox."
+        ),
+        "next_mcp_calls": [
+            "inspect_connectors(connector=id, include_source_projects=true)",
+            "configure_connector (stage mapping.names, present alternatives, wait, confirm_mapping=true)",
+            "sync_connector",
+        ],
+    }
+
+
 def _dataset_upload_resource(uri: str) -> dict:
     from overbae.services.datasets import files
 
@@ -230,17 +281,17 @@ def _connector_capabilities(connector_type: str) -> dict:
     }
 
 
-def _connector_mapping(project, connector) -> tuple[dict, list[dict]]:
-    raw = connector.capability_mapping if isinstance(connector.capability_mapping, dict) else {}
-    source = raw.get("source")
+def connector_mapping_assignments(project, raw) -> tuple[dict, list[dict]]:
+    payload = raw if isinstance(raw, dict) else {}
+    source = payload.get("source")
     mapping = {
         "source": source if source in _CONNECTOR_MAPPING_SOURCES else None,
-        "key": str(raw.get("key"))[:255] if raw.get("key") is not None else None,
-        "names": [str(name)[:255] for name in (raw.get("names") or [])[:100]],
+        "key": str(payload.get("key"))[:255] if payload.get("key") is not None else None,
+        "names": [str(name)[:255] for name in (payload.get("names") or [])[:100]],
         "assignments": {},
         "fallback_capability_id": None,
     }
-    assignments = raw.get("assignments") if isinstance(raw.get("assignments"), dict) else {}
+    assignments = payload.get("assignments") if isinstance(payload.get("assignments"), dict) else {}
     ids = [normalized for value in assignments.values() if (normalized := _uuid_ref(str(value)))]
     capabilities = {
         str(capability.id): capability
@@ -259,10 +310,15 @@ def _connector_mapping(project, connector) -> tuple[dict, list[dict]]:
                 "capability_name": capability.name[:255] if capability else "Unknown capability",
             }
         )
-    fallback = raw.get("fallback_capability_id")
+    fallback = payload.get("fallback_capability_id")
     if fallback:
         mapping["fallback_capability_id"] = str(fallback)[:255]
     return mapping, details
+
+
+def _connector_mapping(project, connector) -> tuple[dict, list[dict]]:
+    raw = connector.capability_mapping if isinstance(connector.capability_mapping, dict) else {}
+    return connector_mapping_assignments(project, raw)
 
 
 def connector_resource_payload(project, connector, uri: str) -> dict:
@@ -1002,6 +1058,8 @@ def _read_resource_sync(project, raw_uri: str) -> dict:
         return _dataset_export_resource(raw_uri)
     if host == "checkpoint-download" and not segments:
         return _checkpoint_download_resource(raw_uri)
+    if host == "connector-setup" and not segments:
+        return _connector_setup_resource(raw_uri)
     if (
         host
         in {
@@ -1062,6 +1120,13 @@ def resource_list() -> list[types.Resource]:
             title="Local checkpoint download",
             uri="overmind://checkpoint-download",
             description="CLI guidance for downloading an archived fine-tuned checkpoint locally.",
+            mimeType=JSON_MIME,
+        ),
+        types.Resource(
+            name="connector-setup",
+            title="Connector credential setup",
+            uri="overmind://connector-setup",
+            description="CLI guidance for adding provider credentials without putting them in MCP.",
             mimeType=JSON_MIME,
         ),
     ]

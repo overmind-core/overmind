@@ -147,10 +147,12 @@ def test_resources_and_prompts_list_over_streamable_http():
     assert {item["name"] for item in resources.json()["result"]["resources"]} >= {
         "dataset-upload",
         "dataset-export",
+        "connector-setup",
     }
     assert prompts.status_code == 200
     assert {item["name"] for item in prompts.json()["result"]["prompts"]} >= {
         "upload-dataset-file",
+        "connect-traces",
     }
 
 

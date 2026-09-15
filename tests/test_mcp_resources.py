@@ -145,11 +145,35 @@ def test_checkpoint_download_resource_describes_cli_boundary_and_availability():
     assert "refuses to overwrite" in resource["overwrite"]
 
 
+def test_connector_setup_resource_describes_human_cli_boundary():
+    project, _ = _project()
+    token = APIToken(scope={"scope": "project", "permission": ["read"]})
+    context = MCPContext(
+        user=User(email="connector-setup@example.com"), token=token, project=project
+    )
+
+    async def read():
+        with bind_context(context):
+            contents = list(await read_resource("overmind://connector-setup"))
+        return json.loads(contents[0].content)
+
+    resource = asyncio.run(read())
+    encoded = json.dumps(resource)
+    assert resource["command"] == "overmind connector add langfuse --json"
+    assert resource["types"][0]["env"] == ["LANGFUSE_PUBLIC_KEY", "LANGFUSE_SECRET_KEY"]
+    assert "Do not have the agent export keys" in resource["boundary"]
+    assert "inspect_connectors" in resource["next_mcp_calls"][0]
+    assert "needs_secret" not in encoded
+    assert "api_key" not in encoded
+
+
 def test_static_resource_manifest_includes_checkpoint_download_guidance():
     resources = resource_list()
 
-    assert len(resources) == 4
-    assert "overmind://checkpoint-download" in {str(resource.uri) for resource in resources}
+    assert len(resources) == 5
+    uris = {str(resource.uri) for resource in resources}
+    assert "overmind://checkpoint-download" in uris
+    assert "overmind://connector-setup" in uris
 
 
 def test_resource_reads_are_json_and_project_scoped():

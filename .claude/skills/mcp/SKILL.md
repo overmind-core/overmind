@@ -22,14 +22,13 @@ of the following:
 - **MCP-ready** — an agent can discover, inspect, or progress the workflow.
   Add or update the smallest appropriate MCP tool, resource, or prompt in the
   same change.
-- **CLI-guided** — the workflow needs local files, repository edits, or a
-  binary download/upload. MCP supplies the state, exact identifiers, and a
-  structured human/coding-agent action; the existing CLI or SDK performs the
-  local transfer or edit.
-- **Frontend-only** — presentation, navigation, visual exploration, account
-  credential entry, billing, or another workflow that has no useful safe agent
-  action. The underlying project state remains MCP-ready when it is useful to
-  agents.
+- **CLI-guided** — the workflow needs local files, repository edits, a
+  binary download/upload, or third-party connector credentials. MCP supplies
+  the state, exact identifiers, and a structured human/coding-agent action;
+  the existing CLI or SDK performs the local transfer or edit.
+- **Frontend-only** — presentation, navigation, visual exploration, billing,
+  or another workflow that has no useful safe agent action. The underlying
+  project state remains MCP-ready when it is useful to agents.
 - **Out of scope** — destructive operations remain absent from the public MCP
   surface until explicitly designed and authorized.
 

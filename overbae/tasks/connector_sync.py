@@ -344,6 +344,7 @@ def sync_connector_chunk(credential_id: str) -> dict:
     """Pull one resumable slice of traces for a connector (backfill or live)."""
     from overbae.models import ConnectorCredential
     from overbae.services.connectors import registered_sources
+    from overbae.services.connectors.sync import prepare_connector_sync
 
     credential = ConnectorCredential.objects.filter(id=credential_id, is_active=True).first()
     if not credential:
@@ -360,6 +361,7 @@ def sync_connector_chunk(credential_id: str) -> dict:
     if not claimed:
         return {"status": "skipped", "reason": "leased"}
     credential.refresh_from_db()
+    prepare_connector_sync(credential)
 
     cursor = dict(credential.sync_cursor or {})
     if "mode" not in cursor:

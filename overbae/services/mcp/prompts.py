@@ -247,6 +247,41 @@ PROMPTS = (
         ),
     ),
     PromptDefinition(
+        name="connect-traces",
+        title="Connect traces",
+        description="Import traces from an external connector after the human adds credentials with the CLI.",
+        arguments=(
+            _argument(
+                "connector_type",
+                "Connector type: langfuse, langsmith, braintrust, or galileo.",
+            ),
+        ),
+        template=(
+            "Import traces from connector type {connector_type} into this project. "
+            "Call inspect_connectors first. Connector credentials are never MCP arguments "
+            "and must not be pasted in chat. If inspect_connectors returns "
+            "connector_setup_required, present the command from "
+            "inspect_connectors.available_types[].command "
+            "(example: `overmind connector add langfuse --json`) and wait for the human "
+            "to run it in their terminal. Overmind auth comes from overmind init / "
+            ".overmind/credentials.toml; project-id must be this MCP project. Do not run "
+            "the CLI yourself or export provider keys. After they paste the JSON id or say "
+            "it is done, inspect_connectors with that connector id and "
+            "include_source_projects=true. Save source_project_id and lookback with "
+            "configure_connector. Inspect observation_shapes and suggested_boundaries; "
+            "mapping.names are capability boundaries (Overmind trace roots). Default to "
+            "the suggested parent observation names so children nest. alternatives are "
+            "other names that match the same capability; the human may pick one as the "
+            "boundary, and then that name must be listed without its ancestor. Do not "
+            "list tools or other nested_names unless the human chose that alternative. "
+            "Propose that mapping without confirm_mapping. Present suggested_boundaries, "
+            "alternatives, unmapped_roots, and mapping_options, including the option to "
+            "import unmapped, and stop until the human replies. Then "
+            "configure_connector with confirm_mapping=true, then sync_connector. Poll "
+            "with get_job(kind=connector_sync) and query_traces. Use console_traces_url."
+        ),
+    ),
+    PromptDefinition(
         name="download-checkpoint",
         title="Download checkpoint",
         description="Download an archived fine-tuned model checkpoint to the coding agent's local filesystem.",

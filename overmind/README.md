@@ -237,6 +237,7 @@ overmind chassis [--root PATH]      Print the AST chassis digest the local scan 
 overmind dataset upload FILE        Upload a local dataset and start a build
                                     (--split PERCENT lands a train and an eval dataset)
 overmind dataset export DATASET     Download committed rows as JSONL or CSV
+overmind connector add TYPE         Add a tracing connector from env or a TTY prompt
 overmind model download-checkpoint DEPLOYMENT
                                     Download an archived fine-tuned checkpoint
 overmind optimise [OPTIONS]         SDK loop the /overmind optimise skill drives

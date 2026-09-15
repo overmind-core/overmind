@@ -238,5 +238,37 @@ def test_agent_spans_are_ranked_as_the_capability_boundary():
     assert shapes[0]["name"] in {"handler", "researcher"}
 
 
+def test_same_name_trace_wrapper_is_not_a_boundary_when_an_agent_exists():
+    tree = _trace(
+        name="adjudicate_claim",
+        spans=[
+            {
+                "id": "agent-1",
+                "type": "agent",
+                "name": "adjudicate_claim",
+                "created_at": "2026-01-02T00:00:01Z",
+                "updated_at": "2026-01-02T00:00:02Z",
+                "metrics": {"duration_ns": 2_000_000_000},
+                "spans": [_leaf()],
+            }
+        ],
+    )
+    cred = _cred()
+    spans = observations_to_span_dicts(
+        tree_to_records(tree),
+        credential=cred,
+        mapping={"source": "observation_name", "names": ["adjudicate_claim"]},
+    )
+    mapped_roots = [
+        span
+        for span in spans
+        if span["parent_span_id"] is None
+        and span["attributes"].get("connector.agent_key") == "adjudicate_claim"
+    ]
+
+    assert len(mapped_roots) == 1
+    assert mapped_roots[0]["span_id"] == span_id_for(str(cred.id), "agent-1")
+
+
 if __name__ == "__main__":
     raise SystemExit(pytest.main([__file__, "-q"]))

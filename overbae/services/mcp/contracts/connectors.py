@@ -65,14 +65,48 @@ class ConnectorCapabilityMappingInput(MCPModel):
 
 
 class ConnectorHumanAction(MCPModel):
-    code: Literal["connector_setup_required"]
-    message: str = Field(
-        default="Open Integrations and complete the connector setup form, including credentials.",
-        min_length=1,
-        max_length=500,
-    )
-    frontend_route: Literal["/integrations"] = "/integrations"
-    action: Literal["complete_setup_form"] = "complete_setup_form"
+    code: Literal[
+        "connector_setup_required",
+        "connector_config_required",
+        "connector_source_required",
+        "connector_mapping_approval_required",
+    ]
+    message: str = Field(min_length=1, max_length=500)
+    action: Literal["run_cli", "configure_connector", "approve_mapping"]
+    command: str | None = Field(default=None, max_length=255)
+    resource: str | None = Field(default=None, max_length=512)
+
+
+class ConnectorMappingOption(MCPModel):
+    id: str
+    name: str = Field(min_length=1, max_length=255)
+    slug: str = Field(min_length=1, max_length=255)
+
+
+class ConnectorObservationShape(MCPModel):
+    name: str = Field(min_length=1, max_length=255)
+    type: str = Field(default="", max_length=64)
+    parent_name: str | None = Field(default=None, max_length=255)
+    traces: int = Field(default=0, ge=0)
+    score: int = 0
+    reasons: list[str] = Field(default_factory=list, max_length=8)
+    is_root: bool = False
+
+
+class ConnectorSuggestedBoundary(MCPModel):
+    name: str = Field(min_length=1, max_length=255)
+    capability_id: str
+    capability_name: str = Field(min_length=1, max_length=255)
+    nested_names: list[str] = Field(default_factory=list, max_length=50)
+    alternatives: list[str] = Field(default_factory=list, max_length=50)
+
+
+class AvailableConnectorType(MCPModel):
+    connector_type: str = Field(min_length=1, max_length=40)
+    auth: Literal["bearer", "pair"]
+    needs_source_project: bool = True
+    capability_sources: list[ConnectorMappingSource] = Field(default_factory=list, max_length=8)
+    command: str = Field(min_length=1, max_length=255)
 
 
 class ConnectorSyncState(MCPModel):
@@ -144,6 +178,17 @@ class InspectConnectorsOutput(MCPModel):
     summary: str = Field(min_length=1, max_length=240)
     connectors: list[ConnectorDetails] = Field(default_factory=list, max_length=50)
     connector: ConnectorDetails | None = None
+    available_types: list[AvailableConnectorType] = Field(default_factory=list, max_length=8)
+    mapping_options: list[ConnectorMappingOption] = Field(default_factory=list, max_length=100)
+    proposed_assignments: list[ConnectorCapabilityAssignment] = Field(
+        default_factory=list, max_length=100
+    )
+    observation_shapes: list[ConnectorObservationShape] = Field(default_factory=list, max_length=50)
+    suggested_boundaries: list[ConnectorSuggestedBoundary] = Field(
+        default_factory=list, max_length=50
+    )
+    unmapped_roots: list[str] = Field(default_factory=list, max_length=50)
+    console_traces_url: str = Field(default="", max_length=512)
     human_action: ConnectorHumanAction | None = None
     resource_links: list[ResourceLinkContract] = Field(default_factory=list, max_length=51)
 
@@ -164,6 +209,7 @@ class ConfigureConnectorInput(MCPModel):
     )
     auto_sync_enabled: bool | None = None
     poll_interval_seconds: int | None = Field(default=None, ge=60, le=86_400)
+    confirm_mapping: bool = False
 
     @field_validator("backfill_to")
     @classmethod
@@ -177,6 +223,18 @@ class ConfigureConnectorInput(MCPModel):
 class ConfigureConnectorOutput(MCPModel):
     summary: str = Field(min_length=1, max_length=240)
     configured: bool
+    mapping_pending: bool = False
+    proposed_assignments: list[ConnectorCapabilityAssignment] = Field(
+        default_factory=list, max_length=100
+    )
+    mapping_options: list[ConnectorMappingOption] = Field(default_factory=list, max_length=100)
+    observation_shapes: list[ConnectorObservationShape] = Field(default_factory=list, max_length=50)
+    suggested_boundaries: list[ConnectorSuggestedBoundary] = Field(
+        default_factory=list, max_length=50
+    )
+    unmapped_roots: list[str] = Field(default_factory=list, max_length=50)
+    dropped_nested_names: list[str] = Field(default_factory=list, max_length=50)
+    console_traces_url: str = Field(default="", max_length=512)
     connector: ConnectorDetails
     human_action: ConnectorHumanAction | None = None
     resource: ResourceLinkContract
@@ -206,6 +264,8 @@ class SyncConnectorInput(MCPModel):
 class SyncConnectorOutput(MCPModel):
     summary: str = Field(min_length=1, max_length=240)
     queued: bool
+    recarving: bool = False
+    console_traces_url: str = Field(default="", max_length=512)
     connector: ConnectorDetails
     resource: ResourceLinkContract
     job: ConnectorJobReference | None = None
