@@ -2,7 +2,7 @@ name: SDK Pull Request Checks
 
 on:
   pull_request:
-    branches: [main, oss]
+    branches: [main]
     types: [opened, synchronize, reopened]
     paths:
       - "overmind/**"
@@ -42,7 +42,7 @@ jobs:
 
       - name: Install SDK dependencies
         working-directory: ./pr/overmind
-        run: uv sync --frozen --all-groups
+        run: uv sync --frozen --extra tracing --group dev
 
       - name: Run SDK tests
         working-directory: ./pr/overmind

@@ -3,9 +3,9 @@ name: CI
 on:
   pull_request:
     types: [opened, synchronize, ready_for_review]
-    branches: [main, oss]
+    branches: [main]
   push:
-    branches: [main, oss]
+    branches: [main]
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}

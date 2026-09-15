@@ -2,12 +2,12 @@ name: SDK Test IO
 
 on:
   push:
-    branches: [main, oss]
+    branches: [main]
     paths:
       - "overmind/**"
       - ".github/workflows/sdk-test-io.yml"
   pull_request:
-    branches: [main, oss]
+    branches: [main]
     paths:
       - "overmind/**"
       - ".github/workflows/sdk-test-io.yml"
@@ -50,7 +50,7 @@ jobs:
           python-version: ${{ matrix.python-version }}
 
       - name: Install dependencies
-        run: uv sync --all-groups
+        run: uv sync --frozen --extra tracing --group dev
 
       - name: Install OpenAI ${{ matrix.openai-version }}
         run: |

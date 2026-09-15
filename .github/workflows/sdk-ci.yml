@@ -3,12 +3,12 @@ name: SDK CI
 on:
   pull_request:
     types: [opened, synchronize, ready_for_review]
-    branches: [main, oss]
+    branches: [main]
     paths:
       - "overmind/**"
       - ".github/workflows/sdk-ci.yml"
   push:
-    branches: [main, oss]
+    branches: [main]
     paths:
       - "overmind/**"
       - ".github/workflows/sdk-ci.yml"
