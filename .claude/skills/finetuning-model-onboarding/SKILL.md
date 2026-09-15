@@ -72,6 +72,8 @@ For every new model, before it's usable for finetuning:
 
 Model configuration — context lengths, batch sizes, training type enablement, GPU/VRAM-relevant architecture fields (`hidden_size`, `num_attn_layers`, `num_kv_heads`, `head_dim`, `fp8_supported`), pricing, disabled state — belongs in `overbae/modal/models.json`, not scattered across Python as constants or conditionals. The file's own `"comment"` field documents each field; read it before adding a new one. If a field doesn't exist yet and is genuinely per-model data (not behavior), add it to the schema there rather than hardcoding it in a script.
 
+The training job's baseline eval scores the untouched base through OpenRouter when OpenRouter lists it (`model_catalog.resolve_served_slug` matches the lower-cased catalog `id` against the live model list), so no field is needed for `Qwen/Qwen3-8B` → `qwen/qwen3-8b`. Set `openrouter_id` only when the served slug is not the lower-cased id (`Qwen/Qwen2.5-7B-Instruct` → `qwen/qwen-2.5-7b-instruct`, `LiquidAI/LFM2.5-2.6B` → `liquid/lfm-2.5-2.6b:free`). A base OpenRouter does not list is served for the baseline from a Modal base deployment (`deploy_base_model_for_eval`) — that is the only case that spends GPU on a baseline.
+
 ## 6. Cost: usually nothing to add, one marketing floor to set
 
 Actual training cost is **computed, not stored per model** — `overbae/services/finetuning_pricing.py` derives it from fields already in `models.json`:
@@ -102,6 +104,7 @@ If the family has no existing icon mapping, it falls through to a generic simple
 - [ ] `real_max_context_length` set and consistent with validated training types
 - [ ] `tests/test_modelfam.py` passes, including `test_baseten_real_max_context_length`
 - [ ] `total_params_b` set correctly (drives auto-computed training cost — no manual rate needed)
+- [ ] `openrouter_id` set if OpenRouter's slug for the model is not its lower-cased `id` (check `openrouter.ai/api/v1/models`); otherwise the baseline eval falls back to a Modal base deploy
 - [ ] `pricing.train_from_usd` + `pricing.run_from_usd_per_1m_output` set for the model library display
 - [ ] Frontend icon mapped if the family is new
 - [ ] `scripts/sync_benchmarks.py` run once the model is in `models.json`, so any Artificial Analysis / HuggingFace benchmark results for it (`overbae/services/benchmarks/sync/leaderboard.py`, `sync/huggingface.py`) join the committed artifact and feed model recommendations

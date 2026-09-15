@@ -220,9 +220,10 @@ class FinetuningJobEvent(models.Model):
 
 class FinetuningJobEval(models.Model):
     """One judge-eval against a fine-tune job's model artifact. Baseline rows
-    score the untouched ``base_model``; checkpoint and final rows score provider
-    artifacts, and only when those are callable for inference. Results are
-    denormalised here once the linked ``EvalRun`` completes.
+    score the capability's incumbent model, or the untouched ``base_model`` when
+    the capability has none; checkpoint and final rows score provider artifacts,
+    and only when those are callable for inference. Results are denormalised
+    here once the linked ``EvalRun`` completes.
     """
 
     class Kind(models.TextChoices):
@@ -237,6 +238,9 @@ class FinetuningJobEval(models.Model):
         FAILED = "failed"
         CANCELLED = "cancelled"
         SKIPPED = "skipped"
+        # No inference route exists for the model (not on OpenRouter, not one of our
+        # deployments, not a catalog base we can serve). Terminal; carries no EvalRun.
+        UNAVAILABLE = "unavailable"
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     job = models.ForeignKey(FinetuningJob, on_delete=models.CASCADE, related_name="job_evals")

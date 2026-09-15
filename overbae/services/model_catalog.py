@@ -10,7 +10,13 @@ import os
 import requests
 from django.core.cache import cache
 
-from overbae.core.model_registry import OPENROUTER_MODEL_SLUGS, normalize_model_name, pricing_slug
+from overbae.core.model_registry import (
+    OPENROUTER_MODEL_SLUGS,
+    normalize_model_name,
+    pricing_slug,
+    resolve_openrouter_slug,
+)
+from overbae.modal.model_registry import get_model_config_any_backend
 
 logger = logging.getLogger(__name__)
 
@@ -21,6 +27,10 @@ _REQUEST_TIMEOUT_S = 15
 
 # Slugs that map 1:1 onto our curated BASE_MODELS / SUPPORTED_LLM_MODELS.
 _CURATED_SLUGS = frozenset(OPENROUTER_MODEL_SLUGS.values())
+
+
+class CatalogUnavailableError(RuntimeError):
+    """OpenRouter's model list could not be fetched, so whether it serves a model is unknown."""
 
 
 def _per_million(raw: object) -> float | None:
@@ -124,6 +134,70 @@ def resolve_bare_openrouter_slug(model_name: str) -> str | None:
         slug = entry.get("id") or ""
         by_last_segment.setdefault(slug.rsplit("/", 1)[-1], slug)
     return by_last_segment.get(name)
+
+
+def _served_slug_candidates(model_name: str) -> list[str]:
+    """Slugs OpenRouter might list ``model_name`` under, most specific first.
+
+    A training-catalog id (``Qwen/Qwen3-8B``) is usually the OpenRouter slug in
+    lower case; ``openrouter_id`` in models.json pins the exceptions
+    (``Qwen/Qwen2.5-7B-Instruct`` → ``qwen/qwen-2.5-7b-instruct``). The HF mirror
+    id (``unsloth/…``) is never served, so it is not a candidate.
+    """
+    name = normalize_model_name((model_name or "").strip())
+    if not name:
+        return []
+    candidates: list[str] = []
+    cfg = get_model_config_any_backend(name)
+    if cfg:
+        for key in ("openrouter_id", "id"):
+            if cfg.get(key):
+                candidates.append(str(cfg[key]))
+    if "/" in name:
+        candidates.append(name.removeprefix("openrouter/"))
+    else:
+        qualified = resolve_openrouter_slug(name)
+        if "/" in qualified:
+            candidates.append(qualified)
+    unique: list[str] = []
+    for candidate in candidates:
+        if candidate.lower() not in {c.lower() for c in unique}:
+            unique.append(candidate)
+    return unique
+
+
+def resolve_served_slug(model_name: str) -> str | None:
+    """The slug OpenRouter actually serves for ``model_name``, or ``None`` when it
+    serves nothing matching. Curated names resolve without a fetch; everything
+    else is matched case-insensitively against the live catalog, and a bare
+    name also matches on its final path segment (``qwen3-8b`` → ``qwen/qwen3-8b``).
+
+    Raises :class:`CatalogUnavailableError` when the catalog cannot be fetched and the
+    name is not curated — the caller decides whether to wait or give up; ``None``
+    always means "checked and absent".
+    """
+    name = normalize_model_name((model_name or "").strip())
+    if not name:
+        return None
+    if name in OPENROUTER_MODEL_SLUGS:
+        return OPENROUTER_MODEL_SLUGS[name]
+    candidates = _served_slug_candidates(name)
+    models, upstream_available = fetch_model_catalog()
+    if not upstream_available:
+        raise CatalogUnavailableError(f"OpenRouter catalog unreachable while resolving {name!r}")
+    by_lower: dict[str, str] = {}
+    by_last_segment: dict[str, str] = {}
+    for entry in models:
+        slug = entry.get("id") or ""
+        by_lower.setdefault(slug.lower(), slug)
+        by_last_segment.setdefault(slug.rsplit("/", 1)[-1].lower(), slug)
+    for candidate in candidates:
+        hit = by_lower.get(candidate.lower())
+        if hit:
+            return hit
+    if "/" not in name:
+        return by_last_segment.get(name.lower())
+    return None
 
 
 def estimate_cost(

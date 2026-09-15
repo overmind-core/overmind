@@ -17,13 +17,13 @@ from overbae.models import (
     Project,
 )
 from overbae.services.finetuning_eval import (
-    _baseline_target,
-    baseline_needs_base_deploy,
+    baseline_base_deploy_model,
     resolve_baseline_model,
+    resolve_baseline_route,
     sync_eval_scores,
 )
 
-pytestmark = pytest.mark.django_db
+pytestmark = [pytest.mark.django_db, pytest.mark.usefixtures("openrouter_catalog")]
 
 GATEWAY = "https://gateway.example.modal.run"
 
@@ -54,31 +54,31 @@ def _job(*, incumbent: str = "") -> FinetuningJob:
 @override_settings(INFERENCE_API_URL=GATEWAY)
 def test_frontier_incumbent_routes_via_openrouter_and_skips_deploy():
     job = _job(incumbent="openai/gpt-5.6-sol")
-    target = _baseline_target(job)
+    route = resolve_baseline_route(job)
 
-    assert target.kind == "openrouter"
-    assert target.provider == ModelRef.Provider.CUSTOM
-    assert target.base_url == "https://openrouter.ai/api/v1"
-    assert target.api_key_ref == "OPENROUTER_API_KEY"
-    assert target.model_id == "openai/gpt-5.6-sol"
-    assert target.ready is True
+    assert route.kind == "openrouter"
+    assert route.provider == ModelRef.Provider.CUSTOM
+    assert route.base_url == "https://openrouter.ai/api/v1"
+    assert route.api_key_ref == "OPENROUTER_API_KEY"
+    assert route.model_id == "openai/gpt-5.6-sol"
+    assert route.ready is True
     # A frontier model has no weights to serve — never Modal-deploy it.
-    assert baseline_needs_base_deploy(job) is False
-    assert "?" not in target.base_url
+    assert baseline_base_deploy_model(job) is None
+    assert "?" not in route.base_url
 
 
 @override_settings(INFERENCE_API_URL=GATEWAY)
 def test_provider_less_incumbent_routes_via_openrouter():
     """A bare model name is still an incumbent — it must not fall back to the base FT model."""
     job = _job(incumbent="gpt-4o-mini")
-    target = _baseline_target(job)
+    route = resolve_baseline_route(job)
 
-    assert target.kind == "openrouter"
-    assert target.model_id == "openai/gpt-4o-mini"  # vendor prefix inferred
-    assert target.base_url == "https://openrouter.ai/api/v1"
-    assert target.api_key_ref == "OPENROUTER_API_KEY"
-    assert target.ready is True
-    assert baseline_needs_base_deploy(job) is False
+    assert route.kind == "openrouter"
+    assert route.model_id == "openai/gpt-4o-mini"  # vendor prefix inferred
+    assert route.base_url == "https://openrouter.ai/api/v1"
+    assert route.api_key_ref == "OPENROUTER_API_KEY"
+    assert route.ready is True
+    assert baseline_base_deploy_model(job) is None
 
 
 @override_settings(INFERENCE_API_URL=GATEWAY)
@@ -91,26 +91,29 @@ def test_self_hosted_incumbent_routes_via_gateway():
         status=DeployedModel.Status.READY,
         inference_url="https://worker.modal.run?model_path=x",
     )
-    target = _baseline_target(job)
+    route = resolve_baseline_route(job)
 
-    assert target.kind == "gateway"
-    assert target.provider == ModelRef.Provider.CUSTOM
-    assert target.base_url == f"{GATEWAY}/v1"  # gateway, NOT the worker url
-    assert target.api_key_ref == "INFERENCE_API_KEY"
-    assert target.model_id == "ft-prev-qwen3-8b"
-    assert baseline_needs_base_deploy(job) is False
+    assert route.kind == "gateway"
+    assert route.provider == ModelRef.Provider.CUSTOM
+    assert route.base_url == f"{GATEWAY}/v1"  # gateway, NOT the worker url
+    assert route.api_key_ref == "INFERENCE_API_KEY"
+    assert route.model_id == "ft-prev-qwen3-8b"
+    assert baseline_base_deploy_model(job) is None
 
 
 @override_settings(INFERENCE_API_URL=GATEWAY)
-def test_no_incumbent_falls_back_to_base_model():
+def test_no_incumbent_scores_the_open_weights_base_via_openrouter():
+    """The untouched base is the before-comparison when the capability has no model,
+    and an open-weights base OpenRouter serves needs no GPU deploy."""
     job = _job(incumbent="")
-    target = _baseline_target(job)
+    route = resolve_baseline_route(job)
 
-    assert target.kind == "base_deploy"
-    assert "Base model" in target.label
-    # No base deployment READY yet → not launchable.
-    assert target.ready is False
-    assert baseline_needs_base_deploy(job) is True
+    assert route.kind == "openrouter"
+    assert route.requested == "Qwen/Qwen3-8B"
+    assert route.model_id == "qwen/qwen3-8b"  # the served slug, not the HF casing
+    assert "Base model" in route.label
+    assert route.ready is True
+    assert baseline_base_deploy_model(job) is None
 
 
 def test_resolve_baseline_prefers_snapshot_over_live_capability():

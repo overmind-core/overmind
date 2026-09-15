@@ -4,15 +4,18 @@ Reuses the normal :class:`~overbae.models.evaluation.EvalRun` pipeline (generate
 variant → ``run_eval_run``) against a :class:`ModelRef` pointing at the provider's chat
 API — never a parallel scorer.
 
-* **Baseline** — the capability's PRODUCTION incumbent (see ``_baseline_target``), never the
-  base model of the family. Frontier incumbents fire immediately via OpenRouter, a
-  self-hosted one routes through our Modal gateway, and only a capability with no
-  resolvable model falls back to Modal-deploying the untouched base. Wizard
-  multi-model groups share one baseline EvalRun per identical target.
+* **Baseline** — the capability's PRODUCTION incumbent, or the untouched base model
+  when the capability has none. ``resolve_baseline_route`` picks the inference
+  route independently of the training provider: one of our READY deployments goes
+  through the Modal gateway, anything OpenRouter's live catalog serves goes through
+  OpenRouter, a catalog base OpenRouter does not list is Modal-deployed
+  (``deploy_base_model_for_eval``), and a model with no route at all lands a
+  terminal ``UNAVAILABLE`` row instead of a failing EvalRun. Wizard multi-model
+  groups share one baseline EvalRun per identical target.
 * **Checkpoint** — only when the checkpoint is chat-callable. Together needs the path
   to look like a served model id; Baseten and Modal ship weights only, so never.
 * **Final** — the fine-tune's own Modal deployment once ``output_model_name`` is set,
-  so ``baseline_delta`` on that row is *finetuned − incumbent*.
+  so ``baseline_delta`` on that row is *finetuned − baseline*.
 """
 
 from __future__ import annotations
@@ -31,7 +34,9 @@ DEFAULT_EVAL_MAX_ITEMS = 100
 
 def _is_self_hosted(job) -> bool:
     """Baseten and Modal ship weight-only artifacts with no provider chat endpoint, so
-    their evals route through OUR Modal deployment. Together serves its own fine-tunes.
+    their checkpoint/final evals route through OUR Modal deployment. Together serves
+    its own fine-tunes. The baseline never consults this: its route follows the
+    model, not the trainer.
     """
     from overbae.models import FinetuningJob
 
@@ -284,6 +289,7 @@ def cancel_related_evals(job) -> int:
                 FinetuningJobEval.Status.FAILED,
                 FinetuningJobEval.Status.CANCELLED,
                 FinetuningJobEval.Status.SKIPPED,
+                FinetuningJobEval.Status.UNAVAILABLE,
             ):
                 FinetuningJobEval.objects.filter(pk=row.pk).update(
                     status=FinetuningJobEval.Status.CANCELLED
@@ -362,8 +368,8 @@ def _ready_deployment(job):
     )
 
 
-def _base_deployment(job):
-    """READY Modal deployment of the job's UNTOUCHED base model, or None. Created by
+def _base_deployment(model_name: str):
+    """READY Modal deployment of an UNTOUCHED catalog model, or None. Created by
     deploy_base_model_for_eval and shared across jobs with the same base.
 
     Context-length siblings share the slug prefix (``base--unsloth--qwen3-5-9b`` vs
@@ -376,7 +382,7 @@ def _base_deployment(job):
     from overbae.models import DeployedModel
     from overbae.tasks.model_deployment import base_model_slug
 
-    slug = base_model_slug(get_hf_base(job.base_model))
+    slug = base_model_slug(get_hf_base(model_name))
     return (
         DeployedModel.objects.filter(
             Q(model_id=slug) | Q(model_id__startswith=f"{slug}-"),
@@ -389,22 +395,29 @@ def _base_deployment(job):
 
 
 @dataclass(frozen=True)
-class _BaselineTarget:
-    """What the baseline eval scores + how its ModelRef routes.
+class BaselineRoute:
+    """Where the baseline eval sends its chat requests and how its ModelRef routes.
 
-    ``kind``: ``"openrouter"`` (frontier incumbent), ``"gateway"`` (self-hosted
-    incumbent on our infra) or ``"base_deploy"`` (untouched base on Modal, used only
-    when the capability has no resolvable model). ``ready`` is False while the route is not
-    callable yet — the tick loop retries until it is.
+    ``kind`` is one of ``gateway`` (one of our Modal deployments), ``openrouter``
+    (a slug OpenRouter's live catalog serves), ``base_deploy`` (a catalog base we
+    serve ourselves via ``deploy_base_model_for_eval``) or ``unavailable`` (no
+    inference route anywhere — the baseline lands a terminal UNAVAILABLE row).
+
+    ``requested`` is the model name the capability or job names; ``model_id`` is
+    the id the route actually serves it under. ``ready`` is False while the route is
+    not callable yet — the tick loop retries until it is. ``detail`` is the
+    user-facing reason when the route is not ready or does not exist.
     """
 
     kind: str
+    requested: str
     model_id: str
     provider: str
     base_url: str
     api_key_ref: str
     label: str
     ready: bool
+    detail: str = ""
 
 
 def resolve_baseline_model(job) -> str:
@@ -427,85 +440,136 @@ def resolve_baseline_model(job) -> str:
     return (getattr(capability, "model", "") or "").strip()
 
 
-def _baseline_target(job) -> _BaselineTarget | None:
-    from django.conf import settings
-
-    from overbae.core.model_registry import PROVIDERS, resolve_openrouter_slug
-    from overbae.models import DeployedModel, ModelRef
-
-    gateway = (settings.INFERENCE_API_URL or "").rstrip("/")
+def baseline_subject(job) -> tuple[str, str]:
+    """``(model name to score, row label)``: the incumbent when the capability has
+    one, else the job's untouched base model."""
     current = resolve_baseline_model(job)
     if current:
-        # (a) Self-hosted incumbent already serving on our Modal infra → gateway.
-        dep = (
-            DeployedModel.objects.filter(
-                project=job.project,
-                model_id=current,
-                status=DeployedModel.Status.READY,
-            )
-            .exclude(inference_url="")
-            .first()
-        )
-        if dep is not None:
-            return _BaselineTarget(
-                kind="gateway",
-                model_id=current,
-                provider=ModelRef.Provider.CUSTOM,
-                base_url=f"{gateway}/v1",
-                api_key_ref="INFERENCE_API_KEY",
-                label=f"Current model · {current}",
-                ready=bool(gateway),
-            )
-        # (b) A set incumbent that is not one of our live deployments is an external
-        # model the capability runs in production → OpenRouter, with no prefix/slug gate: a
-        # set incumbent must never silently fall back to the base FT model, or the
-        # "before" comparison scores the wrong thing.
-        #
-        # An incumbent that IS one of our deployments but is not callable yet would 404
-        # at OpenRouter, so defer instead — ready=False means "not launchable" and
-        # tick_job_evals retries idempotently.
-        if DeployedModel.objects.filter(project=job.project, model_id=current).exists():
-            return _BaselineTarget(
-                kind="gateway",
-                model_id=current,
-                provider=ModelRef.Provider.CUSTOM,
-                base_url=f"{gateway}/v1",
-                api_key_ref="INFERENCE_API_KEY",
-                label=f"Current model · {current}",
-                ready=False,
-            )
-        return _BaselineTarget(
-            kind="openrouter",
-            model_id=resolve_openrouter_slug(current),
-            provider=ModelRef.Provider.CUSTOM,
-            base_url=PROVIDERS["openrouter"].base_url,
-            api_key_ref=PROVIDERS["openrouter"].key_env,
-            label=f"Current model · {current}",
-            ready=True,
-        )
+        return current, f"Current model · {current}"
+    base = (job.base_model or "").strip()
+    return base, f"Base model · {base}"
 
-    # (c) Fallback ONLY when the capability has no resolvable model at all: score the
-    # untouched base model on Modal (deploy_base_model_for_eval).
-    base = _base_deployment(job)
-    return _BaselineTarget(
-        kind="base_deploy",
-        model_id=base.model_id if base else "",
-        provider=ModelRef.Provider.CUSTOM,
-        base_url=f"{gateway}/v1",
-        api_key_ref="INFERENCE_API_KEY",
-        label=f"Base model · {job.base_model}",
-        ready=base is not None and bool(gateway),
+
+def unavailable_detail(model_name: str) -> str:
+    return (
+        f"Model not available for evaluation: {model_name} is not served by OpenRouter "
+        "or an Overmind deployment."
     )
 
 
-def baseline_needs_base_deploy(job) -> bool:
-    """True only when the baseline falls back to Modal-deploying the base model —
-    frontier and self-hosted incumbents route directly and need no GPU work.
+def resolve_baseline_route(job) -> BaselineRoute:
+    """Pick the baseline's inference route from the model alone, never from the
+    training provider. Order: our own deployment (READY → gateway now, otherwise
+    wait), OpenRouter's live catalog, a catalog base we can Modal-deploy, then
+    unavailable. An unreachable OpenRouter catalog is a wait, not an absence — a
+    transient outage must never mark a model unavailable or spin up a GPU.
     """
-    if not _is_self_hosted(job):
-        return False
-    target = _baseline_target(job)
-    return target is not None and target.kind == "base_deploy"
+    from django.conf import settings
+
+    from overbae.core.model_registry import PROVIDERS
+    from overbae.modal.model_registry import get_model_config_any_backend
+    from overbae.models import DeployedModel, ModelRef
+    from overbae.services.model_catalog import CatalogUnavailableError, resolve_served_slug
+
+    openrouter = PROVIDERS["openrouter"]
+    gateway = (settings.INFERENCE_API_URL or "").rstrip("/")
+    subject, label = baseline_subject(job)
+    if not subject:
+        return BaselineRoute(
+            kind="unavailable",
+            requested="",
+            model_id="",
+            provider=ModelRef.Provider.CUSTOM,
+            base_url="",
+            api_key_ref="",
+            label=label,
+            ready=False,
+            detail="Model not available for evaluation: the job names no model to score.",
+        )
+
+    def _gateway(model_id: str, *, ready: bool, detail: str = "") -> BaselineRoute:
+        return BaselineRoute(
+            kind="gateway",
+            requested=subject,
+            model_id=model_id,
+            provider=ModelRef.Provider.CUSTOM,
+            base_url=f"{gateway}/v1",
+            api_key_ref="INFERENCE_API_KEY",
+            label=label,
+            ready=ready and bool(gateway),
+            detail=detail,
+        )
+
+    own = DeployedModel.objects.filter(project=job.project, model_id=subject).order_by(
+        "-created_at"
+    )
+    ready_own = own.filter(status=DeployedModel.Status.READY).exclude(inference_url="").first()
+    if ready_own is not None:
+        return _gateway(subject, ready=True)
+    if own.exists():
+        # One of ours that is not callable yet would 404 at OpenRouter — wait for it.
+        return _gateway(subject, ready=False, detail=f"Waiting for deployment {subject}")
+
+    try:
+        slug = resolve_served_slug(subject)
+    except CatalogUnavailableError as exc:
+        return BaselineRoute(
+            kind="openrouter",
+            requested=subject,
+            model_id="",
+            provider=ModelRef.Provider.CUSTOM,
+            base_url=openrouter.base_url,
+            api_key_ref=openrouter.key_env,
+            label=label,
+            ready=False,
+            detail=str(exc),
+        )
+    if slug:
+        return BaselineRoute(
+            kind="openrouter",
+            requested=subject,
+            model_id=slug,
+            provider=ModelRef.Provider.CUSTOM,
+            base_url=openrouter.base_url,
+            api_key_ref=openrouter.key_env,
+            label=label,
+            ready=True,
+        )
+
+    if get_model_config_any_backend(subject) is not None:
+        base = _base_deployment(subject)
+        return BaselineRoute(
+            kind="base_deploy",
+            requested=subject,
+            model_id=base.model_id if base else "",
+            provider=ModelRef.Provider.CUSTOM,
+            base_url=f"{gateway}/v1",
+            api_key_ref="INFERENCE_API_KEY",
+            label=label,
+            ready=base is not None and bool(gateway),
+            detail="" if base else f"Waiting for base deployment of {subject}",
+        )
+
+    return BaselineRoute(
+        kind="unavailable",
+        requested=subject,
+        model_id="",
+        provider=ModelRef.Provider.CUSTOM,
+        base_url="",
+        api_key_ref="",
+        label=label,
+        ready=False,
+        detail=unavailable_detail(subject),
+    )
+
+
+def baseline_base_deploy_model(job) -> str | None:
+    """The catalog model ``deploy_base_model_for_eval`` must serve for this job's
+    baseline, or None when the baseline routes elsewhere (OpenRouter, an existing
+    deployment, or nowhere) and no GPU work is wanted.
+    """
+    route = resolve_baseline_route(job)
+    return route.requested if route.kind == "base_deploy" else None
 
 
 def _sibling_baseline_eval(job, *, model_id: str):
@@ -535,6 +599,7 @@ def _sibling_baseline_eval(job, *, model_id: str):
                 FinetuningJobEval.Status.FAILED,
                 FinetuningJobEval.Status.CANCELLED,
                 FinetuningJobEval.Status.SKIPPED,
+                FinetuningJobEval.Status.UNAVAILABLE,
             )
         )
         .select_related("eval_run")
@@ -566,6 +631,36 @@ def _attach_shared_baseline(job, shared):
     return row
 
 
+def _mark_baseline_unavailable(job, route: BaselineRoute):
+    """Persist the graceful failure: a terminal row with the reason, plus a job event
+    so the training feed says so. Training itself is untouched — the baseline is a
+    comparison, not a prerequisite.
+    """
+    from overbae.models import FinetuningJobEval, FinetuningJobEvent
+
+    with transaction.atomic():
+        existing = FinetuningJobEval.objects.filter(
+            job=job, kind=FinetuningJobEval.Kind.BASELINE
+        ).first()
+        if existing is not None:
+            return existing
+        row = FinetuningJobEval.objects.create(
+            job=job,
+            kind=FinetuningJobEval.Kind.BASELINE,
+            status=FinetuningJobEval.Status.UNAVAILABLE,
+            model_id=route.requested,
+            error_message=route.detail[:2000],
+        )
+        FinetuningJobEvent.objects.create(
+            job=job,
+            event_type="log",
+            message=f"Baseline eval skipped — {route.detail}",
+            data={"baseline_model": route.requested, "reason": "model_unavailable"},
+        )
+    logger.warning("Baseline eval unavailable for FT job %s: %s", job.id, route.detail)
+    return row
+
+
 def ensure_baseline_eval(job):
     from overbae.models import FinetuningJobEval
 
@@ -575,33 +670,26 @@ def ensure_baseline_eval(job):
     if existing is not None:
         return existing
 
-    if not _is_self_hosted(job):
-        # Together serves the base model directly — score the incumbent later.
-        model_id = job.base_model
-        label = f"FT baseline · {job.name or job.base_model}"
-    else:
-        target = _baseline_target(job)
-        if target is None or not target.ready or not target.model_id:
-            return None
-        model_id = target.model_id
-        label = target.label
+    route = resolve_baseline_route(job)
+    if route.kind == "unavailable":
+        return _mark_baseline_unavailable(job, route)
+    if not route.ready or not route.model_id:
+        logger.info("Baseline eval for FT job %s waiting: %s", job.id, route.detail or route.kind)
+        return None
 
     # Multi-model wizard group: one baseline EvalRun per (group, target).
-    shared = _sibling_baseline_eval(job, model_id=model_id)
+    shared = _sibling_baseline_eval(job, model_id=route.model_id)
     if shared is not None:
         return _attach_shared_baseline(job, shared)
 
-    # Self-hosted/base incumbents wait for a READY route; frontier ones fire at once.
-    target = _baseline_target(job)
-    if target is None or not target.ready or not target.model_id:
-        return None
     return _launch_eval(
         job,
         kind=FinetuningJobEval.Kind.BASELINE,
-        model_id=model_id,
-        label=label,
+        model_id=route.model_id,
+        label=route.label,
         checkpoint_id="",
         checkpoint_step=None,
+        route=route,
     )
 
 
@@ -664,21 +752,22 @@ def ensure_checkpoint_evals(job, checkpoints: list[dict[str, Any]]) -> list:
     return launched
 
 
-def _provider_routing(job, *, kind: str) -> tuple[str, str, str]:
-    """Return ``(ModelRef.provider, base_url, api_key_env)`` for one eval kind."""
+def _provider_routing(
+    job, *, kind: str, route: BaselineRoute | None = None
+) -> tuple[str, str, str]:
+    """Return ``(ModelRef.provider, base_url, api_key_env)`` for one eval kind.
+
+    The baseline carries its own resolved route; checkpoint and final rows follow
+    the trainer — our gateway for Modal/Baseten artifacts, Together's API for its.
+    """
     from overbae.models import FinetuningJobEval, ModelRef
 
-    if _is_self_hosted(job):
-        # Baseline follows the incumbent's own route; final always goes through the
-        # gateway to the fine-tune's Modal deployment.
-        if kind == FinetuningJobEval.Kind.BASELINE:
-            target = _baseline_target(job)
-            if target is None or not target.ready:
-                raise RuntimeError(
-                    f"{job.provider} job {job.id} baseline has no ready route — eval must wait for it"
-                )
-            return target.provider, target.base_url, target.api_key_ref
+    if kind == FinetuningJobEval.Kind.BASELINE:
+        if route is None or not route.ready:
+            raise RuntimeError(f"job {job.id} baseline has no ready route — eval must wait for it")
+        return route.provider, route.base_url, route.api_key_ref
 
+    if _is_self_hosted(job):
         deployment = _ready_deployment(job)
         if deployment is None:
             raise RuntimeError(
@@ -698,10 +787,12 @@ def _provider_routing(job, *, kind: str) -> tuple[str, str, str]:
     return ModelRef.Provider.TOGETHER, "", "TOGETHER_API_KEY"
 
 
-def _get_or_create_model_ref(job, *, model_id: str, label: str, kind: str):
+def _get_or_create_model_ref(
+    job, *, model_id: str, label: str, kind: str, route: BaselineRoute | None = None
+):
     from overbae.models import ModelRef
 
-    provider, base_url, api_key_env = _provider_routing(job, kind=kind)
+    provider, base_url, api_key_env = _provider_routing(job, kind=kind, route=route)
     # Modal deployments run a right-sized max_model_len and vLLM 400s any request whose
     # max_tokens exceeds it, so ``None`` makes call_llm omit the param and let the
     # server size output to the remaining context.
@@ -770,6 +861,7 @@ def _launch_eval(
     label: str,
     checkpoint_id: str,
     checkpoint_step: int | None,
+    route: BaselineRoute | None = None,
 ):
     from overbae.models import EvalRun, EvalVariant, FinetuningJobEval
     from overbae.services.eval.eval_set import expand_to_run_evaluators
@@ -820,7 +912,7 @@ def _launch_eval(
 
         # Same pin the eval-run API applies: generate scoring reads ``run.cell``.
         cell = dataset_use.use(job.eval_dataset, "eval")
-        ref = _get_or_create_model_ref(job, model_id=model_id, label=label, kind=kind)
+        ref = _get_or_create_model_ref(job, model_id=model_id, label=label, kind=kind, route=route)
         run = EvalRun.objects.create(
             project=job.project,
             name=label[:255],

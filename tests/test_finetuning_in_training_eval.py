@@ -34,7 +34,15 @@ from overbae.services.finetuning_eval import (
     tick_job_evals,
 )
 
-pytestmark = pytest.mark.django_db
+pytestmark = [pytest.mark.django_db, pytest.mark.usefixtures("openrouter_catalog")]
+
+
+@pytest.fixture
+def base_not_on_openrouter(openrouter_catalog):
+    """Drop the fixture base (Qwen/Qwen3-8B) from the catalog so its baseline takes the
+    Modal base-deploy route these tests exercise."""
+    openrouter_catalog.remove("qwen/qwen3-8b")
+    return openrouter_catalog
 
 
 def _auth_client(user) -> APIClient:
@@ -597,6 +605,7 @@ def test_baseten_checkpoints_never_inferable():
 
 
 @override_settings(INFERENCE_API_URL="https://gateway.example.modal.run")
+@pytest.mark.usefixtures("base_not_on_openrouter")
 def test_baseten_baseline_waits_for_base_deployment_then_fires(
     django_capture_on_commit_callbacks,
 ):
@@ -717,6 +726,7 @@ def _fake_modal(monkeypatch, calls):
 
 
 @override_settings(INFERENCE_API_URL="https://gateway.example.modal.run")
+@pytest.mark.usefixtures("base_not_on_openrouter")
 def test_deploy_base_model_for_eval_deploys_then_launches_baseline(
     monkeypatch, django_capture_on_commit_callbacks
 ):
@@ -747,6 +757,7 @@ def test_deploy_base_model_for_eval_deploys_then_launches_baseline(
 
 
 @override_settings(INFERENCE_API_URL="https://gateway.example.modal.run")
+@pytest.mark.usefixtures("base_not_on_openrouter")
 def test_deploy_base_model_dedupes_ready_deployment(
     monkeypatch, django_capture_on_commit_callbacks
 ):
@@ -789,6 +800,7 @@ def test_deploy_base_model_skips_cancelled_job(monkeypatch):
 
 
 @override_settings(INFERENCE_API_URL="https://gateway.example.modal.run")
+@pytest.mark.usefixtures("base_not_on_openrouter")
 def test_baseten_final_eval_fires_after_ready_deployment(django_capture_on_commit_callbacks):
     from overbae.models import DeployedModel
 

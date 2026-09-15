@@ -605,10 +605,11 @@ def base_model_slug(hf_base: str) -> str:
 
 @shared_task(bind=True, max_retries=5, default_retry_delay=120)
 def deploy_base_model_for_eval(self, *, job_id: str) -> None:
-    """Fires at job start and does not block: training runs on Baseten in parallel. One
-    DeployedModel per base (keyed on ``base_model_slug``); a READY one is reused free, and Modal
-    caches the weights at ``/weights/base--…`` so even a re-deploy after FAILED skips download +
-    quantize.
+    """Fires at job start and does not block: training runs in parallel. Deploys only when
+    ``resolve_baseline_route`` picks ``base_deploy`` — a catalog base OpenRouter does not serve.
+    One DeployedModel per base (keyed on ``base_model_slug``); a READY one is reused free, and
+    Modal caches the weights at ``/weights/base--…`` so even a re-deploy after FAILED skips
+    download + quantize.
 
     Never touches FinetuningJob.status — the baseline is best-effort and the training pipeline
     must not notice failures here.
@@ -618,7 +619,7 @@ def deploy_base_model_for_eval(self, *, job_id: str) -> None:
     from overbae.modal.model_registry import get_hf_base
     from overbae.models import DeployedModel, FinetuningJob
     from overbae.services.finetuning_eval import (
-        baseline_needs_base_deploy,
+        baseline_base_deploy_model,
         job_wants_evals,
         tick_job_evals,
     )
@@ -634,20 +635,18 @@ def deploy_base_model_for_eval(self, *, job_id: str) -> None:
     if job.status in (FinetuningJob.Status.CANCELLED, FinetuningJob.Status.FAILED):
         return
 
-    # The baseline is the capability's incumbent model. A frontier (OpenRouter) or an
-    # already-deployed self-hosted one routes directly, so the eval can fire now.
-    # Only a capability with no resolvable model falls back to deploying the base.
-    if not baseline_needs_base_deploy(job):
-        logger.info(
-            "Job %s baseline uses the capability's incumbent model — no base deploy; launching eval.",
-            job_id,
-        )
+    # GPU work only when the baseline model is a catalog base OpenRouter does not
+    # serve. Every other route (OpenRouter, an existing deployment, unavailable) is
+    # settled by the tick itself.
+    base_model = baseline_base_deploy_model(job)
+    if base_model is None:
+        logger.info("Job %s baseline needs no base deploy; launching eval.", job_id)
         tick_job_evals(job, checkpoints=None)
         return
 
-    hf_base = get_hf_base(job.base_model)
+    hf_base = get_hf_base(base_model)
     model_id = base_model_slug(hf_base)
-    model_cfg = get_model_config_any_backend(job.base_model) or {}
+    model_cfg = get_model_config_any_backend(base_model) or {}
     training_ctx = int((job.hyperparameters or {}).get("context_length") or 0)
     static_max_len = (model_cfg.get("inference") or {}).get("max_model_len") or 8192
     max_model_len = training_ctx if training_ctx > 0 else static_max_len

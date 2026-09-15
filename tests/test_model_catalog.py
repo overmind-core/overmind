@@ -294,3 +294,46 @@ class TestCachedTokenPricing:
         with_cache = self._estimate("vendor/no-cache-rate", 1_000, 0, cached_tokens=1_000)
         without = self._estimate("vendor/no-cache-rate", 1_000, 0)
         assert with_cache == without
+
+
+def _served(models: list[str]) -> None:
+    cache.set(model_catalog._CACHE_KEY, [{"id": slug} for slug in models], 60)
+
+
+def test_resolve_served_slug_matches_catalog_ids_case_insensitively():
+    _served(["qwen/qwen3-8b", "meta-llama/llama-3.1-8b-instruct"])
+    assert model_catalog.resolve_served_slug("Qwen/Qwen3-8B") == "qwen/qwen3-8b"
+    assert (
+        model_catalog.resolve_served_slug("meta-llama/Llama-3.1-8B-Instruct")
+        == "meta-llama/llama-3.1-8b-instruct"
+    )
+    assert model_catalog.resolve_served_slug("qwen3-8b") == "qwen/qwen3-8b"
+
+
+def test_resolve_served_slug_uses_models_json_openrouter_id():
+    _served(["qwen/qwen-2.5-7b-instruct"])
+    assert (
+        model_catalog.resolve_served_slug("Qwen/Qwen2.5-7B-Instruct") == "qwen/qwen-2.5-7b-instruct"
+    )
+    # The unsloth training mirror resolves through its catalog entry too.
+    assert (
+        model_catalog.resolve_served_slug("unsloth/Qwen2.5-7B-Instruct")
+        == "qwen/qwen-2.5-7b-instruct"
+    )
+
+
+def test_resolve_served_slug_absent_is_none_not_a_guess():
+    _served(["openai/gpt-5-mini"])
+    assert model_catalog.resolve_served_slug("composer-2") is None
+    assert model_catalog.resolve_served_slug("Qwen/Qwen3-8B") is None
+    assert model_catalog.resolve_served_slug("") is None
+
+
+def test_resolve_served_slug_curated_skips_fetch_and_outage_raises():
+    with mock.patch.object(
+        model_catalog.requests, "get", side_effect=requests.ConnectionError("down")
+    ) as get:
+        assert model_catalog.resolve_served_slug("gpt-5-mini") == "openai/gpt-5-mini"
+        get.assert_not_called()
+        with pytest.raises(model_catalog.CatalogUnavailableError):
+            model_catalog.resolve_served_slug("Qwen/Qwen3-8B")

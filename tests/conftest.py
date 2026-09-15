@@ -116,6 +116,81 @@ def frozen_dataset(project, rows=None, *, capability=None, name="ds", contract=N
     return dataset
 
 
+OPENROUTER_CATALOG_SLUGS = (
+    "anthropic/claude-sonnet-5",
+    "meta-llama/llama-3.1-8b-instruct",
+    "openai/gpt-4o-mini",
+    "openai/gpt-5.6-sol",
+    "qwen/qwen-2.5-7b-instruct",
+    "qwen/qwen3-8b",
+)
+
+
+class OpenRouterCatalogStub:
+    """Drives ``fetch_model_catalog`` through its own cache and HTTP seams rather than
+    replacing the function: ``eval_views`` binds ``fetch_model_catalog`` by name at
+    import, so a monkeypatched attribute would leak into every later API test."""
+
+    def __init__(self, monkeypatch, slugs):
+        import requests
+
+        from overbae.services import model_catalog
+
+        self._monkeypatch = monkeypatch
+        self._model_catalog = model_catalog
+        self._requests = requests
+        self.slugs = list(slugs)
+        self._seed()
+
+    def _seed(self):
+        from django.core.cache import cache
+
+        entries = [
+            {
+                "id": slug,
+                "name": slug,
+                "provider": slug.split("/")[0],
+                "context_length": 32768,
+                "prompt_price": 0.1,
+                "completion_price": 0.2,
+                "cache_read_price": None,
+                "curated": False,
+            }
+            for slug in self.slugs
+        ]
+        cache.set(self._model_catalog._CACHE_KEY, entries, 3600)
+
+    def remove(self, slug: str) -> None:
+        self.slugs = [s for s in self.slugs if s != slug]
+        self._seed()
+
+    def down(self) -> None:
+        """Upstream unreachable: nothing cached and the fetch raises."""
+        from django.core.cache import cache
+
+        cache.delete(self._model_catalog._CACHE_KEY)
+
+        def _refuse(*args, **kwargs):
+            raise self._requests.ConnectionError("openrouter unreachable")
+
+        self._monkeypatch.setattr(self._requests, "get", _refuse)
+
+    def clear(self) -> None:
+        from django.core.cache import cache
+
+        cache.delete(self._model_catalog._CACHE_KEY)
+
+
+@pytest.fixture
+def openrouter_catalog(monkeypatch):
+    """A fixed OpenRouter model list served from the catalog cache, so baseline-route
+    tests never reach the network. ``remove(slug)`` drops a model; ``down()`` takes
+    the upstream offline."""
+    stub = OpenRouterCatalogStub(monkeypatch, OPENROUTER_CATALOG_SLUGS)
+    yield stub
+    stub.clear()
+
+
 @pytest.fixture(autouse=True)
 def _offline_rubric_compiler(monkeypatch):
     """Authoring a judge compiles its rubric, so every test that saves one would

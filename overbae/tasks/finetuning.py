@@ -541,8 +541,9 @@ def run_finetuning(*, job_id: str) -> dict[str, Any]:
                 logger.info("Prefetching base model %s for deploy (job %s)", prefetch_id, job.id)
             except Exception:  # noqa: BLE001 — prefetch is an optimisation only
                 logger.warning("Base-model prefetch spawn failed for job %s", job_id, exc_info=True)
-            # Baseline half of the before/after loop: deploy the untouched base model
-            # alongside training. Non-blocking — a Celery task drives deploy → eval.
+            # Baseline half of the before/after loop. Non-blocking — the Celery task
+            # Modal-deploys the base only when the baseline route needs it, and
+            # otherwise just ticks the eval.
             try:
                 from overbae.services.finetuning_eval import job_wants_evals
 
@@ -554,8 +555,8 @@ def run_finetuning(*, job_id: str) -> dict[str, Any]:
                     logger.info("Queued base-model deploy for baseline eval (job %s)", job.id)
             except Exception:  # noqa: BLE001
                 logger.exception("Baseline deploy enqueue failed for job %s", job_id)
-            # Together baselines launch immediately; Baseten's waits for the base
-            # deployment to turn READY.
+            # OpenRouter and gateway baselines launch here; a base_deploy one waits
+            # for the deployment to turn READY.
             try:
                 from overbae.services.finetuning_eval import tick_job_evals
 

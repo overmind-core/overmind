@@ -1167,7 +1167,7 @@ class TestBaselineCoupling:
 
     @override_settings(INFERENCE_API_URL="https://gateway.example.modal.run")
     def test_non_ready_self_hosted_incumbent_defers_instead_of_hitting_openrouter(self):
-        from overbae.services.finetuning_eval import _baseline_target
+        from overbae.services.finetuning_eval import resolve_baseline_route
 
         p = _project()
         m = _deployed_model(p, model_id="ft-warming-qwen3-8b")
@@ -1175,7 +1175,7 @@ class TestBaselineCoupling:
         m.save(update_fields=["status"])
         capability = _capability(p, active_model=m)
 
-        target = _baseline_target(self._job(capability, p))
-        assert target.kind == "gateway"
-        assert target.ready is False
-        assert target.model_id == "ft-warming-qwen3-8b"
+        route = resolve_baseline_route(self._job(capability, p))
+        assert route.kind == "gateway"
+        assert route.ready is False
+        assert route.model_id == "ft-warming-qwen3-8b"

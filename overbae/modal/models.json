@@ -1,5 +1,5 @@
 {
-  "comment": "Single source of truth for all models supported by the Overmind platform. Each entry carries a 'backend' field (together | baseten). Models available on multiple backends appear as separate entries with their own inference/finetuning sub-configs. inference.gpu_type is the default for base-model inference (BF16 serving, single GPU). num_attn_layers/num_kv_heads/head_dim are used by gpu_selector.py to derive the optimal GPU + concurrency for a finetuned model at its training context_length. For hybrid models (Qwen3.5), num_attn_layers counts only full-attention layers. Use model_registry.py helpers to filter by backend. To add/remove models, edit only this file. Baseten models train LoRA or Full on H100s/H200s via our TRL train.py; finetuning.context_length is the model's max trainable context = HF config max_position_embeddings (Qwen2.5 32768, Qwen3 dense 40960, Qwen3.5/3.6/3.8/Coder 262144, Llama 3.x / GPT-OSS / Antares-1B 131072, Antares-350M 32768, LFM2.5-230M/350M/1.2B 32768 per Liquid's documented window, LFM2.5-8B-A1B 128000, LFM2.5-2.6B 131072; train.py applies no RoPE scaling). context_length (top-level) is the published inference window (YaRN-extended where the vendor documents it: Qwen2.5\u22657B and Qwen3 dense \u2192 131072; Qwen2.5-0.5B stays 32768). Baseten itself imposes no per-model training context limit (max_seq_len up to 1048576, docs.baseten.co/engines/engine-builder-llm/engine-builder-config; training is arbitrary code, docs.baseten.co/training/getting-started). The runner snaps the actual training MAX_LENGTH up from dataset stats using finetuning_providers.<backend> policy below. pricing.train_from_usd is a marketing 'from' floor for a typical small LoRA run (Baseten H100 $0.10833/GPU-min = $6.50/h, baseten.co/pricing): \u226414B anchored on Jul 2026 Baseten-invoiced job averages; larger sizes estimated from typical GPU-minutes \u00d7 rate on 1\u00d7H100 (\u226472B). pricing.run_from_usd_per_1m_output is serving per 1M output tokens (Modal L4/L40S self-hosted vLLM floors; MoE uses active-param band). group is the marketing library tab label (Group on /models specs); provider comes from providers.display_names. model.marketing holds buyer-facing copy per model (pitch, description, overview, good_for) for the marketing site detail pages. group is only the library tab/filter label. library_filters defines the marketing /models multi-select filters (use_case, tier, context); each model.use_cases lists which use-case filter ids apply. tier/context filters match model.tier and model.context_length against library_filters entries. The order of the models array is the catalog display order within a tier (newest generation first); recommendation ranking is decided by benchmark grades, not by this order.",
+  "comment": "Single source of truth for all models supported by the Overmind platform. Each entry carries a 'backend' field (together | baseten). Models available on multiple backends appear as separate entries with their own inference/finetuning sub-configs. inference.gpu_type is the default for base-model inference (BF16 serving, single GPU). num_attn_layers/num_kv_heads/head_dim are used by gpu_selector.py to derive the optimal GPU + concurrency for a finetuned model at its training context_length. For hybrid models (Qwen3.5), num_attn_layers counts only full-attention layers. Use model_registry.py helpers to filter by backend. To add/remove models, edit only this file. Baseten models train LoRA or Full on H100s/H200s via our TRL train.py; finetuning.context_length is the model's max trainable context = HF config max_position_embeddings (Qwen2.5 32768, Qwen3 dense 40960, Qwen3.5/3.6/3.8/Coder 262144, Llama 3.x / GPT-OSS / Antares-1B 131072, Antares-350M 32768, LFM2.5-230M/350M/1.2B 32768 per Liquid's documented window, LFM2.5-8B-A1B 128000, LFM2.5-2.6B 131072; train.py applies no RoPE scaling). context_length (top-level) is the published inference window (YaRN-extended where the vendor documents it: Qwen2.5\u22657B and Qwen3 dense \u2192 131072; Qwen2.5-0.5B stays 32768). Baseten itself imposes no per-model training context limit (max_seq_len up to 1048576, docs.baseten.co/engines/engine-builder-llm/engine-builder-config; training is arbitrary code, docs.baseten.co/training/getting-started). The runner snaps the actual training MAX_LENGTH up from dataset stats using finetuning_providers.<backend> policy below. pricing.train_from_usd is a marketing 'from' floor for a typical small LoRA run (Baseten H100 $0.10833/GPU-min = $6.50/h, baseten.co/pricing): \u226414B anchored on Jul 2026 Baseten-invoiced job averages; larger sizes estimated from typical GPU-minutes \u00d7 rate on 1\u00d7H100 (\u226472B). pricing.run_from_usd_per_1m_output is serving per 1M output tokens (Modal L4/L40S self-hosted vLLM floors; MoE uses active-param band). group is the marketing library tab label (Group on /models specs); provider comes from providers.display_names. model.marketing holds buyer-facing copy per model (pitch, description, overview, good_for) for the marketing site detail pages. group is only the library tab/filter label. library_filters defines the marketing /models multi-select filters (use_case, tier, context); each model.use_cases lists which use-case filter ids apply. tier/context filters match model.tier and model.context_length against library_filters entries. The order of the models array is the catalog display order within a tier (newest generation first); recommendation ranking is decided by benchmark grades, not by this order. openrouter_id pins the OpenRouter slug for a model whose slug is not its lower-cased id (Qwen2.5 \u2192 qwen/qwen-2.5-\u2026, LFM \u2192 liquid/\u2026); models without it resolve by lower-casing id against the live OpenRouter catalog, and a model OpenRouter does not list is served for baseline evals from a Modal base deployment instead.",
   "providers": {
     "comment": "Friendly display name per model-id prefix (the part before the first '/'), keyed lowercase, under display_names. Used by overbae.services.model_library to label each model's family/provider on the public /library pages. Unknown prefixes fall back to a title-cased version of the raw prefix \u2014 add an entry here instead of hardcoding it in Python.",
     "display_names": {
@@ -453,6 +453,7 @@
       "backend": "together",
       "display": "Qwen 2.5 7B Instruct",
       "hf_model_id": "Qwen/Qwen2.5-7B-Instruct",
+      "openrouter_id": "qwen/qwen-2.5-7b-instruct",
       "tier": "small",
       "params": "7B",
       "total_params_b": 7.0,
@@ -507,6 +508,7 @@
       "backend": "together",
       "display": "Llama 3.1 8B Instruct",
       "hf_model_id": "meta-llama/Llama-3.1-8B-Instruct",
+      "openrouter_id": "meta-llama/llama-3.1-8b-instruct",
       "tier": "small",
       "params": "8B",
       "total_params_b": 8.0,
@@ -1271,6 +1273,7 @@
       "backend": "baseten",
       "display": "LFM2.5 2.6B",
       "hf_model_id": "LiquidAI/LFM2.5-2.6B",
+      "openrouter_id": "liquid/lfm-2.5-2.6b:free",
       "tier": "compact",
       "params": "2.6B",
       "total_params_b": 2.6,
@@ -1757,6 +1760,7 @@
       "backend": "baseten",
       "display": "Qwen 2.5 7B Instruct",
       "hf_model_id": "unsloth/Qwen2.5-7B-Instruct",
+      "openrouter_id": "qwen/qwen-2.5-7b-instruct",
       "tier": "small",
       "params": "7B",
       "total_params_b": 7.0,
@@ -2681,6 +2685,7 @@
       "backend": "baseten",
       "display": "Qwen 2.5 72B Instruct",
       "hf_model_id": "unsloth/Qwen2.5-72B-Instruct",
+      "openrouter_id": "qwen/qwen-2.5-72b-instruct",
       "tier": "large",
       "params": "72B",
       "total_params_b": 72.0,
@@ -2803,6 +2808,7 @@
       "backend": "baseten",
       "display": "Qwen 2.5 Coder 32B Instruct",
       "hf_model_id": "unsloth/Qwen2.5-Coder-32B-Instruct",
+      "openrouter_id": "qwen/qwen-2.5-coder-32b-instruct",
       "tier": "large",
       "params": "32B",
       "total_params_b": 32.0,
@@ -3050,6 +3056,7 @@
       "backend": "baseten",
       "display": "Muse Glimmer 30B",
       "hf_model_id": "unsloth/Muse-Glimmer-30B",
+      "openrouter_id": "meta/muse-glimmer-30b",
       "tier": "large",
       "params": "30B",
       "total_params_b": 29.8,
@@ -3111,6 +3118,7 @@
       "backend": "baseten",
       "display": "Nemotron 3.5 Lightning 30B-A3B",
       "hf_model_id": "unsloth/NVIDIA-Nemotron-3.5-Lightning-30B-A3B",
+      "openrouter_id": "nvidia/nemotron-3.5-lightning",
       "benchmark_hf_model_ids": [
         "nvidia/NVIDIA-Nemotron-3.5-Lightning-30B-A3B-BF16"
       ],
