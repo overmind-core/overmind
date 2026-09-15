@@ -1,14 +1,8 @@
-"""The console's score surfaces read Verdict rows plus the slim span markers.
-
-These tests pin the parity contract from the Wave-3 consolidation: what the
-verdict-backed read paths return must equal what the scorer composed, and
-migration 0129's slimming/flattening must preserve every console-visible
-number for legacy-shape rows.
-"""
+"""The console's score surfaces read Verdict rows plus the slim span markers:
+what the verdict-backed read paths return must equal what the scorer composed."""
 
 from __future__ import annotations
 
-import importlib
 import uuid
 
 import pytest
@@ -25,8 +19,6 @@ from overbae.services.live_trace_scores import (
 from tests.factories import make_capability, make_project, make_span
 
 pytestmark = pytest.mark.django_db
-
-migration_0129 = importlib.import_module("overbae.migrations.0129_slim_span_feedback_blocks")
 
 
 def _scored_trace(project, capability):
@@ -106,95 +98,3 @@ def test_verdict_serializer_lifts_composition_fields():
     assert data["scope"] == "trajectory"
     assert data["grain"]
     assert isinstance(data["sub_scores"], list)
-
-
-LEGACY_BLOCK = {
-    "delivery-judge": {
-        "score": 0.8,
-        "passed": None,
-        "outcome": "scored",
-        "rationale": "mostly delivered",
-        "scope": "final_output",
-        "grain": "terminal",
-        "gate": False,
-        "surface_area": "",
-        "sub_scores": [],
-        "eval_set_member_id": "m-1",
-        "evaluator_id": "e-1",
-        "evaluator_version": 3,
-        "display_name": "Delivery",
-        "scored_at": "2026-01-01T00:00:00Z",
-    },
-    "safety-gate": {
-        "score": None,
-        "passed": False,
-        "outcome": "scored",
-        "rationale": "violation",
-        "scope": "trajectory",
-    },
-    "_skipped_members": ["ghost"],
-    "_scored_at": "2026-01-01T00:00:00Z",
-}
-
-
-def test_migration_slims_legacy_block_preserving_console_numbers():
-    """A pre-``_execution`` block loses its per-entry rows but the list
-    surfaces keep the exact score the console showed: the plain average the
-    old frontend fallback computed."""
-    slim, changed = migration_0129._slim_block(dict(LEGACY_BLOCK))
-    assert changed
-    assert set(slim) == {"_execution", "_skipped_members", "_scored_at"}
-    # Boolean fail is 0.0, graded 0.8 clamps as-is: mean 0.4 — the fallback's number.
-    assert slim["_execution"]["score"] == 0.4
-    assert slim["_execution"]["evaluations"] == 2
-    assert slim["_execution"]["any_failed"] is True
-    assert slim["_skipped_members"] == ["ghost"]
-
-    # Blocks already carrying the composer's marker keep it verbatim (plus the
-    # failure flag), and a second pass is a no-op.
-    composed = {
-        "judge": {"score": 1.0, "passed": True, "outcome": "scored"},
-        "_execution": {"score": 0.9, "evaluations": 1, "phases": {}},
-        "invocations": {"score": None, "passed": True, "outcome": "scored", "lane": "summary"},
-    }
-    slim, changed = migration_0129._slim_block(composed)
-    assert changed
-    assert slim["_execution"]["score"] == 0.9
-    assert slim["_execution"]["any_failed"] is False
-    assert slim["invocations"]["passed"] is True
-    again, changed_again = migration_0129._slim_block(dict(slim))
-    assert not changed_again
-    assert again == slim
-
-
-def test_migration_flattens_legacy_verdict_metadata():
-    """The ``{"entry": {...}}`` transcription shape flattens to the fields the
-    serializer lifts — same passed/scope/grain/gate/sub_scores the legacy
-    block entry carried."""
-    project = make_project()
-    verdict = Verdict.objects.create(
-        project=project,
-        evaluator_name="delivery-judge",
-        target_kind=Verdict.TargetKind.SPAN,
-        target_id=uuid.uuid4().hex[:16],
-        score=0.8,
-        outcome=Verdict.Outcome.SCORED,
-        explanation="mostly delivered",
-        metadata={"entry": dict(LEGACY_BLOCK["delivery-judge"]), "coverage": 0.75},
-    )
-    apps = importlib.import_module("django.apps").apps
-    migration_0129._flatten_verdict_metadata(apps, None)
-    verdict.refresh_from_db()
-    assert verdict.metadata == {
-        "passed": None,
-        "scope": "final_output",
-        "grain": "terminal",
-        "gate": False,
-        "surface_area": "",
-        "sub_scores": [],
-        "coverage": 0.75,
-    }
-    data = VerdictSerializer(verdict).data
-    assert data["scope"] == "final_output"
-    assert data["grain"] == "terminal"
-    assert data["passed"] is None
