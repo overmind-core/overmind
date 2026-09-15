@@ -47,6 +47,7 @@ const STATUS_FACE: Record<string, { icon: React.ReactNode; label: string; spinni
   },
   skipped: { icon: <Icon.warning className="size-3.5" />, label: "Skipped" },
   succeeded: { icon: <Icon.success className="size-3.5" />, label: "Succeeded" },
+  unavailable: { icon: <Icon.warning className="size-3.5" />, label: "Model unavailable" },
   validating_files: {
     icon: <Spinner className="text-current" size="sm" />,
     label: "Validating",

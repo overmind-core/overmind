@@ -122,6 +122,8 @@ export function JudgeEvalTableRow({
   const [expanded, setExpanded] = useState(false);
   const metrics = row.metric_scores ?? [];
   const canExpand = metrics.length > 0 || row.eval_run_id != null;
+  // No EvalRun exists to expand; the reason is the whole result.
+  const unavailable = row.status === "unavailable";
   // Expand + (Experiment?) + Step + Status + Score + Model + Samples + Created
   const cols = 7 + (isAll ? 1 : 0);
   const mean = meanMetricScore(row);
@@ -202,6 +204,11 @@ export function JudgeEvalTableRow({
           <DateTime value={row.created_at} />
         </TableCell>
       </TableRow>
+      {unavailable ? (
+        <BreakdownNoteRow cols={cols}>
+          {row.error_message || "Model not available for evaluation."}
+        </BreakdownNoteRow>
+      ) : null}
       {expanded && canExpand ? (
         metrics.length > 0 ? (
           <MetricScoreRows isAll={isAll} metrics={metrics} />

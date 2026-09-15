@@ -100,7 +100,16 @@ const STATES_BY_TONE: Array<[StatusTone, readonly string[]]> = [
   ],
   [
     "warning",
-    ["degraded", "dormant", "partially_completed", "paused", "review", "stale", "ungraded"],
+    [
+      "degraded",
+      "dormant",
+      "partially_completed",
+      "paused",
+      "review",
+      "stale",
+      "unavailable",
+      "ungraded",
+    ],
   ],
   ["neutral", ["draft", "skipped", "unknown"]],
 ];
