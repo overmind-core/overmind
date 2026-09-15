@@ -16,7 +16,7 @@ from typing import Any
 from pydantic import BaseModel, Field, ValidationError
 
 from overbae.core.llms import RETRY_DEADLINE_INTERACTIVE, call_llm, try_json_parsing
-from overbae.core.model_resolver import TaskType, model_chain, resolve_model
+from overbae.core.model_registry import TaskType, model_chain, resolve_model
 from overbae.services.eval.card_compiler import (
     SignalAllocation,
     allocate_signals,

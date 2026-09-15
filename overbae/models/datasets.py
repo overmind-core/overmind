@@ -54,6 +54,8 @@ class Dataset(models.Model):
     # [{role: user|agent, text, cells: [cell ids], at}] — the one conversation.
     chat = models.JSONField(default=list, blank=True)
     agent_id = models.CharField(max_length=128, blank=True, default="")
+    agent_messages = models.JSONField(default=list, blank=True)
+    agent_turn_key = models.CharField(max_length=255, blank=True, default="")
     created_by = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.SET_NULL,

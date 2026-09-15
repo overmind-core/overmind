@@ -119,75 +119,28 @@ def _api_key_client(user: User, project: Project) -> APIClient:
     return client
 
 
-class TestFrontierModelsModule:
-    def test_non_finetuned_models_list_is_non_empty(self):
-        from overbae.frontier_models import NON_FINETUNED_MODELS
+class TestInferenceModelRegistry:
+    def test_inference_models_are_slugged_and_unique(self):
+        from overbae.core.model_registry import inference_models
 
-        assert len(NON_FINETUNED_MODELS) > 0
+        ids = [m.slug for m in inference_models()]
+        assert ids and len(ids) == len(set(ids))
+        assert all("/" in i for i in ids)
+        assert not any("mistral" in i or i.endswith("/o3") or "deepseek-r1" in i for i in ids)
 
-    def test_every_model_has_id_and_owned_by(self):
-        from overbae.frontier_models import NON_FINETUNED_MODELS
+    def test_is_inference_model_true_for_known_prefix(self):
+        from overbae.core.model_registry import is_inference_model
 
-        for m in NON_FINETUNED_MODELS:
-            assert "id" in m and m["id"], f"missing id: {m}"
-            assert "owned_by" in m and m["owned_by"], f"missing owned_by: {m}"
+        assert is_inference_model("anthropic/claude-sonnet-5")
+        assert is_inference_model("openai/gpt-5.6-sol")
+        assert is_inference_model("meta-llama/llama-3.1-8b-instruct")
+        assert is_inference_model("qwen/qwen3-8b")
 
-    def test_prefixes_derived_from_model_ids(self):
-        from overbae.frontier_models import NON_FINETUNED_MODELS, NON_FINETUNED_PREFIXES
+    def test_is_inference_model_false_for_finetuned_id(self):
+        from overbae.core.model_registry import is_inference_model
 
-        for m in NON_FINETUNED_MODELS:
-            provider = m["id"].split("/")[0] + "/"
-            assert provider in NON_FINETUNED_PREFIXES
-
-    def test_no_mistral_models(self):
-        from overbae.frontier_models import NON_FINETUNED_MODELS
-
-        ids = [m["id"] for m in NON_FINETUNED_MODELS]
-        assert not any("mistral" in i for i in ids)
-
-    def test_no_pure_reasoning_models(self):
-        from overbae.frontier_models import NON_FINETUNED_MODELS
-
-        ids = [m["id"] for m in NON_FINETUNED_MODELS]
-        assert "openai/o3" not in ids
-        assert "deepseek/deepseek-r1" not in ids
-
-    def test_is_non_finetuned_model_true_for_known_prefix(self):
-        from overbae.frontier_models import is_non_finetuned_model
-
-        assert is_non_finetuned_model("anthropic/claude-sonnet-5")
-        assert is_non_finetuned_model("openai/gpt-5.6-sol")
-        assert is_non_finetuned_model("meta-llama/llama-3.1-8b-instruct")
-        assert is_non_finetuned_model("qwen/qwen3-8b")
-
-    def test_is_non_finetuned_model_false_for_finetuned_id(self):
-        from overbae.frontier_models import is_non_finetuned_model
-
-        assert not is_non_finetuned_model("ft-abc12345-llama")
-        assert not is_non_finetuned_model("my-custom-model")
-
-    def test_non_finetuned_models_response_shape(self):
-        from overbae.frontier_models import NON_FINETUNED_MODELS, non_finetuned_models_response
-
-        resp = non_finetuned_models_response()
-        assert len(resp) == len(NON_FINETUNED_MODELS)
-        for item in resp:
-            assert item["object"] == "model"
-            assert item["finetuned"] is False
-            assert "id" in item
-            assert "owned_by" in item
-
-    def test_no_duplicate_model_ids(self):
-        from overbae.frontier_models import NON_FINETUNED_MODELS
-
-        ids = [m["id"] for m in NON_FINETUNED_MODELS]
-        assert len(ids) == len(set(ids)), "Duplicate model IDs found"
-
-    def test_all_ids_contain_slash(self):
-        from overbae.frontier_models import NON_FINETUNED_MODELS
-
-        for m in NON_FINETUNED_MODELS:
-            assert "/" in m["id"], f"ID missing provider prefix: {m['id']}"
+        assert not is_inference_model("ft-abc12345-llama")
+        assert not is_inference_model("my-custom-model")
 
 
 class TestModelsListEndpoint:

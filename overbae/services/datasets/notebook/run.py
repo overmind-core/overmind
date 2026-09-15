@@ -49,14 +49,15 @@ def stale(cell: Cell, previous: Cell) -> bool:
     )
 
 
-def execute(dataset: Dataset, *, user: Any = None) -> Dataset:
-    for _event in iter_execute(dataset, user=user):
+def execute(dataset: Dataset, *, user: Any = None, hold: str | None = None) -> Dataset:
+    for _event in iter_execute(dataset, user=user, hold=hold):
         pass
     return dataset
 
 
-def iter_execute(dataset: Dataset, *, user: Any = None) -> Iterator[dict[str, Any]]:
-    """:func:`execute` as a generator: yields every SSE event as it happens."""
+def iter_execute(
+    dataset: Dataset, *, user: Any = None, hold: str | None = None
+) -> Iterator[dict[str, Any]]:
     chain = [c for c in dataset.chain if c.state != Cell.State.PROPOSED]
     source = chain[0] if chain and chain[0].position == 0 else None
     if source is None or not source.ran:
@@ -118,12 +119,16 @@ def iter_execute(dataset: Dataset, *, user: Any = None) -> Iterator[dict[str, An
         previous = cell
 
     if failed is not None:
-        _set(dataset, state=Dataset.State.ERROR, error=f"{failed.title}: {failed.error}"[:4000])
+        _set(
+            dataset,
+            state=hold or Dataset.State.ERROR,
+            error=f"{failed.title}: {failed.error}"[:4000],
+        )
         yield _emit(
             dataset, {"type": "run_failed", "cell_id": str(failed.id), "error": dataset.error}
         )
         return
-    _set(dataset, state=Dataset.State.IDLE)
+    _set(dataset, state=hold or Dataset.State.IDLE)
     active = dataset.active_cell
     yield _emit(
         dataset,
@@ -142,4 +147,13 @@ def try_script(dataset: Dataset, script: str, *, after: Cell) -> runner.CellResu
         script,
         paths.cell_path(dataset.id, after.id),
         library_cache=paths.library_cache(dataset.project_id),
+    )
+
+
+def inspect(dataset: Dataset, script: str, *, at: Cell) -> runner.CellResult:
+    return runner.run(
+        script,
+        paths.cell_path(dataset.id, at.id),
+        library_cache=paths.library_cache(dataset.project_id),
+        produce_frame=False,
     )

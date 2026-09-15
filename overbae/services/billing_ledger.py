@@ -134,35 +134,29 @@ def ensure_credits(user: User) -> None:
     get_billing().ensure_credits(user)
 
 
-# Composer is a Cursor model with no OpenRouter listing, so its turns are priced
-# against the closest stand-in: Cursor built Composer 2.5 on Kimi K2.5, and the two
-# list within 10% of each other ($0.45/$2.25 against $0.50/$2.50 per 1M tokens).
-CURSOR_BILLING_PROXY_MODEL = "moonshotai/kimi-k2.5"
-
-
-def charge_cursor_usage(
+def charge_llm_usage(
     user: User,
-    usage: dict[str, Any] | None,
+    stats: dict[str, Any] | None,
     *,
     service: str,
     project_id: UUID | str | None = None,
     idempotency_key: str,
     metadata: dict[str, Any] | None = None,
 ) -> BillingTelemetry | None:
-    """Debit credits from Cursor SDK token usage. Never raises."""
     from overbae.services.model_catalog import estimate_cost
 
-    if user is None or not usage:
+    if user is None or not stats:
         return None
-    cost = estimate_cost(
-        CURSOR_BILLING_PROXY_MODEL,
-        int(usage.get("input_tokens") or 0),
-        int(usage.get("output_tokens") or 0),
-        cached_tokens=int(usage.get("cache_read_tokens") or 0),
-    )
+    cost = stats.get("response_cost") or 0
+    if not cost:
+        cost = estimate_cost(
+            str(stats.get("served_model") or ""),
+            int(stats.get("prompt_tokens") or 0),
+            int(stats.get("completion_tokens") or 0),
+            cached_tokens=int(stats.get("cached_tokens") or 0),
+        )
     if not cost:
         return None
-    meta = {"cursor_usage": usage, **(metadata or {})}
     try:
         return charge_credits(
             user,
@@ -170,11 +164,11 @@ def charge_cursor_usage(
             service,
             project_id=project_id,
             idempotency_key=idempotency_key,
-            metadata=meta,
+            metadata={"llm_usage": stats, **(metadata or {})},
         )
     except Exception:
         logger.exception(
-            "Failed to charge cursor usage key=%s user_id=%s",
+            "Failed to charge llm usage key=%s user_id=%s",
             idempotency_key,
             getattr(user, "pk", None),
         )

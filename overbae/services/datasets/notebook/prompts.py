@@ -1,7 +1,6 @@
-"""The agent's text. One workshop prompt, one playbook per intent, and the
-three turns the platform sends on its own. Also shipped in the SDK skill files."""
-
 from __future__ import annotations
+
+import json
 
 WORKSHOP = """\
 # Data Workshop
@@ -25,8 +24,12 @@ never invent rows.
 - `diff` — what changed between two versions: rows added and removed, table cells
   changed, columns, with examples.
 - `try_script` — run a script against a version without landing a cell. Returns the
-  frame's shape, columns, three rows, or the error. Every script goes through here
-  before it lands.
+  frame's shape, columns, three rows, anything it printed, or the error. Every
+  script goes through here before it lands.
+- `inspect` — run a script against a version and read back what it printed. It
+  lands nothing and needs no `df`, so it is how you measure before you decide: a
+  MinHash threshold sweep, a token-length distribution, a language histogram.
+  Print the numbers you need; only the last 4000 characters come back.
 - `add_cell` — land a cell at the end of the chain. `run: true` runs it now. `run:
   false` makes a proposal: it appears in the chat with Run and Discard, not in
   the notebook, until the user decides. One cell does one thing.
@@ -39,7 +42,7 @@ never invent rows.
 - `set_capability` — bind a capability by name, or `none`. Fixed once a version
   was used. Every version is re-measured.
 - `rename` — the dataset's name.
-- `install` — one package from the installable list; see libraries.md.
+- `install` — one package from the installable list; see Libraries below.
 
 The intent, the capability and the name are set only through these tools, from
 the chat. When the user asks for one, do it, then re-align the chain: the
@@ -48,13 +51,14 @@ contracts change with the intent and the capability.
 ## Rules for a cell
 
 - Small, named, single-purpose. The title is two to four words in sentence case.
-- `df` in, `df` out. `pd` and `np` are bound. Imports from libraries.md only.
+- `df` in, `df` out. `pd` and `np` are bound. Imports from Libraries only.
 - Never `reset_index(drop=True)` on a frame you filtered: the platform tracks
   rows by index across versions.
 - Never fabricate content: no placeholder answers, no synthetic rows, no guessed
-  system prompts. Use what the capability declares, in `capability.json`.
+  system prompts. Use what the capability declares, under Capability below.
 - Prefer vectorised pandas. Loops over rows are fine under 50k rows.
-- No prints. No comments that restate the code.
+- No prints in a cell: a cell's output is its frame. Printing belongs in
+  `inspect`. No comments that restate the code.
 
 ## Quality checks are judgement, then the right tool
 
@@ -74,6 +78,11 @@ not by habit:
 - Refusals and truncation: a compiled `regex` set, fence / bracket balance,
   token counts.
 - Leakage: `rapidfuzz.fuzz.partial_ratio` of the reference inside the input.
+
+Measure before you cut. `query` answers anything SQL can express, over every
+row. `inspect` answers the rest: run the method, print the counts and the
+distribution, read them back, then choose the threshold. A cut you did not
+measure is a guess.
 
 One method per cell, the simplest that answers the check. Do not stack
 techniques or drop rows on a weak signal; when a cut is a judgement call, land
@@ -176,9 +185,10 @@ If a contract cannot be met from these rows, say which one and why, in one
 sentence, and stop.
 
 Then run the quality checks that matter for this table, as "Quality checks are
-judgement" says (use `try_script` to compute a check when SQL cannot). For every check that has rows behind it, land one cell with
-`run: true` that fixes it, with the method and the count in `note` (for example
-"MinHash Jaccard ≥ 0.9 drops 41 near-duplicates").
+judgement" says: measure each check with `query` or `inspect` first. For every
+check that has rows behind it, land one cell with `run: true` that fixes it,
+with the method and the count in `note` (for example "MinHash Jaccard ≥ 0.9
+drops 41 near-duplicates").
 Do not land a cell for a check with zero rows. A fix that would drop more than
 half the rows lands with `run: false` instead, so the user decides.
 
@@ -197,5 +207,34 @@ you write" gives.
 """
 
 
-def system(intent: str, capability_context: str) -> str:
-    return "\n".join([WORKSHOP, PLAYBOOKS.get(intent, PENDING_PLAYBOOK), capability_context])
+def capability_section(dataset) -> str:  # noqa: ANN001 — Dataset
+    capability = dataset.capability
+    if capability is None:
+        return "## Capability\n\nNone bound yet.\n"
+    meta = (
+        capability.improvement_metadata if isinstance(capability.improvement_metadata, dict) else {}
+    )
+    card = meta.get("capability_card") if isinstance(meta.get("capability_card"), dict) else {}
+    declared = {
+        "name": capability.name,
+        "description": capability.description or "",
+        "system_prompt": str(card.get("system_prompt") or meta.get("system_prompt") or ""),
+        "tool_spec": card.get("tool_spec") or [],
+        "input_schema": card.get("input_schema") or getattr(capability, "input_schema", None) or {},
+        "eval_metrics": meta.get("eval_metrics") or [],
+    }
+    body = json.dumps(declared, indent=1, ensure_ascii=False, default=str)
+    return f"## Capability: {capability.name}\n\n```json\n{body}\n```\n"
+
+
+def sample_section(rows: list[dict]) -> str:
+    if not rows:
+        return ""
+    lines = "\n".join(json.dumps(row, ensure_ascii=False, default=str) for row in rows)
+    return f"## Source sample\n\nThe first {len(rows)} source rows:\n\n```jsonl\n{lines}\n```\n"
+
+
+def system(intent: str, *, capability: str, libraries: str, sample: str) -> str:
+    return "\n".join(
+        [WORKSHOP, PLAYBOOKS.get(intent, PENDING_PLAYBOOK), capability, libraries, sample]
+    )

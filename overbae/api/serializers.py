@@ -1925,10 +1925,17 @@ class CatalogModelSerializer(serializers.Serializer):
     curated = serializers.BooleanField()
 
 
+class ModelDefaultsSerializer(serializers.Serializer):
+    judge_model = serializers.CharField()
+    judge_models = serializers.ListField(child=serializers.CharField())
+    backtest_models = serializers.ListField(child=serializers.CharField())
+
+
 class ModelCatalogResponseSerializer(serializers.Serializer):
     models = CatalogModelSerializer(many=True)
     # False when the upstream fetch failed (models is then empty, not a 500).
     upstream_available = serializers.BooleanField()
+    defaults = ModelDefaultsSerializer()
 
 
 class PublicModelFinetuningSerializer(serializers.Serializer):

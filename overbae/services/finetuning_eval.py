@@ -430,11 +430,7 @@ def resolve_baseline_model(job) -> str:
 def _baseline_target(job) -> _BaselineTarget | None:
     from django.conf import settings
 
-    from overbae.core.llms import (
-        OPENROUTER_API_KEY_ENV,
-        OPENROUTER_BASE_URL,
-        resolve_openrouter_slug,
-    )
+    from overbae.core.model_registry import PROVIDERS, resolve_openrouter_slug
     from overbae.models import DeployedModel, ModelRef
 
     gateway = (settings.INFERENCE_API_URL or "").rstrip("/")
@@ -482,8 +478,8 @@ def _baseline_target(job) -> _BaselineTarget | None:
             kind="openrouter",
             model_id=resolve_openrouter_slug(current),
             provider=ModelRef.Provider.CUSTOM,
-            base_url=OPENROUTER_BASE_URL,
-            api_key_ref=OPENROUTER_API_KEY_ENV,
+            base_url=PROVIDERS["openrouter"].base_url,
+            api_key_ref=PROVIDERS["openrouter"].key_env,
             label=f"Current model · {current}",
             ready=True,
         )

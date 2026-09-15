@@ -11,7 +11,7 @@ from typing import Any
 from pydantic import BaseModel, Field
 
 from overbae.core.llms import RETRY_DEADLINE_INTERACTIVE, call_llm
-from overbae.core.model_resolver import TaskType, model_chain, resolve_model
+from overbae.core.model_registry import TaskType, model_chain, resolve_model
 from overbae.services.eval import profiler, semantic_recommender
 from overbae.services.eval.grounding import (
     EvalGroundingContext,

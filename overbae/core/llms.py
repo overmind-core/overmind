@@ -1,10 +1,8 @@
-"""Central LLM calling layer over OpenRouter, with retry and reasoning support."""
-
 import json
 import logging
 import os
-import re
 import time
+from collections.abc import Iterator
 from contextlib import suppress
 from dataclasses import dataclass, field
 from functools import lru_cache
@@ -26,12 +24,19 @@ from tenacity import (
 
 from modal_shared.modelfam import serve_image_key
 from modal_shared.shared import routing_headers as _modal_routing_headers
-from overbae.core.model_resolver import OPENROUTER_MODEL_SLUGS, TaskType, resolve_model
+from overbae.core.model_registry import (
+    PROVIDERS,
+    Provider,
+    TaskType,
+    normalize_model_name,
+    openrouter_slug,
+    reasoning_of,
+    resolve_model,
+)
 from overbae.models import DeployedModel
 
 logger = logging.getLogger(__name__)
 
-_OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
 _TOGETHER_BASE_URL = "https://api.together.xyz/v1"
 
 # Seconds per completion. The SDK default of 600s lets one hung socket read pin
@@ -45,10 +50,6 @@ _REQUEST_TIMEOUT = float(os.environ.get("LLM_REQUEST_TIMEOUT", "120"))
 # by reasoning and return ``finish_reason="length"`` with empty content. This
 # headroom is added only for reasoning models, leaving other budgets untouched.
 _REASONING_TOKEN_HEADROOM = int(os.environ.get("LLM_REASONING_TOKEN_HEADROOM", "12000"))
-_OPENROUTER_HEADERS = {
-    "HTTP-Referer": "https://overmindlab.ai",
-    "X-Title": "Overmind",
-}
 
 _RETRYABLE_OPENAI_ERRORS = (
     openai.RateLimitError,
@@ -76,17 +77,22 @@ class ModelSpec:
     params: dict[str, Any] = field(default_factory=dict)
 
 
-@lru_cache(maxsize=1)
-def _openrouter_client() -> OpenAI:
-    api_key = os.environ.get("OPENROUTER_API_KEY")
+@lru_cache(maxsize=8)
+def _provider_client(name: str) -> OpenAI:
+    provider = PROVIDERS[name]
+    api_key = provider.key()
     if not api_key:
-        raise RuntimeError("OPENROUTER_API_KEY is required for LLM completions")
+        raise RuntimeError(f"{provider.key_env} is required for LLM completions")
     return OpenAI(
         api_key=api_key,
-        base_url=_OPENROUTER_BASE_URL,
-        default_headers=_OPENROUTER_HEADERS,
+        base_url=provider.base_url,
+        default_headers=provider.headers or None,
         timeout=_REQUEST_TIMEOUT,
     )
+
+
+def _openrouter_client() -> OpenAI:
+    return _provider_client("openrouter")
 
 
 @lru_cache(maxsize=1)
@@ -176,329 +182,15 @@ def _model_spec_client_and_name(spec: ModelSpec) -> tuple[OpenAI, str, str]:
             provider,
         )
 
-    slug = _openrouter_model_slug(spec.model_id)
+    slug = openrouter_slug(spec.model_id)
     return _openrouter_client(), slug, "openrouter"
-
-
-def _openrouter_model_slug(model_name: str) -> str:
-    selected_model_name = normalize_model_name(model_name)
-    if selected_model_name in OPENROUTER_MODEL_SLUGS:
-        return OPENROUTER_MODEL_SLUGS[selected_model_name]
-    if "/" in selected_model_name:
-        return selected_model_name.removeprefix("openrouter/")
-    raise ValueError(f"Unsupported model: {selected_model_name}")
-
-
-# Public routing surface for callers that build ModelRef rows.
-OPENROUTER_BASE_URL = _OPENROUTER_BASE_URL
-OPENROUTER_API_KEY_ENV = "OPENROUTER_API_KEY"
-
-
-# Qualifies slashless names ("gpt-4o-mini" → "openai/gpt-4o-mini"). Most-specific
-# stems first, since matching is by prefix.
-_OPENROUTER_VENDOR_PREFIXES: tuple[tuple[str, str], ...] = (
-    ("chatgpt", "openai/"),
-    ("gpt-", "openai/"),
-    ("o1", "openai/"),
-    ("o3", "openai/"),
-    ("o4", "openai/"),
-    ("claude", "anthropic/"),
-    ("gemini", "google/"),
-    ("grok", "x-ai/"),
-    ("deepseek", "deepseek/"),
-    ("llama", "meta-llama/"),
-    ("qwen", "qwen/"),
-    ("mistral", "mistralai/"),
-    ("kimi", "moonshotai/"),
-)
-
-
-def resolve_openrouter_slug(model_name: str) -> str:
-    """Best-effort OpenRouter slug for a model name/slug; pass through if unknown.
-
-    A bare vendor name — no ``/`` and absent from the curated slug map — is
-    qualified with its vendor prefix, so an incumbent model stored provider-less
-    still resolves.
-    """
-    try:
-        return _openrouter_model_slug(model_name)
-    except ValueError:
-        name = (model_name or "").strip()
-        if name and "/" not in name:
-            lowered = name.lower()
-            for stem, prefix in _OPENROUTER_VENDOR_PREFIXES:
-                if lowered.startswith(stem):
-                    return f"{prefix}{name}"
-        return model_name
-
-
-SUPPORTED_LLM_MODELS = [
-    {
-        "provider": "openai",
-        "model_name": "gpt-5.4",
-        "supports_reasoning": True,
-        "adaptive_mode": True,
-        "reasoning_levels": ["low", "medium", "high"],
-        "is_new": True,
-        "description": "OpenAI's frontier model for complex professional work and agentic tasks.",
-    },
-    {
-        "provider": "openai",
-        "model_name": "gpt-5.4-pro",
-        "supports_reasoning": True,
-        "adaptive_mode": True,
-        "reasoning_levels": ["medium", "high"],
-        "is_new": True,
-        "description": "Premium variant of GPT-5.4 that uses more compute to think harder.",
-    },
-    {
-        "provider": "openai",
-        "model_name": "gpt-5.4-mini",
-        "supports_reasoning": True,
-        "adaptive_mode": True,
-        "reasoning_levels": ["low", "medium", "high"],
-        "is_new": True,
-        "description": "Fast and efficient GPT-5.4 variant for high-volume agentic and coding workloads.",
-    },
-    {
-        "provider": "openai",
-        "model_name": "gpt-5.4-nano",
-        "supports_reasoning": True,
-        "adaptive_mode": True,
-        "reasoning_levels": ["low", "medium", "high"],
-        "is_new": True,
-        "description": "Smallest and fastest GPT-5.4 model.",
-    },
-    {
-        "provider": "openai",
-        "model_name": "gpt-5.2",
-        "supports_reasoning": True,
-        "adaptive_mode": True,
-        "reasoning_levels": ["low", "medium", "high"],
-        "description": "OpenAI's frontier model for professional work and long-running capabilities.",
-    },
-    {
-        "provider": "openai",
-        "model_name": "gpt-5.2-pro",
-        "supports_reasoning": True,
-        "adaptive_mode": True,
-        "reasoning_levels": ["medium", "high"],
-        "description": "Highest-compute GPT-5.2 variant.",
-    },
-    {
-        "provider": "openai",
-        "model_name": "gpt-5",
-        "supports_reasoning": True,
-        "adaptive_mode": True,
-        "reasoning_levels": ["low", "medium", "high"],
-        "description": "OpenAI's best model for coding and agentic tasks.",
-    },
-    {
-        "provider": "openai",
-        "model_name": "gpt-5.6-luna",
-        "supports_reasoning": True,
-        "adaptive_mode": True,
-        "reasoning_levels": ["low", "medium", "high"],
-        "is_new": True,
-        "description": "OpenAI's fast tier: near-frontier quality at a fraction of the price.",
-    },
-    {
-        "provider": "openai",
-        "model_name": "gpt-5-mini",
-        "supports_reasoning": True,
-        "adaptive_mode": True,
-        "reasoning_levels": ["low", "medium", "high"],
-        "description": "Smaller, faster GPT-5 variant for high-volume workloads.",
-    },
-    {
-        "provider": "openai",
-        "model_name": "gpt-5-nano",
-        "supports_reasoning": True,
-        "adaptive_mode": True,
-        "reasoning_levels": ["low", "medium", "high"],
-        "description": "Smallest and cheapest GPT-5 model.",
-    },
-    {
-        "provider": "openai",
-        "model_name": "gpt-4.1",
-        "supports_reasoning": False,
-        "description": "OpenAI model with major improvements in coding and instruction following.",
-    },
-    {
-        "provider": "anthropic",
-        "model_name": "claude-opus-4-6",
-        "supports_reasoning": True,
-        "adaptive_mode": True,
-        "reasoning_levels": ["low", "medium", "high", "max"],
-        "is_new": True,
-        "description": "Anthropic's most intelligent model.",
-    },
-    {
-        "provider": "anthropic",
-        "model_name": "claude-sonnet-5",
-        "supports_reasoning": True,
-        "adaptive_mode": True,
-        "reasoning_levels": ["low", "medium", "high"],
-        "is_new": True,
-        "description": "Anthropic's best combination of speed and intelligence.",
-    },
-    {
-        "provider": "anthropic",
-        "model_name": "claude-sonnet-4-6",
-        "supports_reasoning": True,
-        "adaptive_mode": True,
-        "reasoning_levels": ["low", "medium", "high"],
-        "is_new": True,
-        "description": "Anthropic's best combination of speed and intelligence.",
-    },
-    {
-        "provider": "anthropic",
-        "model_name": "claude-opus-4-5",
-        "supports_reasoning": True,
-        "adaptive_mode": False,
-        "thinking_budget_tokens": [8000],
-        "description": "Anthropic's most powerful 4.5-generation model.",
-    },
-    {
-        "provider": "anthropic",
-        "model_name": "claude-sonnet-4-5",
-        "supports_reasoning": True,
-        "adaptive_mode": False,
-        "thinking_budget_tokens": [8000],
-        "description": "Anthropic's balanced 4.5-generation model.",
-    },
-    {
-        "provider": "anthropic",
-        "model_name": "claude-haiku-4-5",
-        "supports_reasoning": True,
-        "adaptive_mode": False,
-        "thinking_budget_tokens": [8000],
-        "description": "Anthropic's fastest model.",
-    },
-    {
-        "provider": "gemini",
-        "model_name": "gemini-3.1-pro-preview",
-        "supports_reasoning": True,
-        "adaptive_mode": True,
-        "reasoning_levels": ["low", "medium", "high"],
-        "is_new": True,
-        "description": "Google's most advanced reasoning model.",
-    },
-    {
-        "provider": "gemini",
-        "model_name": "gemini-3.1-flash-lite-preview",
-        "supports_reasoning": True,
-        "adaptive_mode": True,
-        "reasoning_levels": ["low", "medium", "high"],
-        "is_new": True,
-        "description": "Most cost-efficient Gemini 3 model.",
-    },
-    {
-        "provider": "gemini",
-        "model_name": "gemini-3.8-flash",
-        "supports_reasoning": True,
-        "adaptive_mode": True,
-        "reasoning_levels": ["low", "medium", "high"],
-        "is_new": True,
-        "description": "Google's fast Gemini 3 tier.",
-    },
-    {
-        "provider": "gemini",
-        "model_name": "gemini-3-flash-preview",
-        "supports_reasoning": True,
-        "adaptive_mode": True,
-        "reasoning_levels": ["low", "medium", "high"],
-        "description": "Google's most powerful agentic model in the Gemini 3 series.",
-    },
-    {
-        "provider": "gemini",
-        "model_name": "gemini-2.5-flash",
-        "supports_reasoning": True,
-        "adaptive_mode": False,
-        "thinking_budget_tokens": [-1],
-        "description": "Google's first full hybrid reasoning model.",
-    },
-    {
-        "provider": "gemini",
-        "model_name": "gemini-2.5-flash-lite",
-        "supports_reasoning": False,
-        "description": "Google's fastest and cheapest Gemini 2.5 model.",
-    },
-    {
-        "provider": "gemini",
-        "model_name": "gemini-2.5-pro",
-        "supports_reasoning": True,
-        "adaptive_mode": True,
-        "reasoning_levels": ["low", "medium", "high"],
-        "reasoning_required": True,
-        "description": "Google's most capable Gemini 2.5 model with always-on reasoning.",
-    },
-    {
-        # OpenRouter slug used for dataset schema interpretation.
-        "provider": "openrouter",
-        "model_name": "moonshotai/kimi-k2",
-        "supports_reasoning": False,
-        "description": "Moonshot AI's Kimi K2 (open-weight MoE) served via OpenRouter.",
-    },
-]
-
-SUPPORTED_LLM_MODEL_NAMES = {item["model_name"] for item in SUPPORTED_LLM_MODELS}
-LLM_PROVIDER_BY_MODEL = {item["model_name"]: item["provider"] for item in SUPPORTED_LLM_MODELS}
-REASONING_SUPPORT_BY_MODEL = {
-    item["model_name"]: {
-        "supports_reasoning": item["supports_reasoning"],
-        "adaptive_mode": item.get("adaptive_mode"),
-        "reasoning_levels": item.get("reasoning_levels"),
-        "thinking_budget_tokens": item.get("thinking_budget_tokens"),
-        "reasoning_required": item.get("reasoning_required", False),
-    }
-    for item in SUPPORTED_LLM_MODELS
-}
-
-_DATE_SUFFIX_RE = re.compile(r"-\d{4}-\d{2}-\d{2}$")
-
-
-def normalize_model_name(model_name: str) -> str:
-    base = _DATE_SUFFIX_RE.sub("", model_name)
-    if base in SUPPORTED_LLM_MODEL_NAMES:
-        return base
-    return model_name
-
-
-def model_supports_reasoning(model_name: str) -> bool:
-    info = REASONING_SUPPORT_BY_MODEL.get(normalize_model_name(model_name))
-    return info["supports_reasoning"] if info else False
-
-
-def get_reasoning_levels(model_name: str) -> list[str]:
-    info = REASONING_SUPPORT_BY_MODEL.get(normalize_model_name(model_name))
-    if not info or not info["supports_reasoning"]:
-        return []
-    return list(info.get("reasoning_levels") or [])
-
-
-def get_thinking_budget_tokens(model_name: str) -> list[int]:
-    info = REASONING_SUPPORT_BY_MODEL.get(normalize_model_name(model_name))
-    if not info or info.get("adaptive_mode") is not False:
-        return []
-    return list(info.get("thinking_budget_tokens") or [])
-
-
-def is_adaptive_mode(model_name: str) -> bool | None:
-    info = REASONING_SUPPORT_BY_MODEL.get(normalize_model_name(model_name))
-    return info.get("adaptive_mode") if info else None
-
-
-def is_reasoning_required(model_name: str) -> bool:
-    info = REASONING_SUPPORT_BY_MODEL.get(normalize_model_name(model_name))
-    return info.get("reasoning_required", False) if info else False
 
 
 def _effective_max_tokens(model_name: str, max_tokens: int) -> int:
     """``max_tokens`` stays the caller's intended visible-output size; reasoning
     models get extra room so hidden reasoning cannot starve the answer.
     """
-    if model_supports_reasoning(model_name):
+    if reasoning_of(model_name).adaptive is not None:
         return max_tokens + _REASONING_TOKEN_HEADROOM
     return max_tokens
 
@@ -694,7 +386,7 @@ def _fallback_slugs(models: list[str] | None, selected_slug: str) -> list[str] |
     slugs = [selected_slug]
     for name in models:
         with suppress(ValueError):
-            slug = _openrouter_model_slug(name)
+            slug = openrouter_slug(name)
             if slug not in slugs:
                 slugs.append(slug)
     return slugs if len(slugs) > 1 else None
@@ -721,22 +413,19 @@ def _reasoning_extra_body(
     reasoning_effort: str | None,
     thinking_budget_tokens: int | None,
 ) -> dict[str, Any] | None:
-    adaptive = is_adaptive_mode(selected_model_name)
+    reasoning = reasoning_of(selected_model_name)
     effective_reasoning_effort = reasoning_effort
-    if effective_reasoning_effort is None and is_reasoning_required(selected_model_name):
+    if effective_reasoning_effort is None and reasoning.required:
         effective_reasoning_effort = "medium"
 
-    if adaptive is False and thinking_budget_tokens is not None:
-        budgets = get_thinking_budget_tokens(selected_model_name)
-        if thinking_budget_tokens in budgets and thinking_budget_tokens > 0:
+    if reasoning.adaptive is False and thinking_budget_tokens is not None:
+        if thinking_budget_tokens in reasoning.budgets and thinking_budget_tokens > 0:
             return {"reasoning": {"max_tokens": thinking_budget_tokens}}
         return None
 
-    if effective_reasoning_effort and adaptive is True:
-        levels = get_reasoning_levels(selected_model_name)
-        if levels and effective_reasoning_effort in levels:
-            effort = "high" if effective_reasoning_effort == "max" else effective_reasoning_effort
-            return {"reasoning": {"effort": effort}}
+    if reasoning.adaptive is True and effective_reasoning_effort in reasoning.levels:
+        effort = "high" if effective_reasoning_effort == "max" else effective_reasoning_effort
+        return {"reasoning": {"effort": effort}}
     return None
 
 
@@ -817,7 +506,7 @@ def call_llm(
             return _extract_llm_response(response)
 
         selected_model_name = normalize_model_name(model) if model else _get_default_model()
-        selected_model = _openrouter_model_slug(selected_model_name)
+        selected_model = openrouter_slug(selected_model_name)
         client = _openrouter_client()
 
         completion_kwargs: dict = {
@@ -855,6 +544,72 @@ def call_llm(
         raise RuntimeError(f"Error calling LLM: {e}") from e
 
 
+# OpenAI rejects unknown keys; cache_control and reasoning_details are OpenRouter-only.
+def _portable_messages(messages: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    out: list[dict[str, Any]] = []
+    for message in messages:
+        if message.get("role") == "system" and isinstance(message.get("content"), list):
+            text = "\n".join(
+                str(part.get("text") or "") for part in message["content"] if isinstance(part, dict)
+            )
+            out.append({**message, "content": text})
+        elif "reasoning_details" in message:
+            out.append({k: v for k, v in message.items() if k != "reasoning_details"})
+        else:
+            out.append(message)
+    return out
+
+
+def _tool_completion_kwargs(
+    provider: Provider,
+    messages: list[dict[str, Any]],
+    tools: list[dict[str, Any]],
+    model: str | None,
+    max_tokens: int,
+    fallback_models: list[str] | None,
+    reasoning_effort: str | None = None,
+) -> tuple[dict, str]:
+    selected_model_name = normalize_model_name(model) if model else _get_default_model()
+    selected = (
+        openrouter_slug(selected_model_name) if provider.openrouter_extras else selected_model_name
+    )
+    completion_kwargs: dict = {
+        "model": selected,
+        "messages": messages if provider.openrouter_extras else _portable_messages(messages),
+        "max_tokens": _effective_max_tokens(selected_model_name, max_tokens),
+    }
+    # An empty tools array is a 400 on some providers.
+    if tools:
+        completion_kwargs["tools"] = tools
+    if provider.openrouter_extras:
+        extra_body: dict = {"usage": {"include": True}, "provider": {"require_parameters": True}}
+        reasoning_body = _reasoning_extra_body(selected_model_name, reasoning_effort, None)
+        if reasoning_body:
+            extra_body.update(reasoning_body)
+        chain = _fallback_slugs(fallback_models, selected)
+        if chain:
+            extra_body["models"] = chain
+        completion_kwargs["extra_body"] = extra_body
+    elif (
+        provider.reasoning_effort
+        and reasoning_effort
+        and reasoning_effort in reasoning_of(selected_model_name).levels
+    ):
+        completion_kwargs["reasoning_effort"] = reasoning_effort
+    return completion_kwargs, selected
+
+
+def _tool_call_stats(usage: Any, served_model: Any, selected: str, response_ms: Any) -> dict:
+    return {
+        "prompt_tokens": _usage_value(usage, "prompt_tokens"),
+        "completion_tokens": _usage_value(usage, "completion_tokens"),
+        "response_ms": response_ms or 0,
+        "response_cost": _usage_value(usage, "cost"),
+        "cached_tokens": _cached_tokens(usage),
+        "served_model": served_model or selected,
+    }
+
+
 def call_llm_tools(
     messages: list[dict[str, Any]],
     tools: list[dict[str, Any]],
@@ -869,21 +624,13 @@ def call_llm_tools(
     this keeps both, which agentic loops need when a model narrates while
     proposing calls.
     """
-    selected_model_name = normalize_model_name(model) if model else _get_default_model()
-    selected_slug = _openrouter_model_slug(selected_model_name)
-    completion_kwargs: dict = {
-        "model": selected_slug,
-        "messages": messages,
-        "max_tokens": _effective_max_tokens(selected_model_name, max_tokens),
-        "tools": tools,
-        "extra_body": {"usage": {"include": True}, "provider": {"require_parameters": True}},
-    }
-    chain = _fallback_slugs(fallback_models, selected_slug)
-    if chain:
-        completion_kwargs["extra_body"]["models"] = chain
+    provider = PROVIDERS["openrouter"]
+    completion_kwargs, selected = _tool_completion_kwargs(
+        provider, messages, tools, model, max_tokens, fallback_models
+    )
     try:
         response = _do_openai_completion(
-            _openrouter_client(), completion_kwargs, {}, retry_deadline
+            _provider_client(provider.name), completion_kwargs, {}, retry_deadline
         )
     except Exception as e:
         raise RuntimeError(f"Error calling LLM: {e}") from e
@@ -891,16 +638,138 @@ def call_llm_tools(
     message = response.choices[0].message
     text = (message.content or "").strip()
     tool_calls = [tc.model_dump() for tc in (getattr(message, "tool_calls", None) or [])]
-    usage = getattr(response, "usage", None)
-    stats = {
-        "prompt_tokens": _usage_value(usage, "prompt_tokens"),
-        "completion_tokens": _usage_value(usage, "completion_tokens"),
-        "response_ms": getattr(response, "_response_ms", 0),
-        "response_cost": _usage_value(usage, "cost"),
-        "cached_tokens": _cached_tokens(usage),
-        "served_model": getattr(response, "model", None) or selected_slug,
-    }
+    stats = _tool_call_stats(
+        getattr(response, "usage", None),
+        getattr(response, "model", None),
+        selected,
+        getattr(response, "_response_ms", 0),
+    )
     return text, tool_calls, stats
+
+
+def _merge_tool_call_delta(acc: dict[int, dict], delta: Any) -> None:
+    for part in delta or ():
+        index = getattr(part, "index", 0) or 0
+        call = acc.setdefault(
+            index, {"id": "", "type": "function", "function": {"name": "", "arguments": ""}}
+        )
+        if getattr(part, "id", None):
+            call["id"] = part.id
+        function = getattr(part, "function", None)
+        if function is None:
+            continue
+        if getattr(function, "name", None):
+            call["function"]["name"] = function.name
+        if getattr(function, "arguments", None):
+            call["function"]["arguments"] += function.arguments
+
+
+def _merge_reasoning_details(acc: list[dict], parts: Any) -> None:
+    for part in parts or ():
+        if not isinstance(part, dict):
+            part = getattr(part, "model_dump", lambda: {})()
+        if not isinstance(part, dict):
+            continue
+        index = part.get("index")
+        target = next((d for d in acc if index is not None and d.get("index") == index), None)
+        if target is None:
+            acc.append(dict(part))
+            continue
+        for key, value in part.items():
+            if key in ("text", "summary", "data") and isinstance(value, str):
+                target[key] = str(target.get(key) or "") + value
+            elif value is not None:
+                target[key] = value
+
+
+@dataclass(frozen=True)
+class ToolStreamDelta:
+    kind: str  # text | reasoning
+    text: str
+
+
+@dataclass
+class ToolStreamResult:
+    text: str
+    tool_calls: list[dict[str, Any]]
+    stats: dict[str, Any]
+    reasoning: str = ""
+    reasoning_details: list[dict[str, Any]] = field(default_factory=list)
+
+    def assistant_message(self) -> dict[str, Any]:
+        message: dict[str, Any] = {"role": "assistant", "content": self.text or None}
+        if self.tool_calls:
+            message["tool_calls"] = self.tool_calls
+        if self.reasoning_details:
+            message["reasoning_details"] = self.reasoning_details
+        return message
+
+
+def stream_llm_tools(
+    messages: list[dict[str, Any]],
+    tools: list[dict[str, Any]],
+    model: str | None = None,
+    max_tokens: int = 4000,
+    fallback_models: list[str] | None = None,
+    retry_deadline: float = RETRY_DEADLINE_BACKGROUND,
+    reasoning_effort: str | None = None,
+    provider: Provider | None = None,
+) -> Iterator[ToolStreamDelta | ToolStreamResult]:
+    provider = provider or PROVIDERS["openrouter"]
+    completion_kwargs, selected = _tool_completion_kwargs(
+        provider, messages, tools, model, max_tokens, fallback_models, reasoning_effort
+    )
+    completion_kwargs["stream"] = True
+    completion_kwargs["stream_options"] = {"include_usage": True}
+
+    started = time.monotonic()
+    try:
+        stream = _do_openai_completion(
+            _provider_client(provider.name), completion_kwargs, {}, retry_deadline
+        )
+    except Exception as e:
+        raise RuntimeError(f"Error calling LLM: {e}") from e
+
+    parts: list[str] = []
+    thoughts: list[str] = []
+    details: list[dict] = []
+    calls: dict[int, dict] = {}
+    usage = None
+    served_model = None
+    try:
+        for chunk in stream:
+            if getattr(chunk, "usage", None):
+                usage = chunk.usage
+            if getattr(chunk, "model", None):
+                served_model = chunk.model
+            choices = getattr(chunk, "choices", None) or ()
+            if not choices:
+                continue
+            delta = getattr(choices[0], "delta", None)
+            if delta is None:
+                continue
+            extra = _extra(delta)
+            thought = extra.get("reasoning") or getattr(delta, "reasoning", None)
+            if isinstance(thought, str) and thought:
+                thoughts.append(thought)
+                yield ToolStreamDelta("reasoning", thought)
+            _merge_reasoning_details(details, extra.get("reasoning_details"))
+            text = getattr(delta, "content", None)
+            if text:
+                parts.append(text)
+                yield ToolStreamDelta("text", text)
+            _merge_tool_call_delta(calls, getattr(delta, "tool_calls", None))
+    except Exception as e:
+        raise RuntimeError(f"Error streaming LLM: {e}") from e
+    finally:
+        with suppress(Exception):
+            stream.close()
+
+    tool_calls = [calls[index] for index in sorted(calls)]
+    stats = _tool_call_stats(usage, served_model, selected, (time.monotonic() - started) * 1000)
+    yield ToolStreamResult(
+        "".join(parts).strip(), tool_calls, stats, "".join(thoughts).strip(), details
+    )
 
 
 def try_json_parsing(json_data: str):

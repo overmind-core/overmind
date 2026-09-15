@@ -21,6 +21,7 @@ export interface AgentActivityPart {
   summary?: string;
   preview?: string;
   ok?: boolean;
+  text?: string;
 }
 
 export type TimelineStep =
@@ -29,6 +30,7 @@ export type TimelineStep =
       id: string;
       status: "running" | "done";
       durationMs?: number;
+      text?: string;
     }
   | {
       kind: "tool";
@@ -55,12 +57,16 @@ export function buildTimelineSteps(parts: AgentActivityPart[]): TimelineStep[] {
       if (existing) {
         existing.status = part.status === "done" ? "done" : existing.status;
         if (durationMs != null) existing.durationMs = durationMs;
+        if (part.text) {
+          existing.text = part.status === "done" ? part.text : (existing.text ?? "") + part.text;
+        }
       } else {
         steps.push({
           durationMs,
           id: part.id,
           kind: "thinking",
           status: part.status === "done" ? "done" : "running",
+          text: part.text,
         });
       }
       continue;
@@ -115,6 +121,7 @@ export const TOOL_ICONS: Record<string, IconName> = {
   add_cell: "code",
   diff: "diff",
   edit_cell: "code",
+  inspect: "search",
   install: "tool",
   notebook_cell: "code",
   notebook_read: "code",
@@ -162,10 +169,19 @@ export function toolDetail(step: {
   );
 }
 
+function thoughtDetail(text: string) {
+  return (
+    <div className="space-y-1.5">
+      <IoBlock caption="Thought" text={text} />
+    </div>
+  );
+}
+
 function timelineItem(step: TimelineStep): ElbowItem {
   const running = step.status === "running";
   return {
-    detail: step.kind === "tool" ? toolDetail(step) : undefined,
+    detail:
+      step.kind === "tool" ? toolDetail(step) : step.text ? thoughtDetail(step.text) : undefined,
     failed: step.kind === "tool" && step.ok === false,
     icon: stepIconName(step),
     id: step.id,

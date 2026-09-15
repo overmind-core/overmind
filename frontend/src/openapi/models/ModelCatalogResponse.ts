@@ -20,6 +20,13 @@ import {
     CatalogModelToJSON,
     CatalogModelToJSONTyped,
 } from './CatalogModel';
+import type { ModelDefaults } from './ModelDefaults';
+import {
+    ModelDefaultsFromJSON,
+    ModelDefaultsFromJSONTyped,
+    ModelDefaultsToJSON,
+    ModelDefaultsToJSONTyped,
+} from './ModelDefaults';
 
 /**
  *
@@ -39,6 +46,12 @@ export interface ModelCatalogResponse {
      * @memberof ModelCatalogResponse
      */
     upstreamAvailable: boolean;
+    /**
+     *
+     * @type {ModelDefaults}
+     * @memberof ModelCatalogResponse
+     */
+    defaults: ModelDefaults;
 }
 
 /**
@@ -47,6 +60,7 @@ export interface ModelCatalogResponse {
 export function instanceOfModelCatalogResponse(value: object): value is ModelCatalogResponse {
     if (!('models' in value) || value['models'] === undefined) return false;
     if (!('upstreamAvailable' in value) || value['upstreamAvailable'] === undefined) return false;
+    if (!('defaults' in value) || value['defaults'] === undefined) return false;
     return true;
 }
 
@@ -62,6 +76,7 @@ export function ModelCatalogResponseFromJSONTyped(json: any, ignoreDiscriminator
 
         'models': ((json['models'] as Array<any>).map(CatalogModelFromJSON)),
         'upstreamAvailable': json['upstream_available'],
+        'defaults': ModelDefaultsFromJSON(json['defaults']),
     };
 }
 
@@ -78,5 +93,6 @@ export function ModelCatalogResponseToJSONTyped(value?: ModelCatalogResponse | n
 
         'models': ((value['models'] as Array<any>).map(CatalogModelToJSON)),
         'upstream_available': value['upstreamAvailable'],
+        'defaults': ModelDefaultsToJSON(value['defaults']),
     };
 }

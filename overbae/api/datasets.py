@@ -50,6 +50,12 @@ def _error(exc: lifecycle.DatasetError, http_status: int = 409) -> Response:
     return Response({"detail": exc.detail, "code": exc.code}, status=http_status)
 
 
+def _agent_owns(dataset: Dataset) -> Response | None:
+    if dataset.state != Dataset.State.DIAGNOSING:
+        return None
+    return _error(lifecycle.DatasetError("The agent is working. Wait for it.", code=dataset.state))
+
+
 _CELL_PARAM = OpenApiParameter(
     "cell", OpenApiTypes.UUID, OpenApiParameter.QUERY, description="a cell id; default = active"
 )
@@ -206,6 +212,8 @@ class DatasetViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=["post"], url_path="cells")
     def add_cell(self, request, id=None):
         dataset = self.get_object()
+        if (refused := _agent_owns(dataset)) is not None:
+            return refused
         body = CellCreateSerializer(data=request.data)
         body.is_valid(raise_exception=True)
         try:
@@ -229,6 +237,8 @@ class DatasetViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=["patch"], url_path=r"cells/(?P<cell_id>[0-9a-f-]{36})")
     def edit_cell(self, request, id=None, cell_id=None):
         dataset = self.get_object()
+        if (refused := _agent_owns(dataset)) is not None:
+            return refused
         cell = self._cell(dataset, cell_id)
         body = CellWriteSerializer(data=request.data)
         body.is_valid(raise_exception=True)
@@ -242,6 +252,8 @@ class DatasetViewSet(viewsets.ModelViewSet):
     @edit_cell.mapping.delete
     def remove_cell(self, request, id=None, cell_id=None):
         dataset = self.get_object()
+        if (refused := _agent_owns(dataset)) is not None:
+            return refused
         cell = self._cell(dataset, cell_id)
         try:
             lifecycle.remove_cell(dataset, cell)
@@ -453,11 +465,10 @@ class DatasetViewSet(viewsets.ModelViewSet):
             pubsub = r.pubsub()
             try:
                 await pubsub.subscribe(ch)
-                seen: set[str] = set()
+                replayed_through = 0
                 for evt in await sync_to_async(events.replay)(dataset.id):
-                    s = json.dumps(evt, default=str)
-                    seen.add(s)
-                    yield f"data: {s}\n\n"
+                    replayed_through = max(replayed_through, int(evt.get("seq") or 0))
+                    yield f"data: {json.dumps(evt, default=str)}\n\n"
                 yield 'data: {"type": "replay.done"}\n\n'
                 idle = 0.0
                 while True:
@@ -470,8 +481,11 @@ class DatasetViewSet(viewsets.ModelViewSet):
                         continue
                     idle = 0.0
                     data = message["data"]
-                    if data in seen:
-                        seen.discard(data)
+                    try:
+                        seq = int(json.loads(data).get("seq") or 0)
+                    except (ValueError, AttributeError):
+                        seq = 0
+                    if seq and seq <= replayed_through:
                         continue
                     yield f"data: {data}\n\n"
             finally:

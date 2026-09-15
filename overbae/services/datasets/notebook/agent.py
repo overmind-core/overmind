@@ -1,30 +1,27 @@
-"""The notebook agent: a resumable Cursor session per dataset, twelve custom
-tools over the chain, and the three turns the platform sends by itself."""
-
 from __future__ import annotations
 
 import json
 import logging
-import os
 import time
 import uuid
 from collections.abc import Callable, Iterator
 from typing import Any
 
-from django.conf import settings
 from django.db import close_old_connections
 from django.utils import timezone
 
 from overbae.models import Capability, Cell, Dataset
 from overbae.services.datasets import diff as diff_svc
 from overbae.services.datasets import lifecycle, paths, store
-from overbae.services.datasets.notebook import events, libraries, prompts, workspace
+from overbae.services.datasets.notebook import engines, events, libraries, prompts
 from overbae.services.datasets.notebook import run as run_svc
 
 logger = logging.getLogger(__name__)
 
-MODEL = "composer-2.5"
 QUERY_ROWS = 50
+SAMPLE_ROWS = 20
+THOUGHT_CHARS = 2000
+_SCRIPT_CHARS = 4000
 _PREVIEW_ROWS = 3
 _VALUE_CHARS = 400
 PREPARE_DISPLAY = "Prepare this dataset: shape it to both contracts, then run the quality checks."
@@ -41,8 +38,6 @@ def _clip(value: Any) -> Any:
 
 
 def _safe(result: Any) -> Any:
-    """Tool results cross the bridge as JSON; DuckDB hands back Decimals and
-    timestamps, so everything goes through the default encoder once."""
     return json.loads(json.dumps(result, default=str))
 
 
@@ -93,6 +88,7 @@ def _cell_line(dataset: Dataset, cell: Cell, versions: dict[Any, str]) -> dict[s
         "columns": _visible_columns([c["name"] for c in (cell.columns or [])]),
         "note": cell.note,
         "error": cell.error,
+        "script": cell.script[:_SCRIPT_CHARS],
         "intent_report": {
             k: {"ok": v.get("ok"), "reason": v.get("reason")}
             for k, v in (cell.intent_report or {}).items()
@@ -120,8 +116,6 @@ def status(dataset: Dataset) -> dict[str, Any]:
 
 
 def _visible(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    """Rows as the agent sees them: `source_row` is the platform's row identity,
-    not a column the agent should reason about or keep."""
     return [_clip({k: v for k, v in r.items() if k != store.SOURCE_ROW}) for r in rows]
 
 
@@ -140,9 +134,6 @@ def _preview(frame) -> dict[str, Any]:
 
 
 class Tools:
-    """One instance per turn; every call re-reads the dataset so the chain is
-    never stale. Each method returns JSON the agent reads."""
-
     def __init__(self, dataset_id: Any, user: Any, emit: Callable[[dict[str, Any]], None]):
         self.dataset_id = dataset_id
         self.user = user
@@ -152,20 +143,34 @@ class Tools:
         self._thinking: dict[str, Any] | None = None
 
     def think(self) -> None:
-        """A thinking step spans the gap between tool calls; the first text
-        or the next tool closes it."""
         if self._thinking is not None:
             return
-        self._thinking = {"id": f"think-{len(self.steps)}", "started": time.monotonic()}
+        self._thinking = {
+            "id": f"think-{len(self.steps)}",
+            "started": time.monotonic(),
+            "text": [],
+        }
         self.step({"phase": "thinking", "id": self._thinking["id"], "status": "running"})
+
+    def thought(self, text: str) -> None:
+        self.think()
+        self._thinking["text"].append(text)
+        self.emit({"type": "chat_thinking", "id": self._thinking["id"], "text": text})
 
     def stop_thinking(self) -> None:
         if self._thinking is None:
             return
         ms = int((time.monotonic() - self._thinking["started"]) * 1000)
-        self.step(
-            {"phase": "thinking", "id": self._thinking["id"], "status": "done", "duration_ms": ms}
-        )
+        part = {
+            "phase": "thinking",
+            "id": self._thinking["id"],
+            "status": "done",
+            "duration_ms": ms,
+        }
+        text = "".join(self._thinking["text"]).strip()
+        if text:
+            part["text"] = text[-THOUGHT_CHARS:]
+        self.step(part)
         self._thinking = None
 
     def step(self, part: dict[str, Any]) -> None:
@@ -219,8 +224,16 @@ class Tools:
         after = resolve_cell(dataset, args.get("after"), ran_only=True)
         result = run_svc.try_script(dataset, str(args.get("script") or ""), after=after)
         if result.frame is None:
-            return {"ok": False, "error": result.error}
-        return {"ok": True, **_preview(result.frame)}
+            return {"ok": False, "error": result.error, "stdout": result.stdout}
+        return {"ok": True, **_preview(result.frame), "stdout": result.stdout}
+
+    def inspect(self, args: dict[str, Any], _ctx: Any = None) -> dict[str, Any]:
+        dataset = _dataset(self.dataset_id)
+        at = resolve_cell(dataset, args.get("version"), ran_only=True)
+        result = run_svc.inspect(dataset, str(args.get("script") or ""), at=at)
+        if not result.ok:
+            return {"ok": False, "error": result.error, "stdout": result.stdout}
+        return {"ok": True, "stdout": result.stdout}
 
     def add_cell(self, args: dict[str, Any], _ctx: Any = None) -> dict[str, Any]:
         dataset = _dataset(self.dataset_id)
@@ -262,7 +275,7 @@ class Tools:
         return self._run(dataset, cell)
 
     def _run(self, dataset: Dataset, cell: Cell) -> dict[str, Any]:
-        run_svc.execute(dataset, user=self.user)
+        run_svc.execute(dataset, user=self.user, hold=Dataset.State.DIAGNOSING)
         dataset = _dataset(self.dataset_id)
         cell.refresh_from_db()
         self._touch(cell, "ran" if cell.state == Cell.State.OK else "failed")
@@ -283,7 +296,7 @@ class Tools:
             return {"ok": False, "error": exc.detail}
         self.emit({"type": "cells_changed"})
         if not proposed:
-            run_svc.execute(dataset, user=self.user)
+            run_svc.execute(dataset, user=self.user, hold=Dataset.State.DIAGNOSING)
         return {
             "ok": True,
             "removed": cell.title,
@@ -356,131 +369,118 @@ class Tools:
             return {"ok": False, "error": str(exc)}
         return {"ok": True, "package": name, "version": version}
 
-    def definitions(self) -> dict[str, Any]:
-        from cursor_sdk import CustomTool
+    def handlers(self) -> dict[str, Callable[..., Any]]:
+        return {name: _guarded(self, name, getattr(self, name)) for name in TOOL_SPECS}
 
-        text = {"type": "string"}
-        tools = {
-            "status": CustomTool(
-                execute=self.status,
-                description="The dataset: intent, capability, every cell with version, state, shape and both contract reports.",
-                input_schema={"type": "object", "properties": {}},
-            ),
-            "query": CustomTool(
-                execute=self.query,
-                description="DuckDB SQL over one version's frame as table t. 50 rows max.",
-                input_schema={
-                    "type": "object",
-                    "properties": {
-                        "sql": text,
-                        "version": {**text, "description": "1.2 etc; blank = active"},
-                    },
-                    "required": ["sql"],
-                },
-            ),
-            "diff": CustomTool(
-                execute=self.diff,
-                description="What changed between two versions, with examples. from defaults to the version before to.",
-                input_schema={"type": "object", "properties": {"from": text, "to": text}},
-            ),
-            "try_script": CustomTool(
-                execute=self.try_script,
-                description="Run a cell script against a version's frame without landing it. Returns shape, columns, three rows, or the error.",
-                input_schema={
-                    "type": "object",
-                    "properties": {
-                        "script": text,
-                        "after": {
-                            **text,
-                            "description": "version the script reads; blank = active",
-                        },
-                    },
-                    "required": ["script"],
-                },
-            ),
-            "add_cell": CustomTool(
-                execute=self.add_cell,
-                description="Land a cell at the end of the chain. run=true executes it now and returns the result; run=false leaves a proposal with a note for the user.",
-                input_schema={
-                    "type": "object",
-                    "properties": {
-                        "title": text,
-                        "script": text,
-                        "note": {**text, "description": "one line: why, with the row count"},
-                        "run": {"type": "boolean"},
-                    },
-                    "required": ["title", "script"],
-                },
-            ),
-            "edit_cell": CustomTool(
-                execute=self.edit_cell,
-                description="Replace a cell's script (and optionally title or note) and re-run from it. Frozen cells refuse.",
-                input_schema={
-                    "type": "object",
-                    "properties": {"version": text, "script": text, "title": text, "note": text},
-                    "required": ["version"],
-                },
-            ),
-            "remove_cell": CustomTool(
-                execute=self.remove_cell,
-                description="Delete a cell or a proposal. Later cells shift down and re-run. Frozen cells refuse.",
-                input_schema={
-                    "type": "object",
-                    "properties": {
-                        "version": {**text, "description": "1.2 etc, or a proposal's id"}
-                    },
-                    "required": ["version"],
-                },
-            ),
-            "set_active": CustomTool(
-                execute=self.set_active,
-                description="Choose which ran version consumers read.",
-                input_schema={
-                    "type": "object",
-                    "properties": {"version": text},
-                    "required": ["version"],
-                },
-            ),
-            "set_intent": CustomTool(
-                execute=self.set_intent,
-                description="Set the intent to train or eval. Fixed once a version was used.",
-                input_schema={
-                    "type": "object",
-                    "properties": {"intent": {"type": "string", "enum": ["train", "eval"]}},
-                    "required": ["intent"],
-                },
-            ),
-            "set_capability": CustomTool(
-                execute=self.set_capability,
-                description="Bind the dataset to a capability by name or id, or 'none' to clear it. Fixed once a version was used. Re-measures every version.",
-                input_schema={
-                    "type": "object",
-                    "properties": {"capability": text},
-                    "required": ["capability"],
-                },
-            ),
-            "rename": CustomTool(
-                execute=self.rename,
-                description="Rename the dataset.",
-                input_schema={
-                    "type": "object",
-                    "properties": {"name": text},
-                    "required": ["name"],
-                },
-            ),
-            "install": CustomTool(
-                execute=self.install,
-                description="Install one package from the installable list in libraries.md.",
-                input_schema={
-                    "type": "object",
-                    "properties": {"package": text},
-                    "required": ["package"],
-                },
-            ),
+
+_TEXT = {"type": "string"}
+
+TOOL_SPECS: dict[str, tuple[str, dict]] = {
+    "status": (
+        "The dataset: intent, capability, every cell with version, state, shape, script and both contract reports.",
+        {"type": "object", "properties": {}},
+    ),
+    "query": (
+        "DuckDB SQL over one version's frame as table t. Aggregates read every row; 50 rows come back.",
+        {
+            "type": "object",
+            "properties": {
+                "sql": _TEXT,
+                "version": {**_TEXT, "description": "1.2 etc; blank = active"},
+            },
+            "required": ["sql"],
+        },
+    ),
+    "diff": (
+        "What changed between two versions, with examples. from defaults to the version before to.",
+        {"type": "object", "properties": {"from": _TEXT, "to": _TEXT}},
+    ),
+    "try_script": (
+        "Run a cell script against a version's frame without landing it. Returns shape, columns, three rows, anything printed, or the error.",
+        {
+            "type": "object",
+            "properties": {
+                "script": _TEXT,
+                "after": {**_TEXT, "description": "version the script reads; blank = active"},
+            },
+            "required": ["script"],
+        },
+    ),
+    "inspect": (
+        "Run a read-only script against a version's frame and read back what it printed. Lands nothing and needs no df. Use it to measure a check before you cut.",
+        {
+            "type": "object",
+            "properties": {
+                "script": _TEXT,
+                "version": {**_TEXT, "description": "version the script reads; blank = active"},
+            },
+            "required": ["script"],
+        },
+    ),
+    "add_cell": (
+        "Land a cell at the end of the chain. run=true executes it now and returns the result; run=false leaves a proposal with a note for the user.",
+        {
+            "type": "object",
+            "properties": {
+                "title": _TEXT,
+                "script": _TEXT,
+                "note": {**_TEXT, "description": "one line: why, with the row count"},
+                "run": {"type": "boolean"},
+            },
+            "required": ["title", "script"],
+        },
+    ),
+    "edit_cell": (
+        "Replace a cell's script (and optionally title or note) and re-run from it. Frozen cells refuse.",
+        {
+            "type": "object",
+            "properties": {"version": _TEXT, "script": _TEXT, "title": _TEXT, "note": _TEXT},
+            "required": ["version"],
+        },
+    ),
+    "remove_cell": (
+        "Delete a cell or a proposal. Later cells shift down and re-run. Frozen cells refuse.",
+        {
+            "type": "object",
+            "properties": {"version": {**_TEXT, "description": "1.2 etc, or a proposal's id"}},
+            "required": ["version"],
+        },
+    ),
+    "set_active": (
+        "Choose which ran version consumers read.",
+        {"type": "object", "properties": {"version": _TEXT}, "required": ["version"]},
+    ),
+    "set_intent": (
+        "Set the intent to train or eval. Fixed once a version was used.",
+        {
+            "type": "object",
+            "properties": {"intent": {"type": "string", "enum": ["train", "eval"]}},
+            "required": ["intent"],
+        },
+    ),
+    "set_capability": (
+        "Bind the dataset to a capability by name or id, or 'none' to clear it. Fixed once a version was used. Re-measures every version.",
+        {"type": "object", "properties": {"capability": _TEXT}, "required": ["capability"]},
+    ),
+    "rename": (
+        "Rename the dataset.",
+        {"type": "object", "properties": {"name": _TEXT}, "required": ["name"]},
+    ),
+    "install": (
+        "Install one package from the installable list in the Libraries section.",
+        {"type": "object", "properties": {"package": _TEXT}, "required": ["package"]},
+    ),
+}
+
+
+def tool_schemas() -> list[dict[str, Any]]:
+    return [
+        {
+            "type": "function",
+            "function": {"name": name, "description": description, "parameters": schema},
         }
-        for name, tool in tools.items():
-            tool.execute = _guarded(self, name, tool.execute)
-        return tools
+        for name, (description, schema) in TOOL_SPECS.items()
+    ]
 
 
 TOOL_TITLES = {
@@ -488,6 +488,7 @@ TOOL_TITLES = {
     "query": "Query the frame",
     "diff": "Diff two versions",
     "try_script": "Try a script",
+    "inspect": "Inspect the frame",
     "add_cell": "Add a cell",
     "edit_cell": "Edit a cell",
     "remove_cell": "Remove a cell",
@@ -500,10 +501,6 @@ TOOL_TITLES = {
 
 
 def _guarded(tools: Tools, name: str, fn: Callable[..., Any]) -> Callable[..., Any]:
-    """Every tool call lands as two steps on the turn (start, done) and never
-    raises: the agent reads the failure and continues. The SDK dispatches each
-    call on a fresh callback-server thread, so the connection this opens has to
-    be closed here — no request_finished signal reaches it."""
 
     def call(args: dict[str, Any], ctx: Any = None) -> Any:
         args = dict(args or {})
@@ -540,148 +537,105 @@ def _guarded(tools: Tools, name: str, fn: Callable[..., Any]) -> Callable[..., A
             }
         )
         tools.think()
+        # The Cursor SDK runs each call on a fresh thread; no request_finished reaches it.
         close_old_connections()
         return result
 
     return call
 
 
-def _agent_options(dataset: Dataset, tools: Tools):
-    from cursor_sdk import AgentOptions, LocalAgentOptions, LocalAgentStoreConfig
-
-    root = workspace.prepare(dataset)
-    store_dir = root / ".agent"
-    store_dir.mkdir(exist_ok=True)
-    return AgentOptions(
-        api_key=settings.CURSOR_API_KEY or os.environ.get("CURSOR_API_KEY", ""),
-        model=MODEL,
-        name=f"dataset-{dataset.id}",
-        local=LocalAgentOptions(
-            cwd=str(root),
-            store=LocalAgentStoreConfig(type="sqlite", root_dir=str(store_dir)),
-            custom_tools=tools.definitions(),
-        ),
+def system_prompt(dataset: Dataset) -> str:
+    source = dataset.source
+    sample: list[dict[str, Any]] = []
+    if source is not None and source.ran:
+        frame_path = paths.cell_path(dataset.id, source.id)
+        if frame_path.exists():
+            sample = _visible(store.head(frame_path, SAMPLE_ROWS))
+    return prompts.system(
+        dataset.intent,
+        capability=prompts.capability_section(dataset),
+        libraries=libraries.describe(paths.library_cache(dataset.project_id)),
+        sample=prompts.sample_section(sample),
     )
-
-
-def _open_agent(dataset: Dataset, options: Any) -> Any:
-    from cursor_sdk import Agent
-
-    if dataset.agent_id:
-        try:
-            return Agent.resume(dataset.agent_id, options)
-        except Exception:  # noqa: BLE001 — a lost session starts a fresh one
-            logger.warning("dataset %s: agent resume failed", dataset.id, exc_info=True)
-    return Agent.create(options=options)
-
-
-def _turn_error(dataset_id: Any, exc: Exception) -> str:
-    from cursor_sdk import (
-        AgentBusyError,
-        APITimeoutError,
-        AuthenticationError,
-        PermissionDeniedError,
-        RateLimitError,
-    )
-
-    if isinstance(exc, AgentBusyError):
-        return "The agent is still working on the previous message."
-    if isinstance(exc, RateLimitError):
-        return "Rate limited by the model provider. Try again in a moment."
-    if isinstance(exc, APITimeoutError):
-        return "The model provider timed out."
-    if isinstance(exc, PermissionDeniedError | AuthenticationError):
-        logger.error("dataset %s: cursor credentials rejected", dataset_id, exc_info=exc)
-        return "The coding agent is not configured on this server."
-    logger.warning("dataset %s: agent turn failed", dataset_id, exc_info=exc)
-    return f"The agent could not finish: {exc}"[:400]
 
 
 def iter_turn(
-    dataset_id: Any, message: str, *, display: str, user: Any = None
+    dataset_id: Any, message: str, *, display: str, user: Any = None, turn_key: str = ""
 ) -> Iterator[dict[str, Any]]:
-    """One agent turn. Yields the SSE events as they happen and persists the
-    turn on the dataset when it ends."""
     dataset = _dataset(dataset_id)
     started = timezone.now().isoformat()
+    # The turn task is acks_late; a redelivery must not land every cell twice.
+    if turn_key and dataset.agent_turn_key == turn_key:
+        logger.warning("dataset %s: turn %s already ran, skipping the retry", dataset_id, turn_key)
+        return
+
     turn_user = {"role": "user", "text": display, "at": started}
-    Dataset.objects.filter(pk=dataset_id).update(chat=[*(dataset.chat or []), turn_user])
+    Dataset.objects.filter(pk=dataset_id).update(
+        chat=[*(dataset.chat or []), turn_user], agent_turn_key=turn_key or ""
+    )
     yield _emit(dataset_id, {"type": "chat_turn", **turn_user})
 
     pending: list[dict[str, Any]] = []
-    tools = Tools(dataset_id, user, pending.append)
-    options = _agent_options(dataset, tools)
-    text_parts: list[str] = []
-    error = ""
-    run: Any = None
+    tools = Tools(dataset_id, user, lambda event: pending.append(_emit(dataset_id, event)))
+    engine = engines.select()
+    outcome = engines.Outcome()
     turn_started = time.monotonic()
     tools.think()
-    # Opening the agent and sending are inside the guard too: a bridge that
-    # refuses either must still land the turn on the page.
-    try:
-        with _open_agent(dataset, options) as agent:
-            if agent.agent_id != dataset.agent_id:
-                Dataset.objects.filter(pk=dataset_id).update(agent_id=agent.agent_id)
-            # No idempotency_key: the bridge rejects one on a local agent's Send
-            # ("only supported for cloud Send in v1").
-            run = agent.send(message)
-            for item in run.stream():
-                while pending:
-                    yield _emit(dataset_id, pending.pop(0))
-                kind = getattr(item, "type", "")
-                if kind == "assistant":
-                    for block in getattr(getattr(item, "message", None), "content", ()) or ():
-                        text = getattr(block, "text", "")
-                        if text:
-                            tools.stop_thinking()
-                            text_parts.append(text)
-                            yield _emit(dataset_id, {"type": "chat_delta", "text": text})
-            result = run.wait()
-            if str(getattr(result, "status", "")).lower() == "error":
-                error = "The agent stopped with an error."
-    except Exception as exc:  # noqa: BLE001 — the turn must land on the page either way
-        error = _turn_error(dataset_id, exc)
+    if engine is None:
+        outcome.error = engines.NOT_CONFIGURED
+    else:
+        try:
+            outcome = yield from engine.run(dataset, message, tools, pending)
+        except Exception as exc:  # noqa: BLE001 — the turn must land on the page either way
+            logger.warning("dataset %s: agent turn failed", dataset_id, exc_info=True)
+            outcome.error = engine.describe_error(exc)
     tools.stop_thinking()
     while pending:
-        yield _emit(dataset_id, pending.pop(0))
-    usage = getattr(run, "usage", None)
-    run_id = getattr(run, "id", "")
-    text = "".join(text_parts).strip()
-    if not text and not error and not tools.touched:
+        yield pending.pop(0)
+
+    text = outcome.text.strip()
+    if not text and not outcome.error and not tools.touched:
         text = "Nothing to do."
     turn_agent = {
         "role": "agent",
         "text": text,
-        "error": error,
+        "error": outcome.error,
         "cells": tools.touched,
         "steps": tools.steps,
         "ms": int((time.monotonic() - turn_started) * 1000),
         "at": timezone.now().isoformat(),
+        "engine": engine.name if engine else "",
+        "model": outcome.stats.get("served_model", "") if engine else "",
     }
     dataset = Dataset.objects.get(pk=dataset_id)
     Dataset.objects.filter(pk=dataset_id).update(chat=[*(dataset.chat or []), turn_agent])
-    _bill(dataset, user, usage, run_id or f"turn:{started}")
+    _bill(dataset, user, outcome.stats, turn_agent, started)
     yield _emit(dataset_id, {"type": "chat_turn", **turn_agent})
 
 
-def _bill(dataset: Dataset, user: Any, usage: Any, run_id: str) -> None:
-    if usage is None or not getattr(user, "pk", None):
+def _bill(
+    dataset: Dataset, user: Any, stats: dict[str, Any], turn: dict[str, Any], started: str
+) -> None:
+    if not stats or not getattr(user, "pk", None):
         return
     try:
         from overbae.models import BillingService
-        from overbae.services.billing_ledger import charge_cursor_usage
-        from overbae.services.cursor_usage import token_usage_dict
+        from overbae.services.billing_ledger import charge_llm_usage
 
-        charge_cursor_usage(
+        charge_llm_usage(
             user,
-            token_usage_dict(usage),
-            service=BillingService.CURSOR_AGENT,
+            stats,
+            service=BillingService.DATA_WORKSHOP,
             project_id=dataset.project_id,
-            idempotency_key=f"cursor-agent:dataset:{dataset.id}:{run_id}",
-            metadata={"dataset_id": str(dataset.id)},
+            idempotency_key=f"data-workshop:{dataset.id}:{started}",
+            metadata={
+                "dataset_id": str(dataset.id),
+                "engine": turn["engine"],
+                "model": turn["model"],
+            },
         )
     except Exception:  # noqa: BLE001 — billing never fails a turn
-        logger.warning("dataset %s: cursor billing failed", dataset.id, exc_info=True)
+        logger.warning("dataset %s: workshop billing failed", dataset.id, exc_info=True)
 
 
 def _emit(dataset_id: Any, event: dict[str, Any]) -> dict[str, Any]:
@@ -690,25 +644,48 @@ def _emit(dataset_id: Any, event: dict[str, Any]) -> dict[str, Any]:
     return payload
 
 
-def diagnose(dataset_id: Any, *, user: Any = None) -> Iterator[dict[str, Any]]:
+def settle(dataset_id: Any) -> None:
+    dataset = Dataset.objects.filter(pk=dataset_id).first()
+    if dataset is None or dataset.state != Dataset.State.DIAGNOSING:
+        return
+    state = Dataset.State.ERROR if dataset.error else Dataset.State.IDLE
+    Dataset.objects.filter(pk=dataset_id, state=Dataset.State.DIAGNOSING).update(
+        state=state, updated_at=timezone.now()
+    )
+    _emit(dataset_id, {"type": "dataset_changed"})
+
+
+def diagnose(dataset_id: Any, *, user: Any = None, turn_key: str = "") -> Iterator[dict[str, Any]]:
     """The one automatic turn after landing: both contracts, then quality."""
     Dataset.objects.filter(pk=dataset_id).update(state=Dataset.State.DIAGNOSING)
     try:
-        yield from iter_turn(dataset_id, prompts.PREPARE, display=PREPARE_DISPLAY, user=user)
-    finally:
-        Dataset.objects.filter(pk=dataset_id, state=Dataset.State.DIAGNOSING).update(
-            state=Dataset.State.IDLE
+        yield from iter_turn(
+            dataset_id,
+            prompts.PREPARE,
+            display=PREPARE_DISPLAY,
+            user=user,
+            turn_key=turn_key,
         )
-        _emit(dataset_id, {"type": "dataset_changed"})
+    finally:
+        settle(dataset_id)
 
 
-def follow_up(dataset_id: Any, message: str, *, user: Any = None) -> Iterator[dict[str, Any]]:
-    yield from iter_turn(
-        dataset_id,
-        prompts.FOLLOW_UP.format(message=message.strip()),
-        display=message.strip(),
-        user=user,
-    )
+def follow_up(
+    dataset_id: Any, message: str, *, user: Any = None, turn_key: str = ""
+) -> Iterator[dict[str, Any]]:
+    Dataset.objects.filter(
+        pk=dataset_id, state__in=[Dataset.State.IDLE, Dataset.State.ERROR]
+    ).update(state=Dataset.State.DIAGNOSING)
+    try:
+        yield from iter_turn(
+            dataset_id,
+            prompts.FOLLOW_UP.format(message=message.strip()),
+            display=message.strip(),
+            user=user,
+            turn_key=turn_key,
+        )
+    finally:
+        settle(dataset_id)
 
 
 def transcript(dataset: Dataset) -> str:

@@ -242,8 +242,6 @@ STRIPE_PRO_PRICE_ID = os.environ.get("STRIPE_PRO_PRICE_ID")
 # One-time price of a single Overmind Credit ($0.01); top-up quantity = credits bought.
 STRIPE_CREDIT_PRICE_ID = os.environ.get("STRIPE_CREDIT_PRICE_ID")
 
-CURSOR_API_KEY = os.environ.get("CURSOR_API_KEY", "")
-
 # The hosted GLiNER endpoint handles unstructured PII (PERSON/LOCATION/ORG);
 # structured secrets stay on the local regex/checksum validators.
 PII_NER_ENDPOINT_URL = os.environ.get("PII_NER_ENDPOINT_URL", "")
@@ -449,10 +447,11 @@ CELERY_BEAT_SCHEDULE = {
     },
 }
 
-# OPENROUTER_API_KEY powers every chat/completion call. OPENAI_API_KEY is used
-# only for embeddings, which OpenRouter does not proxy.
 OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY", "")
+ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
+GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "")
 OPENROUTER_API_KEY = os.environ.get("OPENROUTER_API_KEY", "")
+CURSOR_API_KEY = os.environ.get("CURSOR_API_KEY", "")
 
 # Feedback-channel incoming webhook; blank disables the notification.
 SLACK_FEEDBACK_WEBHOOK_URL = os.environ.get("SLACK_FEEDBACK_WEBHOOK_URL", "")
@@ -603,9 +602,6 @@ if FINETUNING_BACKEND == "modal" and not (
     raise ImproperlyConfigured(
         "MODAL_TOKEN_ID and MODAL_TOKEN_SECRET must be set when FINETUNING_BACKEND=modal"
     )
-
-if not CURSOR_API_KEY:
-    raise ImproperlyConfigured("CURSOR_API_KEY must be set")
 
 # The InferenceAPIServer ASGI endpoint, printed by `modal deploy`.
 INFERENCE_API_URL: str = os.environ.get("INFERENCE_API_URL", "")

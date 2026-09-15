@@ -180,6 +180,7 @@ export * from './IntentEnum';
 export * from './ModeCd6Enum';
 export * from './ModelCatalogResponse';
 export * from './ModelCheckpoints';
+export * from './ModelDefaults';
 export * from './ModelSwapPrompt';
 export * from './ModelTierEnum';
 export * from './NullEnum';

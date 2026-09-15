@@ -31,9 +31,9 @@ def _close_cursor_sdk_bridge(**_kwargs: object) -> None:
     The SDK's own ``atexit`` cleanup only fires on a clean interpreter exit, so
     without this the bridge is orphaned across restarts. Best-effort.
     """
-    from cursor_sdk import close_default_client
-
     try:
+        from cursor_sdk import close_default_client
+
         close_default_client()
     except Exception:  # noqa: BLE001 — shutdown cleanup is best-effort
         logger.warning("cursor-sdk-bridge shutdown cleanup failed", exc_info=True)

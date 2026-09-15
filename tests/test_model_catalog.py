@@ -157,7 +157,9 @@ class TestModelCatalogEndpoint:
             res = client.get(CATALOG_URL)
 
         assert res.status_code == 200
-        assert res.json() == {"models": [], "upstream_available": False}
+        body = res.json()
+        assert body["models"] == [] and body["upstream_available"] is False
+        assert body["defaults"]["judge_model"] == body["defaults"]["judge_models"][0]
 
     def test_catalog_is_cached(self):
         client = _auth_client()
@@ -236,7 +238,7 @@ class TestCatalogSlugRouting:
 
         # The client is lru_cached, so a test that already built one would hand
         # this call a live client and the key check would never run.
-        llms._openrouter_client.cache_clear()
+        llms._provider_client.cache_clear()
         with (
             mock.patch.dict("os.environ", {}, clear=False),
             mock.patch.object(llms.os.environ, "get", return_value=None),

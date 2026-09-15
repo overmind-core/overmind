@@ -10,8 +10,7 @@ import os
 import requests
 from django.core.cache import cache
 
-from overbae.core.llms import normalize_model_name
-from overbae.core.model_resolver import OPENROUTER_MODEL_SLUGS
+from overbae.core.model_registry import OPENROUTER_MODEL_SLUGS, normalize_model_name, pricing_slug
 
 logger = logging.getLogger(__name__)
 
@@ -106,18 +105,6 @@ def fetch_model_catalog() -> tuple[list[dict], bool]:
     return models, True
 
 
-def _openrouter_slug(model_name: str) -> str | None:
-    """Resolve a model name to its OpenRouter slug, mirroring ``call_llm``'s
-    resolution. An unrecognized bare name has no routable slug.
-    """
-    name = normalize_model_name(model_name)
-    if name in OPENROUTER_MODEL_SLUGS:
-        return OPENROUTER_MODEL_SLUGS[name]
-    if "/" in name:
-        return name.removeprefix("openrouter/")
-    return None
-
-
 def resolve_bare_openrouter_slug(model_name: str) -> str | None:
     """Canonical OpenRouter slug for a bare model name (no ``provider/`` prefix),
     or ``None`` when it cannot be resolved. Curated names win; otherwise the
@@ -153,7 +140,7 @@ def estimate_cost(
     the provider's cache-read rate, an order of magnitude under fresh input; charging
     it as fresh input overstates a long agent conversation several times over.
     """
-    slug = _openrouter_slug(model_name)
+    slug = pricing_slug(model_name)
     if slug is None:
         return None
     models, upstream_available = fetch_model_catalog()
@@ -184,7 +171,7 @@ def is_model_available(model_name: str) -> bool:
     """True when ``model_name`` resolves to a slug OpenRouter actually serves — checked
     at run creation rather than failing per-sample at execution.
     """
-    slug = _openrouter_slug(model_name)
+    slug = pricing_slug(model_name)
     if slug is None:
         return False
     models, upstream_available = fetch_model_catalog()

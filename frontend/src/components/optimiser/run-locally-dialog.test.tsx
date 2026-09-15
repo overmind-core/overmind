@@ -14,6 +14,11 @@ vi.mock("@/hooks/use-evaluations", () => ({
   useModelCatalogQuery: () =>
     mocks.catalog() ?? {
       data: {
+        defaults: {
+          backtestModels: ["openai/gpt-5-mini", "anthropic/claude-sonnet-4"],
+          judgeModel: "openai/gpt-5-mini",
+          judgeModels: ["openai/gpt-5-mini"],
+        },
         models: [
           {
             contextLength: null,
@@ -207,8 +212,11 @@ dataset: ds-1`
 });
 
 describe("buildBacktestPrompt", () => {
-  it("defaults to the starter OpenRouter model pair", () => {
-    const prompt = buildBacktestPrompt("invoice-extract", "ds-1");
+  it("names the catalog's default pair when nothing was chosen", () => {
+    const prompt = buildBacktestPrompt("invoice-extract", "ds-1", [
+      "openai/gpt-5-mini",
+      "anthropic/claude-sonnet-4",
+    ]);
     expect(prompt).toContain("/overmind backtest");
     expect(prompt).toContain("capability: invoice-extract");
     expect(prompt).toContain("dataset: ds-1");

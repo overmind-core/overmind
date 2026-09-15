@@ -57,10 +57,9 @@ def create_dataset(
 
 
 def message_agent(dataset, user, message: str) -> Dataset:
-    """Require idle. Atomically idle → diagnosing before queueing; DatasetError if busy."""
-    n = Dataset.objects.filter(pk=dataset.pk, state=Dataset.State.IDLE).update(
-        state=Dataset.State.DIAGNOSING
-    )
+    n = Dataset.objects.filter(
+        pk=dataset.pk, state__in=[Dataset.State.IDLE, Dataset.State.ERROR]
+    ).update(state=Dataset.State.DIAGNOSING)
     if n != 1:
         dataset.refresh_from_db()
         raise DatasetError("The dataset is busy. Wait for it.", code=dataset.state)

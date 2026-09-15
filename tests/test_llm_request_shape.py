@@ -28,7 +28,7 @@ def _response(content="hi", model="openai/gpt-5.6-luna", cached=0):
 @pytest.fixture
 def captured(monkeypatch):
     monkeypatch.setenv("OPENROUTER_API_KEY", "or-key")
-    llms._openrouter_client.cache_clear()
+    llms._provider_client.cache_clear()
     seen = {}
 
     def _fake(client, completion_kwargs, request_kwargs, retry_deadline=None):
