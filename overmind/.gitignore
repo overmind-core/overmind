@@ -1,0 +1,40 @@
+# Python-generated files
+__pycache__/
+*.py[oc]
+build/
+dist/
+wheels/
+*.egg-info
+
+_MACOSX/
+
+# Virtual environments
+.venv
+worktrees/
+results/
+queue/
+
+# Agent prompt files (generated per-session by launchers)
+/CLAUDE.md
+/AGENTS.md
+
+# Experimental code/artifacts
+dev/
+
+# Generated images/plots
+*.png
+
+# Results and output
+tmp/
+run.log
+.env
+.overmind
+.overmind_runners/
+.DS_Store
+.coverage
+testing_agents
+
+.pytest_cache
+.vscode
+.ruff_cache
+.ipynb_checkpoints

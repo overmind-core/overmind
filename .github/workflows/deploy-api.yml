@@ -1,0 +1,203 @@
+name: Deploy API
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - "Dockerfile"
+      - "overbae/**"
+      - "pyproject.toml"
+      - "manage.py"
+      - ".github/workflows/deploy-api.yml"
+  release:
+    types: [published]
+
+concurrency:
+  # Staging (main) and prod (published release) must not block each other.
+  group: deploy-api-${{ github.event_name == 'release' && 'prod' || 'staging' }}
+  cancel-in-progress: false
+
+env:
+  AWS_REGION: eu-west-1
+  # Not secrets — OIDC controls who can assume these roles (see cloud/github_oidc.tf).
+  # Build always pushes to the shared prod ECR repo, so it always uses the prod role;
+  # deploys use the role scoped to the target environment's cluster.
+  AWS_BUILD_ROLE_ARN: arn:aws:iam::318651457362:role/overmind-prod-github-deploy
+  AWS_DEPLOY_ROLE_ARN: ${{ github.event_name == 'release' && 'arn:aws:iam::318651457362:role/overmind-prod-github-deploy' || 'arn:aws:iam::318651457362:role/overmind-staging-github-deploy' }}
+  ECR_REPOSITORY: overmind-prod-app
+  # main / workflow_dispatch → staging; published release → production
+  ECS_CLUSTER: ${{ github.event_name == 'release' && 'overmind-prod-cluster' || 'overmind-staging-cluster' }}
+  ECS_SERVICES: "api celery-worker celery-beat celery-generation-worker celery-scoring-worker celery-trace-scoring-worker celery-ingest-worker celery-workshop-worker"
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+    outputs:
+      image_uri: ${{ steps.image-uri.outputs.uri }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ env.AWS_BUILD_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+          role-session-name: github-${{ github.run_id }}-build
+
+      - name: Login to Amazon ECR
+        id: ecr-login
+        uses: aws-actions/amazon-ecr-login@v2
+
+      # ECR repo is immutable: never reuse a tag. main uses sha-…; published
+      # releases use the release tag so a later prod cut of the same commit can still push.
+      - name: Set image tag
+        run: |
+          if [[ "$GITHUB_EVENT_NAME" == release ]]; then
+            echo "IMAGE_TAG=${GITHUB_REF_NAME}" >> "$GITHUB_ENV"
+          else
+            echo "IMAGE_TAG=sha-${GITHUB_SHA::7}" >> "$GITHUB_ENV"
+          fi
+
+      - name: Compose image URI
+        id: image-uri
+        run: echo "uri=${{ steps.ecr-login.outputs.registry }}/${{ env.ECR_REPOSITORY }}:${{ env.IMAGE_TAG }}" >> "$GITHUB_OUTPUT"
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build and push image
+        id: build
+        uses: docker/build-push-action@v6
+        with:
+          tags: ${{ steps.image-uri.outputs.uri }}
+          labels: |
+            org.opencontainers.image.title=Overmind API
+            org.opencontainers.image.description=Overmind production API and background workers
+            org.opencontainers.image.vendor=Overmind Platform
+          context: .
+          push: true
+          # Avoid extra untagged manifest rows in ECR from attestations
+          provenance: false
+          sbom: false
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  # API first (migrations / schema), then celery workers in parallel.
+  deploy-api:
+    runs-on: ubuntu-latest
+    needs: [build-and-push]
+    steps:
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ env.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+          role-session-name: github-${{ github.run_id }}-api
+
+      # A plain --force-new-deployment would just redeploy whatever tag the task
+      # definition already pins. Since we no longer push `latest`, register a new
+      # task definition revision pointing at the immutable image, then roll to it.
+      - name: Deploy immutable image
+        env:
+          IMAGE_URI: ${{ needs.build-and-push.outputs.image_uri }}
+          SERVICE: api
+        run: |
+          set -euo pipefail
+
+          task_def_arn=$(aws ecs describe-services \
+            --cluster "$ECS_CLUSTER" --services "$SERVICE" \
+            --query 'services[0].taskDefinition' --output text)
+
+          aws ecs describe-task-definition --task-definition "$task_def_arn" \
+            --query 'taskDefinition' --output json > taskdef.json
+
+          # Repoint only containers running our app image; leave any sidecars alone.
+          jq --arg image "$IMAGE_URI" --arg repo "$ECR_REPOSITORY" '
+            .containerDefinitions |= map(
+              if (.image | contains("/" + $repo + ":")) then .image = $image else . end
+            )
+            | del(.taskDefinitionArn, .revision, .status, .requiresAttributes,
+                  .compatibilities, .registeredAt, .registeredBy, .deregisteredAt)
+          ' taskdef.json > new-taskdef.json
+
+          new_task_def_arn=$(aws ecs register-task-definition \
+            --cli-input-json file://new-taskdef.json \
+            --query 'taskDefinition.taskDefinitionArn' --output text)
+
+          aws ecs update-service \
+            --cluster "$ECS_CLUSTER" --service "$SERVICE" \
+            --task-definition "$new_task_def_arn" \
+            --query 'service.serviceName' --output text
+
+      - name: Wait for service stability
+        run: |
+          aws ecs wait services-stable \
+            --cluster "$ECS_CLUSTER" \
+            --services api
+
+  deploy-workers:
+    runs-on: ubuntu-latest
+    needs: [build-and-push, deploy-api]
+    strategy:
+      fail-fast: false
+      matrix:
+        service:
+          [
+            celery-worker,
+            celery-beat,
+            celery-generation-worker,
+            celery-scoring-worker,
+            celery-trace-scoring-worker,
+            celery-ingest-worker,
+            celery-workshop-worker,
+          ]
+    steps:
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ env.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+          role-session-name: github-${{ github.run_id }}-${{ matrix.service }}
+
+      - name: Deploy immutable image
+        env:
+          IMAGE_URI: ${{ needs.build-and-push.outputs.image_uri }}
+          SERVICE: ${{ matrix.service }}
+        run: |
+          set -euo pipefail
+
+          task_def_arn=$(aws ecs describe-services \
+            --cluster "$ECS_CLUSTER" --services "$SERVICE" \
+            --query 'services[0].taskDefinition' --output text)
+
+          aws ecs describe-task-definition --task-definition "$task_def_arn" \
+            --query 'taskDefinition' --output json > taskdef.json
+
+          # Repoint only containers running our app image; leave any sidecars alone.
+          jq --arg image "$IMAGE_URI" --arg repo "$ECR_REPOSITORY" '
+            .containerDefinitions |= map(
+              if (.image | contains("/" + $repo + ":")) then .image = $image else . end
+            )
+            | del(.taskDefinitionArn, .revision, .status, .requiresAttributes,
+                  .compatibilities, .registeredAt, .registeredBy, .deregisteredAt)
+          ' taskdef.json > new-taskdef.json
+
+          new_task_def_arn=$(aws ecs register-task-definition \
+            --cli-input-json file://new-taskdef.json \
+            --query 'taskDefinition.taskDefinitionArn' --output text)
+
+          aws ecs update-service \
+            --cluster "$ECS_CLUSTER" --service "$SERVICE" \
+            --task-definition "$new_task_def_arn" \
+            --query 'service.serviceName' --output text
+
+      - name: Wait for service stability
+        run: |
+          aws ecs wait services-stable \
+            --cluster "$ECS_CLUSTER" \
+            --services "${{ matrix.service }}"

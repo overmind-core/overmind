@@ -1,0 +1,165 @@
+"""Tests for the lifecycle / state helpers in :mod:`overmind.tracing`.
+
+Helpers covered
+---------------
+* :func:`overmind.tracing.set_workflow_name`
+* :func:`overmind.tracing.set_conversation_id`
+* :func:`overmind.tracing.capture_exception`
+* :func:`overmind.tracing.force_flush_traces`
+* :func:`overmind.tracing.set_tag`
+* :func:`overmind.tracing.set_user`
+"""
+
+from __future__ import annotations
+
+from unittest.mock import MagicMock, patch
+
+import pytest
+
+from overmind.config import Config, dump
+from overmind.tracing import (
+    capture_exception,
+    force_flush_traces,
+    get_api_settings,
+    set_conversation_id,
+    set_tag,
+    set_user,
+    set_workflow_name,
+)
+
+
+def test_api_settings_reuse_synced_project_credential(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.delenv("OVERMIND_API_KEY", raising=False)
+    monkeypatch.delenv("OVERMIND_API_URL", raising=False)
+    dump(
+        Config(
+            api_key="ovr_project_key",
+            base_url="https://api.example",
+            project_id="11111111-1111-1111-1111-111111111111",
+        )
+    )
+
+    assert get_api_settings() == ("ovr_project_key", "https://api.example")
+
+
+@pytest.fixture
+def recording_span():
+    """Patch ``trace.get_current_span`` to a fresh recording-mock span."""
+    span = MagicMock()
+    span.is_recording.return_value = True
+    with patch("overmind.tracing.trace.get_current_span", return_value=span):
+        yield span
+
+
+@pytest.fixture
+def ended_span():
+    span = MagicMock()
+    span.is_recording.return_value = False
+    with patch("overmind.tracing.trace.get_current_span", return_value=span):
+        yield span
+
+
+class TestCaptureException:
+    def test_records_exception_and_sets_error_status(self, recording_span):
+        exc = ValueError("boom")
+        capture_exception(exc)
+        recording_span.record_exception.assert_called_once_with(exc)
+        recording_span.set_status.assert_called_once()
+
+    def test_silent_on_ended_span(self, ended_span):
+        capture_exception(ValueError("boom"))
+        ended_span.record_exception.assert_not_called()
+        ended_span.set_status.assert_not_called()
+
+
+class TestSetTagGuards:
+    def test_ignored_when_span_ended(self, ended_span):
+        set_tag("foo", "bar")
+        ended_span.set_attribute.assert_not_called()
+
+
+class TestContextHelpers:
+    """Workflow / agent / conversation helpers attach to the OTel context."""
+
+    @patch("overmind.tracing.attach")
+    @patch("overmind.tracing.set_value", side_effect=lambda key, value: (key, value))
+    def test_set_workflow_name_attaches(self, mock_set_value, mock_attach):
+        set_workflow_name("checkout-flow")
+        mock_set_value.assert_called_once()
+        assert "checkout-flow" in mock_set_value.call_args.args
+        mock_attach.assert_called_once()
+
+    @patch("overmind.tracing.attach")
+    @patch("overmind.tracing.set_value", side_effect=lambda key, value: (key, value))
+    def test_set_conversation_id_attaches(self, mock_set_value, mock_attach):
+        set_conversation_id("conv-123")
+        assert "conv-123" in mock_set_value.call_args.args
+        mock_attach.assert_called_once()
+
+
+class TestSetUser:
+    def test_writes_user_attributes(self, recording_span):
+        set_user("user-1", email="u@example.com", username="u")
+        keys = {c.args[0] for c in recording_span.set_attribute.call_args_list}
+        assert {"user.id", "user.email", "user.username"} <= keys
+
+
+class TestForceFlushTraces:
+    def test_no_op_when_provider_lacks_force_flush(self):
+        class _Stub:
+            pass
+
+        with patch("overmind.tracing.trace.get_tracer_provider", return_value=_Stub()):
+            force_flush_traces(timeout_millis=500)
+
+    def test_calls_force_flush_when_provider_supports_it(self):
+        provider = MagicMock()
+        with patch("overmind.tracing.trace.get_tracer_provider", return_value=provider):
+            force_flush_traces(timeout_millis=750)
+        provider.force_flush.assert_called_once_with(timeout_millis=750)
+
+
+class TestInitDebug:
+    def test_debug_logs_setup_summary(self, caplog):
+        import overmind.tracing as tr
+
+        # conftest already initialised the SDK, so this exercises the re-init path.
+        with caplog.at_level("INFO", logger="overmind"):
+            assert tr.init(debug=True) is True
+
+        (record,) = (r for r in caplog.records if r.message.startswith("Overmind debug:"))
+        for fragment in ("endpoint=", "capability_id=", "providers=", "export=", "export_orphan_spans="):
+            assert fragment in record.message
+
+
+class TestTracingAll:
+    """Regression guard for the public ``overmind.tracing.__all__`` surface."""
+
+    def test_all_contains_core_lifecycle_helpers(self):
+        import overmind.tracing as tr
+
+        expected = {
+            "capability",
+            "capture_exception",
+            "deliver",
+            "enable_tracing",
+            "force_flush_traces",
+            "init",
+            "normalize_messages",
+            "observe",
+            "set_conversation_id",
+            "set_tag",
+            "set_user",
+            "set_workflow_name",
+            "start_span",
+            "task",
+        }
+        missing = expected - set(tr.__all__)
+        assert missing == set(), f"Missing from tracing.__all__: {missing}"
+
+    def test_all_names_resolve(self):
+        import overmind.tracing as tr
+
+        for name in tr.__all__:
+            assert hasattr(tr, name), f"__all__ lists '{name}' but module has no attribute"

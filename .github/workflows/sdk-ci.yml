@@ -1,0 +1,47 @@
+name: SDK CI
+
+on:
+  pull_request:
+    types: [opened, synchronize, ready_for_review]
+    branches: [main, oss]
+    paths:
+      - "overmind/**"
+      - ".github/workflows/sdk-ci.yml"
+  push:
+    branches: [main, oss]
+    paths:
+      - "overmind/**"
+      - ".github/workflows/sdk-ci.yml"
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+jobs:
+  lint-and-test:
+    if: github.event_name == 'push' || github.event.pull_request.draft == false
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: overmind
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v6
+        with:
+          version: "0.11.0"
+          enable-cache: true
+          # SDK supports 3.10+; pin a current CPython for CI stability.
+          python-version: "3.13"
+
+      - name: Install SDK dependencies
+        run: uv sync --frozen --extra tracing --group dev
+
+      - name: Lint & format
+        run: make lint-check
+
+      - name: Run SDK tests
+        run: make test

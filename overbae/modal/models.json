@@ -1,0 +1,3239 @@
+{
+  "comment": "Single source of truth for all models supported by the Overmind platform. Each entry carries a 'backend' field (together | baseten). Models available on multiple backends appear as separate entries with their own inference/finetuning sub-configs. inference.gpu_type is the default for base-model inference (BF16 serving, single GPU). num_attn_layers/num_kv_heads/head_dim are used by gpu_selector.py to derive the optimal GPU + concurrency for a finetuned model at its training context_length. For hybrid models (Qwen3.5), num_attn_layers counts only full-attention layers. Use model_registry.py helpers to filter by backend. To add/remove models, edit only this file. Baseten models train LoRA or Full on H100s/H200s via our TRL train.py; finetuning.context_length is the model's max trainable context = HF config max_position_embeddings (Qwen2.5 32768, Qwen3 dense 40960, Qwen3.5/3.6/3.8/Coder 262144, Llama 3.x / GPT-OSS / Antares-1B 131072, Antares-350M 32768, LFM2.5-230M/350M/1.2B 32768 per Liquid's documented window, LFM2.5-8B-A1B 128000, LFM2.5-2.6B 131072; train.py applies no RoPE scaling). context_length (top-level) is the published inference window (YaRN-extended where the vendor documents it: Qwen2.5\u22657B and Qwen3 dense \u2192 131072; Qwen2.5-0.5B stays 32768). Baseten itself imposes no per-model training context limit (max_seq_len up to 1048576, docs.baseten.co/engines/engine-builder-llm/engine-builder-config; training is arbitrary code, docs.baseten.co/training/getting-started). The runner snaps the actual training MAX_LENGTH up from dataset stats using finetuning_providers.<backend> policy below. pricing.train_from_usd is a marketing 'from' floor for a typical small LoRA run (Baseten H100 $0.10833/GPU-min = $6.50/h, baseten.co/pricing): \u226414B anchored on Jul 2026 Baseten-invoiced job averages; larger sizes estimated from typical GPU-minutes \u00d7 rate on 1\u00d7H100 (\u226472B). pricing.run_from_usd_per_1m_output is serving per 1M output tokens (Modal L4/L40S self-hosted vLLM floors; MoE uses active-param band). group is the marketing library tab label (Group on /models specs); provider comes from providers.display_names. model.marketing holds buyer-facing copy per model (pitch, description, overview, good_for) for the marketing site detail pages. group is only the library tab/filter label. library_filters defines the marketing /models multi-select filters (use_case, tier, context); each model.use_cases lists which use-case filter ids apply. tier/context filters match model.tier and model.context_length against library_filters entries. The order of the models array is the catalog display order within a tier (newest generation first); recommendation ranking is decided by benchmark grades, not by this order.",
+  "providers": {
+    "comment": "Friendly display name per model-id prefix (the part before the first '/'), keyed lowercase, under display_names. Used by overbae.services.model_library to label each model's family/provider on the public /library pages. Unknown prefixes fall back to a title-cased version of the raw prefix \u2014 add an entry here instead of hardcoding it in Python.",
+    "display_names": {
+      "qwen": "Qwen",
+      "meta-llama": "Meta",
+      "openai": "Open AI",
+      "fdtn-ai": "Cisco",
+      "google": "Google",
+      "nvidia": "NVIDIA",
+      "liquidai": "Liquid AI",
+      "deepseek": "DeepSeek",
+      "x-ai": "xAI",
+      "anthropic": "Anthropic"
+    }
+  },
+  "models": [
+    {
+      "id": "Qwen/Qwen3.5-2B",
+      "backend": "together",
+      "display": "Qwen 3.5 2B",
+      "hf_model_id": "Qwen/Qwen3.5-2B",
+      "tier": "compact",
+      "params": "2B",
+      "total_params_b": 2.0,
+      "context_length": 131072,
+      "supports_tool_calling": true,
+      "type": null,
+      "hidden_size": 2048,
+      "fp8_supported": true,
+      "inference": {
+        "gpu_type": "L4",
+        "max_model_len": 8192
+      },
+      "finetuning": {
+        "context_length": 131072,
+        "max_batch_size": 8,
+        "min_batch_size": 8,
+        "training_type": {
+          "full": {
+            "enabled": true
+          },
+          "lora": {
+            "enabled": true
+          }
+        }
+      },
+      "disabled": false,
+      "disabled_reason": null,
+      "num_attn_layers": 6,
+      "num_kv_heads": 2,
+      "head_dim": 256,
+      "group": "Qwen 3.5",
+      "pricing": {
+        "train_from_usd": 0.55,
+        "run_from_usd_per_1m_output": 4.0
+      },
+      "marketing": {
+        "pitch": "Compact Qwen 3.5 with full 256K training context and tool calling.",
+        "description": "The default recommendation for most agents. A 256K context window at every size, tool calling from 0.8B up, and compact models trainable at their full 256K context, the longest in the catalogue.",
+        "overview": "Qwen 3.5 is the default recommendation for most agents on Overmind. Every size shares a 256K inference context, tool calling starts at 0.8B, and the compact models train at their full 256K context, the longest trainable window in the catalogue.",
+        "good_for": [
+          "General-purpose agents that call tools",
+          "Long-trace training on compact bases",
+          "Size ladders from 0.8B through a 35B MoE"
+        ]
+      },
+      "use_cases": [
+        "tool-calling"
+      ]
+    },
+    {
+      "id": "Qwen/Qwen3.5-0.8B",
+      "backend": "together",
+      "display": "Qwen 3.5 0.8B",
+      "hf_model_id": "Qwen/Qwen3.5-0.8B",
+      "tier": "compact",
+      "params": "0.8B",
+      "total_params_b": 0.8,
+      "context_length": 131072,
+      "supports_tool_calling": true,
+      "type": null,
+      "hidden_size": 1536,
+      "fp8_supported": true,
+      "inference": {
+        "gpu_type": "L4",
+        "max_model_len": 8192
+      },
+      "finetuning": {
+        "context_length": 131072,
+        "max_batch_size": 8,
+        "min_batch_size": 8,
+        "training_type": {
+          "full": {
+            "enabled": true
+          },
+          "lora": {
+            "enabled": true
+          }
+        }
+      },
+      "disabled": false,
+      "disabled_reason": null,
+      "num_attn_layers": 6,
+      "num_kv_heads": 2,
+      "head_dim": 256,
+      "group": "Qwen 3.5",
+      "pricing": {
+        "train_from_usd": 0.5,
+        "run_from_usd_per_1m_output": 2.5
+      },
+      "marketing": {
+        "pitch": "Smallest Qwen 3.5 with tool calling, trainable at the full 256K context.",
+        "description": "The default recommendation for most agents. A 256K context window at every size, tool calling from 0.8B up, and compact models trainable at their full 256K context, the longest in the catalogue.",
+        "overview": "Qwen 3.5 is the default recommendation for most agents on Overmind. Every size shares a 256K inference context, tool calling starts at 0.8B, and the compact models train at their full 256K context, the longest trainable window in the catalogue.",
+        "good_for": [
+          "High-volume tool-calling loops at minimal serve cost",
+          "Long-trace training on a compact base",
+          "First experiment in a Qwen 3.5 size ladder"
+        ]
+      },
+      "use_cases": [
+        "tool-calling"
+      ]
+    },
+    {
+      "id": "Qwen/Qwen3-4B",
+      "backend": "together",
+      "display": "Qwen 3 4B",
+      "hf_model_id": "Qwen/Qwen3-4B",
+      "tier": "compact",
+      "params": "4B",
+      "total_params_b": 4.0,
+      "context_length": 40960,
+      "supports_tool_calling": true,
+      "type": null,
+      "hidden_size": 2560,
+      "fp8_supported": true,
+      "inference": {
+        "gpu_type": "L4",
+        "max_model_len": 8192
+      },
+      "finetuning": {
+        "context_length": 40960,
+        "max_batch_size": 16,
+        "min_batch_size": 8,
+        "training_type": {
+          "full": {
+            "enabled": true
+          },
+          "lora": {
+            "enabled": true
+          }
+        }
+      },
+      "disabled": false,
+      "disabled_reason": null,
+      "num_attn_layers": 36,
+      "num_kv_heads": 8,
+      "head_dim": 128,
+      "group": "Qwen 3",
+      "pricing": {
+        "train_from_usd": 0.7,
+        "run_from_usd_per_1m_output": 4.0
+      },
+      "marketing": {
+        "pitch": "Compact Qwen 3 step up when 1.7B underfits after training.",
+        "description": "The widest size ladder in the catalogue, 0.6B through 32B, plus a code-specialised mixture-of-experts model. Useful when you want to hold the family constant and vary only size across parallel experiments.",
+        "overview": "Qwen 3 gives you the widest size ladder in the catalogue: 0.6B through 32B, plus a code-specialised mixture-of-experts model. Hold the family constant, vary only size across parallel experiments, and let the benchmark pick the winner against your production model.",
+        "good_for": [
+          "Side-by-side size sweeps in one family",
+          "Code agents (via Qwen 3 Coder 30B)",
+          "Compact bases when tool calling is optional"
+        ]
+      },
+      "use_cases": [
+        "tool-calling"
+      ]
+    },
+    {
+      "id": "Qwen/Qwen3-1.7B",
+      "backend": "together",
+      "display": "Qwen 3 1.7B",
+      "hf_model_id": "Qwen/Qwen3-1.7B",
+      "tier": "compact",
+      "params": "1.7B",
+      "total_params_b": 1.7,
+      "context_length": 40960,
+      "supports_tool_calling": true,
+      "type": null,
+      "hidden_size": 2048,
+      "fp8_supported": true,
+      "inference": {
+        "gpu_type": "L4",
+        "max_model_len": 8192
+      },
+      "finetuning": {
+        "context_length": 40960,
+        "max_batch_size": 32,
+        "min_batch_size": 8,
+        "training_type": {
+          "full": {
+            "enabled": true
+          },
+          "lora": {
+            "enabled": true
+          }
+        }
+      },
+      "disabled": false,
+      "disabled_reason": null,
+      "num_attn_layers": 28,
+      "num_kv_heads": 8,
+      "head_dim": 128,
+      "group": "Qwen 3",
+      "pricing": {
+        "train_from_usd": 0.55,
+        "run_from_usd_per_1m_output": 4.0
+      },
+      "marketing": {
+        "pitch": "Compact Qwen 3 with tool calling for cheap, narrow agent jobs.",
+        "description": "The widest size ladder in the catalogue, 0.6B through 32B, plus a code-specialised mixture-of-experts model. Useful when you want to hold the family constant and vary only size across parallel experiments.",
+        "overview": "Qwen 3 gives you the widest size ladder in the catalogue: 0.6B through 32B, plus a code-specialised mixture-of-experts model. Hold the family constant, vary only size across parallel experiments, and let the benchmark pick the winner against your production model.",
+        "good_for": [
+          "Side-by-side size sweeps in one family",
+          "Code agents (via Qwen 3 Coder 30B)",
+          "Compact bases when tool calling is optional"
+        ]
+      },
+      "use_cases": [
+        "tool-calling"
+      ]
+    },
+    {
+      "id": "meta-llama/Llama-3.2-3B-Instruct",
+      "backend": "together",
+      "display": "Llama 3.2 3B Instruct",
+      "hf_model_id": "meta-llama/Llama-3.2-3B-Instruct",
+      "tier": "compact",
+      "params": "3B",
+      "total_params_b": 3.0,
+      "context_length": 131072,
+      "supports_tool_calling": true,
+      "type": null,
+      "hidden_size": 3072,
+      "fp8_supported": false,
+      "inference": {
+        "gpu_type": "L4",
+        "max_model_len": 8192
+      },
+      "finetuning": {
+        "context_length": 131072,
+        "max_batch_size": 8,
+        "min_batch_size": 8,
+        "training_type": {
+          "full": {
+            "enabled": true
+          },
+          "lora": {
+            "enabled": true
+          }
+        }
+      },
+      "disabled": false,
+      "disabled_reason": null,
+      "num_attn_layers": 28,
+      "num_kv_heads": 8,
+      "head_dim": 128,
+      "group": "Llama 3",
+      "pricing": {
+        "train_from_usd": 0.55,
+        "run_from_usd_per_1m_output": 4.0
+      },
+      "marketing": {
+        "pitch": "Compact Llama 3.2 step up, still trainable at the full 128K context.",
+        "description": "Meta's instruct models, all three trainable at their full 128K context. The natural choice when your rows are long and you want a compact model.",
+        "overview": "Llama 3 on Overmind covers Meta's instruct models at 1B, 3B, and 8B, each trainable at their full 128K context. Pick this family when your rows are long and you still want a compact model you can serve cheaply after training.",
+        "good_for": [
+          "Long-row training on compact bases",
+          "Meta-stack compatibility",
+          "Tool-calling agents at 1B through 8B"
+        ]
+      },
+      "use_cases": [
+        "tool-calling"
+      ]
+    },
+    {
+      "id": "meta-llama/Llama-3.2-1B-Instruct",
+      "backend": "together",
+      "display": "Llama 3.2 1B Instruct",
+      "hf_model_id": "meta-llama/Llama-3.2-1B-Instruct",
+      "tier": "compact",
+      "params": "1B",
+      "total_params_b": 1.0,
+      "context_length": 131072,
+      "supports_tool_calling": true,
+      "type": null,
+      "hidden_size": 2048,
+      "fp8_supported": false,
+      "inference": {
+        "gpu_type": "L4",
+        "max_model_len": 8192
+      },
+      "finetuning": {
+        "context_length": 131072,
+        "max_batch_size": 8,
+        "min_batch_size": 8,
+        "training_type": {
+          "full": {
+            "enabled": true
+          },
+          "lora": {
+            "enabled": true
+          }
+        }
+      },
+      "disabled": false,
+      "disabled_reason": null,
+      "num_attn_layers": 16,
+      "num_kv_heads": 8,
+      "head_dim": 64,
+      "group": "Llama 3",
+      "pricing": {
+        "train_from_usd": 0.5,
+        "run_from_usd_per_1m_output": 2.5
+      },
+      "marketing": {
+        "pitch": "Compact Llama trainable at full 128K context for long-row jobs.",
+        "description": "Meta's instruct models, all three trainable at their full 128K context. The natural choice when your rows are long and you want a compact model.",
+        "overview": "Llama 3 on Overmind covers Meta's instruct models at 1B, 3B, and 8B, each trainable at their full 128K context. Pick this family when your rows are long and you still want a compact model you can serve cheaply after training.",
+        "good_for": [
+          "Long-row training on compact bases",
+          "Meta-stack compatibility",
+          "Tool-calling agents at 1B through 8B"
+        ]
+      },
+      "use_cases": [
+        "tool-calling"
+      ]
+    },
+    {
+      "id": "Qwen/Qwen3.5-9B",
+      "backend": "together",
+      "display": "Qwen 3.5 9B",
+      "hf_model_id": "unsloth/Qwen3.5-9B",
+      "tier": "small",
+      "params": "9B",
+      "total_params_b": 9.0,
+      "context_length": 262144,
+      "supports_tool_calling": true,
+      "type": null,
+      "hidden_size": 4096,
+      "fp8_supported": true,
+      "inference": {
+        "gpu_type": "L4",
+        "max_model_len": 16384
+      },
+      "finetuning": {
+        "context_length": 65536,
+        "max_batch_size": 8,
+        "min_batch_size": 8,
+        "training_type": {
+          "full": {
+            "enabled": true
+          },
+          "lora": {
+            "enabled": true
+          }
+        }
+      },
+      "disabled": false,
+      "disabled_reason": null,
+      "num_attn_layers": 8,
+      "num_kv_heads": 4,
+      "head_dim": 256,
+      "group": "Qwen 3.5",
+      "pricing": {
+        "train_from_usd": 1.0,
+        "run_from_usd_per_1m_output": 6.0
+      },
+      "marketing": {
+        "pitch": "Small-tier Qwen 3.5 default when compact quality is not enough.",
+        "description": "The default recommendation for most agents. A 256K context window at every size, tool calling from 0.8B up, and compact models trainable at their full 256K context, the longest in the catalogue.",
+        "overview": "Qwen 3.5 is the default recommendation for most agents on Overmind. Every size shares a 256K inference context, tool calling starts at 0.8B, and the compact models train at their full 256K context, the longest trainable window in the catalogue.",
+        "good_for": [
+          "General-purpose agents that call tools",
+          "Long-trace training on compact bases",
+          "Size ladders from 0.8B through a 35B MoE"
+        ]
+      },
+      "use_cases": [
+        "tool-calling"
+      ]
+    },
+    {
+      "id": "Qwen/Qwen3-8B",
+      "backend": "together",
+      "display": "Qwen 3 8B",
+      "hf_model_id": "Qwen/Qwen3-8B",
+      "tier": "small",
+      "params": "8B",
+      "total_params_b": 8.0,
+      "context_length": 40960,
+      "supports_tool_calling": true,
+      "type": null,
+      "hidden_size": 4096,
+      "fp8_supported": true,
+      "inference": {
+        "gpu_type": "L4",
+        "max_model_len": 16384
+      },
+      "finetuning": {
+        "context_length": 40960,
+        "max_batch_size": 8,
+        "min_batch_size": 8,
+        "training_type": {
+          "full": {
+            "enabled": true
+          },
+          "lora": {
+            "enabled": true
+          }
+        }
+      },
+      "disabled": false,
+      "disabled_reason": null,
+      "num_attn_layers": 36,
+      "num_kv_heads": 8,
+      "head_dim": 128,
+      "group": "Qwen 3",
+      "pricing": {
+        "train_from_usd": 1.0,
+        "run_from_usd_per_1m_output": 6.0
+      },
+      "marketing": {
+        "pitch": "Small-tier Qwen 3 for size sweeps that need more than compact.",
+        "description": "The widest size ladder in the catalogue, 0.6B through 32B, plus a code-specialised mixture-of-experts model. Useful when you want to hold the family constant and vary only size across parallel experiments.",
+        "overview": "Qwen 3 gives you the widest size ladder in the catalogue: 0.6B through 32B, plus a code-specialised mixture-of-experts model. Hold the family constant, vary only size across parallel experiments, and let the benchmark pick the winner against your production model.",
+        "good_for": [
+          "Side-by-side size sweeps in one family",
+          "Code agents (via Qwen 3 Coder 30B)",
+          "Compact bases when tool calling is optional"
+        ]
+      },
+      "use_cases": [
+        "tool-calling"
+      ]
+    },
+    {
+      "id": "Qwen/Qwen2.5-7B-Instruct",
+      "backend": "together",
+      "display": "Qwen 2.5 7B Instruct",
+      "hf_model_id": "Qwen/Qwen2.5-7B-Instruct",
+      "tier": "small",
+      "params": "7B",
+      "total_params_b": 7.0,
+      "context_length": 32768,
+      "supports_tool_calling": true,
+      "type": null,
+      "hidden_size": 3584,
+      "fp8_supported": true,
+      "inference": {
+        "gpu_type": "L4",
+        "max_model_len": 16384
+      },
+      "finetuning": {
+        "context_length": 32768,
+        "max_batch_size": 16,
+        "min_batch_size": 8,
+        "training_type": {
+          "full": {
+            "enabled": true
+          },
+          "lora": {
+            "enabled": true
+          }
+        }
+      },
+      "disabled": false,
+      "disabled_reason": null,
+      "num_attn_layers": 28,
+      "num_kv_heads": 4,
+      "head_dim": 128,
+      "group": "Qwen 2.5",
+      "pricing": {
+        "train_from_usd": 1.0,
+        "run_from_usd_per_1m_output": 6.0
+      },
+      "marketing": {
+        "pitch": "Small-tier Qwen 2.5 instruct for pipelines already tuned on this line.",
+        "description": "The mature, heavily-benchmarked generation, including a dedicated coder model at 32B. Worth keeping when an existing pipeline is already tuned around it.",
+        "overview": "Qwen 2.5 is the mature, heavily-benchmarked generation on the platform, including a dedicated 32B coder. Keep it when an existing pipeline is already tuned around this line and you want controlled training rather than a family jump.",
+        "good_for": [
+          "Pipelines already tuned on Qwen 2.5",
+          "Code specialists at 32B",
+          "Stable baselines for eval-driven iteration"
+        ]
+      },
+      "use_cases": [
+        "tool-calling"
+      ]
+    },
+    {
+      "id": "meta-llama/Meta-Llama-3.1-8B-Instruct-Reference",
+      "backend": "together",
+      "display": "Llama 3.1 8B Instruct",
+      "hf_model_id": "meta-llama/Llama-3.1-8B-Instruct",
+      "tier": "small",
+      "params": "8B",
+      "total_params_b": 8.0,
+      "context_length": 131072,
+      "supports_tool_calling": true,
+      "type": null,
+      "hidden_size": 4096,
+      "fp8_supported": true,
+      "inference": {
+        "gpu_type": "L4",
+        "max_model_len": 8192
+      },
+      "finetuning": {
+        "context_length": 131072,
+        "max_batch_size": 8,
+        "min_batch_size": 8,
+        "training_type": {
+          "full": {
+            "enabled": true
+          },
+          "lora": {
+            "enabled": true
+          }
+        }
+      },
+      "disabled": false,
+      "disabled_reason": null,
+      "num_attn_layers": 32,
+      "num_kv_heads": 8,
+      "head_dim": 128,
+      "group": "Llama 3",
+      "pricing": {
+        "train_from_usd": 1.0,
+        "run_from_usd_per_1m_output": 6.0
+      },
+      "marketing": {
+        "pitch": "Small-tier Llama 3.1 with full 128K training context and tool calling.",
+        "description": "Meta's instruct models, all three trainable at their full 128K context. The natural choice when your rows are long and you want a compact model.",
+        "overview": "Llama 3 on Overmind covers Meta's instruct models at 1B, 3B, and 8B, each trainable at their full 128K context. Pick this family when your rows are long and you still want a compact model you can serve cheaply after training.",
+        "good_for": [
+          "Long-row training on compact bases",
+          "Meta-stack compatibility",
+          "Tool-calling agents at 1B through 8B"
+        ]
+      },
+      "use_cases": [
+        "tool-calling"
+      ]
+    },
+    {
+      "id": "Qwen/Qwen3.5-27B",
+      "backend": "together",
+      "display": "Qwen 3.5 27B",
+      "hf_model_id": "Qwen/Qwen3.5-27B",
+      "tier": "mid",
+      "params": "27B",
+      "total_params_b": 27.0,
+      "context_length": 131072,
+      "supports_tool_calling": true,
+      "type": null,
+      "hidden_size": 7168,
+      "fp8_supported": true,
+      "inference": {
+        "gpu_type": "A100-80GB",
+        "max_model_len": 16384
+      },
+      "finetuning": {
+        "context_length": 32768,
+        "max_batch_size": 16,
+        "min_batch_size": 16,
+        "training_type": {
+          "full": {
+            "enabled": true
+          },
+          "lora": {
+            "enabled": true
+          }
+        }
+      },
+      "disabled": true,
+      "disabled_reason": null,
+      "num_attn_layers": 16,
+      "num_kv_heads": 4,
+      "head_dim": 256,
+      "group": "Qwen 3.5",
+      "pricing": {
+        "train_from_usd": 2.0,
+        "run_from_usd_per_1m_output": 15.0
+      },
+      "marketing": {
+        "pitch": "Mid-tier Qwen 3.5 for agents that need more headroom before an MoE jump.",
+        "description": "The default recommendation for most agents. A 256K context window at every size, tool calling from 0.8B up, and compact models trainable at their full 256K context, the longest in the catalogue.",
+        "overview": "Qwen 3.5 is the default recommendation for most agents on Overmind. Every size shares a 256K inference context, tool calling starts at 0.8B, and the compact models train at their full 256K context, the longest trainable window in the catalogue.",
+        "good_for": [
+          "General-purpose agents that call tools",
+          "Long-trace training on compact bases",
+          "Size ladders from 0.8B through a 35B MoE"
+        ]
+      },
+      "use_cases": [
+        "tool-calling"
+      ]
+    },
+    {
+      "id": "Qwen/Qwen3-14B",
+      "backend": "together",
+      "display": "Qwen 3 14B",
+      "hf_model_id": "Qwen/Qwen3-14B",
+      "tier": "mid",
+      "params": "14B",
+      "total_params_b": 14.0,
+      "context_length": 40960,
+      "supports_tool_calling": true,
+      "type": null,
+      "hidden_size": 5120,
+      "fp8_supported": true,
+      "inference": {
+        "gpu_type": "L40S",
+        "max_model_len": 16384
+      },
+      "finetuning": {
+        "context_length": 40960,
+        "max_batch_size": 8,
+        "min_batch_size": 8,
+        "training_type": {
+          "full": {
+            "enabled": true
+          },
+          "lora": {
+            "enabled": true
+          }
+        }
+      },
+      "disabled": false,
+      "disabled_reason": null,
+      "num_attn_layers": 40,
+      "num_kv_heads": 8,
+      "head_dim": 128,
+      "group": "Qwen 3",
+      "pricing": {
+        "train_from_usd": 1.25,
+        "run_from_usd_per_1m_output": 10.0
+      },
+      "marketing": {
+        "pitch": "Mid-tier dense Qwen 3 for parallel experiments against compact and large.",
+        "description": "The widest size ladder in the catalogue, 0.6B through 32B, plus a code-specialised mixture-of-experts model. Useful when you want to hold the family constant and vary only size across parallel experiments.",
+        "overview": "Qwen 3 gives you the widest size ladder in the catalogue: 0.6B through 32B, plus a code-specialised mixture-of-experts model. Hold the family constant, vary only size across parallel experiments, and let the benchmark pick the winner against your production model.",
+        "good_for": [
+          "Side-by-side size sweeps in one family",
+          "Code agents (via Qwen 3 Coder 30B)",
+          "Compact bases when tool calling is optional"
+        ]
+      },
+      "use_cases": [
+        "tool-calling"
+      ]
+    },
+    {
+      "id": "Qwen/Qwen3.5-35B-A3B",
+      "backend": "together",
+      "display": "Qwen 3.5 35B MoE",
+      "hf_model_id": "Qwen/Qwen3.5-35B-A3B",
+      "tier": "large",
+      "params": "35B MoE (3B active)",
+      "total_params_b": 35.0,
+      "context_length": 262144,
+      "supports_tool_calling": true,
+      "type": null,
+      "hidden_size": 7168,
+      "fp8_supported": true,
+      "inference": {
+        "gpu_type": "A100-80GB",
+        "max_model_len": 16384
+      },
+      "finetuning": {
+        "context_length": 65536,
+        "max_batch_size": 8,
+        "min_batch_size": 8,
+        "training_type": {
+          "full": {
+            "enabled": false
+          },
+          "lora": {
+            "enabled": true
+          }
+        }
+      },
+      "disabled": true,
+      "disabled_reason": null,
+      "num_attn_layers": 10,
+      "num_kv_heads": 2,
+      "head_dim": 256,
+      "group": "Qwen 3.5",
+      "pricing": {
+        "train_from_usd": 2.5,
+        "run_from_usd_per_1m_output": 8.0
+      },
+      "marketing": {
+        "pitch": "Large MoE Qwen 3.5: 35B total weights, 3B active per token at serve time.",
+        "description": "The default recommendation for most agents. A 256K context window at every size, tool calling from 0.8B up, and compact models trainable at their full 256K context, the longest in the catalogue.",
+        "overview": "Qwen 3.5 is the default recommendation for most agents on Overmind. Every size shares a 256K inference context, tool calling starts at 0.8B, and the compact models train at their full 256K context, the longest trainable window in the catalogue.",
+        "good_for": [
+          "Higher-quality Qwen 3.5 runs with MoE serve economics",
+          "Tool-calling agents that outgrow dense mid-tier bases",
+          "Side-by-side experiments against Qwen 3.5 27B"
+        ]
+      },
+      "use_cases": [
+        "tool-calling"
+      ]
+    },
+    {
+      "id": "Qwen/Qwen3.5-4B",
+      "hf_model_id": "unsloth/Qwen3.5-4B",
+      "display": "Qwen 3.5 4B",
+      "tier": "compact",
+      "params": "4B",
+      "total_params_b": 4.0,
+      "context_length": 262144,
+      "supports_tool_calling": true,
+      "type": "chat",
+      "hidden_size": 2560,
+      "fp8_supported": true,
+      "inference": {
+        "gpu_type": "L4",
+        "max_model_len": 8192
+      },
+      "finetuning": {
+        "context_length": 262144,
+        "max_batch_size": 16,
+        "min_batch_size": 1,
+        "training_type": {
+          "full": {
+            "enabled": true,
+            "context_length": 131072,
+            "validated_context_length": true
+          },
+          "lora": {
+            "enabled": true,
+            "context_length": 131072,
+            "validated_context_length": true
+          }
+        },
+        "real_max_context_length": 131072
+      },
+      "num_attn_layers": 8,
+      "num_kv_heads": 4,
+      "head_dim": 256,
+      "backend": "baseten",
+      "disabled": false,
+      "disabled_reason": null,
+      "group": "Qwen 3.5",
+      "pricing": {
+        "train_from_usd": 0.7,
+        "run_from_usd_per_1m_output": 4.0
+      },
+      "marketing": {
+        "pitch": "Top of the Qwen 3.5 compact band, still trainable at 256K context.",
+        "description": "The default recommendation for most agents. A 256K context window at every size, tool calling from 0.8B up, and compact models trainable at their full 256K context, the longest in the catalogue.",
+        "overview": "Qwen 3.5 is the default recommendation for most agents on Overmind. Every size shares a 256K inference context, tool calling starts at 0.8B, and the compact models train at their full 256K context, the longest trainable window in the catalogue.",
+        "good_for": [
+          "General-purpose agents that call tools",
+          "Long-trace training on compact bases",
+          "Size ladders from 0.8B through a 35B MoE"
+        ]
+      },
+      "use_cases": [
+        "tool-calling"
+      ],
+      "benchmark_hf_model_ids": [
+        "Qwen/Qwen3.5-4B"
+      ]
+    },
+    {
+      "id": "Qwen/Qwen3.5-2B",
+      "hf_model_id": "unsloth/Qwen3.5-2B",
+      "display": "Qwen 3.5 2B",
+      "tier": "compact",
+      "params": "2B",
+      "total_params_b": 2.0,
+      "context_length": 262144,
+      "supports_tool_calling": true,
+      "type": "chat",
+      "hidden_size": 2048,
+      "fp8_supported": true,
+      "inference": {
+        "gpu_type": "L4",
+        "max_model_len": 8192
+      },
+      "finetuning": {
+        "context_length": 262144,
+        "max_batch_size": 32,
+        "min_batch_size": 1,
+        "training_type": {
+          "full": {
+            "enabled": true,
+            "context_length": 131072,
+            "validated_context_length": true
+          },
+          "lora": {
+            "enabled": true,
+            "context_length": 131072,
+            "validated_context_length": true
+          }
+        },
+        "real_max_context_length": 131072
+      },
+      "num_attn_layers": 6,
+      "num_kv_heads": 2,
+      "head_dim": 256,
+      "backend": "baseten",
+      "disabled": false,
+      "disabled_reason": null,
+      "group": "Qwen 3.5",
+      "pricing": {
+        "train_from_usd": 0.55,
+        "run_from_usd_per_1m_output": 4.0
+      },
+      "marketing": {
+        "pitch": "Compact Qwen 3.5 with full 256K training context and tool calling.",
+        "description": "The default recommendation for most agents. A 256K context window at every size, tool calling from 0.8B up, and compact models trainable at their full 256K context, the longest in the catalogue.",
+        "overview": "Qwen 3.5 is the default recommendation for most agents on Overmind. Every size shares a 256K inference context, tool calling starts at 0.8B, and the compact models train at their full 256K context, the longest trainable window in the catalogue.",
+        "good_for": [
+          "General-purpose agents that call tools",
+          "Long-trace training on compact bases",
+          "Size ladders from 0.8B through a 35B MoE"
+        ]
+      },
+      "use_cases": [
+        "tool-calling"
+      ],
+      "benchmark_hf_model_ids": [
+        "Qwen/Qwen3.5-2B"
+      ]
+    },
+    {
+      "id": "Qwen/Qwen3.5-0.8B",
+      "hf_model_id": "unsloth/Qwen3.5-0.8B",
+      "display": "Qwen 3.5 0.8B",
+      "tier": "compact",
+      "params": "0.8B",
+      "total_params_b": 0.8,
+      "context_length": 262144,
+      "supports_tool_calling": true,
+      "type": "chat",
+      "hidden_size": 1024,
+      "fp8_supported": true,
+      "inference": {
+        "gpu_type": "L4",
+        "max_model_len": 8192
+      },
+      "finetuning": {
+        "context_length": 262144,
+        "max_batch_size": 32,
+        "min_batch_size": 1,
+        "training_type": {
+          "full": {
+            "enabled": true,
+            "context_length": 131072,
+            "validated_context_length": true
+          },
+          "lora": {
+            "enabled": true,
+            "context_length": 131072,
+            "validated_context_length": true
+          }
+        },
+        "real_max_context_length": 131072
+      },
+      "num_attn_layers": 6,
+      "num_kv_heads": 2,
+      "head_dim": 256,
+      "backend": "baseten",
+      "disabled": false,
+      "disabled_reason": null,
+      "group": "Qwen 3.5",
+      "pricing": {
+        "train_from_usd": 0.5,
+        "run_from_usd_per_1m_output": 2.5
+      },
+      "marketing": {
+        "pitch": "Smallest Qwen 3.5 with tool calling, trainable at the full 256K context.",
+        "description": "The default recommendation for most agents. A 256K context window at every size, tool calling from 0.8B up, and compact models trainable at their full 256K context, the longest in the catalogue.",
+        "overview": "Qwen 3.5 is the default recommendation for most agents on Overmind. Every size shares a 256K inference context, tool calling starts at 0.8B, and the compact models train at their full 256K context, the longest trainable window in the catalogue.",
+        "good_for": [
+          "High-volume tool-calling loops at minimal serve cost",
+          "Long-trace training on a compact base",
+          "First experiment in a Qwen 3.5 size ladder"
+        ]
+      },
+      "use_cases": [
+        "tool-calling"
+      ],
+      "benchmark_hf_model_ids": [
+        "Qwen/Qwen3.5-0.8B"
+      ]
+    },
+    {
+      "id": "Qwen/Qwen3-4B",
+      "backend": "baseten",
+      "display": "Qwen 3 4B",
+      "hf_model_id": "unsloth/Qwen3-4B",
+      "tier": "compact",
+      "params": "4B",
+      "total_params_b": 4.0,
+      "context_length": 131072,
+      "supports_tool_calling": true,
+      "type": "chat",
+      "hidden_size": 2560,
+      "fp8_supported": true,
+      "inference": {
+        "gpu_type": "L4",
+        "max_model_len": 8192
+      },
+      "finetuning": {
+        "context_length": 40960,
+        "max_batch_size": 16,
+        "min_batch_size": 1,
+        "training_type": {
+          "full": {
+            "enabled": true,
+            "context_length": 40960,
+            "validated_context_length": true
+          },
+          "lora": {
+            "enabled": true,
+            "context_length": 40960,
+            "validated_context_length": true
+          }
+        },
+        "real_max_context_length": 40960
+      },
+      "disabled": false,
+      "disabled_reason": null,
+      "num_attn_layers": 36,
+      "num_kv_heads": 8,
+      "head_dim": 128,
+      "group": "Qwen 3",
+      "pricing": {
+        "train_from_usd": 0.7,
+        "run_from_usd_per_1m_output": 4.0
+      },
+      "marketing": {
+        "pitch": "Compact Qwen 3 step up when 1.7B underfits after training.",
+        "description": "The widest size ladder in the catalogue, 0.6B through 32B, plus a code-specialised mixture-of-experts model. Useful when you want to hold the family constant and vary only size across parallel experiments.",
+        "overview": "Qwen 3 gives you the widest size ladder in the catalogue: 0.6B through 32B, plus a code-specialised mixture-of-experts model. Hold the family constant, vary only size across parallel experiments, and let the benchmark pick the winner against your production model.",
+        "good_for": [
+          "Side-by-side size sweeps in one family",
+          "Code agents (via Qwen 3 Coder 30B)",
+          "Compact bases when tool calling is optional"
+        ]
+      },
+      "use_cases": [
+        "tool-calling"
+      ],
+      "benchmark_hf_model_ids": [
+        "Qwen/Qwen3-4B"
+      ]
+    },
+    {
+      "id": "Qwen/Qwen3-1.7B",
+      "backend": "baseten",
+      "display": "Qwen 3 1.7B",
+      "hf_model_id": "unsloth/Qwen3-1.7B",
+      "tier": "compact",
+      "params": "1.7B",
+      "total_params_b": 1.7,
+      "context_length": 131072,
+      "supports_tool_calling": false,
+      "type": "chat",
+      "hidden_size": 2048,
+      "fp8_supported": true,
+      "inference": {
+        "gpu_type": "L4",
+        "max_model_len": 8192
+      },
+      "finetuning": {
+        "context_length": 40960,
+        "max_batch_size": 32,
+        "min_batch_size": 1,
+        "training_type": {
+          "full": {
+            "enabled": true,
+            "context_length": 40960,
+            "validated_context_length": true
+          },
+          "lora": {
+            "enabled": true,
+            "context_length": 40960,
+            "validated_context_length": true
+          }
+        },
+        "real_max_context_length": 40960
+      },
+      "disabled": false,
+      "disabled_reason": null,
+      "num_attn_layers": 28,
+      "num_kv_heads": 8,
+      "head_dim": 128,
+      "group": "Qwen 3",
+      "pricing": {
+        "train_from_usd": 0.55,
+        "run_from_usd_per_1m_output": 4.0
+      },
+      "marketing": {
+        "pitch": "Compact Qwen 3 with tool calling for cheap, narrow agent jobs.",
+        "description": "The widest size ladder in the catalogue, 0.6B through 32B, plus a code-specialised mixture-of-experts model. Useful when you want to hold the family constant and vary only size across parallel experiments.",
+        "overview": "Qwen 3 gives you the widest size ladder in the catalogue: 0.6B through 32B, plus a code-specialised mixture-of-experts model. Hold the family constant, vary only size across parallel experiments, and let the benchmark pick the winner against your production model.",
+        "good_for": [
+          "Side-by-side size sweeps in one family",
+          "Code agents (via Qwen 3 Coder 30B)",
+          "Compact bases when tool calling is optional"
+        ]
+      },
+      "use_cases": [],
+      "benchmark_hf_model_ids": [
+        "Qwen/Qwen3-1.7B"
+      ]
+    },
+    {
+      "id": "Qwen/Qwen3-0.6B",
+      "backend": "baseten",
+      "display": "Qwen 3 0.6B",
+      "hf_model_id": "unsloth/Qwen3-0.6B",
+      "tier": "compact",
+      "params": "0.6B",
+      "total_params_b": 0.6,
+      "context_length": 131072,
+      "supports_tool_calling": false,
+      "type": "chat",
+      "hidden_size": 1024,
+      "fp8_supported": true,
+      "inference": {
+        "gpu_type": "L4",
+        "max_model_len": 8192
+      },
+      "finetuning": {
+        "context_length": 40960,
+        "max_batch_size": 32,
+        "min_batch_size": 1,
+        "training_type": {
+          "full": {
+            "enabled": true,
+            "context_length": 40960,
+            "validated_context_length": true
+          },
+          "lora": {
+            "enabled": true,
+            "context_length": 40960,
+            "validated_context_length": true
+          }
+        },
+        "real_max_context_length": 40960
+      },
+      "disabled": false,
+      "disabled_reason": null,
+      "num_attn_layers": 28,
+      "num_kv_heads": 8,
+      "head_dim": 128,
+      "group": "Qwen 3",
+      "pricing": {
+        "train_from_usd": 0.5,
+        "run_from_usd_per_1m_output": 2.5
+      },
+      "marketing": {
+        "pitch": "Smallest Qwen 3 base for non-tool agents where serve cost dominates.",
+        "description": "The widest size ladder in the catalogue, 0.6B through 32B, plus a code-specialised mixture-of-experts model. Useful when you want to hold the family constant and vary only size across parallel experiments.",
+        "overview": "Qwen 3 gives you the widest size ladder in the catalogue: 0.6B through 32B, plus a code-specialised mixture-of-experts model. Hold the family constant, vary only size across parallel experiments, and let the benchmark pick the winner against your production model.",
+        "good_for": [
+          "Non-tool agents at the lowest serve footprint",
+          "Size-ladder floor in Qwen 3 experiments",
+          "Narrow classification or routing jobs"
+        ]
+      },
+      "use_cases": [],
+      "benchmark_hf_model_ids": [
+        "Qwen/Qwen3-0.6B"
+      ]
+    },
+    {
+      "id": "Qwen/Qwen2.5-0.5B-Instruct",
+      "backend": "baseten",
+      "display": "Qwen 2.5 0.5B Instruct",
+      "hf_model_id": "unsloth/Qwen2.5-0.5B-Instruct",
+      "tier": "compact",
+      "params": "0.5B",
+      "total_params_b": 0.5,
+      "context_length": 32768,
+      "supports_tool_calling": false,
+      "type": "chat",
+      "hidden_size": 896,
+      "fp8_supported": true,
+      "inference": {
+        "gpu_type": "L4",
+        "max_model_len": 8192
+      },
+      "finetuning": {
+        "context_length": 32768,
+        "max_batch_size": 32,
+        "min_batch_size": 1,
+        "training_type": {
+          "full": {
+            "enabled": true,
+            "context_length": 32768,
+            "validated_context_length": true
+          },
+          "lora": {
+            "enabled": true,
+            "context_length": 32768,
+            "validated_context_length": true
+          }
+        },
+        "real_max_context_length": 32768
+      },
+      "disabled": false,
+      "disabled_reason": null,
+      "num_attn_layers": 24,
+      "num_kv_heads": 2,
+      "head_dim": 64,
+      "group": "Qwen 2.5",
+      "pricing": {
+        "train_from_usd": 0.5,
+        "run_from_usd_per_1m_output": 2.5
+      },
+      "marketing": {
+        "pitch": "Mature Qwen 2.5 floor for non-tool jobs already on this generation.",
+        "description": "The mature, heavily-benchmarked generation, including a dedicated coder model at 32B. Worth keeping when an existing pipeline is already tuned around it.",
+        "overview": "Qwen 2.5 is the mature, heavily-benchmarked generation on the platform, including a dedicated 32B coder. Keep it when an existing pipeline is already tuned around this line and you want controlled training rather than a family jump.",
+        "good_for": [
+          "Pipelines already tuned on Qwen 2.5",
+          "Code specialists at 32B",
+          "Stable baselines for eval-driven iteration"
+        ]
+      },
+      "use_cases": [],
+      "benchmark_hf_model_ids": [
+        "Qwen/Qwen2.5-0.5B-Instruct"
+      ]
+    },
+    {
+      "id": "meta-llama/Llama-3.2-3B-Instruct",
+      "backend": "baseten",
+      "display": "Llama 3.2 3B Instruct",
+      "hf_model_id": "unsloth/Llama-3.2-3B-Instruct",
+      "tier": "compact",
+      "params": "3B",
+      "total_params_b": 3.0,
+      "context_length": 131072,
+      "supports_tool_calling": false,
+      "type": "chat",
+      "hidden_size": 3072,
+      "fp8_supported": false,
+      "inference": {
+        "gpu_type": "L4",
+        "max_model_len": 8192
+      },
+      "finetuning": {
+        "context_length": 131072,
+        "max_batch_size": 8,
+        "min_batch_size": 1,
+        "training_type": {
+          "full": {
+            "enabled": true,
+            "context_length": 131072,
+            "validated_context_length": true
+          },
+          "lora": {
+            "enabled": true,
+            "context_length": 131072,
+            "validated_context_length": true
+          }
+        },
+        "real_max_context_length": 131072
+      },
+      "disabled": false,
+      "disabled_reason": null,
+      "num_attn_layers": 28,
+      "num_kv_heads": 8,
+      "head_dim": 128,
+      "group": "Llama 3",
+      "pricing": {
+        "train_from_usd": 0.55,
+        "run_from_usd_per_1m_output": 4.0
+      },
+      "marketing": {
+        "pitch": "Compact Llama 3.2 step up, still trainable at the full 128K context.",
+        "description": "Meta's instruct models, all three trainable at their full 128K context. The natural choice when your rows are long and you want a compact model.",
+        "overview": "Llama 3 on Overmind covers Meta's instruct models at 1B, 3B, and 8B, each trainable at their full 128K context. Pick this family when your rows are long and you still want a compact model you can serve cheaply after training.",
+        "good_for": [
+          "Long-row training on compact bases",
+          "Meta-stack compatibility",
+          "Tool-calling agents at 1B through 8B"
+        ]
+      },
+      "use_cases": [],
+      "benchmark_hf_model_ids": [
+        "meta-llama/Llama-3.2-3B-Instruct"
+      ]
+    },
+    {
+      "id": "meta-llama/Llama-3.2-1B-Instruct",
+      "backend": "baseten",
+      "display": "Llama 3.2 1B Instruct",
+      "hf_model_id": "unsloth/Llama-3.2-1B-Instruct",
+      "tier": "compact",
+      "params": "1B",
+      "total_params_b": 1.0,
+      "context_length": 131072,
+      "supports_tool_calling": false,
+      "type": "chat",
+      "hidden_size": 2048,
+      "fp8_supported": false,
+      "inference": {
+        "gpu_type": "L4",
+        "max_model_len": 8192
+      },
+      "finetuning": {
+        "context_length": 131072,
+        "max_batch_size": 32,
+        "min_batch_size": 1,
+        "training_type": {
+          "full": {
+            "enabled": true,
+            "context_length": 131072,
+            "validated_context_length": true
+          },
+          "lora": {
+            "enabled": true,
+            "context_length": 131072,
+            "validated_context_length": true
+          }
+        },
+        "real_max_context_length": 131072
+      },
+      "disabled": false,
+      "disabled_reason": null,
+      "num_attn_layers": 16,
+      "num_kv_heads": 8,
+      "head_dim": 64,
+      "group": "Llama 3",
+      "pricing": {
+        "train_from_usd": 0.5,
+        "run_from_usd_per_1m_output": 2.5
+      },
+      "marketing": {
+        "pitch": "Compact Llama trainable at full 128K context for long-row jobs.",
+        "description": "Meta's instruct models, all three trainable at their full 128K context. The natural choice when your rows are long and you want a compact model.",
+        "overview": "Llama 3 on Overmind covers Meta's instruct models at 1B, 3B, and 8B, each trainable at their full 128K context. Pick this family when your rows are long and you still want a compact model you can serve cheaply after training.",
+        "good_for": [
+          "Long-row training on compact bases",
+          "Meta-stack compatibility",
+          "Tool-calling agents at 1B through 8B"
+        ]
+      },
+      "use_cases": [],
+      "benchmark_hf_model_ids": [
+        "meta-llama/Llama-3.2-1B-Instruct"
+      ]
+    },
+    {
+      "id": "LiquidAI/LFM2.5-2.6B",
+      "backend": "baseten",
+      "display": "LFM2.5 2.6B",
+      "hf_model_id": "LiquidAI/LFM2.5-2.6B",
+      "tier": "compact",
+      "params": "2.6B",
+      "total_params_b": 2.6,
+      "context_length": 131072,
+      "supports_tool_calling": true,
+      "type": "chat",
+      "hidden_size": 2048,
+      "fp8_supported": false,
+      "inference": {
+        "gpu_type": "L40S",
+        "max_model_len": 8192
+      },
+      "finetuning": {
+        "context_length": 131072,
+        "max_batch_size": 8,
+        "min_batch_size": 1,
+        "training_type": {
+          "full": {
+            "enabled": false,
+            "context_length": 131072,
+            "validated_context_length": false
+          },
+          "lora": {
+            "enabled": false,
+            "context_length": 131072,
+            "validated_context_length": false
+          }
+        },
+        "real_max_context_length": 131072
+      },
+      "disabled": true,
+      "disabled_reason": "Pure reasoning checkpoint \u2014 chat template always opens <think>; thinking cannot be disabled at serve time",
+      "num_attn_layers": 8,
+      "num_kv_heads": 8,
+      "head_dim": 64,
+      "group": "LFM2.5",
+      "pricing": {
+        "train_from_usd": 0.55,
+        "run_from_usd_per_1m_output": 4.0
+      },
+      "marketing": {
+        "pitch": "Agentic 128K hybrid \u2014 post-trained for tool-heavy workloads.",
+        "description": "Liquid AI hybrid models for on-device and edge deployment. Fast decode, low memory, and agentic post-training across the ladder.",
+        "overview": "LFM2.5-2.6B extends the hybrid architecture to a 128K context with agentic SFT, distillation, and RL. Best when the job needs longer traces than the 1.2B tier without jumping to the MoE.",
+        "good_for": [
+          "Long-context agent loops at compact size",
+          "Multilingual tool calling beyond the 1.2B tier",
+          "Domain LoRA when 1.2B saturates"
+        ]
+      },
+      "use_cases": [
+        "tool-calling"
+      ]
+    },
+    {
+      "id": "LiquidAI/LFM2.5-1.2B-Instruct",
+      "backend": "baseten",
+      "display": "LFM2.5 1.2B Instruct",
+      "hf_model_id": "unsloth/LFM2.5-1.2B-Instruct",
+      "tier": "compact",
+      "params": "1.2B",
+      "total_params_b": 1.17,
+      "context_length": 32768,
+      "supports_tool_calling": true,
+      "type": "chat",
+      "hidden_size": 2048,
+      "fp8_supported": false,
+      "inference": {
+        "gpu_type": "L4",
+        "max_model_len": 8192
+      },
+      "finetuning": {
+        "context_length": 32768,
+        "max_batch_size": 16,
+        "min_batch_size": 1,
+        "training_type": {
+          "full": {
+            "enabled": true,
+            "context_length": 32768,
+            "validated_context_length": true
+          },
+          "lora": {
+            "enabled": true,
+            "context_length": 32768,
+            "validated_context_length": true
+          }
+        },
+        "real_max_context_length": 32768
+      },
+      "disabled": false,
+      "disabled_reason": null,
+      "num_attn_layers": 6,
+      "num_kv_heads": 8,
+      "head_dim": 64,
+      "group": "LFM2.5",
+      "pricing": {
+        "train_from_usd": 0.5,
+        "run_from_usd_per_1m_output": 2.5
+      },
+      "marketing": {
+        "pitch": "Sub-2B that rivals larger models for agents, extraction, and RAG.",
+        "description": "Liquid AI hybrid models for on-device and edge deployment. Fast decode, low memory, and agentic post-training across the ladder.",
+        "overview": "LFM2.5-1.2B-Instruct is Liquid's flagship small instruct model \u2014 28T-token pretrain plus multi-stage RL, ChatML tool calling, and day-one support for Transformers, vLLM, and llama.cpp. Strong on agentic tasks and RAG; not aimed at heavy coding or knowledge-intensive work.",
+        "good_for": [
+          "Agentic tool-calling and data extraction",
+          "RAG on edge or cost-sensitive cloud",
+          "Fast LoRA specialization under 1GB-class footprints"
+        ]
+      },
+      "use_cases": [
+        "tool-calling"
+      ],
+      "benchmark_hf_model_ids": [
+        "LiquidAI/LFM2.5-1.2B-Instruct"
+      ]
+    },
+    {
+      "id": "LiquidAI/LFM2.5-350M",
+      "backend": "baseten",
+      "display": "LFM2.5 350M",
+      "hf_model_id": "LiquidAI/LFM2.5-350M",
+      "tier": "compact",
+      "params": "350M",
+      "total_params_b": 0.35,
+      "context_length": 32768,
+      "supports_tool_calling": true,
+      "type": "chat",
+      "hidden_size": 1024,
+      "fp8_supported": false,
+      "inference": {
+        "gpu_type": "L4",
+        "max_model_len": 8192
+      },
+      "finetuning": {
+        "context_length": 32768,
+        "max_batch_size": 32,
+        "min_batch_size": 1,
+        "training_type": {
+          "full": {
+            "enabled": true,
+            "context_length": 32768,
+            "validated_context_length": true
+          },
+          "lora": {
+            "enabled": true,
+            "context_length": 32768,
+            "validated_context_length": true
+          }
+        },
+        "real_max_context_length": 32768
+      },
+      "disabled": false,
+      "disabled_reason": null,
+      "num_attn_layers": 6,
+      "num_kv_heads": 8,
+      "head_dim": 64,
+      "group": "LFM2.5",
+      "pricing": {
+        "train_from_usd": 0.5,
+        "run_from_usd_per_1m_output": 2.5
+      },
+      "marketing": {
+        "pitch": "Compact on-device instruct \u2014 teacher for the 230M distill.",
+        "description": "Liquid AI hybrid models for on-device and edge deployment. Fast decode, low memory, and agentic post-training across the ladder.",
+        "overview": "LFM2.5-350M is the compact instruct hybrid used as the distillation teacher for 230M. Same edge-first architecture with stronger out-of-the-box tool use and multilingual coverage.",
+        "good_for": [
+          "Edge agent prototypes with a bit more headroom than 230M",
+          "Multilingual tool-calling at sub-1B cost",
+          "Domain LoRA when 230M underfits"
+        ]
+      },
+      "use_cases": [
+        "tool-calling"
+      ]
+    },
+    {
+      "id": "LiquidAI/LFM2.5-230M",
+      "backend": "baseten",
+      "display": "LFM2.5 230M",
+      "hf_model_id": "unsloth/LFM2.5-230M",
+      "tier": "compact",
+      "params": "230M",
+      "total_params_b": 0.23,
+      "context_length": 32768,
+      "supports_tool_calling": true,
+      "type": "chat",
+      "hidden_size": 1024,
+      "fp8_supported": false,
+      "inference": {
+        "gpu_type": "L4",
+        "max_model_len": 8192
+      },
+      "finetuning": {
+        "context_length": 32768,
+        "max_batch_size": 32,
+        "min_batch_size": 1,
+        "training_type": {
+          "full": {
+            "enabled": true,
+            "context_length": 32768,
+            "validated_context_length": true
+          },
+          "lora": {
+            "enabled": true,
+            "context_length": 32768,
+            "validated_context_length": true
+          }
+        },
+        "real_max_context_length": 32768
+      },
+      "disabled": false,
+      "disabled_reason": null,
+      "num_attn_layers": 6,
+      "num_kv_heads": 8,
+      "head_dim": 64,
+      "group": "LFM2.5",
+      "pricing": {
+        "train_from_usd": 0.5,
+        "run_from_usd_per_1m_output": 2.5
+      },
+      "marketing": {
+        "pitch": "Tiny edge agent floor \u2014 230M hybrid that still does tool use.",
+        "description": "Liquid AI hybrid models for on-device and edge deployment. Fast decode, low memory, and agentic post-training across the ladder.",
+        "overview": "LFM2.5 is Liquid AI's hybrid conv+attention family for edge and agentic workloads. The 230M tier is the smallest instruct checkpoint \u2014 distilled for tool use and data extraction under tight memory budgets.",
+        "good_for": [
+          "On-device and edge tool-calling loops",
+          "High-volume data extraction at minimal serve cost",
+          "First experiment on the LFM2.5 ladder"
+        ]
+      },
+      "use_cases": [
+        "tool-calling"
+      ],
+      "benchmark_hf_model_ids": [
+        "LiquidAI/LFM2.5-230M"
+      ]
+    },
+    {
+      "id": "fdtn-ai/antares-1b",
+      "backend": "baseten",
+      "display": "Antares 1B (Security)",
+      "hf_model_id": "fdtn-ai/antares-1b",
+      "tier": "compact",
+      "params": "1.8B",
+      "total_params_b": 1.84,
+      "context_length": 131072,
+      "supports_tool_calling": true,
+      "type": "chat",
+      "hidden_size": 2048,
+      "fp8_supported": true,
+      "inference": {
+        "gpu_type": "L4",
+        "max_model_len": 8192
+      },
+      "finetuning": {
+        "context_length": 131072,
+        "max_batch_size": 16,
+        "min_batch_size": 1,
+        "training_type": {
+          "full": {
+            "enabled": true,
+            "validated_context_length": true,
+            "context_length": 131072
+          },
+          "lora": {
+            "enabled": true,
+            "validated_context_length": true,
+            "context_length": 131072
+          }
+        },
+        "real_max_context_length": 131072
+      },
+      "disabled": false,
+      "disabled_reason": null,
+      "num_attn_layers": 40,
+      "num_kv_heads": 4,
+      "head_dim": 128,
+      "group": "Antares",
+      "pricing": {
+        "train_from_usd": 0.55,
+        "run_from_usd_per_1m_output": 4.0
+      },
+      "marketing": {
+        "pitch": "Security-specialised ~1.8B Antares with 128K inference context.",
+        "description": "Security-specialised compact models, trained for vulnerability localisation. Small enough to serve cheaply at volume on a narrow, high-frequency job.",
+        "overview": "Antares models are security-specialised compact bases, trained for vulnerability localisation. They stay small enough to serve cheaply at volume when the job is narrow and high-frequency, and they train like every other catalogue model on Overmind.",
+        "good_for": [
+          "Vulnerability localisation and triage",
+          "Narrow, high-frequency security jobs",
+          "Cheap serving after domain training"
+        ]
+      },
+      "use_cases": [
+        "tool-calling",
+        "security"
+      ]
+    },
+    {
+      "id": "fdtn-ai/antares-350m",
+      "backend": "baseten",
+      "display": "Antares 350M (Security)",
+      "hf_model_id": "fdtn-ai/antares-350m",
+      "tier": "compact",
+      "params": "350M",
+      "total_params_b": 0.35,
+      "context_length": 32768,
+      "supports_tool_calling": true,
+      "type": "chat",
+      "hidden_size": 1024,
+      "fp8_supported": true,
+      "inference": {
+        "gpu_type": "L4",
+        "max_model_len": 8192
+      },
+      "finetuning": {
+        "context_length": 32768,
+        "max_batch_size": 32,
+        "min_batch_size": 1,
+        "training_type": {
+          "full": {
+            "enabled": true,
+            "validated_context_length": true,
+            "context_length": 32768
+          },
+          "lora": {
+            "enabled": true,
+            "validated_context_length": true,
+            "context_length": 32768
+          }
+        },
+        "real_max_context_length": 32768
+      },
+      "disabled": false,
+      "disabled_reason": null,
+      "num_attn_layers": 28,
+      "num_kv_heads": 4,
+      "head_dim": 64,
+      "group": "Antares",
+      "pricing": {
+        "train_from_usd": 0.5,
+        "run_from_usd_per_1m_output": 2.5
+      },
+      "marketing": {
+        "pitch": "Security-specialised 350M base for high-frequency vulnerability jobs.",
+        "description": "Security-specialised compact models, trained for vulnerability localisation. Small enough to serve cheaply at volume on a narrow, high-frequency job.",
+        "overview": "Antares models are security-specialised compact bases, trained for vulnerability localisation. They stay small enough to serve cheaply at volume when the job is narrow and high-frequency, and they train like every other catalogue model on Overmind.",
+        "good_for": [
+          "Vulnerability localisation and triage",
+          "Narrow, high-frequency security jobs",
+          "Cheap serving after domain training"
+        ]
+      },
+      "use_cases": [
+        "tool-calling",
+        "security"
+      ]
+    },
+    {
+      "id": "Qwen/Qwen3.5-9B",
+      "hf_model_id": "unsloth/Qwen3.5-9B",
+      "display": "Qwen 3.5 9B",
+      "tier": "small",
+      "params": "9B",
+      "total_params_b": 9.0,
+      "context_length": 262144,
+      "supports_tool_calling": true,
+      "type": "chat",
+      "hidden_size": 4096,
+      "fp8_supported": true,
+      "inference": {
+        "gpu_type": "L4",
+        "max_model_len": 16384
+      },
+      "finetuning": {
+        "context_length": 262144,
+        "max_batch_size": 8,
+        "min_batch_size": 1,
+        "training_type": {
+          "full": {
+            "enabled": true,
+            "context_length": 131072,
+            "validated_context_length": true
+          },
+          "lora": {
+            "enabled": true,
+            "context_length": 131072,
+            "validated_context_length": true
+          }
+        },
+        "real_max_context_length": 131072
+      },
+      "num_attn_layers": 8,
+      "num_kv_heads": 4,
+      "head_dim": 256,
+      "backend": "baseten",
+      "disabled": false,
+      "disabled_reason": null,
+      "group": "Qwen 3.5",
+      "pricing": {
+        "train_from_usd": 1.0,
+        "run_from_usd_per_1m_output": 6.0
+      },
+      "marketing": {
+        "pitch": "Small-tier Qwen 3.5 default when compact quality is not enough.",
+        "description": "The default recommendation for most agents. A 256K context window at every size, tool calling from 0.8B up, and compact models trainable at their full 256K context, the longest in the catalogue.",
+        "overview": "Qwen 3.5 is the default recommendation for most agents on Overmind. Every size shares a 256K inference context, tool calling starts at 0.8B, and the compact models train at their full 256K context, the longest trainable window in the catalogue.",
+        "good_for": [
+          "General-purpose agents that call tools",
+          "Long-trace training on compact bases",
+          "Size ladders from 0.8B through a 35B MoE"
+        ]
+      },
+      "use_cases": [
+        "tool-calling"
+      ],
+      "benchmark_hf_model_ids": [
+        "Qwen/Qwen3.5-9B"
+      ]
+    },
+    {
+      "id": "Qwen/Qwen3-8B",
+      "backend": "baseten",
+      "display": "Qwen 3 8B",
+      "hf_model_id": "unsloth/Qwen3-8B",
+      "tier": "small",
+      "params": "8B",
+      "total_params_b": 8.0,
+      "context_length": 131072,
+      "supports_tool_calling": true,
+      "type": "chat",
+      "hidden_size": 4096,
+      "fp8_supported": true,
+      "inference": {
+        "gpu_type": "L4",
+        "max_model_len": 16384
+      },
+      "finetuning": {
+        "context_length": 40960,
+        "max_batch_size": 8,
+        "min_batch_size": 1,
+        "training_type": {
+          "full": {
+            "enabled": true,
+            "context_length": 40960,
+            "validated_context_length": true
+          },
+          "lora": {
+            "enabled": true,
+            "context_length": 40960,
+            "validated_context_length": true
+          }
+        },
+        "real_max_context_length": 40960
+      },
+      "disabled": false,
+      "disabled_reason": null,
+      "num_attn_layers": 36,
+      "num_kv_heads": 8,
+      "head_dim": 128,
+      "group": "Qwen 3",
+      "pricing": {
+        "train_from_usd": 1.0,
+        "run_from_usd_per_1m_output": 6.0
+      },
+      "marketing": {
+        "pitch": "Small-tier Qwen 3 for size sweeps that need more than compact.",
+        "description": "The widest size ladder in the catalogue, 0.6B through 32B, plus a code-specialised mixture-of-experts model. Useful when you want to hold the family constant and vary only size across parallel experiments.",
+        "overview": "Qwen 3 gives you the widest size ladder in the catalogue: 0.6B through 32B, plus a code-specialised mixture-of-experts model. Hold the family constant, vary only size across parallel experiments, and let the benchmark pick the winner against your production model.",
+        "good_for": [
+          "Side-by-side size sweeps in one family",
+          "Code agents (via Qwen 3 Coder 30B)",
+          "Compact bases when tool calling is optional"
+        ]
+      },
+      "use_cases": [
+        "tool-calling"
+      ],
+      "benchmark_hf_model_ids": [
+        "Qwen/Qwen3-8B"
+      ]
+    },
+    {
+      "id": "Qwen/Qwen2.5-7B-Instruct",
+      "backend": "baseten",
+      "display": "Qwen 2.5 7B Instruct",
+      "hf_model_id": "unsloth/Qwen2.5-7B-Instruct",
+      "tier": "small",
+      "params": "7B",
+      "total_params_b": 7.0,
+      "context_length": 131072,
+      "supports_tool_calling": true,
+      "type": "chat",
+      "hidden_size": 3584,
+      "fp8_supported": true,
+      "inference": {
+        "gpu_type": "L4",
+        "max_model_len": 16384
+      },
+      "finetuning": {
+        "context_length": 32768,
+        "max_batch_size": 8,
+        "min_batch_size": 1,
+        "training_type": {
+          "full": {
+            "enabled": true,
+            "context_length": 32768,
+            "validated_context_length": true
+          },
+          "lora": {
+            "enabled": true,
+            "context_length": 32768,
+            "validated_context_length": true
+          }
+        },
+        "real_max_context_length": 32768
+      },
+      "disabled": false,
+      "disabled_reason": null,
+      "num_attn_layers": 28,
+      "num_kv_heads": 4,
+      "head_dim": 128,
+      "group": "Qwen 2.5",
+      "pricing": {
+        "train_from_usd": 1.0,
+        "run_from_usd_per_1m_output": 6.0
+      },
+      "marketing": {
+        "pitch": "Small-tier Qwen 2.5 instruct for pipelines already tuned on this line.",
+        "description": "The mature, heavily-benchmarked generation, including a dedicated coder model at 32B. Worth keeping when an existing pipeline is already tuned around it.",
+        "overview": "Qwen 2.5 is the mature, heavily-benchmarked generation on the platform, including a dedicated 32B coder. Keep it when an existing pipeline is already tuned around this line and you want controlled training rather than a family jump.",
+        "good_for": [
+          "Pipelines already tuned on Qwen 2.5",
+          "Code specialists at 32B",
+          "Stable baselines for eval-driven iteration"
+        ]
+      },
+      "use_cases": [
+        "tool-calling"
+      ],
+      "benchmark_hf_model_ids": [
+        "Qwen/Qwen2.5-7B-Instruct"
+      ]
+    },
+    {
+      "id": "google/gemma-4-E4B-it",
+      "backend": "baseten",
+      "display": "Gemma 4 E4B",
+      "hf_model_id": "unsloth/gemma-4-E4B-it",
+      "tier": "small",
+      "params": "E4B (~8B)",
+      "total_params_b": 8.0,
+      "context_length": 131072,
+      "supports_tool_calling": true,
+      "type": "chat",
+      "hidden_size": 2560,
+      "fp8_supported": false,
+      "inference": {
+        "gpu_type": "L40S",
+        "max_model_len": 8192
+      },
+      "finetuning": {
+        "context_length": 131072,
+        "max_batch_size": 4,
+        "min_batch_size": 1,
+        "unsloth_image": "gemma4",
+        "training_type": {
+          "full": {
+            "enabled": true,
+            "context_length": 131072,
+            "validated_context_length": true
+          },
+          "lora": {
+            "enabled": true,
+            "context_length": 131072,
+            "validated_context_length": true
+          }
+        },
+        "real_max_context_length": 131072
+      },
+      "disabled": false,
+      "disabled_reason": null,
+      "num_attn_layers": 42,
+      "num_kv_heads": 2,
+      "head_dim": 256,
+      "group": "Gemma 4",
+      "pricing": {
+        "train_from_usd": 0.75,
+        "run_from_usd_per_1m_output": 4.0
+      },
+      "marketing": {
+        "pitch": "Default small Gemma 4 \u2014 stronger than E2B for laptop multimodal use.",
+        "description": "Google DeepMind Gemma 4 open models: hybrid thinking, 140+ languages, dense and MoE sizes from edge to server.",
+        "overview": "Gemma 4 E4B is the recommended small instruct tier for local multimodal work. Same 128K context and thinking controls as E2B with more capacity for coding and tool use.",
+        "good_for": [
+          "Laptop multimodal + tool agents",
+          "Coding LoRA when E2B underfits",
+          "Speech/text fine-tunes on a single GPU"
+        ]
+      },
+      "use_cases": [
+        "tool-calling",
+        "coding"
+      ]
+    },
+    {
+      "id": "google/gemma-4-E2B-it",
+      "backend": "baseten",
+      "display": "Gemma 4 E2B",
+      "hf_model_id": "unsloth/gemma-4-E2B-it",
+      "tier": "small",
+      "params": "E2B (~5.1B)",
+      "total_params_b": 5.1,
+      "context_length": 131072,
+      "supports_tool_calling": true,
+      "type": "chat",
+      "hidden_size": 1536,
+      "fp8_supported": false,
+      "inference": {
+        "gpu_type": "L40S",
+        "max_model_len": 8192
+      },
+      "finetuning": {
+        "context_length": 131072,
+        "max_batch_size": 8,
+        "min_batch_size": 1,
+        "unsloth_image": "gemma4",
+        "training_type": {
+          "full": {
+            "enabled": true,
+            "context_length": 131072,
+            "validated_context_length": true
+          },
+          "lora": {
+            "enabled": true,
+            "context_length": 131072,
+            "validated_context_length": true
+          }
+        },
+        "real_max_context_length": 131072
+      },
+      "disabled": false,
+      "disabled_reason": null,
+      "num_attn_layers": 35,
+      "num_kv_heads": 1,
+      "head_dim": 256,
+      "group": "Gemma 4",
+      "pricing": {
+        "train_from_usd": 0.55,
+        "run_from_usd_per_1m_output": 4.0
+      },
+      "marketing": {
+        "pitch": "Edge multimodal Gemma 4 \u2014 text, image, and audio at phone/laptop scale.",
+        "description": "Google DeepMind Gemma 4 open models: hybrid thinking, 140+ languages, dense and MoE sizes from edge to server.",
+        "overview": "Gemma 4 E2B is the smallest instruct multimodal (text/image/audio) with 128K context and built-in thinking control. Tuned for phones, ASR-adjacent jobs, and cheap LoRA on a single GPU.",
+        "good_for": [
+          "Edge multimodal assistants",
+          "Cheap LoRA on coding/tool tasks",
+          "Thinking-mode experiments at small size"
+        ]
+      },
+      "use_cases": [
+        "tool-calling",
+        "coding"
+      ]
+    },
+    {
+      "id": "meta-llama/Llama-3.1-8B-Instruct",
+      "backend": "baseten",
+      "display": "Llama 3.1 8B Instruct",
+      "hf_model_id": "unsloth/Llama-3.1-8B-Instruct",
+      "tier": "small",
+      "params": "8B",
+      "total_params_b": 8.0,
+      "context_length": 131072,
+      "supports_tool_calling": true,
+      "type": "chat",
+      "hidden_size": 4096,
+      "fp8_supported": true,
+      "inference": {
+        "gpu_type": "L4",
+        "max_model_len": 16384
+      },
+      "finetuning": {
+        "context_length": 131072,
+        "max_batch_size": 8,
+        "min_batch_size": 1,
+        "training_type": {
+          "full": {
+            "enabled": true,
+            "context_length": 131072,
+            "validated_context_length": true
+          },
+          "lora": {
+            "enabled": true,
+            "context_length": 131072,
+            "validated_context_length": true
+          }
+        },
+        "real_max_context_length": 131072
+      },
+      "disabled": false,
+      "disabled_reason": null,
+      "num_attn_layers": 32,
+      "num_kv_heads": 8,
+      "head_dim": 128,
+      "group": "Llama 3",
+      "pricing": {
+        "train_from_usd": 1.0,
+        "run_from_usd_per_1m_output": 6.0
+      },
+      "marketing": {
+        "pitch": "Small-tier Llama 3.1 with full 128K training context and tool calling.",
+        "description": "Meta's instruct models, all three trainable at their full 128K context. The natural choice when your rows are long and you want a compact model.",
+        "overview": "Llama 3 on Overmind covers Meta's instruct models at 1B, 3B, and 8B, each trainable at their full 128K context. Pick this family when your rows are long and you still want a compact model you can serve cheaply after training.",
+        "good_for": [
+          "Long-row training on compact bases",
+          "Meta-stack compatibility",
+          "Tool-calling agents at 1B through 8B"
+        ]
+      },
+      "use_cases": [
+        "tool-calling"
+      ],
+      "benchmark_hf_model_ids": [
+        "meta-llama/Llama-3.1-8B-Instruct"
+      ]
+    },
+    {
+      "id": "LiquidAI/LFM2.5-8B-A1B",
+      "backend": "baseten",
+      "display": "LFM2.5 8B-A1B",
+      "hf_model_id": "LiquidAI/LFM2.5-8B-A1B",
+      "tier": "small",
+      "params": "8.3B (1.5B active)",
+      "total_params_b": 8.3,
+      "context_length": 128000,
+      "supports_tool_calling": true,
+      "type": "chat",
+      "hidden_size": 2048,
+      "fp8_supported": false,
+      "inference": {
+        "gpu_type": "L40S",
+        "max_model_len": 8192
+      },
+      "finetuning": {
+        "context_length": 128000,
+        "max_batch_size": 4,
+        "min_batch_size": 1,
+        "training_type": {
+          "full": {
+            "enabled": false,
+            "context_length": 128000,
+            "validated_context_length": false
+          },
+          "lora": {
+            "enabled": false,
+            "context_length": 128000,
+            "validated_context_length": false
+          }
+        },
+        "real_max_context_length": 128000
+      },
+      "disabled": false,
+      "disabled_reason": null,
+      "num_attn_layers": 6,
+      "num_kv_heads": 8,
+      "head_dim": 64,
+      "group": "LFM2.5",
+      "pricing": {
+        "train_from_usd": 0.75,
+        "run_from_usd_per_1m_output": 4.0
+      },
+      "marketing": {
+        "pitch": "Laptop MoE assistant \u2014 8.3B total, 1.5B active, 128K context.",
+        "description": "Liquid AI hybrid models for on-device and edge deployment. Fast decode, low memory, and agentic post-training across the ladder.",
+        "overview": "LFM2.5-8B-A1B is Liquid's MoE personal-assistant tier: 8.3B total / 1.5B active with reasoning-oriented post-training and 128K context. Serve cost tracks active params; train as LoRA on the hybrid stack.",
+        "good_for": [
+          "Personal-assistant style agents on a single GPU",
+          "Reasoning + tool use without dense-8B VRAM",
+          "128K context jobs that still need edge-friendly decode"
+        ]
+      },
+      "use_cases": [
+        "tool-calling"
+      ]
+    },
+    {
+      "id": "Qwen/Qwen3.8-27B",
+      "hf_model_id": "unsloth/Qwen3.8-27B",
+      "display": "Qwen 3.8 27B",
+      "tier": "mid",
+      "params": "27B",
+      "total_params_b": 27.0,
+      "context_length": 262144,
+      "supports_tool_calling": true,
+      "type": "chat",
+      "hidden_size": 5120,
+      "fp8_supported": true,
+      "inference": {
+        "gpu_type": "L40S",
+        "max_model_len": 16384
+      },
+      "finetuning": {
+        "context_length": 262144,
+        "max_batch_size": 4,
+        "min_batch_size": 1,
+        "training_type": {
+          "full": {
+            "enabled": false,
+            "context_length": 262144,
+            "validated_context_length": false
+          },
+          "lora": {
+            "enabled": true,
+            "context_length": 262144,
+            "validated_context_length": true
+          }
+        },
+        "real_max_context_length": 262144
+      },
+      "num_attn_layers": 16,
+      "num_kv_heads": 4,
+      "head_dim": 256,
+      "backend": "baseten",
+      "disabled": false,
+      "disabled_reason": null,
+      "group": "Qwen 3.8",
+      "pricing": {
+        "train_from_usd": 2.0,
+        "run_from_usd_per_1m_output": 15.0
+      },
+      "marketing": {
+        "pitch": "Newest Qwen mid-tier base for coding and long-horizon agents you plan to own.",
+        "description": "The newest Qwen generation on the platform. Dense 27B vision-language model, 256K native context, LoRA-only training.",
+        "overview": "Qwen 3.8 is the newest Qwen generation Overmind trains. Use it when you want the current Qwen coding and agent scores as a mid-tier base, then train LoRA on your agent's own traces.",
+        "good_for": [
+          "Coding and long-horizon agent loops",
+          "Mid-tier quality before committing to a larger serve cost",
+          "Parallel experiments against Qwen 3.6 and 3.5 27B"
+        ]
+      },
+      "use_cases": [
+        "tool-calling"
+      ],
+      "benchmark_hf_model_ids": [
+        "Qwen/Qwen3.8-27B"
+      ]
+    },
+    {
+      "id": "Qwen/Qwen3.6-27B",
+      "hf_model_id": "unsloth/Qwen3.6-27B",
+      "display": "Qwen 3.6 27B",
+      "tier": "mid",
+      "params": "27B",
+      "total_params_b": 27.0,
+      "context_length": 262144,
+      "supports_tool_calling": true,
+      "type": "chat",
+      "hidden_size": 5120,
+      "fp8_supported": true,
+      "inference": {
+        "gpu_type": "L40S",
+        "max_model_len": 16384
+      },
+      "finetuning": {
+        "context_length": 262144,
+        "max_batch_size": 4,
+        "min_batch_size": 1,
+        "training_type": {
+          "full": {
+            "enabled": false,
+            "context_length": 262144,
+            "validated_context_length": false
+          },
+          "lora": {
+            "enabled": true,
+            "context_length": 262144,
+            "validated_context_length": true
+          }
+        },
+        "real_max_context_length": 262144
+      },
+      "num_attn_layers": 16,
+      "num_kv_heads": 4,
+      "head_dim": 256,
+      "backend": "baseten",
+      "disabled": false,
+      "disabled_reason": null,
+      "group": "Qwen 3.6",
+      "pricing": {
+        "train_from_usd": 2.0,
+        "run_from_usd_per_1m_output": 15.0
+      },
+      "marketing": {
+        "pitch": "Qwen mid-tier base for coding and maths-heavy agents you plan to own.",
+        "description": "Qwen 3.6 on the platform. Mid tier, 256K context window.",
+        "overview": "Qwen 3.6 is a mid-tier Qwen generation Overmind trains. Use it when you want published coding and maths scores in the Qwen line as a mid-tier base, then train on your agent's own traces and benchmark against the model you already ship.",
+        "good_for": [
+          "Coding and maths-heavy agent loops",
+          "Mid-tier quality before committing to a larger serve cost",
+          "Parallel experiments against a compact Qwen 3.5 baseline"
+        ]
+      },
+      "use_cases": [
+        "tool-calling"
+      ],
+      "benchmark_hf_model_ids": [
+        "Qwen/Qwen3.6-27B"
+      ]
+    },
+    {
+      "id": "Qwen/Qwen3.5-27B",
+      "hf_model_id": "unsloth/Qwen3.5-27B",
+      "display": "Qwen 3.5 27B",
+      "tier": "mid",
+      "params": "27B",
+      "total_params_b": 27.0,
+      "context_length": 262144,
+      "supports_tool_calling": true,
+      "type": "chat",
+      "hidden_size": 5120,
+      "fp8_supported": true,
+      "inference": {
+        "gpu_type": "L40S",
+        "max_model_len": 16384
+      },
+      "finetuning": {
+        "context_length": 262144,
+        "max_batch_size": 4,
+        "min_batch_size": 1,
+        "training_type": {
+          "full": {
+            "enabled": false,
+            "context_length": 262144,
+            "validated_context_length": false
+          },
+          "lora": {
+            "enabled": true,
+            "context_length": 262144,
+            "validated_context_length": true
+          }
+        },
+        "real_max_context_length": 262144
+      },
+      "num_attn_layers": 16,
+      "num_kv_heads": 4,
+      "head_dim": 256,
+      "backend": "baseten",
+      "disabled": false,
+      "disabled_reason": null,
+      "group": "Qwen 3.5",
+      "pricing": {
+        "train_from_usd": 2.0,
+        "run_from_usd_per_1m_output": 15.0
+      },
+      "marketing": {
+        "pitch": "Mid-tier Qwen 3.5 for agents that need more headroom before an MoE jump.",
+        "description": "The default recommendation for most agents. A 256K context window at every size, tool calling from 0.8B up, and compact models trainable at their full 256K context, the longest in the catalogue.",
+        "overview": "Qwen 3.5 is the default recommendation for most agents on Overmind. Every size shares a 256K inference context, tool calling starts at 0.8B, and the compact models train at their full 256K context, the longest trainable window in the catalogue.",
+        "good_for": [
+          "General-purpose agents that call tools",
+          "Long-trace training on compact bases",
+          "Size ladders from 0.8B through a 35B MoE"
+        ]
+      },
+      "use_cases": [
+        "tool-calling"
+      ],
+      "benchmark_hf_model_ids": [
+        "Qwen/Qwen3.5-27B"
+      ]
+    },
+    {
+      "id": "Qwen/Qwen3-Coder-30B-A3B-Instruct",
+      "hf_model_id": "Qwen/Qwen3-Coder-30B-A3B-Instruct",
+      "display": "Qwen 3 Coder 30B MoE",
+      "tier": "mid",
+      "params": "30B MoE (3B active)",
+      "total_params_b": 30.0,
+      "context_length": 262144,
+      "supports_tool_calling": true,
+      "type": "chat",
+      "hidden_size": 2048,
+      "fp8_supported": true,
+      "inference": {
+        "gpu_type": "L40S",
+        "max_model_len": 16384
+      },
+      "finetuning": {
+        "context_length": 262144,
+        "max_batch_size": 4,
+        "min_batch_size": 1,
+        "training_type": {
+          "full": {
+            "enabled": false,
+            "context_length": 262144,
+            "validated_context_length": false
+          },
+          "lora": {
+            "enabled": true,
+            "context_length": 65536,
+            "validated_context_length": true
+          }
+        },
+        "real_max_context_length": 262144
+      },
+      "num_attn_layers": 48,
+      "num_kv_heads": 4,
+      "head_dim": 128,
+      "backend": "baseten",
+      "disabled": false,
+      "disabled_reason": "Unsloth Qwen3-MoE path broken on our stack (2026-08-03): UNSLOTH_MOE_BACKEND=grouped_mm falls through to unsloth_triton (torch._grouped_mm probe fails) which crashes on missing tl.make_tensor_descriptor; native_torch trains 3 steps then hangs indefinitely in save_model (final/ stuck with only README + .tmp*). Stock/TRL (USE_UNSLOTH=false) smoke-trained fine on Baseten. Re-enable when Unsloth MoE save works or we route this model to the stock engine.",
+      "group": "Qwen 3",
+      "pricing": {
+        "train_from_usd": 2.0,
+        "run_from_usd_per_1m_output": 8.0
+      },
+      "marketing": {
+        "pitch": "Code-specialised Qwen 3 MoE with 256K context and tool calling.",
+        "description": "The widest size ladder in the catalogue, 0.6B through 32B, plus a code-specialised mixture-of-experts model. Useful when you want to hold the family constant and vary only size across parallel experiments.",
+        "overview": "Qwen 3 Coder 30B is the code-specialised mixture-of-experts model in the Qwen 3 family: 30B total weights with 3B active per token, with a full 256K context for both inference and training. Train it on your agent's coding traces, then benchmark it against the model you run in production today.",
+        "good_for": [
+          "Code generation and repair agents",
+          "Tool-calling engineering loops",
+          "MoE serve cost with a code-oriented base"
+        ]
+      },
+      "use_cases": [
+        "tool-calling",
+        "coding"
+      ]
+    },
+    {
+      "id": "Qwen/Qwen3-14B",
+      "backend": "baseten",
+      "display": "Qwen 3 14B",
+      "hf_model_id": "unsloth/Qwen3-14B",
+      "tier": "mid",
+      "params": "14B",
+      "total_params_b": 14.0,
+      "context_length": 131072,
+      "supports_tool_calling": true,
+      "type": "chat",
+      "hidden_size": 5120,
+      "fp8_supported": true,
+      "inference": {
+        "gpu_type": "L40S",
+        "max_model_len": 16384
+      },
+      "finetuning": {
+        "context_length": 40960,
+        "max_batch_size": 8,
+        "min_batch_size": 1,
+        "training_type": {
+          "full": {
+            "enabled": true,
+            "context_length": 40960,
+            "validated_context_length": true
+          },
+          "lora": {
+            "enabled": true,
+            "context_length": 40960,
+            "validated_context_length": true
+          }
+        },
+        "real_max_context_length": 40960
+      },
+      "disabled": false,
+      "disabled_reason": null,
+      "num_attn_layers": 40,
+      "num_kv_heads": 8,
+      "head_dim": 128,
+      "group": "Qwen 3",
+      "pricing": {
+        "train_from_usd": 1.25,
+        "run_from_usd_per_1m_output": 10.0
+      },
+      "marketing": {
+        "pitch": "Mid-tier dense Qwen 3 for parallel experiments against compact and large.",
+        "description": "The widest size ladder in the catalogue, 0.6B through 32B, plus a code-specialised mixture-of-experts model. Useful when you want to hold the family constant and vary only size across parallel experiments.",
+        "overview": "Qwen 3 gives you the widest size ladder in the catalogue: 0.6B through 32B, plus a code-specialised mixture-of-experts model. Hold the family constant, vary only size across parallel experiments, and let the benchmark pick the winner against your production model.",
+        "good_for": [
+          "Side-by-side size sweeps in one family",
+          "Code agents (via Qwen 3 Coder 30B)",
+          "Compact bases when tool calling is optional"
+        ]
+      },
+      "use_cases": [
+        "tool-calling"
+      ],
+      "benchmark_hf_model_ids": [
+        "Qwen/Qwen3-14B"
+      ]
+    },
+    {
+      "id": "Qwen/Qwen2.5-14B-Instruct",
+      "backend": "baseten",
+      "display": "Qwen 2.5 14B Instruct",
+      "hf_model_id": "unsloth/Qwen2.5-14B-Instruct",
+      "tier": "mid",
+      "params": "14B",
+      "total_params_b": 14.0,
+      "context_length": 131072,
+      "supports_tool_calling": true,
+      "type": "chat",
+      "hidden_size": 5120,
+      "fp8_supported": true,
+      "inference": {
+        "gpu_type": "L40S",
+        "max_model_len": 16384
+      },
+      "finetuning": {
+        "context_length": 32768,
+        "max_batch_size": 4,
+        "min_batch_size": 1,
+        "training_type": {
+          "full": {
+            "enabled": true,
+            "context_length": 32768,
+            "validated_context_length": true
+          },
+          "lora": {
+            "enabled": true,
+            "context_length": 32768,
+            "validated_context_length": true
+          }
+        },
+        "real_max_context_length": 32768
+      },
+      "disabled": false,
+      "disabled_reason": null,
+      "num_attn_layers": 48,
+      "num_kv_heads": 8,
+      "head_dim": 128,
+      "group": "Qwen 2.5",
+      "pricing": {
+        "train_from_usd": 1.25,
+        "run_from_usd_per_1m_output": 10.0
+      },
+      "marketing": {
+        "pitch": "Mid-tier Qwen 2.5 instruct when you want continuity with an existing stack.",
+        "description": "The mature, heavily-benchmarked generation, including a dedicated coder model at 32B. Worth keeping when an existing pipeline is already tuned around it.",
+        "overview": "Qwen 2.5 is the mature, heavily-benchmarked generation on the platform, including a dedicated 32B coder. Keep it when an existing pipeline is already tuned around this line and you want controlled training rather than a family jump.",
+        "good_for": [
+          "Pipelines already tuned on Qwen 2.5",
+          "Code specialists at 32B",
+          "Stable baselines for eval-driven iteration"
+        ]
+      },
+      "use_cases": [
+        "tool-calling"
+      ],
+      "benchmark_hf_model_ids": [
+        "Qwen/Qwen2.5-14B-Instruct"
+      ]
+    },
+    {
+      "id": "google/gemma-4-12B-it",
+      "backend": "baseten",
+      "display": "Gemma 4 12B",
+      "hf_model_id": "unsloth/gemma-4-12b-it",
+      "tier": "mid",
+      "params": "12B",
+      "total_params_b": 12.0,
+      "context_length": 262144,
+      "supports_tool_calling": true,
+      "type": "chat",
+      "hidden_size": 3840,
+      "fp8_supported": false,
+      "inference": {
+        "gpu_type": "L40S",
+        "max_model_len": 8192
+      },
+      "finetuning": {
+        "context_length": 262144,
+        "max_batch_size": 2,
+        "min_batch_size": 1,
+        "unsloth_image": "gemma4",
+        "training_type": {
+          "full": {
+            "enabled": true,
+            "context_length": 65536,
+            "validated_context_length": true
+          },
+          "lora": {
+            "enabled": true,
+            "context_length": 131072,
+            "validated_context_length": true
+          }
+        },
+        "real_max_context_length": 262144
+      },
+      "disabled": false,
+      "disabled_reason": null,
+      "num_attn_layers": 48,
+      "num_kv_heads": 8,
+      "head_dim": 256,
+      "group": "Gemma 4",
+      "pricing": {
+        "train_from_usd": 1.0,
+        "run_from_usd_per_1m_output": 6.0
+      },
+      "marketing": {
+        "pitch": "Unified 12B multimodal with 256K context.",
+        "description": "Google DeepMind Gemma 4 open models: hybrid thinking, 140+ languages, dense and MoE sizes from edge to server.",
+        "overview": "Gemma 4 12B Unified is the mid-size dense instruct model \u2014 text, image, and audio with a 256K window. The default pick when E4B is too small and 26B/31B is overkill.",
+        "good_for": [
+          "Long-context coding and agent workflows",
+          "Multimodal document/UI understanding",
+          "Mid-tier LoRA specialization"
+        ]
+      },
+      "use_cases": [
+        "tool-calling",
+        "coding"
+      ]
+    },
+    {
+      "id": "openai/gpt-oss-20b",
+      "hf_model_id": "unsloth/gpt-oss-20b-BF16",
+      "display": "GPT-OSS 20B",
+      "tier": "mid",
+      "params": "20B MoE",
+      "total_params_b": 20.0,
+      "context_length": 131072,
+      "supports_tool_calling": true,
+      "type": "chat",
+      "hidden_size": 2880,
+      "fp8_supported": false,
+      "moe": true,
+      "inference": {
+        "gpu_type": "A100-80GB",
+        "max_model_len": 16384
+      },
+      "finetuning": {
+        "context_length": 131072,
+        "max_batch_size": 4,
+        "min_batch_size": 1,
+        "training_type": {
+          "full": {
+            "enabled": false,
+            "context_length": 131072,
+            "validated_context_length": false
+          },
+          "lora": {
+            "enabled": true,
+            "context_length": 131072,
+            "validated_context_length": true
+          }
+        },
+        "unsloth_image": "gpt_oss",
+        "real_max_context_length": 131072
+      },
+      "num_attn_layers": 12,
+      "num_kv_heads": 8,
+      "head_dim": 64,
+      "backend": "baseten",
+      "disabled": false,
+      "disabled_reason": null,
+      "group": "GPT-OSS",
+      "pricing": {
+        "train_from_usd": 1.75,
+        "run_from_usd_per_1m_output": 12.0
+      },
+      "marketing": {
+        "pitch": "OpenAI gpt-oss 20B MoE mid-tier base when you want that architecture on Overmind.",
+        "description": "GPT-OSS 20B is available on Overmind for training on your agent's own traces, with benchmarking against your production model before any traffic moves.",
+        "overview": "GPT-OSS 20B is available on Overmind for training on your agent's own traces, with benchmarking against your production model before any traffic moves.",
+        "good_for": [
+          "Mid-tier MoE experiments with OpenAI gpt-oss architecture",
+          "Unsloth QLoRA training on agent traces"
+        ]
+      },
+      "use_cases": [
+        "tool-calling"
+      ],
+      "benchmark_hf_model_ids": [
+        "unsloth/gpt-oss-20b-BF16",
+        "openai/gpt-oss-20b"
+      ]
+    },
+    {
+      "id": "Qwen/Qwen3.5-35B-A3B",
+      "hf_model_id": "unsloth/Qwen3.5-35B-A3B",
+      "display": "Qwen 3.5 35B MoE",
+      "tier": "large",
+      "params": "35B MoE (3B active)",
+      "total_params_b": 35.0,
+      "context_length": 262144,
+      "supports_tool_calling": true,
+      "type": "chat",
+      "hidden_size": 2048,
+      "fp8_supported": true,
+      "inference": {
+        "gpu_type": "H100",
+        "max_model_len": 16384
+      },
+      "finetuning": {
+        "context_length": 262144,
+        "max_batch_size": 2,
+        "min_batch_size": 1,
+        "training_type": {
+          "full": {
+            "enabled": false,
+            "context_length": 262144,
+            "validated_context_length": false
+          },
+          "lora": {
+            "enabled": true,
+            "context_length": 262144,
+            "validated_context_length": true
+          }
+        },
+        "real_max_context_length": 262144
+      },
+      "num_attn_layers": 10,
+      "num_kv_heads": 2,
+      "head_dim": 256,
+      "backend": "baseten",
+      "disabled": false,
+      "disabled_reason": null,
+      "group": "Qwen 3.5",
+      "pricing": {
+        "train_from_usd": 2.5,
+        "run_from_usd_per_1m_output": 8.0
+      },
+      "marketing": {
+        "pitch": "Large MoE Qwen 3.5: 35B total weights, 3B active per token at serve time.",
+        "description": "The default recommendation for most agents. A 256K context window at every size, tool calling from 0.8B up, and compact models trainable at their full 256K context, the longest in the catalogue.",
+        "overview": "Qwen 3.5 is the default recommendation for most agents on Overmind. Every size shares a 256K inference context, tool calling starts at 0.8B, and the compact models train at their full 256K context, the longest trainable window in the catalogue.",
+        "good_for": [
+          "Higher-quality Qwen 3.5 runs with MoE serve economics",
+          "Tool-calling agents that outgrow dense mid-tier bases",
+          "Side-by-side experiments against Qwen 3.5 27B"
+        ]
+      },
+      "use_cases": [
+        "tool-calling"
+      ],
+      "benchmark_hf_model_ids": [
+        "Qwen/Qwen3.5-35B-A3B"
+      ]
+    },
+    {
+      "id": "Qwen/Qwen3-32B",
+      "backend": "baseten",
+      "display": "Qwen 3 32B",
+      "hf_model_id": "unsloth/Qwen3-32B",
+      "tier": "large",
+      "params": "32B",
+      "total_params_b": 32.0,
+      "context_length": 131072,
+      "supports_tool_calling": true,
+      "type": "chat",
+      "hidden_size": 5120,
+      "fp8_supported": true,
+      "inference": {
+        "gpu_type": "H100",
+        "max_model_len": 16384
+      },
+      "finetuning": {
+        "context_length": 40960,
+        "max_batch_size": 2,
+        "min_batch_size": 1,
+        "training_type": {
+          "full": {
+            "enabled": false,
+            "context_length": 40960,
+            "validated_context_length": false
+          },
+          "lora": {
+            "enabled": true,
+            "context_length": 40960,
+            "validated_context_length": true
+          }
+        },
+        "real_max_context_length": 40960
+      },
+      "disabled": false,
+      "disabled_reason": null,
+      "num_attn_layers": 64,
+      "num_kv_heads": 8,
+      "head_dim": 128,
+      "group": "Qwen 3",
+      "pricing": {
+        "train_from_usd": 2.25,
+        "run_from_usd_per_1m_output": 20.0
+      },
+      "marketing": {
+        "pitch": "Largest dense Qwen 3 base when the size ladder needs a top end.",
+        "description": "The widest size ladder in the catalogue, 0.6B through 32B, plus a code-specialised mixture-of-experts model. Useful when you want to hold the family constant and vary only size across parallel experiments.",
+        "overview": "Qwen 3 gives you the widest size ladder in the catalogue: 0.6B through 32B, plus a code-specialised mixture-of-experts model. Hold the family constant, vary only size across parallel experiments, and let the benchmark pick the winner against your production model.",
+        "good_for": [
+          "Side-by-side size sweeps in one family",
+          "Code agents (via Qwen 3 Coder 30B)",
+          "Compact bases when tool calling is optional"
+        ]
+      },
+      "use_cases": [
+        "tool-calling"
+      ],
+      "benchmark_hf_model_ids": [
+        "Qwen/Qwen3-32B"
+      ]
+    },
+    {
+      "id": "Qwen/Qwen2.5-72B-Instruct",
+      "backend": "baseten",
+      "display": "Qwen 2.5 72B Instruct",
+      "hf_model_id": "unsloth/Qwen2.5-72B-Instruct",
+      "tier": "large",
+      "params": "72B",
+      "total_params_b": 72.0,
+      "context_length": 131072,
+      "supports_tool_calling": false,
+      "type": "chat",
+      "hidden_size": 8192,
+      "fp8_supported": true,
+      "inference": {
+        "gpu_type": "H100",
+        "max_model_len": 16384
+      },
+      "finetuning": {
+        "context_length": 32768,
+        "max_batch_size": 4,
+        "min_batch_size": 1,
+        "training_type": {
+          "full": {
+            "enabled": false,
+            "context_length": 32768,
+            "validated_context_length": false
+          },
+          "lora": {
+            "enabled": true,
+            "context_length": 32768,
+            "validated_context_length": true
+          }
+        },
+        "real_max_context_length": 32768
+      },
+      "disabled": false,
+      "disabled_reason": null,
+      "num_attn_layers": 80,
+      "num_kv_heads": 8,
+      "head_dim": 128,
+      "group": "Qwen 2.5",
+      "pricing": {
+        "train_from_usd": 5.0,
+        "run_from_usd_per_1m_output": 40.0
+      },
+      "marketing": {
+        "pitch": "Largest Qwen 2.5 instruct on the catalogue when you need headroom and continuity with the 2.5 line.",
+        "description": "The mature, heavily-benchmarked generation, including a dedicated coder model at 32B. Worth keeping when an existing pipeline is already tuned around it.",
+        "overview": "Qwen 2.5 is the mature, heavily-benchmarked generation on the platform, including a dedicated 32B coder. Keep it when an existing pipeline is already tuned around this line and you want controlled training rather than a family jump.",
+        "good_for": [
+          "Pipelines already tuned on Qwen 2.5",
+          "Code specialists at 32B",
+          "Stable baselines for eval-driven iteration"
+        ]
+      },
+      "use_cases": [],
+      "benchmark_hf_model_ids": [
+        "Qwen/Qwen2.5-72B-Instruct"
+      ]
+    },
+    {
+      "id": "Qwen/Qwen2.5-32B-Instruct",
+      "backend": "baseten",
+      "display": "Qwen 2.5 32B Instruct",
+      "hf_model_id": "unsloth/Qwen2.5-32B-Instruct",
+      "tier": "large",
+      "params": "32B",
+      "total_params_b": 32.0,
+      "context_length": 131072,
+      "supports_tool_calling": true,
+      "type": "chat",
+      "hidden_size": 5120,
+      "fp8_supported": true,
+      "inference": {
+        "gpu_type": "A100",
+        "max_model_len": 16384
+      },
+      "finetuning": {
+        "context_length": 32768,
+        "max_batch_size": 8,
+        "min_batch_size": 1,
+        "training_type": {
+          "full": {
+            "enabled": false,
+            "context_length": 32768,
+            "validated_context_length": false
+          },
+          "lora": {
+            "enabled": true,
+            "context_length": 32768,
+            "validated_context_length": true
+          }
+        },
+        "real_max_context_length": 32768
+      },
+      "disabled": false,
+      "disabled_reason": null,
+      "num_attn_layers": 64,
+      "num_kv_heads": 8,
+      "head_dim": 128,
+      "group": "Qwen 2.5",
+      "pricing": {
+        "train_from_usd": 2.25,
+        "run_from_usd_per_1m_output": 20.0
+      },
+      "marketing": {
+        "pitch": "Large Qwen 2.5 instruct for quality-sensitive agents staying on 2.5.",
+        "description": "The mature, heavily-benchmarked generation, including a dedicated coder model at 32B. Worth keeping when an existing pipeline is already tuned around it.",
+        "overview": "Qwen 2.5 is the mature, heavily-benchmarked generation on the platform, including a dedicated 32B coder. Keep it when an existing pipeline is already tuned around this line and you want controlled training rather than a family jump.",
+        "good_for": [
+          "Pipelines already tuned on Qwen 2.5",
+          "Code specialists at 32B",
+          "Stable baselines for eval-driven iteration"
+        ]
+      },
+      "use_cases": [
+        "tool-calling"
+      ],
+      "benchmark_hf_model_ids": [
+        "Qwen/Qwen2.5-32B-Instruct"
+      ]
+    },
+    {
+      "id": "Qwen/Qwen2.5-Coder-32B-Instruct",
+      "backend": "baseten",
+      "display": "Qwen 2.5 Coder 32B Instruct",
+      "hf_model_id": "unsloth/Qwen2.5-Coder-32B-Instruct",
+      "tier": "large",
+      "params": "32B",
+      "total_params_b": 32.0,
+      "context_length": 131072,
+      "supports_tool_calling": true,
+      "type": "chat",
+      "hidden_size": 5120,
+      "fp8_supported": true,
+      "inference": {
+        "gpu_type": "A100",
+        "max_model_len": 16384
+      },
+      "finetuning": {
+        "context_length": 32768,
+        "max_batch_size": 8,
+        "min_batch_size": 1,
+        "training_type": {
+          "full": {
+            "enabled": false,
+            "context_length": 32768,
+            "validated_context_length": false
+          },
+          "lora": {
+            "enabled": true,
+            "context_length": 32768,
+            "validated_context_length": true
+          }
+        },
+        "real_max_context_length": 32768
+      },
+      "disabled": false,
+      "disabled_reason": null,
+      "num_attn_layers": 64,
+      "num_kv_heads": 8,
+      "head_dim": 128,
+      "group": "Qwen 2.5",
+      "pricing": {
+        "train_from_usd": 2.25,
+        "run_from_usd_per_1m_output": 20.0
+      },
+      "marketing": {
+        "pitch": "Dedicated Qwen 2.5 coder at 32B for code agents already on this family.",
+        "description": "The mature, heavily-benchmarked generation, including a dedicated coder model at 32B. Worth keeping when an existing pipeline is already tuned around it.",
+        "overview": "Qwen 2.5 Coder 32B Instruct is the dedicated coder in the mature Qwen 2.5 line. Keep it when your coding agent or eval harness is already tuned around Qwen 2.5 and you want controlled training rather than moving families.",
+        "good_for": [
+          "Code agents already on Qwen 2.5",
+          "Tool-calling engineering workflows",
+          "Stable baselines before a family upgrade"
+        ]
+      },
+      "use_cases": [
+        "tool-calling",
+        "coding"
+      ],
+      "benchmark_hf_model_ids": [
+        "Qwen/Qwen2.5-Coder-32B-Instruct"
+      ]
+    },
+    {
+      "id": "google/gemma-4-31B-it",
+      "backend": "baseten",
+      "display": "Gemma 4 31B",
+      "hf_model_id": "unsloth/gemma-4-31B-it",
+      "tier": "large",
+      "params": "31B",
+      "total_params_b": 30.7,
+      "context_length": 262144,
+      "supports_tool_calling": true,
+      "type": "chat",
+      "hidden_size": 5376,
+      "fp8_supported": false,
+      "inference": {
+        "gpu_type": "A100-80GB",
+        "max_model_len": 8192
+      },
+      "finetuning": {
+        "context_length": 262144,
+        "max_batch_size": 1,
+        "min_batch_size": 1,
+        "unsloth_image": "gemma4",
+        "training_type": {
+          "full": {
+            "enabled": false,
+            "context_length": 262144,
+            "validated_context_length": false
+          },
+          "lora": {
+            "enabled": true,
+            "context_length": 65536,
+            "validated_context_length": true
+          }
+        },
+        "real_max_context_length": 262144
+      },
+      "disabled": false,
+      "disabled_reason": null,
+      "num_attn_layers": 60,
+      "num_kv_heads": 16,
+      "head_dim": 256,
+      "group": "Gemma 4",
+      "pricing": {
+        "train_from_usd": 2.5,
+        "run_from_usd_per_1m_output": 10.0
+      },
+      "marketing": {
+        "pitch": "Strongest dense Gemma 4 \u2014 max quality at 256K.",
+        "description": "Google DeepMind Gemma 4 open models: hybrid thinking, 140+ languages, dense and MoE sizes from edge to server.",
+        "overview": "Gemma 4 31B is the flagship dense instruct model. Pick it when quality beats MoE speed and you can afford H100-class train/serve (QLoRA recommended).",
+        "good_for": [
+          "Maximum-quality coding and reasoning LoRA",
+          "Long-context multimodal document work",
+          "Evals where 26B-A4B leaves quality on the table"
+        ]
+      },
+      "use_cases": [
+        "tool-calling",
+        "coding"
+      ]
+    },
+    {
+      "id": "google/gemma-4-26B-A4B-it",
+      "backend": "baseten",
+      "display": "Gemma 4 26B-A4B",
+      "hf_model_id": "unsloth/gemma-4-26B-A4B-it",
+      "tier": "large",
+      "params": "26B (4B active)",
+      "total_params_b": 25.2,
+      "context_length": 262144,
+      "supports_tool_calling": true,
+      "type": "chat",
+      "hidden_size": 2816,
+      "fp8_supported": false,
+      "inference": {
+        "gpu_type": "A100-80GB",
+        "max_model_len": 8192
+      },
+      "finetuning": {
+        "context_length": 262144,
+        "max_batch_size": 1,
+        "min_batch_size": 1,
+        "unsloth_image": "gemma4",
+        "training_type": {
+          "full": {
+            "enabled": false,
+            "context_length": 262144,
+            "validated_context_length": false
+          },
+          "lora": {
+            "enabled": true,
+            "context_length": 65536,
+            "validated_context_length": true
+          }
+        },
+        "real_max_context_length": 262144
+      },
+      "disabled": false,
+      "disabled_reason": null,
+      "num_attn_layers": 30,
+      "num_kv_heads": 8,
+      "head_dim": 256,
+      "group": "Gemma 4",
+      "pricing": {
+        "train_from_usd": 2.0,
+        "run_from_usd_per_1m_output": 8.0
+      },
+      "marketing": {
+        "pitch": "Best speed/quality MoE \u2014 26B total, ~4B active, 256K context.",
+        "description": "Google DeepMind Gemma 4 open models: hybrid thinking, 140+ languages, dense and MoE sizes from edge to server.",
+        "overview": "Gemma 4 26B-A4B is the MoE instruct checkpoint for computer-use style jobs: strong quality with active-param serve cost closer to a mid model. Prefer over 31B when latency and VRAM matter more than peak scores.",
+        "good_for": [
+          "Agentic computer-use and long-context coding",
+          "QLoRA when dense 31B is too heavy",
+          "Multimodal text+image production agents"
+        ]
+      },
+      "use_cases": [
+        "tool-calling",
+        "coding"
+      ]
+    },
+    {
+      "id": "meta-llama/Llama-3.3-70B-Instruct",
+      "backend": "baseten",
+      "display": "Llama 3.3 70B Instruct",
+      "hf_model_id": "unsloth/Llama-3.3-70B-Instruct",
+      "tier": "large",
+      "params": "70B",
+      "total_params_b": 70.0,
+      "context_length": 131072,
+      "supports_tool_calling": true,
+      "type": "chat",
+      "hidden_size": 8192,
+      "fp8_supported": true,
+      "inference": {
+        "gpu_type": "H100",
+        "max_model_len": 16384
+      },
+      "finetuning": {
+        "context_length": 131072,
+        "max_batch_size": 4,
+        "min_batch_size": 1,
+        "training_type": {
+          "full": {
+            "enabled": false,
+            "context_length": 131072,
+            "validated_context_length": false
+          },
+          "lora": {
+            "enabled": true,
+            "context_length": 131072,
+            "validated_context_length": true
+          }
+        },
+        "real_max_context_length": 131072
+      },
+      "disabled": false,
+      "disabled_reason": null,
+      "num_attn_layers": 80,
+      "num_kv_heads": 8,
+      "head_dim": 128,
+      "group": "Llama 3",
+      "pricing": {
+        "train_from_usd": 4.5,
+        "run_from_usd_per_1m_output": 35.0
+      },
+      "marketing": {
+        "pitch": "Large Llama 3.3 instruct for quality-sensitive agents that still want open weights.",
+        "description": "Meta's instruct models, all three trainable at their full 128K context. The natural choice when your rows are long and you want a compact model.",
+        "overview": "Llama 3 on Overmind covers Meta's instruct models at 1B, 3B, and 8B, each trainable at their full 128K context. Pick this family when your rows are long and you still want a compact model you can serve cheaply after training.",
+        "good_for": [
+          "Long-row training on compact bases",
+          "Meta-stack compatibility",
+          "Tool-calling agents at 1B through 8B"
+        ]
+      },
+      "use_cases": [
+        "tool-calling"
+      ],
+      "benchmark_hf_model_ids": [
+        "meta-llama/Llama-3.3-70B-Instruct"
+      ]
+    },
+    {
+      "id": "unsloth/Muse-Glimmer-30B",
+      "backend": "baseten",
+      "display": "Muse Glimmer 30B",
+      "hf_model_id": "unsloth/Muse-Glimmer-30B",
+      "tier": "large",
+      "params": "30B",
+      "total_params_b": 29.8,
+      "context_length": 131072,
+      "supports_tool_calling": true,
+      "type": "chat",
+      "hidden_size": 6656,
+      "fp8_supported": false,
+      "inference": {
+        "gpu_type": "A100-80GB",
+        "max_model_len": 8192
+      },
+      "finetuning": {
+        "context_length": 131072,
+        "max_batch_size": 1,
+        "min_batch_size": 1,
+        "unsloth_image": "muse",
+        "training_type": {
+          "full": {
+            "enabled": false,
+            "context_length": 131072,
+            "validated_context_length": false
+          },
+          "lora": {
+            "enabled": true,
+            "context_length": 131072,
+            "validated_context_length": true
+          }
+        },
+        "real_max_context_length": 131072
+      },
+      "disabled": false,
+      "disabled_reason": null,
+      "num_attn_layers": 52,
+      "num_kv_heads": 2,
+      "head_dim": 128,
+      "group": "Muse Glimmer",
+      "pricing": {
+        "train_from_usd": 2.5,
+        "run_from_usd_per_1m_output": 10.0
+      },
+      "marketing": {
+        "pitch": "Meta's 30B multimodal agentic model \u2014 tool use, coding, screenshots.",
+        "description": "Muse Glimmer is Meta Superintelligence Lab's open-weight 30B dense multimodal model for local agentic workflows.",
+        "overview": "LoRA-only on Overmind. Strong tool-calling and coding agents with vision via a perception encoder; Full FT disabled.",
+        "good_for": [
+          "Agentic tool-use LoRA",
+          "Coding agents with screenshot context",
+          "Long-horizon planning with controllable reasoning strength"
+        ]
+      },
+      "use_cases": [
+        "tool-calling",
+        "coding"
+      ]
+    },
+    {
+      "id": "nvidia/NVIDIA-Nemotron-3.5-Lightning-30B-A3B",
+      "backend": "baseten",
+      "display": "Nemotron 3.5 Lightning 30B-A3B",
+      "hf_model_id": "unsloth/NVIDIA-Nemotron-3.5-Lightning-30B-A3B",
+      "benchmark_hf_model_ids": [
+        "nvidia/NVIDIA-Nemotron-3.5-Lightning-30B-A3B-BF16"
+      ],
+      "leaderboard_slugs": [
+        "nemotron-3-5-lightning"
+      ],
+      "tier": "large",
+      "params": "30B-A3B",
+      "total_params_b": 30.0,
+      "context_length": 262144,
+      "supports_tool_calling": true,
+      "type": "chat",
+      "hidden_size": 2688,
+      "fp8_supported": false,
+      "moe": true,
+      "inference": {
+        "gpu_type": "A100-80GB",
+        "max_model_len": 8192
+      },
+      "finetuning": {
+        "context_length": 262144,
+        "max_batch_size": 1,
+        "min_batch_size": 1,
+        "unsloth_image": "nemotron35",
+        "training_type": {
+          "full": {
+            "enabled": false,
+            "context_length": 262144,
+            "validated_context_length": false
+          },
+          "lora": {
+            "enabled": true,
+            "context_length": 262144,
+            "validated_context_length": true
+          }
+        },
+        "real_max_context_length": 262144
+      },
+      "disabled": false,
+      "disabled_reason": null,
+      "num_attn_layers": 6,
+      "num_kv_heads": 2,
+      "head_dim": 128,
+      "group": "Nemotron 3.5",
+      "pricing": {
+        "train_from_usd": 2.0,
+        "run_from_usd_per_1m_output": 6.0
+      },
+      "marketing": {
+        "pitch": "NVIDIA's 30B/3B-active hybrid MoE for high-volume agent execution.",
+        "description": "Nemotron 3.5 Lightning is a 30B total / 3B active hybrid reasoning MoE for tool calls, validation, and subagent work in long-running agents.",
+        "overview": "LoRA-only on Overmind via Unsloth. Native 256K context, Qwen-style tools, thinking off by default. Full FT disabled.",
+        "good_for": [
+          "High-frequency tool-calling LoRA",
+          "Output validation and formatting specialists",
+          "Subagent routing in long-running agents"
+        ]
+      },
+      "use_cases": [
+        "tool-calling",
+        "coding"
+      ]
+    }
+  ],
+  "finetuning_providers": {
+    "baseten": {
+      "comment": "MAX_LENGTH snapping policy for train.py \u2014 our choice, not a Baseten platform limit: power-of-two buckets keep padding/packing predictable; headroom covers chat-template/special tokens beyond the raw JSON token estimate.",
+      "context_buckets": [
+        4096,
+        8192,
+        16384,
+        32768,
+        65536,
+        131072,
+        262144
+      ],
+      "context_headroom": 256
+    }
+  },
+  "library_filters": {
+    "use_case": [
+      {
+        "id": "tool-calling",
+        "label": "Tool calling"
+      },
+      {
+        "id": "coding",
+        "label": "Coding"
+      },
+      {
+        "id": "security",
+        "label": "Security"
+      }
+    ],
+    "tier": [
+      {
+        "id": "compact",
+        "label": "Compact"
+      },
+      {
+        "id": "small",
+        "label": "Small"
+      },
+      {
+        "id": "mid",
+        "label": "Mid"
+      },
+      {
+        "id": "large",
+        "label": "Large"
+      }
+    ],
+    "context": [
+      {
+        "id": "128k",
+        "label": "128K+",
+        "min_context_length": 131072
+      },
+      {
+        "id": "256k",
+        "label": "256K",
+        "min_context_length": 262144
+      }
+    ]
+  }
+}

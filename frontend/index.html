@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta content="width=device-width, initial-scale=1.0" name="viewport" />
+    <script>
+      // Pre-hydration theme. Must resolve identically to getStoredTheme() +
+      // applyTheme() in src/components/theme-provider.tsx, or the first paint
+      // flashes the wrong theme. Only an explicit 'system' follows the OS;
+      // absent/unreadable/unrecognised storage is dark.
+      (() => {
+        var stored = null;
+        try { stored = localStorage.getItem('overmind-theme'); } catch (_) {}
+        var resolved =
+          stored === 'light' ? 'light'
+          : stored === 'system' ? (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light')
+          : 'dark';
+        if (resolved === 'dark') document.documentElement.classList.add('dark');
+        else document.documentElement.classList.remove('dark');
+      })();
+    </script>
+    <title>Overmind Console</title>
+    <meta content="noindex, nofollow" name="robots" />
+    <meta content="Overmind is a devtool that enables AI to learn from production data. Using pattern of life analysis, it turns real-world agent behaviour into continuous improvement, allowing teams to ship secure and highly specialised agents." name="description" />
+    <!-- The body face. Without this it isn't discovered until the CSS parses,
+         so first paint lands in the system fallback and reflows — the pixel
+         face sets ~16% wider, so the swap moves text, not just its shape.
+         Only this one: Mondwest is titles-only and NeueBit is nav chrome. -->
+    <link as="font" crossorigin href="/fonts/GeistPixel-Square.woff2" rel="preload" type="font/woff2" />
+    <link href="/favicon.png" rel="icon" type="image/png" />
+    <link href="/favicon.png" rel="apple-touch-icon" />
+    <link href="/manifest.json" rel="manifest" />
+    <meta content="#0b0b0c" name="theme-color" />
+  </head>
+  <body>
+    <div id="app"></div>
+    <script src="/src/main.tsx" type="module" ></script>
+  </body>
+</html>

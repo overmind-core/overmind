@@ -1,0 +1,47 @@
+name: SDK Build and Publish
+
+# Publishes the in-repo SDK. Never runs on ordinary pushes to platform main —
+# only on explicit version tags or manual dispatch.
+on:
+  push:
+    tags:
+      - "overmind-v*"
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    name: Build and Publish
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: overmind
+
+    permissions:
+      id-token: write
+      contents: read
+
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v6
+        with:
+          version: "0.11.0"
+          enable-cache: true
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: uv sync --frozen --extra tracing --group dev
+
+      - name: Run tests
+        run: make test
+
+      - name: Build the package
+        run: uv build
+
+      - name: Publish package to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          verbose: true
+          packages-dir: overmind/dist

@@ -1,0 +1,77 @@
+name: Deploy Modal Stack
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "overbae/modal/modal_vllm_worker.py"
+      - "overbae/modal/modal_sft_worker.py"
+      - "overbae/modal/register_model.py"
+      - "overbae/modal/weight_ops.py"
+      - "overbae/modal/models.json"
+      - "modal_shared/**"
+      - "overbae/services/sft_assets/**"
+      - ".github/workflows/deploy-modal.yml"
+  # Prod: published GitHub release (same cut as API/frontend). Release events
+  # ignore path filters, so prod always deploys even when the release commit
+  # didn't touch modal files.
+  release:
+    types: [published]
+
+concurrency:
+  # Staging/dev (main) and prod (published release) must not block each other.
+  group: deploy-modal-${{ github.event_name == 'release' && 'prod' || 'nonprod' }}
+  cancel-in-progress: false
+
+jobs:
+  # matrix is not available in jobs.<id>.if (evaluated before strategy expands),
+  # so pick the target list here and pass it into the deploy job.
+  select-targets:
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.set.outputs.matrix }}
+    steps:
+      - id: set
+        run: |
+          if [[ "$GITHUB_EVENT_NAME" == release ]]; then
+            echo 'matrix={"include":[{"github_environment":"production","modal_env":"overmind-prod"}]}' >> "$GITHUB_OUTPUT"
+          else
+            echo 'matrix={"include":[{"github_environment":"development","modal_env":"overmind-dev"},{"github_environment":"staging","modal_env":"overmind-staging"}]}' >> "$GITHUB_OUTPUT"
+          fi
+
+  deploy:
+    name: Deploy → ${{ matrix.github_environment }}
+    needs: select-targets
+    runs-on: ubuntu-latest
+    environment: ${{ matrix.github_environment }}
+    strategy:
+      max-parallel: 1
+      matrix: ${{ fromJSON(needs.select-targets.outputs.matrix) }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install Modal
+        run: pip install modal
+
+      - name: Authenticate Modal
+        run: modal token set --token-id "${{ secrets.MODAL_TOKEN_ID }}" --token-secret "${{ secrets.MODAL_TOKEN_SECRET }}"
+
+      - name: Deploy vLLM worker
+        env:
+          MODAL_ENVIRONMENT: ${{ matrix.modal_env }}
+        run: modal deploy overbae/modal/modal_vllm_worker.py --env ${{ matrix.modal_env }}
+
+      - name: Deploy register model worker (download + FP8)
+        env:
+          MODAL_ENVIRONMENT: ${{ matrix.modal_env }}
+        run: modal deploy overbae/modal/register_model.py --env ${{ matrix.modal_env }}
+
+      - name: Deploy SFT worker
+        env:
+          MODAL_ENVIRONMENT: ${{ matrix.modal_env }}
+        run: modal deploy overbae/modal/modal_sft_worker.py --env ${{ matrix.modal_env }}
