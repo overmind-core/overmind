@@ -122,54 +122,52 @@ def run(*, dataset_id: str, user_id: str | None = None) -> dict[str, Any]:
 
 
 @shared_task(
+    bind=True,
     name="overbae.tasks.datasets.diagnose",
     soft_time_limit=TURN_SOFT_LIMIT,
     time_limit=TURN_HARD_LIMIT,
     acks_late=True,
     reject_on_worker_lost=True,
 )
-def diagnose(*, dataset_id: str, user_id: str | None = None) -> dict[str, Any]:
+def diagnose(self, *, dataset_id: str, user_id: str | None = None) -> dict[str, Any]:
     from overbae.models import User
     from overbae.services.datasets.notebook import agent
 
     user = User.objects.filter(pk=user_id).first() if user_id else None
     try:
-        for _event in agent.diagnose(dataset_id, user=user):
+        for _event in agent.diagnose(dataset_id, user=user, turn_key=self.request.id or ""):
             pass
     except Exception as exc:  # noqa: BLE001 — the page shows the failure instead of hanging
         logger.exception("diagnosis failed for dataset %s", dataset_id)
         _emit(dataset_id, {"type": "chat_failed", "error": str(exc)[:400]})
+        agent.settle(dataset_id)
         return {"status": "failed"}
     return {"status": "ok"}
 
 
 @shared_task(
+    bind=True,
     name="overbae.tasks.datasets.turn",
     soft_time_limit=TURN_SOFT_LIMIT,
     time_limit=TURN_HARD_LIMIT,
     acks_late=True,
     reject_on_worker_lost=True,
 )
-def turn(*, dataset_id: str, message: str, user_id: str | None = None) -> dict[str, Any]:
-    from overbae.models import Dataset, User
+def turn(self, *, dataset_id: str, message: str, user_id: str | None = None) -> dict[str, Any]:
+    from overbae.models import User
     from overbae.services.datasets.notebook import agent
 
     user = User.objects.filter(pk=user_id).first() if user_id else None
-    Dataset.objects.filter(pk=dataset_id, state=Dataset.State.IDLE).update(
-        state=Dataset.State.DIAGNOSING
-    )
     try:
-        for _event in agent.follow_up(dataset_id, message, user=user):
+        for _event in agent.follow_up(
+            dataset_id, message, user=user, turn_key=self.request.id or ""
+        ):
             pass
     except Exception as exc:  # noqa: BLE001
         logger.exception("agent turn failed for dataset %s", dataset_id)
         _emit(dataset_id, {"type": "chat_failed", "error": str(exc)[:400]})
+        agent.settle(dataset_id)
         return {"status": "failed"}
-    finally:
-        Dataset.objects.filter(pk=dataset_id, state=Dataset.State.DIAGNOSING).update(
-            state=Dataset.State.IDLE
-        )
-        _emit(dataset_id, {"type": "dataset_changed"})
     return {"status": "ok"}
 
 

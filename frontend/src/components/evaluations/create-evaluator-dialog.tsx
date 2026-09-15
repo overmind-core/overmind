@@ -40,6 +40,7 @@ import {
   useEditJudgeEvaluatorMutation,
   useEvalSetsQuery,
   useGenerateEvaluatorPromptMutation,
+  useModelCatalogQuery,
   useProjectCapabilitiesQuery,
 } from "@/hooks/use-evaluations";
 import { notify } from "@/lib/notify";
@@ -65,19 +66,7 @@ const roleFromEvaluator = (evaluator: Evaluator): Role => {
   return DEFAULT_ROLE;
 };
 
-// An empty judge_model tells the runner to resolve the platform default
-// (TaskType.JUDGE_SCORING lead model); the select shows it as a concrete id.
-const DEFAULT_JUDGE_MODEL = "gpt-5-mini";
-const JUDGE_MODELS = [
-  "gpt-5-mini",
-  "gpt-5",
-  "claude-sonnet-4-6",
-  "claude-haiku-4-5",
-  "gemini-3-flash-preview",
-  "gemini-3.1-pro-preview",
-] as const;
-
-function JudgeModelRow({ modelId }: { modelId: string }) {
+function JudgeModelRow({ modelId, isDefault }: { modelId: string; isDefault: boolean }) {
   const info = getModelProviderInfo(modelId);
   return (
     <div className="flex min-w-0 flex-1 items-center gap-2">
@@ -87,7 +76,7 @@ function JudgeModelRow({ modelId }: { modelId: string }) {
         providerSlug={info.providerSlug}
       />
       <span className="truncate">{info.modelLabel}</span>
-      {modelId === DEFAULT_JUDGE_MODEL ? (
+      {isDefault ? (
         <span className="ml-auto shrink-0 text-xs text-muted-foreground">default</span>
       ) : null}
     </div>
@@ -188,6 +177,12 @@ export const CreateEvaluatorDialog = ({
     });
 
   const usingDefaultModel = judgeModel === "";
+  const modelDefaults = useModelCatalogQuery(open).data?.defaults;
+  const defaultJudgeModel = modelDefaults?.judgeModel ?? "";
+  const judgeModels = [
+    ...(modelDefaults?.judgeModels ?? []),
+    ...(judgeModel && !modelDefaults?.judgeModels.includes(judgeModel) ? [judgeModel] : []),
+  ];
 
   const capabilityOptions: Option[] = [
     { label: "No capability (generic)", value: CAPABILITY_NONE },
@@ -467,7 +462,7 @@ export const CreateEvaluatorDialog = ({
             <div className="space-y-1.5">
               <Label htmlFor="judge-model">Model</Label>
               <div className="flex items-center gap-2">
-                <Select onValueChange={setJudgeModel} value={judgeModel || DEFAULT_JUDGE_MODEL}>
+                <Select onValueChange={setJudgeModel} value={judgeModel || defaultJudgeModel}>
                   <SelectTrigger
                     aria-label="Select judge model"
                     className="min-w-0 flex-1"
@@ -477,9 +472,9 @@ export const CreateEvaluatorDialog = ({
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    {JUDGE_MODELS.map((id) => (
+                    {judgeModels.map((id) => (
                       <SelectItem key={id} textValue={id} value={id}>
-                        <JudgeModelRow modelId={id} />
+                        <JudgeModelRow isDefault={id === defaultJudgeModel} modelId={id} />
                       </SelectItem>
                     ))}
                   </SelectContent>

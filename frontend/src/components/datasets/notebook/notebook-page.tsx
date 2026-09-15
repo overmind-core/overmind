@@ -60,6 +60,7 @@ export function DatasetNotebook({
 
   const [selectedId, setSelectedId] = useState<string | null>(cellParam ?? null);
   const [live, setLive] = useState<LiveTurn | null>(null);
+  const [landedAt, setLandedAt] = useState(0);
   const refreshTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const refresh = useCallback(() => {
@@ -75,7 +76,8 @@ export function DatasetNotebook({
     switch (event.type) {
       case "chat_turn":
         if (event.role === "user") setLive({ cells: [], steps: [], text: "" });
-        else setLive(null);
+        // Cleared once the refetched chat carries the turn, so the text never blinks out.
+        else setLandedAt(Date.now());
         refresh();
         break;
       case "chat_delta":
@@ -83,6 +85,16 @@ export function DatasetNotebook({
           cells: prev?.cells ?? [],
           steps: prev?.steps ?? [],
           text: (prev?.text ?? "") + event.text,
+        }));
+        break;
+      case "chat_thinking":
+        setLive((prev) => ({
+          cells: prev?.cells ?? [],
+          steps: [
+            ...(prev?.steps ?? []),
+            { id: event.id, phase: "thinking", text: event.text, type: "activity" },
+          ],
+          text: prev?.text ?? "",
         }));
         break;
       case "chat_step": {
@@ -113,6 +125,15 @@ export function DatasetNotebook({
         refresh();
     }
   });
+
+  const turns = useMemo(() => chatOf(dataset), [dataset]);
+  useEffect(() => {
+    if (!landedAt) return;
+    if (turns.at(-1)?.role === "agent") {
+      setLive(null);
+      setLandedAt(0);
+    }
+  }, [turns, landedAt]);
 
   const all = useMemo(() => cellsOf(dataset), [dataset]);
   // Proposals wait in the chat; the notebook shows only cells that are in the chain.
@@ -276,7 +297,7 @@ export function DatasetNotebook({
             onDiscard={guard((id: string) => removeCell.mutate(id))}
             onSelect={scrollTo}
             onSend={guard((message: string) => chat.mutate(message))}
-            turns={chatOf(dataset)}
+            turns={turns}
           />
         </Panel>
       </PanelGroup>

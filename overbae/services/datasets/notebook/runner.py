@@ -41,6 +41,7 @@ WALL_SECONDS = 300
 _ADDRESS_SPACE_BYTES = 6 * 1024**3
 _FILE_SIZE_BYTES = 2 * 1024**3
 _TAIL_CHARS = 1200
+_INSPECT_TAIL_CHARS = 4000
 
 
 @dataclass
@@ -48,10 +49,7 @@ class CellResult:
     frame: pd.DataFrame | None
     error: str = ""
     stdout: str = ""
-
-    @property
-    def ok(self) -> bool:
-        return self.frame is not None and not self.error
+    ok: bool = False
 
 
 def audit(script: str, allowed: frozenset[str]) -> list[str]:
@@ -96,14 +94,14 @@ def _limits():  # pragma: no cover — runs in the child
 
 
 _RUNNER = """\
-import json, sys, traceback
-extra = sys.argv[5] if len(sys.argv) > 5 else ""
+import json, math, sys, traceback
+extra = sys.argv[6] if len(sys.argv) > 6 else ""
 if extra:
     sys.path.insert(0, extra)
 import pandas as pd
 import numpy as np
 
-script_path, in_path, out_path, kinds_path = sys.argv[1:5]
+script_path, in_path, out_path, kinds_path, mode = sys.argv[1:6]
 src = pd.read_parquet(in_path)
 kinds = json.load(open(kinds_path, encoding="utf-8"))
 for col, kind in kinds.items():
@@ -134,6 +132,8 @@ except Exception:
     ]
     sys.stderr.write("\\n".join(keep[-12:]))
     raise SystemExit(3)
+if mode == "inspect":
+    raise SystemExit(0)
 df = ns.get("df")
 if df is None:
     raise SystemExit("The cell must leave a frame in df.")
@@ -153,11 +153,24 @@ df = df.reset_index(drop=True)
 df.columns = [str(c) for c in df.columns]
 if "source_row" in df.columns:
     df["source_row"] = pd.to_numeric(df["source_row"], errors="coerce").astype("Int64")
+# A NaN nested in a container must become null; json.dumps would write a bare NaN token.
+def _finite(v):
+    if isinstance(v, (float, np.floating)):
+        return float(v) if math.isfinite(v) else None
+    if isinstance(v, dict):
+        return {k: _finite(x) for k, x in v.items()}
+    if isinstance(v, (list, tuple)):
+        return [_finite(x) for x in v]
+    return v
+
+def _as_json(v):
+    return json.dumps(_finite(v), ensure_ascii=False, default=str, sort_keys=True, allow_nan=False)
+
 out_kinds = {}
 for col in df.columns:
     s = df[col]
     if s.dtype == object and s.map(lambda v: isinstance(v, (dict, list, tuple))).any():
-        df[col] = s.map(lambda v: json.dumps(v, ensure_ascii=False, default=str, sort_keys=True) if isinstance(v, (dict, list, tuple)) else (None if v is None or (isinstance(v, float) and v != v) else json.dumps(v, ensure_ascii=False, default=str)))
+        df[col] = s.map(lambda v: _as_json(v) if isinstance(v, (dict, list, tuple)) else (None if v is None or (isinstance(v, float) and v != v) else _as_json(v)))
         out_kinds[col] = "json"
     elif s.dtype == object:
         df[col] = s.map(lambda v: None if v is None or (isinstance(v, float) and v != v) else str(v) if not isinstance(v, str) else v)
@@ -167,9 +180,12 @@ json.dump(out_kinds, open(out_path + ".kinds", "w", encoding="utf-8"))
 """
 
 
-def run(script: str, source: Path, *, library_cache: Path) -> CellResult:
-    """Run ``script`` with ``df`` bound to the frame at ``source``. Returns the
-    child's ``df`` with JSON columns decoded."""
+def run(
+    script: str, source: Path, *, library_cache: Path, produce_frame: bool = True
+) -> CellResult:
+    mode = "cell" if produce_frame else "inspect"
+    noun = "cell" if produce_frame else "script"
+    stdout_tail = _TAIL_CHARS if produce_frame else _INSPECT_TAIL_CHARS
     violations = audit(script, libraries.allowed_imports(library_cache))
     if violations:
         return CellResult(None, error="; ".join(violations[:5]))
@@ -203,6 +219,7 @@ def run(script: str, source: Path, *, library_cache: Path) -> CellResult:
                     str(source),
                     str(out_path),
                     str(kinds_path),
+                    mode,
                     str(library_cache) if library_cache.exists() else "",
                 ],
                 cwd=tmp,
@@ -214,19 +231,21 @@ def run(script: str, source: Path, *, library_cache: Path) -> CellResult:
             )
         except subprocess.TimeoutExpired:
             return CellResult(
-                None, error=f"The cell ran longer than {WALL_SECONDS}s and was stopped."
+                None, error=f"The {noun} ran longer than {WALL_SECONDS}s and was stopped."
             )
         except (OSError, subprocess.SubprocessError) as exc:
             return CellResult(None, error=f"The runner could not start: {exc}")
         if proc.returncode != 0:
-            tail = (proc.stderr or proc.stdout or "").strip()[-_TAIL_CHARS:]
+            failure = (proc.stderr or proc.stdout or "").strip()[-_TAIL_CHARS:]
             if proc.returncode in (-9, 137):
-                tail = tail or "The cell used more memory or CPU than allowed."
+                failure = failure or f"The {noun} used more memory or CPU than allowed."
             return CellResult(
                 None,
-                error=tail or f"The cell exited with code {proc.returncode}.",
-                stdout=proc.stdout[-_TAIL_CHARS:],
+                error=failure or f"The {noun} exited with code {proc.returncode}.",
+                stdout=proc.stdout[-stdout_tail:],
             )
+        if not produce_frame:
+            return CellResult(None, stdout=proc.stdout[-stdout_tail:], ok=True)
         try:
             frame = pd.read_parquet(out_path)
             kinds = json.loads((tmp_path / "out.parquet.kinds").read_text(encoding="utf-8"))
@@ -235,4 +254,4 @@ def run(script: str, source: Path, *, library_cache: Path) -> CellResult:
         for col, kind in kinds.items():
             if kind == "json" and col in frame.columns:
                 frame[col] = frame[col].map(lambda v: json.loads(v) if isinstance(v, str) else v)
-        return CellResult(frame, stdout=proc.stdout[-_TAIL_CHARS:])
+        return CellResult(frame, stdout=proc.stdout[-stdout_tail:], ok=True)

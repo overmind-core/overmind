@@ -207,6 +207,7 @@ models/IntentEnum.ts
 models/ModeCd6Enum.ts
 models/ModelCatalogResponse.ts
 models/ModelCheckpoints.ts
+models/ModelDefaults.ts
 models/ModelSwapPrompt.ts
 models/ModelTierEnum.ts
 models/NullEnum.ts

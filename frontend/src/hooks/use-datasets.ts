@@ -91,6 +91,7 @@ export type DatasetEvent =
   | { type: "cells_changed" | "dataset_changed" }
   | { type: "chat_turn"; role: "user" | "agent"; text: string; cells?: ChatCellRef[]; at: string }
   | { type: "chat_delta"; text: string }
+  | { type: "chat_thinking"; id: string; text: string }
   | ({ type: "chat_step" } & Omit<AgentActivityPart, "type">)
   | { type: "chat_cell"; cell_id: string; action: ChatCellRef["action"] }
   | { type: "chat_failed"; error: string };

@@ -37,7 +37,6 @@ STDLIB = frozenset(
         "struct",
         "base64",
         "html",
-        "urllib",
         "email",
         "csv",
         "io",
@@ -202,10 +201,9 @@ def version_of(dist: str, cache: Path | None = None) -> str:
 
 
 def describe(cache: Path) -> str:
-    """The Markdown the agent's workspace carries."""
     extra = sorted(installed(cache))
     lines = [
-        "# Libraries",
+        "## Libraries",
         "",
         "A cell may import the standard library and these packages:",
         "",

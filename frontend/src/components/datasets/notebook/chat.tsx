@@ -1,4 +1,4 @@
-import { type KeyboardEvent, useEffect, useRef, useState } from "react";
+import { type KeyboardEvent, memo, useEffect, useMemo, useRef, useState } from "react";
 
 import type { AgentActivityPart } from "@/components/agent-activity/activity-timeline";
 import { TurnSteps } from "@/components/agent-activity/turn-steps";
@@ -117,7 +117,7 @@ function ProposalCard({
   );
 }
 
-function Turn({
+const Turn = memo(function Turn({
   turn,
   cellsById,
   busy,
@@ -179,7 +179,7 @@ function Turn({
       {error && <p className="text-xs text-destructive">{error}</p>}
     </div>
   );
-}
+});
 
 export function DatasetChat({
   turns,
@@ -205,12 +205,14 @@ export function DatasetChat({
 }) {
   const [draft, setDraft] = useState("");
   const scrollRef = useRef<HTMLDivElement>(null);
-  const cellsById = new Map(cells.map((c) => [c.id, c]));
+  const cellsById = useMemo(() => new Map(cells.map((c) => [c.id, c])), [cells]);
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: scroll to the newest text
   useEffect(() => {
     const el = scrollRef.current;
-    if (el) el.scrollTop = el.scrollHeight;
+    if (!el) return;
+    const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 80;
+    if (atBottom) el.scrollTop = el.scrollHeight;
   }, [turns.length, live?.text, live?.cells.length, live?.steps.length]);
 
   const send = () => {

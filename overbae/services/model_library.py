@@ -1,7 +1,7 @@
 """Public model-library catalog — powers the marketing site's `/library` pages.
 
 Open-weight models from models.json (fine-tuning + inference on Overmind's infra)
-plus closed-source frontier models from ``overbae.frontier_models`` (inference only,
+plus the closed-source models ``core.model_registry`` lists for the library (inference only,
 via OpenRouter). Never reads FinetuningJob/DeployedModel — a user's own fine-tuned
 instances are private and project-scoped.
 """
@@ -11,7 +11,7 @@ from __future__ import annotations
 import re
 from typing import Any
 
-from overbae.frontier_models import external_frontier_models
+from overbae.core.model_registry import Model, library_models
 from overbae.modal.model_registry import (
     TIER_ORDER,
     all_model_entries,
@@ -139,15 +139,13 @@ def _open_weight_entry(cfg: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def _frontier_entry(cfg: dict[str, Any]) -> dict[str, Any]:
-    model_id = cfg["id"]
+def _frontier_entry(model: Model) -> dict[str, Any]:
+    model_id = model.slug
     return {
         "id": model_id,
         "slug": slugify_model_id(model_id),
         "display": _display_from_id(model_id),
-        "provider": provider_display_names().get(
-            (cfg.get("owned_by") or "").lower(), cfg.get("owned_by", "")
-        ),
+        "provider": provider_display_names().get(str(model.vendor), str(model.vendor)),
         "group": None,
         "category": CATEGORY_FRONTIER,
         "hf_model_id": None,
@@ -193,7 +191,7 @@ def public_model_catalog() -> list[dict[str, Any]]:
             by_id[cfg["id"]] = cfg
 
     open_weight = [_open_weight_entry(cfg) for cfg in by_id.values()]
-    frontier = [_frontier_entry(cfg) for cfg in external_frontier_models()]
+    frontier = [_frontier_entry(m) for m in library_models()]
 
     def _sort_key(entry: dict[str, Any]) -> tuple[int, int, float]:
         if entry["category"] == CATEGORY_FRONTIER:

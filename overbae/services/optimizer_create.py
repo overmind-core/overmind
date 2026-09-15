@@ -10,10 +10,10 @@ from django.conf import settings
 from rest_framework.exceptions import ValidationError
 
 from overbae.api.credit_gate import require_credits
+from overbae.core.model_registry import pricing_slug
 from overbae.models import DeployedModel, OptimizerExperiment
 from overbae.models.optimizer import optimizer_dataset_error
 from overbae.services.model_catalog import (
-    _openrouter_slug,
     is_model_available,
 )
 from overbae.services.plan_limits import require_plan_quota
@@ -77,7 +77,7 @@ def validate_optimizer_models(
     ):
         raise ValidationError({"model_ids": "Every model must be a non-empty model slug."})
     canonical_ids = [
-        model_id if _is_finetuned_reference(model_id) else _openrouter_slug(model_id) or model_id
+        model_id if _is_finetuned_reference(model_id) else pricing_slug(model_id) or model_id
         for model_id in model_ids
     ]
     if len(set(canonical_ids)) != len(canonical_ids):

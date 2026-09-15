@@ -32,17 +32,24 @@ def _replay_key(dataset_id: Any) -> str:
     return f"dataset:events:{dataset_id}"
 
 
+def _seq_key(dataset_id: Any) -> str:
+    return f"dataset:events:seq:{dataset_id}"
+
+
 def publish(dataset_id: Any, event: dict[str, Any], *, client: Any = None) -> None:
-    payload = json.dumps(event, default=str)
     try:
         r = client if client is not None else _redis_client()
         if r is None:
             return
+        # Replay dedupes live events by seq; two deltas of the same token are byte-identical.
+        event = {**event, "seq": int(r.incr(_seq_key(dataset_id)))}
+        payload = json.dumps(event, default=str)
         pipe = r.pipeline()
         pipe.publish(channel(dataset_id), payload)
         pipe.rpush(_replay_key(dataset_id), payload)
         pipe.ltrim(_replay_key(dataset_id), -_REPLAY_CAP, -1)
         pipe.expire(_replay_key(dataset_id), _REPLAY_TTL_SECONDS)
+        pipe.expire(_seq_key(dataset_id), _REPLAY_TTL_SECONDS)
         pipe.execute()
     except Exception:  # noqa: BLE001 — events are advisory, never fatal
         logger.warning("dataset event publish failed for %s", dataset_id, exc_info=True)

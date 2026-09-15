@@ -6,16 +6,8 @@ from pydantic import BaseModel
 from tenacity import RetryCallState
 
 from overbae.core import llms as _llms_module
-from overbae.core.llms import (
-    SUPPORTED_LLM_MODELS,
-    _should_retry_llm_call,
-    call_llm,
-    get_reasoning_levels,
-    get_thinking_budget_tokens,
-    is_adaptive_mode,
-    is_reasoning_required,
-    model_supports_reasoning,
-)
+from overbae.core.llms import _should_retry_llm_call, call_llm
+from overbae.core.model_registry import CATALOG, MODELS_BY_NAME, reasoning_of
 
 
 def _make_completion_response(content: str = "Hello") -> MagicMock:
@@ -43,36 +35,17 @@ def mock_openrouter_completion():
         yield create
 
 
-def test_model_supports_reasoning():
-    assert model_supports_reasoning("gpt-5-mini") is True
-    assert model_supports_reasoning("claude-sonnet-4-6") is True
-    assert model_supports_reasoning("gemini-3-flash-preview") is True
-    assert model_supports_reasoning("gemini-2.5-flash-lite") is False
-
-
-def test_get_reasoning_levels():
-    assert get_reasoning_levels("gpt-5-mini") == ["low", "medium", "high"]
-    assert get_reasoning_levels("gemini-3.1-pro-preview") == ["low", "medium", "high"]
-    assert get_reasoning_levels("claude-opus-4-6") == ["low", "medium", "high", "max"]
-    assert get_reasoning_levels("claude-opus-4-5") == []
-
-
-def test_get_thinking_budget_tokens():
-    assert get_thinking_budget_tokens("claude-opus-4-5") == [8000]
-    assert get_thinking_budget_tokens("gemini-2.5-flash") == [-1]
-    assert get_thinking_budget_tokens("claude-opus-4-6") == []
-
-
-def test_is_reasoning_required():
-    assert is_reasoning_required("gemini-2.5-pro") is True
-    assert is_reasoning_required("gpt-5-mini") is False
-
-
-def test_is_adaptive_mode():
-    assert is_adaptive_mode("claude-opus-4-6") is True
-    assert is_adaptive_mode("gpt-5-mini") is True
-    assert is_adaptive_mode("gemini-2.5-flash") is False
-    assert is_adaptive_mode("gpt-4.1") is None
+def test_reasoning_metadata_reads_from_the_registry():
+    assert reasoning_of("gpt-5-mini").adaptive is True
+    assert reasoning_of("gpt-5-mini").levels == ("low", "medium", "high")
+    assert reasoning_of("claude-opus-4-6").levels == ("low", "medium", "high", "max")
+    assert reasoning_of("claude-opus-4-5") == reasoning_of("claude-haiku-4-5")
+    assert reasoning_of("claude-opus-4-5").budgets == (8000,)
+    assert reasoning_of("gemini-2.5-flash").adaptive is False
+    assert reasoning_of("gemini-2.5-pro").required is True
+    assert reasoning_of("gpt-4.1").adaptive is None
+    assert reasoning_of("gemini-2.5-flash-lite").adaptive is None
+    assert reasoning_of("gpt-5-mini-2026-01-01") == reasoning_of("gpt-5-mini")
 
 
 def test_call_llm_passes_reasoning_effort_when_supported(mock_openrouter_completion):
@@ -240,12 +213,7 @@ def test_retry_predicate_fails_fast_on_credential_errors():
     assert _should_retry_llm_call(_make_retry_state(exc=auth)) is False
 
 
-def test_supported_models_include_gemini_entries():
-    names = _llms_module.SUPPORTED_LLM_MODEL_NAMES
-    assert "gemini-3.1-pro-preview" in names
-    assert "gemini-3-flash-preview" in names
-
-
-def test_all_models_have_reasoning_metadata():
-    for item in SUPPORTED_LLM_MODELS:
-        assert "supports_reasoning" in item
+def test_every_catalog_row_names_a_vendor_and_a_tier():
+    assert "gemini-3.1-pro-preview" in MODELS_BY_NAME
+    for m in CATALOG:
+        assert m.vendor and m.tier and (m.slug or m.priced_as)

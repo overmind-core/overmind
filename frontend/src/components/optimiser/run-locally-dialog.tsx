@@ -39,8 +39,6 @@ import { type CatalogModel, DeployedModelsListStatusEnum } from "@/openapi";
 
 export const MAX_COMPARISON_MODELS = 5;
 
-const DEFAULT_BACKTEST_MODELS = ["openai/gpt-5-mini", "anthropic/claude-sonnet-4"] as const;
-
 type ComparisonModelLane = "batch" | "standard";
 
 /** OpenRouter batch slugs carry a `:batch` suffix (e.g. `openai/gpt-5-mini:batch`). */
@@ -107,7 +105,7 @@ dataset: ${datasetRef}`;
 export function buildBacktestPrompt(
   capabilitySlug: string,
   datasetRef: string,
-  modelIds: string[] = [...DEFAULT_BACKTEST_MODELS]
+  modelIds: string[]
 ): string {
   const models = (modelIds.length > 0 ? modelIds : ["<model>"]).join(", ");
   return `/overmind backtest
@@ -153,11 +151,13 @@ function RunLocallyBody({
   capabilityId,
   datasetId,
 }: Omit<RunLocallyDialogProps, "open">) {
-  const [modelIds, setModelIds] = useState<string[]>(() => [...DEFAULT_BACKTEST_MODELS]);
+  const [chosenModelIds, setChosenModelIds] = useState<string[] | null>(null);
   const [selectedCapabilityId, setSelectedCapabilityId] = useState(capabilityId ?? "");
   const [selectedDatasetId, setSelectedDatasetId] = useState(datasetId ?? "");
   const [localDatasetPath, setLocalDatasetPath] = useState("");
   const [selectedTab, setSelectedTab] = useState("harness");
+  const defaultModelIds = useModelCatalogQuery().data?.defaults.backtestModels ?? [];
+  const modelIds = chosenModelIds ?? defaultModelIds;
 
   const capabilitiesQuery = useProjectCapabilitiesQuery(projectId);
   const capabilities = capabilitiesQuery.data?.results ?? [];
@@ -259,7 +259,7 @@ function RunLocallyBody({
               <BacktestModelPicker
                 incumbentModel={incumbentModel}
                 modelIds={modelIds}
-                onModelIdsChange={setModelIds}
+                onModelIdsChange={setChosenModelIds}
                 projectId={projectId}
               />
             </CommandBlock>

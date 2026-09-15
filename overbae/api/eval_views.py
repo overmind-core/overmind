@@ -51,6 +51,7 @@ from overbae.api.filters import (
 )
 from overbae.api.serializers import ModelCatalogResponseSerializer
 from overbae.api.views import _user_project_ids
+from overbae.core.model_registry import model_defaults
 from overbae.models import (
     Capability,
     EvalRun,
@@ -79,7 +80,11 @@ class ModelCatalogView(APIView):
     def get(self, request):
         models, upstream_available = fetch_model_catalog()
         serializer = ModelCatalogResponseSerializer(
-            {"models": models, "upstream_available": upstream_available}
+            {
+                "models": models,
+                "upstream_available": upstream_available,
+                "defaults": model_defaults(),
+            }
         )
         return Response(serializer.data)
 

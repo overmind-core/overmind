@@ -208,17 +208,26 @@ def test_patch_sets_capability_intent_and_active_cell():
     }
 
 
-def test_chat_is_refused_while_busy_and_queued_when_idle():
+def test_chat_is_refused_while_busy_and_locks_the_dataset_at_once():
     project = _project()
     client = _client(project)
     dataset = _create(client, project)
     res = client.post(f"/api/datasets/{dataset.id}/chat/", {"message": "hi"}, format="json")
     assert res.status_code == 202
-    dataset.refresh_from_db()
-    assert dataset.state == "diagnosing"
-    Dataset.objects.filter(pk=dataset.pk).update(state="running")
+    # The turn owns the dataset from the request, not from the worker's pickup.
+    assert Dataset.objects.get(pk=dataset.pk).state == "diagnosing"
     res = client.post(f"/api/datasets/{dataset.id}/chat/", {"message": "hi"}, format="json")
     assert res.status_code == 409
+    res = client.post(f"/api/datasets/{dataset.id}/cells/", {"title": "T", "script": "df = df"})
+    assert res.status_code == 409
+    for state in ("running", "landing"):
+        Dataset.objects.filter(pk=dataset.pk).update(state=state)
+        res = client.post(f"/api/datasets/{dataset.id}/chat/", {"message": "hi"}, format="json")
+        assert res.status_code == 409
+    # A chain whose last run failed is exactly what the user wants the agent for.
+    Dataset.objects.filter(pk=dataset.pk).update(state="error", error="Bad: nope")
+    res = client.post(f"/api/datasets/{dataset.id}/chat/", {"message": "fix it"}, format="json")
+    assert res.status_code == 202
 
 
 def test_list_filters_by_intent_and_shows_the_active_version():

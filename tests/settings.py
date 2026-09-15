@@ -8,7 +8,6 @@ import os
 os.environ.setdefault("AWS_BUCKET_NAME", "test-ft-bucket")
 os.environ.setdefault("AWS_ACCESS_KEY_ID", "testing")
 os.environ.setdefault("AWS_SECRET_ACCESS_KEY", "testing")
-os.environ.setdefault("CURSOR_API_KEY", "testing")
 os.environ.setdefault("INFERENCE_API_URL", "http://inference.test")
 os.environ.setdefault("BASETEN_API_KEY", "testing")
 os.environ.setdefault("TOGETHER_API_KEY", "testing")

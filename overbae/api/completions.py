@@ -32,7 +32,7 @@ from overbae.api.streaming import (
     AsyncStream,
     iter_keeping_idle_alive,
 )
-from overbae.frontier_models import is_non_finetuned_model, non_finetuned_models_response
+from overbae.core.model_registry import inference_models, is_inference_model
 from overbae.models import (
     APIToken,
     BillingService,
@@ -143,7 +143,6 @@ OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
 _OPENROUTER_TIMEOUT = 120
 
 # Model-comparison runs send this header to reach ANY OpenRouter-served slug;
-# everyone else stays on the curated allowlist in frontier_models.py.
 OPTIMISER_ROUTING_HEADER = "X-Overmind-Optimiser"
 
 
@@ -444,7 +443,7 @@ def chat_completions(request: Request) -> Response | StreamingHttpResponse:
         # OpenRouter serves — strip it so the slug routes upstream.
         model_id = model_id.removeprefix("openrouter/")
     if deployed is None and (
-        is_non_finetuned_model(model_id) or (is_optimiser_run and "/" in model_id)
+        is_inference_model(model_id) or (is_optimiser_run and "/" in model_id)
     ):
         if not getattr(settings, "OPENROUTER_API_KEY", None):
             return Response(
@@ -721,7 +720,18 @@ def models_list(request: Request) -> Response:
         finetuned += [_capability_alias_to_dict(a) for a in capabilities]
 
     non_finetuned = (
-        non_finetuned_models_response() if getattr(settings, "OPENROUTER_API_KEY", None) else []
+        [
+            {
+                "id": m.slug,
+                "object": "model",
+                "created": 0,
+                "owned_by": m.vendor,
+                "finetuned": False,
+            }
+            for m in inference_models()
+        ]
+        if getattr(settings, "OPENROUTER_API_KEY", None)
+        else []
     )
 
     return Response({"object": "list", "data": finetuned + non_finetuned})
@@ -730,7 +740,7 @@ def models_list(request: Request) -> Response:
 @api_view(["GET", "DELETE"])
 @permission_classes([IsAuthenticated])
 def model_detail(request: Request, model_id: str) -> Response:
-    if is_non_finetuned_model(model_id):
+    if is_inference_model(model_id):
         if request.method == "DELETE":
             return Response(
                 {

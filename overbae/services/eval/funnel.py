@@ -21,8 +21,9 @@ from django.conf import settings
 from django.db import close_old_connections, connection
 from pydantic import BaseModel
 
-from overbae.core.llms import LLM_PROVIDER_BY_MODEL, ModelSpec, call_llm, try_json_parsing
-from overbae.core.model_resolver import (
+from overbae.core.llms import ModelSpec, call_llm, try_json_parsing
+from overbae.core.model_registry import (
+    LLM_PROVIDER_BY_MODEL,
     TaskType,
     model_chain,
     openrouter_configured,

@@ -11,7 +11,7 @@ from django.contrib.auth import get_user_model
 
 from overbae.models import BillingService, BillingTelemetry, Project
 from overbae.models.finetuning import FinetuningJob
-from overbae.services.billing_ledger import balance_usd, charge_cursor_usage
+from overbae.services.billing_ledger import balance_usd, charge_llm_usage
 from overbae.tasks.finetuning import _transition
 
 pytestmark = pytest.mark.django_db
@@ -34,42 +34,33 @@ def _project() -> Project:
     )
 
 
-def test_charge_cursor_usage_prices_and_is_idempotent(monkeypatch):
-    user = _user("cursor-charge@example.com")
+def test_charge_llm_usage_bills_the_reported_cost_and_is_idempotent():
+    user = _user("workshop-charge@example.com")
     before = balance_usd(user)
-    seen = {}
-
-    def _estimate(model, inp, out, cached_tokens=None):
-        seen.update(model=model, inp=inp, out=out, cached=cached_tokens)
-        return 1.25
-
-    monkeypatch.setattr("overbae.services.model_catalog.estimate_cost", _estimate)
-    usage = {
-        "input_tokens": 1000,
-        "output_tokens": 500,
-        "cache_read_tokens": 700,
-        "total_tokens": 1500,
+    stats = {
+        "prompt_tokens": 1000,
+        "completion_tokens": 500,
+        "cached_tokens": 700,
+        "response_cost": 1.25,
+        "served_model": "openai/gpt-5.6-terra",
     }
-    key = f"cursor-agent:test:{uuid.uuid4()}"
-    row = charge_cursor_usage(
+    key = f"data-workshop:test:{uuid.uuid4()}"
+    row = charge_llm_usage(
         user,
-        usage,
-        service=BillingService.CURSOR_AGENT,
+        stats,
+        service=BillingService.DATA_WORKSHOP,
         idempotency_key=key,
         metadata={"source": "test"},
     )
     assert row is not None
     assert row.amount == Decimal("-1.25")
+    assert row.metadata["llm_usage"]["served_model"] == "openai/gpt-5.6-terra"
     assert balance_usd(user) == before - Decimal("1.25")
-    # Composer has no OpenRouter listing; the closest stand-in prices the turn,
-    # and cache reads must not be billed as fresh input.
-    assert seen["model"] == "moonshotai/kimi-k2.5"
-    assert seen["cached"] == 700
 
-    again = charge_cursor_usage(
+    again = charge_llm_usage(
         user,
-        usage,
-        service=BillingService.CURSOR_AGENT,
+        stats,
+        service=BillingService.DATA_WORKSHOP,
         idempotency_key=key,
         metadata={"source": "test"},
     )
@@ -78,22 +69,42 @@ def test_charge_cursor_usage_prices_and_is_idempotent(monkeypatch):
     assert balance_usd(user) == before - Decimal("1.25")
 
 
-def test_charge_cursor_usage_skips_empty_usage(monkeypatch):
-    user = _user("cursor-empty@example.com")
-    monkeypatch.setattr(
-        "overbae.services.model_catalog.estimate_cost",
-        lambda *a, **k: 9.99,
+def test_charge_llm_usage_falls_back_to_catalog_pricing(monkeypatch):
+    """A provider that reports no cost is priced from the model that served it,
+    and cache reads must not be billed as fresh input."""
+    user = _user("workshop-fallback@example.com")
+    seen = {}
+
+    def _estimate(model, inp, out, cached_tokens=None):
+        seen.update(model=model, inp=inp, out=out, cached=cached_tokens)
+        return 0.4
+
+    monkeypatch.setattr("overbae.services.model_catalog.estimate_cost", _estimate)
+    row = charge_llm_usage(
+        user,
+        {
+            "prompt_tokens": 1000,
+            "completion_tokens": 500,
+            "cached_tokens": 700,
+            "served_model": "composer-2.5",
+        },
+        service=BillingService.DATA_WORKSHOP,
+        idempotency_key=f"data-workshop:fallback:{uuid.uuid4()}",
     )
+    assert row is not None and row.amount == Decimal("-0.4")
+    assert seen == {"model": "composer-2.5", "inp": 1000, "out": 500, "cached": 700}
+
+
+def test_charge_llm_usage_skips_an_empty_turn(monkeypatch):
+    user = _user("workshop-empty@example.com")
+    monkeypatch.setattr("overbae.services.model_catalog.estimate_cost", lambda *a, **k: 9.99)
     assert (
-        charge_cursor_usage(
-            user,
-            {},
-            service=BillingService.CURSOR_AGENT,
-            idempotency_key="cursor-agent:empty",
+        charge_llm_usage(
+            user, {}, service=BillingService.DATA_WORKSHOP, idempotency_key="data-workshop:empty"
         )
         is None
     )
-    assert BillingTelemetry.objects.filter(idempotency_key="cursor-agent:empty").count() == 0
+    assert BillingTelemetry.objects.filter(idempotency_key="data-workshop:empty").count() == 0
 
 
 def test_modal_terminal_transition_charges_once():
@@ -160,13 +171,17 @@ def test_optimizer_charge_cursor_usage(monkeypatch):
         triggered_by=user,
         cursor_usage={"input_tokens": 100, "output_tokens": 20, "total_tokens": 120},
     )
-    monkeypatch.setattr(
-        "overbae.services.model_catalog.estimate_cost",
-        lambda *a, **k: 0.55,
-    )
+    seen = {}
+
+    def _estimate(model, inp, out, cached_tokens=None):
+        seen.update(model=model, inp=inp)
+        return 0.55
+
+    monkeypatch.setattr("overbae.services.model_catalog.estimate_cost", _estimate)
     exp._charge_cursor_usage()
     exp._charge_cursor_usage()  # idempotent
     rows = BillingTelemetry.objects.filter(user=user, service=BillingService.CURSOR_AGENT)
     assert rows.count() == 1
     assert rows.get().idempotency_key == f"cursor-agent:optimizer:{exp.pk}"
     assert rows.get().amount == Decimal("-0.55")
+    assert seen == {"model": "composer-2.5", "inp": 100}

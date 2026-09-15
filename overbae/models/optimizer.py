@@ -425,14 +425,22 @@ class OptimizerExperiment(models.Model):
 
     def _charge_cursor_usage(self) -> None:
         """Debit accumulated Cursor SDK usage for this experiment. Never raises."""
+        from overbae.core.model_registry import WORKSHOP_ENGINES
         from overbae.models import BillingService
-        from overbae.services.billing_ledger import charge_cursor_usage
+        from overbae.services.billing_ledger import charge_llm_usage
 
-        if not self.triggered_by_id:
+        if not self.triggered_by_id or not self.cursor_usage:
             return
-        charge_cursor_usage(
+        usage = self.cursor_usage
+        cached = int(usage.get("cache_read_tokens") or 0)
+        charge_llm_usage(
             self.triggered_by,
-            self.cursor_usage,
+            {
+                "prompt_tokens": int(usage.get("input_tokens") or 0) + cached,
+                "completion_tokens": int(usage.get("output_tokens") or 0),
+                "cached_tokens": cached,
+                "served_model": WORKSHOP_ENGINES[0].model,
+            },
             service=BillingService.CURSOR_AGENT,
             project_id=self.project_id,
             idempotency_key=f"cursor-agent:optimizer:{self.pk}",
