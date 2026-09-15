@@ -2,12 +2,12 @@ name: SDK Test IO
 
 on:
   push:
-    branches: [main, oss]
+    branches: [main]
     paths:
       - "overmind/**"
       - ".github/workflows/sdk-test-io.yml"
   pull_request:
-    branches: [main, oss]
+    branches: [main]
     paths:
       - "overmind/**"
       - ".github/workflows/sdk-test-io.yml"

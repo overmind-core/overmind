@@ -226,7 +226,7 @@ export OVERMIND_ANALYTICS_ENABLED=false
 export DO_NOT_TRACK=1
 ```
 
-Analytics is also off when `CI` is set.
+Analytics is also off when `CI` is set in env.
 
 ## CLI reference
 
