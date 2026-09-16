@@ -19,24 +19,20 @@ const PROJECT_ID = "a1b2c3d4-e5f6-7890-abcd-ef1234567890";
 const PROD = "https://api.overmindlab.ai";
 const STAGING = "https://api-staging.overmindlab.ai";
 const LOCAL = "http://localhost:8000";
-const FROM_MAIN =
-  'pip install "overmind @ git+https://github.com/overmind-core/platform.git@main#subdirectory=overmind"';
-const FROM_MAIN_TRACING =
-  'pip install "overmind[tracing] @ git+https://github.com/overmind-core/platform.git@main#subdirectory=overmind"';
 
 describe("mcp setup snippets", () => {
   it("resolves install channel from the Console API host", () => {
     expect(sdkInstallChannel(PROD)).toBe("pypi");
-    expect(sdkInstallChannel(STAGING)).toBe("git");
-    expect(sdkInstallChannel(LOCAL)).toBe("git");
+    expect(sdkInstallChannel(STAGING)).toBe("pypi");
+    expect(sdkInstallChannel(LOCAL)).toBe("pypi");
   });
 
-  it("installs from main on staging/local and from PyPI in production", () => {
-    expect(sdkPipInstall(STAGING)).toBe(FROM_MAIN);
-    expect(sdkPipInstall(LOCAL)).toBe(FROM_MAIN);
+  it("installs from PyPI on all hosts", () => {
+    expect(sdkPipInstall(STAGING)).toBe("pip install overmind");
+    expect(sdkPipInstall(LOCAL)).toBe("pip install overmind");
     expect(sdkPipInstall(PROD)).toBe("pip install overmind");
     expect(sdkPipInstall(PROD, "tracing")).toBe('pip install "overmind[tracing]"');
-    expect(sdkPipInstall(STAGING, "tracing")).toBe(FROM_MAIN_TRACING);
+    expect(sdkPipInstall(STAGING, "tracing")).toBe('pip install "overmind[tracing]"');
   });
 
   it("flags --env from the Console API host", () => {
@@ -59,7 +55,9 @@ describe("mcp setup snippets", () => {
     expect(mcpInitCommand("cursor", KEY, PROD, "tracing")).toBe(
       `pip install "overmind[tracing]"\nexport OVERMIND_API_KEY=${KEY}\novermind init --ide cursor\novermind sync`
     );
-    expect(mcpInitCommand("cursor", KEY, STAGING, "tracing")).toContain(FROM_MAIN_TRACING);
+    expect(mcpInitCommand("cursor", KEY, STAGING, "tracing")).toBe(
+      `pip install "overmind[tracing]"\nexport OVERMIND_API_KEY=${KEY}\novermind init --ide cursor --env staging\novermind sync`
+    );
     expect(mcpInitCommand("claude", KEY, LOCAL)).toContain(
       "overmind init --ide claude --env local"
     );
@@ -163,31 +161,30 @@ overmind sync`
     expect(prompt).not.toContain("pip install overmind");
   });
 
-  it("guides git dependency via uv/poetry on staging", () => {
+  it("guides PyPI dependency via uv/poetry on staging", () => {
     const guidance = projectDependencyInstallGuidance(STAGING);
-    expect(guidance).toContain("from git");
-    expect(guidance).toContain("@main#subdirectory=overmind");
-    expect(guidance).toContain("do not use PyPI");
+    expect(guidance).toContain("from PyPI");
+    expect(guidance).toContain("uv add overmind");
+    expect(guidance).toContain("do not install from git");
     const prompt = onboardWithAiBootstrapPrompt("cursor", KEY, STAGING);
     expect(prompt).toContain("overmind init --ide cursor --env staging");
-    expect(prompt).not.toMatch(/\bpip install overmind\b/);
+    expect(prompt).toContain("uv add overmind");
   });
 
-  it("guides git dependency via uv/poetry on localhost without editable path", () => {
+  it("guides PyPI dependency via uv/poetry on localhost without editable path", () => {
     const guidance = projectDependencyInstallGuidance(LOCAL);
-    expect(guidance).toContain("from git");
-    expect(guidance).toContain("uv add");
-    expect(guidance).toContain("poetry add");
+    expect(guidance).toContain("from PyPI");
+    expect(guidance).toContain("uv add overmind");
+    expect(guidance).toContain("do not install from git");
     const prompt = onboardWithAiBootstrapPrompt("cursor", KEY, LOCAL);
     expect(prompt).toContain("do not assume pip");
-    expect(prompt).toContain("uv add");
+    expect(prompt).toContain("uv add overmind");
     expect(prompt).toContain("overmind init --ide cursor --env local");
-    expect(prompt).not.toMatch(/\bpip install overmind\b/);
     expect(prompt).not.toContain("--editable");
   });
 
   it("uses editable path only on localhost when VITE_SDK_EDITABLE_PATH is set", async () => {
-    vi.stubEnv("VITE_SDK_EDITABLE_PATH", "/Users/dom/git/overmind/platform/overmind");
+    vi.stubEnv("VITE_SDK_EDITABLE_PATH", "/Users/dom/git/overmind/overmind/overmind");
     vi.resetModules();
     const {
       onboardWithAiBootstrapPrompt: bootstrap,
@@ -196,19 +193,19 @@ overmind sync`
     } = await import("./mcp-setup");
     expect(channel(LOCAL)).toBe("editable");
     expect(channel(PROD)).toBe("pypi");
-    expect(channel(STAGING)).toBe("git");
+    expect(channel(STAGING)).toBe("pypi");
     expect(guidance(LOCAL)).toContain(
-      "editable install (/Users/dom/git/overmind/platform/overmind)"
+      "editable install (/Users/dom/git/overmind/overmind/overmind)"
     );
     expect(guidance(LOCAL)).toContain("do not use PyPI or git");
     expect(guidance(LOCAL)).toContain(
-      'uv add --editable "/Users/dom/git/overmind/platform/overmind"'
+      'uv add --editable "/Users/dom/git/overmind/overmind/overmind"'
     );
     expect(guidance(PROD)).toContain("from PyPI");
     expect(guidance(PROD)).not.toContain("--editable");
     const prompt = bootstrap("cursor", KEY, LOCAL);
-    expect(prompt).toContain("/Users/dom/git/overmind/platform/overmind");
-    expect(prompt).toContain('uv add --editable "/Users/dom/git/overmind/platform/overmind"');
+    expect(prompt).toContain("/Users/dom/git/overmind/overmind/overmind");
+    expect(prompt).toContain('uv add --editable "/Users/dom/git/overmind/overmind/overmind"');
     expect(prompt).not.toMatch(/\bpip install -e\b/);
     vi.unstubAllEnvs();
     vi.resetModules();

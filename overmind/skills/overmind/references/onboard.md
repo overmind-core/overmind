@@ -2,7 +2,7 @@
 
 Repo root only. The Console paste supplies `OVERMIND_API_URL` and a temporary account-scoped `OVERMIND_API_KEY`. Export them in the current shell only; do not echo the key in chat or write it into project files.
 
-The paste names exactly one install source — PyPI, platform git @ main, or a local editable checkout — matched to the Console environment. Use that source only; do not search the web or substitute another ref.
+The paste names exactly one install source — PyPI or a local editable checkout — matched to the Console environment. Use that source only; do not search the web or substitute another ref.
 
 ## Before this file is in the workspace
 
