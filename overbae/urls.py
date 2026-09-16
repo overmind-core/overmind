@@ -95,7 +95,7 @@ router.register(r"behaviours", BehaviourViewSet, basename="behaviour")
 router.register(r"task-executions", TaskExecutionViewSet, basename="taskexecution")
 
 urlpatterns = [
-    path("062669c527e4b1f04ed1adec1677648af893a217/", admin.site.urls),
+    path(settings.ADMIN_URL_PATH, admin.site.urls),
     path("health", health_check, name="health"),
     path("api/v1/traces", otlp_traces, name="otlp-traces"),
     path("v1/traces", otlp_traces, name="otlp-traces-compat"),
