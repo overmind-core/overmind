@@ -62,18 +62,39 @@ def extract_signal_value(
 
 def is_capability_boundary(
     mapping: CapabilityMapping | dict[str, Any],
+    observations: list[ObservationRecord] | None = None,
+    capability_type: str = "",
 ) -> Callable[[ObservationRecord], bool]:
     """Which observations start a capability, and therefore root an Overmind trace.
 
     A recurring observation name or a metadata key marks a boundary. Trace-wide
     signals (tag, trace name) cannot mark one at all, so those traces stay
-    whole, and neither can an unset source.
+    whole, and neither can an unset source. When the tree has the provider's
+    capability type for a mapped name, only those typed observations bind.
     """
     source = (mapping or {}).get("source")
     key = (mapping or {}).get("key")
+    capability_type = (capability_type or "").upper()
     if source == "observation_name":
         names = set((mapping or {}).get("names") or [])
-        return lambda obs: bool(obs.name) and obs.name in names
+        typed = (
+            {
+                obs.name
+                for obs in observations
+                if obs.name in names and (obs.type or "").upper() == capability_type
+            }
+            if capability_type and observations
+            else set()
+        )
+
+        def observation_name_boundary(obs: ObservationRecord) -> bool:
+            if not obs.name or obs.name not in names:
+                return False
+            if obs.name in typed:
+                return (obs.type or "").upper() == capability_type
+            return True
+
+        return observation_name_boundary
     if source == "metadata" and key:
         return lambda obs: (obs.metadata or {}).get(key) is not None
     return lambda obs: False
@@ -92,6 +113,7 @@ def boundary_value(
 def assign_capability_keys(
     observations: list[ObservationRecord],
     mapping: CapabilityMapping | dict[str, Any],
+    capability_type: str = "",
 ) -> dict[str, str | None]:
     """Per-subtree capability keys: observation id -> discovered signal value.
 
@@ -105,7 +127,9 @@ def assign_capability_keys(
         value = extract_signal_value(observations, source, key)
         return {obs.id: value for obs in observations}
 
-    boundary = is_capability_boundary(mapping)
+    boundary = is_capability_boundary(
+        mapping, observations=observations, capability_type=capability_type
+    )
 
     by_id = {obs.id: obs for obs in observations}
     children: dict[str | None, list[ObservationRecord]] = defaultdict(list)

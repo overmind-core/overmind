@@ -14,7 +14,7 @@ from overbae.models import ConnectorCredential, Project, Span
 from overbae.services.connectors.base import Page
 from overbae.services.connectors.langfuse.adapter import LangfuseAdapter
 from overbae.services.connectors.langfuse.client import LangFuseError, LangFuseObservation
-from overbae.services.connectors.sync import enqueue_connector_sync
+from overbae.services.connectors.sync import boundary_import_key, enqueue_connector_sync
 from overbae.tasks import connector_sync
 
 pytestmark = pytest.mark.django_db
@@ -364,6 +364,24 @@ def test_enqueue_connector_sync_keeps_live_cursor_after_import(credential, monke
     credential.refresh_from_db()
     assert credential.sync_status == ConnectorCredential.SyncStatus.LIVE
     assert credential.sync_cursor == cursor
+
+
+def test_enqueue_connector_sync_restarts_backfill_when_boundaries_changed(credential, monkeypatch):
+    monkeypatch.setattr(connector_sync.sync_connector_chunk, "apply_async", lambda *a, **k: None)
+    ConnectorCredential.objects.filter(pk=credential.pk).update(
+        sync_status=ConnectorCredential.SyncStatus.LIVE,
+        sync_cursor={"mode": "live", "watermark": "2026-01-01T00:00:00Z"},
+        total_traces_imported=4,
+        capability_mapping={"source": "observation_name", "names": ["analyze_email"]},
+        imported_boundary_key=boundary_import_key(
+            {"source": "observation_name", "names": ["run_invoice_agent"]}
+        ),
+    )
+    credential.refresh_from_db()
+    enqueue_connector_sync(credential)
+    credential.refresh_from_db()
+    assert credential.sync_status == ConnectorCredential.SyncStatus.BACKFILLING
+    assert credential.sync_cursor == {}
 
 
 if __name__ == "__main__":

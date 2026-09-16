@@ -210,8 +210,11 @@ def observations_to_span_dicts(
 
     cred_id = str(credential.id)
     capability_mapping = mapping if mapping is not None else (credential.capability_mapping or {})
+    capability_type = conventions.capability_type
     capability_keys = (
-        assign_capability_keys(observations, capability_mapping) if capability_mapping else {}
+        assign_capability_keys(observations, capability_mapping, capability_type=capability_type)
+        if capability_mapping
+        else {}
     )
     project = project or credential.project
 
@@ -225,7 +228,12 @@ def observations_to_span_dicts(
         return capability_cache[key]
 
     external_trace_id = observations[0].trace_id or observations[0].id
-    partitions = partition_by_capability(observations, is_capability_boundary(capability_mapping))
+    partitions = partition_by_capability(
+        observations,
+        is_capability_boundary(
+            capability_mapping, observations=observations, capability_type=capability_type
+        ),
+    )
     # A single capability needs no disambiguation, so ids stay as they were.
     single = len(partitions) == 1
 

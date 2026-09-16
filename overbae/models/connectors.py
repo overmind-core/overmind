@@ -111,6 +111,13 @@ class ConnectorCredential(models.Model):
     #    auto_create: bool, fallback_capability_id: uuid|null}
     # Assignments are retroactive; changing source regroups traces and needs a re-import.
     capability_mapping = models.JSONField(default=dict, blank=True)
+    # MCP stages a proposal here until confirm_mapping=true. Console mapping PUT applies live.
+    pending_capability_mapping = models.JSONField(default=dict, blank=True)
+    # MCP sync requires True. Console mapping writes set it; new CLI rows stay False.
+    capability_mapping_confirmed = models.BooleanField(default=False)
+    # source + names + key of the mapping last adopted or imported. Empty means
+    # the next sync adopts the live mapping without wiping existing spans.
+    imported_boundary_key = models.TextField(blank=True, default="")
 
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)

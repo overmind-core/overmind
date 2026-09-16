@@ -1764,7 +1764,10 @@ class ConnectorCredentialSerializer(serializers.ModelSerializer):
 
     def validate_project(self, value: Project) -> Project:
         request = self.context.get("request")
-        if request and value.pk not in project_ids_for(request.user, request.auth):
+        if request is None:
+            return value
+        allowed = {str(pid) for pid in project_ids_for(request.user, request.auth)}
+        if str(value.pk) not in allowed:
             raise serializers.ValidationError(
                 "This API key is scoped to another project."
                 if isinstance(request.auth, APIToken)

@@ -55,6 +55,7 @@ def _arguments(prompt: types.Prompt) -> dict[str, str]:
         "model_ids": "openai/model-a, anthropic/model-b",
         "deployment": "deployment-id",
         "finetune": "finetune-job-id",
+        "connector_type": "langfuse",
     }
     return {argument.name: values.get(argument.name, "") for argument in prompt.arguments or []}
 
@@ -69,7 +70,7 @@ def test_lists_the_small_prompt_manifest_over_transport():
     assert {prompt["name"] for prompt in response.json()["result"]["prompts"]} == {
         prompt.name for prompt in PROMPTS
     }
-    assert len(PROMPTS) == 11
+    assert len(PROMPTS) == 12
 
 
 def test_upload_prompt_requires_local_path_and_keeps_optional_shape():
@@ -156,6 +157,29 @@ def test_export_prompt_describes_local_download_and_trace_workflow():
     assert "no export_trace MCP tool" in text
 
 
+def test_connector_prompt_asks_the_human_to_run_cli():
+    prompt = next(prompt for prompt in PROMPTS if prompt.name == "connect-traces")
+    arguments = {argument.name: argument for argument in prompt.as_mcp_prompt().arguments or []}
+
+    assert arguments["connector_type"].required is True
+    rendered = get_prompt("connect-traces", {"connector_type": "langfuse"})
+    text = rendered.messages[0].content.text
+    assert "`overmind connector add langfuse --json`" in text
+    assert "Do not run the CLI yourself" in text
+    assert "include_source_projects=true" in text
+    assert "configure_connector" in text
+    assert "confirm_mapping=true" in text
+    assert "suggested_boundaries" in text
+    assert "capability boundaries" in text
+    assert "mapping_options" in text
+    assert "wait for the human" in text
+    assert "alternatives" in text
+    assert "stop until the human replies" in text
+    assert "console_traces_url" in text
+    assert "sync_connector" in text
+    assert "get_job(kind=connector_sync)" in text
+
+
 def test_checkpoint_prompt_uses_mcp_deployment_id_and_local_cli_boundary():
     prompt = next(prompt for prompt in PROMPTS if prompt.name == "download-checkpoint")
     arguments = {argument.name: argument for argument in prompt.as_mcp_prompt().arguments or []}
@@ -219,6 +243,7 @@ def test_ship_prompt_uses_retry_only_for_failed_or_deleted_deployments():
             "$(touch pwned)",
             "overmind model download-checkpoint DEPLOYMENT --json",
         ),
+        ("connect-traces", "$(touch pwned)", "overmind connector add langfuse --json"),
     ],
 )
 def test_untrusted_prompt_arguments_never_appear_in_command_snippets(

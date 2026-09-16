@@ -1468,6 +1468,7 @@ class ConnectorCredentialViewSet(viewsets.ModelViewSet):
 
         from overbae.services.connectors import get_adapter, registered_sources
 
+        result = None
         if connector_type in registered_sources():
             tmp = SimpleNamespace(
                 pk=None,
@@ -1483,7 +1484,14 @@ class ConnectorCredentialViewSet(viewsets.ModelViewSet):
                 raise drf_serializers.ValidationError({"detail": str(exc)}) from exc
             if not result.ok:
                 raise drf_serializers.ValidationError({"detail": result.detail or "Verify failed"})
-        serializer.save()
+        credential = serializer.save()
+        if result is not None:
+            from django.utils import timezone
+
+            credential.verified_at = timezone.now()
+            if result.api_version:
+                credential.api_version = result.api_version
+            credential.save(update_fields=["verified_at", "api_version", "updated_at"])
 
     def perform_destroy(self, instance):
         """Disconnect: soft-deactivate finished integrations; hard-delete drafts."""
@@ -1626,21 +1634,9 @@ class ConnectorCredentialViewSet(viewsets.ModelViewSet):
             credential,
             **config_kwargs,
         )
-        from overbae.models import Span
-        from overbae.services.connectors.schema import CONNECTOR_CREDENTIAL_ID_ATTR
+        from overbae.services.connectors.sync import reset_connector_import
 
-        Span.objects.filter(
-            resource_attrs__contains={CONNECTOR_CREDENTIAL_ID_ATTR: str(credential.id)}
-        ).delete()
-        ConnectorCredential.objects.filter(pk=credential.pk).update(
-            sync_cursor={},
-            sync_status=ConnectorCredential.SyncStatus.IDLE,
-            total_spans_imported=0,
-            total_traces_imported=0,
-            backfill_imported=0,
-            backfill_total=None,
-            next_poll_at=None,
-        )
+        reset_connector_import(credential)
         return Response(
             {
                 "version": config.version,
@@ -1775,7 +1771,16 @@ class ConnectorCredentialViewSet(viewsets.ModelViewSet):
         if "fallback_capability_id" in mapping:
             mapping["fallback_capability_id"] = str(mapping["fallback_capability_id"])
         credential.capability_mapping = mapping
-        credential.save(update_fields=["capability_mapping", "updated_at"])
+        credential.pending_capability_mapping = {}
+        credential.capability_mapping_confirmed = True
+        credential.save(
+            update_fields=[
+                "capability_mapping",
+                "pending_capability_mapping",
+                "capability_mapping_confirmed",
+                "updated_at",
+            ]
+        )
         relabeled = relabel_connector_capabilities(credential)
         return Response(
             {"capability_mapping": credential.capability_mapping, "relabeled_span_count": relabeled}

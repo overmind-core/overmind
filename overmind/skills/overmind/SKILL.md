@@ -302,6 +302,10 @@ The static local checkpoint download guidance resource is:
 
 `overmind://checkpoint-download`
 
+The static connector credential CLI guidance resource is:
+
+`overmind://connector-setup`
+
 The implemented resource templates are:
 
 - `overmind://capabilities/{capability}`
@@ -365,10 +369,26 @@ local work is needed:
   `path` and `bytes_written`; never expose the presigned S3 URL to model
   context.
 - Connector credentials are never MCP arguments. If `inspect_connectors`
-  reports `connector_setup_required` and `/integrations`, the human enters or
-  authorizes the provider credentials in that supported integration surface;
-  then use `configure_connector` and `sync_connector` for safe settings and
-  import.
+  reports `connector_setup_required`, present the command from
+  `available_types[].command` (for example `overmind connector add langfuse --json`)
+  and wait for the human to run it in their terminal. Overmind auth is the
+  key from `overmind init` / `.overmind/credentials.toml` / `OVERMIND_API_KEY`;
+  `project-id` must be this MCP project. Do not paste provider keys in chat,
+  export them, or run the CLI in a non-TTY sandbox. After the JSON id is
+  available, `inspect_connectors` with that id and `include_source_projects=true`.
+  Read `observation_shapes` and `suggested_boundaries`. `mapping.names` are
+  capability boundaries (Overmind trace roots). Default to the suggested parent
+  observation names so children nest. `alternatives` are other names that match
+  the same capability; the human may pick one as the boundary — list that name
+  in `mapping.names` and do not also list its ancestor. Do not list tools, LLM
+  spans, or other `nested_names` unless the human chose that alternative. Then
+  `configure_connector` with source project, lookback, and that mapping
+  **without** `confirm_mapping`. Present `suggested_boundaries`,
+  `alternatives`, `unmapped_roots`, and `mapping_options` (including import
+  unmapped) and stop until the human replies. Then `configure_connector` with
+  `confirm_mapping=true`, then `sync_connector`. Read
+  `overmind://connector-setup` for env var names. After sync, give the human
+  `console_traces_url`.
 - Optimizer and backtest repository execution stays in the local SDK/CLI
   execution ledger. MCP schedules and reports the project experiment; it does
   not execute local commands or apply diffs.
