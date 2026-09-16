@@ -4,8 +4,8 @@ import { ICON_INK } from "@/lib/colors";
 
 type SvgIconProps = SVGProps<SVGSVGElement>;
 
-/** Two-tone heading marks (ink + white holes), kept local because the free
- *  pixelarticons npm set has no two-tone variant. Call sites add `dark:invert`. */
+/** Two-tone heading marks (ink + white holes) on a 16×16 grid. Call sites add
+ *  `dark:invert`. */
 const INK = ICON_INK;
 
 /** Paths from `@/assets/desktop-tower.svg`. */
@@ -185,7 +185,7 @@ export const Eyeball = (props: SvgIconProps) => (
 
 /** Paths from `@/assets/overmind-eye-mono.svg`, `currentColor` so nav inherits the
  *  sidebar foreground. `translate(2 2) scale(0.3125)` maps the 64×64 glyph into the same
- *  24×24 viewBox and symmetric 2px inset pixelarticons use. */
+ *  24×24 viewBox and symmetric 2px inset the vendored glyphs use. */
 export const OvermindEyeMono = (props: SvgIconProps) => (
   <svg
     fill="currentColor"
