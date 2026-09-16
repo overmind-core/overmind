@@ -427,15 +427,12 @@ def _serves_as_adapter(job) -> bool:
     Volume, which is where ``publish_adapter`` reads it from. Baseten and Nebius runs come back
     through S3 and still take the merge path.
 
-    MoE bases are excluded. Training targets the MLP projections, which on an MoE are the experts,
-    and vLLM implements those as fused layers its LoRA path cannot wrap — ``add_lora`` fails on a
-    bare AssertionError once the base is already loaded. Merging sidesteps it entirely.
+    The serving engine validates the actual adapter during pre_warm, before READY.
+    Model size, GPU tier, and MoE metadata must not bypass shared-base serving.
     """
     training_type = (job.hyperparameters or {}).get("training_type")
     kind = (training_type or {}).get("type") if isinstance(training_type, dict) else None
-    if job.provider != "modal" or str(kind or "Lora") != "Lora":
-        return False
-    return not (get_model_config_any_backend(job.base_model) or {}).get("moe", False)
+    return job.provider == "modal" and str(kind or "Lora") == "Lora"
 
 
 def _deploy_as_adapter(
@@ -485,6 +482,7 @@ def _deploy_as_adapter(
             max_model_len=max_model_len,
             gpu_type=gpu_type,
             tokenizer_name=base_model_id,
+            enable_lora=True,
         )
     except Exception as exc:
         logger.error("Registration failed for adapter %s: %s", deployed.model_id, exc)

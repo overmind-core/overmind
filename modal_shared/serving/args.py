@@ -59,6 +59,8 @@ class VllmServeContext:
     # it cannot name its adapters up front and loads every one of them over the LoRA API.
     enable_lora: bool = False
     max_lora_rank: int = 16
+    # vLLM sleep/wake around Modal GPU snapshots. Full-FT workers leave this off.
+    enable_sleep_mode: bool = False
     # Where to read chat_template.jinja from. An adapter carries the template it was trained
     # with, which is not the stock base's.
     chat_template_dir: str = ""
@@ -156,10 +158,12 @@ def build_vllm_args(ctx: VllmServeContext, spec: FamilySpec | None = None) -> li
         "--load-format",
         "runai_streamer",
         "--model-loader-extra-config",
-        json.dumps({"distributed": True}, separators=(",", ":")),
+        json.dumps({"distributed": True, "concurrency": 16}, separators=(",", ":")),
         "--cudagraph-capture-sizes",
         *(str(s) for s in CUDAGRAPH_CAPTURE_SIZES),
     ]
+    if ctx.enable_sleep_mode:
+        cmd.append("--enable-sleep-mode")
 
     chat_tmpl = _serve_chat_template_path(ctx.chat_template_dir or ctx.model_path)
     if chat_tmpl:

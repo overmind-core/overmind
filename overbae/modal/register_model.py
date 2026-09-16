@@ -2,7 +2,7 @@
 serving. ``quantize=False`` skips FP8 and serves merged BF16 — see
 ``weight_ops.quantize_checkpoint`` for which models need that.
 
-A dense LoRA finetune takes the other path: ``publish_adapter`` copies the adapter out untouched
+A Modal LoRA finetune takes the other path: ``publish_adapter`` copies the adapter out untouched
 and it is served on top of a shared base, which skips merge and quantize entirely and lets the
 deployment join an already-warm container pool. That base must stay BF16 — a BF16 adapter over an
 FP8 base measured 0.234 exact-match against 0.474 for the same adapter merged then quantized,
@@ -1140,7 +1140,7 @@ def publish_adapter(
 ) -> dict:
     """Copy a LoRA adapter to ``.adapters/{cache_key}`` for serving on a shared base.
 
-    This is the whole deploy for a dense LoRA finetune: no merge, no quantize, no per-model
+    This is the weight publication for a Modal LoRA finetune: no merge, no quantize, no per-model
     checkpoint. An adapter is tens of MB against tens of GB for a merged copy, so the copy is
     seconds rather than minutes, and the deployment then rides a base pool that may already be
     warm instead of booting its own container.

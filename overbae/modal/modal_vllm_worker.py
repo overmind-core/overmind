@@ -17,6 +17,7 @@ import json
 import os
 import subprocess
 import time
+import uuid
 from pathlib import Path
 
 import modal
@@ -26,11 +27,9 @@ IS_PROD = MODAL_ENVIRONMENT == "overmind-prod"
 
 MINUTES = 60  # seconds
 
-# Cold start is dominated by weight loading off a Volume, which GPU memory snapshots do not
-# help with — measured on FP8 Qwen3-1.7B/L4, four snapshot passes gave first requests of
-# 302 s, 675 s, 128 s and 113 s against a ~15 s target, so snapshots are off everywhere.
-# A live container is the only thing that makes the next request fast, which makes the
-# scaledown window the real cold-start control.
+# Cold start is dominated by weight loading off a Volume. Full-FT workers leave GPU
+# snapshots off. LoRA workers snapshot the shared BF16 base (sleep → restore →
+# load_lora_adapter); a second adapter on that base reuses the snapshot.
 SCALEDOWN_WINDOW_SECONDS = 2 * MINUTES
 
 # Big models pay minutes to reload, so they stay up far longer before being reclaimed.
@@ -78,7 +77,7 @@ from modal_shared.images.serve import (  # noqa: E402
     SERVE_IMAGES,
     api_server_image,
 )
-from modal_shared.stacks import GPU_TIER, WORKER_CLS  # noqa: E402
+from modal_shared.stacks import GPU_TIER, WORKER_CLS, WORKER_LORA_CLS  # noqa: E402
 
 APP_NAME = INFERENCE_APP_NAME
 app = modal.App(APP_NAME)
@@ -111,6 +110,25 @@ def _wait_for_vllm(timeout: int = 30 * MINUTES, *, proc: subprocess.Popen | None
             pass
         time.sleep(3)
     raise RuntimeError(f"vLLM did not become healthy within {timeout}s")
+
+
+def _vllm_post(path: str, *, data: bytes = b"", timeout: int = 180) -> None:
+    import urllib.error
+    import urllib.request
+
+    headers = {"content-type": "application/json"} if data else {}
+    req = urllib.request.Request(
+        f"http://localhost:{VLLM_PORT}{path}",
+        data=data or b"",
+        headers=headers,
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as response:
+            response.read()
+    except urllib.error.HTTPError as exc:
+        detail = exc.read()[:400].decode("utf-8", errors="replace")
+        raise RuntimeError(f"{path} -> HTTP {exc.code}: {detail}") from exc
 
 
 def _make_worker_health_app():
@@ -202,7 +220,7 @@ def _make_worker(
     enable_lora: bool = False,
     max_lora_rank: int = 16,
 ):
-    cls_name = worker_cls_name(gpu_type, serve_image)
+    cls_name = worker_cls_name(gpu_type, serve_image, lora=enable_lora)
     worker_cls = modal.Cls.from_name(APP_NAME, cls_name)
     return worker_cls(
         model_path=model_path,
@@ -216,8 +234,8 @@ def _make_worker(
 class _BaseVLLMWorker:
     """Shared vLLM lifecycle for GPU workers.
 
-    Snapshots stay off and ``@enter`` must never raise: Modal retries enter failures forever,
-    ignoring ``retries=0``. ``_startup_error`` is recorded instead and fails once in ``infer``.
+    ``@enter`` must never raise: Modal retries enter failures forever, ignoring
+    ``retries=0``. ``_startup_error`` is recorded instead and fails once in ``infer``.
     Uses ``@modal.asgi_app()`` because ``@modal.web_server`` does not support parametrized classes.
     """
 
@@ -231,8 +249,7 @@ class _BaseVLLMWorker:
     enable_lora: bool = modal.parameter(default=False)
     max_lora_rank: int = modal.parameter(default=16)
 
-    @modal.enter()
-    def startup(self) -> None:
+    def _boot(self) -> None:
         """Never raise here, and never call ``stop_fetching_inputs`` here either: that exits
         before the input is consumed, which triggers a reschedule just as an enter failure does."""
         import json as _json
@@ -265,18 +282,22 @@ class _BaseVLLMWorker:
         # URL params in parametrized classes.
         full_path = f"{WEIGHTS_MOUNT}/{self.model_path}"
 
-        # Exception stacks to inference clients only outside prod.
-        _os.environ["VLLM_SERVER_DEV_MODE"] = "0" if IS_PROD else "1"
+        # Sleep/wake/collective_rpc HTTP is gated on this. Snap workers need it even
+        # in prod; elsewhere it also unmasks exception stacks on inference clients.
+        _os.environ["VLLM_SERVER_DEV_MODE"] = (
+            "1" if getattr(self, "_gpu_snapshot", False) or not IS_PROD else "0"
+        )
 
         # A container's Volume mount is a point-in-time view, so weights RegisterAPIServer
         # commits after this container is scheduled stay invisible until reload(). Deploy
-        # uses exactly that ordering — write weights, then drive a worker. The compile
-        # cache Volume is the same: without reload the last boot's inductor artifacts
-        # are invisible and vLLM recompiles from scratch.
+        # uses exactly that ordering — write weights, then drive a worker. Plain workers
+        # also refresh the shared compile cache; snapshot workers own their cache locally.
         weights_vol.reload()
-        vllm_cache_vol.reload()
+        if not getattr(self, "_gpu_snapshot", False):
+            vllm_cache_vol.reload()
 
-        _rewrite_legacy_layer_types(Path(full_path) / "config.json", _json=_json)
+        if not self.enable_lora:
+            _rewrite_legacy_layer_types(Path(full_path) / "config.json", _json=_json)
 
         # Fail before allocating GPU/vLLM when the weights are genuinely gone, or a bad
         # param-set crash-loops the input backlog for minutes per attempt.
@@ -327,9 +348,15 @@ class _BaseVLLMWorker:
                 base_model=base_model,
                 enable_lora=self.enable_lora,
                 max_lora_rank=self.max_lora_rank,
+                enable_sleep_mode=getattr(self, "_gpu_snapshot", False),
             ),
             spec,
         )
+        if getattr(self, "_gpu_snapshot", False):
+            cmd += [
+                "--distributed-executor-backend",
+                "modal_shared.serving.snapshot.SnapshotExecutor",
+            ]
         if "--chat-template" in cmd:
             print(f"[vLLM] Using checkpoint chat template: {full_path}/chat_template.jinja")
 
@@ -351,8 +378,45 @@ class _BaseVLLMWorker:
         # Writes to a Volume are discarded unless this container commits. Concurrent
         # boots can clobber each other's new files (last commit wins); a lost cache
         # only means the next cold start recompiles.
-        with contextlib.suppress(Exception):
-            vllm_cache_vol.commit()
+        if not getattr(self, "_gpu_snapshot", False):
+            with contextlib.suppress(Exception):
+                vllm_cache_vol.commit()
+
+    def _warmup_chat(self) -> None:
+        body = json.dumps(
+            {
+                "model": self.model_name,
+                "messages": [{"role": "user", "content": "ping"}],
+                "max_tokens": 1,
+            }
+        ).encode()
+        _vllm_post("/v1/chat/completions", data=body)
+
+    def _snapshot_sleep(self) -> None:
+        """Warm CUDA graphs then sleep so the GPU snapshot is not a live KV cache."""
+        try:
+            if not self.enable_lora or self._loaded_adapters:
+                raise RuntimeError("Snapshot must contain a shared base without adapters")
+            self._warmup_chat()
+            _vllm_post("/sleep?level=1", timeout=10 * MINUTES)
+            self._snapshot_origin = uuid.uuid4().hex
+            print(f"[vLLM] snapshot prepared origin={self._snapshot_origin} weights=preserved")
+        except Exception as exc:
+            self._startup_error = f"vLLM sleep for GPU snapshot failed: {exc}"
+            print(f"[vLLM] {self._startup_error}")
+
+    def _snapshot_wake(self) -> None:
+        try:
+            started = time.monotonic()
+            _vllm_post("/wake_up", timeout=10 * MINUTES)
+            _wait_for_vllm(timeout=60, proc=self._proc)
+            print(
+                f"[vLLM] snapshot awake origin={self._snapshot_origin} "
+                f"runtime={uuid.uuid4().hex} wake_s={time.monotonic() - started:.2f}"
+            )
+        except Exception as exc:
+            self._startup_error = f"vLLM wake from GPU snapshot failed: {exc}"
+            print(f"[vLLM] {self._startup_error}")
 
     @modal.exit()
     def shutdown(self) -> None:
@@ -567,21 +631,32 @@ def _is_text_only_finetune_of_multimodal_base(
     return is_natively_multimodal_blob(mtype)
 
 
+class _PlainVLLMWorker(_BaseVLLMWorker):
+    @modal.enter()
+    def startup(self) -> None:
+        self._boot()
+
+
 # Modal fixes the container spec at class-definition time, so a separate class per
-# GPU type is required even though the logic is identical. Only gpu and
-# scaledown_window differ, so the rest lives in one dict rather than six copies.
+# GPU type is required even though the logic is identical. LoRA pools are a second
+# class per GPU so GPU snapshots can be on without snapshotting full-FT checkpoints.
+# Level-1 sleep offloads the base into host RAM. Reserve capacity for that copy
+# plus the serving processes, irrespective of which model the GPU selector chose.
+_SNAPSHOT_HOST_MEMORY_MIB = {
+    "L4": 32768,
+    "L40S": 65536,
+    "A100-80GB": 98304,
+    "H100": 98304,
+    "H200": 196608,
+    "B200": 262144,
+    "B300": 393216,
+}
 _WORKER_KWARGS = {
     "secrets": [inference_secret],
     "volumes": _volume_mounts,
     "timeout": WORKER_TIMEOUT_SECONDS,
     "max_containers": MAX_CONTAINERS_PER_MODEL,
-    # Broken cold starts (missing weights, OOM) must not be retried: retries are what
-    # turn a single bad param-set into hanging inputs and workers.
     "retries": modal.Retries(max_retries=0),
-    # Left off deliberately. Beyond not helping a weight-loading cold start, a failed
-    # @enter(snap=True) is retried by Modal's snapshot lifecycle IGNORING retries=0,
-    # which is the hanging Pending-container loop.
-    "enable_memory_snapshot": False,
 }
 
 _worker_concurrency = modal.concurrent(
@@ -595,28 +670,60 @@ _SCALEDOWN = {
 }
 
 
-def _register_worker(cls_name: str, gpu_type: str, serve_image: str) -> None:
+class _SnapVLLMWorker(_BaseVLLMWorker):
+    """LoRA shared-base pool: snapshot the BF16 base, attach adapters after restore."""
+
+    _gpu_snapshot = True
+
+    @modal.enter(snap=True)
+    def startup(self) -> None:
+        self._boot()
+        if not getattr(self, "_startup_error", None):
+            self._snapshot_sleep()
+
+    @modal.enter(snap=False)
+    def restore(self) -> None:
+        if getattr(self, "_startup_error", None):
+            return
+        self._snapshot_wake()
+
+
+def _register_worker(cls_name: str, gpu_type: str, serve_image: str, *, snapshot: bool) -> None:
     bucket, default_len = GPU_TIER[gpu_type]
     image = SERVE_IMAGES[serve_image]
+    base = _SnapVLLMWorker if snapshot else _PlainVLLMWorker
     cls = type(
         cls_name,
-        (_BaseVLLMWorker,),
+        (base,),
         {
             "__annotations__": {"max_model_len": int},
             "max_model_len": modal.parameter(default=default_len),
+            "_gpu_type": gpu_type,
         },
     )
     cls = _worker_concurrency(cls)
+    kw = dict(_WORKER_KWARGS)
+    if snapshot:
+        kw["enable_memory_snapshot"] = True
+        kw["experimental_options"] = {"enable_gpu_snapshot": True}
+        # Compiled modules retain filesystem references. A mutable shared cache can
+        # lose a referenced file and make Modal's 9p restore fail before Python runs.
+        kw["volumes"] = {WEIGHTS_MOUNT: weights_vol}
+        kw.update(cpu=8, memory=_SNAPSHOT_HOST_MEMORY_MIB[gpu_type])
+    else:
+        kw["enable_memory_snapshot"] = False
     globals()[cls_name] = app.cls(
         gpu=gpu_type,
         scaledown_window=_SCALEDOWN[bucket],
         image=image,
-        **_WORKER_KWARGS,
+        **kw,
     )(cls)
 
 
 for (_gpu, _serve_image), _cls_name in WORKER_CLS.items():
-    _register_worker(_cls_name, _gpu, _serve_image)
+    _register_worker(_cls_name, _gpu, _serve_image, snapshot=False)
+for (_gpu, _serve_image), _cls_name in WORKER_LORA_CLS.items():
+    _register_worker(_cls_name, _gpu, _serve_image, snapshot=True)
 
 
 @app.cls(
@@ -645,6 +752,7 @@ class InferenceAPIServer:
         model_name: str,
         max_model_len: int,
         serve_image: str = "vllm",
+        enable_lora: bool = False,
     ) -> str:
         image = _serve_image_for(
             model_name=model_name,
@@ -658,6 +766,7 @@ class InferenceAPIServer:
             max_model_len=max_model_len,
             environment=MODAL_ENVIRONMENT,
             serve_image=image,
+            enable_lora=enable_lora,
         )
 
     @modal.method()
@@ -669,6 +778,7 @@ class InferenceAPIServer:
         max_model_len: int,
         gpu_type: str,
         tokenizer_name: str = "",
+        enable_lora: bool = False,
     ) -> str:
         """Mint the parametrized worker URL. Caller persists it in Postgres."""
         return self._resolve_worker_url(
@@ -677,6 +787,7 @@ class InferenceAPIServer:
             model_name=model_id,
             max_model_len=max_model_len,
             serve_image=serve_image_key(tokenizer_name, model_id),
+            enable_lora=enable_lora,
         )
 
     @modal.method()
@@ -712,6 +823,7 @@ class InferenceAPIServer:
             max_model_len: int
             gpu_type: str
             tokenizer_name: str = ""
+            enable_lora: bool = False
 
         @fastapi_app.get("/health")
         async def health():
@@ -725,6 +837,7 @@ class InferenceAPIServer:
                 model_name=req.model_id,
                 max_model_len=req.max_model_len,
                 serve_image=serve_image_key(req.tokenizer_name, req.model_id),
+                enable_lora=req.enable_lora,
             )
             return {"model_id": req.model_id, "inference_url": url}
 

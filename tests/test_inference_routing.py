@@ -97,6 +97,18 @@ def test_resolve_inference_url_relative_path_and_query():
     assert "/weights/" not in url.split("?", 1)[1]
 
 
+def test_resolve_inference_url_lora_class():
+    url = resolve_inference_url(
+        gpu_type="L4",
+        model_path="/weights/.base_models/Qwen--Qwen3-0.6B",
+        model_name="Qwen--Qwen3-0.6B",
+        max_model_len=8192,
+        environment="overmind-dev",
+        enable_lora=True,
+    )
+    assert "l4-vllm-lora-api" in url
+
+
 def test_inference_client_posts_routing_headers():
     client = InferenceClient(base_url="https://gateway.example", api_key="k")
     fake = MagicMock()
@@ -266,8 +278,10 @@ def test_call_llm_attaches_adapter_routing_headers_for_lora_deploy():
 
 def test_worker_cls_name_default_and_muse():
     assert worker_cls_name("A100-80GB") == "A10080GB_vllm"
+    assert worker_cls_name("A100-80GB", lora=True) == "A10080GB_vllm_lora"
     assert worker_cls_name("A100-80GB", "muse_glimmer") == "A10080GB_muse_glimmer"
     assert worker_cls_name("H200", "muse_glimmer") == "H200_muse_glimmer"
+    assert worker_cls_name("H200", "muse_glimmer", lora=True) == "H200_muse_glimmer_lora"
     with pytest.raises(ValueError, match="serve_image"):
         worker_cls_name("L4", "muse_glimmer")
     with pytest.raises(ValueError, match="serve_image"):
@@ -311,23 +325,24 @@ def test_inference_client_sends_muse_serve_image_header():
 
 
 @pytest.mark.parametrize(
-    ("base_model", "expected"),
+    "base_model",
     [
-        ("Qwen/Qwen3-1.7B", True),
-        ("nvidia/NVIDIA-Nemotron-3.5-Lightning-30B-A3B", False),
-        ("openai/gpt-oss-20b", False),
+        "Qwen/Qwen3-1.7B",
+        "Qwen/Qwen3.5-35B-A3B",
+        "meta-llama/Llama-3.3-70B-Instruct",
+        "unsloth/Muse-Glimmer-30B",
+        "nvidia/NVIDIA-Nemotron-3.5-Lightning-30B-A3B",
+        "openai/gpt-oss-20b",
     ],
 )
-def test_moe_lora_takes_the_merge_path(base_model, expected):
-    """vLLM cannot apply a LoRA that targets MoE experts — add_lora dies on a bare
-    AssertionError after the base has already loaded, so the gate has to be upstream."""
+def test_modal_lora_uses_shared_base_regardless_of_model_family(base_model):
     from overbae.tasks.model_deployment import _serves_as_adapter
 
     job = MagicMock()
     job.provider = "modal"
     job.base_model = base_model
     job.hyperparameters = {"training_type": {"type": "Lora"}}
-    assert _serves_as_adapter(job) is expected
+    assert _serves_as_adapter(job) is True
 
 
 def test_full_finetune_takes_the_merge_path():

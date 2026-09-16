@@ -2256,7 +2256,7 @@ def _live_worker_stats(instance: DeployedModel) -> dict:
             return stats_data
     elif instance.gpu_type not in GPU_CLASS_MAP:
         return stats_data
-    cls_name = worker_cls_name(instance.gpu_type, image)
+    cls_name = worker_cls_name(instance.gpu_type, image, lora=instance.is_lora)
     try:
         import modal
 

@@ -15,6 +15,7 @@ _SERVE_ENV = {
     "VLLM_LOG_STATS_INTERVAL": "30",
     # Default off; worker sets "1" for non-prod at runtime.
     "VLLM_SERVER_DEV_MODE": "0",
+    "TORCHINDUCTOR_COMPILE_THREADS": "1",
 }
 
 
