@@ -18,11 +18,13 @@ from overmind.sync import resolve_api_key, resolve_api_url
 
 UPLOAD_PATH = "/api/uploads/"
 DATASETS_PATH = "/api/datasets/"
+SPLIT_PATH = "/api/datasets/split/"
 EXPORT_PATH = "/api/datasets/{dataset_id}/export/"
 DEFAULT_TIMEOUT = 60
 CHUNK_TIMEOUT = 120
 EXPORT_CHUNK_SIZE = 8_192
 ALLOWED_INTENTS = {"train", "eval"}
+SPLIT_POSITIONS = ("head", "tail", "random")
 EXPORT_HEADERS = (
     ("cell", "X-Overmind-Cell"),
     ("version", "X-Overmind-Version"),
@@ -105,6 +107,16 @@ def _normalize_intent(intent: str | None) -> str | None:
     return value
 
 
+def _normalize_split(split: int | None, position: str) -> tuple[int | None, str]:
+    if split is None:
+        return None, position
+    if not 1 <= split <= 99:
+        raise DatasetUploadError("split must be between 1 and 99.")
+    if position not in SPLIT_POSITIONS:
+        raise DatasetUploadError("split-position must be head, tail or random.")
+    return split, position
+
+
 def upload_file(
     path: Path,
     *,
@@ -113,10 +125,16 @@ def upload_file(
     api_url: str,
     intent: str | None = None,
     capability: str | None = None,
+    split: int | None = None,
+    split_position: str = "tail",
     session: requests.Session | None = None,
 ) -> dict[str, Any]:
-    """Stream one local file through /api/uploads/ then land it as a dataset."""
+    """Stream one local file through /api/uploads/ then land it as a dataset, or
+    with ``split`` as a train dataset and an eval dataset holding that percent."""
     intent = _normalize_intent(intent)
+    split, split_position = _normalize_split(split, split_position)
+    if split is not None and intent:
+        raise DatasetUploadError("split fixes the intents; drop --intent.")
     capability = (capability or "").strip() or None
     try:
         total = path.stat().st_size
@@ -186,19 +204,34 @@ def upload_file(
             body["intent"] = intent
         if capability:
             body["capability"] = capability
+        if split is not None:
+            body["eval_percent"] = split
+            body["position"] = split_position
+        create_path = SPLIT_PATH if split is not None else DATASETS_PATH
         try:
-            dataset_response = client.post(f"{base_url}{DATASETS_PATH}", json=body, timeout=DEFAULT_TIMEOUT)
+            dataset_response = client.post(f"{base_url}{create_path}", json=body, timeout=DEFAULT_TIMEOUT)
         except requests.RequestException as exc:
             raise DatasetUploadError(f"create dataset failed: {exc}") from exc
-        dataset = _json(dataset_response, "create dataset")
+        created = _json(dataset_response, "create dataset")
+        dataset = created.get("train") if split is not None else created
+        if not isinstance(dataset, dict):
+            raise DatasetUploadError("create dataset returned no train dataset.")
         dataset_id = str(dataset.get("id") or "")
         if not dataset_id:
             raise DatasetUploadError("create dataset returned no id.")
-        return {
+        result = {
             "id": dataset_id,
             "state": str(dataset.get("state") or "landing"),
             "next_mcp_actions": _next_actions(dataset_id),
         }
+        if split is not None:
+            evaluation = created.get("eval")
+            eval_id = str(evaluation.get("id") or "") if isinstance(evaluation, dict) else ""
+            if not eval_id:
+                raise DatasetUploadError("create dataset returned no eval dataset.")
+            result["eval_id"] = eval_id
+            result["eval_state"] = str(evaluation.get("state") or "landing")
+        return result
     finally:
         if owns_session:
             client.close()
@@ -362,9 +395,17 @@ def upload(
         str | None,
         typer.Option("--capability", help="Optional capability UUID"),
     ] = None,
+    split: Annotated[
+        int | None,
+        typer.Option("--split", help="Land a train and an eval dataset; the eval share in percent (1-99)"),
+    ] = None,
+    split_position: Annotated[
+        str,
+        typer.Option("--split-position", help="Where the eval rows come from: head, tail or random"),
+    ] = "tail",
     as_json: Annotated[bool, typer.Option("--json", help="Print machine-readable output")] = False,
 ) -> None:
-    """Upload FILE and land it as a dataset."""
+    """Upload FILE and land it as a dataset, or with --split as a train and an eval dataset."""
     try:
         config = load(path) if path.exists() else Config()
         key = resolve_api_key(api_key, config)
@@ -381,6 +422,8 @@ def upload(
             api_url=url,
             intent=intent,
             capability=capability,
+            split=split,
+            split_position=split_position,
         )
     except (DatasetUploadError, OSError, ValueError) as exc:
         _emit_error(str(exc), as_json=as_json)
@@ -390,6 +433,8 @@ def upload(
         typer.echo(json.dumps(result, ensure_ascii=False))
         return
     console.print(f"Uploaded {file.name}; dataset {result['id']} is {result['state']}.")
+    if "eval_id" in result:
+        console.print(f"Eval dataset {result['eval_id']} is {result['eval_state']}.")
     console.print("Next: get_job(kind=dataset_run), then inspect the dataset.")
 
 

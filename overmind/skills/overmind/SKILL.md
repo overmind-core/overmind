@@ -92,7 +92,8 @@ Follow these for ALL Overmind work:
    create (`create_dataset_from_traces` / `_failures`), or later with
    `message_dataset_agent` ("set intent to train") if no version has been used.
    `create_dataset_from_traces` with `split` lands one selection as a train
-   dataset and an eval dataset with disjoint rows. A used cell freezes intent:
+   dataset and an eval dataset with disjoint rows; so does `--split PERCENT`
+   on `overmind dataset upload`. A used cell freezes intent:
    upload a second dataset with the other `--intent` instead of retagging.
    Read the contracts section below.
 1. **Errors are values; mutations run immediately.** Every tool returns
