@@ -10,7 +10,9 @@ from __future__ import annotations
 import datetime as dt
 import json
 import logging
+import random
 from collections.abc import Iterable, Iterator
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Any
 
@@ -28,22 +30,48 @@ class LandError(ValueError):
     pass
 
 
+SPLIT_POSITIONS = ("head", "tail", "random")
+
+
+@dataclass
+class Landing:
+    """A source read once: the rows and how they arrived."""
+
+    rows: list[dict[str, Any]]
+    kind: str = "file"
+    spec: dict[str, Any] = field(default_factory=dict)
+    manifest: list[dict] | None = None
+
+    def split(self, *, eval_percent: int, position: str) -> tuple[Landing, Landing]:
+        """The train part and the eval part. The eval slice is ``eval_percent`` of
+        the rows, at least one and never all, taken from the head, the tail, or a
+        fixed-seed random draw; both parts keep the source order."""
+        if position not in SPLIT_POSITIONS:
+            raise LandError(f"position must be one of {', '.join(SPLIT_POSITIONS)}.")
+        n = len(self.rows)
+        if n < 2:
+            raise LandError("Two rows are needed to split.")
+        k = min(max(round(n * eval_percent / 100), 1), n - 1)
+        if position == "head":
+            held = set(range(k))
+        elif position == "tail":
+            held = set(range(n - k, n))
+        else:
+            held = set(random.Random(n).sample(range(n), k))
+        train = [row for i, row in enumerate(self.rows) if i not in held]
+        evaluation = [row for i, row in enumerate(self.rows) if i in held]
+        return replace(self, rows=train), replace(self, rows=evaluation)
+
+
 def _stamp_source_rows(rows: list[dict[str, Any]]) -> None:
     for offset, row in enumerate(rows):
         row[store.SOURCE_ROW] = offset
 
 
 @transaction.atomic
-def _commit_source(
-    dataset: Dataset,
-    rows: list[dict[str, Any]],
-    *,
-    kind: str,
-    spec: dict[str, Any],
-    user: Any,
-    manifest: list[dict] | None = None,
-) -> Dataset:
+def commit(dataset: Dataset, landing: Landing, *, user: Any = None) -> Dataset:
     """Write cell 0, measure it, propose the capability and the intent."""
+    rows = landing.rows
     _stamp_source_rows(rows)
     source = dataset.cells.filter(position=0).first()
     if source is None:
@@ -55,10 +83,10 @@ def _commit_source(
             created_by=user if getattr(user, "pk", None) else None,
         )
     path = paths.cell_path(dataset.id, source.id)
-    store.write_rows(path, rows, manifest)
+    store.write_rows(path, rows, landing.manifest)
     fields: dict[str, Any] = {
-        "source_kind": kind,
-        "source_spec": {**spec, "landed_at": timezone.now().isoformat()},
+        "source_kind": landing.kind,
+        "source_spec": {**landing.spec, "landed_at": timezone.now().isoformat()},
         "state": Dataset.State.IDLE,
         "error": "",
     }
@@ -76,14 +104,25 @@ def _commit_source(
     return dataset
 
 
-def land_file(dataset: Dataset, path: Path, *, filename: str, user: Any = None) -> Dataset:
+def read_file(path: Path, *, filename: str) -> Landing:
     try:
         rows = files.read_file_rows(path, filename=filename)
     except files.FileError as exc:
         raise LandError(str(exc)) from exc
     if not rows:
         raise LandError("The file has no rows.")
-    return land_rows(dataset, rows, spec={"filename": filename}, user=user)
+    return read_rows(rows, spec={"filename": filename})
+
+
+def read_rows(rows: list[dict[str, Any]], *, spec: dict[str, Any] | None = None) -> Landing:
+    rows = [dict(r) if isinstance(r, dict) else {"value": r} for r in rows]
+    for row in rows:
+        row.pop(store.SOURCE_ROW, None)
+    return Landing(rows, kind=Dataset.SourceKind.FILE, spec=spec or {})
+
+
+def land_file(dataset: Dataset, path: Path, *, filename: str, user: Any = None) -> Dataset:
+    return commit(dataset, read_file(path, filename=filename), user=user)
 
 
 def land_rows(
@@ -93,10 +132,7 @@ def land_rows(
     spec: dict[str, Any] | None = None,
     user: Any = None,
 ) -> Dataset:
-    rows = [dict(r) if isinstance(r, dict) else {"value": r} for r in rows]
-    for row in rows:
-        row.pop(store.SOURCE_ROW, None)
-    return _commit_source(dataset, rows, kind=Dataset.SourceKind.FILE, spec=spec or {}, user=user)
+    return commit(dataset, read_rows(rows, spec=spec), user=user)
 
 
 TRACE_CHUNK = 200
@@ -292,6 +328,22 @@ def iter_trace_rows(
             on_progress(done)
 
 
+def read_traces(project_id: Any, spec: dict[str, Any], *, on_progress: Any = None) -> Landing:
+    """One row per trace, in selection order. ``spec`` is a ``TraceSource`` payload."""
+    try:
+        source = selection.TraceSource.parse(spec)
+        rows = list(
+            iter_trace_rows(project_id, source.iter_trace_ids(project_id), on_progress=on_progress)
+        )
+    except selection.TraceSourceError as exc:
+        raise LandError(str(exc)) from exc
+    if not rows:
+        raise LandError("No traces matched. Widen the selection or check the project.")
+    return Landing(
+        rows, kind=Dataset.SourceKind.TRACES, spec=source.spec(), manifest=list(TRACE_MANIFEST)
+    )
+
+
 def land_traces(
     dataset: Dataset,
     spec: dict[str, Any],
@@ -299,27 +351,8 @@ def land_traces(
     user: Any = None,
     on_progress: Any = None,
 ) -> Dataset:
-    """One row per trace, in selection order. ``spec`` is a ``TraceSource`` payload."""
-    try:
-        source = selection.TraceSource.parse(spec)
-        rows = list(
-            iter_trace_rows(
-                dataset.project_id,
-                source.iter_trace_ids(dataset.project_id),
-                on_progress=on_progress,
-            )
-        )
-    except selection.TraceSourceError as exc:
-        raise LandError(str(exc)) from exc
-    if not rows:
-        raise LandError("No traces matched. Widen the selection or check the project.")
-    return _commit_source(
-        dataset,
-        rows,
-        kind=Dataset.SourceKind.TRACES,
-        spec=source.spec(),
-        user=user,
-        manifest=list(TRACE_MANIFEST),
+    return commit(
+        dataset, read_traces(dataset.project_id, spec, on_progress=on_progress), user=user
     )
 
 

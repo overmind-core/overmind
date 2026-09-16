@@ -235,6 +235,7 @@ overmind init [OPTIONS]             Skills, slash commands, MCP; seed overmind.t
 overmind sync [up|down]             Push/pull overmind.toml with the server
 overmind chassis [--root PATH]      Print the AST chassis digest the local scan uses
 overmind dataset upload FILE        Upload a local dataset and start a build
+                                    (--split PERCENT lands a train and an eval dataset)
 overmind dataset export DATASET     Download committed rows as JSONL or CSV
 overmind model download-checkpoint DEPLOYMENT
                                     Download an archived fine-tuned checkpoint

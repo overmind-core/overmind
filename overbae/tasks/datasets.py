@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+from dataclasses import replace
 from typing import Any
 
 from celery import shared_task
@@ -40,9 +41,17 @@ def _fail(dataset_id: Any, error: str) -> None:
     acks_late=True,
     reject_on_worker_lost=True,
 )
-def land(*, dataset_id: str, source: dict[str, Any], user_id: str | None = None) -> dict[str, Any]:
+def land(
+    *,
+    dataset_id: str,
+    source: dict[str, Any],
+    user_id: str | None = None,
+    split: dict[str, Any] | None = None,
+) -> dict[str, Any]:
     """``source`` is ``{"upload_id", "filename"}``, ``{"rows": [...]}`` or
-    ``{"traces": {trace_ids | filters}}``. The diagnosis follows."""
+    ``{"traces": {trace_ids | filters}}``. With ``split`` (``eval_dataset_id``,
+    ``eval_percent``, ``position``) the source is read once and cut in two.
+    The diagnosis follows for every dataset that landed."""
     from overbae.models import Dataset, User
     from overbae.services.datasets import files
     from overbae.services.datasets import land as landing
@@ -50,40 +59,67 @@ def land(*, dataset_id: str, source: dict[str, Any], user_id: str | None = None)
     dataset = Dataset.objects.filter(pk=dataset_id).first()
     if dataset is None:
         return {"status": "gone"}
+    targets = [dataset]
+    if split:
+        evaluation = Dataset.objects.filter(pk=split["eval_dataset_id"]).first()
+        if evaluation is None:
+            return {"status": "gone"}
+        targets.append(evaluation)
     user = User.objects.filter(pk=user_id).first() if user_id else None
-    _emit(dataset_id, {"type": "land_started"})
+    for target in targets:
+        _emit(target.id, {"type": "land_started"})
 
     def progress(done: int) -> None:
         _emit(dataset_id, {"type": "land_progress", "traces": done})
 
+    upload_id = source.get("upload_id")
     try:
-        if source.get("upload_id"):
-            upload_id = source["upload_id"]
+        if upload_id:
             filename = source.get("filename") or files.upload_filename(upload_id) or "upload"
             path = files.upload_data_path(upload_id)
             if not path.exists():
                 raise landing.LandError("The upload has expired. Start it again.")
-            landing.land_file(dataset, path, filename=filename, user=user)
-            files.discard_upload(upload_id)
+            read = landing.read_file(path, filename=filename)
         elif source.get("rows") is not None:
-            landing.land_rows(dataset, list(source["rows"]), user=user, spec={"pasted": True})
+            read = landing.read_rows(list(source["rows"]), spec={"pasted": True})
         elif source.get("traces") is not None:
-            landing.land_traces(dataset, dict(source["traces"]), user=user, on_progress=progress)
+            read = landing.read_traces(
+                dataset.project_id, dict(source["traces"]), on_progress=progress
+            )
         else:
             raise landing.LandError("No source given.")
+        if split:
+            cut = {"eval_percent": int(split["eval_percent"]), "position": split["position"]}
+            train_part, eval_part = read.split(**cut)
+            for target, part, role, sibling in (
+                (targets[0], train_part, "train", targets[1]),
+                (targets[1], eval_part, "eval", targets[0]),
+            ):
+                spec = {**part.spec, "split": {**cut, "role": role, "sibling": str(sibling.id)}}
+                landing.commit(target, replace(part, spec=spec), user=user)
+        else:
+            landing.commit(dataset, read, user=user)
     except landing.LandError as exc:
-        _fail(dataset_id, str(exc))
+        for target in targets:
+            _fail(target.id, str(exc))
         return {"status": "failed", "error": str(exc)}
     except Exception as exc:  # noqa: BLE001 — the user must see why landing died
         logger.exception("landing failed for dataset %s", dataset_id)
-        _fail(dataset_id, f"Landing failed: {exc}")
+        for target in targets:
+            _fail(target.id, f"Landing failed: {exc}")
         return {"status": "failed", "error": str(exc)}
+    if upload_id:
+        files.discard_upload(upload_id)
 
-    dataset.refresh_from_db()
-    source_cell = dataset.source
-    _emit(dataset_id, {"type": "land_done", "rows": source_cell.rows if source_cell else 0})
-    diagnose.apply_async(kwargs={"dataset_id": str(dataset.id), "user_id": user_id})
-    return {"status": "ok", "rows": source_cell.rows if source_cell else 0}
+    rows = 0
+    for target in targets:
+        target.refresh_from_db()
+        source_cell = target.source
+        landed = source_cell.rows if source_cell else 0
+        rows += landed
+        _emit(target.id, {"type": "land_done", "rows": landed})
+        diagnose.apply_async(kwargs={"dataset_id": str(target.id), "user_id": user_id})
+    return {"status": "ok", "rows": rows}
 
 
 @shared_task(

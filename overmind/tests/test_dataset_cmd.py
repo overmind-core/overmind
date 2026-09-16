@@ -50,6 +50,14 @@ class FakeSession:
                 },
                 201,
             )
+        if url.endswith("/api/datasets/split/"):
+            return FakeResponse(
+                {
+                    "train": {"id": "dataset-1", "state": "landing"},
+                    "eval": {"id": "dataset-2", "state": "landing"},
+                },
+                201,
+            )
         return FakeResponse({"id": "dataset-1", "state": "landing"}, 201)
 
     def get(self, url, **kwargs):
@@ -145,6 +153,50 @@ def test_upload_file_resumes_in_server_chunks_and_creates_dataset(tmp_path: Path
     }
 
 
+def test_upload_file_with_split_hits_the_split_endpoint_and_returns_both_ids(tmp_path: Path):
+    path = tmp_path / "rows.jsonl"
+    path.write_bytes(b"ab")
+    session = FakeSession(chunk_bytes=8)
+
+    result = upload_file(
+        path,
+        project_id="project-1",
+        api_key="key-1",
+        api_url="https://api.example/",
+        split=25,
+        split_position="head",
+        session=session,
+    )
+
+    assert session.calls[-1][1] == "https://api.example/api/datasets/split/"
+    assert session.calls[-1][2]["json"] == {
+        "project": "project-1",
+        "name": "rows.jsonl",
+        "source": {"upload_id": "upload-1", "filename": "rows.jsonl"},
+        "eval_percent": 25,
+        "position": "head",
+    }
+    assert (result["id"], result["eval_id"]) == ("dataset-1", "dataset-2")
+    assert result["state"] == result["eval_state"] == "landing"
+    assert result["next_mcp_actions"][1]["arguments"] == {"dataset_name": "dataset-1"}
+
+
+def test_upload_file_rejects_a_bad_split_before_network(tmp_path: Path):
+    path = tmp_path / "rows.jsonl"
+    path.write_bytes(b"ab")
+    session = FakeSession()
+    base = {"project_id": "p", "api_key": "k", "api_url": "https://api.example", "session": session}
+    for bad in (
+        {"split": 0},
+        {"split": 100},
+        {"split": 20, "split_position": "middle"},
+        {"split": 20, "intent": "train"},
+    ):
+        with pytest.raises(DatasetUploadError):
+            upload_file(path, **base, **bad)
+    assert session.calls == []
+
+
 def test_upload_file_rejects_ft_intent_before_network(tmp_path: Path):
     path = tmp_path / "rows.jsonl"
     path.write_bytes(b"{}\n")
@@ -233,6 +285,33 @@ def test_upload_command_prints_uuid_state_and_mcp_follow_up(tmp_path: Path, monk
     assert "dataset-1" in human.output
     assert "landing" in human.output
     assert "get_job(kind=dataset_run)" in human.output
+
+
+def test_upload_command_passes_split_flags_and_prints_the_eval_dataset(tmp_path: Path, monkeypatch):
+    file = tmp_path / "rows.jsonl"
+    file.write_text("{}\n")
+    config_path = tmp_path / "overmind.toml"
+    dump(Config(api_key="toml-key", project_id="toml-project"), config_path)
+    seen = {}
+
+    def fake_upload(*args, **kwargs):
+        seen.update(kwargs)
+        return {
+            "id": "dataset-1",
+            "state": "landing",
+            "eval_id": "dataset-2",
+            "eval_state": "landing",
+            "next_mcp_actions": [],
+        }
+
+    monkeypatch.setattr("overmind.dataset_cmd.upload_file", fake_upload)
+    result = CliRunner().invoke(
+        app,
+        ["dataset", "upload", str(file), "--path", str(config_path), "--split", "30", "--split-position", "random"],
+    )
+    assert result.exit_code == 0, result.output
+    assert (seen["split"], seen["split_position"]) == (30, "random")
+    assert "Eval dataset dataset-2 is landing." in result.output
 
 
 def test_upload_command_rejects_removed_flags(tmp_path: Path):

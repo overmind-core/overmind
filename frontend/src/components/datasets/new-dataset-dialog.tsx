@@ -32,9 +32,11 @@ import { Spinner } from "@/components/ui/spinner";
 import { Textarea } from "@/components/ui/textarea";
 import {
   type Intent,
+  type SplitPosition,
   type TraceSelectionSpec,
   traceSelectionBody,
   useCreateDatasetMutation,
+  useCreateDatasetSplitMutation,
 } from "@/hooks/use-datasets";
 import { useProjectCapabilitiesQuery } from "@/hooks/use-evaluations";
 import { useFileUpload } from "@/hooks/use-uploads";
@@ -48,12 +50,23 @@ const SOURCES: Array<{ value: SourceTab; label: string; detail: string }> = [
   { detail: "JSON lines, a JSON array or CSV", label: "Paste rows", value: "paste" },
   { detail: "One row per trace", label: "From traces", value: "traces" },
 ];
-type Purpose = Intent | "propose";
+type Purpose = Intent | "propose" | "split";
 const PURPOSES: Array<{ value: Purpose; label: string; detail: string }> = [
   { detail: "Set when the rows land", label: "Decide from the rows", value: "propose" },
   { detail: "Inputs with expected outputs", label: "Evaluation", value: "eval" },
   { detail: "Message transcripts", label: "Training", value: "train" },
+  { detail: "One source, two datasets", label: "Train + eval", value: "split" },
 ];
+const POSITIONS: Array<{ value: SplitPosition; label: string }> = [
+  { label: "First", value: "head" },
+  { label: "Last", value: "tail" },
+  { label: "Random", value: "random" },
+];
+const DEFAULT_EVAL_PERCENT = 20;
+const clampPercent = (n: number) => Math.min(99, Math.max(1, Math.round(n)));
+/** Mirrors the server cut: at least one row on each side. */
+const evalRows = (rows: number, percent: number) =>
+  rows < 2 ? 0 : Math.min(Math.max(Math.round((rows * percent) / 100), 1), rows - 1);
 const AUTO_CAPABILITY = "__auto__";
 const stripExtension = (name: string) => name.replace(/\.(csv|tsv|json|jsonl|parquet)$/i, "");
 
@@ -94,6 +107,8 @@ export function NewDatasetDialog({
   const [nameTouched, setNameTouched] = useState(false);
   const [capabilityId, setCapabilityId] = useState(initialCapabilityId ?? AUTO_CAPABILITY);
   const [purpose, setPurpose] = useState<Purpose>("propose");
+  const [evalPercent, setEvalPercent] = useState(DEFAULT_EVAL_PERCENT);
+  const [position, setPosition] = useState<SplitPosition>("tail");
   const [file, setFile] = useState<File | null>(null);
   const [uploadId, setUploadId] = useState<string | null>(null);
   const [text, setText] = useState("");
@@ -103,9 +118,10 @@ export function NewDatasetDialog({
   const fileInputRef = useRef<HTMLInputElement>(null);
   const upload = useFileUpload();
   const create = useCreateDatasetMutation();
+  const createSplit = useCreateDatasetSplitMutation();
   const capabilitiesQuery = useProjectCapabilitiesQuery(projectId);
   const capabilities = capabilitiesQuery.data?.results ?? [];
-  const busy = create.isPending;
+  const busy = create.isPending || createSplit.isPending;
 
   // Reset per open so a second create starts clean; the initial props re-seed it.
   // biome-ignore lint/correctness/useExhaustiveDependencies: seeds once per open
@@ -116,6 +132,8 @@ export function NewDatasetDialog({
     setNameTouched(false);
     setCapabilityId(initialCapabilityId ?? AUTO_CAPABILITY);
     setPurpose("propose");
+    setEvalPercent(DEFAULT_EVAL_PERCENT);
+    setPosition("tail");
     setFile(null);
     setUploadId(null);
     setText("");
@@ -208,15 +226,23 @@ export function NewDatasetDialog({
   const handleSubmit = useCallback(async () => {
     if (!ready || busy) return;
     setError(null);
+    const base = {
+      capabilityId: capabilityId === AUTO_CAPABILITY ? undefined : capabilityId,
+      name: name.trim() || suggestedName || "Untitled dataset",
+      projectId,
+      source: readiness.source,
+    };
     try {
-      const dataset = await create.mutateAsync({
-        capabilityId: capabilityId === AUTO_CAPABILITY ? undefined : capabilityId,
-        intent: purpose === "propose" ? undefined : purpose,
-        name: name.trim() || suggestedName || "Untitled dataset",
-        projectId,
-        source: readiness.source,
-      });
-      finish(dataset);
+      if (purpose === "split") {
+        const pair = await createSplit.mutateAsync({ ...base, evalPercent, position });
+        finish(pair.train);
+      } else {
+        const dataset = await create.mutateAsync({
+          ...base,
+          intent: purpose === "propose" ? undefined : purpose,
+        });
+        finish(dataset);
+      }
     } catch (err) {
       setError(errorMessage(err, "Couldn't create the dataset."));
     }
@@ -224,8 +250,11 @@ export function NewDatasetDialog({
     ready,
     busy,
     create,
+    createSplit,
     capabilityId,
     purpose,
+    evalPercent,
+    position,
     name,
     suggestedName,
     projectId,
@@ -233,10 +262,15 @@ export function NewDatasetDialog({
     finish,
   ]);
 
-  const rowsLabel =
-    ready && readiness.rows !== undefined
-      ? `${readiness.rows.toLocaleString()} ${readiness.rows === 1 ? "row" : "rows"}`
-      : null;
+  const rowsLabel = useMemo(() => {
+    if (!ready || readiness.rows === undefined) return null;
+    const rows = readiness.rows;
+    if (purpose === "split" && rows >= 2) {
+      const held = evalRows(rows, evalPercent);
+      return `${(rows - held).toLocaleString()} train · ${held.toLocaleString()} eval`;
+    }
+    return `${rows.toLocaleString()} ${rows === 1 ? "row" : "rows"}`;
+  }, [ready, readiness, purpose, evalPercent]);
 
   return (
     <Dialog onOpenChange={(o) => !busy && onOpenChange(o)} open={open}>
@@ -378,8 +412,48 @@ export function NewDatasetDialog({
           </div>
 
           <div className="flex flex-col gap-1.5">
-            <Label>Purpose</Label>
-            <SelectableCardGroup className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+            <div className="flex min-h-6 items-center justify-between gap-3">
+              <Label>Purpose</Label>
+              {purpose === "split" && (
+                <div className="flex items-center gap-3">
+                  <Label className="gap-1.5 text-xs text-muted-foreground" htmlFor="eval-share">
+                    Eval share
+                    <Input
+                      className="w-14 text-right"
+                      id="eval-share"
+                      inputMode="numeric"
+                      max={99}
+                      min={1}
+                      onChange={(e) => {
+                        const n = Number(e.target.value);
+                        if (Number.isFinite(n)) setEvalPercent(clampPercent(n));
+                      }}
+                      size="xs"
+                      type="number"
+                      value={evalPercent}
+                    />
+                    %
+                  </Label>
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-xs text-muted-foreground">Eval rows</span>
+                    <SelectableCardGroup aria-label="Eval rows" className="flex gap-1">
+                      {POSITIONS.map((option) => (
+                        <SelectableCard
+                          className="px-2 py-0.5 text-xs"
+                          key={option.value}
+                          onSelect={() => setPosition(option.value)}
+                          role="radio"
+                          selected={position === option.value}
+                        >
+                          {option.label}
+                        </SelectableCard>
+                      ))}
+                    </SelectableCardGroup>
+                  </div>
+                </div>
+              )}
+            </div>
+            <SelectableCardGroup className="grid grid-cols-2 gap-2 sm:grid-cols-4">
               {PURPOSES.map((option) => (
                 <SelectableCard
                   className="flex flex-col gap-0.5 px-3 py-2"

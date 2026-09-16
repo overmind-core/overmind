@@ -205,6 +205,7 @@ class DatasetMutationOutput(MCPModel):
     summary: str = Field(min_length=1, max_length=_SUMMARY_CHARS)
     dataset: DatasetMutationRef
     job: DatasetJobReceipt
+    eval_dataset: DatasetMutationRef | None = None
     # Set by create_dataset_from_traces: the traces the selection resolved to.
     traces: int | None = Field(default=None, ge=0)
     resource_links: list[ResourceLinkContract] = Field(max_length=4)
@@ -258,6 +259,15 @@ class QueryDatasetOutput(MCPModel):
     resource_links: list[ResourceLinkContract] = Field(default_factory=list, max_length=2)
 
 
+class SplitInput(MCPModel):
+    eval_percent: int = Field(
+        default=20, ge=1, le=99, description="Share of the rows that lands as the eval dataset."
+    )
+    position: Literal["head", "tail", "random"] = Field(
+        default="tail", description="Where the eval rows are taken from."
+    )
+
+
 class CreateDatasetFromTracesInput(MCPModel):
     """One row lands per trace. Either ``trace_ids`` or a filter selection, never both."""
 
@@ -298,6 +308,13 @@ class CreateDatasetFromTracesInput(MCPModel):
         max_length=255,
         description="Capability uuid. Omit to let landing propose it from the rows.",
     )
+    split: SplitInput | None = Field(
+        default=None,
+        description=(
+            "Land the selection as two datasets, `<name> train` and `<name> eval`, "
+            "with disjoint rows. Cannot be combined with intent."
+        ),
+    )
 
     @model_validator(mode="after")
     def require_selection(self):
@@ -305,6 +322,8 @@ class CreateDatasetFromTracesInput(MCPModel):
             raise ValueError("provide trace_ids, or filters and/or search")
         if self.trace_ids and (self.filters or self.search):
             raise ValueError("give either trace_ids or a filter selection, not both")
+        if self.split is not None and self.intent is not None:
+            raise ValueError("split fixes the intents; omit intent")
         return self
 
     @field_validator("filters")
@@ -336,25 +355,33 @@ class RunDatasetInput(MCPModel):
     proposal_cell: str | None = Field(default=None, min_length=1, max_length=80)
 
 
-def mutation_output(dataset, *, summary: str, traces: int | None = None) -> DatasetMutationOutput:
-    dataset_link = dataset_resource_link(dataset)
-    job_link = dataset_run_job_link(dataset)
+def _mutation_ref(dataset) -> DatasetMutationRef:
+    return DatasetMutationRef(
+        id=str(dataset.id),
+        name=dataset.name or "",
+        state=dataset.state,
+        resource=dataset_resource_link(dataset),
+    )
+
+
+def mutation_output(
+    dataset, *, summary: str, traces: int | None = None, eval_dataset=None
+) -> DatasetMutationOutput:
+    links = [dataset_resource_link(dataset), dataset_run_job_link(dataset)]
+    if eval_dataset is not None:
+        links += [dataset_resource_link(eval_dataset), dataset_run_job_link(eval_dataset)]
     return DatasetMutationOutput(
         summary=_clip(summary, _SUMMARY_CHARS),
-        dataset=DatasetMutationRef(
-            id=str(dataset.id),
-            name=dataset.name or "",
-            state=dataset.state,
-            resource=dataset_link,
-        ),
+        dataset=_mutation_ref(dataset),
         job=DatasetJobReceipt(
             kind="dataset_run",
             id=str(dataset.id),
             status=dataset.state,
-            resource=job_link,
+            resource=links[1],
         ),
+        eval_dataset=_mutation_ref(eval_dataset) if eval_dataset is not None else None,
         traces=traces,
-        resource_links=[dataset_link, job_link],
+        resource_links=links,
     )
 
 

@@ -115,7 +115,9 @@ models/CreditTopUpRequestRequest.ts
 models/Dataset.ts
 models/DatasetCreateRequest.ts
 models/DatasetOverlapResponse.ts
+models/DatasetPair.ts
 models/DatasetSourceKindEnum.ts
+models/DatasetSplitCreateRequest.ts
 models/DatasetStateEnum.ts
 models/DatasetValidateRequestRequest.ts
 models/DatasetValidationResponse.ts
@@ -266,6 +268,7 @@ models/PhaseEnum.ts
 models/PlanEnum.ts
 models/PlanUsage.ts
 models/PlanUsageUnit.ts
+models/PositionEnum.ts
 models/PostResultsRequest.ts
 models/Project.ts
 models/ProjectInvite.ts

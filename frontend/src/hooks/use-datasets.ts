@@ -12,8 +12,10 @@ import type {
   Cell,
   ColumnStat,
   Dataset,
+  DatasetPair,
   IntentEnum,
   PaginatedDatasetList,
+  PositionEnum,
   SourceRequest,
 } from "@/openapi";
 
@@ -299,6 +301,36 @@ export function useCreateDatasetMutation() {
           capability: input.capabilityId || null,
           intent: input.intent,
           name: input.name,
+          project: input.projectId,
+          source: input.source,
+        },
+      }),
+    onSuccess: () => invalidateDataset(qc),
+  });
+}
+
+export type SplitPosition = PositionEnum;
+
+export interface CreateDatasetSplitInput {
+  projectId: string;
+  name: string;
+  capabilityId?: string;
+  source: SourceRequest;
+  evalPercent: number;
+  position: SplitPosition;
+}
+
+/** One source landed as `<name> train` and `<name> eval`. */
+export function useCreateDatasetSplitMutation() {
+  const qc = useQueryClient();
+  return useMutation<DatasetPair, Error, CreateDatasetSplitInput>({
+    mutationFn: (input) =>
+      apiClient.datasets.datasetsSplitCreate({
+        datasetSplitCreateRequest: {
+          capability: input.capabilityId || null,
+          evalPercent: input.evalPercent,
+          name: input.name,
+          position: input.position,
           project: input.projectId,
           source: input.source,
         },

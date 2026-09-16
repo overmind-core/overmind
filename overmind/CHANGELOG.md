@@ -8,6 +8,9 @@ entries here cover the SDK surface.
 
 ### Added
 
+- `overmind dataset upload FILE --split PERCENT [--split-position head|tail|random]`:
+  land one file as a train dataset and an eval dataset with disjoint rows; the
+  JSON result carries `id` (train) and `eval_id`.
 - Single-owner span-stamping resolver: every unit-kind and behaviour-key
   decision is made in one on-start resolver, verified by an enumerated
   invariant suite (`tests/test_stamping_invariants.py`). One run boundary per
