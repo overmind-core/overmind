@@ -46,7 +46,7 @@ docker compose up      # API, Postgres, Redis, Celery workers
 The API runs at `http://localhost:8000`. The Console runs outside compose:
 
 ```bash
-cd frontend && cp .env.example .env && bun install && bun run dev   # http://localhost:5173
+cd frontend && bun install && bun run dev   # http://localhost:5173, config from .env.development
 ```
 
 Without `STRIPE_SECRET_KEY`, billing runs in OSS mode (spend metering only, no quotas). Training/serving backends (Modal, Baseten) are optional and selected with `FINETUNING_BACKEND`.

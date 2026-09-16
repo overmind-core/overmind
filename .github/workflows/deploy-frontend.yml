@@ -23,7 +23,6 @@ jobs:
   deploy-frontend:
     if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
     runs-on: ubuntu-latest
-    environment: ${{ github.event_name == 'release' && 'production' || 'staging' }}
     defaults:
       run:
         working-directory: frontend
@@ -44,21 +43,30 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-bun-
 
-      - name: Write .env from the environment's CONSOLE_ENV variable
-        run: printf '%s\n' "$CONSOLE_ENV" > .env
-        env:
-          CONSOLE_ENV: ${{ vars.CONSOLE_ENV }}
+      # main / pull_request → staging; published release → production.
+      # Vite loads frontend/.env.<mode> for the build, so the committed env
+      # files are the one source of each target's public config.
+      - name: Select target
+        id: target
+        run: |
+          if [[ "$GITHUB_EVENT_NAME" == release ]]; then
+            echo "mode=production" >> "$GITHUB_OUTPUT"
+            echo "pages_project=console-overmind" >> "$GITHUB_OUTPUT"
+            echo "pages_branch=main" >> "$GITHUB_OUTPUT"
+          else
+            echo "mode=staging" >> "$GITHUB_OUTPUT"
+            echo "pages_project=console-overmind-staging" >> "$GITHUB_OUTPUT"
+            echo "pages_branch=" >> "$GITHUB_OUTPUT"
+          fi
 
       - run: bun install --frozen-lockfile
-      - run: bun run build
+      - run: bun run build --mode ${{ steps.target.outputs.mode }}
 
       - name: Deploy to Cloudflare Pages
         env:
           CLOUDFLARE_ACCOUNT_ID: 061081d3722064fa8f3bd5340b55eb7a
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          PAGES_PROJECT: ${{ steps.target.outputs.pages_project }}
+          PAGES_BRANCH: ${{ steps.target.outputs.pages_branch }}
         run: |
-          if [[ "$GITHUB_EVENT_NAME" == release ]]; then
-            bun run wrangler pages deploy dist --project-name=console-overmind --branch=main
-          else
-            bun run wrangler pages deploy dist --project-name=console-overmind-staging
-          fi
+          bun run wrangler pages deploy dist --project-name="$PAGES_PROJECT" ${PAGES_BRANCH:+--branch="$PAGES_BRANCH"}
