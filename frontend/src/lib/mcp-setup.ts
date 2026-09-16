@@ -15,9 +15,7 @@ export function mcpClientMeta(client: McpClient) {
   return MCP_CLIENTS.find((c) => c.id === client) ?? MCP_CLIENTS[0];
 }
 
-const PLATFORM_SDK_GIT = "git+https://github.com/overmind-core/platform.git";
-
-export type SdkInstallChannel = "pypi" | "git" | "editable";
+export type SdkInstallChannel = "pypi" | "editable";
 
 function apiHost(apiUrl: string): string {
   try {
@@ -37,9 +35,8 @@ function isStagingApiHost(host: string): boolean {
 
 /**
  * Console API host → SDK install source:
- * - production (`api.overmindlab.ai`) → PyPI
- * - staging → platform git @ `VITE_SDK_GIT_REF` (default main)
- * - local → editable checkout when `VITE_SDK_EDITABLE_PATH` is set, else git @ main
+ * - all hosts → PyPI
+ * - localhost + `VITE_SDK_EDITABLE_PATH` → editable checkout
  *
  * `VITE_SDK_EDITABLE_PATH` applies only on localhost — never on staging or production builds.
  */
@@ -48,29 +45,18 @@ export function sdkInstallChannel(apiUrl = config.apiUrl): SdkInstallChannel {
   if (isLocalApiHost(host) && config.sdkEditablePath) {
     return "editable";
   }
-  if (isStagingApiHost(host) || isLocalApiHost(host)) {
-    return "git";
-  }
   return "pypi";
-}
-
-function gitDependencySpec(extra?: "tracing"): string {
-  const pkg = extra === "tracing" ? "overmind[tracing]" : "overmind";
-  return `"${pkg} @ ${PLATFORM_SDK_GIT}@${config.sdkGitRef}#subdirectory=overmind"`;
 }
 
 /**
  * Example `pip install` for manual terminal blocks — not the agent prompt path.
- * Production → PyPI; staging/local → git@main; local + `VITE_SDK_EDITABLE_PATH` → editable.
+ * PyPI everywhere; localhost + `VITE_SDK_EDITABLE_PATH` → editable.
  */
 export function sdkPipInstall(apiUrl = config.apiUrl, extra?: "tracing"): string {
   const channel = sdkInstallChannel(apiUrl);
   if (channel === "editable") {
     const suffix = extra === "tracing" ? "[tracing]" : "";
     return `pip install -e "${config.sdkEditablePath}${suffix}"`;
-  }
-  if (channel === "git") {
-    return `pip install ${gitDependencySpec(extra)}`;
   }
   const spec = extra === "tracing" ? "overmind[tracing]" : "overmind";
   return extra === "tracing" ? `pip install "${spec}"` : `pip install ${spec}`;
@@ -96,18 +82,12 @@ function sdkInstallSource(apiUrl = config.apiUrl): string {
   if (channel === "editable") {
     return `overmind editable install (${config.sdkEditablePath})`;
   }
-  if (channel === "git") {
-    return `overmind from git (${PLATFORM_SDK_GIT}@${config.sdkGitRef}#subdirectory=overmind)`;
-  }
   return "overmind from PyPI";
 }
 
 function sdkInstallChannelRule(channel: SdkInstallChannel): string {
   if (channel === "pypi") {
     return "Use the published PyPI package only — do not install from git or a local checkout.";
-  }
-  if (channel === "git") {
-    return `Use the platform git repo at @${config.sdkGitRef} only — do not use PyPI or a local editable checkout.`;
   }
   return `Use the local checkout at ${config.sdkEditablePath} only — do not use PyPI or git.`;
 }
@@ -117,20 +97,12 @@ function dependencyCommands(channel: SdkInstallChannel): {
   requirementsLine: string;
   uvAdd: string;
 } {
-  const gitDep = gitDependencySpec();
   if (channel === "editable") {
     const path = config.sdkEditablePath;
     return {
       poetryAdd: `poetry add --editable "${path}"`,
       requirementsLine: `-e "${path}"`,
       uvAdd: `uv add --editable "${path}"`,
-    };
-  }
-  if (channel === "git") {
-    return {
-      poetryAdd: `poetry add ${gitDep}`,
-      requirementsLine: gitDep,
-      uvAdd: `uv add ${gitDep}`,
     };
   }
   return {
