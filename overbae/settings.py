@@ -7,6 +7,8 @@ from pathlib import Path
 from django.core.exceptions import ImproperlyConfigured
 from dotenv import load_dotenv
 
+from modal_shared.shared import finetuning_bucket
+
 BASE_DIR = Path(__file__).resolve().parent.parent
 
 logger = logging.getLogger(__name__)
@@ -557,11 +559,12 @@ BASETEN_PROJECT = os.environ.get("BASETEN_PROJECT", "")
 
 HF_TOKEN = os.environ.get("HF_TOKEN", "")
 
-# Durable home for a fine-tune's checkpoint.zip / job_logs.txt / metrics.json.
-# The names match Modal's overmind-inference secret. These static keys go
-# straight to boto3.client() in finetuning_checkpoints; the media storage above
-# still authenticates with AWS_PROFILE instead.
-AWS_BUCKET_NAME = os.environ.get("AWS_BUCKET_NAME", "")
+# Durable home for a fine-tune's checkpoint.zip / job_logs.txt / metrics.json. The bucket
+# follows MODAL_ENVIRONMENT, same as the CloudBucketMount that writes it — a separate knob
+# here once pointed local Django at prod while Modal dev archived to dev. The key names
+# match Modal's overmind-inference secret and go straight to boto3 in
+# finetuning_checkpoints; the media storage above still authenticates with AWS_PROFILE.
+AWS_BUCKET_NAME = finetuning_bucket()
 AWS_ACCESS_KEY_ID = os.environ.get("AWS_ACCESS_KEY_ID", "")
 AWS_SECRET_ACCESS_KEY = os.environ.get("AWS_SECRET_ACCESS_KEY", "")
 
@@ -579,7 +582,6 @@ MODAL_SFT_APP_NAME = os.environ.get("MODAL_SFT_APP_NAME", "overmind-sft")
 _missing_aws = [
     name
     for name, value in (
-        ("AWS_BUCKET_NAME", AWS_BUCKET_NAME),
         ("AWS_ACCESS_KEY_ID", AWS_ACCESS_KEY_ID),
         ("AWS_SECRET_ACCESS_KEY", AWS_SECRET_ACCESS_KEY),
     )

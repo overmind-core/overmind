@@ -11,6 +11,8 @@ import json
 import logging
 import os
 import re
+import shutil
+import tempfile
 import time
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
@@ -980,17 +982,21 @@ class BasetenRunner(BaseFinetuningRunner):
     ]
 
     # Shared with ModalRunner — sft_assets/train.py holds the (backend, USE_UNSLOTH)
-    # dispatch both runners plug into.
+    # dispatch both runners plug into. Shipped whole, like Modal's add_local_dir: a
+    # hand-kept file list drifted and the container died on `import basepath`.
     _ASSETS_DIR = Path(__file__).parent / "sft_assets"
-    _ASSET_FILES = (
-        "train.py",
-        "common.py",
-        "engine_stock.py",
-        "engine_unsloth.py",
-        "pretok.py",
-        "catalog.py",
-        "run.sh",
-    )
+    _MODAL_SHARED_DIR = Path(__file__).resolve().parents[2] / "modal_shared"
+
+    @classmethod
+    def _stage_assets(cls, tmp: Path) -> None:
+        skip = shutil.ignore_patterns("__pycache__", "*.pyc")
+        shutil.copytree(cls._ASSETS_DIR, tmp, dirs_exist_ok=True, ignore=skip)
+        (tmp / "run.sh").chmod(0o755)
+        # modal_shared lives outside overbae on purpose — overbae/__init__.py imports
+        # Celery, which the bare Baseten container can't configure. Shipped whole, like
+        # Modal's attach_modal_shared: modelfam imports modal_shared.stacks, and a
+        # modelfam-only copy died in the container on `import modal_shared.modelfam`.
+        shutil.copytree(cls._MODAL_SHARED_DIR, tmp / "modal_shared", ignore=skip)
 
     def _api_key(self) -> str:
         key = getattr(settings, "BASETEN_API_KEY", "") or ""
@@ -1257,9 +1263,6 @@ class BasetenRunner(BaseFinetuningRunner):
         num_examples: int | None,
         validation_file_path: str | None = None,
     ) -> SubmissionResult:
-        import shutil
-        import tempfile
-
         try:
             from truss_train import push as truss_push  # noqa: PLC0415
         except ImportError as exc:
@@ -1337,31 +1340,7 @@ class BasetenRunner(BaseFinetuningRunner):
         with tempfile.TemporaryDirectory(prefix="bt_ft_") as tmpdir:
             tmp = Path(tmpdir)
 
-            for asset in self._ASSET_FILES:
-                shutil.copy2(self._ASSETS_DIR / asset, tmp / asset)
-            (tmp / "run.sh").chmod(0o755)
-            # TrainerHooks + family registry (pure stdlib) for the training container.
-            families_src = self._ASSETS_DIR / "families"
-            if families_src.is_dir():
-                shutil.copytree(families_src, tmp / "families")
-            # modal_shared lives outside overbae on purpose — overbae/__init__.py
-            # imports Celery, which the bare Baseten container can't configure.
-            modelfam_src = Path(__file__).resolve().parents[2] / "modal_shared" / "modelfam"
-            if modelfam_src.is_dir():
-                pkg = tmp / "modal_shared"
-                pkg.mkdir(exist_ok=True)
-                (pkg / "__init__.py").write_text("")
-                shutil.copytree(modelfam_src, pkg / "modelfam")
-            # engine_stock.py's hand-patched {% generation %} chat templates.
-            for template_dir in (
-                "llama_templates",
-                "antares_templates",
-                "olmo_templates",
-                "qwen_templates",
-            ):
-                src = self._ASSETS_DIR / template_dir
-                if src.is_dir():
-                    shutil.copytree(src, tmp / template_dir)
+            self._stage_assets(tmp)
 
             shutil.copy2(training_file_path, tmp / "data.jsonl")
             if validation_file_path:

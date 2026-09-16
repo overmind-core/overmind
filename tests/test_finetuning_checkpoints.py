@@ -4,10 +4,11 @@ from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 import pytest
-from botocore.exceptions import ClientError
+from botocore.exceptions import ClientError, ProfileNotFound
 
 from overbae.services.finetuning_checkpoints import (
     CheckpointArchiveError,
+    _s3_client,
     _s3_key,
     get_checkpoint_download_url,
 )
@@ -49,7 +50,7 @@ def test_get_checkpoint_download_url_missing_object(settings):
     mock_s3.head_object.side_effect = err
 
     with (
-        patch("boto3.client", return_value=mock_s3),
+        patch("overbae.services.finetuning_checkpoints._s3_client", return_value=mock_s3),
         pytest.raises(CheckpointArchiveError, match="not ready yet"),
     ):
         get_checkpoint_download_url(_job())
@@ -65,7 +66,7 @@ def test_get_checkpoint_download_url_success(settings):
     mock_s3.head_object.return_value = {"ContentLength": 42}
     mock_s3.generate_presigned_url.return_value = "https://s3.example/checkpoint.zip"
 
-    with patch("boto3.client", return_value=mock_s3):
+    with patch("overbae.services.finetuning_checkpoints._s3_client", return_value=mock_s3):
         result = get_checkpoint_download_url(_job(provider="baseten"))
 
     assert result == {
@@ -77,3 +78,28 @@ def test_get_checkpoint_download_url_success(settings):
         Bucket="ft-bucket",
         Key="user-1/job-1/checkpoints/checkpoint.zip",
     )
+
+
+def test_s3_client_ignores_missing_aws_profile(settings, monkeypatch, tmp_path):
+    """Compose exports AWS_PROFILE for media storage; the archive authenticates with static keys,
+    so a profile absent from ~/.aws/config must not turn the checkpoints endpoint into a 500."""
+    monkeypatch.setenv("AWS_PROFILE", "administrator")
+    monkeypatch.setenv("AWS_CONFIG_FILE", str(tmp_path / "config"))
+    monkeypatch.setenv("AWS_SHARED_CREDENTIALS_FILE", str(tmp_path / "credentials"))
+    settings.AWS_ACCESS_KEY_ID = "AKIA-test"
+    settings.AWS_SECRET_ACCESS_KEY = "secret"
+    settings.AWS_REGION = "eu-west-1"
+    client = _s3_client()
+    assert client.meta.region_name == "eu-west-1"
+
+
+def test_get_checkpoint_download_url_botocore_misconfig_is_archive_error(settings):
+    settings.AWS_BUCKET_NAME = "ft-bucket"
+    with (
+        patch(
+            "overbae.services.finetuning_checkpoints._s3_client",
+            side_effect=ProfileNotFound(profile="administrator"),
+        ),
+        pytest.raises(CheckpointArchiveError, match="Could not reach"),
+    ):
+        get_checkpoint_download_url(_job())

@@ -94,6 +94,20 @@ def parse_routing_headers(headers: dict) -> dict | None:
     }
 
 
+# The checkpoint archive bucket per Modal environment. Not secret; both register_model.py's
+# CloudBucketMount and Django's presigned downloads resolve it from here so they can't drift.
+_FINETUNING_BUCKETS = {
+    "overmind-dev": "overmind-finetuning-dev-62hdauj",
+    "overmind-staging": "overmind-finetuning-staging-xmpmbnsw",
+    "overmind-prod": "overmind-finetuning-prod-cmuziwbk",
+}
+
+
+def finetuning_bucket(environment: str | None = None) -> str:
+    env = environment or os.environ.get("MODAL_ENVIRONMENT", "overmind-dev")
+    return _FINETUNING_BUCKETS[env]
+
+
 def resolve_inference_url(
     *,
     gpu_type: str,

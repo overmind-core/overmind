@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+import ast
 import json
+import subprocess
+import sys
 from types import SimpleNamespace
 from unittest.mock import patch
 
@@ -374,3 +377,54 @@ def test_config_source_has_no_id_kwarg():
     )
     assert 'name="overmind-dev"' in src
     assert "id=" not in src
+
+
+def test_stage_assets_ships_every_sibling_module(tmp_path):
+    """The container runs train.py with the staged dir as its only import root, so every
+    top-level module an asset imports from a sibling must land there (Baseten job died on
+    `ModuleNotFoundError: basepath` when a hand-kept file list drifted)."""
+    BasetenRunner._stage_assets(tmp_path)
+
+    staged = {p.stem for p in tmp_path.glob("*.py")} | {
+        p.name for p in tmp_path.iterdir() if p.is_dir()
+    }
+    for src in tmp_path.rglob("*.py"):
+        for node in ast.walk(ast.parse(src.read_text())):
+            names = (
+                [a.name for a in node.names]
+                if isinstance(node, ast.Import)
+                else [node.module]
+                if isinstance(node, ast.ImportFrom) and node.level == 0 and node.module
+                else []
+            )
+            for name in names:
+                root = name.split(".")[0]
+                if (BasetenRunner._ASSETS_DIR / f"{root}.py").exists() or (
+                    BasetenRunner._ASSETS_DIR / root
+                ).is_dir():
+                    assert root in staged, f"{src.name} imports {root}, not staged"
+
+    assert not list(tmp_path.rglob("__pycache__"))
+    assert tmp_path.joinpath("run.sh").stat().st_mode & 0o111
+    assert tmp_path.joinpath("training_chat_template.py").exists()
+    for ref in ("gemma_templates", "nemotron_templates"):
+        assert tmp_path.joinpath(ref).is_dir()
+
+
+def test_staged_catalog_imports_in_bare_container(tmp_path):
+    """`import catalog` is the first thing engine_stock does after the download; in the
+    container the staged dir is the only import root. A modelfam-only copy of modal_shared
+    failed here (`modelfam` imports `modal_shared.stacks`) and surfaced as IndexError: 3."""
+    BasetenRunner._stage_assets(tmp_path)
+    probe = tmp_path / "probe.py"
+    probe.write_text("import catalog\nprint(catalog.resolve('Qwen/Qwen3.5-27B').key)\n")
+    # -E -s: no PYTHONPATH or user site, so the repo root can't leak onto the path.
+    proc = subprocess.run(
+        [sys.executable, "-E", "-s", str(probe)],
+        cwd=tmp_path,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert proc.returncode == 0, proc.stderr
+    assert proc.stdout.strip()

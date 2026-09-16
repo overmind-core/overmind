@@ -32,13 +32,18 @@ def _s3_key(finetuning_job) -> str:
 
 def _s3_client():
     import boto3  # noqa: PLC0415
+    import botocore.session  # noqa: PLC0415
 
-    return boto3.client(
-        "s3",
+    # The archive authenticates with the static keys below, but botocore still resolves
+    # AWS_PROFILE (set for media storage / Grafana) and raises ProfileNotFound when that
+    # profile is absent from the mounted ~/.aws/config. Unbind it for this session.
+    core = botocore.session.Session(session_vars={"profile": (None, None, None, None)})
+    return boto3.Session(
+        botocore_session=core,
         region_name=getattr(settings, "AWS_REGION", "eu-west-1"),
         aws_access_key_id=getattr(settings, "AWS_ACCESS_KEY_ID", "") or None,
         aws_secret_access_key=getattr(settings, "AWS_SECRET_ACCESS_KEY", "") or None,
-    )
+    ).client("s3")
 
 
 def checkpoint_archive_exists(finetuning_job) -> bool:
@@ -72,12 +77,12 @@ def get_checkpoint_download_url(finetuning_job) -> dict:
     if finetuning_job.provider not in ("baseten", "modal"):
         raise CheckpointArchiveError("No downloadable weights for this fine-tuning job.")
 
-    from botocore.exceptions import ClientError  # noqa: PLC0415
+    from botocore.exceptions import BotoCoreError, ClientError  # noqa: PLC0415
 
-    s3 = _s3_client()
     key = _s3_key(finetuning_job)
 
     try:
+        s3 = _s3_client()
         head = s3.head_object(Bucket=bucket, Key=key)
     except ClientError as exc:
         code = exc.response.get("Error", {}).get("Code", "")
@@ -87,6 +92,9 @@ def get_checkpoint_download_url(finetuning_job) -> dict:
             ) from exc
         logger.warning("S3 head_object failed for %s: %s", key, exc)
         raise CheckpointArchiveError("Could not reach the checkpoint archive.") from exc
+    except BotoCoreError as exc:
+        logger.warning("S3 client unavailable for %s: %s", key, exc)
+        raise CheckpointArchiveError("Could not reach the checkpoint archive.") from exc
 
     try:
         url = s3.generate_presigned_url(
@@ -94,7 +102,7 @@ def get_checkpoint_download_url(finetuning_job) -> dict:
             Params={"Bucket": bucket, "Key": key},
             ExpiresIn=_PRESIGN_EXPIRES_S,
         )
-    except ClientError as exc:
+    except (ClientError, BotoCoreError) as exc:
         logger.warning("S3 presign failed for %s: %s", key, exc)
         raise CheckpointArchiveError("Could not generate a download link.") from exc
 

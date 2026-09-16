@@ -19,14 +19,15 @@ def _ensure_modelfam() -> None:
         return
     except ImportError:
         pass
-    candidates = (
-        Path("/root"),
-        # overbae/services/sft_assets/catalog.py → platform root
-        Path(__file__).resolve().parents[3],
-    )
-    for root in candidates:
-        if (root / "modal_shared" / "modelfam").is_dir() and str(root) not in sys.path:
-            sys.path.insert(0, str(root))
+    # /root on Modal; the platform root when run from the repo; the staged workspace on
+    # Baseten (where the file sits too shallow for a fixed parents[N] index). When the
+    # package is already on the path and the import still failed, the caller's own import
+    # re-raises the real error instead of this masking it.
+    here = Path(__file__).resolve()
+    for root in (Path("/root"), *here.parents):
+        if (root / "modal_shared" / "modelfam").is_dir():
+            if str(root) not in sys.path:
+                sys.path.insert(0, str(root))
             return
 
 

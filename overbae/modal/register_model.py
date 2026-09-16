@@ -48,6 +48,9 @@ from pathlib import Path
 
 import modal
 
+# modal_shared lives outside overbae on purpose — see modal_sft_worker.py.
+from modal_shared.shared import finetuning_bucket
+
 WEIGHTS_MOUNT = "/weights"
 STAGING_DIRNAME = ".staging"
 ADAPTERS_DIRNAME = ".adapters"
@@ -60,17 +63,10 @@ sft_vol = modal.Volume.from_name("overmind-sft", create_if_missing=True)
 
 _WEIGHT_OPS_LOCAL = Path(__file__).parent / "weight_ops.py"
 
-# The bucket name is not secret, so it is picked from MODAL_ENVIRONMENT at deploy time
-# and CloudBucketMount is wired without shell env. Credentials still come from the
-# Modal secret at container runtime.
+# The bucket is picked from MODAL_ENVIRONMENT at deploy time and CloudBucketMount is wired
+# without shell env. Credentials still come from the Modal secret at container runtime.
 S3_MOUNT = "/s3"
-_S3_BUCKETS = {
-    "overmind-dev": "overmind-finetuning-dev-62hdauj",
-    "overmind-staging": "overmind-finetuning-staging-xmpmbnsw",
-    "overmind-prod": "overmind-finetuning-prod-cmuziwbk",
-}
-MODAL_ENVIRONMENT = os.environ.get("MODAL_ENVIRONMENT", "overmind-dev")
-S3_BUCKET_NAME = _S3_BUCKETS[MODAL_ENVIRONMENT]
+S3_BUCKET_NAME = finetuning_bucket()
 aws_secret = modal.Secret.from_name("overmind-inference")
 
 
