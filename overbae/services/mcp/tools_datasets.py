@@ -180,20 +180,35 @@ def _create_dataset_from_traces_sync(
             "no_traces", "No traces match the selection. Widen the filters or check the ids."
         )
     try:
-        dataset = dispatch.create_dataset(
-            project=context.project,
-            user=context.user,
-            name=payload.name,
-            source={"traces": source.spec()},
-            intent=payload.intent,
-            capability=capability,
-        )
+        if payload.split is not None:
+            train, evaluation = dispatch.create_split(
+                project=context.project,
+                user=context.user,
+                name=payload.name,
+                source={"traces": source.spec()},
+                eval_percent=payload.split.eval_percent,
+                position=payload.split.position,
+                capability=capability,
+            )
+        else:
+            train = dispatch.create_dataset(
+                project=context.project,
+                user=context.user,
+                name=payload.name,
+                source={"traces": source.spec()},
+                intent=payload.intent,
+                capability=capability,
+            )
+            evaluation = None
     except DatasetError as exc:
         raise dataset_mcp_error(exc) from exc
     return mutation_output(
-        dataset,
-        summary=f"Dataset landing started: {matched} traces, one row each.",
+        train,
+        summary=f"Dataset landing started: {matched} traces, one row each."
+        if evaluation is None
+        else f"Split landing started: {matched} traces cut into a train and an eval dataset.",
         traces=matched,
+        eval_dataset=evaluation,
     )
 
 
@@ -273,7 +288,8 @@ def register_dataset_tools(catalog) -> None:
             "create_dataset_from_traces",
             "Create dataset from traces",
             "Land a project dataset from traces, one row per trace. Give trace_ids, or "
-            "filters and/or search. The selection is counted first and refused when empty.",
+            "filters and/or search. The selection is counted first and refused when empty. "
+            "With split, the rows land as a train dataset and an eval dataset.",
             CreateDatasetFromTracesInput,
             DatasetMutationOutput,
             _create_dataset_from_traces_sync,

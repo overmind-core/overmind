@@ -46,8 +46,11 @@ with `get_job(kind=dataset_run)`, then inspect again.
   server lands as `pending`, then proposes from row shape.
 
 One dataset has one intent. Need both a train set and an eval set from the
-same file? Upload twice with different `--intent` (and usually a different
-name). There is no reingest or copy-as-intent tool.
+same traces? Pass `split` (`eval_percent`, `position` of `head`, `tail` or
+`random`) to `create_dataset_from_traces`: the selection lands as `<name> train` and `<name> eval` with disjoint rows, and the result carries both under
+`dataset` and `eval_dataset`. From the same file, upload twice with different
+`--intent` (and usually a different name). There is no reingest or
+copy-as-intent tool.
 
 To retag an unused dataset, `message_dataset_agent` ("set intent to
 train" or `eval`). After a consumer has used a cell, intent is frozen —

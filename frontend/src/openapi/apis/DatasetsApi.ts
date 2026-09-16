@@ -21,6 +21,8 @@ import type {
   ColumnStat,
   Dataset,
   DatasetCreateRequest,
+  DatasetPair,
+  DatasetSplitCreateRequest,
   Detail,
   PaginatedDatasetList,
   PatchedCellWriteRequest,
@@ -40,6 +42,10 @@ import {
     DatasetToJSON,
     DatasetCreateRequestFromJSON,
     DatasetCreateRequestToJSON,
+    DatasetPairFromJSON,
+    DatasetPairToJSON,
+    DatasetSplitCreateRequestFromJSON,
+    DatasetSplitCreateRequestToJSON,
     DetailFromJSON,
     DetailToJSON,
     PaginatedDatasetListFromJSON,
@@ -143,6 +149,10 @@ export interface DatasetsRowsRetrieve2Request {
 
 export interface DatasetsRunCreateRequest {
     id: string;
+}
+
+export interface DatasetsSplitCreateRequest {
+    datasetSplitCreateRequest: DatasetSplitCreateRequest;
 }
 
 /**
@@ -1197,6 +1207,65 @@ export class DatasetsApi extends runtime.BaseAPI {
      */
     async datasetsRunCreate(requestParameters: DatasetsRunCreateRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<Dataset> {
         const response = await this.datasetsRunCreateRaw(requestParameters, initOverrides);
+        return await response.value();
+    }
+
+    /**
+     * Create a train dataset and an eval dataset from one source
+     */
+    async datasetsSplitCreateRaw(requestParameters: DatasetsSplitCreateRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<DatasetPair>> {
+        if (requestParameters['datasetSplitCreateRequest'] == null) {
+            throw new runtime.RequiredError(
+                'datasetSplitCreateRequest',
+                'Required parameter "datasetSplitCreateRequest" was null or undefined when calling datasetsSplitCreate().'
+            );
+        }
+
+        const queryParameters: any = {};
+
+        const headerParameters: runtime.HTTPHeaders = {};
+
+        headerParameters['Content-Type'] = 'application/json';
+
+        if (this.configuration && this.configuration.accessToken) {
+            const token = this.configuration.accessToken;
+            const tokenString = await token("ClerkBearerAuth", []);
+
+            if (tokenString) {
+                headerParameters["Authorization"] = `Bearer ${tokenString}`;
+            }
+        }
+        if (this.configuration && this.configuration.apiKey) {
+            headerParameters["X-Api-Key"] = await this.configuration.apiKey("X-Api-Key"); // ApiKeyAuth authentication
+        }
+
+        if (this.configuration && this.configuration.accessToken) {
+            const token = this.configuration.accessToken;
+            const tokenString = await token("BearerAuth", []);
+
+            if (tokenString) {
+                headerParameters["Authorization"] = `Bearer ${tokenString}`;
+            }
+        }
+
+        let urlPath = `/api/datasets/split/`;
+
+        const response = await this.request({
+            path: urlPath,
+            method: 'POST',
+            headers: headerParameters,
+            query: queryParameters,
+            body: DatasetSplitCreateRequestToJSON(requestParameters['datasetSplitCreateRequest']),
+        }, initOverrides);
+
+        return new runtime.JSONApiResponse(response, (jsonValue) => DatasetPairFromJSON(jsonValue));
+    }
+
+    /**
+     * Create a train dataset and an eval dataset from one source
+     */
+    async datasetsSplitCreate(requestParameters: DatasetsSplitCreateRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<DatasetPair> {
+        const response = await this.datasetsSplitCreateRaw(requestParameters, initOverrides);
         return await response.value();
     }
 

@@ -25,7 +25,9 @@ from overbae.api.dataset_serializers import (
     ChatSerializer,
     ColumnStatSerializer,
     DatasetCreateSerializer,
+    DatasetPairSerializer,
     DatasetSerializer,
+    DatasetSplitCreateSerializer,
     DetailSerializer,
     RowsPageSerializer,
 )
@@ -118,15 +120,7 @@ class DatasetViewSet(viewsets.ModelViewSet):
         body = DatasetCreateSerializer(data=request.data)
         body.is_valid(raise_exception=True)
         data = body.validated_data
-        project = get_object_or_404(
-            Project, pk=data["project"], id__in=project_ids_for(request.user, request.auth)
-        )
-        capability = (
-            get_object_or_404(Capability, pk=data["capability"], project=project)
-            if data.get("capability")
-            else None
-        )
-        source = self._source_payload(data["source"], project)
+        project, capability, source = self._create_target(request, data)
         dataset = dispatch.create_dataset(
             project=project,
             user=request.user if request.user.is_authenticated else None,
@@ -136,6 +130,45 @@ class DatasetViewSet(viewsets.ModelViewSet):
             capability=capability,
         )
         return Response(DatasetSerializer(dataset).data, status=status.HTTP_201_CREATED)
+
+    @extend_schema(
+        summary="Create a train dataset and an eval dataset from one source",
+        request=DatasetSplitCreateSerializer,
+        responses={201: DatasetPairSerializer},
+    )
+    @action(detail=False, methods=["post"], url_path="split")
+    def split(self, request):
+        body = DatasetSplitCreateSerializer(data=request.data)
+        body.is_valid(raise_exception=True)
+        data = body.validated_data
+        project, capability, source = self._create_target(request, data)
+        try:
+            train, evaluation = dispatch.create_split(
+                project=project,
+                user=request.user if request.user.is_authenticated else None,
+                name=data["name"].strip(),
+                source=source,
+                eval_percent=data["eval_percent"],
+                position=data["position"],
+                capability=capability,
+            )
+        except lifecycle.DatasetError as exc:
+            raise ValidationError({"detail": exc.detail, "code": exc.code}) from exc
+        return Response(
+            {"train": DatasetSerializer(train).data, "eval": DatasetSerializer(evaluation).data},
+            status=status.HTTP_201_CREATED,
+        )
+
+    def _create_target(self, request, data: dict) -> tuple[Project, Capability | None, dict]:
+        project = get_object_or_404(
+            Project, pk=data["project"], id__in=project_ids_for(request.user, request.auth)
+        )
+        capability = (
+            get_object_or_404(Capability, pk=data["capability"], project=project)
+            if data.get("capability")
+            else None
+        )
+        return project, capability, self._source_payload(data["source"], project)
 
     @staticmethod
     def _source_payload(source: dict, project: Project) -> dict:

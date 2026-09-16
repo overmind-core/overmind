@@ -4,6 +4,7 @@ from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
 
 from overbae.models import Cell, Dataset
+from overbae.services.datasets.land import SPLIT_POSITIONS
 
 
 class CellSerializer(serializers.ModelSerializer):
@@ -187,6 +188,23 @@ class DatasetCreateSerializer(serializers.Serializer):
     capability = serializers.UUIDField(required=False, allow_null=True)
     intent = serializers.ChoiceField(choices=Dataset.Intent.choices, required=False)
     source = SourceSerializer()
+
+
+class DatasetSplitCreateSerializer(serializers.Serializer):
+    """One source landed as ``<name> train`` and ``<name> eval``. The eval slice is
+    ``eval_percent`` of the rows taken at ``position``."""
+
+    name = serializers.CharField(max_length=255)
+    project = serializers.UUIDField()
+    capability = serializers.UUIDField(required=False, allow_null=True)
+    source = SourceSerializer()
+    eval_percent = serializers.IntegerField(min_value=1, max_value=99)
+    position = serializers.ChoiceField(choices=SPLIT_POSITIONS)
+
+
+class DatasetPairSerializer(serializers.Serializer):
+    train = DatasetSerializer()
+    eval = DatasetSerializer()
 
 
 class CellWriteSerializer(serializers.Serializer):
