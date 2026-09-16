@@ -1,6 +1,4 @@
-# See https://pre-commit.com for more information
-# See https://pre-commit.com/hooks.html for more hooks
-exclude: "alembic/versions|frontend/src/api|scripts|\\.jinja$"
+exclude: "^frontend/src/openapi/|^overbae/migrations/"
 repos:
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v6.0.0
@@ -9,12 +7,10 @@ repos:
       - id: end-of-file-fixer
       - id: check-yaml
       - id: check-added-large-files
-        # lid.176.ftz: the vendored fastText language-ID model (~1MB, deliberate)
-        exclude: "uv.lock|overbae/services/workshop/assets/"
+        exclude: "uv.lock$|overbae/services/workshop/assets/"
       - id: check-json
         exclude: "frontend/tsconfig.json"
       - id: check-toml
-      - id: check-docstring-first
       - id: check-case-conflict
       - id: detect-private-key
 
@@ -27,17 +23,16 @@ repos:
           - mdformat-black
           - mdformat-frontmatter
 
-  - repo: https://github.com/asottile/pyupgrade
-    rev: v3.21.2
-    hooks:
-      - id: pyupgrade
-        args: [--py312-plus]
-
   - repo: local
     hooks:
-      - id: make-lint-format
-        name: make lint-format
-        entry: make lint-format
+      - id: ruff
+        name: ruff check --fix && ruff format
+        entry: bash -c 'uv run ruff check --fix "$@" && uv run ruff format "$@"' --
         language: system
-        types_or: [python, pyi, ts, tsx, javascript, jsx]
-        pass_filenames: false
+        types_or: [python, pyi]
+      - id: biome
+        name: biome check --write
+        entry: bash -c 'cd frontend && bun run biome check --write "${@#frontend/}"' --
+        language: system
+        files: "^frontend/"
+        types_or: [ts, tsx, javascript, jsx, json, css]

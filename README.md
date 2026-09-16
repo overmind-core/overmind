@@ -40,17 +40,22 @@ Requirements: Docker, [uv](https://docs.astral.sh/uv/), [Bun](https://bun.sh/).
 
 ```bash
 cp .env.example .env   # fill in at minimum OPENROUTER_API_KEY
-docker compose up      # full stack: API, Console, Postgres, Redis, Celery workers
+docker compose up      # API, Postgres, Redis, Celery workers
 ```
 
-The Console runs at `http://localhost:3000`, the API at `http://localhost:8000`. Without `STRIPE_SECRET_KEY`, billing runs in OSS mode (spend metering only, no quotas). Training/serving backends (Modal, Baseten) are optional and selected with `FINETUNING_BACKEND`.
+The API runs at `http://localhost:8000`. The Console runs outside compose:
+
+```bash
+cd frontend && cp .env.example .env && bun install && bun run dev   # http://localhost:5173
+```
+
+Without `STRIPE_SECRET_KEY`, billing runs in OSS mode (spend metering only, no quotas). Training/serving backends (Modal, Baseten) are optional and selected with `FINETUNING_BACKEND`.
 
 The Data Workshop agent runs on the first key it finds: `CURSOR_API_KEY`, then `OPENROUTER_API_KEY`, then `OPENAI_API_KEY`, `ANTHROPIC_API_KEY` or `GEMINI_API_KEY`. With none set the workshop opens and the agent reports it is not configured.
 
 For development outside Docker:
 
 ```bash
-make run               # Django + Vite
 make worker            # local Celery (all queues, solo pool)
 ```
 

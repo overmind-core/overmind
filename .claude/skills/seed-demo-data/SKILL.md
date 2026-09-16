@@ -1,9 +1,9 @@
 ---
 name: seed-demo-data
-description: Run or modify seed.py (the one-project Support Copilot demo) without breaking the beat-safety invariants that keep celery workers from re-driving seeded rows. Use when seeding demo data or editing seed.py.
+description: Run or modify the seed_demo management command (the one-project Support Copilot demo) without breaking the beat-safety invariants that keep celery workers from re-driving seeded rows. Use when seeding demo data or editing overbae/management/commands/seed_demo.py.
 ---
 
-# Demo seed (`seed.py`)
+# Demo seed (`manage.py seed_demo`)
 
 Seeds one project — **Support Copilot** at Ledgerline, a fictional payments
 company — with thirty days of traffic across three capabilities (ticket triage,
@@ -16,14 +16,14 @@ credits ledger.
 ## Run
 
 ```bash
-docker compose exec -T api python manage.py shell < seed.py
+docker compose exec api python manage.py seed_demo [--owner EMAIL]
 ```
 
 ~10 min, deterministic (seeded RNG, uuid5 ids for capabilities, jobs and
 groups, timestamps anchored to NOW) and idempotent: the reset deletes the
 project by slug (plus the retired Undermind demo slugs), the `@ledgerline.dev`
 team users, and the owner's non-free-credit ledger rows before it seeds. The
-project belongs to `SEED_OWNER_EMAIL` (default `frey@overmindlab.ai`); the
+project belongs to `--owner` (default `frey@overmindlab.ai`); the
 account is created with password `password` when it does not exist. Plaintext
 API keys print at the end.
 

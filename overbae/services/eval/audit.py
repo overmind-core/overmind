@@ -161,7 +161,7 @@ def _co_failure(project_id: str = "") -> list[dict[str, Any]]:
     * many patterns, high ratio — the items are rephrasings of one concern, and
       a real defect trips all of them (`Correctness` before it was restructured);
     * one or two patterns — the items never vary independently at all, which is
-      what a fabricated score looks like. `seed.py` stamps every item of
+      what a fabricated score looks like. `seed_demo` stamps every item of
       `Resolution Policy Compliance` from a single boolean, so it reads 1.00 here
       while being no evidence about the evaluator.
     """

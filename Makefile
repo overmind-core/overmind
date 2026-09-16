@@ -24,7 +24,7 @@ lint-frontend:
 	bun run --cwd frontend typecheck
 
 psql:
-	docker compose exec postgres psql -U overmind -d overmind_core
+	docker compose exec postgres psql -U overbae -d overbae
 
 # CI passes MIGRATIONS_BASE=HEAD^1 (the merge commit's base); locally, origin/main.
 MIGRATIONS_BASE ?= origin/main
@@ -35,28 +35,6 @@ check-migrations:
 
 clean:
 	docker compose down -v
-
-FRONTEND_MODE ?= production
-
-build-frontend:
-	cd frontend && bun install
-	cd frontend && bun run build --mode $(FRONTEND_MODE)
-
-update-frontend-version:
-	@echo "Fetching latest overmind version from PyPi..."
-	@latest_version=$$(curl -s https://pypi.org/pypi/overmind/json | jq -r '.info.version'); \
-	for file in frontend/.env* ; do \
-		if grep -q "^VITE_LATEST_CLI_VERSION=" $$file ; then \
-			sed -i.bak "s/^VITE_LATEST_CLI_VERSION=.*/VITE_LATEST_CLI_VERSION=$${latest_version}/" $$file; \
-		else \
-			echo "VITE_LATEST_CLI_VERSION=$${latest_version}" >> $$file; \
-		fi ; \
-		rm -f "$$file.bak"; \
-		echo "Set VITE_LATEST_CLI_VERSION=$${latest_version} in $$file"; \
-	done
-
-deploy-frontend: update-frontend-version build-frontend
-	cd frontend && bun run wrangler pages deploy dist $(if $(PAGES_PROJECT),--project-name=$(PAGES_PROJECT),) $(if $(PAGES_BRANCH),--branch=$(PAGES_BRANCH),)
 
 schema:
 	DJANGO_DEBUG=True uv run python manage.py spectacular --file openapi.yaml --validate
