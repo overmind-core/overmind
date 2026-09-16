@@ -3,22 +3,17 @@ on:
   push:
     branches: [main]
     paths-ignore:
-      - '*.md'
+      - "*.md"
   release:
     types: [published]
   pull_request:
-    types:
-      - opened
-      - synchronize
-      - ready_for_review
-    branches:
-      - main
+    types: [opened, synchronize, ready_for_review]
+    branches: [main]
     paths-ignore:
-      - '*.md'
+      - "*.md"
 
 permissions:
-  id-token: write   # Required for OIDC
-  contents: write    # Required for checkout and deployment manifest changes
+  contents: read
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
@@ -28,36 +23,42 @@ jobs:
   deploy-frontend:
     if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
     runs-on: ubuntu-latest
+    environment: ${{ github.event_name == 'release' && 'production' || 'staging' }}
+    defaults:
+      run:
+        working-directory: frontend
     steps:
       - uses: actions/checkout@v4
 
-      - name: Set up bun
-        uses: oven-sh/setup-bun@v2
+      - uses: oven-sh/setup-bun@v2
         with:
-          bun-version: '1.3.3'
-          cache: 'bun'
+          bun-version: "1.3.5"
 
-      - name: Select env and Pages project
-        id: target
-        run: |
-          if [[ "$GITHUB_EVENT_NAME" == release ]]; then
-            echo "env_file=frontend/.env.production" >> "$GITHUB_OUTPUT"
-            echo "pages_project=console-overmind" >> "$GITHUB_OUTPUT"
-            echo "pages_branch=main" >> "$GITHUB_OUTPUT"
-            echo "frontend_mode=production" >> "$GITHUB_OUTPUT"
-          else
-            echo "env_file=frontend/.env.staging" >> "$GITHUB_OUTPUT"
-            echo "pages_project=console-overmind-staging" >> "$GITHUB_OUTPUT"
-            echo "frontend_mode=staging" >> "$GITHUB_OUTPUT"
-          fi
+      - name: Cache bun dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            frontend/node_modules
+            ~/.bun/install/cache
+          key: ${{ runner.os }}-bun-${{ hashFiles('frontend/bun.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-bun-
 
-      - name: Build and deploy frontend
+      - name: Write .env from the environment's CONSOLE_ENV variable
+        run: printf '%s\n' "$CONSOLE_ENV" > .env
+        env:
+          CONSOLE_ENV: ${{ vars.CONSOLE_ENV }}
+
+      - run: bun install --frozen-lockfile
+      - run: bun run build
+
+      - name: Deploy to Cloudflare Pages
         env:
           CLOUDFLARE_ACCOUNT_ID: 061081d3722064fa8f3bd5340b55eb7a
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          PAGES_PROJECT: ${{ steps.target.outputs.pages_project }}
-          PAGES_BRANCH: ${{ steps.target.outputs.pages_branch }}
-          FRONTEND_MODE: ${{ steps.target.outputs.frontend_mode }}
         run: |
-          cp "${{ steps.target.outputs.env_file }}" frontend/.env
-          make deploy-frontend
+          if [[ "$GITHUB_EVENT_NAME" == release ]]; then
+            bun run wrangler pages deploy dist --project-name=console-overmind --branch=main
+          else
+            bun run wrangler pages deploy dist --project-name=console-overmind-staging
+          fi

@@ -34,14 +34,28 @@ jobs:
         with:
           version: "0.11.0"
           enable-cache: true
-          # SDK supports 3.10+; pin a current CPython for CI stability.
           python-version: "3.13"
 
-      - name: Install SDK dependencies
-        run: uv sync --frozen --extra tracing --group dev
+      - run: uv sync --frozen --extra tracing --group dev
+      - run: make lint-check
+      - run: make test
 
-      - name: Lint & format
-        run: make lint-check
+  version-bump:
+    if: github.event_name == 'pull_request' && github.event.pull_request.draft == false
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: pip install packaging
 
-      - name: Run SDK tests
-        run: make test
+      - name: Require overmind/pyproject.toml version above ${{ github.base_ref }}
+        run: |
+          git fetch --depth=1 origin "$GITHUB_BASE_REF"
+          git show "origin/$GITHUB_BASE_REF:overmind/pyproject.toml" > base-pyproject.toml
+          python3 - <<'EOF'
+          import sys, tomllib
+          from packaging.version import Version
+          base = Version(tomllib.load(open("base-pyproject.toml", "rb"))["project"]["version"])
+          head = Version(tomllib.load(open("overmind/pyproject.toml", "rb"))["project"]["version"])
+          print(f"base {base} -> head {head}")
+          sys.exit(0 if head > base else "SDK version must be bumped above the base branch.")
+          EOF

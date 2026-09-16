@@ -54,7 +54,7 @@ able to progress is not complete. The mcp skill itself lives in
 Ask what else reads what you changed, and check each one that does:
 
 - Celery routing in `CELERY_TASK_ROUTES`, `make worker`, and docker-compose — `tests/test_celery_topology.py` enforces the three agreeing
-- `seed.py` — new tables and states must seed, and must stay terminal (seed-demo-data skill)
+- `manage.py seed_demo` — new tables and states must seed, and must stay terminal (seed-demo-data skill)
 - the generated OpenAPI client (api-endpoints skill)
 - `AGENTS.md` and any skill whose statements the change makes untrue
 

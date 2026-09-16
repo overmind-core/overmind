@@ -74,7 +74,7 @@ Never put plan-phase labels (P0/P1, "Phase N") in code, comments, or test names 
 
 - Stay in the asked scope. Fix the stated thing plus genuine prerequisites; report adjacent findings as a short "found but did not change" list. If the task is much bigger than framed, say so before editing.
 - Simple, self-evident fixes: typecheck + lint is the bar — skip the test suite and say so plainly. When a suite run is warranted: run once, tee to a log, grep the log (run-tests skill).
-- A change is finished when every surface reflecting it is updated, not when its own vertical compiles. CI cannot catch this, so walk the list in the pr-etiquette skill before opening a PR: **MCP** (the first-class agent surface: `services/mcp/` — impact classification, catalog, contracts, tools, prompts, resources; mcp skill), **cross-vertical blast radius** (celery routing, `seed.py`, the generated client, this file and the skills), and **docs** (the sibling `overmind-core/docs` repo at `../docs` — open that PR alongside and link the two).
+- A change is finished when every surface reflecting it is updated, not when its own vertical compiles. CI cannot catch this, so walk the list in the pr-etiquette skill before opening a PR: **MCP** (the first-class agent surface: `services/mcp/` — impact classification, catalog, contracts, tools, prompts, resources; mcp skill), **cross-vertical blast radius** (celery routing, the `seed_demo` command, the generated client, this file and the skills), and **docs** (the sibling `overmind-core/docs` repo at `../docs` — open that PR alongside and link the two).
 - Commit messages: short subject + at most one body line. No co-author trailers. Commit and push only when asked; on a sweep branch, one commit per observation.
 - Changing behavior that this file or a skill describes? Update it in the same PR. There is one copy of every rule; keeping it true is part of the change.
 
@@ -99,4 +99,4 @@ Never put plan-phase labels (P0/P1, "Phase N") in code, comments, or test names 
 - Vite on WSL serves stale module transforms after bulk out-of-editor file changes; hard reload won't fix it — restart vite. Tell: runtime "X is not defined" for code tsc accepts.
 - Two table implementations exist (`components/ui/data-table.tsx` and the paged rows grid in `components/datasets/notebook/rows-grid.tsx`) — a table fix must be checked in both.
 - `--border` has almost no contrast headroom; the ramp is bare/`70`/`60`. Never lower a border opacity without `bun run check:contrast -- --all`.
-- `seed.py` must keep every job/run terminal and every span scored, or beat/reconcilers re-drive them against real providers (seed-demo-data skill).
+- `manage.py seed_demo` must keep every job/run terminal and every span scored, or beat/reconcilers re-drive them against real providers (seed-demo-data skill).

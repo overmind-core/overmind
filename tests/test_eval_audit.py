@@ -344,7 +344,7 @@ def test_flags_items_that_always_fail_together():
 
 
 def test_separates_genuine_overlap_from_a_score_that_never_varies():
-    """`seed.py` stamps every item of one evaluator from a single boolean, which
+    """`seed_demo` stamps every item of one evaluator from a single boolean, which
     reads as total co-failure while saying nothing about item overlap."""
     project = _project()
     agent = Capability.objects.create(project=project, name="a", slug="a")
