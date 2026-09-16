@@ -28,7 +28,6 @@ env:
   ECR_REPOSITORY: overmind-prod-app
   # main / workflow_dispatch → staging; published release → production
   ECS_CLUSTER: ${{ github.event_name == 'release' && 'overmind-prod-cluster' || 'overmind-staging-cluster' }}
-  ECS_SERVICES: "api celery-worker celery-beat celery-generation-worker celery-scoring-worker celery-trace-scoring-worker celery-ingest-worker celery-workshop-worker"
 
 permissions:
   id-token: write
@@ -148,13 +147,11 @@ jobs:
       matrix:
         service:
           [
-            celery-worker,
             celery-beat,
-            celery-generation-worker,
-            celery-scoring-worker,
-            celery-trace-scoring-worker,
-            celery-ingest-worker,
-            celery-workshop-worker,
+            celery-control-worker,
+            celery-io-worker,
+            celery-batch-worker,
+            celery-interactive-worker,
           ]
     steps:
       - name: Configure AWS credentials
