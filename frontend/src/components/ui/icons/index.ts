@@ -1,10 +1,17 @@
 /**
- * The only module allowed to import from `pixelarticons/react` (enforced by `bun run
- * check:design`): app code renders semantic names, so a concept maps to one glyph.
- *
- * Pro pack: set `PIXELARTICONS_LICENSE_KEY` in `.env.local`, then `bun install`
- * (postinstall) or `bun run pixelarticons:upgrade`.
+ * The only module allowed to import the raw glyphs in `./pixelart` (enforced by
+ * `bun run check:design`): app code renders semantic names, so a concept maps to
+ * one glyph.
  */
+
+import {
+  BarbellVertical,
+  DesktopTower,
+  Eyeball,
+  LockersTwoFilled,
+  OvermindEyeMono,
+  Chart as TitleChart,
+} from "./page-title";
 import {
   Algorithm,
   Analytics,
@@ -71,7 +78,7 @@ import {
   Lock,
   Login,
   Logout,
-  Map as MapGlyph,
+  MapGlyph,
   Megaphone,
   Menu,
   MoneyBagCoins,
@@ -107,16 +114,7 @@ import {
   UserPlus,
   WarningDiamond,
   Zap,
-} from "pixelarticons/react";
-
-import {
-  BarbellVertical,
-  DesktopTower,
-  Eyeball,
-  LockersTwoFilled,
-  OvermindEyeMono,
-  Chart as TitleChart,
-} from "@/components/ui/page-title-icons";
+} from "./pixelart";
 
 export const Icon = {
   add: Plus,

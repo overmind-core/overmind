@@ -138,10 +138,10 @@ report "confirm() (use ConfirmDialog)" \
   '\bwindow\.confirm\(|[^.]\bconfirm\('
 report "lucide-react import (use @/components/ui/icons)" \
   'from "lucide-react"'
-# Allowlisted: ui/icons.ts, the one registry that imports glyphs directly.
-report "pixelarticons/react import (use @/components/ui/icons)" \
-  'from "pixelarticons/react"' \
-  'ui/icons.ts'
+# Allowlisted: ui/icons/index.ts, the one registry that imports glyphs directly.
+report "raw pixelart glyph import (use @/components/ui/icons)" \
+  'from "(\./|@/components/ui/icons/)(pixelart|page-title)"' \
+  'ui/icons/index.ts'
 # Allowlisted: the Spinner primitive itself and `spinning ?` refresh buttons
 # whose onAnimationIteration handler resets state (Spinner can't forward it).
 report "animate-spin (use Spinner)" \

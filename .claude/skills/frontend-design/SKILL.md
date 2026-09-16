@@ -42,7 +42,7 @@ Anything below `/60` is invisible. Never lower a border opacity without running 
 - **No box-shadows** — every `--shadow-*` is `none`, so `shadow-*` utilities are dead no-ops. Depth = surface layering + 1px borders.
 - Radii: `rounded-sm` for interactive primitives, `rounded-md` for containers. `rounded-lg/xl/2xl/3xl` are off-system.
 - Headings use `font-display` (NeueBit, unweighted). `font-mono` is the loaded system stack — Fira Code is not shipped, don't reference it.
-- Icons: **always the central registry** — `import { Icon } from "@/components/ui/icons"` → `<Icon.name className="size-4" />`. Never import `pixelarticons/react` or `lucide-react` in app code; both fail `check:design`. One concept = one glyph (`Icon.delete` = trash, `Icon.close`/`Icon.failed` = the "X"). Missing a glyph? Add one semantic entry to `ui/icons.ts`, the only file that may import the raw package. Sizes: `size-4` in buttons, `size-[17px]` in nav, `size-3` for dense chips.
+- Icons: **always the central registry** — `import { Icon } from "@/components/ui/icons"` → `<Icon.name className="size-4" />`. The glyphs are vendored SVG paths in `ui/icons/pixelart.tsx` (24×24 grid, 2px inset, `currentColor`); never import that module or `lucide-react` in app code; both fail `check:design`. One concept = one glyph (`Icon.delete` = trash, `Icon.close`/`Icon.failed` = the "X"). Missing a glyph? Add its paths as one component in `pixelart.tsx`, then one semantic entry in `ui/icons/index.ts`, the only file that may import the raw glyphs. There is no icon package to install. Sizes: `size-4` in buttons, `size-[17px]` in nav, `size-3` for dense chips.
 
 ## Two duplicated table implementations
 

@@ -528,8 +528,8 @@ equally sharp. A status dot is a rounded square, a progress bar has squared ends
 and the switch is a rectangle.
 
 The pixel logic extends past radius. The sidebar's sub-item connector is drawn as
-a stepped staircase in SVG mask data rather than a smooth elbow. Icons come
-from `pixelarticons`. The cursor is a custom pixel-art SVG in three states
+a stepped staircase in SVG mask data rather than a smooth elbow. Icons are
+pixel-art glyphs on a 24×24 grid. The cursor is a custom pixel-art SVG in three states
 (default, pointer, active), enforced globally. The workshop console adds a
 diagonal pinstripe hatch for stale blocks and a low-alpha grain overlay.
 
@@ -605,14 +605,11 @@ tones get away with a 1.65:1 border because their hue does the work.
 
 ### Icons
 
-Every glyph comes from `pixelarticons` through the `Icon` registry, so one
-concept maps to exactly one glyph. The Pro pack is licensed, so the full
-~4,400-glyph set is available: pick the glyph that means the thing rather than
-a near-match from the free subset. Pro glyphs import identically once
-`PIXELARTICONS_LICENSE_KEY` is set (in the environment or
-`frontend/.env.local`) and `bun install` has run. A clone without the key
-silently falls back to the free set, so never assume a Pro glyph resolved
-without checking.
+Every glyph is vendored in `frontend/src/components/ui/icons/pixelart.tsx` and
+rendered through the `Icon` registry, so one concept maps to exactly one glyph.
+There is no icon package: a new glyph is its SVG paths added as one component
+in `pixelart.tsx`, drawn on the same 24×24 grid with a 2px inset, then one
+semantic entry in the registry.
 
 Three sizes, by context:
 
@@ -621,8 +618,8 @@ Three sizes, by context:
 - **`size-3` (12px)**: dense and metric contexts, and inside `xs` buttons.
 
 The brand eye renders in `currentColor` so it takes the sidebar foreground.
-Page-title icons are local two-tone wrappers (ink plus white) in
-`page-title-icons.tsx`. The pixel monitor marking the Agents section renders with
+Page-title icons are two-tone wrappers (ink plus white) in
+`ui/icons/page-title.tsx`. The pixel monitor marking the Agents section renders with
 `[image-rendering:pixelated]`.
 
 ### Scrollbars
@@ -762,8 +759,9 @@ they name a symbol or quote a wire value.
 - Apply `uppercase`, `text-transform`, or `tracking-wide/wider/widest`.
 - Use `text-[Npx]`; the tokenized ramp bottoms out at `text-xs` (12px).
 - Put a label inside a ghost button. A labelled button takes a filled variant.
-- Import from `lucide-react` or `pixelarticons/react`; render a semantic name
-  from the `Icon` registry so one concept maps to one glyph.
+- Import from `lucide-react` or the raw glyph module `ui/icons/pixelart.tsx`;
+  render a semantic name from the `Icon` registry so one concept maps to one
+  glyph.
 - Hand-roll a spinner (`animate-spin`), a `window.confirm()`, or a second
   score-tier map. Use `Spinner`, `ConfirmDialog`, and `scoreTone`.
 - Add a `dark:` variant to a semantic status token. They are already tuned per

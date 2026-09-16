@@ -58,7 +58,7 @@ Ruff enforces formatting and line length. What it can't:
 
 - Semantic tokens only. Status tints flip per theme, so **never write `dark:` variants** — `border-success/40 bg-success/10 text-success`, not a hardcoded pair.
 - **No box-shadows.** Every `--shadow-*` is `none` and `shadow-*` utilities are dead no-ops. Depth is surface layering plus 1px borders.
-- Icons come from the central registry only: `import { Icon } from "@/components/ui/icons"`. Never import `pixelarticons/react` or `lucide-react` in app code — `check:design` fails on both.
+- Icons come from the central registry only: `import { Icon } from "@/components/ui/icons"`. The glyphs are vendored in `ui/icons/pixelart.tsx`; never import that module or `lucide-react` in app code — `check:design` fails on both.
 - New shadcn components: `bunx shadcn@latest add <component>`, then adapt to the token system.
 - Tokens, primitives, the border-contrast floor, and the duplicated table implementations: frontend-design skill.
 
