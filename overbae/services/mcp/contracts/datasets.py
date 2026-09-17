@@ -82,10 +82,9 @@ def _capability_link(capability) -> ResourceLinkContract:
 
 
 def _cell_link(dataset, cell) -> ResourceLinkContract:
+    """A cell is read through its dataset: the server serves no per-cell resource."""
     ds_id = quote(str(dataset.id), safe="")
-    cell_id = quote(str(cell.id), safe="")
-    title = cell.title.strip() or "Cell"
-    return _link(f"overmind://datasets/{ds_id}/cells/{cell_id}", title)
+    return _link(f"overmind://datasets/{ds_id}", cell.title.strip() or "Cell")
 
 
 class FitReport(MCPModel):
@@ -608,7 +607,9 @@ def _human_action(dataset, active: Cell | None) -> DatasetHumanAction | None:
     return None
 
 
-def _next_actions(dataset, chain: list[Cell], active: Cell | None) -> list[NextAction]:
+def next_actions(dataset, chain: list[Cell], active: Cell | None) -> list[NextAction]:
+    """The one answer to "what now" for a dataset. Every suggestion satisfies
+    the named tool's schema as given."""
     ds_id = str(dataset.id)
     if dataset.state in _BUSY:
         return [
@@ -655,29 +656,24 @@ def _next_actions(dataset, chain: list[Cell], active: Cell | None) -> list[NextA
                 arguments={"dataset": ds_id},
             )
         ]
-    actions: list[NextAction] = []
     args = {"dataset": ds_id, "cell": str(active.id)}
     if intent == Dataset.Intent.TRAIN:
-        actions.append(
+        return [
             NextAction(
-                tool="start_finetune",
-                reason="Active version fits train.",
-                arguments=args,
+                tool="check_finetune_readiness", reason="Active version fits train.", arguments=args
             )
+        ]
+    actions = [
+        NextAction(
+            tool="check_evaluation_readiness", reason="Active version fits eval.", arguments=args
         )
-    elif intent == Dataset.Intent.EVAL:
+    ]
+    if dataset.capability_id:
         actions.append(
             NextAction(
-                tool="run_evaluation",
+                tool="check_optimizer_readiness",
                 reason="Active version fits eval.",
-                arguments=args,
-            )
-        )
-        actions.append(
-            NextAction(
-                tool="start_optimizer",
-                reason="Active version fits eval.",
-                arguments=args,
+                arguments={**args, "capability": str(dataset.capability_id)},
             )
         )
     return actions
@@ -721,7 +717,7 @@ def serialize_dataset_detail(dataset, *, chat_limit: int = _CHAT_DEFAULT) -> Dat
             "cells_truncated": len(chain) > _CELL_CAP,
             "sample": _sample(dataset, active, versions),
             "recent_chat": _chat(dataset.chat, chat_limit),
-            "next_actions": _next_actions(dataset, chain, active),
+            "next_actions": next_actions(dataset, chain, active),
             "resource_links": links,
             "summary": _detail_summary(dataset, chain, active),
             "human_action": _human_action(dataset, active),

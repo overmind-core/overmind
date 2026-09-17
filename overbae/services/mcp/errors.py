@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import uuid
 from typing import Any, Literal
 
 from mcp import types
@@ -141,6 +142,34 @@ def dataset_mcp_error(error) -> MCPError:
             code, f"{message} Poll get_job with kind dataset_run until it is idle.", retryable=True
         )
     return MCPError(code, message)
+
+
+_DATASET_URI = "overmind://datasets/"
+
+
+def mcp_dataset(context, reference: str):
+    """A project dataset by id, resource URI, or name. Names are not unique, so
+    a name that matches two datasets is refused rather than guessed."""
+    from overbae.models import Dataset
+
+    value = str(reference).strip().removeprefix(_DATASET_URI)
+    query = (
+        Dataset.objects.filter(project=context.project)
+        .select_related("capability", "active")
+        .prefetch_related("cells")
+    )
+    try:
+        dataset = query.filter(id=uuid.UUID(value)).first()
+    except ValueError:
+        matches = list(query.filter(name__iexact=value).order_by("-created_at")[:2])
+        if len(matches) > 1:
+            raise MCPError(
+                "dataset_not_found", "Several datasets have this name; use the dataset id."
+            ) from None
+        dataset = matches[0] if matches else None
+    if dataset is None:
+        raise MCPError("dataset_not_found", "The dataset was not found in this project.")
+    return dataset
 
 
 def mcp_cell(dataset, ref: str | None):

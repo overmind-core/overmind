@@ -33,9 +33,8 @@ from overbae.services.mcp.contracts.datasets import (
     serialize_dataset_detail,
     serialize_dataset_list_item,
 )
-from overbae.services.mcp.errors import MCPError, dataset_mcp_error
+from overbae.services.mcp.errors import MCPError, dataset_mcp_error, mcp_dataset
 
-_DATASET_URI = "overmind://datasets/"
 _READ_ONLY_SQL = re.compile(r"^\s*(?:select|with)\b", re.IGNORECASE)
 
 
@@ -46,26 +45,8 @@ def _uuid(value: str) -> str | None:
         return None
 
 
-def _dataset_id(reference: str) -> str:
-    value = str(reference).strip()
-    if value.startswith(_DATASET_URI):
-        value = value[len(_DATASET_URI) :]
-    normalized = _uuid(value)
-    if normalized is None:
-        raise MCPError("invalid_input", "Dataset references must be UUIDs.")
-    return normalized
-
-
 def _resolve_dataset(context: MCPContext, reference: str) -> Dataset:
-    dataset = (
-        Dataset.objects.filter(project=context.project, id=_dataset_id(reference))
-        .select_related("capability", "active")
-        .prefetch_related("cells")
-        .first()
-    )
-    if dataset is None:
-        raise MCPError("dataset_not_found", "The dataset was not found in this project.")
-    return dataset
+    return mcp_dataset(context, reference)
 
 
 def _resolve_capability(context: MCPContext, reference: str) -> Capability:

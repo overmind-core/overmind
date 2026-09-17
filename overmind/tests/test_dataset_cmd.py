@@ -574,3 +574,24 @@ def test_wait_until_ready_polls_past_busy_states_and_raises_the_dataset_error(mo
             api_url="http://x",
             session=_Session([{"state": "error", "error": "Row 2 has 3 cells; the header has 2."}]),
         )
+
+
+def test_a_dropped_chunk_is_sent_again(monkeypatch, tmp_path):
+    from overmind import dataset_cmd
+
+    monkeypatch.setattr(dataset_cmd.time, "sleep", lambda _s: None)
+    path = tmp_path / "rows.jsonl"
+    path.write_text('{"input": "a"}\n')
+    session = FakeSession()
+    real_put = session.put
+    dropped = []
+
+    def flaky_put(*args, **kwargs):
+        if not dropped:
+            dropped.append(1)
+            raise dataset_cmd.requests.ConnectionError("reset")
+        return real_put(*args, **kwargs)
+
+    session.put = flaky_put
+    result = dataset_cmd.upload_file(path, project_id="p", api_key="k", api_url="http://x", session=session)
+    assert dropped and result["id"]

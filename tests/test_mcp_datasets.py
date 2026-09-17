@@ -113,7 +113,7 @@ def test_list_datasets_is_project_scoped_filtered_paginated_and_uses_uuids():
     uuid.UUID(result.structuredContent["datasets"][0]["id"])
 
 
-def test_inspect_is_bounded_ordered_and_rejects_dataset_names(monkeypatch):
+def test_inspect_is_bounded_ordered_and_refuses_an_ambiguous_name(monkeypatch):
     context = _context()
     dataset = _dataset(
         context,
@@ -156,8 +156,12 @@ def test_inspect_is_bounded_ordered_and_rejects_dataset_names(monkeypatch):
             },
         }
     ]
-    assert by_name.isError is True
-    assert by_name.structuredContent["error"]["code"] == "invalid_input"
+    assert by_name.isError is False
+    assert by_name.structuredContent["id"] == str(dataset.id)
+    Dataset.objects.create(project=context.project, name=dataset.name)
+    twice = _call("inspect_dataset", {"dataset": dataset.name}, context)
+    assert twice.structuredContent["error"]["code"] == "dataset_not_found"
+    assert "use the dataset id" in twice.structuredContent["error"]["message"]
 
 
 @pytest.mark.parametrize(

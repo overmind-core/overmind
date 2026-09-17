@@ -43,7 +43,7 @@ from overbae.services.mcp.contracts.optimizer import (
     StartOptimizerInput,
     StartOptimizerOutput,
 )
-from overbae.services.mcp.errors import MCPError, mcp_cell, mcp_cell_contract
+from overbae.services.mcp.errors import MCPError, mcp_cell, mcp_cell_contract, mcp_dataset
 from overbae.services.mcp.resources import resource_link, safe_json
 from overbae.services.optimizer_create import (
     create_optimizer_experiment,
@@ -85,17 +85,7 @@ def _resolve_capability(context: MCPContext, reference: str) -> Capability:
 
 
 def _resolve_dataset(context: MCPContext, reference: str) -> Dataset:
-    query = Dataset.objects.filter(project=context.project).select_related("capability")
-    normalized = _uuid(reference)
-    dataset = query.filter(id=normalized).first() if normalized else None
-    if dataset is None:
-        matches = list(query.filter(name__iexact=reference.strip()).order_by("-created_at")[:2])
-        if len(matches) > 1:
-            raise MCPError("dataset_not_found", "Multiple datasets match; use the dataset id.")
-        dataset = matches[0] if matches else None
-    if dataset is None:
-        raise MCPError("dataset_not_found", "The dataset was not found in this project.")
-    return dataset
+    return mcp_dataset(context, reference)
 
 
 def _resolve_eval_set(context: MCPContext, reference: str, *, capability: Capability) -> EvalSet:

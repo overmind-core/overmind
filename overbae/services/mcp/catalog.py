@@ -166,9 +166,17 @@ class ToolCatalog:
             )
         try:
             payload = entry.definition.input_model.model_validate(arguments)
-        except ValidationError:
+        except ValidationError as error:
+            fields = {
+                ".".join(map(str, issue["loc"])) or "arguments": issue["msg"][:300]
+                for issue in error.errors(include_input=False, include_url=False)[:20]
+            }
             return error_result(
-                MCPError("invalid_input", "Tool arguments do not match its schema.")
+                MCPError(
+                    "invalid_input",
+                    "Tool arguments do not match its schema: " + ", ".join(fields),
+                    fields=fields,
+                )
             )
 
         try:

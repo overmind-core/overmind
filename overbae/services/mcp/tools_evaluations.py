@@ -50,7 +50,13 @@ from overbae.services.mcp.contracts.evaluations import (
     RunEvaluationInput,
     RunEvaluationOutput,
 )
-from overbae.services.mcp.errors import MCPError, mcp_cell, mcp_cell_contract, mcp_check
+from overbae.services.mcp.errors import (
+    MCPError,
+    mcp_cell,
+    mcp_cell_contract,
+    mcp_check,
+    mcp_dataset,
+)
 from overbae.services.mcp.resources import resource_link, safe_json
 
 _DEFAULT_VARIANT = {
@@ -69,18 +75,7 @@ def _uuid(value: str) -> str | None:
 
 
 def _resolve_dataset(context: MCPContext, reference: str) -> Dataset:
-    query = Dataset.objects.filter(project=context.project).select_related("capability")
-    normalized = _uuid(reference)
-    if normalized:
-        dataset = query.filter(id=normalized).first()
-    else:
-        matches = list(query.filter(name__iexact=reference).order_by("-created_at")[:2])
-        if len(matches) > 1:
-            raise MCPError("dataset_not_found", "Multiple datasets match; use the dataset id.")
-        dataset = matches[0] if matches else None
-    if dataset is None:
-        raise MCPError("dataset_not_found", "The dataset was not found in this project.")
-    return dataset
+    return mcp_dataset(context, reference)
 
 
 def _resolve_eval_set(

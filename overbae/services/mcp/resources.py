@@ -18,7 +18,6 @@ from pydantic import AnyUrl
 from overbae.api.eval_serializers import compute_run_progress
 from overbae.models import (
     Capability,
-    Cell,
     Dataset,
     DeployedModel,
     FinetuningJob,
@@ -34,7 +33,7 @@ from overbae.services.entity_resolution import (
     resolve_session,
 )
 from overbae.services.mcp.context import get_context
-from overbae.services.mcp.contracts.datasets import serialize_dataset_detail
+from overbae.services.mcp.contracts.datasets import next_actions, serialize_dataset_detail
 from overbae.services.mcp.errors import MCPError, error_payload, internal_error
 
 JSON_MIME = "application/json"
@@ -536,79 +535,9 @@ def _dataset_human_action(dataset) -> dict:
 
 
 def _dataset_next_actions(dataset) -> list[dict]:
-    dataset_id = str(dataset.id)
-    if dataset.state in {
-        Dataset.State.LANDING,
-        Dataset.State.DIAGNOSING,
-        Dataset.State.RUNNING,
-    }:
-        return [
-            {
-                "tool": "get_job",
-                "reason": f"Dataset is {dataset.state}.",
-                "arguments": {"kind": "dataset_run", "id": dataset_id},
-            }
-        ]
-    if dataset.state == Dataset.State.ERROR:
-        return [
-            {
-                "tool": "inspect_dataset",
-                "reason": "Inspect the dataset error.",
-                "arguments": {"dataset": dataset_id},
-            },
-            {
-                "tool": "message_dataset_agent",
-                "reason": "Send a corrective dataset-agent message.",
-                "arguments": {"dataset": dataset_id},
-            },
-        ]
-    chain = dataset.chain
-    proposed = [cell for cell in chain if cell.state == Cell.State.PROPOSED]
-    if proposed:
-        return [
-            {
-                "tool": "run_dataset",
-                "reason": "User must approve this proposal before it runs.",
-                "arguments": {"dataset": dataset_id, "proposal_cell": str(cell.id)},
-            }
-            for cell in proposed
-        ]
-    active = dataset.active_cell
-    if active is not None:
-        ok, reason = active.fits(dataset.intent)
-        if not ok:
-            return [
-                {
-                    "tool": "message_dataset_agent",
-                    "reason": reason or "Active version failed its contract.",
-                    "arguments": {"dataset": dataset_id},
-                }
-            ]
-        arguments = {"dataset": dataset_id, "cell": str(active.id)}
-        reason = "Dataset is idle and fitting."
-        return [
-            {
-                "tool": "check_evaluation_readiness",
-                "reason": reason,
-                "arguments": arguments,
-            },
-            {
-                "tool": "check_finetune_readiness",
-                "reason": reason,
-                "arguments": arguments,
-            },
-            {
-                "tool": "check_optimizer_readiness",
-                "reason": reason,
-                "arguments": arguments,
-            },
-        ]
     return [
-        {
-            "tool": "message_dataset_agent",
-            "reason": "No version has run.",
-            "arguments": {"dataset": dataset_id},
-        }
+        action.model_dump(mode="json")
+        for action in next_actions(dataset, dataset.chain, dataset.active_cell)
     ]
 
 

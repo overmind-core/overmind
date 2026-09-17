@@ -122,6 +122,7 @@ def _normalize_split(split: int | None, position: str) -> tuple[int | None, str]
     return split, position
 
 
+CHUNK_ATTEMPTS = 4
 _BUSY_STATES = ("landing", "diagnosing", "running")
 
 
@@ -220,16 +221,22 @@ def upload_file(
                 chunk = source.read(min(chunk_bytes, total - sent))
                 if not chunk:
                     raise DatasetUploadError("local file ended before the advertised size.")
-                try:
-                    chunk_response = client.put(
-                        f"{base_url}{UPLOAD_PATH}{upload_id}/chunk/",
-                        params={"offset": sent},
-                        data=chunk,
-                        headers={"Content-Type": "application/octet-stream"},
-                        timeout=CHUNK_TIMEOUT,
-                    )
-                except requests.RequestException as exc:
-                    raise DatasetUploadError(f"upload chunk failed: {exc}") from exc
+                # The server stores a chunk once however often it is sent, so a
+                # dropped connection is answered by sending the same bytes again.
+                for attempt in range(CHUNK_ATTEMPTS):
+                    try:
+                        chunk_response = client.put(
+                            f"{base_url}{UPLOAD_PATH}{upload_id}/chunk/",
+                            params={"offset": sent},
+                            data=chunk,
+                            headers={"Content-Type": "application/octet-stream"},
+                            timeout=CHUNK_TIMEOUT,
+                        )
+                        break
+                    except requests.RequestException as exc:
+                        if attempt == CHUNK_ATTEMPTS - 1:
+                            raise DatasetUploadError(f"upload chunk failed: {exc}") from exc
+                        time.sleep(2**attempt)
                 chunk_state = _json(chunk_response, "upload chunk")
                 received = chunk_state.get("received")
                 if isinstance(received, bool) or not isinstance(received, int) or received <= sent or received > total:

@@ -216,6 +216,7 @@ def start(
     """Create an optimize experiment (or attach to one) and cache the dataset locally."""
     cfg = _load_config()
     api = _make_api(cfg)
+    before = experiment or _load_state().get("experiment_id", "")
 
     try:
         if experiment:
@@ -247,6 +248,9 @@ def start(
             )
     except Exception as exc:
         console.print(f"[red]Failed to start: {exc}[/]")
+        created = _load_state().get("experiment_id", "")
+        if created and created != before:
+            console.print(f"Experiment {created} was created. Resume with --experiment {created}.")
         raise typer.Exit(1) from exc
 
     state = _load_state()
