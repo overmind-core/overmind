@@ -103,12 +103,18 @@ def test_instrument_repository_supports_project_wide_and_scoped_workflows():
     assert 'Capability filter: "support".' in text
     assert "Real run (recommended)" in text
     assert "Smoke run" in text
+    assert "human_action or no placements" in text
+    assert "version_analyzed_sha" in text
+    assert "required_spans[].target.file" in text
     assert "Do not run either mode before approval" in text
-    assert "unique correlation value" in text
-    assert "exactly one matching trace" in text
-    assert "all_spans=true" in text
+    assert "exact command or input" in text
+    assert "conversation.id" in text
+    assert "query_traces(session=<correlation>, all_spans=false, limit=2)" in text
+    assert "page.total == 1" in text
     assert "overmind://traces/{trace_id}" in text
-    assert "complete server-supplied span list" in text
+    assert "truncated == false" in text
+    assert "span_count == len(spans)" in text
+    assert "supplied spans unchanged" in text
     assert "real-run retry needs fresh approval" in text
 
 

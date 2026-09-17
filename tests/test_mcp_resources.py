@@ -232,6 +232,34 @@ def test_resource_reads_are_json_and_project_scoped():
     asyncio.run(read_all())
 
 
+@pytest.mark.parametrize(("span_count", "truncated"), [(100, False), (101, True)])
+def test_trace_resource_uses_the_verifier_span_limit(span_count, truncated):
+    project, _ = _project()
+    trace_id = f"{span_count:032d}"
+    root_id = f"{span_count:03d}{0:013d}"
+    Span.objects.bulk_create(
+        [
+            Span(
+                span_id=f"{span_count:03d}{index:013d}",
+                trace_id=trace_id,
+                parent_span_id=None if index == 0 else root_id,
+                project=project,
+                name="run" if index == 0 else "step",
+                start_time_ns=index,
+                end_time_ns=index + 1,
+                duration_ns=1,
+            )
+            for index in range(span_count)
+        ]
+    )
+
+    resource = _read(project, f"overmind://traces/{trace_id}")
+
+    assert resource["span_count"] == span_count
+    assert resource["truncated"] is truncated
+    assert len(resource["spans"]) == min(span_count, 100)
+
+
 def test_safe_json_redacts_nested_secret_key_styles():
     secret_values = {
         "api-secret",
