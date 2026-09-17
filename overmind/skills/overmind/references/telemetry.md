@@ -121,7 +121,10 @@ Both modes use the same verification boundary. The smoke branch uses synthetic
 or read-only input. The real branch uses only the execution envelope presented
 for approval. In either branch:
 
-1. Use the plan's exact `capability_id` in the instrumented run boundary.
+1. Use each ticket's exact `capability_id` in the instrumented run boundary.
+   For scoped work, it may also be used as a query filter. For project-wide
+   work, rely on the unique session correlation instead of inventing one
+   capability filter.
 
 1. Stamp the approved correlation as `conversation.id` with the application's
    existing mechanism or `overmind.set_conversation_id(...)` before the run.
@@ -133,7 +136,6 @@ for approval. In either branch:
 
    ```text
    query_traces(
-     capability=<capability_id>,
      session=<unique correlation>,
      all_spans=false,
      limit=2

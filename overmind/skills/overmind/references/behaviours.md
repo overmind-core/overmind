@@ -33,7 +33,9 @@ capability identity.
 
 The server cannot edit the target files. Apply tickets locally, then send
 caller-supplied spans to `verify_instrumentation`. That check is read-only and
-does not ingest spans or write scores. If the plan is unavailable, run local
-`/overmind setup` followed by `overmind sync`, then request it again.
+does not ingest spans or write scores. If the result has `human_action` or no
+placements, report the instruction and stop. When the registry is unavailable,
+run local `/overmind setup` followed by `overmind sync`, then request the plan
+again.
 
 Do not guess behaviour keys, anchors, grains, or decorator targets.
