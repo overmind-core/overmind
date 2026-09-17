@@ -86,11 +86,11 @@ def test_create_split_lands_two_datasets_with_disjoint_rows_and_queues_both_diag
         )
     train.refresh_from_db()
     evaluation.refresh_from_db()
-    assert (train.name, train.intent, train.state) == ("Support train", "train", "idle")
+    assert (train.name, train.intent, train.state) == ("Support train", "train", "diagnosing")
     assert (evaluation.name, evaluation.intent, evaluation.state) == (
         "Support eval",
         "eval",
-        "idle",
+        "diagnosing",
     )
     assert train.source.rows == 8 and evaluation.source.rows == 2
     assert train.source_spec["split"] == {
@@ -109,26 +109,23 @@ def test_create_split_lands_two_datasets_with_disjoint_rows_and_queues_both_diag
     }
 
 
-def test_create_split_refuses_a_bad_cut_before_creating_and_fails_both_on_a_short_source():
+def test_create_split_refuses_a_bad_cut_or_a_short_source_before_creating():
     project, user = _project(), _user()
     for bad in ({"eval_percent": 0, "position": "tail"}, {"eval_percent": 20, "position": "x"}):
         with pytest.raises(DatasetError):
             dispatch.create_split(
                 project=project, user=user, name="S", source={"rows": ROWS}, **bad
             )
+    with pytest.raises(DatasetError, match="Two rows"):
+        dispatch.create_split(
+            project=project,
+            user=user,
+            name="S",
+            source={"rows": ROWS[:1]},
+            eval_percent=20,
+            position="tail",
+        )
     assert Dataset.objects.filter(project=project).count() == 0
-    train, evaluation = dispatch.create_split(
-        project=project,
-        user=user,
-        name="S",
-        source={"rows": ROWS[:1]},
-        eval_percent=20,
-        position="tail",
-    )
-    train.refresh_from_db()
-    evaluation.refresh_from_db()
-    assert train.state == evaluation.state == Dataset.State.ERROR
-    assert "Two rows" in train.error and train.error == evaluation.error
 
 
 def test_split_endpoint_returns_the_pair_and_validates_the_cut():

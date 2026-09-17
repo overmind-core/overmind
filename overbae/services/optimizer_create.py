@@ -137,9 +137,6 @@ def create_optimizer_experiment(
 
     if error := optimizer_dataset_error(capability, dataset, cell):
         raise ValidationError({"dataset": error})
-    from overbae.services.datasets import use  # noqa: PLC0415 — avoid import cycle
-
-    cell = use.use(dataset, "eval", cell=cell)
     eval_set = eval_set or capability.active_eval_set
     if eval_set is not None and eval_set.capability_id != capability.id:
         raise ValidationError({"eval_set": "Eval set does not belong to this capability."})
@@ -166,11 +163,13 @@ def create_optimizer_experiment(
             }
         )
 
+    from overbae.services.datasets import use  # noqa: PLC0415 — avoid import cycle
+
     return OptimizerExperiment.objects.create(
         project=capability.project,
         capability=capability,
         dataset=dataset,
-        cell=cell,
+        cell=use.use(dataset, "eval", cell=cell),
         eval_set=eval_set,
         entrypoint=entrypoint,
         code_trigger=code_trigger,

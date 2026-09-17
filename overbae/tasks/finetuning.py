@@ -53,24 +53,14 @@ def _write_rows(rows, *, prefix: str) -> tuple[str, int]:
     return path, written
 
 
-def _build_training_jsonl(version, *, exclude_trace_ids: set[str] | None = None) -> tuple[str, int]:
-    """``exclude_trace_ids`` keeps rows that also appear in the job's eval dataset out of
-    training."""
+def _build_training_jsonl(version) -> tuple[str, int]:
     from overbae.services.datasets import rows as row_store
 
     row_store.verify(version)
-    excluded = exclude_trace_ids or set()
-    rows = (
-        r
-        for r in row_store.iter_rows(version)
-        if not (r.source_trace_id and r.source_trace_id in excluded)
-    )
-    return _write_rows(rows, prefix="ft-train-")
+    return _write_rows(row_store.iter_rows(version), prefix="ft-train-")
 
 
-def _resolve_train_val_paths(
-    job, supports_validation: bool, *, exclude_trace_ids: set[str] | None = None
-) -> tuple[str, str | None, int, dict]:
+def _resolve_train_val_paths(job, supports_validation: bool) -> tuple[str, str | None, int, dict]:
     """Returns ``(training_path, validation_path | None, num_train_rows, event_metadata)``."""
     from overbae.services.datasets import rows as row_store
     from overbae.services.finetuning_split import split_datapoint_ids
@@ -87,16 +77,12 @@ def _resolve_train_val_paths(
         raise RuntimeError("This job has no pinned version.")
 
     if not supports_validation or not job.validation_enabled:
-        training_path, num_train = _build_training_jsonl(
-            version, exclude_trace_ids=exclude_trace_ids
-        )
+        training_path, num_train = _build_training_jsonl(version)
         meta["train_examples"] = num_train
         return training_path, None, num_train, meta
 
     if job.validation_cell_id:
-        training_path, num_train = _build_training_jsonl(
-            version, exclude_trace_ids=exclude_trace_ids
-        )
+        training_path, num_train = _build_training_jsonl(version)
         row_store.verify(job.validation_cell)
         validation_path, num_val = _write_rows(
             row_store.iter_rows(job.validation_cell), prefix="ft-val-"
@@ -107,12 +93,7 @@ def _resolve_train_val_paths(
         return training_path, validation_path, num_train, meta
 
     row_store.verify(version)
-    excluded = exclude_trace_ids or set()
-    rows = [
-        r
-        for r in row_store.iter_rows(version)
-        if not (r.source_trace_id and r.source_trace_id in excluded)
-    ]
+    rows = list(row_store.iter_rows(version))
     train_ids, val_ids, warnings = split_datapoint_ids(
         rows, job.validation_split_ratio, method=job.split_method
     )
@@ -450,26 +431,8 @@ def run_finetuning(*, job_id: str) -> dict[str, Any]:
             FinetuningJob.objects.filter(pk=job.pk).update(error_message="")
             _transition(job, FinetuningJob.Status.PREPARING, message="Preparing dataset")
 
-            excluded: set[str] = set()
-            if job.eval_dataset_id and job.cell_id:
-                from overbae.services.datasets import rows as row_store
-
-                eval_version = job.eval_dataset.active_cell
-                if eval_version is not None:
-                    excluded = row_store.trace_ids(job.cell) & row_store.trace_ids(eval_version)
-                if excluded:
-                    _record_event(
-                        job,
-                        "log",
-                        message=(
-                            f"Excluded {len(excluded)} datapoints that overlap "
-                            "with the eval dataset"
-                        ),
-                        data={"excluded_overlapping": len(excluded)},
-                    )
-
             training_path, validation_path, num_examples, split_meta = _resolve_train_val_paths(
-                job, supports_validation, exclude_trace_ids=excluded
+                job, supports_validation
             )
             _validate_jsonl_or_fail(training_path)
             if validation_path:

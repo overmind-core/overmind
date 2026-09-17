@@ -189,8 +189,8 @@ judgement" says: measure each check with `query` or `inspect` first. For every
 check that has rows behind it, land one cell with `run: true` that fixes it,
 with the method and the count in `note` (for example "MinHash Jaccard ≥ 0.9
 drops 41 near-duplicates").
-Do not land a cell for a check with zero rows. A fix that would drop more than
-half the rows lands with `run: false` instead, so the user decides.
+Do not land a cell for a check with zero rows. A fix that would drop half
+the rows or more lands with `run: false` instead, so the user decides.
 
 Write only the result, in the shape "How you write" gives: the table in one
 line, a bullet per cell with its count, the contracts line, a bullet per

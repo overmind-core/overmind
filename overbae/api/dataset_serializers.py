@@ -167,7 +167,7 @@ class SourceSerializer(serializers.Serializer):
     """Exactly one of ``upload_id``, ``text``, ``rows`` or ``traces``.
     ``traces`` is a traces-list selection or ``{"trace_ids": [...]}``."""
 
-    upload_id = serializers.CharField(required=False, allow_blank=True)
+    upload_id = serializers.UUIDField(required=False, allow_null=True)
     filename = serializers.CharField(required=False, allow_blank=True)
     text = serializers.CharField(required=False, allow_blank=True)
     rows = serializers.ListField(child=serializers.JSONField(), required=False)
@@ -179,6 +179,8 @@ class SourceSerializer(serializers.Serializer):
             raise serializers.ValidationError(
                 "Give exactly one source: upload_id, text, rows or traces."
             )
+        if attrs.get("upload_id"):
+            attrs["upload_id"] = str(attrs["upload_id"])
         return attrs
 
 
@@ -194,7 +196,7 @@ class DatasetSplitCreateSerializer(serializers.Serializer):
     """One source landed as ``<name> train`` and ``<name> eval``. The eval slice is
     ``eval_percent`` of the rows taken at ``position``."""
 
-    name = serializers.CharField(max_length=255)
+    name = serializers.CharField(max_length=249)
     project = serializers.UUIDField()
     capability = serializers.UUIDField(required=False, allow_null=True)
     source = SourceSerializer()

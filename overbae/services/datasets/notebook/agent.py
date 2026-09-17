@@ -67,7 +67,7 @@ def resolve_cell(dataset: Dataset, ref: str | None, *, ran_only: bool = False) -
             cell = dataset.cells.get(pk=cell_id)
             break
     else:
-        cell = dataset.cells.filter(pk=ref).first() if len(ref) > 8 else None
+        cell = dataset.cells.filter(pk=ref).first() if _is_uuid(ref) else None
         if cell is None and ref.isdigit():
             cell = dataset.cells.filter(position=int(ref)).first()
         if cell is None:
@@ -657,7 +657,12 @@ def settle(dataset_id: Any) -> None:
 
 def diagnose(dataset_id: Any, *, user: Any = None, turn_key: str = "") -> Iterator[dict[str, Any]]:
     """The one automatic turn after landing: both contracts, then quality."""
-    Dataset.objects.filter(pk=dataset_id).update(state=Dataset.State.DIAGNOSING)
+    if not lifecycle.enter_busy(
+        dataset_id,
+        Dataset.State.DIAGNOSING,
+        from_states=[Dataset.State.DIAGNOSING, Dataset.State.IDLE],
+    ):
+        return
     try:
         yield from iter_turn(
             dataset_id,
@@ -673,9 +678,12 @@ def diagnose(dataset_id: Any, *, user: Any = None, turn_key: str = "") -> Iterat
 def follow_up(
     dataset_id: Any, message: str, *, user: Any = None, turn_key: str = ""
 ) -> Iterator[dict[str, Any]]:
-    Dataset.objects.filter(
-        pk=dataset_id, state__in=[Dataset.State.IDLE, Dataset.State.ERROR]
-    ).update(state=Dataset.State.DIAGNOSING)
+    if not lifecycle.enter_busy(
+        dataset_id,
+        Dataset.State.DIAGNOSING,
+        from_states=[Dataset.State.DIAGNOSING, Dataset.State.IDLE, Dataset.State.ERROR],
+    ):
+        return
     try:
         yield from iter_turn(
             dataset_id,

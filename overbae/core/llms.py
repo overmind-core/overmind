@@ -576,7 +576,7 @@ def _tool_completion_kwargs(
     completion_kwargs: dict = {
         "model": selected,
         "messages": messages if provider.openrouter_extras else _portable_messages(messages),
-        "max_tokens": _effective_max_tokens(selected_model_name, max_tokens),
+        provider.output_cap_param: _effective_max_tokens(selected_model_name, max_tokens),
     }
     # An empty tools array is a 400 on some providers.
     if tools:
@@ -590,6 +590,8 @@ def _tool_completion_kwargs(
         if chain:
             extra_body["models"] = chain
         completion_kwargs["extra_body"] = extra_body
+    elif tools and provider.tools_reasoning_effort:
+        completion_kwargs["reasoning_effort"] = provider.tools_reasoning_effort
     elif (
         provider.reasoning_effort
         and reasoning_effort

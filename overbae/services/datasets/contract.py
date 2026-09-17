@@ -76,27 +76,37 @@ def eval_input_type(value: Any) -> str:
     return "text"
 
 
+def training_line(record: dict[str, Any]) -> dict[str, Any]:
+    """The ``{messages, tools?}`` line a record trains as. The train contract
+    and the training export both build it here, so neither accepts a row the
+    other refuses."""
+    messages = _as_obj(record.get("messages"))
+    if _missing(messages):
+        raise ValueError("messages is empty")
+    if not isinstance(messages, list):
+        raise ValueError("messages is not a list")
+    if not any(isinstance(m, dict) and m.get("role") == "assistant" for m in messages):
+        raise ValueError("no assistant turn to train on")
+    line: dict[str, Any] = {"messages": messages}
+    tools = _as_obj(record.get("tools"))
+    if isinstance(tools, list) and tools:
+        line["tools"] = tools
+    return line
+
+
 def _train_check(df: pd.DataFrame) -> dict[str, Any]:
     from overbae.services.finetuning_validator import validate_rows
 
     if "messages" not in df.columns:
         return {"ok": False, "reason": "no messages column", "failures": []}
+    columns = [c for c in ("messages", "tools") if c in df.columns]
     rows = []
     failures: list[dict[str, Any]] = []
-    for index, raw in enumerate(df["messages"].tolist()):
-        value = _as_obj(raw)
-        if _missing(value):
-            failures.append({"row": index, "reason": "messages is empty"})
-            continue
-        if not isinstance(value, list):
-            failures.append({"row": index, "reason": "messages is not a list"})
-            continue
-        row = {"messages": value}
-        if "tools" in df.columns:
-            tools = _as_obj(df["tools"].iloc[index])
-            if isinstance(tools, list) and tools:
-                row["tools"] = tools
-        rows.append(row)
+    for index, record in enumerate(df[columns].to_dict("records")):
+        try:
+            rows.append(training_line(record))
+        except ValueError as exc:
+            failures.append({"row": index, "reason": str(exc)})
     if failures:
         return {
             "ok": False,
@@ -157,7 +167,26 @@ def measure(df: pd.DataFrame) -> dict[str, Any]:
             "train": {"ok": False, "reason": "no rows"},
             "eval": {"ok": False, "reason": "no rows"},
         }
-    return {"rows": rows, "train": _train_check(df), "eval": _eval_check(df)}
+    report = {"rows": rows, "train": _train_check(df), "eval": _eval_check(df)}
+    if not (report["train"]["ok"] or report["eval"]["ok"]) and not _has_text(df):
+        for shape in (report["train"], report["eval"]):
+            shape["fixable"] = False
+    return report
+
+
+def _has_text(df: pd.DataFrame) -> bool:
+    """Whether any cell holds words or a structure. A table of numbers and ids
+    has nothing a cell could shape into messages or an input."""
+    for name in df.columns:
+        if name == "source_row":
+            continue
+        for value in df[name].head(200).tolist():
+            value = _as_obj(value)
+            if isinstance(value, (list, dict)) and value:
+                return True
+            if isinstance(value, str) and any(ch.isalpha() for ch in value):
+                return True
+    return False
 
 
 def propose_intent(df: pd.DataFrame, report: dict[str, Any]) -> str:

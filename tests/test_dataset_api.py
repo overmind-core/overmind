@@ -173,7 +173,7 @@ def test_export_streams_a_version_raw_without_using_it():
     res = client.get(f"/api/datasets/{dataset.id}/export/", {"fmt": "jsonl"})
     assert res.status_code == 200
     assert res["X-Overmind-Cell"] == str(shape.id) and res["X-Overmind-Version"] == "1.2"
-    body = b"".join(res.streaming_content).decode()
+    body = b"".join(res).decode()
     assert body.count("\n") == 2 and '"input"' in body
     res = client.get(f"/api/datasets/{dataset.id}/export/", {"fmt": "csv", "cell": str(keep.id)})
     assert res.status_code == 200 and res["X-Overmind-Version"] == "1.1"

@@ -15,6 +15,7 @@ import logging
 from dataclasses import dataclass, field
 from typing import Any
 
+from overbae.services.datasets.contract import training_line
 from overbae.services.datasets.text import approx_tokens
 
 logger = logging.getLogger(__name__)
@@ -224,24 +225,9 @@ def _split_preview_stats(
 
 
 def row_to_finetuning_line(row) -> dict:
-    """A product row → its OpenAI-compatible JSONL line ``{messages, tools?}``.
-    Rows are stored with ``messages`` as a column (``DatasetRow.input`` carries
-    it as ``{messages, tools?}``); a malformed one raises ``ValueError``."""
-    inp = row.input if hasattr(row, "input") else row
-    if isinstance(inp, dict) and isinstance(inp.get("messages"), list):
-        messages, tools = inp["messages"], inp.get("tools")
-    elif isinstance(inp, list):
-        messages, tools = inp, None
-    else:
-        raise ValueError("not a training row (expected a messages list)")
-    if not messages:
-        raise ValueError("not a training row (expected a messages list)")
-    if not any(isinstance(m, dict) and m.get("role") == "assistant" for m in messages):
-        raise ValueError("no assistant turn to train on")
-    line: dict = {"messages": messages}
-    if tools:
-        line["tools"] = tools
-    return line
+    """A dataset row → its OpenAI-compatible JSONL line ``{messages, tools?}``,
+    read from the columns the train contract measured."""
+    return training_line(row.extra)
 
 
 def _long_row_warning_threshold() -> int | None:

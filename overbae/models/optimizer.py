@@ -75,7 +75,7 @@ def optimizer_dataset_error(capability, dataset, cell=None) -> str | None:
     if dataset.project_id != capability.project_id:
         return "This dataset belongs to a different project."
     try:
-        use.use(dataset, "eval", cell=cell)
+        use.check(dataset, "eval", cell=cell)
     except DatasetError as exc:
         return exc.detail
     return None

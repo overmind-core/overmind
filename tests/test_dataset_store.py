@@ -97,11 +97,11 @@ def test_write_frame_round_trips_and_hashes(table, tmp_path):
 
 def test_csv_numbers_become_numeric(tmp_path):
     path = tmp_path / "rows.csv"
-    path.write_text("name,score,note\nA,1,x\nB,2.5,\n", encoding="utf-8")
+    path.write_text("name,count,score,note\nA,1,1.5,x\nB,2,2.5,\n", encoding="utf-8")
     rows = files.read_file_rows(path, filename="rows.csv")
     assert rows == [
-        {"name": "A", "score": 1, "note": "x"},
-        {"name": "B", "score": 2.5, "note": ""},
+        {"name": "A", "count": 1, "score": 1.5, "note": "x"},
+        {"name": "B", "count": 2, "score": 2.5, "note": ""},
     ]
 
 

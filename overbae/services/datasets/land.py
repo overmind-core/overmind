@@ -69,8 +69,12 @@ def _stamp_source_rows(rows: list[dict[str, Any]]) -> None:
 
 
 @transaction.atomic
-def commit(dataset: Dataset, landing: Landing, *, user: Any = None) -> Dataset:
-    """Write cell 0, measure it, propose the capability and the intent."""
+def commit(
+    dataset: Dataset, landing: Landing, *, user: Any = None, state: str = Dataset.State.IDLE
+) -> Dataset:
+    """Write cell 0, measure it, propose the capability and the intent.
+    ``state`` is what the dataset is handed to: the landing task passes
+    ``diagnosing`` so the dataset never reads as ready before its first scan."""
     rows = landing.rows
     _stamp_source_rows(rows)
     source = dataset.cells.filter(position=0).first()
@@ -87,7 +91,7 @@ def commit(dataset: Dataset, landing: Landing, *, user: Any = None) -> Dataset:
     fields: dict[str, Any] = {
         "source_kind": landing.kind,
         "source_spec": {**landing.spec, "landed_at": timezone.now().isoformat()},
-        "state": Dataset.State.IDLE,
+        "state": state,
         "error": "",
     }
     df = store.read_frame(path)

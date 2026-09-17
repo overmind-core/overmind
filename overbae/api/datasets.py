@@ -37,6 +37,7 @@ from overbae.services.datasets import diff as diff_svc
 from overbae.services.datasets import dispatch, files, lifecycle, paths, selection, store
 from overbae.services.datasets import export as export_svc
 from overbae.services.datasets.notebook import events
+from overbae.services.datasets.notebook.agent import resolve_cell
 
 logger = logging.getLogger(__name__)
 
@@ -59,7 +60,10 @@ def _agent_owns(dataset: Dataset) -> Response | None:
 
 
 _CELL_PARAM = OpenApiParameter(
-    "cell", OpenApiTypes.UUID, OpenApiParameter.QUERY, description="a cell id; default = active"
+    "cell",
+    OpenApiTypes.STR,
+    OpenApiParameter.QUERY,
+    description="a cell id or a version such as 1.2; default = active",
 )
 
 
@@ -354,11 +358,11 @@ class DatasetViewSet(viewsets.ModelViewSet):
         return path
 
     def _table(self, dataset: Dataset, request) -> tuple:
-        """``?cell=`` picks a frame; default = the active cell."""
-        cell_id = request.query_params.get("cell")
-        cell = self._cell(dataset, cell_id) if cell_id else dataset.active_cell
-        if cell is None:
-            raise NotFound("Nothing has run yet.")
+        """``?cell=`` picks a frame by id or version; default = the active cell."""
+        try:
+            cell = resolve_cell(dataset, request.query_params.get("cell"))
+        except lifecycle.DatasetError as exc:
+            raise NotFound(exc.detail) from exc
         return self._frame(dataset, cell), cell
 
     @extend_schema(
@@ -446,14 +450,14 @@ class DatasetViewSet(viewsets.ModelViewSet):
         return Response(store.column_stats(path))
 
     @extend_schema(
-        summary="Download a cell's frame as JSONL, CSV or training lines; counts as a use",
+        summary="Download a cell's frame as JSONL or CSV; a raw stream, never a use",
         parameters=[
             _CELL_PARAM,
             OpenApiParameter(
                 "fmt",
                 OpenApiTypes.STR,
                 OpenApiParameter.QUERY,
-                description="jsonl (default) | csv | training",
+                description="jsonl (default) | csv",
             ),
         ],
         responses={

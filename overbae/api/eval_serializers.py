@@ -1093,7 +1093,7 @@ class EvalRunSerializer(serializers.ModelSerializer):
                 )
             if self.instance is None or "dataset" in attrs or "cell" in attrs:
                 try:
-                    attrs["cell"] = use.use(dataset, "eval", cell=attrs.get("cell"))
+                    attrs["cell"] = use.check(dataset, "eval", cell=attrs.get("cell"))
                 except DatasetError as exc:
                     raise serializers.ValidationError({"dataset": exc.detail}) from exc
         eval_set = attrs.get("eval_set")
@@ -1159,6 +1159,7 @@ class EvalRunSerializer(serializers.ModelSerializer):
         bindings = validated_data.pop("evaluator_bindings", [])
         variants_input = validated_data.pop("variants_input", [])
         run = EvalRun.objects.create(**validated_data)
+        use.freeze(run.cell)
 
         # Flat path: each evaluator is global (prompt=null) and grades every variant.
         order = 0
