@@ -1335,7 +1335,7 @@ def _anatomy_from_blob(blob: Any) -> dict[str, Any]:
 
 
 def _conversation_anatomy(grounding: EvalGroundingContext) -> dict[str, Any]:
-    for blob in (grounding.dataset_card, grounding.dataset_bundle, grounding.report):
+    for blob in (grounding.dataset_card, grounding.report):
         anatomy = _anatomy_from_blob(blob)
         if anatomy:
             return anatomy

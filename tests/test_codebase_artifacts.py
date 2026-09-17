@@ -1,10 +1,5 @@
-"""``MEDIA_ROOT`` is redirected to a tmp dir; no DB."""
-
 from __future__ import annotations
 
-import json
-
-from overbae.services.artifact_model import ARTIFACT_KINDS
 from overbae.services.codebase import artifacts as A  # noqa: N812
 
 
@@ -28,104 +23,12 @@ def _valid_card() -> dict:
     }
 
 
-def test_extended_artifact_kinds_present():
-    for kind in ("capability_card", "io_schema", "tool_spec", "vocabulary", "prompt_spec"):
-        assert kind in ARTIFACT_KINDS
-
-
-def test_valid_card_passes_validation():
-    assert A.validate_capability_card(_valid_card()) == []
-
-
-def test_validation_flags_missing_and_empty_fields():
-    card = _valid_card()
-    del card["task"]
-    card["input_schema"] = {}
-    errors = A.validate_capability_card(card)
-    assert any("task" in e for e in errors)
-    assert any("input_schema" in e for e in errors)
-
-
-def test_validation_flags_bad_provenance():
-    card = _valid_card()
-    card["provenance"] = {"paths": ["overbae/capability.py"]}  # no #Lline anchor
-    errors = A.validate_capability_card(card)
-    assert any("provenance" in e for e in errors)
-
-    card["provenance"] = {"paths": []}
-    assert any("provenance" in e for e in A.validate_capability_card(card))
-
-
-def test_non_dict_card_is_invalid():
-    assert A.validate_capability_card(None)
-    assert A.validate_capability_card("nope")
-
-
-def test_fallback_card_is_never_empty_and_valid_with_path():
-    item = {
-        "name": "Data Capability",
-        "description": "Analyzes datasets for quality smells.",
-        "source_path": "overbae/tasks/workshop.py",
-        "tools_summary": "sample_rows; query_schema",
-        "capability_description": {"inputs": "a dataset", "outputs": "a report"},
-    }
-    card = A.build_fallback_card(item)
-    assert card["_fallback"] is True
-    assert card["task"]
-    assert card["input_schema"] and card["output_fields"]
-    # Fallback cards are built after validation fails and are never re-validated, so the
-    # bare source_path is honest here rather than a fabricated #L1-L1 span.
-    assert card["provenance"]["paths"] == ["overbae/tasks/workshop.py"]
-    assert {t["name"] for t in card["tool_spec"]} == {"sample_rows", "query_schema"}
-
-
 def test_normalize_coerces_string_expected_output():
     card = _valid_card()
     card["expected_output"] = "a good answer is grounded and correct"
     norm = A.normalize_capability_card(card)
     assert norm["expected_output"]["description"] == "a good answer is grounded and correct"
     assert norm["expected_output"]["quality_signals"] == []
-
-
-def test_write_and_load_bundle_roundtrip(tmp_path, monkeypatch):
-    monkeypatch.setattr(A.settings, "MEDIA_ROOT", tmp_path)
-    card = A.normalize_capability_card(_valid_card())
-    capabilities = [{"slug": "data-capability", "name": "Data Capability", "card": card}]
-
-    result = A.write_codebase_bundle(
-        "repo-1", capabilities, head_sha="abc123", repo_full_name="o/r"
-    )
-    bundle_dir = A.codebase_bundle_dir("repo-1")
-    assert bundle_dir.is_dir()
-    assert (bundle_dir / A.CAPABILITY_CARD_FILE).is_file()
-    assert (bundle_dir / A.IO_SCHEMA_FILE).is_file()
-    assert (bundle_dir / A.MANIFEST_FILE).is_file()
-
-    raw = (bundle_dir / A.CAPABILITY_CARD_FILE).read_text(encoding="utf-8")
-    assert json.loads(raw)["task"] == card["task"]
-
-    manifest = result["manifest"]
-    assert manifest["head_sha"] == "abc123"
-    assert manifest["primary_capability_slug"] == "data-capability"
-    kinds = {a["kind"] for a in manifest["artifacts"]}
-    assert "capability_card" in kinds and "io_schema" in kinds
-
-    loaded = A.load_codebase_bundle("repo-1", capability_slug="data-capability")
-    assert loaded is not None
-    assert loaded["card"]["task"] == card["task"]
-    assert loaded["io_schema"]["input_schema"] == card["input_schema"]
-    assert loaded["capability_slug"] == "data-capability"
-
-
-def test_load_bundle_missing_returns_none(tmp_path, monkeypatch):
-    monkeypatch.setattr(A.settings, "MEDIA_ROOT", tmp_path)
-    assert A.load_codebase_bundle("does-not-exist") is None
-
-
-def test_write_empty_capabilities_noops(tmp_path, monkeypatch):
-    monkeypatch.setattr(A.settings, "MEDIA_ROOT", tmp_path)
-    result = A.write_codebase_bundle("repo-x", [])
-    assert result["manifest"] is None
 
 
 def test_normalize_modes_tolerates_absence_and_shapes():
@@ -143,29 +46,9 @@ def test_normalize_modes_tolerates_absence_and_shapes():
     assert modes[1]["prompt_builder"] == "build_fix_prompt"
 
 
-def test_normalize_llm_utilities_tolerates_absence_and_shapes():
-    assert A.normalize_llm_utilities(None) == []
-    utils = A.normalize_llm_utilities(
-        [
-            {
-                "name": "rubric_compiler",
-                "purpose": "compile rubric",
-                "called_by": "Eval Judge",
-                "source_path": "overbae/eval/rubric.py",
-                "provenance": {"paths": ["overbae/eval/rubric.py#L1-L20"]},
-            },
-            {"purpose": "no name → dropped"},
-        ]
-    )
-    assert len(utils) == 1
-    assert utils[0]["name"] == "rubric_compiler"
-    assert utils[0]["provenance"]["paths"] == ["overbae/eval/rubric.py#L1-L20"]
-
-
-def test_valid_card_without_modes_still_valid():
+def test_card_without_modes_normalizes_to_empty_modes():
     card = _valid_card()
     assert "modes" not in card
-    assert A.validate_capability_card(card) == []
     assert A.normalize_capability_card(card)["modes"] == []
 
 
@@ -197,46 +80,6 @@ def test_normalize_card_preserves_modes():
     assert modes[0]["model"] == ""
     assert modes[0]["output"] == ""
     assert modes[0]["prompt_excerpt"] == ""
-
-
-def test_fallback_card_includes_modes_from_item():
-    item = {
-        "name": "Workshop",
-        "description": "runs lanes",
-        "source_path": "overbae/tasks/workshop.py",
-        "modes": [{"name": "analysis", "entrypoint_fn": "run_analysis"}],
-    }
-    card = A.build_fallback_card(item)
-    assert [m["name"] for m in card["modes"]] == ["analysis"]
-    assert card["provenance"]["paths"] == ["overbae/tasks/workshop.py"]
-
-
-def test_bundle_captures_modes_and_llm_utilities(tmp_path, monkeypatch):
-    monkeypatch.setattr(A.settings, "MEDIA_ROOT", tmp_path)
-    card = A.normalize_capability_card(
-        {**_valid_card(), "modes": [{"name": "fix", "entrypoint_fn": "run_fix"}]}
-    )
-    capabilities = [{"slug": "ws", "name": "Workshop", "card": card}]
-    utilities = [
-        {
-            "name": "rubric_compiler",
-            "called_by": "Eval Judge",
-            "source_path": "overbae/eval/rubric.py",
-            "provenance": {"paths": ["overbae/eval/rubric.py#L1-L20"]},
-        }
-    ]
-    result = A.write_codebase_bundle("repo-7", capabilities, llm_utilities=utilities)
-
-    bundle_dir = A.codebase_bundle_dir("repo-7")
-    assert (bundle_dir / A.LLM_UTILITIES_FILE).is_file()
-    manifest = result["manifest"]
-    assert manifest["llm_utilities"][0]["name"] == "rubric_compiler"
-    kinds = {a["kind"] for a in manifest["artifacts"]}
-    assert "llm_utility" in kinds
-
-    loaded = A.load_codebase_bundle("repo-7", capability_slug="ws")
-    assert [m["name"] for m in loaded["modes"]] == ["fix"]
-    assert loaded["llm_utilities"][0]["name"] == "rubric_compiler"
 
 
 def test_normalize_tool_spec_tolerates_absence_and_garbage():
@@ -351,90 +194,6 @@ def test_normalize_modes_extended_fields():
     assert transform["purpose"] == "" and transform["output"] == ""
 
 
-def test_normalize_llm_utilities_extended_fields():
-    utils = A.normalize_llm_utilities(
-        [
-            {
-                "name": "rubric_compiler",
-                "purpose": "compile rubric",
-                "called_by": "Eval Judge",
-                "io_contract": "in: criteria -> out: rubric json",
-                "cardinality": "per_candidate",
-                "prompt_excerpt": "Compile the following criteria...",
-                "structured_output": True,
-            },
-            {"name": "bare_util"},  # new fields default
-        ]
-    )
-    rubric, bare = utils
-    assert rubric["io_contract"] == "in: criteria -> out: rubric json"
-    assert rubric["cardinality"] == "per_candidate"
-    assert rubric["prompt_excerpt"] == "Compile the following criteria..."
-    assert rubric["structured_output"] is True
-    assert bare["io_contract"] == ""
-    assert bare["cardinality"] == "unknown"
-    assert bare["structured_output"] is False
-
-
-def test_normalize_llm_utilities_constrains_cardinality_with_fallback():
-    for raw, expected in [
-        ("per_run", "per_run"),
-        ("PER_ROW", "per_row"),
-        ("per_candidate", "per_candidate"),
-        ("hourly", "unknown"),  # not in the allowed set → fallback
-        (None, "unknown"),
-    ]:
-        utils = A.normalize_llm_utilities([{"name": "u", "cardinality": raw}])
-        assert utils[0]["cardinality"] == expected
-
-
-def test_card_roundtrip_preserves_extended_fields(tmp_path, monkeypatch):
-    monkeypatch.setattr(A.settings, "MEDIA_ROOT", tmp_path)
-    card = A.normalize_capability_card(
-        {
-            **_valid_card(),
-            "tool_spec": [
-                {
-                    "name": "write_file",
-                    "purpose": "persist output",
-                    "side_effect": "write",
-                    "returns": "the written path",
-                    "arguments": [{"name": "path", "type": "str", "required": True}],
-                    "integration": "filesystem",
-                    "provenance": ["overbae/io.py#L1-L9"],
-                }
-            ],
-            "modes": [{"name": "fix", "entrypoint_fn": "run_fix", "output": "patches"}],
-        }
-    )
-    capabilities = [{"slug": "ws", "name": "Workshop", "card": card}]
-    utilities = [
-        {
-            "name": "rubric_compiler",
-            "called_by": "Workshop",
-            "io_contract": "in: criteria -> out: rubric",
-            "cardinality": "per_run",
-            "structured_output": True,
-            "provenance": {"paths": ["overbae/eval/rubric.py#L1-L20"]},
-        }
-    ]
-    A.write_codebase_bundle("repo-ext", capabilities, llm_utilities=utilities)
-
-    loaded = A.load_codebase_bundle("repo-ext", capability_slug="ws")
-    assert loaded is not None
-    tool = loaded["tool_spec"][0]
-    assert tool["side_effect"] == "write"
-    assert tool["returns"] == "the written path"
-    assert tool["arguments"][0]["name"] == "path"
-    assert tool["integration"] == "filesystem"
-    assert tool["provenance"] == ["overbae/io.py#L1-L9"]
-    assert loaded["modes"][0]["output"] == "patches"
-    util = loaded["llm_utilities"][0]
-    assert util["io_contract"] == "in: criteria -> out: rubric"
-    assert util["cardinality"] == "per_run"
-    assert util["structured_output"] is True
-
-
 _EMPTY_OUTPUT_SCHEMA = {"required_keys": [], "properties": {}, "provenance": []}
 
 
@@ -535,14 +294,6 @@ def test_normalize_tool_protocol_well_formed_and_kind_fallback():
     assert protocol[1]["params"] == {}
 
 
-def test_validate_card_lenient_without_contract_keys():
-    card = _valid_card()
-    assert "output_schema" not in card
-    assert "constraints" not in card
-    assert "tool_protocol" not in card
-    assert A.validate_capability_card(card) == []
-
-
 def test_normalize_card_defaults_contract_keys_when_absent():
     norm = A.normalize_capability_card(_valid_card())
     assert norm["output_schema"] == _EMPTY_OUTPUT_SCHEMA
@@ -581,49 +332,6 @@ def test_normalize_card_preserves_contract_keys():
     assert norm["constraints"][0]["params"] == {"max_calls": 30}
     assert norm["tool_protocol"][0]["tools"] == ["search"]
     assert norm["tool_protocol"][0]["params"] == {"max_calls": 1}
-
-
-def test_fallback_card_carries_empty_contract_defaults():
-    card = A.build_fallback_card({"name": "X", "source_path": "overbae/x.py"})
-    assert card["output_schema"] == _EMPTY_OUTPUT_SCHEMA
-    assert card["constraints"] == []
-    assert card["tool_protocol"] == []
-    assert card["provenance"]["paths"] == ["overbae/x.py"]
-
-
-def test_io_schema_artifact_carries_output_schema(tmp_path, monkeypatch):
-    monkeypatch.setattr(A.settings, "MEDIA_ROOT", tmp_path)
-    card = A.normalize_capability_card(
-        {
-            **_valid_card(),
-            "output_schema": {
-                "required_keys": ["answer"],
-                "properties": {"answer": "str, non-empty"},
-                "provenance": ["overbae/capability.py#L10-L40"],
-            },
-        }
-    )
-    result = A.write_codebase_bundle("repo-os", [{"slug": "ws", "name": "W", "card": card}])
-
-    io_payload = json.loads((A.codebase_bundle_dir("repo-os") / A.IO_SCHEMA_FILE).read_text())
-    assert io_payload["output_schema"]["required_keys"] == ["answer"]
-    assert io_payload["input_schema"] == card["input_schema"]
-
-    io_artifact = next(a for a in result["manifest"]["artifacts"] if a["kind"] == "io_schema")
-    assert io_artifact["content"]["output_schema"]["properties"] == {"answer": "str, non-empty"}
-
-    loaded = A.load_codebase_bundle("repo-os", capability_slug="ws")
-    assert loaded["io_schema"]["output_schema"]["provenance"] == ["overbae/capability.py#L10-L40"]
-
-
-def test_io_schema_defaults_output_schema_for_old_cards(tmp_path, monkeypatch):
-    monkeypatch.setattr(A.settings, "MEDIA_ROOT", tmp_path)
-    card = {
-        k: v for k, v in A.normalize_capability_card(_valid_card()).items() if k != "output_schema"
-    }
-    A.write_codebase_bundle("repo-old", [{"slug": "ws", "name": "W", "card": card}])
-    loaded = A.load_codebase_bundle("repo-old", capability_slug="ws")
-    assert loaded["io_schema"]["output_schema"] == _EMPTY_OUTPUT_SCHEMA
 
 
 def _valid_trajectory_map() -> list[dict]:
@@ -674,31 +382,12 @@ def test_normalize_trajectory_map_is_uncapped():
     assert len(A.normalize_trajectory_map(paths)) == 40
 
 
-def test_normalize_capability_card_carries_trajectory_map_and_fallback_is_empty():
+def test_normalize_capability_card_carries_trajectory_map():
     card = _valid_card()
     card["trajectory_map"] = _valid_trajectory_map()
     normalized = A.normalize_capability_card(card)
     assert [p["id"] for p in normalized["trajectory_map"]] == ["happy-path", "refusal"]
     assert A.normalize_capability_card(_valid_card())["trajectory_map"] == []
-    assert A.build_fallback_card({"name": "bare"})["trajectory_map"] == []
-
-
-def test_validation_flags_malformed_trajectory_map_but_not_absence():
-    assert A.validate_capability_card(_valid_card()) == []
-
-    card = _valid_card()
-    card["trajectory_map"] = "nope"
-    assert any("trajectory_map" in e for e in A.validate_capability_card(card))
-
-    card["trajectory_map"] = [{"routing": "no id at all"}]
-    assert any("trajectory_map[0]" in e for e in A.validate_capability_card(card))
-
-    card["trajectory_map"] = [{"id": "x", "terminal": {"kind": "explodes"}}]
-    errors = A.validate_capability_card(card)
-    assert any("terminal.kind" in e for e in errors)
-
-    card["trajectory_map"] = _valid_trajectory_map()
-    assert A.validate_capability_card(card) == []
 
 
 _BACKBONE_TOOL_SPEC = [
@@ -808,15 +497,3 @@ def test_normalize_capability_card_filters_step_anchors_and_validates_may_use():
     (path,) = A.normalize_capability_card(card)["trajectory_map"]
     assert path["steps"][0]["anchors"] == ["m.run"]
     assert path["steps"][1]["may_use"] == [{"tool": "Fetch-Data", "when": "the answer needs rows"}]
-
-
-def test_validation_accepts_both_sequence_formats_and_flags_garbage():
-    card = _valid_card()
-    card["trajectory_map"] = _valid_trajectory_map()
-    assert A.validate_capability_card(card) == []
-
-    card["trajectory_map"] = _backbone_trajectory_map()
-    assert A.validate_capability_card(card) == []
-
-    card["trajectory_map"][0]["sequence"] = [{"may_use": [], "anchors": []}]
-    assert any("sequence" in e for e in A.validate_capability_card(card))

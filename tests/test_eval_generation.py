@@ -2005,86 +2005,25 @@ class TestResolveGrounding:
             )
         return Dataset.objects.create(capability=capability, project=project, name="d")
 
-    def test_everything_missing_degrades_gracefully(self, monkeypatch):
-        from overbae.services.eval import grounding as grounding_mod
+    def test_dataset_without_capability_has_no_codebase_card(self):
+        from overbae.services.eval.grounding import resolve_grounding
 
-        monkeypatch.setattr(grounding_mod, "load_dataset_bundle", lambda *a, **k: None)
-        dataset = self._dataset(with_capability=False)
-        ctx = grounding_mod.resolve_grounding(dataset)
+        ctx = resolve_grounding(self._dataset(with_capability=False))
         assert ctx.dataset_card is None
         assert ctx.codebase_card is None
         assert ctx.report is None
-        assert ctx.context_health == {
-            "dataset_card": False,
-            "codebase_bundle": False,
-            "report": False,
-            "dataset_card_fallback": False,
-            "codebase_card_fallback": False,
-        }
 
-    def test_full_ladder_resolves_all_hops(self, monkeypatch):
-        from overbae.services.eval import grounding as grounding_mod
+    def test_codebase_card_comes_from_the_synced_capability_card(self):
+        from overbae.services.eval.grounding import resolve_grounding
 
-        dataset = self._dataset(capability_metadata={"github_repo_id": "repo-1"})
-        seen_dataset_args = {}
+        dataset = self._dataset(capability_metadata={"capability_card": CODEBASE_CARD})
+        assert resolve_grounding(dataset).codebase_card == CODEBASE_CARD
 
-        def fake_dataset_bundle(key, version=None):
-            seen_dataset_args["key"] = key
-            seen_dataset_args["version"] = version
-            return {"card": copy.deepcopy(DATASET_CARD), "data_version": DATA_VERSION}
+    def test_capability_without_card_has_no_codebase_card(self):
+        from overbae.services.eval.grounding import resolve_grounding
 
-        def fake_codebase_bundle(repo_id, capability_slug=None):
-            assert repo_id == "repo-1"
-            return {
-                "card": copy.deepcopy(CODEBASE_CARD),
-                "manifest": {"head_sha": CODEBASE_COMMIT},
-            }
-
-        monkeypatch.setattr(grounding_mod, "load_dataset_bundle", fake_dataset_bundle)
-        monkeypatch.setattr(grounding_mod, "load_codebase_bundle", fake_codebase_bundle)
-
-        ctx = grounding_mod.resolve_grounding(dataset)
-        # The bundle index resolves the latest version itself — no pointer on the dataset.
-        assert seen_dataset_args == {"key": str(dataset.id), "version": None}
-        assert ctx.data_version == DATA_VERSION
-        assert ctx.codebase_commit == CODEBASE_COMMIT
-        assert ctx.report is None
-        assert ctx.context_health == {
-            "dataset_card": True,
-            "codebase_bundle": True,
-            "report": False,
-            "dataset_card_fallback": False,
-            "codebase_card_fallback": False,
-        }
-
-    def test_fallback_card_flag_surfaces_in_health(self, monkeypatch):
-        from overbae.services.eval import grounding as grounding_mod
-
-        card = copy.deepcopy(DATASET_CARD)
-        card["_fallback"] = True
-        monkeypatch.setattr(
-            grounding_mod,
-            "load_dataset_bundle",
-            lambda *a, **k: {"card": card, "data_version": DATA_VERSION},
-        )
-        dataset = self._dataset(with_capability=False)
-        ctx = grounding_mod.resolve_grounding(dataset)
-        assert ctx.context_health["dataset_card"] is True
-        assert ctx.context_health["dataset_card_fallback"] is True
-
-    def test_capability_without_repo_skips_codebase_hop(self, monkeypatch):
-        from overbae.services.eval import grounding as grounding_mod
-
-        monkeypatch.setattr(grounding_mod, "load_dataset_bundle", lambda *a, **k: None)
-        monkeypatch.setattr(
-            grounding_mod,
-            "load_codebase_bundle",
-            lambda *a, **k: pytest.fail("must not be called without a repo id"),
-        )
         dataset = self._dataset(capability_metadata={})
-        ctx = grounding_mod.resolve_grounding(dataset)
-        assert ctx.codebase_card is None
-        assert ctx.context_health["codebase_bundle"] is False
+        assert resolve_grounding(dataset).codebase_card is None
 
     def test_evaluator_inventory_scoped_to_project(self):
         from overbae.models import Evaluator
