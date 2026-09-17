@@ -61,6 +61,7 @@ export function DatasetNotebook({
   const [selectedId, setSelectedId] = useState<string | null>(cellParam ?? null);
   const [live, setLive] = useState<LiveTurn | null>(null);
   const [landedAt, setLandedAt] = useState(0);
+  const [tracesRead, setTracesRead] = useState(0);
   const refreshTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const refresh = useCallback(() => {
@@ -119,7 +120,13 @@ export function DatasetNotebook({
         notify.error(new Error(event.error), "The agent stopped");
         refresh();
         break;
+      // Every (re)connect ends its replay here; whatever happened while the
+      // stream was down is on the dataset row, so read it once.
       case "replay.done":
+        refresh();
+        break;
+      case "land_progress":
+        setTracesRead(Number(event.traces) || 0);
         break;
       default:
         refresh();
@@ -226,7 +233,11 @@ export function DatasetNotebook({
             <div className="min-h-0 min-w-0 flex-1 overflow-y-auto pt-2 pb-6 pl-10" ref={cellsRef}>
               {cells.length === 0 ? (
                 <p className="p-3 text-xs text-muted-foreground">
-                  {dataset.state === "landing" ? "Landing the source…" : "Nothing landed."}
+                  {dataset.state !== "landing"
+                    ? "Nothing landed."
+                    : tracesRead > 0
+                      ? `Landing the source… ${tracesRead.toLocaleString()} traces read`
+                      : "Landing the source…"}
                 </p>
               ) : (
                 cells.map((cell) => (
@@ -297,6 +308,7 @@ export function DatasetNotebook({
             onDiscard={guard((id: string) => removeCell.mutate(id))}
             onSelect={scrollTo}
             onSend={guard((message: string) => chat.mutate(message))}
+            state={dataset.state ?? ""}
             turns={turns}
           />
         </Panel>

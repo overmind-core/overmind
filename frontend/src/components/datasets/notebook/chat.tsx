@@ -177,11 +177,20 @@ const Turn = memo(function Turn({
   );
 });
 
+/** What holds the dataset before the agent's first event: a turn that has not
+ *  been picked up yet is queued, not working. */
+const WAITING: Record<string, string> = {
+  diagnosing: "Queued",
+  landing: "Landing",
+  running: "Running",
+};
+
 export function DatasetChat({
   turns,
   live,
   cells,
   busy,
+  state,
   error,
   onSend,
   onSelect,
@@ -192,6 +201,7 @@ export function DatasetChat({
   live: LiveTurn | null;
   cells: Cell[];
   busy: boolean;
+  state: string;
   /** The dataset's own error, when its state is `error`. */
   error?: string;
   onSend: (message: string) => void;
@@ -256,7 +266,7 @@ export function DatasetChat({
           {busy && !live && (
             <p className="inline-flex items-center gap-1.5 text-xs text-muted-foreground">
               <Spinner className="size-3" />
-              Working
+              {WAITING[state] ?? "Working"}
             </p>
           )}
         </div>

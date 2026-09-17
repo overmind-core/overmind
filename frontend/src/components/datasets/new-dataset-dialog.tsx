@@ -66,7 +66,7 @@ const DEFAULT_EVAL_PERCENT = 20;
 const clampPercent = (n: number) => Math.min(99, Math.max(1, Math.round(n)));
 /** Mirrors the server cut: at least one row on each side. */
 const evalRows = (rows: number, percent: number) =>
-  rows < 2 ? 0 : Math.min(Math.max(Math.round((rows * percent) / 100), 1), rows - 1);
+  rows < 2 ? 0 : Math.min(Math.max(Math.floor((rows * percent + 50) / 100), 1), rows - 1);
 const AUTO_CAPABILITY = "__auto__";
 const stripExtension = (name: string) =>
   name.replace(/\.(csv|tsv|json|jsonl|ndjson|parquet)(\.gz)?$/i, "");
@@ -108,7 +108,9 @@ export function NewDatasetDialog({
   const [nameTouched, setNameTouched] = useState(false);
   const [capabilityId, setCapabilityId] = useState(initialCapabilityId ?? AUTO_CAPABILITY);
   const [purpose, setPurpose] = useState<Purpose>("propose");
-  const [evalPercent, setEvalPercent] = useState(DEFAULT_EVAL_PERCENT);
+  // The field holds what was typed; the clamp applies to the value used and on blur.
+  const [evalDraft, setEvalDraft] = useState(String(DEFAULT_EVAL_PERCENT));
+  const evalPercent = clampPercent(Number(evalDraft) || DEFAULT_EVAL_PERCENT);
   const [position, setPosition] = useState<SplitPosition>("tail");
   const [file, setFile] = useState<File | null>(null);
   const [uploadId, setUploadId] = useState<string | null>(null);
@@ -136,7 +138,7 @@ export function NewDatasetDialog({
     setNameTouched(false);
     setCapabilityId(initialCapabilityId ?? AUTO_CAPABILITY);
     setPurpose("propose");
-    setEvalPercent(DEFAULT_EVAL_PERCENT);
+    setEvalDraft(String(DEFAULT_EVAL_PERCENT));
     setPosition("tail");
     setFile(null);
     setUploadId(null);
@@ -431,13 +433,11 @@ export function NewDatasetDialog({
                       inputMode="numeric"
                       max={99}
                       min={1}
-                      onChange={(e) => {
-                        const n = Number(e.target.value);
-                        if (Number.isFinite(n)) setEvalPercent(clampPercent(n));
-                      }}
+                      onBlur={() => setEvalDraft(String(evalPercent))}
+                      onChange={(e) => setEvalDraft(e.target.value)}
                       size="xs"
                       type="number"
-                      value={evalPercent}
+                      value={evalDraft}
                     />
                     %
                   </Label>

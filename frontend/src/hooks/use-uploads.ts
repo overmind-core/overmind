@@ -22,6 +22,27 @@ async function uploadError(err: unknown): Promise<Error> {
 const gb = (bytes: number) => `${(bytes / 1024 ** 3).toFixed(1)} GB`;
 
 /** Send a file in chunks, resuming from whatever the server already holds. */
+const CHUNK_ATTEMPTS = 4;
+
+/** The server stores a chunk once however often it arrives, so a dropped
+ *  connection is answered by sending the same bytes again. A refusal is final. */
+async function sendChunk(
+  body: Blob,
+  id: string,
+  offset: number,
+  signal?: AbortSignal
+): Promise<UploadState> {
+  for (let attempt = 1; ; attempt++) {
+    try {
+      return await apiClient.uploads.uploadsChunkUpdate({ body, id, offset }, { signal });
+    } catch (err) {
+      const refused = err instanceof ResponseError;
+      if (refused || signal?.aborted || attempt === CHUNK_ATTEMPTS) throw await uploadError(err);
+      await new Promise((resolve) => setTimeout(resolve, 500 * 2 ** attempt));
+    }
+  }
+}
+
 async function uploadFile(
   file: File,
   onProgress: (p: UploadProgress) => void,
@@ -45,16 +66,7 @@ async function uploadFile(
   while (sent < file.size) {
     if (signal?.aborted) throw new DOMException("Upload cancelled", "AbortError");
     const end = Math.min(sent + reserved.chunkBytes, file.size);
-    let state: UploadState;
-    try {
-      state = await apiClient.uploads.uploadsChunkUpdate(
-        { body: file.slice(sent, end), id: reserved.uploadId, offset: sent },
-        { signal }
-      );
-    } catch (err) {
-      throw await uploadError(err);
-    }
-    sent = state.received;
+    sent = (await sendChunk(file.slice(sent, end), reserved.uploadId, sent, signal)).received;
     onProgress({ filename: file.name, sent, total: file.size });
   }
   return reserved.uploadId;

@@ -251,7 +251,9 @@ function intentCheck(intent: string, shape: Report, ran: boolean): Check {
   else if (reason.startsWith("no expected_output"))
     fix = "Add an expected_output column with the reference answer.";
   else if (reason.includes("empty input")) fix = "Drop the rows whose input is empty.";
-  else if (reason.includes("no usable messages"))
+  else if (reason.includes("cut at landing"))
+    fix = "Drop the rows that landing cut: part of each transcript is missing.";
+  else if (reason.includes("no usable messages") || reason.includes(" rows: "))
     fix = "Drop the rows whose messages are empty or not a list.";
   else if (reason === "no rows") fix = "The table is empty. Land more rows or loosen a filter.";
   return { columns, fix, found: reason || "the shape does not hold", label, ok: false, requires };
