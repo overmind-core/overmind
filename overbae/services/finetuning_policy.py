@@ -347,7 +347,6 @@ def derive_baseten_training_plan(
     gpu_count: int = 1,
     model_id: str | None = None,
     hidden_size: int = 0,
-    use_unsloth: bool = True,
 ) -> BasetenTrainingPlan:
     """Derive the full Baseten training plan from data + catalog context.
 
@@ -357,10 +356,7 @@ def derive_baseten_training_plan(
     job fails pre-submission instead of mid-run on Baseten.
 
     ``hidden_size`` enables the activation token budget (0 = weight-only checks).
-    ``use_unsloth`` is accepted for calibrate-harness compat; stock engine still
-    passes 0 hidden size to opt out of activation budgeting.
     """
-    del use_unsloth  # reserved; budget is gated on hidden_size alone
     hp = dict(hyperparameters or {})
     stats = dict(dataset_stats or {})
     notes: list[str] = []

@@ -40,15 +40,6 @@ def together_suffix(name: str | None, *, fallback: str) -> str:
     return slug[:_TOGETHER_SUFFIX_MAX_LEN]
 
 
-def use_unsloth() -> bool:
-    """Global trainer-engine toggle, independent of FINETUNING_BACKEND.
-
-    Both BasetenRunner and ModalRunner read it to pick the sft_assets engine (stock TRL
-    vs Unsloth); every backend × engine combination is valid.
-    """
-    return bool(getattr(settings, "USE_UNSLOTH", False))
-
-
 def resolve_modal_job_state(
     meta_status: str, *, in_flight: bool, call_ok: bool, has_final: bool = False
 ) -> str:
@@ -979,13 +970,11 @@ class BasetenRunner(BaseFinetuningRunner):
         (float("inf"), "H200", 4),
     ]
 
-    # Shared with ModalRunner — sft_assets/train.py holds the (backend, USE_UNSLOTH)
-    # dispatch both runners plug into.
+    # Shared with ModalRunner — sft_assets/train.py is the entrypoint both runners plug into.
     _ASSETS_DIR = Path(__file__).parent / "sft_assets"
     _ASSET_FILES = (
         "train.py",
         "common.py",
-        "engine_stock.py",
         "engine_unsloth.py",
         "pretok.py",
         "catalog.py",
@@ -1163,14 +1152,9 @@ class BasetenRunner(BaseFinetuningRunner):
             "ASSISTANT_ONLY_LOSS": "1" if dataset_type == "chat" else "0",
             "SEED": str(plan.seed),
         }
-        unsloth = use_unsloth()
-        env["USE_UNSLOTH"] = "true" if unsloth else "false"
-        unsloth_image = ""
-        if unsloth:
-            from overbae.modal.model_registry import get_unsloth_image  # noqa: PLC0415
+        from overbae.modal.model_registry import get_unsloth_image  # noqa: PLC0415
 
-            unsloth_image = get_unsloth_image(str(job.base_model))
-            env["UNSLOTH_IMAGE"] = unsloth_image
+        env["UNSLOTH_IMAGE"] = get_unsloth_image(str(job.base_model))
         # gpt-oss Unsloth LoRA must be QLoRA even when 20B bf16 "fits" H100 —
         # the BF16 load path is numerically broken (see families/gpt_oss.py).
         from modal_shared.modelfam import family_key  # noqa: PLC0415
@@ -1352,7 +1336,7 @@ class BasetenRunner(BaseFinetuningRunner):
                 pkg.mkdir(exist_ok=True)
                 (pkg / "__init__.py").write_text("")
                 shutil.copytree(modelfam_src, pkg / "modelfam")
-            # engine_stock.py's hand-patched {% generation %} chat templates.
+            # Hand-patched {% generation %} chat templates.
             for template_dir in (
                 "llama_templates",
                 "antares_templates",
@@ -1665,7 +1649,7 @@ class ModalRunner(BaseFinetuningRunner):
     Submit spawns a training Function with an ephemeral GPU, poll reads progress off
     the run's Modal Volume directory, and cancel stops the FunctionCall.
 
-    A Modal Function's image is fixed at deploy time, so the USE_UNSLOTH trainer choice
+    A Modal Function's image is fixed at deploy time, so the family's train stack
     selects between prebuilt Functions (``sft_{stack}``) instead of branching
     inside one the way BasetenRunner's run.sh does.
 
@@ -1790,14 +1774,9 @@ class ModalRunner(BaseFinetuningRunner):
             "SEED": str(plan.seed),
             "PACK_ROWS": "1" if plan.packing else "0",
         }
-        unsloth = use_unsloth()
-        env["USE_UNSLOTH"] = "true" if unsloth else "false"
-        unsloth_image = ""
-        if unsloth:
-            from overbae.modal.model_registry import get_unsloth_image  # noqa: PLC0415
+        from overbae.modal.model_registry import get_unsloth_image  # noqa: PLC0415
 
-            unsloth_image = get_unsloth_image(model_id)
-            env["UNSLOTH_IMAGE"] = unsloth_image
+        env["UNSLOTH_IMAGE"] = get_unsloth_image(model_id)
         from modal_shared.modelfam import family_key  # noqa: PLC0415
 
         is_gpt_oss = family_key(str(model_id)) == "gpt_oss"
@@ -1918,12 +1897,10 @@ class ModalRunner(BaseFinetuningRunner):
         upload_fn.remote(run_id=run_id, data_jsonl=data_text, val_jsonl=val_text)
 
         # One Function per frozen train stack — see modal_shared.stacks.TRAIN_FUNCTION_NAMES.
-        from modal_shared.stacks import TRAIN_STOCK, train_function_name  # noqa: PLC0415
+        from modal_shared.stacks import train_function_name  # noqa: PLC0415
         from overbae.modal.model_registry import get_unsloth_image  # noqa: PLC0415
 
-        function_name = train_function_name(
-            get_unsloth_image(job.base_model) if use_unsloth() else TRAIN_STOCK
-        )
+        function_name = train_function_name(get_unsloth_image(job.base_model))
         train_fn = modal.Function.from_name(
             self._app_name, function_name, environment_name=env_name
         )

@@ -40,7 +40,7 @@ How to fix — do **not** branch in `engine_unsloth.py` / `pretok.py`:
 
 1. Save the **live** Hub template as a base jinja under `overbae/services/sft_assets/` (existing dirs: `llama_templates/`, `qwen_templates/`, `gemma_templates/`, …).
 1. Copy it to `*_training.jinja` and wrap only assistant-generated spans in `{% generation %}` / `{% endgeneration %}`. `{% generation %}` is a real Jinja block: it cannot open inside `{% if %}` and close after `{% endif %}`, and `{% if %}`/`{% else %}`/`{% endif %}` must sit wholly inside or wholly outside it. The training file must render **byte-identical** text to the base; markers are invisible in the rendered string. Compile every twin (see `test_every_training_template_compiles`).
-1. Register `(base, training)` in `KNOWN_TEMPLATE_PATCHES` in `overbae/services/sft_assets/training_chat_template.py`. `pretok.py` and `engine_stock.py` both call `patch_known_training_template` — that is the only dispatch table.
+1. Register `(base, training)` in `KNOWN_TEMPLATE_PATCHES` in `overbae/services/sft_assets/training_chat_template.py`. `pretok.py` and `engine_unsloth.py` both call `patch_known_training_template` — that is the only dispatch table.
 1. Add a pair assertion in `tests/test_sft_training_chat_template.py` (or rely on `test_every_patch_pair_exists_and_training_has_markers`).
 1. `sft_assets` is baked into the train image (`add_local_dir`). A pretok/jinja change does nothing until `modal deploy` of `overbae/modal/modal_sft_worker.py`. Re-run the LoRA probe after deploy.
 

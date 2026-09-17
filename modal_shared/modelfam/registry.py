@@ -141,7 +141,7 @@ def needs_trust_remote(model_id: str) -> bool:
 
 def is_llama31_family(model_id: str) -> bool:
     """True for Llama-3.1/3.2/3.3 — the models the tool-track hand-rolled
-    renderer was written for. See engine_stock.py docstring for why."""
+    renderer was written for."""
     mid = (model_id or "").lower()
     fam = resolve(model_id)
     if fam.key != "llama":

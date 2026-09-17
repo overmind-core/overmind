@@ -31,7 +31,6 @@ def test_normalize_train_stack_aliases() -> None:
     assert normalize_train_stack("u2026_8_tf510") == "u2026_8_tf510"
     assert train_function_name("gemma4") == "sft_u2026_8_tf510"
     assert train_function_name("nemotron35") == "sft_u2026_8_tf510"
-    assert train_function_name("stock") == "sft_stock"
 
 
 def test_every_family_train_image_is_a_known_stack() -> None:
@@ -46,9 +45,8 @@ def test_train_function_names_cover_stacks() -> None:
 
 def test_canaries_cover_unsloth_stacks() -> None:
     covered = {c.stack for c in TRAIN_CANARIES}
-    missing = set(TRAIN_STACKS) - {"stock"} - covered
+    missing = set(TRAIN_STACKS) - covered
     assert not missing, f"unsloth stacks with no canary: {missing}"
-    assert all(c.stack != "stock" for c in TRAIN_CANARIES)
 
 
 def test_catalog_unsloth_image_matches_family() -> None:

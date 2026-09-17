@@ -1,12 +1,8 @@
-"""Shared, import-order-safe helpers for both SFT engines.
+"""Shared, import-order-safe helpers for the Unsloth SFT engine.
 
 Deliberately imports nothing from ``trl`` — only ``torch``/``transformers``
 symbols that don't participate in Unsloth's "must import before trl" ordering
-requirement (see engine_unsloth.py). That makes this module safe to import at any
-point in either engine, unlike ``trl`` itself.
-
-Only env vars with identical name/semantics/default across both engines are
-parsed here; anything that differs stays in the engine that needs it.
+requirement (see engine_unsloth.py).
 """
 
 from __future__ import annotations
@@ -45,11 +41,7 @@ def _vram_gb(fn) -> float:
     return round(max(fn(i) for i in range(torch.cuda.device_count())) / _GB, 3)
 
 
-USE_UNSLOTH = os.getenv("USE_UNSLOTH", "false").strip().lower() in ("1", "true", "yes")
-
 MODEL_ID = os.getenv("MODEL_ID", "Qwen/Qwen3-8B")
-
-
 CHECKPOINT_DIR = os.getenv("BT_CHECKPOINT_DIR", "./checkpoints")
 RUN_DIR = os.getenv("BT_RUN_DIR", CHECKPOINT_DIR)
 USE_LORA = os.getenv("TRAINING_TYPE", "Lora") != "Full"
@@ -124,7 +116,7 @@ def rewrite_adapter_base_model(checkpoint_dir: str, model_id: str) -> None:
 
 
 def apply_shared_patches() -> None:
-    """Idempotent monkeypatches needed by either engine.
+    """Idempotent monkeypatches needed by the Unsloth engine.
 
     Every patch guards on the symbol actually being broken first, so this is a
     no-op on transformers versions that don't need it.
@@ -357,7 +349,7 @@ class ProgressCallback(TrainerCallback):
                 "vocab_size": int(getattr(cfg, "vocab_size", 0) or 0),
                 "load_in_4bit": os.getenv("LOAD_IN_4BIT", "0") in ("1", "true", "yes"),
                 "training_type": "Lora" if USE_LORA else "Full",
-                "engine": "unsloth" if USE_UNSLOTH else "stock",
+                "engine": "unsloth",
             },
         )
 

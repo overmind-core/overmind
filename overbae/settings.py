@@ -569,11 +569,6 @@ AWS_SECRET_ACCESS_KEY = os.environ.get("AWS_SECRET_ACCESS_KEY", "")
 
 FINETUNING_BACKEND = os.environ.get("FINETUNING_BACKEND", "modal")
 
-# Trainer engine, an axis independent of FINETUNING_BACKEND: false picks the
-# plain TRL SFTTrainer, true picks Unsloth's FastLanguageModel. All four
-# (backend, engine) combinations are supported.
-USE_UNSLOTH = os.environ.get("USE_UNSLOTH", "true").strip().lower() in ("1", "true", "yes")
-
 # Must be `modal deploy`-ed before FINETUNING_BACKEND=modal can submit jobs.
 MODAL_SFT_APP_NAME = os.environ.get("MODAL_SFT_APP_NAME", "overmind-sft")
 
@@ -598,7 +593,7 @@ if FINETUNING_BACKEND == "modal" and not (
     os.environ.get("MODAL_TOKEN_ID") and os.environ.get("MODAL_TOKEN_SECRET")
 ):
     raise ImproperlyConfigured(
-        "MODAL_TOKEN_ID and MODAL_TOKEN_SECRET must be set when FINETUNING_BACKEND=modal"
+        "MODAL_TOKEN_ID and MODAL_TOKEN_SECRET must be set when FINETUNING_BACKEND=modal, get them from https://modal.com/secrets/"
     )
 
 # The InferenceAPIServer ASGI endpoint, printed by `modal deploy`.
