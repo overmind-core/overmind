@@ -24,6 +24,8 @@ class ClerkAuthentication(BaseAuthentication):
     """
 
     def authenticate(self, request):
+        if not settings.CLERK_API_SECRET_KEY:
+            return None
         auth_header = request.headers.get("Authorization")
         if not auth_header or not auth_header.startswith("Bearer "):
             return None

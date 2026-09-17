@@ -20,6 +20,9 @@ SECRET_KEY = os.environ.get(
 
 DEBUG = os.environ.get("DJANGO_DEBUG", "False") == "True"
 
+# Deployments set their own path so the admin is not at a guessable URL.
+ADMIN_URL_PATH = os.environ.get("DJANGO_ADMIN_PATH", "admin").strip("/") + "/"
+
 ALLOWED_HOSTS = [
     h.strip()
     for h in os.environ.get(
@@ -456,9 +459,8 @@ CURSOR_API_KEY = os.environ.get("CURSOR_API_KEY", "")
 # Feedback-channel incoming webhook; blank disables the notification.
 SLACK_FEEDBACK_WEBHOOK_URL = os.environ.get("SLACK_FEEDBACK_WEBHOOK_URL", "")
 
-CLERK_API_SECRET_KEY = os.environ.get(
-    "CLERK_API_SECRET_KEY", "sk_test_BZ2uPRxyOdLJoKr3YPpAGJhGPkqrVBr4LmMwDeO9yT"
-)
+# Blank disables Clerk sign-in; API keys and guest sessions still authenticate.
+CLERK_API_SECRET_KEY = os.environ.get("CLERK_API_SECRET_KEY", "")
 CLERK_AUTHORIZED_PARTIES = os.environ.get(
     "CLERK_AUTHORIZED_PARTIES", "http://localhost:5173"
 ).split(",")
