@@ -10,6 +10,7 @@ from __future__ import annotations
 import contextlib
 import json
 import math
+import re
 from collections import Counter
 from typing import Any
 
@@ -76,6 +77,23 @@ def eval_input_type(value: Any) -> str:
     return "text"
 
 
+CUT_KEY = "_truncated"
+_CUT_TEXT = re.compile(r"…\[\+\d+ chars\]$")
+
+
+def cut_at_landing(value: Any) -> bool:
+    """Whether landing cut any part of ``value``. A cut transcript still has
+    a valid shape, so only this keeps it out of training."""
+    value = _as_obj(value)
+    if isinstance(value, str):
+        return bool(_CUT_TEXT.search(value)) or f'"{CUT_KEY}": true' in value
+    if isinstance(value, dict):
+        return value.get(CUT_KEY) is True or any(cut_at_landing(v) for v in value.values())
+    if isinstance(value, list):
+        return any(cut_at_landing(v) for v in value)
+    return False
+
+
 def training_line(record: dict[str, Any]) -> dict[str, Any]:
     """The ``{messages, tools?}`` line a record trains as. The train contract
     and the training export both build it here, so neither accepts a row the
@@ -87,6 +105,8 @@ def training_line(record: dict[str, Any]) -> dict[str, Any]:
         raise ValueError("messages is not a list")
     if not any(isinstance(m, dict) and m.get("role") == "assistant" for m in messages):
         raise ValueError("no assistant turn to train on")
+    if cut_at_landing(messages):
+        raise ValueError("a value was cut at landing")
     line: dict[str, Any] = {"messages": messages}
     tools = _as_obj(record.get("tools"))
     if isinstance(tools, list) and tools:
@@ -108,9 +128,12 @@ def _train_check(df: pd.DataFrame) -> dict[str, Any]:
         except ValueError as exc:
             failures.append({"row": index, "reason": str(exc)})
     if failures:
+        reasons = {f["reason"] for f in failures}
         return {
             "ok": False,
-            "reason": f"{len(failures)} rows have no usable messages",
+            "reason": f"{len(failures)} rows: {reasons.pop()}"
+            if len(reasons) == 1
+            else f"{len(failures)} rows have no usable messages",
             "failures": failures[:_FAILURE_SAMPLES],
         }
     result = validate_rows(rows)

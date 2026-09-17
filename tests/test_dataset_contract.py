@@ -87,3 +87,28 @@ def test_a_table_without_text_is_marked_as_not_fixable():
     words = contract.measure(pd.DataFrame([{"prompt": "hi", "completion": "hello"}]))
     assert numbers["train"]["fixable"] is numbers["eval"]["fixable"] is False
     assert "fixable" not in words["train"] and "fixable" not in words["eval"]
+
+
+def test_a_transcript_that_landing_cut_does_not_fit_train():
+    from overbae.services.datasets import land
+
+    huge = [
+        {"role": "user", "content": "x" * (land.MAX_CELL_CHARS + 10)},
+        {
+            "role": "assistant",
+            "content": None,
+            "tool_calls": [
+                {
+                    "id": "c1",
+                    "type": "function",
+                    "function": {"name": "f", "arguments": '{"a": "' + "y" * 400_000 + '"}'},
+                }
+            ],
+        },
+        {"role": "tool", "tool_call_id": "c1", "content": "ok"},
+        {"role": "assistant", "content": "done"},
+    ]
+    row = land.bounded_row({"messages": huge})
+    report = contract.measure(pd.DataFrame([row, {"messages": TURNS}]))["train"]
+    assert report["ok"] is False
+    assert report["failures"] == [{"row": 0, "reason": "a value was cut at landing"}]

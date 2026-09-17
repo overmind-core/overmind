@@ -7,6 +7,7 @@ from dataclasses import replace
 from typing import Any
 
 from celery import shared_task
+from django.db import transaction
 from django.utils import timezone
 
 logger = logging.getLogger(__name__)
@@ -95,14 +96,19 @@ def land(
         if split:
             cut = {"eval_percent": int(split["eval_percent"]), "position": split["position"]}
             train_part, eval_part = read.split(**cut)
-            for target, part, role, sibling in (
-                (targets[0], train_part, "train", targets[1]),
-                (targets[1], eval_part, "eval", targets[0]),
-            ):
-                spec = {**part.spec, "split": {**cut, "role": role, "sibling": str(sibling.id)}}
-                landing.commit(
-                    target, replace(part, spec=spec), user=user, state=Dataset.State.DIAGNOSING
-                )
+            # Both halves land or neither does: a lone half would read as a whole dataset.
+            with transaction.atomic():
+                for target, part, role, sibling in (
+                    (targets[0], train_part, "train", targets[1]),
+                    (targets[1], eval_part, "eval", targets[0]),
+                ):
+                    spec = {**part.spec, "split": {**cut, "role": role, "sibling": str(sibling.id)}}
+                    landing.commit(
+                        target,
+                        replace(part, spec=spec),
+                        user=user,
+                        state=Dataset.State.DIAGNOSING,
+                    )
         else:
             landing.commit(dataset, read, user=user, state=Dataset.State.DIAGNOSING)
     except landing.LandError as exc:

@@ -3,16 +3,29 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Any
 
+import pandas as pd
 from django.utils import timezone
 
 from overbae.models import Cell, Dataset
 from overbae.services.datasets import alignment, contract, store
 
 
-def frame(dataset: Dataset, cell: Cell, path: Path, **fields) -> Cell:
-    df = store.read_frame(path)
-    report = contract.measure(df)
+def frame(
+    dataset: Dataset,
+    cell: Cell,
+    path: Path,
+    *,
+    df: pd.DataFrame | None = None,
+    report: dict[str, Any] | None = None,
+    **fields,
+) -> Cell:
+    """``df`` and ``report`` spare a second read and a second measure when the
+    caller already holds them for ``path``."""
+    if df is None:
+        df = store.read_frame(path)
+    report = report or contract.measure(df)
     manifest = store.read_manifest(path)
     null_rates = {c["name"]: c["null_rate"] for c in store.column_stats(path)}
     capability_report = (

@@ -5,7 +5,7 @@ description: Data Workshop internals — the Dataset and Cell model, derived ver
 
 # Data Workshop
 
-A dataset is a source and a chain of cells. Every frame is Parquet; versions are derived, never stored; one gate freezes what consumers use; the chain is edited only through the dataset's own chat.
+A dataset is a source and a chain of cells. Every frame is Parquet; versions are derived, never stored; one gate freezes what consumers use; every edit goes through `lifecycle.py`, from the chat, REST or MCP.
 
 ## Model
 

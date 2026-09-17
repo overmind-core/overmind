@@ -142,6 +142,10 @@ if isinstance(df, pd.Series):
 if not isinstance(df, pd.DataFrame):
     raise SystemExit(f"df must be a pandas DataFrame, got {type(df).__name__}.")
 df = df.copy()
+if isinstance(df.columns, pd.MultiIndex):
+    raise SystemExit("df has two levels of column names. Flatten them to one name per column.")
+# A named index holds data (set_index, groupby); an unnamed one is only row labels.
+named = [n for n in df.index.names if n is not None]
 # Row identity survives a script that dropped the column but kept the index:
 # same rows in the same order, or a filter that kept the original labels. A
 # fresh RangeIndex after a reshape carries no identity.
@@ -149,8 +153,11 @@ if "source_row" not in df.columns and "source_row" in src.columns:
     fresh = df.index.equals(pd.RangeIndex(len(df)))
     if df.index.isin(src.index).all() and (not fresh or len(df) == len(src)):
         df.insert(0, "source_row", src.loc[df.index, "source_row"].values)
-df = df.reset_index(drop=True)
+df = df.reset_index(drop=not named)
 df.columns = [str(c) for c in df.columns]
+repeated = sorted({c for c in df.columns if list(df.columns).count(c) > 1})
+if repeated:
+    raise SystemExit(f"df has more than one column named {repeated[0]!r}. Rename or drop one.")
 if "source_row" in df.columns:
     df["source_row"] = pd.to_numeric(df["source_row"], errors="coerce").astype("Int64")
 # A NaN nested in a container must become null; json.dumps would write a bare NaN token.

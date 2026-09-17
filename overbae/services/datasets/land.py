@@ -51,7 +51,9 @@ class Landing:
         n = len(self.rows)
         if n < 2:
             raise LandError("Two rows are needed to split.")
-        k = min(max(round(n * eval_percent / 100), 1), n - 1)
+        # Half rounds up in integers, the rule the wizard's preview uses; ``round``
+        # would send a tie to the even count and land one row off the preview.
+        k = min(max((n * eval_percent + 50) // 100, 1), n - 1)
         if position == "head":
             held = set(range(k))
         elif position == "tail":
@@ -100,11 +102,12 @@ def commit(
         best = fields["capability_rank"][0]
         if best["score"] > 0:
             fields["capability_id"] = best["capability_id"]
+    report = contract.measure(df)
     if dataset.intent == Dataset.Intent.PENDING:
-        fields["intent"] = contract.propose_intent(df, contract.measure(df))
+        fields["intent"] = contract.propose_intent(df, report)
     Dataset.objects.filter(pk=dataset.pk).update(**fields, updated_at=timezone.now())
     dataset.refresh_from_db()
-    measure.frame(dataset, source, path, input_fingerprint="", seconds=0.0)
+    measure.frame(dataset, source, path, df=df, report=report, input_fingerprint="", seconds=0.0)
     return dataset
 
 
@@ -380,7 +383,7 @@ def _json_prefix(value: Any, limit: int) -> tuple[str, bool]:
 
 
 def _marker(preview: str) -> dict[str, Any]:
-    return {"_truncated": True, "preview": preview[:_PREVIEW_CHARS]}
+    return {contract.CUT_KEY: True, "preview": preview[:_PREVIEW_CHARS]}
 
 
 def bounded(value: Any, limit: int = MAX_CELL_CHARS, *, depth: int = 0) -> Any:
@@ -411,7 +414,7 @@ def _bounded_tool_call(call: Any, limit: int) -> Any:
         return bounded(call, limit)
     args = fn.get("arguments")
     if isinstance(args, str) and len(args) > limit:
-        clipped = json.dumps({"_truncated": True, "preview": args[:_PREVIEW_CHARS]})
+        clipped = json.dumps({contract.CUT_KEY: True, "preview": args[:_PREVIEW_CHARS]})
         return {**call, "function": {**fn, "arguments": clipped}}
     return call
 

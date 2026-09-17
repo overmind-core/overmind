@@ -268,3 +268,30 @@ def test_diff_marks_added_and_changed_values_and_lists_removed_rows(tmp_path):
     assert [r["source_row"] for r in removed] == [1]
     detail = diff.between(before, after)
     assert detail["changed_examples"][0]["x"] == {"before": "c", "after": "C"}
+
+
+@pytest.mark.parametrize(
+    ("script", "message"),
+    [
+        (
+            "df = pd.concat([df, df[['question']]], axis=1)\n",
+            "more than one column named 'question'",
+        ),
+        (
+            "df.columns = pd.MultiIndex.from_tuples([('a', c) for c in df.columns])\n",
+            "two levels of column names",
+        ),
+    ],
+)
+def test_a_frame_the_store_cannot_name_is_refused_in_words(tmp_path, script, message):
+    result = runner.run(script, _source(tmp_path), library_cache=tmp_path / "none")
+    assert not result.ok and message in result.error
+
+
+def test_a_named_index_is_kept_as_columns(tmp_path):
+    result = runner.run(
+        "df = df.set_index(['tag', 'question'])\n",
+        _source(tmp_path),
+        library_cache=tmp_path / "none",
+    )
+    assert result.ok and {"tag", "question", "answer"} <= set(result.frame.columns)

@@ -90,7 +90,7 @@ def _cell_line(dataset: Dataset, cell: Cell, versions: dict[Any, str]) -> dict[s
         "error": cell.error,
         "script": cell.script[:_SCRIPT_CHARS],
         "intent_report": {
-            k: {"ok": v.get("ok"), "reason": v.get("reason")}
+            k: {key: v[key] for key in ("ok", "reason", "fixable") if key in v}
             for k, v in (cell.intent_report or {}).items()
         },
         "capability_report": cell.capability_report,
@@ -192,7 +192,7 @@ class Tools:
                 str(args.get("sql") or ""), limit=QUERY_ROWS, t=paths.cell_path(dataset.id, cell.id)
             )
         except Exception as exc:  # noqa: BLE001 — DuckDB raises many types; the message is the value
-            return {"error": str(exc)[-600:]}
+            return {"ok": False, "error": str(exc)[-600:]}
         return {
             "version": dataset.versions().get(cell.id),
             "rows": _visible(result["rows"]),
@@ -212,7 +212,7 @@ class Tools:
                 .first()
             )
             if a is None:
-                return {"error": "Nothing before that version."}
+                return {"ok": False, "error": "Nothing before that version."}
         out = diff_svc.between(paths.cell_path(dataset.id, a.id), paths.cell_path(dataset.id, b.id))
         for key in ("changed_examples", "removed_examples"):
             if key in out:
