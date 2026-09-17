@@ -558,6 +558,10 @@ BASETEN_API_KEY = os.environ.get("BASETEN_API_KEY", "")
 BASETEN_PROJECT = os.environ.get("BASETEN_PROJECT", "")
 
 HF_TOKEN = os.environ.get("HF_TOKEN", "")
+if not HF_TOKEN:
+    raise ImproperlyConfigured(
+        "HF_TOKEN must be set, get it from https://huggingface.co/settings/tokens"
+    )
 
 # Durable home for a fine-tune's checkpoint.zip / job_logs.txt / metrics.json.
 # The names match Modal's overmind-inference secret. These static keys go
@@ -567,13 +571,7 @@ AWS_BUCKET_NAME = os.environ.get("AWS_BUCKET_NAME", "")
 AWS_ACCESS_KEY_ID = os.environ.get("AWS_ACCESS_KEY_ID", "")
 AWS_SECRET_ACCESS_KEY = os.environ.get("AWS_SECRET_ACCESS_KEY", "")
 
-# "baseten", "together", or "modal".
 FINETUNING_BACKEND = os.environ.get("FINETUNING_BACKEND", "modal")
-
-# Trainer engine, an axis independent of FINETUNING_BACKEND: false picks the
-# plain TRL SFTTrainer, true picks Unsloth's FastLanguageModel. All four
-# (backend, engine) combinations are supported.
-USE_UNSLOTH = os.environ.get("USE_UNSLOTH", "true").strip().lower() in ("1", "true", "yes")
 
 # Must be `modal deploy`-ed before FINETUNING_BACKEND=modal can submit jobs.
 MODAL_SFT_APP_NAME = os.environ.get("MODAL_SFT_APP_NAME", "overmind-sft")
@@ -592,17 +590,14 @@ if _missing_aws:
         f"{', '.join(_missing_aws)} must be set (fine-tuning checkpoint S3 archive)"
     )
 
-if FINETUNING_BACKEND == "together" and not TOGETHER_API_KEY:
-    raise ImproperlyConfigured("TOGETHER_API_KEY must be set when FINETUNING_BACKEND=together")
-
-if FINETUNING_BACKEND == "baseten" and not BASETEN_API_KEY:
-    raise ImproperlyConfigured("BASETEN_API_KEY must be set when FINETUNING_BACKEND=baseten")
+if FINETUNING_BACKEND != "modal":
+    raise ImproperlyConfigured("FINETUNING_BACKEND must be modal")
 
 if FINETUNING_BACKEND == "modal" and not (
     os.environ.get("MODAL_TOKEN_ID") and os.environ.get("MODAL_TOKEN_SECRET")
 ):
     raise ImproperlyConfigured(
-        "MODAL_TOKEN_ID and MODAL_TOKEN_SECRET must be set when FINETUNING_BACKEND=modal"
+        "MODAL_TOKEN_ID and MODAL_TOKEN_SECRET must be set when FINETUNING_BACKEND=modal, get them from https://modal.com/secrets/"
     )
 
 # The InferenceAPIServer ASGI endpoint, printed by `modal deploy`.
@@ -612,3 +607,5 @@ INFERENCE_API_KEY: str = os.environ.get("INFERENCE_API_KEY", "")
 
 if not INFERENCE_API_URL:
     raise ImproperlyConfigured("INFERENCE_API_URL must be set")
+if not INFERENCE_API_KEY:
+    raise ImproperlyConfigured("INFERENCE_API_KEY must be set")

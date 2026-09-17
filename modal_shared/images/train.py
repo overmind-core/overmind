@@ -9,7 +9,6 @@ import modal
 
 from modal_shared.images import attach_modelfam, attach_sft_assets
 from modal_shared.stacks import (
-    TRAIN_STOCK,
     TRAIN_U2026_7,
     TRAIN_U2026_8_18,
     TRAIN_U2026_8_GPOS,
@@ -113,7 +112,6 @@ _u2026_7 = _finish(
     {
         **_SFT_ENV,
         "TRL_SRC": "/opt/trl_src",
-        "USE_UNSLOTH": "true",
         "UNSLOTH_IMAGE": TRAIN_U2026_7,
     },
 )
@@ -126,7 +124,6 @@ _u2026_8_tf510 = _finish(
     {
         **_SFT_ENV,
         "TRL_SRC": "/opt/trl_src",
-        "USE_UNSLOTH": "true",
         "UNSLOTH_IMAGE": TRAIN_U2026_8_TF510,
     },
 )
@@ -139,7 +136,6 @@ _u2026_8_tf515 = _finish(
     {
         **_SFT_ENV,
         "TRL_SRC": "/opt/trl_src",
-        "USE_UNSLOTH": "true",
         "UNSLOTH_IMAGE": TRAIN_U2026_8_TF515,
     },
 )
@@ -171,7 +167,6 @@ _u2026_8_18 = _finish(
     {
         **_SFT_ENV,
         "TRL_SRC": "/opt/trl_src",
-        "USE_UNSLOTH": "true",
         "UNSLOTH_IMAGE": TRAIN_U2026_8_18,
     },
 )
@@ -203,7 +198,6 @@ _u2026_9_2 = _finish(
     {
         **_SFT_ENV,
         "TRL_SRC": "/opt/trl_src",
-        "USE_UNSLOTH": "true",
         "UNSLOTH_IMAGE": TRAIN_U2026_9_2,
     },
 )
@@ -221,36 +215,11 @@ _u2026_8_gptoss = _finish(
     {
         **_SFT_ENV,
         "TRL_SRC": "/opt/trl_src",
-        "USE_UNSLOTH": "true",
         "UNSLOTH_IMAGE": TRAIN_U2026_8_GPOS,
         # Fused forward binds load_balancing_loss_func by value and crashes on
         # gate_logits=(). Disable compile so stock forward + empty-tuple guard apply.
         "UNSLOTH_COMPILE_DISABLE": "1",
     },
-)
-
-_stock = _finish(
-    _mamba_kernels(
-        _base_cuda.pip_install(
-            "torch==2.7.0",
-            index_url="https://download.pytorch.org/whl/cu128",
-        )
-        .pip_install(
-            "trl==1.10.0",
-            "peft>=0.17.0",
-            "transformers>=5.2.0",
-            "accelerate",
-            "datasets>=3.0.0",
-            "huggingface_hub>=0.27.0",
-            "bitsandbytes>=0.44.0",
-            "qwen-vl-utils",
-            "sentencepiece",
-            "protobuf",
-        )
-        .pip_install("wheel", "setuptools"),
-        "torch==2.7.0",
-    ),
-    {**_SFT_ENV, "USE_UNSLOTH": "false", "UNSLOTH_IMAGE": TRAIN_STOCK},
 )
 
 # Every image in this module needs modal_shared attached, even ones whose
@@ -266,5 +235,4 @@ TRAIN_IMAGES: dict[str, modal.Image] = {
     TRAIN_U2026_8_GPOS: _u2026_8_gptoss,
     TRAIN_U2026_8_18: _u2026_8_18,
     TRAIN_U2026_9_2: _u2026_9_2,
-    TRAIN_STOCK: _stock,
 }

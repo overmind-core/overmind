@@ -1,4 +1,4 @@
-"""Unsloth SFT engine (USE_UNSLOTH=true) — FastLanguageModel, not stock TRL.
+"""Unsloth SFT engine — FastLanguageModel.
 
 Labels come from pretok.py's assistant-only masking rather than TRL's
 `assistant_only_loss`, so every family goes through one conversational path with
@@ -519,7 +519,7 @@ def main() -> None:
         padding_free=PACK_ROWS,
         report_to=[],
         seed=SEED,
-        save_strategy="no",  # final-only, matching engine_stock.py
+        save_strategy="no",  # final-only
         bf16=torch.cuda.is_available() and torch.cuda.is_bf16_supported(),
         fp16=torch.cuda.is_available() and not torch.cuda.is_bf16_supported(),
         eos_token=_inner_tok.eos_token,
