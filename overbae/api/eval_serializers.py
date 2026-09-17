@@ -63,13 +63,8 @@ def _guard_closed_form_gold_coverage(*, eval_set: EvalSet, dataset) -> None:
         return
     if _eval_set_has_gold_comparator(eval_set):
         return
-    capability = getattr(dataset, "capability", None)
     ctx = resolve_grounding(dataset)
-    card = ctx.codebase_card or (
-        (getattr(capability, "improvement_metadata", None) or {}).get("capability_card")
-        if capability is not None
-        else None
-    )
+    card = ctx.codebase_card
     checklists = [
         list(member.evaluator.checklist or [])
         for member in eval_set.members.filter(enabled=True).select_related("evaluator")

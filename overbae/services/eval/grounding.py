@@ -1,5 +1,5 @@
 """Eval grounding resolver. Every hop is best-effort; a missing one never
-fails the resolve, ``context_health`` records what resolved."""
+fails the resolve."""
 
 from __future__ import annotations
 
@@ -8,8 +8,6 @@ import logging
 from dataclasses import dataclass, field
 from typing import Any
 
-from overbae.services.codebase.artifacts import load_codebase_bundle
-from overbae.services.dataset_context.artifacts import load_dataset_bundle
 from overbae.services.tool_names import canonical_tool_name
 
 logger = logging.getLogger(__name__)
@@ -20,15 +18,12 @@ class EvalGroundingContext:
     dataset: Any = None
     # Set only on the capability-first path; the dataset path uses ``dataset.capability``.
     capability: Any = None
-    dataset_bundle: dict[str, Any] | None = None
     dataset_card: dict[str, Any] | None = None
     data_version: str = ""
-    codebase_bundle: dict[str, Any] | None = None
     codebase_card: dict[str, Any] | None = None
     codebase_commit: str = ""
     report: dict[str, Any] | None = None
     evaluator_inventory: list[Any] = field(default_factory=list)
-    context_health: dict[str, bool] = field(default_factory=dict)
     # Empty means prompt-agnostic authoring.
     prompt_text: str = ""
     prompt_id: str = ""
@@ -38,35 +33,15 @@ class EvalGroundingContext:
 def resolve_grounding(dataset, *, prompt=None) -> EvalGroundingContext:
     """*prompt* is a ``Prompt``, its id, or ``None``; unresolvable leaves the
     context prompt-agnostic."""
-    bundle = _resolve_dataset_bundle(dataset)
-    card = (bundle or {}).get("card") or None
-    codebase_bundle = _resolve_codebase_bundle(dataset)
-    codebase_card = (codebase_bundle or {}).get("card") or None
-    report = _resolve_latest_report(dataset)
     prompt_text, prompt_id, prompt_label = _resolve_prompt(prompt)
-
-    ctx = EvalGroundingContext(
+    return EvalGroundingContext(
         dataset=dataset,
-        dataset_bundle=bundle,
-        dataset_card=card,
-        data_version=str((bundle or {}).get("data_version") or ""),
-        codebase_bundle=codebase_bundle,
-        codebase_card=codebase_card,
-        codebase_commit=_commit_of(codebase_bundle),
-        report=report,
+        codebase_card=_capability_card(getattr(dataset, "capability", None)),
         evaluator_inventory=_resolve_evaluator_inventory(dataset),
         prompt_text=prompt_text,
         prompt_id=prompt_id,
         prompt_label=prompt_label,
     )
-    ctx.context_health = {
-        "dataset_card": bool(card),
-        "codebase_bundle": bool(codebase_card),
-        "report": bool(report),
-        "dataset_card_fallback": bool((card or {}).get("_fallback")),
-        "codebase_card_fallback": bool((codebase_card or {}).get("_fallback")),
-    }
-    return ctx
 
 
 def example_dataset(capability) -> Any:
@@ -91,71 +66,19 @@ def attach_example_dataset(ctx: EvalGroundingContext) -> EvalGroundingContext:
 
 
 def resolve_grounding_for_capability(capability) -> EvalGroundingContext:
-    """Falls back to the card cached in ``improvement_metadata``: onboarding
-    writes the bundle only AFTER capabilities are created."""
     metadata = getattr(capability, "improvement_metadata", None) or {}
-    codebase_bundle = _resolve_codebase_bundle_for_capability(capability)
-    codebase_card = (codebase_bundle or {}).get("card") or metadata.get("capability_card") or None
-    ctx = EvalGroundingContext(
+    return EvalGroundingContext(
         dataset=None,
         capability=capability,
-        codebase_bundle=codebase_bundle,
-        codebase_card=codebase_card,
-        codebase_commit=_commit_of(codebase_bundle) or str(metadata.get("github_head_sha") or ""),
+        codebase_card=_capability_card(capability),
         evaluator_inventory=_capability_evaluator_inventory(capability),
         prompt_text=str(metadata.get("system_prompt") or ""),
     )
-    ctx.context_health = {
-        "dataset_card": False,
-        "codebase_bundle": bool(codebase_card),
-        "report": False,
-        "dataset_card_fallback": False,
-        "codebase_card_fallback": bool((codebase_card or {}).get("_fallback")),
-    }
-    return ctx
 
 
-def _resolve_dataset_bundle(dataset) -> dict[str, Any] | None:
-    try:
-        return load_dataset_bundle(str(dataset.id))
-    except Exception as exc:  # noqa: BLE001 — grounding is additive, never fatal
-        logger.warning("grounding: dataset bundle load failed for %s: %s", dataset.id, exc)
-        return None
-
-
-def _resolve_codebase_bundle(dataset) -> dict[str, Any] | None:
-    return _resolve_codebase_bundle_for_capability(getattr(dataset, "capability", None))
-
-
-def _resolve_codebase_bundle_for_capability(capability) -> dict[str, Any] | None:
-    if capability is None:
-        return None
-    metadata = getattr(capability, "improvement_metadata", None)
-    if not isinstance(metadata, dict):
-        return None
-    repo_id = metadata.get("github_repo_id")
-    if not repo_id:
-        return None
-    try:
-        bundle = load_codebase_bundle(
-            str(repo_id), capability_slug=getattr(capability, "slug", None)
-        )
-    except Exception as exc:  # noqa: BLE001 — grounding is additive, never fatal
-        logger.warning("grounding: codebase bundle load failed for %s: %s", repo_id, exc)
-        return None
-    if not bundle or not bundle.get("card"):
-        return None
-    return bundle
-
-
-def _commit_of(codebase_bundle: dict[str, Any] | None) -> str:
-    manifest = (codebase_bundle or {}).get("manifest") or {}
-    return str(manifest.get("head_sha") or "")
-
-
-def _resolve_latest_report(dataset) -> dict[str, Any] | None:
-    """The workshop analysis report is retired; the ladder runs without that hop."""
-    return None
+def _capability_card(capability) -> dict[str, Any] | None:
+    card = (getattr(capability, "improvement_metadata", None) or {}).get("capability_card")
+    return card if isinstance(card, dict) and card else None
 
 
 def _resolve_evaluator_inventory(dataset) -> list[Any]:

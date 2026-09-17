@@ -1,8 +1,6 @@
 from __future__ import annotations
 
 import logging
-import re
-from typing import Any
 
 from celery import shared_task
 
@@ -52,56 +50,3 @@ def refresh_dataset_context(self, dataset_id: str) -> dict:  # noqa: ANN001
                 refresh_error=f"Context refresh failed: {exc}"[:1000]
             )
             return {"status": "failed", "dataset_id": dataset_id, "error": str(exc)}
-
-
-def _row_texts(rows: list[dict[str, Any]], manifest: dict[str, Any] | None) -> list[str]:
-    from overbae.services.datasets.text import row_text
-
-    texts: list[str] = []
-    for r in rows:
-        if not isinstance(r, dict):
-            continue
-        try:
-            texts.append(row_text(r))
-        except Exception:  # noqa: BLE001 — one bad row must not sink the pass
-            continue
-    return texts
-
-
-def apply_pattern_baselines(
-    card: dict[str, Any],
-    rows: list[dict[str, Any]],
-    manifest: dict[str, Any] | None = None,
-) -> dict[str, Any]:
-    """Deterministic (no LLM) pass recording ``baseline_match_rate`` + ``matched_rows`` per
-    ``detection_pattern``. Invalid patterns and an empty row set record nothing. Mutates ``card``."""
-    failure_modes = [fm for fm in (card.get("failure_modes") or []) if isinstance(fm, dict)]
-    gate_signals = [
-        qs
-        for qs in (card.get("quality_signals") or [])
-        if isinstance(qs, dict) and qs.get("severity") == "gate"
-    ]
-    entries = [
-        e for e in failure_modes + gate_signals if str(e.get("detection_pattern") or "").strip()
-    ]
-    if not entries:
-        return card
-
-    texts = _row_texts(rows, manifest)
-    total = len(texts)
-    if not total:
-        return card
-
-    for entry in entries:
-        pattern = str(entry.get("detection_pattern") or "").strip()
-        try:
-            rx = re.compile(pattern)
-        except re.error as exc:
-            logger.warning(
-                "dataset_context: skipping invalid detection_pattern %r: %s", pattern, exc
-            )
-            continue
-        matched = sum(1 for t in texts if rx.search(t))
-        entry["matched_rows"] = matched
-        entry["baseline_match_rate"] = round(matched / total, 4)
-    return card

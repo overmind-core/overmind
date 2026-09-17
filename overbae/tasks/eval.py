@@ -1808,9 +1808,7 @@ def _measurement_signal(run) -> dict[str, Any]:
     capability = getattr(dataset, "capability", None) if dataset is not None else None
     if capability is not None and dataset is not None:
         ds_ctx = resolve_grounding(dataset)
-        card = ds_ctx.codebase_card or (capability.improvement_metadata or {}).get(
-            "capability_card"
-        )
+        card = ds_ctx.codebase_card
         checklists = [
             list((re.snapshot or {}).get("checklist") or [])
             for re in run.run_evaluators.filter(enabled=True)
