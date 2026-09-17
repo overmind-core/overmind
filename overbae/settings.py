@@ -567,7 +567,6 @@ AWS_BUCKET_NAME = os.environ.get("AWS_BUCKET_NAME", "")
 AWS_ACCESS_KEY_ID = os.environ.get("AWS_ACCESS_KEY_ID", "")
 AWS_SECRET_ACCESS_KEY = os.environ.get("AWS_SECRET_ACCESS_KEY", "")
 
-# "baseten", "together", or "modal".
 FINETUNING_BACKEND = os.environ.get("FINETUNING_BACKEND", "modal")
 
 # Trainer engine, an axis independent of FINETUNING_BACKEND: false picks the
@@ -592,11 +591,8 @@ if _missing_aws:
         f"{', '.join(_missing_aws)} must be set (fine-tuning checkpoint S3 archive)"
     )
 
-if FINETUNING_BACKEND == "together" and not TOGETHER_API_KEY:
-    raise ImproperlyConfigured("TOGETHER_API_KEY must be set when FINETUNING_BACKEND=together")
-
-if FINETUNING_BACKEND == "baseten" and not BASETEN_API_KEY:
-    raise ImproperlyConfigured("BASETEN_API_KEY must be set when FINETUNING_BACKEND=baseten")
+if FINETUNING_BACKEND != "modal":
+    raise ImproperlyConfigured("FINETUNING_BACKEND must be modal")
 
 if FINETUNING_BACKEND == "modal" and not (
     os.environ.get("MODAL_TOKEN_ID") and os.environ.get("MODAL_TOKEN_SECRET")
@@ -612,3 +608,5 @@ INFERENCE_API_KEY: str = os.environ.get("INFERENCE_API_KEY", "")
 
 if not INFERENCE_API_URL:
     raise ImproperlyConfigured("INFERENCE_API_URL must be set")
+if not INFERENCE_API_KEY:
+    raise ImproperlyConfigured("INFERENCE_API_KEY must be set")
