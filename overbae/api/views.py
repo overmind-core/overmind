@@ -281,6 +281,7 @@ class ProjectInviteViewSet(
         return super().list(request, *args, **kwargs)
 
     def create(self, request, *args, **kwargs):
+        from overbae.auth import clerk_enabled
         from overbae.services.plan_limits import require_seat_for_invite
         from overbae.services.project_invites import create_clerk_invitation
 
@@ -302,11 +303,13 @@ class ProjectInviteViewSet(
             return Response(ProjectInviteSerializer(existing).data, status=status.HTTP_201_CREATED)
 
         require_seat_for_invite(request.user, project)
-        try:
-            clerk_invitation_id = create_clerk_invitation(email)
-        except Exception as exc:
-            logger.exception("Clerk invitation create failed for %s", email)
-            raise APIException("Failed to send the invitation email. Try again.") from exc
+        clerk_invitation_id = ""
+        if clerk_enabled():
+            try:
+                clerk_invitation_id = create_clerk_invitation(email)
+            except Exception as exc:
+                logger.exception("Clerk invitation create failed for %s", email)
+                raise APIException("Failed to send the invitation email. Try again.") from exc
         invite = ProjectInvite.objects.create(
             project=project,
             email=email,

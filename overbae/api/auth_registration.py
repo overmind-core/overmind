@@ -1,41 +1,37 @@
+import uuid
+
 from django.db import transaction
 from drf_spectacular.utils import OpenApiResponse, extend_schema, extend_schema_field
 from rest_framework import serializers, status
+from rest_framework.exceptions import APIException, PermissionDenied
 from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework_simplejwt.tokens import RefreshToken
 
 from overbae.api.serializers import UserOnboardingSerializer
-from overbae.models import Subscription, User, UserOnboarding
+from overbae.auth import clerk_enabled
+from overbae.models import SignOnMethod, Subscription, User, UserOnboarding
 
 
-class RegisterSerializer(serializers.Serializer):
+class ClerkRequired(PermissionDenied):
+    default_detail = "Local sign-in is only available when Clerk is disabled."
+    default_code = "clerk_required"
+
+
+class InvalidCredentials(APIException):
+    # Not AuthenticationFailed: with authentication_classes=[] DRF rewrites that to 403.
+    status_code = status.HTTP_401_UNAUTHORIZED
+    default_detail = "Invalid email or password."
+    default_code = "authentication_failed"
+
+
+class LocalSessionSerializer(serializers.Serializer):
     email = serializers.EmailField()
     password = serializers.CharField(write_only=True, min_length=8, max_length=128)
-    password_confirm = serializers.CharField(write_only=True, min_length=8, max_length=128)
 
     def validate_email(self, value):
-        if User.objects.filter(email__iexact=value.strip()).exists():
-            raise serializers.ValidationError("An account with this email already exists.")
         return value.strip().lower()
-
-    def validate(self, attrs):
-        if attrs["password"] != attrs["password_confirm"]:
-            raise serializers.ValidationError({"password_confirm": "Passwords do not match."})
-        return attrs
-
-    def create(self, validated_data):
-        validated_data.pop("password_confirm", None)
-        password = validated_data.pop("password")
-        with transaction.atomic():
-            user = User.objects.create_user(
-                email=validated_data["email"],
-                password=password,
-                email_verified=True,
-                is_active=True,
-            )
-            return user
 
 
 class UserMeSerializer(serializers.ModelSerializer):
@@ -108,31 +104,78 @@ class AuthTokensResponseSerializer(serializers.Serializer):
     user = UserMeSerializer()
 
 
-@extend_schema(
-    summary="Register",
-    description="Create an account with email and password.",
-    request=RegisterSerializer,
-    responses={
-        201: OpenApiResponse(
-            response=AuthTokensResponseSerializer, description="JWT pair and user profile"
+def _tokens_for(user: User) -> dict:
+    refresh = RefreshToken.for_user(user)
+    return {
+        "access": str(refresh.access_token),
+        "refresh": str(refresh),
+        "user": UserMeSerializer(user).data,
+    }
+
+
+def local_session(*, email: str, password: str) -> tuple[User, bool]:
+    """Sign in an existing password account, or create one on first use.
+
+    Returns ``(user, created)``. Refuses when Clerk is configured so the hosted
+    product cannot be bypassed through this path.
+    """
+    if clerk_enabled():
+        raise ClerkRequired()
+
+    # Lazy import: overbae.models is not ready when some callers load this module.
+    from overbae.services.project_invites import claim_pending_invites
+
+    user = User.objects.filter(email__iexact=email).first()
+    if user is not None:
+        if user.is_guest or not user.is_active or not user.has_usable_password():
+            raise InvalidCredentials()
+        if not user.check_password(password):
+            raise InvalidCredentials()
+        return user, False
+
+    with transaction.atomic():
+        user = User.objects.create_user(
+            email=email,
+            password=password,
+            email_verified=True,
+            is_active=True,
+            sign_on_method=SignOnMethod.PASSWORD,
+            clerk_user_id=f"local_{uuid.uuid4().hex}",
         )
+    claim_pending_invites(user)
+    return user, True
+
+
+@extend_schema(
+    summary="Local sign-in",
+    description=(
+        "Email and password session for self-hosted deployments without Clerk. "
+        "Creates the account on first use; no email verification."
+    ),
+    request=LocalSessionSerializer,
+    responses={
+        200: OpenApiResponse(
+            response=AuthTokensResponseSerializer, description="JWT pair and user profile"
+        ),
+        201: OpenApiResponse(
+            response=AuthTokensResponseSerializer, description="Account created and signed in"
+        ),
     },
 )
-class RegisterView(APIView):
+class LocalSessionView(APIView):
+    authentication_classes: list = []
     permission_classes = [AllowAny]
 
     def post(self, request):
-        serializer = RegisterSerializer(data=request.data)
+        serializer = LocalSessionSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
-        user = serializer.save()
-        refresh = RefreshToken.for_user(user)
+        user, created = local_session(
+            email=serializer.validated_data["email"],
+            password=serializer.validated_data["password"],
+        )
         return Response(
-            {
-                "access": str(refresh.access_token),
-                "refresh": str(refresh),
-                "user": UserMeSerializer(user).data,
-            },
-            status=status.HTTP_201_CREATED,
+            _tokens_for(user),
+            status=status.HTTP_201_CREATED if created else status.HTTP_200_OK,
         )
 
 

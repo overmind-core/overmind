@@ -12,6 +12,10 @@ logger = logging.getLogger(__name__)
 User = get_user_model()
 
 
+def clerk_enabled() -> bool:
+    return bool((getattr(settings, "CLERK_API_SECRET_KEY", "") or "").strip())
+
+
 class AuthServiceUnavailable(APIException):
     status_code = 503
     default_detail = "Sign-in service is temporarily unavailable. Try again shortly."
@@ -24,7 +28,7 @@ class ClerkAuthentication(BaseAuthentication):
     """
 
     def authenticate(self, request):
-        if not settings.CLERK_API_SECRET_KEY:
+        if not clerk_enabled():
             return None
         auth_header = request.headers.get("Authorization")
         if not auth_header or not auth_header.startswith("Bearer "):

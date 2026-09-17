@@ -150,13 +150,33 @@ function readIsSignedIn(): boolean {
 function SelfHostedAuthProvider({ children }: { children: React.ReactNode }) {
   const [isSignedIn, setIsSignedIn] = useState(readIsSignedIn);
   const [isGuest, setIsGuest] = useState(hasGuestSession);
+  const [user, setUser] = useState<AuthUser | null>(null);
 
   const refreshAuth = useCallback(() => {
-    setIsSignedIn(readIsSignedIn());
+    const signedIn = readIsSignedIn();
+    setIsSignedIn(signedIn);
     setIsGuest(hasGuestSession());
+    if (!signedIn) {
+      setUser(null);
+      return;
+    }
+    void apiClient.auth
+      .authMeRetrieve()
+      .then((me) => {
+        setUser({
+          email: me.email,
+          id: String(me.id),
+          name: me.email,
+          picture: null,
+        });
+      })
+      .catch(() => {
+        setUser(null);
+      });
   }, []);
 
   useEffect(() => {
+    refreshAuth();
     const onStorage = () => refreshAuth();
     window.addEventListener("storage", onStorage);
     return () => window.removeEventListener("storage", onStorage);
@@ -168,6 +188,7 @@ function SelfHostedAuthProvider({ children }: { children: React.ReactNode }) {
     clearTokens();
     setIsSignedIn(false);
     setIsGuest(false);
+    setUser(null);
   }, []);
 
   const beginGuestSession = useCallback((access: string, refresh: string, projectId: string) => {
@@ -188,7 +209,7 @@ function SelfHostedAuthProvider({ children }: { children: React.ReactNode }) {
         refreshAuth,
         requestUpgrade: emitGuestUpgrade,
         signOut: handleSignOut,
-        user: null,
+        user,
       }}
     >
       {children}

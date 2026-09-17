@@ -1,19 +1,37 @@
 import { useState } from "react";
 
-import { useClerk, useUser } from "@clerk/clerk-react";
+import { useClerk } from "@clerk/clerk-react";
 
 import { Icon } from "@/components/ui/icons";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { config } from "@/config";
+import { useAuthContext } from "@/contexts/auth-context";
+
+function ClerkManageAccountButton({ onDone }: { onDone: () => void }) {
+  const clerk = useClerk();
+  return (
+    <button
+      className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm text-foreground transition-colors hover:bg-accent focus-visible:bg-accent focus-visible:outline-none"
+      onClick={() => {
+        onDone();
+        void clerk.openUserProfile();
+      }}
+      type="button"
+    >
+      <Icon.user className="size-4 shrink-0 text-muted-foreground" />
+      Manage account
+    </button>
+  );
+}
 
 export function AccountMenu() {
-  const { user } = useUser();
-  const clerk = useClerk();
+  const { user, signOut } = useAuthContext();
   const [open, setOpen] = useState(false);
 
   if (!user) return null;
 
-  const email = user.primaryEmailAddress?.emailAddress ?? "";
-  const name = user.fullName || user.username || email || "Account";
+  const email = user.email;
+  const name = user.name || email || "Account";
 
   return (
     <Popover onOpenChange={setOpen} open={open}>
@@ -23,7 +41,7 @@ export function AccountMenu() {
           className="flex h-10 w-full min-w-0 items-center gap-2 rounded-md px-1 text-left text-sm text-sidebar-foreground outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring/60 group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:gap-0 group-data-[collapsible=icon]:px-0"
           type="button"
         >
-          {user.imageUrl ? (
+          {user.picture ? (
             // The collapsed rail can pinch the row below the avatar's width:
             // aspect-square + object-cover clips instead of distorting.
             <img
@@ -31,7 +49,7 @@ export function AccountMenu() {
               className="aspect-square size-6 shrink-0 rounded-md object-cover"
               height={24}
               referrerPolicy="no-referrer"
-              src={user.imageUrl}
+              src={user.picture}
               width={24}
             />
           ) : (
@@ -50,22 +68,14 @@ export function AccountMenu() {
           ) : null}
         </div>
         <div className="p-1">
+          {config.clerkReady ? <ClerkManageAccountButton onDone={() => setOpen(false)} /> : null}
           <button
             className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm text-foreground transition-colors hover:bg-accent focus-visible:bg-accent focus-visible:outline-none"
             onClick={() => {
               setOpen(false);
-              void clerk.openUserProfile();
-            }}
-            type="button"
-          >
-            <Icon.user className="size-4 shrink-0 text-muted-foreground" />
-            Manage account
-          </button>
-          <button
-            className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm text-foreground transition-colors hover:bg-accent focus-visible:bg-accent focus-visible:outline-none"
-            onClick={() => {
-              setOpen(false);
-              void clerk.signOut({ redirectUrl: "/login" });
+              void signOut().then(() => {
+                window.location.href = "/login";
+              });
             }}
             type="button"
           >

@@ -22,11 +22,11 @@ import type {
   GuestClaimRequest,
   GuestClaimResult,
   GuestSession,
+  LocalSessionRequest,
   PaginatedAPITokenMetadataList,
   PatchedUserOnboardingRequest,
   PublicTokenRefresh,
   PublicTokenRefreshRequest,
-  RegisterRequest,
   TokenObtainPair,
   TokenObtainPairRequest,
   UserMe,
@@ -47,6 +47,8 @@ import {
     GuestClaimResultToJSON,
     GuestSessionFromJSON,
     GuestSessionToJSON,
+    LocalSessionRequestFromJSON,
+    LocalSessionRequestToJSON,
     PaginatedAPITokenMetadataListFromJSON,
     PaginatedAPITokenMetadataListToJSON,
     PatchedUserOnboardingRequestFromJSON,
@@ -55,8 +57,6 @@ import {
     PublicTokenRefreshToJSON,
     PublicTokenRefreshRequestFromJSON,
     PublicTokenRefreshRequestToJSON,
-    RegisterRequestFromJSON,
-    RegisterRequestToJSON,
     TokenObtainPairFromJSON,
     TokenObtainPairToJSON,
     TokenObtainPairRequestFromJSON,
@@ -86,12 +86,12 @@ export interface AuthGuestClaimCreateRequest {
     guestClaimRequest: GuestClaimRequest;
 }
 
-export interface AuthOnboardingPartialUpdateRequest {
-    patchedUserOnboardingRequest?: PatchedUserOnboardingRequest;
+export interface AuthLocalCreateRequest {
+    localSessionRequest: LocalSessionRequest;
 }
 
-export interface AuthRegisterCreateRequest {
-    registerRequest: RegisterRequest;
+export interface AuthOnboardingPartialUpdateRequest {
+    patchedUserOnboardingRequest?: PatchedUserOnboardingRequest;
 }
 
 export interface AuthTokenCreateRequest {
@@ -438,6 +438,59 @@ export class AuthApi extends runtime.BaseAPI {
     }
 
     /**
+     * Email and password session for self-hosted deployments without Clerk. Creates the account on first use; no email verification.
+     * Local sign-in
+     */
+    async authLocalCreateRaw(requestParameters: AuthLocalCreateRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<AuthTokensResponse>> {
+        if (requestParameters['localSessionRequest'] == null) {
+            throw new runtime.RequiredError(
+                'localSessionRequest',
+                'Required parameter "localSessionRequest" was null or undefined when calling authLocalCreate().'
+            );
+        }
+
+        const queryParameters: any = {};
+
+        const headerParameters: runtime.HTTPHeaders = {};
+
+        headerParameters['Content-Type'] = 'application/json';
+
+        if (this.configuration && this.configuration.apiKey) {
+            headerParameters["X-Api-Key"] = await this.configuration.apiKey("X-Api-Key"); // ApiKeyAuth authentication
+        }
+
+        if (this.configuration && this.configuration.accessToken) {
+            const token = this.configuration.accessToken;
+            const tokenString = await token("BearerAuth", []);
+
+            if (tokenString) {
+                headerParameters["Authorization"] = `Bearer ${tokenString}`;
+            }
+        }
+
+        let urlPath = `/api/auth/local/`;
+
+        const response = await this.request({
+            path: urlPath,
+            method: 'POST',
+            headers: headerParameters,
+            query: queryParameters,
+            body: LocalSessionRequestToJSON(requestParameters['localSessionRequest']),
+        }, initOverrides);
+
+        return new runtime.JSONApiResponse(response, (jsonValue) => AuthTokensResponseFromJSON(jsonValue));
+    }
+
+    /**
+     * Email and password session for self-hosted deployments without Clerk. Creates the account on first use; no email verification.
+     * Local sign-in
+     */
+    async authLocalCreate(requestParameters: AuthLocalCreateRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<AuthTokensResponse> {
+        const response = await this.authLocalCreateRaw(requestParameters, initOverrides);
+        return await response.value();
+    }
+
+    /**
      * Returns the authenticated user\'s profile.
      * Current user profile
      */
@@ -590,67 +643,6 @@ export class AuthApi extends runtime.BaseAPI {
      */
     async authOnboardingRetrieve(initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<UserOnboarding> {
         const response = await this.authOnboardingRetrieveRaw(initOverrides);
-        return await response.value();
-    }
-
-    /**
-     * Create an account with email and password.
-     * Register
-     */
-    async authRegisterCreateRaw(requestParameters: AuthRegisterCreateRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<AuthTokensResponse>> {
-        if (requestParameters['registerRequest'] == null) {
-            throw new runtime.RequiredError(
-                'registerRequest',
-                'Required parameter "registerRequest" was null or undefined when calling authRegisterCreate().'
-            );
-        }
-
-        const queryParameters: any = {};
-
-        const headerParameters: runtime.HTTPHeaders = {};
-
-        headerParameters['Content-Type'] = 'application/json';
-
-        if (this.configuration && this.configuration.accessToken) {
-            const token = this.configuration.accessToken;
-            const tokenString = await token("ClerkBearerAuth", []);
-
-            if (tokenString) {
-                headerParameters["Authorization"] = `Bearer ${tokenString}`;
-            }
-        }
-        if (this.configuration && this.configuration.apiKey) {
-            headerParameters["X-Api-Key"] = await this.configuration.apiKey("X-Api-Key"); // ApiKeyAuth authentication
-        }
-
-        if (this.configuration && this.configuration.accessToken) {
-            const token = this.configuration.accessToken;
-            const tokenString = await token("BearerAuth", []);
-
-            if (tokenString) {
-                headerParameters["Authorization"] = `Bearer ${tokenString}`;
-            }
-        }
-
-        let urlPath = `/api/auth/register/`;
-
-        const response = await this.request({
-            path: urlPath,
-            method: 'POST',
-            headers: headerParameters,
-            query: queryParameters,
-            body: RegisterRequestToJSON(requestParameters['registerRequest']),
-        }, initOverrides);
-
-        return new runtime.JSONApiResponse(response, (jsonValue) => AuthTokensResponseFromJSON(jsonValue));
-    }
-
-    /**
-     * Create an account with email and password.
-     * Register
-     */
-    async authRegisterCreate(requestParameters: AuthRegisterCreateRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<AuthTokensResponse> {
-        const response = await this.authRegisterCreateRaw(requestParameters, initOverrides);
         return await response.value();
     }
 

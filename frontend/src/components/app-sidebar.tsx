@@ -1,6 +1,5 @@
 import { type ComponentType, type CSSProperties, type SVGProps, useEffect, useState } from "react";
 
-import { useUser } from "@clerk/clerk-react";
 import { Link, useRouterState, useSearch } from "@tanstack/react-router";
 
 import { identifyUser, trackEvent } from "@/analytics";
@@ -348,8 +347,7 @@ export function AppSidebar({ collapsible = "icon", onSearchOpen }: AppSidebarPro
   const { state, isMobile } = useSidebar();
   // The 3 rem rail has no room for dropdown groups, so it flattens to leaves.
   const iconOnly = state === "collapsed" && !isMobile;
-  const { isSignedIn, isGuest, requestUpgrade } = useAuthContext();
-  const { user } = useUser();
+  const { isSignedIn, isGuest, requestUpgrade, user } = useAuthContext();
   const navJobBadges = useNavJobBadges();
   const { data: me } = useOnboardingStatus(isSignedIn);
   const planLabel = me?.plan === "pro" ? "Pro" : "Free";
