@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from asgiref.sync import sync_to_async
+from django.db import close_old_connections, connections
 from rest_framework import exceptions
 from starlette.datastructures import Headers
 from starlette.responses import JSONResponse
@@ -68,7 +69,18 @@ def _ip_allowed(token: APIToken, client_ip: str | None) -> bool:
     return False
 
 
+def recycle_connections() -> None:
+    close_old_connections()
+    for conn in connections.all(initialized_only=True):
+        raw = conn.connection
+        # psycopg still sits on the wrapper after RDS closes the TCP session.
+        if raw is not None and getattr(raw, "closed", 0):
+            conn.close()
+
+
 def _authenticate_sync(scope: Scope) -> MCPContext:
+    # Starlette MCP never runs Django's request_started/finished.
+    recycle_connections()
     try:
         result = APITokenBackend().authenticate(_request_for_scope(scope))
     except exceptions.AuthenticationFailed as exc:
@@ -120,6 +132,7 @@ def _authenticate_sync(scope: Scope) -> MCPContext:
 
 
 authenticate_scope = sync_to_async(_authenticate_sync, thread_sensitive=True)
+_recycle_connections = sync_to_async(recycle_connections, thread_sensitive=True)
 
 
 class MCPAuthMiddleware:
@@ -132,16 +145,18 @@ class MCPAuthMiddleware:
             return
 
         try:
-            context = await authenticate_scope(scope)
-        except MCPError as error:
-            # Cursor treats WWW-Authenticate: Bearer as an OAuth resource and
-            # POSTs /register. This surface is X-Api-Key only.
-            response = JSONResponse(
-                {"error": error_payload(error)},
-                status_code=401 if error.data.code.startswith("authentication") else 403,
-            )
-            await response(scope, receive, send)
-            return
-
-        with bind_context(context):
-            await self.app(scope, receive, send)
+            try:
+                context = await authenticate_scope(scope)
+            except MCPError as error:
+                # Cursor treats WWW-Authenticate: Bearer as an OAuth resource and
+                # POSTs /register. This surface is X-Api-Key only.
+                response = JSONResponse(
+                    {"error": error_payload(error)},
+                    status_code=401 if error.data.code.startswith("authentication") else 403,
+                )
+                await response(scope, receive, send)
+                return
+            with bind_context(context):
+                await self.app(scope, receive, send)
+        finally:
+            await _recycle_connections()
