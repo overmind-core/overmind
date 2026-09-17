@@ -189,7 +189,10 @@ AWS_REGION = os.environ.get("AWS_REGION", "eu-west-1")
 _AWS_PROFILE = os.environ.get("AWS_PROFILE", "")
 _S3_BUCKET = os.environ.get("AWS_STORAGE_BUCKET_NAME", "")
 _S3_STATIC_BUCKET = os.environ.get("AWS_STATIC_BUCKET_NAME", "")
-_S3_CUSTOM_DOMAIN = os.environ.get("AWS_S3_CUSTOM_DOMAIN", "")
+# Hosted ECS does not inject this. DEBUG is false there, collectstatic is
+# swallowed, and /static/ is not served, so admin/swagger CSS comes from the CDN.
+_HOSTED_STATIC_CDN = "static.overmindlab.ai"
+_S3_CUSTOM_DOMAIN = os.environ.get("AWS_S3_CUSTOM_DOMAIN", _HOSTED_STATIC_CDN)
 _AWS_PROFILE_OPT = {"session_profile": _AWS_PROFILE} if _AWS_PROFILE else {}
 
 
