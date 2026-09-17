@@ -27,13 +27,16 @@ Task execution statuses are returned by the server; common terminal values are
 
 Call `get_instrumentation_plan` with a capability and, when needed, a
 behaviour. A behaviour reference requires a capability. Copy each returned
-ticket exactly: key, behaviour/version ids, analyzed SHA, fingerprint, grain,
-target file/line/source, required scope/decorators, allowed keys, and required
-capability identity.
+ticket exactly: `key`, `behaviour_id`, `version_id`, `version_analyzed_sha`,
+`contract_fingerprint`, `capability`, `capability_id`, `placement_mode`,
+`allowed_keys`, `grain`, `target`, `required_scope`, `required_spans`, and
+`required_identity`.
 
 The server cannot edit the target files. Apply tickets locally, then send
 caller-supplied spans to `verify_instrumentation`. That check is read-only and
-does not ingest spans or write scores. If the plan is unavailable, run local
-`/overmind setup` followed by `overmind sync`, then request it again.
+does not ingest spans or write scores. If the result has `human_action` or no
+placements, report its instruction and stop this attempt. When the registry is
+unavailable, run local `/overmind setup` followed by `overmind sync`, then
+request the plan again in a new attempt.
 
 Do not guess behaviour keys, anchors, grains, or decorator targets.
