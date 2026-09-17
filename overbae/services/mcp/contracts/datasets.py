@@ -22,7 +22,8 @@ from overbae.services.mcp.contracts.common import (
 
 _LIST_CAP = 100
 _CELL_CAP = 50
-_SAMPLE_ROWS = 20
+_SAMPLE_ROWS = 5
+_SAMPLE_CELL_CHARS = 600
 _QUERY_ROWS = 100
 _CHAT_DEFAULT = 10
 _CHAT_MAX = 30
@@ -56,7 +57,7 @@ def _jsonable(value: Any) -> Any:
     return _clip(str(value))
 
 
-def _sanitize_error(value: str, limit: int = 500) -> str:
+def sanitize_error(value: str, limit: int = 500) -> str:
     return _clip(_PATH_RE.sub("<path>", (value or "").strip()), limit)
 
 
@@ -242,7 +243,12 @@ class QueryDatasetInput(MCPModel):
         max_length=255,
         validation_alias=AliasChoices("dataset", "dataset_id"),
     )
-    sql: str = Field(min_length=1, max_length=8_000)
+    sql: str = Field(
+        min_length=1,
+        max_length=8_000,
+        description="One SELECT over the table `t`, the chosen cell. DuckDB dialect. "
+        "`source_row` is the row's identity in the source, not data.",
+    )
     cell: str | None = Field(default=None, min_length=1, max_length=80)
     limit: int = Field(default=_QUERY_ROWS, ge=1, le=_QUERY_ROWS)
 
@@ -425,7 +431,7 @@ def _frozen_before(chain: list[Cell]) -> int:
 
 def _fit(cell: Cell, intent: str) -> FitReport:
     ok, reason = cell.fits(intent)
-    return FitReport(ok=ok, reason=_sanitize_error(reason, 500))
+    return FitReport(ok=ok, reason=sanitize_error(reason, 500))
 
 
 def _capability_ref(dataset) -> CapabilityRef | None:
@@ -473,7 +479,7 @@ def serialize_dataset_list_item(dataset) -> DatasetListItem:
 
 def _cell_summary(dataset, cell: Cell, versions: dict, frozen_before: int) -> CellSummary:
     version = "proposed" if cell.state == Cell.State.PROPOSED else versions.get(cell.id, "1.0")
-    error = _sanitize_error(cell.error) or None
+    error = sanitize_error(cell.error) or None
     columns = [
         _jsonable(col) if isinstance(col, dict) else {"name": str(col)}
         for col in (cell.columns or [])[:100]
@@ -516,6 +522,18 @@ def _rank(raw) -> list[CapabilityRankItem]:
     return out
 
 
+def _sample_cell(value: Any) -> Any:
+    """One cell of the sample, bounded: a transcript row is tens of thousands
+    of characters, and ``query_dataset`` reads any value in full."""
+    value = _jsonable(value)
+    if isinstance(value, (dict, list)):
+        text = json.dumps(value, ensure_ascii=False)
+        return value if len(text) <= _SAMPLE_CELL_CHARS else text[:_SAMPLE_CELL_CHARS] + "…"
+    if isinstance(value, str) and len(value) > _SAMPLE_CELL_CHARS:
+        return value[:_SAMPLE_CELL_CHARS] + "…"
+    return value
+
+
 def _sample(dataset, cell: Cell | None, versions: dict) -> DatasetSample | None:
     if cell is None or not cell.ran:
         return None
@@ -532,7 +550,10 @@ def _sample(dataset, cell: Cell | None, versions: dict) -> DatasetSample | None:
         version=versions.get(cell.id, "1.0"),
         cell_id=str(cell.id),
         rows=[
-            _jsonable(row) if isinstance(row, dict) else {"value": _jsonable(row)} for row in rows
+            {str(k): _sample_cell(v) for k, v in row.items()}
+            if isinstance(row, dict)
+            else {"value": _sample_cell(row)}
+            for row in rows
         ],
     )
 
@@ -557,7 +578,7 @@ def _chat(raw, limit: int) -> list[ChatTurn]:
         role = item.get("role")
         if role not in ("user", "agent"):
             continue
-        error = _sanitize_error(str(item.get("error") or "")) or None
+        error = sanitize_error(str(item.get("error") or "")) or None
         ms = item.get("ms")
         out.append(
             ChatTurn(
@@ -598,7 +619,7 @@ def _next_actions(dataset, chain: list[Cell], active: Cell | None) -> list[NextA
             )
         ]
     if dataset.state == Dataset.State.ERROR:
-        reason = _sanitize_error(dataset.error) or "The dataset is in error."
+        reason = sanitize_error(dataset.error) or "The dataset is in error."
         return [
             NextAction(
                 tool="message_dataset_agent",
@@ -630,7 +651,7 @@ def _next_actions(dataset, chain: list[Cell], active: Cell | None) -> list[NextA
         return [
             NextAction(
                 tool="message_dataset_agent",
-                reason=_sanitize_error(reason) or "The active version does not fit.",
+                reason=sanitize_error(reason) or "The active version does not fit.",
                 arguments={"dataset": ds_id},
             )
         ]
@@ -665,7 +686,7 @@ def _next_actions(dataset, chain: list[Cell], active: Cell | None) -> list[NextA
 def _detail_summary(dataset, chain: list[Cell], active: Cell | None) -> str:
     if dataset.state == Dataset.State.ERROR:
         return _clip(
-            f"Dataset error: {_sanitize_error(dataset.error) or 'The dataset failed.'}",
+            f"Dataset error: {sanitize_error(dataset.error) or 'The dataset failed.'}",
             _SUMMARY_CHARS,
         )
     if dataset.state == Dataset.State.LANDING:
@@ -691,7 +712,7 @@ def serialize_dataset_detail(dataset, *, chat_limit: int = _CHAT_DEFAULT) -> Dat
     links = [dataset_link]
     if dataset.state in _BUSY:
         links.append(dataset_run_job_link(dataset))
-    error = _sanitize_error(dataset.error) or None
+    error = sanitize_error(dataset.error) or None
     return DatasetDetail.model_validate(
         {
             **fields,

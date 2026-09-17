@@ -32,6 +32,7 @@ def launch_finetune(
     group_id: str,
     cell=None,
     validation_cell=None,
+    eval_cell=None,
 ) -> FinetuningJob:
     payload: dict[str, Any] = {
         "project": str(project.id),
@@ -50,6 +51,8 @@ def launch_finetune(
     }
     if cell is not None:
         payload["cell"] = str(cell.id)
+    if eval_cell is not None:
+        payload["eval_cell"] = str(eval_cell.id)
     if validation_dataset is not None:
         payload["validation_dataset"] = str(validation_dataset.id)
     if validation_cell is not None:

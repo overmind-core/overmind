@@ -213,6 +213,26 @@ def _run_datapoint(
         }
 
 
+def _raise_with_detail(resp: requests.Response) -> None:
+    """``raise_for_status`` that carries the server's reason: a refusal such as
+    "X is a train dataset; this needs eval." is the message, not "Bad Request"."""
+    if resp.ok:
+        return
+    try:
+        body = resp.json()
+    except ValueError:
+        body = None
+    if isinstance(body, dict):
+        parts = [
+            f"{field}: {'; '.join(map(str, reason)) if isinstance(reason, list) else reason}"
+            for field, reason in body.items()
+        ]
+        detail = " ".join(parts)
+    else:
+        detail = (resp.text or "").strip()
+    raise requests.HTTPError(f"HTTP {resp.status_code} from {resp.url}: {detail[:600] or resp.reason}", response=resp)
+
+
 class OptimizerAPI:
     """Thin HTTP client for the optimizer-experiments write API.
 
@@ -259,12 +279,12 @@ class OptimizerAPI:
             json=payload,
             timeout=30,
         )
-        resp.raise_for_status()
+        _raise_with_detail(resp)
         return resp.json()
 
     def list_iterations(self, experiment_id: str) -> list[dict]:
         resp = self._session.get(self._exp_url(experiment_id, "iterations"), timeout=30)
-        resp.raise_for_status()
+        _raise_with_detail(resp)
         data = resp.json()
         if isinstance(data, dict) and "results" in data:
             return list(data["results"])
@@ -274,7 +294,7 @@ class OptimizerAPI:
 
     def get_experiment(self, experiment_id: str) -> dict:
         resp = self._session.get(self._exp_url(experiment_id), timeout=30)
-        resp.raise_for_status()
+        _raise_with_detail(resp)
         exp = resp.json()
         # Retrieve does not nest iterations; attach them for client FSM callers.
         try:
@@ -289,7 +309,7 @@ class OptimizerAPI:
             json={"template": template},
             timeout=30,
         )
-        resp.raise_for_status()
+        _raise_with_detail(resp)
         return resp.json()
 
     def add_iteration(
@@ -305,7 +325,7 @@ class OptimizerAPI:
             json={"order": order, "name": name, "candidates": candidates},
             timeout=30,
         )
-        resp.raise_for_status()
+        _raise_with_detail(resp)
         return resp.json()
 
     def post_results(self, experiment_id: str, results: list[dict]) -> dict:
@@ -314,7 +334,7 @@ class OptimizerAPI:
             json={"results": results},
             timeout=60,
         )
-        resp.raise_for_status()
+        _raise_with_detail(resp)
         return resp.json()
 
     def evaluate(self, experiment_id: str, order: int) -> dict:
@@ -323,7 +343,7 @@ class OptimizerAPI:
             json={"order": order},
             timeout=30,
         )
-        resp.raise_for_status()
+        _raise_with_detail(resp)
         return resp.json()
 
     def complete(self, experiment_id: str) -> dict:
@@ -332,7 +352,7 @@ class OptimizerAPI:
             json={},
             timeout=30,
         )
-        resp.raise_for_status()
+        _raise_with_detail(resp)
         return resp.json()
 
     def export_dataset(self, dataset_id: str, cell_id: str, cache_dir: Path, *, fingerprint: str = "") -> Path:
@@ -354,10 +374,12 @@ class OptimizerAPI:
             timeout=120,
             stream=True,
         )
-        resp.raise_for_status()
-        with cached.open("wb") as fh:
-            for chunk in resp.iter_content(chunk_size=8_192):
+        _raise_with_detail(resp)
+        partial = cached.with_suffix(".part")
+        with partial.open("wb") as fh:
+            for chunk in resp.iter_content(chunk_size=65_536):
                 fh.write(chunk)
+        partial.replace(cached)
         hash_file.write_text(resp.headers.get("X-Overmind-Fingerprint") or fingerprint)
         return cached
 
@@ -366,5 +388,5 @@ class OptimizerAPI:
             f"{self.base_url}/api/optimizer-candidates/{candidate_id}/",
             timeout=30,
         )
-        resp.raise_for_status()
+        _raise_with_detail(resp)
         return resp.json()

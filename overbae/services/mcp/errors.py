@@ -126,7 +126,7 @@ _DATASET_ERROR_CODES: dict[str, ErrorCode] = {
     "intent": "dataset_intent_mismatch",
     "running": "dataset_busy",
     "landing": "dataset_busy",
-    "run_failed": "dataset_busy",
+    "diagnosing": "dataset_busy",
     "no_cell": "cell_not_found",
     "cell_mismatch": "cell_not_found",
 }
@@ -136,6 +136,10 @@ def dataset_mcp_error(error) -> MCPError:
     """Translate ``DatasetError``; do not re-check contracts here."""
     code = _DATASET_ERROR_CODES.get(getattr(error, "code", ""), "dataset_invalid")
     message = str(getattr(error, "detail", None) or error)
+    if code == "dataset_busy":
+        return MCPError(
+            code, f"{message} Poll get_job with kind dataset_run until it is idle.", retryable=True
+        )
     return MCPError(code, message)
 
 
@@ -152,12 +156,12 @@ def mcp_cell(dataset, ref: str | None):
         raise dataset_mcp_error(exc) from exc
 
 
-def mcp_use(dataset, intent: str, ref: str | None = None):
+def mcp_check(dataset, intent: str, ref: str | None = None):
     from overbae.services.datasets import use
     from overbae.services.datasets.lifecycle import DatasetError
 
     try:
-        return use.use(dataset, intent, cell=mcp_cell(dataset, ref))
+        return use.check(dataset, intent, cell=mcp_cell(dataset, ref))
     except DatasetError as exc:
         raise dataset_mcp_error(exc) from exc
 

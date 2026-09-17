@@ -211,7 +211,8 @@ def test_query_is_project_and_cell_scoped_read_only_and_capped(monkeypatch):
     assert ok.isError is False
     assert len(ok.structuredContent["rows"]) == 100
     assert ok.structuredContent["columns"] == ["input"]
-    assert calls[0][1] == 100
+    assert ok.structuredContent["truncated"] is True
+    assert calls[0][1] == 101
     assert foreign.structuredContent["error"]["code"] == "cell_not_found"
     assert write.structuredContent["error"]["code"] == "query_invalid"
 

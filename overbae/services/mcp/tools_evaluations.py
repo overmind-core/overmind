@@ -50,7 +50,7 @@ from overbae.services.mcp.contracts.evaluations import (
     RunEvaluationInput,
     RunEvaluationOutput,
 )
-from overbae.services.mcp.errors import MCPError, mcp_cell, mcp_cell_contract, mcp_use
+from overbae.services.mcp.errors import MCPError, mcp_cell, mcp_cell_contract, mcp_check
 from overbae.services.mcp.resources import resource_link, safe_json
 
 _DEFAULT_VARIANT = {
@@ -510,7 +510,7 @@ def _run_sync(payload: RunEvaluationInput, context: MCPContext) -> RunEvaluation
     from overbae.tasks.eval import run_eval_run
 
     dataset = _resolve_dataset(context, payload.dataset)
-    cell = mcp_use(dataset, "eval", _cell_ref(payload.cell, payload.version))
+    cell = mcp_check(dataset, "eval", _cell_ref(payload.cell, payload.version))
 
     eval_set = None
     if payload.eval_set:

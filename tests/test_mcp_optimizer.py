@@ -300,7 +300,5 @@ def test_readiness_and_start_use_explicit_eval_cell(monkeypatch):
     )
     assert result.isError is False, result.structuredContent
     assert called["cell"].id == extra.id
-    extra.refresh_from_db()
-    assert extra.used_at is not None
     assert result.structuredContent["experiment"]["cell"]["id"] == str(extra.id)
     assert result.structuredContent["experiment"]["cell"]["rows"] == 11

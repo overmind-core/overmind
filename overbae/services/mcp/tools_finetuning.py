@@ -56,7 +56,7 @@ from overbae.services.mcp.contracts.inference import (
     RunInferenceInput,
     RunInferenceOutput,
 )
-from overbae.services.mcp.errors import MCPError, mcp_cell, mcp_cell_contract, mcp_use
+from overbae.services.mcp.errors import MCPError, mcp_cell, mcp_cell_contract, mcp_check
 from overbae.services.mcp.resources import resource_link, safe_json
 from overbae.services.recommendation import estimate_for_hyperparams, find_catalog_model
 
@@ -421,7 +421,7 @@ def _start_sync(payload: StartFinetuneInput, context: MCPContext) -> StartFinetu
     if payload.hyperparameters is not None and _contains_sensitive_key(payload.hyperparameters):
         raise MCPError("invalid_input", "Provider credentials are not accepted in tool input.")
     dataset = _resolve_dataset(context, payload.dataset)
-    cell = mcp_use(dataset, "train", _cell_ref(payload.cell, payload.version))
+    cell = mcp_check(dataset, "train", _cell_ref(payload.cell, payload.version))
     capability = (
         _resolve_capability(context, payload.capability)
         if payload.capability
@@ -445,7 +445,7 @@ def _start_sync(payload: StartFinetuneInput, context: MCPContext) -> StartFinetu
     )
     if eval_dataset is None:
         raise MCPError("finetune_not_ready", "An eval dataset is required to start fine-tuning.")
-    mcp_use(eval_dataset, "eval", _cell_ref(payload.eval_cell, payload.eval_version))
+    eval_cell = mcp_check(eval_dataset, "eval", _cell_ref(payload.eval_cell, payload.eval_version))
     eval_set = (
         _resolve_eval_set(context, payload.eval_set, capability=capability)
         if payload.eval_set
@@ -461,7 +461,7 @@ def _start_sync(payload: StartFinetuneInput, context: MCPContext) -> StartFinetu
     )
     validation_cell = None
     if validation_dataset is not None:
-        validation_cell = mcp_use(
+        validation_cell = mcp_check(
             validation_dataset,
             "train",
             _cell_ref(payload.validation_cell, payload.validation_version),
@@ -519,6 +519,7 @@ def _start_sync(payload: StartFinetuneInput, context: MCPContext) -> StartFinetu
             group_id=group_id,
             cell=cell,
             validation_cell=validation_cell,
+            eval_cell=eval_cell,
         )
     except DRFValidationError as error:
         raise _serializer_error(error) from error
