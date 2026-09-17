@@ -558,6 +558,10 @@ BASETEN_API_KEY = os.environ.get("BASETEN_API_KEY", "")
 BASETEN_PROJECT = os.environ.get("BASETEN_PROJECT", "")
 
 HF_TOKEN = os.environ.get("HF_TOKEN", "")
+if not HF_TOKEN:
+    raise ImproperlyConfigured(
+        "HF_TOKEN must be set, get it from https://huggingface.co/settings/tokens"
+    )
 
 # Durable home for a fine-tune's checkpoint.zip / job_logs.txt / metrics.json.
 # The names match Modal's overmind-inference secret. These static keys go
