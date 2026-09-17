@@ -1671,6 +1671,14 @@ class ModalRunner(BaseFinetuningRunner):
         """
         return os.environ.get("MODAL_ENVIRONMENT") or None
 
+    def _await_base_model(self, hf_base: str) -> None:
+        """Block until ``.base_models/`` has this repo. Concurrent jobs share the mutex."""
+        import modal  # noqa: PLC0415
+
+        modal.Function.from_name(
+            "overmind-register", "fetch_base_model", environment_name=self._modal_env()
+        ).remote(base_model=hf_base)
+
     _TERMINAL_OK = {"succeeded"}
     _TERMINAL_FAIL = {"failed"}
     _TERMINAL_CANCELLED = {"cancelled"}
@@ -1756,8 +1764,6 @@ class ModalRunner(BaseFinetuningRunner):
         hf_base = get_hf_base(str(model_id))
         env = {
             "MODEL_ID": hf_base,
-            # The shared snapshot the deploy path already maintains. base_weights_for falls back
-            # to the hub if the sweep has not staged it yet, so this is a hint, not a contract.
             "BASE_MODEL_PATH": f"/weights/.base_models/{hf_base.replace('/', '--')}",
             "TRAINING_TYPE": plan.training_type,
             "MAX_LENGTH": str(plan.context_length),
@@ -1895,6 +1901,8 @@ class ModalRunner(BaseFinetuningRunner):
             self._app_name, "upload_dataset", environment_name=env_name
         )
         upload_fn.remote(run_id=run_id, data_jsonl=data_text, val_jsonl=val_text)
+
+        self._await_base_model(env["MODEL_ID"])
 
         # One Function per frozen train stack — see modal_shared.stacks.TRAIN_FUNCTION_NAMES.
         from modal_shared.stacks import train_function_name  # noqa: PLC0415

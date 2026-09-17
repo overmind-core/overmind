@@ -86,6 +86,7 @@ def _run_training(run_id: str, env: dict[str, str]) -> dict:
     final_dir = run_dir / "final"
 
     sft_vol.reload()
+    weights_vol.reload()
     _write_meta(run_dir, run_id=run_id, status="starting", started_at=time.time())
     sft_vol.commit()
 

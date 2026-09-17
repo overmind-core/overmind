@@ -523,24 +523,6 @@ def run_finetuning(*, job_id: str) -> dict[str, Any]:
                 FinetuningJob.Status.RUNNING,
                 message=f"Submitted (remote_id={result.remote_id})",
             )
-            # A LoRA deploy merges into the bf16 base, and a cold fetch runs ~20 min
-            # for a 70B (bounded by weights-Volume write throughput, not the network).
-            # Start it under training instead. fetch_base_model is a global mutex, so
-            # the deploy either finds it done or waits on this same call.
-            # Fire-and-forget: correctness does not depend on it landing.
-            try:
-                import modal
-
-                from overbae.modal.model_registry import get_hf_base
-                from overbae.tasks.model_deployment import _modal_env
-
-                prefetch_id = get_hf_base(job.base_model)
-                modal.Function.from_name(
-                    "overmind-register", "fetch_base_model", environment_name=_modal_env()
-                ).spawn(base_model=prefetch_id)
-                logger.info("Prefetching base model %s for deploy (job %s)", prefetch_id, job.id)
-            except Exception:  # noqa: BLE001 — prefetch is an optimisation only
-                logger.warning("Base-model prefetch spawn failed for job %s", job_id, exc_info=True)
             # Baseline half of the before/after loop: deploy the untouched base model
             # alongside training. Non-blocking — a Celery task drives deploy → eval.
             try:

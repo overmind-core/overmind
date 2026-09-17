@@ -415,10 +415,6 @@ CELERY_BEAT_SCHEDULE = {
         "task": "overbae.tasks.cleanup_modal.prune_modal_sft_volume",
         "schedule": 86400.0,
     },
-    "prewarm-base-models": {
-        "task": "overbae.tasks.base_models.prewarm_base_models",
-        "schedule": 86400.0,
-    },
     "sweep-guest-workspaces": {
         "task": "overbae.tasks.guest_cleanup.sweep_guest_workspaces",
         "schedule": 86400.0,

@@ -1931,6 +1931,19 @@ class TestBasetenContextLengthPersistence:
         )
         assert env["MODEL_ID"] == "unsloth/NVIDIA-Nemotron-3.5-Lightning-30B-A3B"
 
+    def test_await_base_model_blocks_on_fetch_remote(self):
+        from unittest.mock import MagicMock, patch
+
+        from overbae.services.finetuning_runner import ModalRunner
+
+        fetch = MagicMock()
+        with patch("modal.Function.from_name", return_value=fetch) as from_name:
+            ModalRunner()._await_base_model("unsloth/Qwen3-8B")
+        from_name.assert_called_once_with(
+            "overmind-register", "fetch_base_model", environment_name=None
+        )
+        fetch.remote.assert_called_once_with(base_model="unsloth/Qwen3-8B")
+
 
 class TestDeploymentGPUDerivation:
     pytestmark = pytest.mark.django_db(transaction=False)
