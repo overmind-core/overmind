@@ -251,11 +251,17 @@ def test_verify_reports_malformed_typed_span_and_rejects_json_string():
 
 def test_verify_enforces_span_bound_and_redacts_unexpected_failures(monkeypatch):
     context = _context()
+    at_limit = _call(
+        "verify_instrumentation",
+        context,
+        {"spans": [_span() for _ in range(100)]},
+    )
     too_many = _call(
         "verify_instrumentation",
         context,
         {"spans": [{} for _ in range(101)]},
     )
+    assert at_limit.isError is False
     assert too_many.isError is True
     assert too_many.structuredContent["error"]["code"] == "invalid_input"
 

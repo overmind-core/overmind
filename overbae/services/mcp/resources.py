@@ -35,10 +35,10 @@ from overbae.services.entity_resolution import (
 )
 from overbae.services.mcp.context import get_context
 from overbae.services.mcp.contracts.datasets import serialize_dataset_detail
+from overbae.services.mcp.contracts.instrumentation import MAX_INSTRUMENTATION_SPANS
 from overbae.services.mcp.errors import MCPError, error_payload, internal_error
 
 JSON_MIME = "application/json"
-_MAX_SPANS = 80
 _MAX_EVENTS = 20
 _MAX_LIST = 50
 _OPTIMIZER_PATCH_CAP = 4_000
@@ -405,6 +405,7 @@ def _span_payload(span: Span) -> dict:
         "duration_ms": round(span.duration_ns / 1_000_000, 1),
         "attributes": safe_json(span.attributes or {}, max_chars=8_000),
         "events": safe_json((span.events or [])[:_MAX_EVENTS]),
+        "resource_attrs": safe_json(span.resource_attrs or {}, max_chars=8_000),
     }
 
 
@@ -457,11 +458,13 @@ def _capability_resource(project, value: str, uri: str) -> dict:
 
 
 def _trace_resource(project, value: str, uri: str) -> dict:
-    spans = list(
+    queryset = (
         Span.objects.filter(project=project, trace_id=value)
         .select_related("capability", "conversation")
-        .order_by("start_time_ns")[: _MAX_SPANS + 1]
+        .order_by("start_time_ns")
     )
+    span_count = queryset.count()
+    spans = list(queryset[:MAX_INSTRUMENTATION_SPANS])
     if not spans:
         raise _not_found("trace", value)
     root = next((span for span in spans if span.parent_span_id is None), spans[0])
@@ -469,8 +472,8 @@ def _trace_resource(project, value: str, uri: str) -> dict:
         "uri": uri,
         "kind": "trace",
         "trace_id": value,
-        "span_count": len(spans),
-        "truncated": len(spans) > _MAX_SPANS,
+        "span_count": span_count,
+        "truncated": span_count > MAX_INSTRUMENTATION_SPANS,
         "root": {
             "span_id": root.span_id,
             "name": root.name,
@@ -478,7 +481,7 @@ def _trace_resource(project, value: str, uri: str) -> dict:
             "status_code": root.status_code,
             "duration_ms": round(root.duration_ns / 1_000_000, 1),
         },
-        "spans": [_span_payload(span) for span in spans[:_MAX_SPANS]],
+        "spans": [_span_payload(span) for span in spans],
     }
 
 

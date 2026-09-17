@@ -8,6 +8,7 @@ import pytest
 from overbae.models import (
     APIToken,
     Capability,
+    Conversation,
     Dataset,
     EvalRun,
     FinetuningJob,
@@ -125,3 +126,63 @@ def test_invalid_tool_input_is_safe_and_typed():
     assert result.isError is True
     assert result.structuredContent["error"]["code"] == "invalid_input"
     assert "ValidationError" not in result.content[0].text
+
+
+def test_query_traces_exact_session_counts_root_traces():
+    context, capability, _ = _context()
+    correlation = "instrumentation-smoke-test"
+    session = Conversation.objects.create(
+        project=context.project,
+        capability=capability,
+        external_id=correlation,
+    )
+    first_trace = "1" * 32
+    second_trace = "2" * 32
+    Span.objects.bulk_create(
+        [
+            Span(
+                span_id="session-root-one",
+                trace_id=first_trace,
+                project=context.project,
+                capability=capability,
+                conversation=session,
+                name="run",
+                start_time_ns=1,
+            ),
+            Span(
+                span_id="session-child-1",
+                trace_id=first_trace,
+                parent_span_id="session-root-one",
+                project=context.project,
+                capability=capability,
+                conversation=session,
+                name="step",
+                start_time_ns=2,
+            ),
+            Span(
+                span_id="session-root-two",
+                trace_id=second_trace,
+                project=context.project,
+                capability=capability,
+                conversation=session,
+                name="run",
+                start_time_ns=3,
+            ),
+        ]
+    )
+
+    async def invoke():
+        return await CATALOG.call(
+            "query_traces",
+            {"session": correlation, "all_spans": False, "limit": 2},
+            context,
+        )
+
+    result = asyncio.run(invoke())
+
+    assert result.isError is False
+    assert result.structuredContent["page"]["total"] == 2
+    assert {row["trace_id"] for row in result.structuredContent["traces"]} == {
+        first_trace,
+        second_trace,
+    }
