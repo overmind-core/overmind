@@ -737,7 +737,7 @@ export class DatasetsApi extends runtime.BaseAPI {
     }
 
     /**
-     * Download a cell\'s frame as JSONL, CSV or training lines; counts as a use
+     * Download a cell\'s frame as JSONL or CSV; a raw stream, never a use
      */
     async datasetsExportRetrieveRaw(requestParameters: DatasetsExportRetrieveRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<Blob>> {
         if (requestParameters['id'] == null) {
@@ -794,7 +794,7 @@ export class DatasetsApi extends runtime.BaseAPI {
     }
 
     /**
-     * Download a cell\'s frame as JSONL, CSV or training lines; counts as a use
+     * Download a cell\'s frame as JSONL or CSV; a raw stream, never a use
      */
     async datasetsExportRetrieve(requestParameters: DatasetsExportRetrieveRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<Blob> {
         const response = await this.datasetsExportRetrieveRaw(requestParameters, initOverrides);

@@ -68,7 +68,8 @@ const clampPercent = (n: number) => Math.min(99, Math.max(1, Math.round(n)));
 const evalRows = (rows: number, percent: number) =>
   rows < 2 ? 0 : Math.min(Math.max(Math.round((rows * percent) / 100), 1), rows - 1);
 const AUTO_CAPABILITY = "__auto__";
-const stripExtension = (name: string) => name.replace(/\.(csv|tsv|json|jsonl|parquet)$/i, "");
+const stripExtension = (name: string) =>
+  name.replace(/\.(csv|tsv|json|jsonl|ndjson|parquet)(\.gz)?$/i, "");
 
 /** Either the source the request will carry, or the one line that says why not yet. */
 type Readiness = { source: SourceRequest; rows?: number } | { hint: string };
@@ -126,7 +127,10 @@ export function NewDatasetDialog({
   // Reset per open so a second create starts clean; the initial props re-seed it.
   // biome-ignore lint/correctness/useExhaustiveDependencies: seeds once per open
   useEffect(() => {
-    if (!open) return;
+    if (!open) {
+      upload.cancel();
+      return;
+    }
     setTab(fromTraces ? "traces" : "file");
     setName("");
     setNameTouched(false);
@@ -197,7 +201,8 @@ export function NewDatasetDialog({
     initialSelectionCount,
     picked,
   ]);
-  const ready = "source" in readiness;
+  const tooFewToSplit = purpose === "split" && "source" in readiness && (readiness.rows ?? 2) < 2;
+  const ready = "source" in readiness && !tooFewToSplit;
 
   // The name follows the source until the user types one.
   const capabilityName = capabilities.find((c) => c.id === capabilityId)?.name;
@@ -334,7 +339,7 @@ export function NewDatasetDialog({
                   )}
                   <p className="text-xs text-muted-foreground">CSV, TSV, JSON, JSONL or Parquet</p>
                   <input
-                    accept=".csv,.tsv,.json,.jsonl,.parquet"
+                    accept=".csv,.tsv,.json,.jsonl,.ndjson,.parquet,.gz"
                     className="hidden"
                     onChange={(e) => {
                       const chosen = e.target.files?.[0];
@@ -353,12 +358,14 @@ export function NewDatasetDialog({
                     {file ? "Choose another file" : "Choose file"}
                   </Button>
                 </div>
-                {upload.progress && uploadPercent !== null && (
-                  <Progress
-                    label={uploadId ? "Uploaded" : `Uploading ${upload.progress.filename}`}
-                    percent={uploadPercent}
-                  />
-                )}
+                <div className="h-1.5">
+                  {upload.progress && uploadPercent !== null && (
+                    <Progress
+                      label={uploadId ? "Uploaded" : `Uploading ${upload.progress.filename}`}
+                      percent={uploadPercent}
+                    />
+                  )}
+                </div>
               </div>
             )}
 
@@ -472,8 +479,17 @@ export function NewDatasetDialog({
           <DismissibleAlert message={error} variant="destructive" />
         </DialogBody>
         <DialogFooter className="items-center">
-          <span className="mr-auto text-xs text-muted-foreground">
-            {ready ? rowsLabel : readiness.hint}
+          <span
+            className={cn(
+              "mr-auto text-xs",
+              tab === "file" && upload.error ? "text-destructive" : "text-muted-foreground"
+            )}
+          >
+            {tooFewToSplit
+              ? "Two rows are needed to split"
+              : "hint" in readiness
+                ? readiness.hint
+                : rowsLabel}
           </span>
           <Button disabled={busy} onClick={() => onOpenChange(false)} variant="secondary">
             Cancel
