@@ -56,10 +56,13 @@ MCP client
 ```
 
 The entrypoint is `overbae/api/mcp.py`; ASGI mounts it through
-`overbae/asgi.py`. `overbae/services/mcp/server.py` owns the official MCP
-SDK server, stateless Streamable HTTP transport, protocol checks, resource and
-prompt callbacks, and middleware ordering. Do not create a second MCP app or
-mount a feature-specific server.
+`overbae/asgi.py` as the outer Starlette app with Django at `/`. `/api/mcp/`
+never runs Django's `request_started`/`request_finished`, so
+`MCPAuthMiddleware` recycles the thread-local DB connection itself.
+`overbae/services/mcp/server.py` owns the official MCP SDK server, stateless
+Streamable HTTP transport, protocol checks, resource and prompt callbacks, and
+middleware ordering. Do not create a second MCP app or mount a feature-specific
+server.
 
 ## Layer ownership
 

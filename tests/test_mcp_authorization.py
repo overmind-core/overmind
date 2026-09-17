@@ -8,6 +8,7 @@ from django.utils import timezone
 from starlette.testclient import TestClient
 
 from overbae.models import APIToken, Project, ProjectMembership, User
+from overbae.services.mcp.auth import recycle_connections
 from overbae.services.mcp.server import create_mcp_application
 
 pytestmark = pytest.mark.django_db(transaction=True)
@@ -122,3 +123,17 @@ def test_accepts_bearer_api_key():
     raw, _ = _token()
     response = _call(raw, {"Authorization": f"Bearer {raw}"})
     assert response.status_code == 200
+
+
+def test_auth_recycles_database_connections(monkeypatch):
+    calls: list[int] = []
+    original = recycle_connections
+
+    def spy() -> None:
+        calls.append(1)
+        original()
+
+    monkeypatch.setattr("overbae.services.mcp.auth.recycle_connections", spy)
+    raw, _ = _token()
+    assert _call(raw).status_code == 200
+    assert calls
