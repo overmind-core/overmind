@@ -113,7 +113,7 @@ class Project(models.Model):
 
 class ProjectInvite(models.Model):
     """A pending invitation for an email with no console account yet. Claimed
-    (converted to a membership) when the invitee first signs in through Clerk.
+    (converted to a membership) when the invitee first signs in.
     """
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)

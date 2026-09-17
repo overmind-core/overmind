@@ -54,11 +54,12 @@ function App() {
 const rootElement = document.getElementById("app");
 if (rootElement && !rootElement.innerHTML) {
   const root = ReactDOM.createRoot(rootElement);
-  root.render(
+  const tree = (
     <StrictMode>
-      <ClerkProvider publishableKey={config.clerkPk}>
-        <App />
-      </ClerkProvider>
+      <App />
     </StrictMode>
+  );
+  root.render(
+    config.clerkReady ? <ClerkProvider publishableKey={config.clerkPk}>{tree}</ClerkProvider> : tree
   );
 }

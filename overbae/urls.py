@@ -11,7 +11,7 @@ from rest_framework.permissions import AllowAny
 from rest_framework.routers import DefaultRouter
 
 from overbae.api.auth_keys import APITokenCurrentView, APITokenDestroyView, APITokenListCreateView
-from overbae.api.auth_registration import OnboardingView, RegisterView, UserMeView
+from overbae.api.auth_registration import LocalSessionView, OnboardingView, UserMeView
 from overbae.api.auth_token_views import PublicTokenObtainPairView, PublicTokenRefreshView
 from overbae.api.behaviours import BehaviourViewSet, TaskExecutionViewSet
 from overbae.api.billing import (
@@ -121,7 +121,7 @@ urlpatterns = [
     path("api/auth/api-keys/", APITokenListCreateView.as_view(), name="api-keys-list-create"),
     path("api/auth/api-keys/current/", APITokenCurrentView.as_view(), name="api-keys-current"),
     path("api/auth/api-keys/<uuid:id>/", APITokenDestroyView.as_view(), name="api-keys-destroy"),
-    path("api/auth/register/", RegisterView.as_view(), name="register"),
+    path("api/auth/local/", LocalSessionView.as_view(), name="local-session"),
     path("api/auth/guest/", GuestStartView.as_view(), name="guest-start"),
     path("api/auth/guest/claim/", GuestClaimView.as_view(), name="guest-claim"),
     path("api/auth/me/", UserMeView.as_view(), name="user-me"),

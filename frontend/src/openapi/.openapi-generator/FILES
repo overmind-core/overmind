@@ -206,6 +206,7 @@ models/InferenceLiveStats.ts
 models/InferenceMetrics.ts
 models/IntegrationTypeEnum.ts
 models/IntentEnum.ts
+models/LocalSessionRequest.ts
 models/ModeCd6Enum.ts
 models/ModelCatalogResponse.ts
 models/ModelCheckpoints.ts
@@ -291,7 +292,6 @@ models/PublicModelPricing.ts
 models/PublicTokenRefresh.ts
 models/PublicTokenRefreshRequest.ts
 models/QuantizationEnum.ts
-models/RegisterRequest.ts
 models/RoleAbbEnum.ts
 models/RootSpanList.ts
 models/RowsPage.ts

@@ -4,6 +4,7 @@ import { SignIn, SignUp } from "@clerk/clerk-react";
 import { createFileRoute, Link, Navigate } from "@tanstack/react-router";
 import { z } from "zod";
 
+import { LocalLoginForm } from "@/components/local-login-form";
 import { SplashBackground } from "@/components/splash-background";
 import { Spinner } from "@/components/ui/spinner";
 import { config } from "@/config";
@@ -28,7 +29,7 @@ const CLERK_APPEARANCE = {
 };
 
 function RouteComponent() {
-  const { isSignedIn, isLoaded, isGuest } = useAuthContext();
+  const { isSignedIn, isLoaded, isGuest, refreshAuth } = useAuthContext();
   const { mode } = Route.useSearch();
   // Read once: the claim clears the flag before the redirect below runs.
   const [wasGuest] = useState(hasGuestSession);
@@ -37,7 +38,7 @@ function RouteComponent() {
   const safeNext = next?.startsWith("/") && !next.startsWith("//") ? next : null;
 
   useEffect(() => {
-    if (!config.clerkReady || !isLoaded || !isSignedIn || isGuest || !safeNext) return;
+    if (!isLoaded || !isSignedIn || isGuest || !safeNext) return;
     // Full assign so nested search params survive (TanStack `<Navigate to>` drops them).
     window.location.replace(safeNext);
   }, [isGuest, isLoaded, isSignedIn, safeNext]);
@@ -50,9 +51,19 @@ function RouteComponent() {
     );
   }
 
-  if (config.clerkReady && isLoaded && isSignedIn && !isGuest) {
+  if (isLoaded && isSignedIn && !isGuest) {
     if (safeNext) return null;
     return wasGuest ? <Navigate search={{ projectId: undefined }} to="/" /> : <Navigate to="/" />;
+  }
+
+  if (!config.clerkReady) {
+    return (
+      <SplashBackground>
+        <div className="flex flex-col items-center justify-center gap-5">
+          <LocalLoginForm onSignedIn={() => refreshAuth()} />
+        </div>
+      </SplashBackground>
+    );
   }
 
   return (

@@ -28,6 +28,11 @@ CREATE_CLERK = "overbae.services.project_invites.create_clerk_invitation"
 REVOKE_CLERK = "overbae.services.project_invites.revoke_clerk_invitation"
 
 
+@pytest.fixture(autouse=True)
+def _clerk_on(settings):
+    settings.CLERK_API_SECRET_KEY = "sk_test_clerk"
+
+
 def _user(email: str) -> User:
     return User.objects.create_user(
         email=email,
