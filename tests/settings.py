@@ -16,6 +16,8 @@ os.environ.setdefault("BASETEN_API_KEY", "testing")
 os.environ.setdefault("TOGETHER_API_KEY", "testing")
 os.environ.setdefault("MODAL_TOKEN_ID", "testing")
 os.environ.setdefault("MODAL_TOKEN_SECRET", "testing")
+os.environ.setdefault("CURSOR_API_KEY", "testing")
+os.environ.setdefault("OPENROUTER_API_KEY", "testing")
 # FileField storage stays local in tests even if .env opts into hosted S3.
 os.environ["AWS_STORAGE_BUCKET_NAME"] = ""
 os.environ["AWS_STATIC_BUCKET_NAME"] = ""

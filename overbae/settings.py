@@ -27,14 +27,11 @@ ALLOWED_HOSTS = [
     h.strip()
     for h in os.environ.get(
         "DJANGO_ALLOWED_HOSTS",
-        "overbae.fly.dev,api.overmindlab.ai,overclaw.pages.dev,localhost,127.0.0.1,0.0.0.0,192.168.97.4",
+        "api.overmindlab.ai,localhost,127.0.0.1,0.0.0.0,::1,[::1]",
     ).split(",")
     if h.strip()
 ]
-ALLOWED_HOSTS.append("api.overmind-dev.orb.local")
-ALLOWED_HOSTS.append("pritam-tunnel.overmindlab.ai")
 # Browser `localhost` on macOS often hits the API over IPv6; curl/Host is `[::1]`.
-ALLOWED_HOSTS.extend(["::1", "[::1]"])
 
 INSTALLED_APPS = [
     "django.contrib.admin",
@@ -66,7 +63,7 @@ MIDDLEWARE = [
 TESTING = "test" in sys.argv or "PYTEST_VERSION" in os.environ
 
 if not DEBUG and not TESTING and not os.environ.get("FIELD_ENCRYPTION_KEY"):
-    print("FIELD_ENCRYPTION_KEY must be configured when DJANGO_DEBUG is disabled.")
+    logger.warning("FIELD_ENCRYPTION_KEY must be configured when DJANGO_DEBUG is disabled.")
 
 
 def show_debug_toolbar(request):
@@ -102,11 +99,7 @@ CORS_ALLOWED_ORIGINS = [
     o.strip()
     for o in os.environ.get(
         "DJANGO_CORS_ALLOWED_ORIGINS",
-        # overmindlab.ai (+ www) is the marketing site: it calls the public
-        # /api/public/models/ endpoints client-side for its /library pages.
-        "https://console.overmindlab.ai,https://claw.overmindlab.ai,"
-        "https://overmindlab.ai,https://www.overmindlab.ai,"
-        "http://localhost:5173,http://localhost:3000",
+        "https://console.overmindlab.ai,https://overmindlab.ai,https://www.overmindlab.ai",
     ).split(",")
     if o.strip()
 ]
@@ -177,10 +170,10 @@ TMPDIR = str(DATA_ROOT / "tmp")
 # The Fargate container root filesystem is read-only, so /data/tmp is the only
 # place mkstemp / NamedTemporaryFile can write. Every process that imports
 # settings needs this wiring.
-import tempfile as _tempfile  # noqa: E402 — intentional late import
+import tempfile  # noqa: E402 — intentional late import
 
 os.makedirs(TMPDIR, exist_ok=True)
-_tempfile.tempdir = TMPDIR
+tempfile.tempdir = TMPDIR
 os.environ.setdefault("TMPDIR", TMPDIR)
 
 # FileField storage is local (MEDIA_ROOT / EFS) unless a bucket env is set.
@@ -496,7 +489,8 @@ CURSOR_API_KEY = os.environ.get("CURSOR_API_KEY", "")
 # Feedback-channel incoming webhook; blank disables the notification.
 SLACK_FEEDBACK_WEBHOOK_URL = os.environ.get("SLACK_FEEDBACK_WEBHOOK_URL", "")
 
-# Blank disables Clerk sign-in; API keys and guest sessions still authenticate.
+# Blank disables Clerk; self-hosted Console uses /api/auth/local/ instead.
+# API keys and guest sessions still authenticate either way.
 CLERK_API_SECRET_KEY = os.environ.get("CLERK_API_SECRET_KEY", "")
 CLERK_AUTHORIZED_PARTIES = os.environ.get(
     "CLERK_AUTHORIZED_PARTIES", "http://localhost:5173"
@@ -630,6 +624,7 @@ if _missing_aws:
 if FINETUNING_BACKEND != "modal":
     raise ImproperlyConfigured("FINETUNING_BACKEND must be modal")
 
+
 if FINETUNING_BACKEND == "modal" and not (
     os.environ.get("MODAL_TOKEN_ID") and os.environ.get("MODAL_TOKEN_SECRET")
 ):
@@ -646,3 +641,17 @@ if not INFERENCE_API_URL:
     raise ImproperlyConfigured("INFERENCE_API_URL must be set")
 if not INFERENCE_API_KEY:
     raise ImproperlyConfigured("INFERENCE_API_KEY must be set")
+
+
+if not any([OPENAI_API_KEY, ANTHROPIC_API_KEY, GEMINI_API_KEY, OPENROUTER_API_KEY, CURSOR_API_KEY]):
+    raise ImproperlyConfigured(
+        "At least one of OPENAI_API_KEY, ANTHROPIC_API_KEY, GEMINI_API_KEY, OPENROUTER_API_KEY, CURSOR_API_KEY must be set"
+    )
+
+if not CURSOR_API_KEY:
+    logger.debug("CURSOR_API_KEY is not set, dataworkshop is going to use openrouter")
+
+    if not OPENROUTER_API_KEY:
+        raise ImproperlyConfigured(
+            "OPENROUTER_API_KEY must be set for dataworkshop to work, get it from https://openrouter.ai/workspaces/default/keys"
+        )
