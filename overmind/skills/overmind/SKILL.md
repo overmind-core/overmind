@@ -104,9 +104,8 @@ Follow these for ALL Overmind work:
 1. **Ticketed instrumentation.** Call `get_instrumentation_plan` with no
    capability for project-wide work, or with a capability for scoped work, and
    treat each placement as an edit ticket. Copy `target.file`, `qualname`, required
-   scope, required decorator, import line, and capability id. `lineno` and
-   `source_line` are often null — file + qualname is enough to locate the
-   function. Keep a primary scope outermost when a specialized span targets the
+   scope, required decorator, import line, and capability id. File + qualname is
+   enough to locate the function. Keep a primary scope outermost when a specialized span targets the
    same function. Spawn one coding subagent per unique `target.file`.
 1. **Explicit run approval.** After applying the ticketed code changes, report
    the changed files and any local checks, then ask the user to choose a real run or a bounded smoke run. The real run

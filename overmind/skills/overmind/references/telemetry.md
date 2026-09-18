@@ -38,8 +38,8 @@ Call `get_instrumentation_plan` with no capability for project-wide work, or
 with a capability and optional behaviour for a scoped change. Treat each
 returned placement as an edit ticket: copy its target file, qualname, import
 line, required scope, required decorators, capability id, behaviour key,
-version/fingerprint, grain, and allowed keys. `lineno` and
-`source_line` are often null; file + qualname locates the function. A missing
+version/fingerprint, grain, and allowed keys. File + qualname locates the
+function. A missing
 registry returns an explicit human action; run local `/overmind setup` and
 `overmind sync`.
 

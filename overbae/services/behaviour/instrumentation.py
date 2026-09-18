@@ -19,15 +19,6 @@ _SPECIALIZED_DECORATORS = {
 }
 
 
-def _location(anchor: dict[str, Any]) -> dict[str, Any]:
-    location: dict[str, Any] = {}
-    if anchor.get("lineno") is not None:
-        location["lineno"] = anchor["lineno"]
-    if anchor.get("source_line"):
-        location["source_line"] = anchor["source_line"]
-    return location
-
-
 def _target_for_anchor(qualname: str, anchor: dict[str, Any]) -> dict[str, Any]:
     file_ref = str(anchor.get("file") or "")
     file = file_ref.split("#", 1)[0]
@@ -49,7 +40,6 @@ def _target_for_anchor(qualname: str, anchor: dict[str, Any]) -> dict[str, Any]:
         "qualname": qualname,
         "module": module,
         "import_line": f"from {module} import {symbol}" if module and symbol else "",
-        **_location(anchor),
     }
 
 
