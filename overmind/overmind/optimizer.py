@@ -61,7 +61,7 @@ def candidate_prompt(
 
 
 class OptimiseLoop:
-    """Template → smoke → baseline → candidate diffs → complete."""
+    """Template → smoke → baseline → iterations → complete."""
 
     def __init__(
         self,
@@ -148,9 +148,25 @@ class OptimiseLoop:
         if not has_baseline:
             return {"action": "RUN_BASELINE", "experiment": exp}
 
-        n_cand = int(exp.get("num_candidates_per_iteration") or 3)
+        mode = exp.get("mode") or "optimize"
         max_iter = int(exp.get("num_iterations") or 5)
         current = int(exp.get("current_iteration") or 0)
+        if mode == "model_comparison":
+            models = list(exp.get("model_ids") or [])
+            order = int(local.get("next_order") or 1)
+            if current >= max_iter or order < 1 or order > len(models):
+                return {
+                    "action": "COMPLETE",
+                    "experiment": exp,
+                    "scores": exp.get("scores") or {},
+                }
+            return {
+                "action": "RUN_ITERATION",
+                "target_model": models[order - 1],
+                "experiment": exp,
+            }
+
+        n_cand = int(exp.get("num_candidates_per_iteration") or 3)
         pending = list(local.get("pending_diffs") or [])
         if pending:
             return {
@@ -199,9 +215,11 @@ class OptimiseLoop:
         if not dataset:
             raise RuntimeError("Dataset is empty.")
         extra = None
-        models = list(exp.get("model_ids") or [])
-        if models:
-            extra = openrouter_env(models[0])
+        # Hybrid smoke checks OpenRouter routing. Comparison smoke is the incumbent.
+        if (exp.get("mode") or "optimize") == "hybrid":
+            models = list(exp.get("model_ids") or [])
+            if models:
+                extra = openrouter_env(models[0])
         result = _run_datapoint(
             template=template,
             experiment_id=self.experiment_id,
@@ -302,37 +320,53 @@ class OptimiseLoop:
         if not template:
             raise RuntimeError("No command template set.")
         local = self._load_state()
-        pending = list(diffs if diffs is not None else local.get("pending_diffs") or [])
-        if not pending:
-            raise RuntimeError("No candidate diffs. Run `overmind optimise add-candidate --diff`.")
-
         order = int(local.get("next_order") or 1)
         models = list(exp.get("model_ids") or [])
         mode = exp.get("mode") or "optimize"
-        candidates_payload: list[dict] = []
-        index = 0
-        for diff in pending:
-            if mode == "hybrid" and models:
-                for model in models:
+
+        if mode == "model_comparison":
+            model_index = order - 1
+            if model_index < 0 or model_index >= len(models):
+                raise RuntimeError("No remaining models to compare.")
+            model = models[model_index]
+            candidates_payload = [
+                {
+                    "candidate_index": 0,
+                    "code_path": "",
+                    "target_model": model,
+                    "is_baseline": False,
+                }
+            ]
+            iteration_name = model
+        else:
+            pending = list(diffs if diffs is not None else local.get("pending_diffs") or [])
+            if not pending:
+                raise RuntimeError("No candidate diffs. Run `overmind optimise add-candidate --diff`.")
+            candidates_payload = []
+            index = 0
+            for diff in pending:
+                if mode == "hybrid" and models:
+                    for model in models:
+                        candidates_payload.append({
+                            "candidate_index": index,
+                            "code_path": diff,
+                            "target_model": model,
+                            "is_baseline": False,
+                        })
+                        index += 1
+                else:
                     candidates_payload.append({
                         "candidate_index": index,
                         "code_path": diff,
-                        "target_model": model,
                         "is_baseline": False,
                     })
                     index += 1
-            else:
-                candidates_payload.append({
-                    "candidate_index": index,
-                    "code_path": diff,
-                    "is_baseline": False,
-                })
-                index += 1
+            iteration_name = f"Iteration {order}"
 
         iteration = self.api.add_iteration(
             self.experiment_id,
             order=order,
-            name=f"Iteration {order}",
+            name=iteration_name,
             candidates=candidates_payload,
         )
         created = iteration.get("candidates") or []
@@ -345,7 +379,13 @@ class OptimiseLoop:
         pairs: list[tuple[dict, str]] = []
         for candidate in created:
             diff = str(candidate.get("code_path") or "")
-            cwd = str(_ensure_worktree(self.repo_cwd, self.experiment_id, str(candidate.get("id")), diff))
+            # Empty patch (baseline-shaped comparison candidates) must run in the
+            # checkout so an uncommitted rewrite_repo is visible; worktrees are HEAD.
+            cwd = (
+                self.repo_cwd
+                if not diff
+                else str(_ensure_worktree(self.repo_cwd, self.experiment_id, str(candidate.get("id")), diff))
+            )
             pairs.append((candidate, cwd))
         all_results = self._run_candidates(
             template=template,
