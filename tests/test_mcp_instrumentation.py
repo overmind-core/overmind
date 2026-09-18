@@ -156,6 +156,30 @@ def test_plan_preserves_exact_registered_ticket_fields():
     )
 
 
+def test_plan_defaults_to_project_wide_and_capability_scopes_when_supplied():
+    context = _context()
+    support = _capability(context, "Support")
+    sales = _capability(context, "Sales")
+    _behaviour(support, "support-task")
+    _behaviour(sales, "sales-task")
+
+    project_wide = _call("get_instrumentation_plan", context, {})
+    scoped = _call(
+        "get_instrumentation_plan",
+        context,
+        {"capability": support.slug},
+    )
+
+    assert project_wide.isError is False
+    assert {
+        placement["capability_id"] for placement in project_wide.structuredContent["placements"]
+    } == {str(support.id), str(sales.id)}
+    assert scoped.isError is False
+    assert {placement["capability_id"] for placement in scoped.structuredContent["placements"]} == {
+        str(support.id)
+    }
+
+
 def test_plan_requires_capability_for_behaviour_and_empty_registry_is_actionable():
     context = _context()
 
