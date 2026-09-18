@@ -108,10 +108,9 @@ Follow these for ALL Overmind work:
    ticket field verbatim, including `key`, `behaviour_id`, `version_id`,
    `version_analyzed_sha`, `contract_fingerprint`, `capability`,
    `capability_id`, `placement_mode`, `allowed_keys`, `grain`, `target`,
-   `required_scope`, `required_spans`, and `required_identity`. `lineno` and
-   `source_line` are often null — file + qualname is enough to locate the
-   function. Keep a primary scope outermost when a specialized span targets
-   the same function. When coding subagents are
+   `required_scope`, `required_spans`, and `required_identity`. File + qualname
+   is enough to locate the function. Keep a primary scope outermost when a
+   specialized span targets the same function. When coding subagents are
    available and permitted, group tickets by every file they touch, including
    `required_spans[].target.file`, so one worker owns each overlapping group.
 1. **Explicit run approval.** After applying the ticketed code changes, report

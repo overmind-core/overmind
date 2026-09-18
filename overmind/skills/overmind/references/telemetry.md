@@ -40,8 +40,7 @@ returned placement as an edit ticket and preserve its exact fields:
 `key`, `behaviour_id`, `version_id`, `version_analyzed_sha`,
 `contract_fingerprint`, `capability`, `capability_id`, `placement_mode`,
 `allowed_keys`, `grain`, `target`, `required_scope`, `required_spans`, and
-`required_identity`. `lineno` and
-`source_line` are often null; file + qualname locates the function. A missing
+`required_identity`. File + qualname locates the function. A missing
 registry returns an explicit human action; report it and stop this attempt.
 Do not continue when `placements` is empty. If recovery is needed, run local
 `/overmind setup` followed by `overmind sync`, then request the plan again in a

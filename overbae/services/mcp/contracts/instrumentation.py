@@ -17,8 +17,6 @@ class InstrumentationTarget(MCPModel):
     qualname: str = Field(max_length=512)
     module: str = Field(max_length=512)
     import_line: str = Field(max_length=1_024)
-    lineno: int | None = Field(default=None, ge=1)
-    source_line: str | None = Field(default=None, max_length=2_000)
 
 
 class RequiredInstrumentationSpan(MCPModel):
