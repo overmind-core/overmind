@@ -68,6 +68,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { TablePagination } from "@/components/ui/table-pagination";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { usedVersionOf } from "@/hooks/use-datasets";
@@ -87,7 +88,7 @@ import { humanizeKey } from "@/lib/label-case";
 import { notify } from "@/lib/notify";
 import { projectIdSearchSchema } from "@/lib/schemas";
 import { PROSE } from "@/lib/typography";
-import { cn, paginationFromPageLimit, paginationItems, scorePct } from "@/lib/utils";
+import { cn, scorePct } from "@/lib/utils";
 import type {
   EvalRunEvaluatorStat,
   EvalRunOperationalStat,
@@ -756,7 +757,7 @@ function buildIndexes(
   };
 }
 
-const PAGE_SIZE = 20;
+const PAGE_SIZE = 10;
 
 function ComparisonTable({
   runId,
@@ -806,7 +807,8 @@ function ComparisonTable({
   const hasNotApplicable = (applicability?.total ?? 0) > 0;
 
   const [activeMetric, setActiveMetric] = useState<string>("");
-  const [page, setPage] = useState(0);
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(PAGE_SIZE);
   const [openRow, setOpenRow] = useState<DatapointRow | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [verdictFilter, setVerdictFilter] = useState<VerdictFilter>("all");
@@ -814,11 +816,11 @@ function ComparisonTable({
 
   const handleSearchChange = (value: string) => {
     setSearchQuery(value);
-    setPage(0);
+    setPage(1);
   };
   const handleVerdictChange = (value: VerdictFilter) => {
     setVerdictFilter(value);
-    setPage(0);
+    setPage(1);
   };
   const handleSort = (key: DatapointSortKey) => {
     setSort((prev) =>
@@ -827,7 +829,7 @@ function ComparisonTable({
         : // Scores read best worst/best-first from a first click; text ascends.
           { dir: key.startsWith("score:") ? "desc" : "asc", key }
     );
-    setPage(0);
+    setPage(1);
   };
 
   useEffect(() => {
@@ -854,7 +856,6 @@ function ComparisonTable({
   const previewBySample = new Map(allSamples.map((s) => [s.id, s]));
   const singleVariantId = variantIds.length === 1 ? variantIds[0] : null;
 
-  // Mirrors the render-time lookup below — keep the two in step.
   const rowSampleId = (row: DatapointRow, vid: string): string | undefined =>
     sampleMap.get(row.key)?.get(vid);
 
@@ -905,18 +906,13 @@ function ComparisonTable({
   };
   const sortedRows = sortRows(filteredRows, sortValue, sort.dir);
 
-  const totalPages = Math.max(1, Math.ceil(sortedRows.length / PAGE_SIZE));
+  const totalPages = Math.max(1, Math.ceil(sortedRows.length / pageSize));
   // A live refetch can shrink the row set under the active page.
-  const safePage = Math.min(page, totalPages - 1);
+  const safePage = Math.min(Math.max(1, page), totalPages);
   useEffect(() => {
     if (page !== safePage) setPage(safePage);
   }, [page, safePage]);
-  const pageRows = sortedRows.slice(safePage * PAGE_SIZE, (safePage + 1) * PAGE_SIZE);
-  const pageInfo = paginationFromPageLimit({
-    count: sortedRows.length,
-    page: safePage + 1,
-    pageSize: PAGE_SIZE,
-  });
+  const pageRows = sortedRows.slice((safePage - 1) * pageSize, safePage * pageSize);
 
   const scoresLoading = isLoading && !summary;
 
@@ -1090,7 +1086,7 @@ function ComparisonTable({
             <Select
               onValueChange={(m) => {
                 setActiveMetric(m);
-                setPage(0);
+                setPage(1);
               }}
               value={currentMetric}
             >
@@ -1220,191 +1216,152 @@ function ComparisonTable({
               </div>
             )}
 
-            <div className="overflow-auto rounded-md border border-border">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <SortableHeader
-                      className="w-10"
-                      label="#"
-                      onSort={handleSort}
-                      sort={sort}
-                      sortKey="index"
-                    />
-                    <SortableHeader label="Input" onSort={handleSort} sort={sort} sortKey="input" />
-                    {singleVariantId ? (
-                      <SortableHeader
-                        label="Output"
-                        onSort={handleSort}
-                        sort={sort}
-                        sortKey="output"
-                      />
-                    ) : null}
-                    {variantIds.map((vid) => (
-                      <SortableHeader
-                        centered
-                        key={vid}
-                        label={singleVariantId ? "Score" : variants[vid].label}
-                        onSort={handleSort}
-                        sort={sort}
-                        sortKey={`score:${vid}`}
-                      />
-                    ))}
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {pageRows.length === 0 && (
+            <div className="overflow-hidden rounded-md border border-border">
+              <div className="overflow-auto">
+                <Table>
+                  <TableHeader>
                     <TableRow>
-                      <TableCell
-                        className="py-10 text-center text-sm text-muted-foreground"
-                        colSpan={2 + (singleVariantId ? 1 : 0) + variantIds.length}
-                      >
-                        No datapoints match your search or filter.
-                      </TableCell>
+                      <SortableHeader
+                        className="w-10"
+                        label="#"
+                        onSort={handleSort}
+                        sort={sort}
+                        sortKey="index"
+                      />
+                      <SortableHeader
+                        label="Input"
+                        onSort={handleSort}
+                        sort={sort}
+                        sortKey="input"
+                      />
+                      {singleVariantId ? (
+                        <SortableHeader
+                          label="Output"
+                          onSort={handleSort}
+                          sort={sort}
+                          sortKey="output"
+                        />
+                      ) : null}
+                      {variantIds.map((vid) => (
+                        <SortableHeader
+                          centered
+                          key={vid}
+                          label={singleVariantId ? "Score" : variants[vid].label}
+                          onSort={handleSort}
+                          sort={sort}
+                          sortKey={`score:${vid}`}
+                        />
+                      ))}
                     </TableRow>
-                  )}
-                  {pageRows.map((row) => {
-                    const ordinal = ordinalByRow.get(row) ?? 0;
-                    const inputSample = previewBySample.get(row.fallbackSampleId);
-                    const outSampleId = singleVariantId
-                      ? rowSampleId(row, singleVariantId)
-                      : undefined;
-                    const outSample = outSampleId ? previewBySample.get(outSampleId) : undefined;
-                    return (
-                      <TableRow
-                        className="cursor-pointer hover:bg-wash-raised"
-                        key={row.key}
-                        onClick={() => setOpenRow(row)}
-                      >
-                        <TableCell className="text-xs text-muted-foreground/40">
-                          {ordinal + 1}
+                  </TableHeader>
+                  <TableBody>
+                    {pageRows.length === 0 && (
+                      <TableRow>
+                        <TableCell
+                          className="py-10 text-center text-sm text-muted-foreground"
+                          colSpan={2 + (singleVariantId ? 1 : 0) + variantIds.length}
+                        >
+                          No datapoints match your search or filter.
                         </TableCell>
-                        <TableCell>
-                          <span
-                            className="block max-w-[24rem] truncate text-xs text-muted-foreground"
-                            title={inputSample?.inputPreview || undefined}
-                          >
-                            {inputSample?.inputPreview || "—"}
-                          </span>
-                        </TableCell>
-                        {singleVariantId ? (
-                          <TableCell>
-                            {outSample?.error ? (
-                              <span
-                                className="block max-w-[24rem] truncate text-xs text-warning"
-                                title={outSample.error}
-                              >
-                                {outSample.error}
-                              </span>
-                            ) : (
-                              <span
-                                className="block max-w-[24rem] truncate text-xs text-foreground/90"
-                                title={outSample?.outputPreview || undefined}
-                              >
-                                {outSample?.outputPreview || "—"}
-                              </span>
-                            )}
+                      </TableRow>
+                    )}
+                    {pageRows.map((row) => {
+                      const ordinal = ordinalByRow.get(row) ?? 0;
+                      const inputSample = previewBySample.get(row.fallbackSampleId);
+                      const outSampleId = singleVariantId
+                        ? rowSampleId(row, singleVariantId)
+                        : undefined;
+                      const outSample = outSampleId ? previewBySample.get(outSampleId) : undefined;
+                      return (
+                        <TableRow
+                          className="cursor-pointer hover:bg-wash-raised"
+                          key={row.key}
+                          onClick={() => setOpenRow(row)}
+                        >
+                          <TableCell className="text-xs text-muted-foreground/40">
+                            {ordinal + 1}
                           </TableCell>
-                        ) : null}
-                        {variantIds.map((vid) => {
-                          const sampleId = rowSampleId(row, vid);
-                          const perSampleScore = sampleId
-                            ? scoreIndex.get(sampleId)?.get(currentMetric)
-                            : undefined;
-                          const variantId = sampleId ? sampleVariantMap.get(sampleId) : vid;
-                          const datasetScore =
-                            perSampleScore == null && datasetMetrics.has(currentMetric)
-                              ? datasetScoreIndex.get(variantId ?? vid)?.get(currentMetric)
-                              : undefined;
-                          const score = perSampleScore ?? datasetScore;
-                          const errorReason =
-                            score == null && sampleId
-                              ? errorIndex.get(sampleId)?.get(currentMetric)
-                              : undefined;
-                          return (
-                            <TableCell className="text-center" key={vid}>
-                              {errorReason ? (
+                          <TableCell>
+                            <span
+                              className="block max-w-[24rem] truncate text-xs text-muted-foreground"
+                              title={inputSample?.inputPreview || undefined}
+                            >
+                              {inputSample?.inputPreview || "—"}
+                            </span>
+                          </TableCell>
+                          {singleVariantId ? (
+                            <TableCell>
+                              {outSample?.error ? (
                                 <span
-                                  className="inline-flex items-center justify-center rounded-sm border border-warning/40 bg-warning/10 px-1.5 py-0.5 font-mono text-xs font-semibold text-warning"
-                                  title={errorReason}
+                                  className="block max-w-[24rem] truncate text-xs text-warning"
+                                  title={outSample.error}
                                 >
-                                  !
+                                  {outSample.error}
                                 </span>
                               ) : (
-                                <ScoreChip
-                                  dimmed={datasetScore != null && perSampleScore == null}
-                                  value={score}
-                                />
+                                <span
+                                  className="block max-w-[24rem] truncate text-xs text-foreground/90"
+                                  title={outSample?.outputPreview || undefined}
+                                >
+                                  {outSample?.outputPreview || "—"}
+                                </span>
                               )}
                             </TableCell>
-                          );
-                        })}
-                      </TableRow>
-                    );
-                  })}
-                </TableBody>
-              </Table>
-            </div>
-
-            {totalPages > 1 && (
-              <nav
-                aria-label="Datapoint pages"
-                className="flex items-center justify-between text-xs text-muted-foreground"
-              >
-                <span>
-                  {pageInfo.startItem}–{pageInfo.endItem} of {pageInfo.total} datapoints
-                </span>
-                <div className="flex items-center gap-1">
-                  <Button
-                    className="px-2 text-xs"
-                    disabled={!pageInfo.hasPrevious}
-                    onClick={() => setPage((p) => Math.max(0, p - 1))}
-                    size="sm"
-                    variant="secondary"
-                  >
-                    <Icon.chevronLeft />
-                    Previous
-                  </Button>
-                  {paginationItems(safePage + 1, totalPages).map((item, i) =>
-                    item === "ellipsis" ? (
-                      <span
-                        aria-hidden="true"
-                        className="px-1 text-muted-foreground/50"
-                        key={`ellipsis-${i}`}
-                      >
-                        …
-                      </span>
-                    ) : (
-                      <button
-                        aria-current={item - 1 === safePage ? "page" : undefined}
-                        aria-label={`Page ${item}`}
-                        className={cn(
-                          "h-7 min-w-7 rounded-sm px-1 text-xs font-medium transition-colors",
-                          item - 1 === safePage
-                            ? "bg-primary text-primary-foreground"
-                            : "hover:bg-muted text-muted-foreground"
-                        )}
-                        key={item}
-                        onClick={() => setPage(item - 1)}
-                        type="button"
-                      >
-                        {item}
-                      </button>
-                    )
-                  )}
-                  <Button
-                    className="px-2 text-xs"
-                    disabled={!pageInfo.hasNext}
-                    onClick={() => setPage((p) => Math.min(totalPages - 1, p + 1))}
-                    size="sm"
-                    variant="secondary"
-                  >
-                    Next
-                    <Icon.chevronRight />
-                  </Button>
+                          ) : null}
+                          {variantIds.map((vid) => {
+                            const sampleId = rowSampleId(row, vid);
+                            const perSampleScore = sampleId
+                              ? scoreIndex.get(sampleId)?.get(currentMetric)
+                              : undefined;
+                            const variantId = sampleId ? sampleVariantMap.get(sampleId) : vid;
+                            const datasetScore =
+                              perSampleScore == null && datasetMetrics.has(currentMetric)
+                                ? datasetScoreIndex.get(variantId ?? vid)?.get(currentMetric)
+                                : undefined;
+                            const score = perSampleScore ?? datasetScore;
+                            const errorReason =
+                              score == null && sampleId
+                                ? errorIndex.get(sampleId)?.get(currentMetric)
+                                : undefined;
+                            return (
+                              <TableCell className="text-center" key={vid}>
+                                {errorReason ? (
+                                  <span
+                                    className="inline-flex items-center justify-center rounded-sm border border-warning/40 bg-warning/10 px-1.5 py-0.5 font-mono text-xs font-semibold text-warning"
+                                    title={errorReason}
+                                  >
+                                    !
+                                  </span>
+                                ) : (
+                                  <ScoreChip
+                                    dimmed={datasetScore != null && perSampleScore == null}
+                                    value={score}
+                                  />
+                                )}
+                              </TableCell>
+                            );
+                          })}
+                        </TableRow>
+                      );
+                    })}
+                  </TableBody>
+                </Table>
+              </div>
+              {(sortedRows.length > 0 || page > 1) && (
+                <div className="border-t border-border/70">
+                  <TablePagination
+                    count={sortedRows.length}
+                    onPageChange={setPage}
+                    onPageSizeChange={(s) => {
+                      setPage(1);
+                      setPageSize(s);
+                    }}
+                    page={safePage}
+                    pageSize={pageSize}
+                  />
                 </div>
-              </nav>
-            )}
+              )}
+            </div>
           </>
         )}
       </div>
