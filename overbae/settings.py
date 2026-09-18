@@ -209,6 +209,10 @@ def _file_storages(
             "BACKEND": "django.contrib.staticfiles.storage.StaticFilesStorage",
         },
     }
+    # django-storages rejects session_profile together with Django's
+    # AWS_ACCESS_KEY_ID (always set for the finetuning archive). Null the keys
+    # so a profile wins; without a profile the keys from settings still apply.
+    s3_auth = {**profile, "access_key": None, "secret_key": None} if profile else {}
     if s3_bucket:
         storages["default"] = {
             "BACKEND": "storages.backends.s3boto3.S3Boto3Storage",
@@ -219,7 +223,7 @@ def _file_storages(
                 "querystring_auth": True,
                 "querystring_expire": 3600,
                 "file_overwrite": False,
-                **profile,
+                **s3_auth,
             },
         }
     if s3_static_bucket:
@@ -232,7 +236,7 @@ def _file_storages(
                 "querystring_auth": False,
                 "file_overwrite": True,
                 **({"custom_domain": s3_custom_domain} if s3_custom_domain else {}),
-                **profile,
+                **s3_auth,
             },
         }
     return storages
