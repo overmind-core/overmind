@@ -59,7 +59,7 @@ describe("EntityLink prop forwarding", () => {
     const cases = [
       ["capability", "/capabilities/$capabilityId"],
       ["dataset", "/datasets/$datasetId"],
-      ["evalRun", "/evaluations/runs/$runId"],
+      ["evalRun", "/evaluations/$runId"],
       ["experiment", "/optimiser/$experimentId"],
       ["model", "/inference/$modelId"],
       ["project", "/projects/$projectId"],

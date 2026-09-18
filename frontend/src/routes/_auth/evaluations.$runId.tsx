@@ -102,7 +102,7 @@ const DATA_SOURCE_LABEL: Record<string, string> = {
   trace_filter: "Trace filter",
 };
 
-export const Route = createFileRoute("/_auth/evaluations/runs/$runId")({
+export const Route = createFileRoute("/_auth/evaluations/$runId")({
   component: EvalRunDetailPage,
   validateSearch: projectIdSearchSchema,
 });
