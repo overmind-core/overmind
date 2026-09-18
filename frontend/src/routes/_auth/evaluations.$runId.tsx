@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { toast } from "sonner";
@@ -110,11 +110,6 @@ export const Route = createFileRoute("/_auth/evaluations/$runId")({
 // Per-turn judge dimension columns (see per_turn_judge.py) — their presence is
 // what marks a run as teacher-forced replay.
 const TURN_DIM_RE = /:\s*(progress|turn match|tool choice|args grounded|safety)\s*$/i;
-
-// True when every variant runs in "existing" mode: captured traces are graded
-// with no golden reference, so an expected_output on the dataset row is not a
-// grading target here and showing it misleads.
-const TraceScoringRunContext = createContext(false);
 
 function ViewModeToggle({
   value,
@@ -283,8 +278,6 @@ function EvalRunDetailPage() {
 
   const runStatus = run.status ?? "pending";
   const isTerminal = runStatus !== "running" && runStatus !== "pending";
-  const isTraceScoringRun =
-    (run.variants ?? []).length > 0 && run.variants.every((v) => v.mode === "existing");
 
   // Fine-tuned variants have no tracked gen cost, so they contribute eval cost
   // only — same rule as the ops table's per-row totals.
@@ -308,229 +301,221 @@ function EvalRunDetailPage() {
   })();
 
   return (
-    <TraceScoringRunContext.Provider value={isTraceScoringRun}>
-      {/* There is no app-wide TooltipProvider; the page's help tips need one. */}
-      <TooltipProvider delayDuration={200}>
-        <PageShell header={header} variant="full">
-          {isTerminal && (
-            <Tabs
-              className="w-auto self-start"
-              onValueChange={(v) => setView(v as "results" | "compare")}
-              value={view}
-            >
-              <TabsList aria-label="Run view">
-                <TabsTrigger value="results">Results</TabsTrigger>
-                <TabsTrigger value="compare">Compare runs</TabsTrigger>
-              </TabsList>
-            </Tabs>
-          )}
+    // There is no app-wide TooltipProvider; the page's help tips need one.
+    <TooltipProvider delayDuration={200}>
+      <PageShell header={header} variant="full">
+        {isTerminal && (
+          <Tabs
+            className="w-auto self-start"
+            onValueChange={(v) => setView(v as "results" | "compare")}
+            value={view}
+          >
+            <TabsList aria-label="Run view">
+              <TabsTrigger value="results">Results</TabsTrigger>
+              <TabsTrigger value="compare">Compare runs</TabsTrigger>
+            </TabsList>
+          </Tabs>
+        )}
 
-          {runStatus === "failed" && run.error ? (
-            <FailureCard
-              alternative={
-                run.dataset ? (
-                  <Link
-                    params={{ datasetId: run.dataset }}
-                    search={{ projectId }}
-                    to="/datasets/$datasetId"
-                  >
-                    View dataset
-                  </Link>
-                ) : undefined
-              }
-              error={run.error}
-              onRetry={() =>
-                relaunch.mutate(runId, {
-                  onSuccess: () => toast.success("Re-launched"),
-                })
-              }
-              retryPending={relaunch.isPending}
-              title="Run failed"
-            />
-          ) : run.error ? (
-            <div className="rounded-md border border-destructive/40 bg-destructive/5 px-3 py-2 text-sm text-destructive">
-              {run.error}
-            </div>
-          ) : null}
+        {runStatus === "failed" && run.error ? (
+          <FailureCard
+            alternative={
+              run.dataset ? (
+                <Link
+                  params={{ datasetId: run.dataset }}
+                  search={{ projectId }}
+                  to="/datasets/$datasetId"
+                >
+                  View dataset
+                </Link>
+              ) : undefined
+            }
+            error={run.error}
+            onRetry={() =>
+              relaunch.mutate(runId, {
+                onSuccess: () => toast.success("Re-launched"),
+              })
+            }
+            retryPending={relaunch.isPending}
+            title="Run failed"
+          />
+        ) : run.error ? (
+          <div className="rounded-md border border-destructive/40 bg-destructive/5 px-3 py-2 text-sm text-destructive">
+            {run.error}
+          </div>
+        ) : null}
 
-          {(run.warnings ?? []).length > 0 && (
-            <div className="rounded-md border border-warning/40 bg-warning/10 px-4 py-3 text-sm text-warning">
-              <p className="font-medium">Evaluator compatibility warnings</p>
-              <ul className="mt-1 list-disc space-y-1 pl-5 text-xs">
-                {(run.warnings ?? []).map((warning, index) => (
-                  <li key={`${warning.evaluator}-${warning.severity}-${index}`}>
-                    {warning.message}
-                  </li>
-                ))}
-              </ul>
-            </div>
-          )}
+        {(run.warnings ?? []).length > 0 && (
+          <div className="rounded-md border border-warning/40 bg-warning/10 px-4 py-3 text-sm text-warning">
+            <p className="font-medium">Evaluator compatibility warnings</p>
+            <ul className="mt-1 list-disc space-y-1 pl-5 text-xs">
+              {(run.warnings ?? []).map((warning, index) => (
+                <li key={`${warning.evaluator}-${warning.severity}-${index}`}>{warning.message}</li>
+              ))}
+            </ul>
+          </div>
+        )}
 
-          <div className="min-h-0 flex-1 overflow-auto">
-            <Card className="flex flex-col gap-4 p-4">
-              <div className="flex flex-wrap items-start justify-between gap-x-6 gap-y-3">
-                <div className="flex min-w-0 flex-col gap-2">
-                  <h3 className="inline-flex items-center gap-1.5 text-xs text-foreground">
-                    {run.variants.length === 1 ? "Model" : "Models"}
-                    {run.variants.length > 1 && <CountChip count={run.variants.length} />}
-                  </h3>
-                  <div className="flex flex-wrap gap-2">
-                    {[...run.variants]
-                      .sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
-                      .map((v) => (
-                        <ModelProviderChip key={v.id} model={v.resolvedModel || v.label} />
-                      ))}
-                  </div>
+        <div className="min-h-0 flex-1 overflow-auto">
+          <Card className="flex flex-col gap-4 p-4">
+            <div className="flex flex-wrap items-start justify-between gap-x-6 gap-y-3">
+              <div className="flex min-w-0 flex-col gap-2">
+                <h3 className="inline-flex items-center gap-1.5 text-xs text-foreground">
+                  {run.variants.length === 1 ? "Model" : "Models"}
+                  {run.variants.length > 1 && <CountChip count={run.variants.length} />}
+                </h3>
+                <div className="flex flex-wrap gap-2">
+                  {[...run.variants]
+                    .sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
+                    .map((v) => (
+                      <ModelProviderChip key={v.id} model={v.resolvedModel || v.label} />
+                    ))}
                 </div>
-                <dl className="flex shrink-0 flex-col items-end gap-1 text-xs">
+              </div>
+              <dl className="flex shrink-0 flex-col items-end gap-1 text-xs">
+                <div className="flex items-baseline gap-2">
+                  <dt className="text-muted-foreground">Credits used</dt>
+                  <dd className="font-mono font-medium tabular-nums">
+                    {runCreditsUsd != null ? <CreditsAmount usd={runCreditsUsd} /> : "—"}
+                  </dd>
+                </div>
+                <div className="flex items-baseline gap-2">
+                  <dt className="text-muted-foreground">Created</dt>
+                  <dd className="font-medium">
+                    <DateTime value={run.createdAt} />
+                  </dd>
+                </div>
+                {run.completedAt && (
                   <div className="flex items-baseline gap-2">
-                    <dt className="text-muted-foreground">Credits used</dt>
-                    <dd className="font-mono font-medium tabular-nums">
-                      {runCreditsUsd != null ? <CreditsAmount usd={runCreditsUsd} /> : "—"}
-                    </dd>
-                  </div>
-                  <div className="flex items-baseline gap-2">
-                    <dt className="text-muted-foreground">Created</dt>
+                    <dt className="text-muted-foreground">Completed</dt>
                     <dd className="font-medium">
-                      <DateTime value={run.createdAt} />
+                      <DateTime value={run.completedAt} />
                     </dd>
                   </div>
-                  {run.completedAt && (
-                    <div className="flex items-baseline gap-2">
-                      <dt className="text-muted-foreground">Completed</dt>
-                      <dd className="font-medium">
-                        <DateTime value={run.completedAt} />
-                      </dd>
-                    </div>
-                  )}
-                </dl>
-              </div>
+                )}
+              </dl>
+            </div>
 
-              <div className="flex flex-wrap items-stretch gap-y-3 border-t border-border/70 pt-3.5">
-                {run.capabilityId && (
-                  <>
-                    <HeaderStat label="Capability">
+            <div className="flex flex-wrap items-stretch gap-y-3 border-t border-border/70 pt-3.5">
+              {run.capabilityId && (
+                <>
+                  <HeaderStat label="Capability">
+                    <EntityRef id={run.capabilityId} kind="capability" name={run.capabilityName} />
+                  </HeaderStat>
+                  <span aria-hidden className="mx-5 w-px shrink-0 self-stretch bg-border/60" />
+                </>
+              )}
+              {run.dataset && (
+                <>
+                  <HeaderStat label="Dataset">
+                    <span className="inline-flex items-center gap-1.5">
                       <EntityRef
-                        id={run.capabilityId}
-                        kind="capability"
-                        name={run.capabilityName}
+                        id={run.dataset}
+                        kind="dataset"
+                        name={run.datasetName}
+                        projectId={projectId}
                       />
-                    </HeaderStat>
-                    <span aria-hidden className="mx-5 w-px shrink-0 self-stretch bg-border/60" />
-                  </>
-                )}
-                {run.dataset && (
-                  <>
-                    <HeaderStat label="Dataset">
-                      <span className="inline-flex items-center gap-1.5">
-                        <EntityRef
-                          id={run.dataset}
-                          kind="dataset"
-                          name={run.datasetName}
-                          projectId={projectId}
-                        />
-                        <UsedVersionChip info={usedVersionOf(run.cellInfo)} />
-                      </span>
-                    </HeaderStat>
-                    <span aria-hidden className="mx-5 w-px shrink-0 self-stretch bg-border/60" />
-                  </>
-                )}
-                {run.dataSource && (
-                  <>
-                    <HeaderStat label="Source">
-                      {DATA_SOURCE_LABEL[run.dataSource] ?? run.dataSource}
-                    </HeaderStat>
-                    <span aria-hidden className="mx-5 w-px shrink-0 self-stretch bg-border/60" />
-                  </>
-                )}
-                {run.maxItems != null && run.maxItems > 0 && (
-                  <>
-                    <HeaderStat label="Max items">{run.maxItems}</HeaderStat>
-                    <span aria-hidden className="mx-5 w-px shrink-0 self-stretch bg-border/60" />
-                  </>
-                )}
-                <HeaderStat label="Evaluators">
-                  {run.runEvaluators.filter((e) => e.enabled).length}
-                </HeaderStat>
-              </div>
+                      <UsedVersionChip info={usedVersionOf(run.cellInfo)} />
+                    </span>
+                  </HeaderStat>
+                  <span aria-hidden className="mx-5 w-px shrink-0 self-stretch bg-border/60" />
+                </>
+              )}
+              {run.dataSource && (
+                <>
+                  <HeaderStat label="Source">
+                    {DATA_SOURCE_LABEL[run.dataSource] ?? run.dataSource}
+                  </HeaderStat>
+                  <span aria-hidden className="mx-5 w-px shrink-0 self-stretch bg-border/60" />
+                </>
+              )}
+              {run.maxItems != null && run.maxItems > 0 && (
+                <>
+                  <HeaderStat label="Max items">{run.maxItems}</HeaderStat>
+                  <span aria-hidden className="mx-5 w-px shrink-0 self-stretch bg-border/60" />
+                </>
+              )}
+              <HeaderStat label="Evaluators">
+                {run.runEvaluators.filter((e) => e.enabled).length}
+              </HeaderStat>
+            </div>
 
-              <div className="flex flex-wrap items-center gap-2.5 border-t border-border/70 pt-3">
-                <StatusBadge status={runStatus} />
-                <RunElapsed
-                  completedAt={run.completedAt}
-                  createdAt={run.createdAt}
-                  status={runStatus}
-                  updatedAt={run.updatedAt}
-                />
-                <div className="ml-auto flex shrink-0 items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2.5 border-t border-border/70 pt-3">
+              <StatusBadge status={runStatus} />
+              <RunElapsed
+                completedAt={run.completedAt}
+                createdAt={run.createdAt}
+                status={runStatus}
+                updatedAt={run.updatedAt}
+              />
+              <div className="ml-auto flex shrink-0 items-center gap-2">
+                <Button
+                  disabled={relaunch.isPending}
+                  onClick={() =>
+                    relaunch.mutate(runId, {
+                      onError: (e) => notify.error(e, "Couldn't re-launch the run"),
+                      onSuccess: () => toast.success("Re-launched"),
+                    })
+                  }
+                  size="sm"
+                  variant="secondary"
+                >
+                  <Icon.refresh />
+                  Re-run
+                </Button>
+                {runStatus === "running" && (
                   <Button
-                    disabled={relaunch.isPending}
-                    onClick={() =>
-                      relaunch.mutate(runId, {
-                        onError: (e) => notify.error(e, "Couldn't re-launch the run"),
-                        onSuccess: () => toast.success("Re-launched"),
-                      })
-                    }
+                    disabled={cancel.isPending}
+                    onClick={() => cancel.mutate(runId)}
                     size="sm"
                     variant="secondary"
                   >
-                    <Icon.refresh />
-                    Re-run
+                    <Icon.close />
+                    Cancel
                   </Button>
-                  {runStatus === "running" && (
-                    <Button
-                      disabled={cancel.isPending}
-                      onClick={() => cancel.mutate(runId)}
-                      size="sm"
-                      variant="secondary"
+                )}
+                {runStatus === "completed" && (
+                  <Button asChild size="sm">
+                    <Link
+                      search={{
+                        optimize: true,
+                        projectId,
+                        ...(run.capabilityId ? { capabilityId: run.capabilityId } : {}),
+                        ...(run.dataset ? { datasetId: run.dataset } : {}),
+                      }}
+                      to="/optimiser"
                     >
-                      <Icon.close />
-                      Cancel
-                    </Button>
-                  )}
-                  {runStatus === "completed" && (
-                    <Button asChild size="sm">
-                      <Link
-                        search={{
-                          optimize: true,
-                          projectId,
-                          ...(run.capabilityId ? { capabilityId: run.capabilityId } : {}),
-                          ...(run.dataset ? { datasetId: run.dataset } : {}),
-                        }}
-                        to="/optimiser"
-                      >
-                        <Icon.optimiser />
-                        Optimise
-                      </Link>
-                    </Button>
-                  )}
-                </div>
+                      <Icon.optimiser />
+                      Optimise
+                    </Link>
+                  </Button>
+                )}
               </div>
-            </Card>
+            </div>
+          </Card>
 
-            {view === "compare" && isTerminal ? (
-              <div className="pt-5">
-                <RunComparison
-                  baseCreatedAt={run.createdAt}
-                  baseName={run.name}
-                  baseRunId={runId}
-                  dataset={run.dataset ?? null}
-                  projectId={projectId}
-                />
-              </div>
-            ) : (
-              <ComparisonTable
-                operational={run.operational}
-                runEvaluators={run.runEvaluators}
-                runId={runId}
-                runStatus={runStatus}
-                runVariants={run.variants}
+          {view === "compare" && isTerminal ? (
+            <div className="pt-5">
+              <RunComparison
+                baseCreatedAt={run.createdAt}
+                baseName={run.name}
+                baseRunId={runId}
+                dataset={run.dataset ?? null}
+                projectId={projectId}
               />
-            )}
-          </div>
-        </PageShell>
-      </TooltipProvider>
-    </TraceScoringRunContext.Provider>
+            </div>
+          ) : (
+            <ComparisonTable
+              operational={run.operational}
+              runEvaluators={run.runEvaluators}
+              runId={runId}
+              runStatus={runStatus}
+              runVariants={run.variants}
+            />
+          )}
+        </div>
+      </PageShell>
+    </TooltipProvider>
   );
 }
 
@@ -687,7 +672,7 @@ function VariantCard({
   );
 }
 
-type DatapointSortKey = "index" | "input" | "output" | `score:${string}`;
+type DatapointSortKey = "index" | "input" | "expected" | "output" | `score:${string}`;
 
 interface ScoreRecord {
   sample?: string | null;
@@ -851,10 +836,12 @@ function ComparisonTable({
     verdictIndex,
   } = buildIndexes(allSamples, allScores as ScoreRecord[]);
 
-  // Input is shared across a datapoint's variants; output is per-variant, so the
-  // Output column only exists for single-model runs.
+  // Input and expected are shared across a datapoint's variants; output is
+  // per-variant, so the Output column only exists for single-model runs.
   const previewBySample = new Map(allSamples.map((s) => [s.id, s]));
   const singleVariantId = variantIds.length === 1 ? variantIds[0] : null;
+  const showExpected = allSamples.some((s) => Boolean(s.expectedPreview));
+  const extraPreviewCols = (showExpected ? 1 : 0) + (singleVariantId ? 1 : 0);
 
   const rowSampleId = (row: DatapointRow, vid: string): string | undefined =>
     sampleMap.get(row.key)?.get(vid);
@@ -866,6 +853,7 @@ function ComparisonTable({
     : datapointRows.filter((row) => {
         const texts: Array<string | null | undefined> = [
           previewBySample.get(row.fallbackSampleId)?.inputPreview,
+          showExpected ? previewBySample.get(row.fallbackSampleId)?.expectedPreview : undefined,
         ];
         for (const vid of variantIds) {
           const sid = rowSampleId(row, vid);
@@ -898,6 +886,8 @@ function ComparisonTable({
     if (sort.key === "index") return ordinalByRow.get(row) ?? null;
     if (sort.key === "input")
       return previewBySample.get(row.fallbackSampleId)?.inputPreview ?? null;
+    if (sort.key === "expected")
+      return previewBySample.get(row.fallbackSampleId)?.expectedPreview ?? null;
     if (sort.key === "output") {
       const sid = singleVariantId ? rowSampleId(row, singleVariantId) : undefined;
       return sid ? (previewBySample.get(sid)?.outputPreview ?? null) : null;
@@ -1234,6 +1224,14 @@ function ComparisonTable({
                         sort={sort}
                         sortKey="input"
                       />
+                      {showExpected ? (
+                        <SortableHeader
+                          label="Expected"
+                          onSort={handleSort}
+                          sort={sort}
+                          sortKey="expected"
+                        />
+                      ) : null}
                       {singleVariantId ? (
                         <SortableHeader
                           label="Output"
@@ -1259,7 +1257,7 @@ function ComparisonTable({
                       <TableRow>
                         <TableCell
                           className="py-10 text-center text-sm text-muted-foreground"
-                          colSpan={2 + (singleVariantId ? 1 : 0) + variantIds.length}
+                          colSpan={2 + extraPreviewCols + variantIds.length}
                         >
                           No datapoints match your search or filter.
                         </TableCell>
@@ -1289,6 +1287,16 @@ function ComparisonTable({
                               {inputSample?.inputPreview || "—"}
                             </span>
                           </TableCell>
+                          {showExpected ? (
+                            <TableCell>
+                              <span
+                                className="block max-w-[24rem] truncate text-xs text-muted-foreground"
+                                title={inputSample?.expectedPreview || undefined}
+                              >
+                                {inputSample?.expectedPreview || "—"}
+                              </span>
+                            </TableCell>
+                          ) : null}
                           {singleVariantId ? (
                             <TableCell>
                               {outSample?.error ? (
@@ -1769,7 +1777,6 @@ function LiveSampleFeed({
 function SampleQuickView({ sampleId, onClose }: { sampleId: string | null; onClose: () => void }) {
   const { data: sample, isLoading } = useEvalSampleQuery(sampleId ?? "");
   const [viewMode, setViewMode] = useState<ViewMode>("formatted");
-  const isTraceScoringRun = useContext(TraceScoringRunContext);
   const traj = (sample?.trajectory ?? {}) as { final_output?: string };
   const rawExpected = sample?.expected;
   const expected =
@@ -1816,7 +1823,7 @@ function SampleQuickView({ sampleId, onClose }: { sampleId: string | null; onClo
                   viewMode={viewMode}
                 />
               </div>
-              {!isTraceScoringRun && expected != null && (
+              {expected != null && (
                 <div className="rounded-md border bg-wash-subtle p-3">
                   <div className="mb-1.5 flex items-center gap-1.5">
                     <Icon.dataset className="size-3.5 text-muted-foreground" />
@@ -2194,7 +2201,6 @@ function VariantAccordionCard({
   }, [isOpen]);
 
   const { data: sample, isLoading } = useEvalSampleQuery(hasOpened ? sampleId : "");
-  const isTraceScoringRun = useContext(TraceScoringRunContext);
 
   const handleToggle = () => onToggle();
 
@@ -2275,7 +2281,7 @@ function VariantAccordionCard({
                   />
                 </div>
               )}
-              {!isReplaySample && !isTraceScoringRun && reference != null && (
+              {!isReplaySample && reference != null && (
                 <div className="bg-wash-subtle px-4 py-3">
                   <div className="mb-1.5 flex items-center gap-1.5">
                     <Icon.dataset className="size-3.5 text-muted-foreground" />
