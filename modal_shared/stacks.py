@@ -116,14 +116,18 @@ def _gpu_token(gpu_type: str) -> str:
 
 
 def worker_cls_name(
-    gpu_type: str, serve_image: str = SERVE_VLLM, default: str | None = None
+    gpu_type: str,
+    serve_image: str = SERVE_VLLM,
+    default: str | None = None,
+    *,
+    enable_lora: bool = False,
 ) -> str:
     image = serve_image or SERVE_VLLM
     if (gpu_type, image) not in WORKER_ALLOWED:
         if default is not None and image == SERVE_VLLM:
             return default
         raise ValueError(f"no inference worker for gpu={gpu_type!r} serve_image={image!r}")
-    return f"{_gpu_token(gpu_type)}_{image}"
+    return f"{_gpu_token(gpu_type)}_{image}" + ("_lora" if enable_lora else "")
 
 
 WORKER_CLS: dict[tuple[str, str], str] = {pair: worker_cls_name(*pair) for pair in WORKER_ALLOWED}
