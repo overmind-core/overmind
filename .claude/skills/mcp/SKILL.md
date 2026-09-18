@@ -104,8 +104,10 @@ boundary. If more granular API-key enforcement is introduced, implement it in
 the catalog/auth layer for every tool—do not add one-off handler checks.
 
 The public surface remains read and write only. The catalog rejects destructive
-tool names and destructive metadata. Do not add delete, remove, cancel, retry,
-or undeploy operations without an explicit public-surface decision.
+tool names and destructive metadata. Do not add delete, remove, cancel, or
+undeploy operations without an explicit public-surface decision. The sole
+documented lifecycle exception is `retry_deployment`; do not add other retry
+operations without an explicit public-surface decision.
 
 ## Adding or changing a tool
 

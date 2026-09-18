@@ -9,9 +9,9 @@ Overmind models production work as **Capability > behaviour > task
 execution**. A capability is the product AI surface, a behaviour is a
 scanned contract, and a task execution is a carved, scored unit of a trace.
 
-MCP prompts are the native guided workflows. Invoke one of the eleven prompts
-when the client supports prompts; use the references in this directory only
-when prompt support is unavailable or when local repository work is required.
+MCP prompts are the native guided workflows. Invoke the matching prompt when
+the client supports prompts; use the references in this directory only when
+prompt support is unavailable or when local repository work is required.
 
 ## Native prompts
 
@@ -103,24 +103,33 @@ Follow these for ALL Overmind work:
    tools.
 1. **Ticketed instrumentation.** Call `get_instrumentation_plan` with no
    capability for project-wide work, or with a capability for scoped work, and
-   treat each placement as an edit ticket. Copy `target.file`, `qualname`, required
-   scope, required decorator, import line, and capability id. `lineno` and
+   treat each placement as an edit ticket. If the result has `human_action` or
+   no placements, report its instruction and stop this attempt. Copy every
+   ticket field verbatim, including `key`, `behaviour_id`, `version_id`,
+   `version_analyzed_sha`, `contract_fingerprint`, `capability`,
+   `capability_id`, `placement_mode`, `allowed_keys`, `grain`, `target`,
+   `required_scope`, `required_spans`, and `required_identity`. `lineno` and
    `source_line` are often null — file + qualname is enough to locate the
-   function. Keep a primary scope outermost when a specialized span targets the
-   same function. Spawn one coding subagent per unique `target.file`.
+   function. Keep a primary scope outermost when a specialized span targets
+   the same function. When coding subagents are
+   available and permitted, group tickets by every file they touch, including
+   `required_spans[].target.file`, so one worker owns each overlapping group.
 1. **Explicit run approval.** After applying the ticketed code changes, report
-   the changed files and any local checks, then ask the user to choose a real run or a bounded smoke run. The real run
-   must state its exact input, environment, provider/model, expected side
-   effects, and unique correlation value. Do not execute either mode before
-   explicit approval; a real-run retry needs fresh approval unless a bounded
-   retry count and exact input were approved.
-1. **Server-side verification.** Flush the approved run, query
-   `query_traces` with the narrowest correlation and `all_spans=true`, poll
-   within a fixed bound, and require exactly one matching trace. Read
-   `overmind://traces/{trace_id}` and pass its complete server-supplied
-   `spans` to `verify_instrumentation` (no DB writes). Reject zero or multiple
-   matches, truncated resources, and span lists over the verifier limit. Report
-   application outcome separately from instrumentation status.
+   the changed files and local checks, generate a unique verification
+   correlation, then ask the user to choose a real run or bounded smoke run.
+   Present each choice's exact command or input, capability, environment,
+   provider/model, expected side effects, correlation value, and approved
+   attempt count; mark unknown fields as needing user input. Do not execute
+   either mode before explicit approval. A real-run retry needs fresh approval
+   unless an exact input and bounded attempt count were approved.
+1. **Server-side verification.** Stamp the approved correlation as
+   `conversation.id`, run only the approved input, and flush. Poll
+   `query_traces(session=<correlation>, all_spans=false, limit=2)` within a
+   fixed bound and require `page.total == 1`. Read that row's
+   `overmind://traces/{trace_id}` resource, require `truncated == false` and
+   `span_count == len(spans)`, then pass its server-supplied `spans` unchanged
+   to `verify_instrumentation` (no DB writes). Report application outcome
+   separately from instrumentation status.
 
 ## Use-case references
 
