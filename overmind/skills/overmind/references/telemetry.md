@@ -47,14 +47,11 @@ Do not continue when `placements` is empty. If recovery is needed, run local
 `/overmind setup` followed by `overmind sync`, then request the plan again in a
 new attempt.
 
-Before editing, compare every non-empty `version_analyzed_sha` with the current
-checkout. When it differs, rerun setup and sync and request a fresh plan; if the
-fresh ticket still differs, stop instead of applying stale locations or
-contracts. When subagents are available and repository policy permits coding
-delegation, derive each ticket's touched files from its primary `target.file`
-and every `required_spans[].target.file`. Group overlapping tickets under one
-owner so two workers never edit the same file. The parent integrates the groups
-and owns all verification.
+When subagents are available and repository policy permits coding delegation,
+derive each ticket's touched files from its primary `target.file` and every
+`required_spans[].target.file`. Group overlapping tickets under one owner so
+two workers never edit the same file. The parent integrates the groups and owns
+all verification.
 
 The MCP server does not edit files. Apply the tickets locally and preserve the
 required identity. Current SDK decorators include:

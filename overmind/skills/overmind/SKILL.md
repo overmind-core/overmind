@@ -9,9 +9,9 @@ Overmind models production work as **Capability > behaviour > task
 execution**. A capability is the product AI surface, a behaviour is a
 scanned contract, and a task execution is a carved, scored unit of a trace.
 
-MCP prompts are the native guided workflows. Invoke one of the twelve prompts
-when the client supports prompts; use the references in this directory only
-when prompt support is unavailable or when local repository work is required.
+MCP prompts are the native guided workflows. Invoke the matching prompt when
+the client supports prompts; use the references in this directory only when
+prompt support is unavailable or when local repository work is required.
 
 ## Native prompts
 
@@ -110,10 +110,8 @@ Follow these for ALL Overmind work:
    `capability_id`, `placement_mode`, `allowed_keys`, `grain`, `target`,
    `required_scope`, `required_spans`, and `required_identity`. `lineno` and
    `source_line` are often null — file + qualname is enough to locate the
-   function. Refresh setup, sync, and the plan when a
-   non-empty `version_analyzed_sha` differs from the current checkout; stop if
-   the fresh ticket still differs. Keep a primary scope outermost when a
-   specialized span targets the same function. When coding subagents are
+   function. Keep a primary scope outermost when a specialized span targets
+   the same function. When coding subagents are
    available and permitted, group tickets by every file they touch, including
    `required_spans[].target.file`, so one worker owns each overlapping group.
 1. **Explicit run approval.** After applying the ticketed code changes, report

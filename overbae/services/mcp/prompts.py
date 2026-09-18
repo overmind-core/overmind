@@ -59,9 +59,7 @@ PROMPTS = (
             "Instrument this repository project-wide when the capability filter below is blank; "
             'otherwise scope the work to it. Capability filter: "{capability}". Start with '
             "get_instrumentation_plan. If it returns human_action or no placements, report its "
-            "instruction and stop this attempt. Before editing, compare each non-empty "
-            "version_analyzed_sha with the current checkout; refresh setup, sync, and the plan when "
-            "stale, then stop if it still does not match. Preserve every ticket field verbatim, "
+            "instruction and stop this attempt. Preserve every ticket field verbatim, "
             "including key, behaviour_id, version_id, version_analyzed_sha, contract_fingerprint, "
             "capability, capability_id, placement_mode, allowed_keys, grain, target, required_scope, "
             "required_spans, and required_identity. When delegating, compute each ticket's files from "
