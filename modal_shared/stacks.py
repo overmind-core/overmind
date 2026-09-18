@@ -95,14 +95,12 @@ SERVE_STACK_PINS: dict[str, str] = {
 }
 
 # (gpu_type, serve_image) pairs we deploy. Cls name is ``{gpu}_{serve_image}``
-# with hyphens stripped from gpu (A100-80GB → A10080GB_vllm). LoRA pools add
-# ``_lora`` so GPU snapshots can be on without snapshotting full-FT workers.
+# with hyphens stripped from gpu (A100-80GB → A10080GB_vllm).
 WORKER_ALLOWED: frozenset[tuple[str, str]] = frozenset(
     {
         ("L4", SERVE_VLLM),
         ("L40S", SERVE_VLLM),
         ("A100-80GB", SERVE_VLLM),
-        ("H100", SERVE_VLLM),
         ("H200", SERVE_VLLM),
         ("B200", SERVE_VLLM),
         ("B300", SERVE_VLLM),
@@ -122,23 +120,17 @@ def worker_cls_name(
     serve_image: str = SERVE_VLLM,
     default: str | None = None,
     *,
-    lora: bool = False,
+    enable_lora: bool = False,
 ) -> str:
     image = serve_image or SERVE_VLLM
     if (gpu_type, image) not in WORKER_ALLOWED:
         if default is not None and image == SERVE_VLLM:
-            name = default
-        else:
-            raise ValueError(f"no inference worker for gpu={gpu_type!r} serve_image={image!r}")
-    else:
-        name = f"{_gpu_token(gpu_type)}_{image}"
-    return f"{name}_lora" if lora else name
+            return default
+        raise ValueError(f"no inference worker for gpu={gpu_type!r} serve_image={image!r}")
+    return f"{_gpu_token(gpu_type)}_{image}" + ("_lora" if enable_lora else "")
 
 
 WORKER_CLS: dict[tuple[str, str], str] = {pair: worker_cls_name(*pair) for pair in WORKER_ALLOWED}
-WORKER_LORA_CLS: dict[tuple[str, str], str] = {
-    pair: worker_cls_name(*pair, lora=True) for pair in WORKER_ALLOWED
-}
 
 GPU_CLASS_MAP: dict[str, str] = {
     gpu: cls for (gpu, image), cls in WORKER_CLS.items() if image == SERVE_VLLM
@@ -153,7 +145,6 @@ GPU_TIER: dict[str, tuple[str, int]] = {
     "L4": ("short", 8192),
     "L40S": ("short", 16384),
     "A100-80GB": ("large", 16384),
-    "H100": ("large", 16384),
     "H200": ("large", 32768),
     "B200": ("large", 16384),
     "B300": ("large", 32768),

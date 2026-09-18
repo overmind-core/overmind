@@ -15,11 +15,10 @@ _SERVE_ENV = {
     "VLLM_LOG_STATS_INTERVAL": "30",
     # Default off; worker sets "1" for non-prod at runtime.
     "VLLM_SERVER_DEV_MODE": "0",
-    "TORCHINDUCTOR_COMPILE_THREADS": "1",
 }
 
 
-def _from_vllm_openai(tag: str, *extra_pip: str) -> modal.Image:
+def _from_vllm_openai(tag: str, *extra_pip: str, snapshot: bool = False) -> modal.Image:
     """Official ``vllm/vllm-openai`` image. ENTRYPOINT is ``vllm serve`` — must be
     cleared or Modal never runs the worker. Image has python3 only."""
     return attach_serving_args(
@@ -34,10 +33,21 @@ def _from_vllm_openai(tag: str, *extra_pip: str) -> modal.Image:
             .pip_install(
                 "httpx>=0.28.0",
                 # Concurrent safetensors reads into GPU; vLLM extra `runai`.
-                "runai-model-streamer>=0.15.7",
+                "runai-model-streamer==0.16.1" if snapshot else "runai-model-streamer>=0.15.7",
                 *extra_pip,
             )
-            .env(_SERVE_ENV)
+            .env(
+                {
+                    **_SERVE_ENV,
+                    **(
+                        dict.fromkeys(
+                            ("OMP_NUM_THREADS", "MKL_NUM_THREADS", "OPENBLAS_NUM_THREADS"), "8"
+                        )
+                        if snapshot
+                        else {}
+                    ),
+                }
+            )
         )
     )
 
@@ -46,7 +56,8 @@ def _from_vllm_openai(tag: str, *extra_pip: str) -> modal.Image:
 # transformers<5.15: 5.15+ treats Gemma 4 head_dim as per-layer and vLLM 0.27.1
 # dies in ModelConfig (AmbiguousGlobalPerLayerAttributeError). Upstream fix is
 # vLLM #49797, not in 0.27.1 — new tag = new SERVE_IMAGES key, never retag vllm.
-vllm_image = _from_vllm_openai("v0.27.1", "transformers>=5.10.2,<5.15")
+_VLLM_TAG = "v0.27.1"
+vllm_image = _from_vllm_openai(_VLLM_TAG, "transformers>=5.10.2,<5.15")
 # amd64 digest sha256:8151766297ea77f37d7378ba182aa16870b3f8eb5740a740846dd16d1dc4fa05
 # Nightly pinned to a commit, not the "v0.28.0" release tag: v0.28.0 merges
 # official Muse Glimmer support (vLLM #51655) but its muse_glimmer.py predates
@@ -56,13 +67,19 @@ vllm_image = _from_vllm_openai("v0.27.1", "transformers>=5.10.2,<5.15")
 # This nightly (built 2026-08-26 off main commit 46638857) has get_mm_mapping()
 # present — verified by importing vllm.model_executor.models.muse_glimmer in
 # the image. Retag to a numbered release once one ships with the fix.
-vllm_muse_glimmer_image = _from_vllm_openai(
-    "cu129-nightly-46638857fdbb30e0c232c9e8f9cb1ff6d6f545c3"
-)
+_MUSE_TAG = "cu129-nightly-46638857fdbb30e0c232c9e8f9cb1ff6d6f545c3"
+vllm_muse_glimmer_image = _from_vllm_openai(_MUSE_TAG)
 
 SERVE_IMAGES: dict[str, modal.Image] = {
     SERVE_VLLM: vllm_image,
     SERVE_MUSE_GLIMMER: vllm_muse_glimmer_image,
+}
+
+# The snapshot reader uses a version-specific pinned-buffer allocation site.
+# Keep these images separate from the unchanged full-checkpoint stacks.
+LORA_SERVE_IMAGES = {
+    SERVE_VLLM: _from_vllm_openai(_VLLM_TAG, "transformers>=5.10.2,<5.15", snapshot=True),
+    SERVE_MUSE_GLIMMER: _from_vllm_openai(_MUSE_TAG, snapshot=True),
 }
 
 # Needs modal_shared too: modal_vllm_worker.py top-level-imports it regardless

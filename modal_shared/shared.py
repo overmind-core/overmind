@@ -102,14 +102,13 @@ def resolve_inference_url(
     max_model_len: int,
     environment: str | None = None,
     serve_image: str = "vllm",
-    enable_lora: bool = False,
 ) -> str:
     """Parametrized worker URL. Query params select the container pool; a slash in
     ``model_path`` breaks that routing, so callers pass a relative path."""
     import urllib.parse
 
     env = environment or os.environ.get("MODAL_ENVIRONMENT", "overmind-dev")
-    cls_slug = worker_cls_name(gpu_type, serve_image, lora=enable_lora).lower().replace("_", "-")
+    cls_slug = worker_cls_name(gpu_type, serve_image).lower().replace("_", "-")
     base = f"https://overmind-{env}--{INFERENCE_APP_NAME}-{cls_slug}-api.modal.run"
     params = {
         "model_path": rel_weights_path(model_path),

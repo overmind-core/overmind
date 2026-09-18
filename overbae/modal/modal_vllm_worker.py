@@ -12,24 +12,26 @@ Deploy:
   modal deploy overbae/modal/modal_vllm_worker.py --env overmind-dev
 """
 
+import asyncio
 import contextlib
 import json
 import os
 import subprocess
 import time
+import urllib.request
 import uuid
 from pathlib import Path
 
 import modal
+from starlette.responses import StreamingResponse
+
+from modal_shared.serving.artifacts import read_base_manifest
 
 MODAL_ENVIRONMENT = os.environ.get("MODAL_ENVIRONMENT", "overmind-dev")
 IS_PROD = MODAL_ENVIRONMENT == "overmind-prod"
 
 MINUTES = 60  # seconds
 
-# Cold start is dominated by weight loading off a Volume. Full-FT workers leave GPU
-# snapshots off. LoRA workers snapshot the shared BF16 base (sleep → restore →
-# load_lora_adapter); a second adapter on that base reuses the snapshot.
 SCALEDOWN_WINDOW_SECONDS = 2 * MINUTES
 
 # Big models pay minutes to reload, so they stay up far longer before being reclaimed.
@@ -72,12 +74,15 @@ VLLM_CACHE_MOUNT = "/root/.cache/vllm"
 
 weights_vol = modal.Volume.from_name("overmind-weights", create_if_missing=True)
 vllm_cache_vol = modal.Volume.from_name("overmind-vllm-cache", create_if_missing=True)
+artifacts_vol = modal.Volume.from_name("overmind-inference-artifacts", create_if_missing=True)
+ARTIFACTS_MOUNT = "/inference-artifacts"
 
 from modal_shared.images.serve import (  # noqa: E402
+    LORA_SERVE_IMAGES,
     SERVE_IMAGES,
     api_server_image,
 )
-from modal_shared.stacks import GPU_TIER, WORKER_CLS, WORKER_LORA_CLS  # noqa: E402
+from modal_shared.stacks import GPU_TIER, WORKER_CLS  # noqa: E402
 
 APP_NAME = INFERENCE_APP_NAME
 app = modal.App(APP_NAME)
@@ -110,25 +115,6 @@ def _wait_for_vllm(timeout: int = 30 * MINUTES, *, proc: subprocess.Popen | None
             pass
         time.sleep(3)
     raise RuntimeError(f"vLLM did not become healthy within {timeout}s")
-
-
-def _vllm_post(path: str, *, data: bytes = b"", timeout: int = 180) -> None:
-    import urllib.error
-    import urllib.request
-
-    headers = {"content-type": "application/json"} if data else {}
-    req = urllib.request.Request(
-        f"http://localhost:{VLLM_PORT}{path}",
-        data=data or b"",
-        headers=headers,
-        method="POST",
-    )
-    try:
-        with urllib.request.urlopen(req, timeout=timeout) as response:
-            response.read()
-    except urllib.error.HTTPError as exc:
-        detail = exc.read()[:400].decode("utf-8", errors="replace")
-        raise RuntimeError(f"{path} -> HTTP {exc.code}: {detail}") from exc
 
 
 def _make_worker_health_app():
@@ -220,22 +206,28 @@ def _make_worker(
     enable_lora: bool = False,
     max_lora_rank: int = 16,
 ):
-    cls_name = worker_cls_name(gpu_type, serve_image, lora=enable_lora)
+    cls_name = worker_cls_name(gpu_type, serve_image, enable_lora=enable_lora)
     worker_cls = modal.Cls.from_name(APP_NAME, cls_name)
+    identity = {}
+    if enable_lora:
+        weights_vol.reload()
+        manifest = read_base_manifest(Path(WEIGHTS_MOUNT) / model_path)
+        identity["base_identity"] = manifest["identity"]
     return worker_cls(
         model_path=model_path,
         model_name=model_name,
         max_model_len=max_model_len,
         enable_lora=enable_lora,
         max_lora_rank=max_lora_rank,
+        **identity,
     ), cls_name
 
 
 class _BaseVLLMWorker:
     """Shared vLLM lifecycle for GPU workers.
 
-    ``@enter`` must never raise: Modal retries enter failures forever, ignoring
-    ``retries=0``. ``_startup_error`` is recorded instead and fails once in ``infer``.
+    ``@enter`` must never raise: Modal retries enter failures forever,
+    ignoring ``retries=0``. ``_startup_error`` is recorded instead and fails once in ``infer``.
     Uses ``@modal.asgi_app()`` because ``@modal.web_server`` does not support parametrized classes.
     """
 
@@ -248,27 +240,31 @@ class _BaseVLLMWorker:
     # tier and rank lands in the same pool and so shares its warm containers.
     enable_lora: bool = modal.parameter(default=False)
     max_lora_rank: int = modal.parameter(default=16)
+    snapshot_weights = False
 
-    def _boot(self) -> None:
+    def startup(self) -> None:
         """Never raise here, and never call ``stop_fetching_inputs`` here either: that exits
         before the input is consumed, which triggers a reschedule just as an enter failure does."""
-        import json as _json
-        import os as _os
+        self._start()
 
+    def _start(self) -> None:
         self._startup_error: str | None = None
         self._loaded_adapters: set[str] = set()
         self._adapter_lock = None
         try:
-            self._startup_inner(_json=_json, _os=_os)
+            self._startup_inner(_json=json, _os=os)
         except Exception as e:
-            proc = getattr(self, "_proc", None)
-            if proc is not None and proc.poll() is None:
-                proc.kill()
-            self._startup_error = (
-                f"vLLM startup failed for model_name={self.model_name!r} "
-                f"model_path={self.model_path!r}: {e}"
-            )
-            print(f"[vLLM] {self._startup_error}")
+            self._fail_startup(e)
+
+    def _fail_startup(self, error) -> None:
+        proc = getattr(self, "_proc", None)
+        if proc is not None and proc.poll() is None:
+            proc.kill()
+        self._startup_error = (
+            f"vLLM startup failed for model_name={self.model_name!r} "
+            f"model_path={self.model_path!r}: {error}"
+        )
+        print(f"[vLLM] {self._startup_error}")
 
     def _ensure_ready(self) -> None:
         err = getattr(self, "_startup_error", None)
@@ -282,19 +278,16 @@ class _BaseVLLMWorker:
         # URL params in parametrized classes.
         full_path = f"{WEIGHTS_MOUNT}/{self.model_path}"
 
-        # Sleep/wake/collective_rpc HTTP is gated on this. Snap workers need it even
-        # in prod; elsewhere it also unmasks exception stacks on inference clients.
-        _os.environ["VLLM_SERVER_DEV_MODE"] = (
-            "1" if getattr(self, "_gpu_snapshot", False) or not IS_PROD else "0"
-        )
+        # Exception stacks to inference clients only outside prod.
+        _os.environ["VLLM_SERVER_DEV_MODE"] = "1" if self.snapshot_weights or not IS_PROD else "0"
 
         # A container's Volume mount is a point-in-time view, so weights RegisterAPIServer
         # commits after this container is scheduled stay invisible until reload(). Deploy
-        # uses exactly that ordering — write weights, then drive a worker. Plain workers
-        # also refresh the shared compile cache; snapshot workers own their cache locally.
+        # uses exactly that ordering — write weights, then drive a worker. The compile
+        # cache Volume is the same: without reload the last boot's inductor artifacts
+        # are invisible and vLLM recompiles from scratch.
         weights_vol.reload()
-        if not getattr(self, "_gpu_snapshot", False):
-            vllm_cache_vol.reload()
+        vllm_cache_vol.reload()
 
         if not self.enable_lora:
             _rewrite_legacy_layer_types(Path(full_path) / "config.json", _json=_json)
@@ -348,14 +341,18 @@ class _BaseVLLMWorker:
                 base_model=base_model,
                 enable_lora=self.enable_lora,
                 max_lora_rank=self.max_lora_rank,
-                enable_sleep_mode=getattr(self, "_gpu_snapshot", False),
             ),
             spec,
         )
-        if getattr(self, "_gpu_snapshot", False):
+        if self.snapshot_weights:
+            if not self.enable_lora:
+                raise ValueError("Snapshot workers require shared-base LoRA mode")
             cmd += [
+                "--enable-sleep-mode",
                 "--distributed-executor-backend",
                 "modal_shared.serving.snapshot.SnapshotExecutor",
+                "--worker-extension-cls",
+                "modal_shared.serving.weights.SharedBaseWeights",
             ]
         if "--chat-template" in cmd:
             print(f"[vLLM] Using checkpoint chat template: {full_path}/chat_template.jinja")
@@ -371,6 +368,7 @@ class _BaseVLLMWorker:
             cmd += multimodal_text_only_args()
 
         print("Starting vLLM:", " ".join(cmd))
+        self._serve_command = cmd
         # List form (no shell) so JSON kwargs like --default-chat-template-kwargs
         # are not mangled by the shell.
         self._proc = subprocess.Popen(cmd)  # noqa: S603
@@ -378,45 +376,8 @@ class _BaseVLLMWorker:
         # Writes to a Volume are discarded unless this container commits. Concurrent
         # boots can clobber each other's new files (last commit wins); a lost cache
         # only means the next cold start recompiles.
-        if not getattr(self, "_gpu_snapshot", False):
-            with contextlib.suppress(Exception):
-                vllm_cache_vol.commit()
-
-    def _warmup_chat(self) -> None:
-        body = json.dumps(
-            {
-                "model": self.model_name,
-                "messages": [{"role": "user", "content": "ping"}],
-                "max_tokens": 1,
-            }
-        ).encode()
-        _vllm_post("/v1/chat/completions", data=body)
-
-    def _snapshot_sleep(self) -> None:
-        """Warm CUDA graphs then sleep so the GPU snapshot is not a live KV cache."""
-        try:
-            if not self.enable_lora or self._loaded_adapters:
-                raise RuntimeError("Snapshot must contain a shared base without adapters")
-            self._warmup_chat()
-            _vllm_post("/sleep?level=1", timeout=10 * MINUTES)
-            self._snapshot_origin = uuid.uuid4().hex
-            print(f"[vLLM] snapshot prepared origin={self._snapshot_origin} weights=preserved")
-        except Exception as exc:
-            self._startup_error = f"vLLM sleep for GPU snapshot failed: {exc}"
-            print(f"[vLLM] {self._startup_error}")
-
-    def _snapshot_wake(self) -> None:
-        try:
-            started = time.monotonic()
-            _vllm_post("/wake_up", timeout=10 * MINUTES)
-            _wait_for_vllm(timeout=60, proc=self._proc)
-            print(
-                f"[vLLM] snapshot awake origin={self._snapshot_origin} "
-                f"runtime={uuid.uuid4().hex} wake_s={time.monotonic() - started:.2f}"
-            )
-        except Exception as exc:
-            self._startup_error = f"vLLM wake from GPU snapshot failed: {exc}"
-            print(f"[vLLM] {self._startup_error}")
+        with contextlib.suppress(Exception):
+            vllm_cache_vol.commit()
 
     @modal.exit()
     def shutdown(self) -> None:
@@ -489,6 +450,9 @@ class _BaseVLLMWorker:
 
         self._ensure_ready()
 
+        if path not in {"/health", "/v1/models", "/v1/chat/completions", "/v1/completions"}:
+            raise ValueError("Only inference endpoints may be proxied")
+
         if adapter:
             await self._ensure_adapter(adapter[0], adapter[1])
 
@@ -524,6 +488,9 @@ class _BaseVLLMWorker:
         import httpx
 
         self._ensure_ready()
+
+        if path not in {"/v1/chat/completions", "/v1/completions"}:
+            raise ValueError("Only completion endpoints may be streamed")
 
         if adapter:
             await self._ensure_adapter(adapter[0], adapter[1])
@@ -572,6 +539,109 @@ class _BaseVLLMWorker:
         return _make_worker_health_app()
 
 
+class _SharedBaseVLLMWorker(_BaseVLLMWorker):
+    base_identity: str = modal.parameter(default="")
+    snapshot_weights = True
+
+    def _control(self, path: str, payload=None):
+        request = urllib.request.Request(
+            f"http://127.0.0.1:{VLLM_PORT}{path}",
+            data=json.dumps(payload).encode() if payload is not None else b"",
+            headers={"content-type": "application/json"},
+            method="POST",
+        )
+        with urllib.request.urlopen(request, timeout=WORKER_TIMEOUT_SECONDS) as response:
+            body = response.read()
+            return json.loads(body) if body else None
+
+    def _base_rpc(self, method, *args):
+        response = self._control("/collective_rpc", {"method": method, "args": list(args)})
+        if not isinstance(response, dict) or len(response.get("results", [])) != 1:
+            raise RuntimeError("Expected exactly one shared-base worker result")
+        return response["results"][0]
+
+    def _verify_base_identity(self):
+        manifest = read_base_manifest(Path(WEIGHTS_MOUNT) / self.model_path)
+        if manifest["identity"] != self.base_identity:
+            raise RuntimeError("Base revision changed; refusing to reuse this snapshot")
+
+    @modal.enter(snap=True)
+    def startup(self) -> None:
+        self._snapshot_origin = uuid.uuid4().hex
+        self._startup_error = None
+        try:
+            weights_vol.reload()
+            self._verify_base_identity()
+            self._start()
+            if self._startup_error:
+                return
+            artifacts_vol.reload()
+            self._artifact = self._base_rpc(
+                "prepare_shared_base", ARTIFACTS_MOUNT, self.base_identity, self._serve_command
+            )
+            artifacts_vol.commit()
+            self._control("/sleep?level=2")
+            print(
+                json.dumps(
+                    {
+                        "event": "shared_base_snapshot",
+                        "origin": self._snapshot_origin,
+                        "artifact": self._artifact,
+                    }
+                ),
+                flush=True,
+            )
+        except Exception as error:
+            self._fail_startup(error)
+
+    @modal.enter(snap=False)
+    def restore(self) -> None:
+        self._runtime = uuid.uuid4().hex
+        self._loaded_adapters = set()
+        self._adapter_lock = None
+        started = time.monotonic()
+        self._restore_metrics = {}
+        if self._startup_error:
+            return
+        try:
+            weights_vol.reload()
+            self._verify_base_identity()
+            artifacts_vol.reload()
+            self._control("/wake_up?tags=weights")
+            self._restore_metrics = self._base_rpc("restore_shared_base")
+            self._control("/wake_up?tags=kv_cache")
+            _wait_for_vllm(proc=self._proc)
+            self._restore_metrics.update(
+                restore_to_ready_s=time.monotonic() - started, ready_at=time.time()
+            )
+            print(
+                json.dumps(
+                    {
+                        "event": "shared_base_ready",
+                        "origin": self._snapshot_origin,
+                        "runtime": self._runtime,
+                        **self._restore_metrics,
+                    }
+                ),
+                flush=True,
+            )
+        except Exception as error:
+            self._fail_startup(error)
+
+    @modal.method()
+    def startup_info(self) -> dict:
+        self._ensure_ready()
+        return {
+            "origin": self._snapshot_origin,
+            "runtime": self._runtime,
+            "artifact": self._artifact,
+            "observed_at": time.time(),
+            "task_id": os.environ.get("MODAL_TASK_ID"),
+            "loaded_adapters": sorted(self._loaded_adapters),
+            **self._restore_metrics,
+        }
+
+
 def _wants_stream(body: bytes) -> bool:
     """Streaming is decided from the request, not the response: the RPC shape has to be
     picked before the worker is called."""
@@ -582,11 +652,41 @@ def _wants_stream(body: bytes) -> bool:
     return isinstance(payload, dict) and bool(payload.get("stream"))
 
 
-def _forwardable(headers: dict) -> dict:
-    """Starlette re-frames the body, so upstream length and chunking headers would contradict
-    what actually goes on the wire."""
-    drop = ("transfer-encoding", "content-length", "content-encoding")
-    return {k: v for k, v in headers.items() if k.lower() not in drop}
+async def stream_with_keepalive(chunks, interval_s=15, *, sse=True):
+    pending = None
+    first = True
+    ping = b": \n\n" if sse else b"\n"
+    try:
+        yield ping
+        while True:
+            pending = asyncio.ensure_future(anext(chunks))
+            while not (await asyncio.wait({pending}, timeout=interval_s))[0]:
+                yield ping
+            try:
+                chunk = pending.result()
+            except StopAsyncIteration:
+                if first:
+                    raise RuntimeError("Worker returned no response") from None
+                return
+            if first:
+                first = False
+                if chunk["status"] != 200:
+                    raise RuntimeError(f"Worker returned HTTP {chunk['status']}")
+            else:
+                yield chunk
+    except Exception as exc:
+        print(f"[proxy-stream-error] {type(exc).__name__}: {exc}")
+        # Headers were sent before GPU allocation; late failures use the body error contract.
+        error = b'{"error":{"message":"Inference backend error.","type":"server_error"}}'
+        yield b"data: " + error + b"\n\n" if sse else error
+        if sse:
+            yield b"data: [DONE]\n\n"
+    finally:
+        if pending is not None:
+            pending.cancel()
+            with contextlib.suppress(asyncio.CancelledError, Exception):
+                await pending
+        await chunks.aclose()
 
 
 def _normalize_model_blob(*parts: str) -> str:
@@ -631,32 +731,18 @@ def _is_text_only_finetune_of_multimodal_base(
     return is_natively_multimodal_blob(mtype)
 
 
-class _PlainVLLMWorker(_BaseVLLMWorker):
-    @modal.enter()
-    def startup(self) -> None:
-        self._boot()
-
-
 # Modal fixes the container spec at class-definition time, so a separate class per
-# GPU type is required even though the logic is identical. LoRA pools are a second
-# class per GPU so GPU snapshots can be on without snapshotting full-FT checkpoints.
-# Level-1 sleep offloads the base into host RAM. Reserve capacity for that copy
-# plus the serving processes, irrespective of which model the GPU selector chose.
-_SNAPSHOT_HOST_MEMORY_MIB = {
-    "L4": 32768,
-    "L40S": 65536,
-    "A100-80GB": 98304,
-    "H100": 98304,
-    "H200": 196608,
-    "B200": 262144,
-    "B300": 393216,
-}
+# GPU type is required even though the logic is identical. Only gpu and
+# scaledown_window differ, so the rest lives in one dict rather than six copies.
 _WORKER_KWARGS = {
     "secrets": [inference_secret],
     "volumes": _volume_mounts,
     "timeout": WORKER_TIMEOUT_SECONDS,
     "max_containers": MAX_CONTAINERS_PER_MODEL,
+    # Broken cold starts (missing weights, OOM) must not be retried: retries are what
+    # turn a single bad param-set into hanging inputs and workers.
     "retries": modal.Retries(max_retries=0),
+    "enable_memory_snapshot": False,
 }
 
 _worker_concurrency = modal.concurrent(
@@ -670,60 +756,69 @@ _SCALEDOWN = {
 }
 
 
-class _SnapVLLMWorker(_BaseVLLMWorker):
-    """LoRA shared-base pool: snapshot the BF16 base, attach adapters after restore."""
-
-    _gpu_snapshot = True
-
-    @modal.enter(snap=True)
-    def startup(self) -> None:
-        self._boot()
-        if not getattr(self, "_startup_error", None):
-            self._snapshot_sleep()
-
-    @modal.enter(snap=False)
-    def restore(self) -> None:
-        if getattr(self, "_startup_error", None):
-            return
-        self._snapshot_wake()
-
-
-def _register_worker(cls_name: str, gpu_type: str, serve_image: str, *, snapshot: bool) -> None:
+def _register_worker(cls_name: str, gpu_type: str, serve_image: str, *, lora=False) -> None:
     bucket, default_len = GPU_TIER[gpu_type]
-    image = SERVE_IMAGES[serve_image]
-    base = _SnapVLLMWorker if snapshot else _PlainVLLMWorker
+    image = (LORA_SERVE_IMAGES if lora else SERVE_IMAGES)[serve_image]
+    parameters = {
+        "__annotations__": {
+            "model_path": str,
+            "model_name": str,
+            "max_model_len": int,
+            "enable_lora": bool,
+            "max_lora_rank": int,
+        },
+        "model_path": modal.parameter(),
+        "model_name": modal.parameter(),
+        "max_model_len": modal.parameter(default=default_len),
+        "enable_lora": modal.parameter(default=lora),
+        "max_lora_rank": modal.parameter(default=16),
+    }
+    if lora:
+        parameters["__annotations__"]["base_identity"] = str
+        parameters["base_identity"] = modal.parameter(default="")
+    else:
+        # Modal discovers hooks separately by snapshot phase across the entire MRO.
+        # A post-snapshot hook on the common base would also run for LoRA restores.
+        parameters["startup"] = modal.enter()(_BaseVLLMWorker.startup)
     cls = type(
         cls_name,
-        (base,),
-        {
-            "__annotations__": {"max_model_len": int},
-            "max_model_len": modal.parameter(default=default_len),
-            "_gpu_type": gpu_type,
-        },
+        (_SharedBaseVLLMWorker if lora else _BaseVLLMWorker,),
+        parameters,
     )
     cls = _worker_concurrency(cls)
-    kw = dict(_WORKER_KWARGS)
-    if snapshot:
-        kw["enable_memory_snapshot"] = True
-        kw["experimental_options"] = {"enable_gpu_snapshot": True}
-        # Compiled modules retain filesystem references. A mutable shared cache can
-        # lose a referenced file and make Modal's 9p restore fail before Python runs.
-        kw["volumes"] = {WEIGHTS_MOUNT: weights_vol}
-        kw.update(cpu=8, memory=_SNAPSHOT_HOST_MEMORY_MIB[gpu_type])
-    else:
-        kw["enable_memory_snapshot"] = False
     globals()[cls_name] = app.cls(
         gpu=gpu_type,
         scaledown_window=_SCALEDOWN[bucket],
         image=image,
-        **kw,
+        **{
+            **_WORKER_KWARGS,
+            **(
+                {
+                    "cpu": 8,
+                    "memory": {
+                        "L4": 65536,
+                        "L40S": 98304,
+                        "A100-80GB": 131072,
+                        "H200": 196608,
+                        "B200": 262144,
+                        "B300": 393216,
+                    }[gpu_type],
+                    "volumes": {**_volume_mounts, ARTIFACTS_MOUNT: artifacts_vol},
+                    "enable_memory_snapshot": True,
+                    "experimental_options": {"enable_gpu_snapshot": True},
+                }
+                if lora
+                else {}
+            ),
+        },
     )(cls)
 
 
 for (_gpu, _serve_image), _cls_name in WORKER_CLS.items():
-    _register_worker(_cls_name, _gpu, _serve_image, snapshot=False)
-for (_gpu, _serve_image), _cls_name in WORKER_LORA_CLS.items():
-    _register_worker(_cls_name, _gpu, _serve_image, snapshot=True)
+    _register_worker(_cls_name, _gpu, _serve_image)
+    _register_worker(
+        worker_cls_name(_gpu, _serve_image, enable_lora=True), _gpu, _serve_image, lora=True
+    )
 
 
 @app.cls(
@@ -752,7 +847,6 @@ class InferenceAPIServer:
         model_name: str,
         max_model_len: int,
         serve_image: str = "vllm",
-        enable_lora: bool = False,
     ) -> str:
         image = _serve_image_for(
             model_name=model_name,
@@ -766,7 +860,6 @@ class InferenceAPIServer:
             max_model_len=max_model_len,
             environment=MODAL_ENVIRONMENT,
             serve_image=image,
-            enable_lora=enable_lora,
         )
 
     @modal.method()
@@ -778,7 +871,6 @@ class InferenceAPIServer:
         max_model_len: int,
         gpu_type: str,
         tokenizer_name: str = "",
-        enable_lora: bool = False,
     ) -> str:
         """Mint the parametrized worker URL. Caller persists it in Postgres."""
         return self._resolve_worker_url(
@@ -787,7 +879,6 @@ class InferenceAPIServer:
             model_name=model_id,
             max_model_len=max_model_len,
             serve_image=serve_image_key(tokenizer_name, model_id),
-            enable_lora=enable_lora,
         )
 
     @modal.method()
@@ -805,7 +896,7 @@ class InferenceAPIServer:
     def api(self):
         import shutil
 
-        from fastapi import Depends, FastAPI, HTTPException, Request, Response
+        from fastapi import Depends, FastAPI, HTTPException, Request
         from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
         from pydantic import BaseModel
 
@@ -823,7 +914,6 @@ class InferenceAPIServer:
             max_model_len: int
             gpu_type: str
             tokenizer_name: str = ""
-            enable_lora: bool = False
 
         @fastapi_app.get("/health")
         async def health():
@@ -837,7 +927,6 @@ class InferenceAPIServer:
                 model_name=req.model_id,
                 max_model_len=req.max_model_len,
                 serve_image=serve_image_key(req.tokenizer_name, req.model_id),
-                enable_lora=req.enable_lora,
             )
             return {"model_id": req.model_id, "inference_url": url}
 
@@ -916,44 +1005,33 @@ class InferenceAPIServer:
                 LORA_RANK_HEADER.lower(),
             }
             headers = {k: v for k, v in request.headers.items() if k.lower() not in _skip_hdr}
-            import asyncio
-
             print(
                 f"[proxy-rpc] {model_id} → {cls_name}(model_path={rel_path}"
                 f"{f', adapter={adapter_rel}' if adapter else ''})"
             )
 
-            if _wants_stream(body):
-                from starlette.responses import StreamingResponse
+            stream = _wants_stream(body)
 
-                chunks = worker.infer_stream.remote_gen.aio(
+            async def chunks():
+                kwargs = dict(
                     method=request.method,
                     path=f"/v1/{path}",
                     body=body,
                     headers=headers,
                     adapter=adapter,
                 )
-                head = await anext(chunks)
-                return StreamingResponse(
-                    chunks,
-                    status_code=head["status"],
-                    headers=_forwardable(head["headers"]),
-                    media_type=head["headers"].get("content-type", "text/event-stream"),
-                )
+                if stream:
+                    async for chunk in worker.infer_stream.remote_gen.aio(**kwargs):
+                        yield chunk
+                else:
+                    result = await worker.infer.remote.aio(**kwargs)
+                    yield {"status": result["status"], "headers": result["headers"]}
+                    yield result["body"]
 
-            # worker.infer.remote() is synchronous — run it off the event loop.
-            result = await asyncio.to_thread(
-                worker.infer.remote,
-                method=request.method,
-                path=f"/v1/{path}",
-                body=body,
-                headers=headers,
-                adapter=adapter,
-            )
-            return Response(
-                content=result["body"],
-                status_code=result["status"],
-                headers=_forwardable(result["headers"]),
+            return StreamingResponse(
+                stream_with_keepalive(chunks(), sse=stream),
+                headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+                media_type="text/event-stream" if stream else "application/json",
             )
 
         return fastapi_app

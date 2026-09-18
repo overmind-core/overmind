@@ -67,13 +67,7 @@ def test_worker_cls_table() -> None:
     assert GPU_CLASS_MAP["L4"] == "L4_vllm"
     assert SERVE_CLASS_MAP[("A100-80GB", "muse_glimmer")] == "A10080GB_muse_glimmer"
     assert worker_cls_name("H200", "muse_glimmer") == "H200_muse_glimmer"
-    assert worker_cls_name("H100", lora=True) == "H100_vllm_lora"
-    assert worker_cls_name("L4", lora=True) == "L4_vllm_lora"
     assert set(GPU_TIER) == {gpu for gpu, image in WORKER_CLS if image == "vllm"}
-    from modal_shared.stacks import WORKER_LORA_CLS
-
-    assert WORKER_LORA_CLS[("L4", "vllm")] == "L4_vllm_lora"
-    assert set(WORKER_LORA_CLS) == set(WORKER_CLS)
     for gpu, image in WORKER_CLS:
         assert gpu in GPU_TIER
         assert image in SERVE_STACKS

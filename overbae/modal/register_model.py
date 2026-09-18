@@ -2,7 +2,7 @@
 serving. ``quantize=False`` skips FP8 and serves merged BF16 — see
 ``weight_ops.quantize_checkpoint`` for which models need that.
 
-A Modal LoRA finetune takes the other path: ``publish_adapter`` copies the adapter out untouched
+A dense LoRA finetune takes the other path: ``publish_adapter`` copies the adapter out untouched
 and it is served on top of a shared base, which skips merge and quantize entirely and lets the
 deployment join an already-warm container pool. That base must stay BF16 — a BF16 adapter over an
 FP8 base measured 0.234 exact-match against 0.474 for the same adapter merged then quantized,
@@ -47,6 +47,8 @@ import zipfile
 from pathlib import Path
 
 import modal
+
+from modal_shared.serving.artifacts import BASE_MANIFEST, seal_base
 
 WEIGHTS_MOUNT = "/weights"
 STAGING_DIRNAME = ".staging"
@@ -1016,8 +1018,15 @@ def fetch_base_model(*, base_model: str) -> dict:
     weights_vol.reload()
     base_dir = _base_model_dir(base_model)
     if _snapshot_is_complete(base_dir):
+        manifest = seal_base(base_dir, base_model)
+        weights_vol.commit()
         print(f"[base] {base_model} already cached at {base_dir}")
-        return {"base_model": base_model, "base_model_path": str(base_dir), "cached": True}
+        return {
+            "base_model": base_model,
+            "base_model_path": str(base_dir),
+            "cached": True,
+            "base_identity": manifest["identity"],
+        }
 
     print(f"[base] Downloading {base_model} → {base_dir}")
     base_dir.mkdir(parents=True, exist_ok=True)
@@ -1033,9 +1042,15 @@ def fetch_base_model(*, base_model: str) -> dict:
             f"Base snapshot for {base_model} is incomplete after download "
             f"({base_dir}) — refusing to hand a partial base to the LoRA merge"
         )
+    manifest = seal_base(base_dir, base_model)
     weights_vol.commit()
     print(f"[base] {base_model} ready at {base_dir}")
-    return {"base_model": base_model, "base_model_path": str(base_dir), "cached": False}
+    return {
+        "base_model": base_model,
+        "base_model_path": str(base_dir),
+        "cached": False,
+        "base_identity": manifest["identity"],
+    }
 
 
 @app.function(
@@ -1100,7 +1115,9 @@ def stage_modal_checkpoint(
     return result
 
 
-def _restore_adapter_from_s3(*, run_id: str, cache_key: str, user_id: str, job_id: str) -> Path:
+def _restore_adapter_from_s3(
+    *, run_id: str, cache_key: str, user_id: str, job_id: str, base_model: str
+) -> Path:
     """Unpack the download archive back onto the weights Volume and return the staged adapter.
 
     Reached only when both the training checkpoint and a previously published adapter are gone,
@@ -1115,7 +1132,11 @@ def _restore_adapter_from_s3(*, run_id: str, cache_key: str, user_id: str, job_i
 
     print(f"[adapter] {cache_key} pruned from the volume — restoring from S3")
     download_checkpoint_from_s3.remote(
-        user_id=user_id, job_id=job_id, model_id=cache_key, cache_key=cache_key
+        user_id=user_id,
+        job_id=job_id,
+        model_id=base_model,
+        cache_key=cache_key,
+        merge_base_model=base_model,
     )
     weights_vol.reload()
     staging = _staging_dir(cache_key)
@@ -1140,7 +1161,7 @@ def publish_adapter(
 ) -> dict:
     """Copy a LoRA adapter to ``.adapters/{cache_key}`` for serving on a shared base.
 
-    This is the weight publication for a Modal LoRA finetune: no merge, no quantize, no per-model
+    This is the whole deploy for a dense LoRA finetune: no merge, no quantize, no per-model
     checkpoint. An adapter is tens of MB against tens of GB for a merged copy, so the copy is
     seconds rather than minutes, and the deployment then rides a base pool that may already be
     warm instead of booting its own container.
@@ -1155,6 +1176,9 @@ def publish_adapter(
             f"shared base {base_model!r} is not staged at {base_dir}; "
             "fetch_base_model must complete before an adapter can be published against it"
         )
+    if not (base_dir / BASE_MANIFEST).exists():
+        fetch_base_model.remote(base_model=base_model)
+        weights_vol.reload()
 
     dest = Path(WEIGHTS_MOUNT) / ADAPTERS_DIRNAME / cache_key
     source = final_dir
@@ -1166,7 +1190,11 @@ def publish_adapter(
             source = dest
         else:
             source = _restore_adapter_from_s3(
-                run_id=run_id, cache_key=cache_key, user_id=user_id, job_id=job_id
+                run_id=run_id,
+                cache_key=cache_key,
+                user_id=user_id,
+                job_id=job_id,
+                base_model=base_model,
             )
 
     if source != dest:

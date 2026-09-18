@@ -262,12 +262,6 @@ def test_golden_vllm_argv_qwen() -> None:
     assert bf16_cmd[bf16_cmd.index("--dtype") + 1] == "bfloat16"
 
 
-def test_golden_vllm_argv_sleep_mode_when_requested() -> None:
-    cmd = _argv("Qwen/Qwen3-8B", enable_sleep_mode=True, enable_lora=True)
-    assert "--enable-sleep-mode" in cmd
-    assert "--enable-lora" in cmd
-
-
 def test_golden_vllm_argv_lfm() -> None:
     cmd = _argv(
         "LiquidAI/LFM2.5-1.2B-Instruct",

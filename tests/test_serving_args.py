@@ -48,7 +48,7 @@ def test_runai_streamer_loads_from_the_volume(tmp_path: Path) -> None:
     cmd = _args(_checkpoint(tmp_path))
     assert cmd[cmd.index("--load-format") + 1] == "runai_streamer"
     extra = json.loads(cmd[cmd.index("--model-loader-extra-config") + 1])
-    assert extra == {"distributed": True, "concurrency": 16}
+    assert extra == {"distributed": True}
 
 
 def test_graphs_captured_when_serving_an_adapter(tmp_path: Path) -> None:
@@ -89,16 +89,6 @@ def test_no_lora_flags_without_adapters(tmp_path: Path) -> None:
     cmd = _args(_checkpoint(tmp_path))
     assert "--enable-lora" not in cmd
     assert "--lora-modules" not in cmd
-
-
-def test_no_sleep_mode_by_default(tmp_path: Path) -> None:
-    cmd = _args(_checkpoint(tmp_path))
-    assert "--enable-sleep-mode" not in cmd
-
-
-def test_sleep_mode_flag(tmp_path: Path) -> None:
-    cmd = _args(_checkpoint(tmp_path), enable_sleep_mode=True)
-    assert "--enable-sleep-mode" in cmd
 
 
 def test_chat_template_read_from_adapter_dir(tmp_path: Path) -> None:

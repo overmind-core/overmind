@@ -1,0 +1,406 @@
+{
+  "samples": [
+    {
+      "model": "Qwen/Qwen3.5-35B-A3B",
+      "gpu": "H200",
+      "rank": 16,
+      "context": 32768,
+      "classification": "new-snapshot-build",
+      "request_to_ready_estimate_s": 356.6536877155304,
+      "clock_uncertainty_s": 0.21971869468688965,
+      "ready_before_request": false,
+      "ttft_s": 357.51798482799495,
+      "first_request_s": 357.56110321400047,
+      "second_request_s": 2.0013553729950218,
+      "reload_s": 9.009196567000004,
+      "restore_to_ready_s": 9.720433480999986,
+      "origin": "1aedd0821fb44a048b41b1273871688e",
+      "runtime": "d9184e89e4c64b158ccd6be04921c243",
+      "task_id": "ta-01M2SV98B9886JE3VNX4P0HZGR",
+      "artifact_identity": "f6ac7017c3603134bfa12aa15456c736541ff2a2c6f586335442eead23aafb39",
+      "canary_passed": true
+    },
+    {
+      "model": "Qwen/Qwen3.5-35B-A3B",
+      "gpu": "H200",
+      "rank": 16,
+      "context": 32768,
+      "classification": "confirmed-restore",
+      "request_to_ready_estimate_s": 24.75059938430786,
+      "clock_uncertainty_s": 0.15698575973510742,
+      "ready_before_request": false,
+      "ttft_s": 26.013712423009565,
+      "first_request_s": 26.17395308399864,
+      "second_request_s": 2.4331464860006236,
+      "reload_s": 9.31434759800004,
+      "restore_to_ready_s": 10.657768067000006,
+      "origin": "837f4c771ad1460f8d2445bc91a5908c",
+      "runtime": "01408efccb004386bc0e624905d3d148",
+      "task_id": "ta-01M2SVMPV0PBR4M9ZQEGE7TYGR",
+      "artifact_identity": "f6ac7017c3603134bfa12aa15456c736541ff2a2c6f586335442eead23aafb39",
+      "canary_passed": true
+    },
+    {
+      "model": "meta-llama/Llama-3.3-70B-Instruct",
+      "gpu": "B200",
+      "rank": 8,
+      "context": 32768,
+      "classification": "confirmed-restore",
+      "request_to_ready_estimate_s": 29.809049606323242,
+      "clock_uncertainty_s": 0.25382304191589355,
+      "ready_before_request": false,
+      "ttft_s": 30.89704116800567,
+      "first_request_s": 31.027417361008702,
+      "second_request_s": 1.8946798300021328,
+      "adapter_b_request_s": 2.1270397910266183,
+      "adapter_a_again_request_s": 1.8937280779937282,
+      "reload_s": 9.437565746000018,
+      "restore_to_ready_s": 10.331397017999961,
+      "origin": "cb461d07ba134f768bc239b02674b325",
+      "runtime": "8dfbdd024b804c9d98bd134e83cffc3d",
+      "task_id": "ta-01M2SYS20R9ZHNWQTQ7P6BX8PR",
+      "artifact_identity": "de5403b150eab8838fc7bbf2bcd4b2d65374c8278237e08a44280b4b809b2495",
+      "canary_passed": true,
+      "canary": {
+        "control_probability_error": 0,
+        "recovery_probability_error": 0,
+        "adapter_probability_difference": 0.026877335477459626,
+        "distributions_a_a_b_b_a": [
+          [
+            [
+              "If",
+              -0.1775236576795578
+            ],
+            [
+              "Please",
+              -2.802523612976074
+            ],
+            [
+              "To",
+              -2.927523612976074
+            ],
+            [
+              "Don",
+              -4.177523612976074
+            ],
+            [
+              "Sorry",
+              -4.677523612976074
+            ]
+          ],
+          [
+            [
+              "If",
+              -0.1775236576795578
+            ],
+            [
+              "Please",
+              -2.802523612976074
+            ],
+            [
+              "To",
+              -2.927523612976074
+            ],
+            [
+              "Don",
+              -4.177523612976074
+            ],
+            [
+              "Sorry",
+              -4.677523612976074
+            ]
+          ],
+          [
+            [
+              "If",
+              -0.14592961966991425
+            ],
+            [
+              "Please",
+              -2.8959295749664307
+            ],
+            [
+              "To",
+              -3.1459295749664307
+            ],
+            [
+              "Don",
+              -4.52092981338501
+            ],
+            [
+              "Sorry",
+              -4.89592981338501
+            ]
+          ],
+          [
+            [
+              "If",
+              -0.14592961966991425
+            ],
+            [
+              "Please",
+              -2.8959295749664307
+            ],
+            [
+              "To",
+              -3.1459295749664307
+            ],
+            [
+              "Don",
+              -4.52092981338501
+            ],
+            [
+              "Sorry",
+              -4.89592981338501
+            ]
+          ],
+          [
+            [
+              "If",
+              -0.1775236576795578
+            ],
+            [
+              "Please",
+              -2.802523612976074
+            ],
+            [
+              "To",
+              -2.927523612976074
+            ],
+            [
+              "Don",
+              -4.177523612976074
+            ],
+            [
+              "Sorry",
+              -4.677523612976074
+            ]
+          ]
+        ]
+      }
+    },
+    {
+      "model": "meta-llama/Llama-3.3-70B-Instruct",
+      "gpu": "B200",
+      "rank": 8,
+      "context": 32768,
+      "classification": "confirmed-restore",
+      "request_to_ready_estimate_s": 16.385453701019287,
+      "clock_uncertainty_s": 0.26235246658325195,
+      "ready_before_request": false,
+      "ttft_s": 17.40680461199372,
+      "first_request_s": 17.43360624401248,
+      "second_request_s": 2.8309008090000134,
+      "adapter_b_request_s": 2.6783045750053134,
+      "adapter_a_again_request_s": 2.1258033720077947,
+      "reload_s": 8.530346466999845,
+      "restore_to_ready_s": 9.69327849299998,
+      "origin": "cb461d07ba134f768bc239b02674b325",
+      "runtime": "b87cfff5eb3c4143922871ac82f69be9",
+      "task_id": "ta-01M2SYTD028RME8DK55S3ZF8RR",
+      "artifact_identity": "de5403b150eab8838fc7bbf2bcd4b2d65374c8278237e08a44280b4b809b2495",
+      "canary_passed": true,
+      "canary": {
+        "control_probability_error": 0,
+        "recovery_probability_error": 0,
+        "adapter_probability_difference": 0.011000235305586317,
+        "distributions_a_a_b_b_a": [
+          [
+            [
+              "If",
+              -0.15796548128128052
+            ],
+            [
+              "Please",
+              -2.9079654216766357
+            ],
+            [
+              "To",
+              -3.0329654216766357
+            ],
+            [
+              "Don",
+              -4.282965660095215
+            ],
+            [
+              "Sorry",
+              -4.782965660095215
+            ]
+          ],
+          [
+            [
+              "If",
+              -0.15796548128128052
+            ],
+            [
+              "Please",
+              -2.9079654216766357
+            ],
+            [
+              "To",
+              -3.0329654216766357
+            ],
+            [
+              "Don",
+              -4.282965660095215
+            ],
+            [
+              "Sorry",
+              -4.782965660095215
+            ]
+          ],
+          [
+            [
+              "If",
+              -0.14592961966991425
+            ],
+            [
+              "Please",
+              -2.8959295749664307
+            ],
+            [
+              "To",
+              -3.1459295749664307
+            ],
+            [
+              "Don",
+              -4.52092981338501
+            ],
+            [
+              "Sorry",
+              -4.89592981338501
+            ]
+          ],
+          [
+            [
+              "If",
+              -0.14592961966991425
+            ],
+            [
+              "Please",
+              -2.8959295749664307
+            ],
+            [
+              "To",
+              -3.1459295749664307
+            ],
+            [
+              "Don",
+              -4.52092981338501
+            ],
+            [
+              "Sorry",
+              -4.89592981338501
+            ]
+          ],
+          [
+            [
+              "If",
+              -0.15796548128128052
+            ],
+            [
+              "Please",
+              -2.9079654216766357
+            ],
+            [
+              "To",
+              -3.0329654216766357
+            ],
+            [
+              "Don",
+              -4.282965660095215
+            ],
+            [
+              "Sorry",
+              -4.782965660095215
+            ]
+          ]
+        ]
+      }
+    }
+  ],
+  "supplemental_35b_http": [
+    {
+      "event": "request",
+      "model": "serving-validation-7819b7fae9e9-0",
+      "request_started_at": 1789723614.9572017,
+      "ttft_s": 32.54318112699548,
+      "latency_s": 32.74959106100141,
+      "content": "391"
+    },
+    {
+      "event": "request",
+      "model": "serving-validation-7819b7fae9e9-0",
+      "request_started_at": 1789723647.7138197,
+      "ttft_s": 1.4086623890034389,
+      "latency_s": 1.5425832740147598,
+      "content": "391"
+    },
+    {
+      "event": "request",
+      "model": "serving-validation-7819b7fae9e9-1",
+      "request_started_at": 1789723649.2567844,
+      "ttft_s": 1.757298117998289,
+      "latency_s": 1.914751475007506,
+      "content": "391"
+    },
+    {
+      "event": "request",
+      "model": "serving-validation-7819b7fae9e9-0",
+      "request_started_at": 1789723651.171836,
+      "ttft_s": 1.2849383790162392,
+      "latency_s": 1.441043314000126,
+      "content": "391"
+    }
+  ],
+  "numerical_control": {
+    "a_only_variation": 0.00006616923911917496,
+    "a_b_difference": 0.001431217666307555,
+    "a_b_a_recovery": 0
+  },
+  "date": "2026-09-18",
+  "environment": "overmind-dev",
+  "transport": "Authenticated HTTP through the existing Docker Django API to Modal",
+  "request": {
+    "prompt": "What is 17 times 23? Reply with only the number.",
+    "temperature": 0,
+    "max_tokens": 64,
+    "stream": true,
+    "enable_thinking": false
+  },
+  "definitions": {
+    "request_to_ready_estimate_s": "Request start to engine ready, corrected for cross-host clock offset; uncertainty is half the startup_info RPC round trip.",
+    "ttft_s": "Request start to first nonempty content token; ignores SSE pings and role-only chunks.",
+    "first_request_s": "Full first HTTP response on a fresh GPU runtime.",
+    "second_request_s": "Full immediately subsequent HTTP response on the same runtime.",
+    "restore_to_ready_s": "GPU post-snapshot hook to engine ready; excludes allocation and platform snapshot restoration."
+  },
+  "earlier_70b_restore": {
+    "ttft_s": 111.906351146,
+    "first_request_s": 112.049025154,
+    "second_request_s": 2.001700441,
+    "reload_s": 93.993966476,
+    "restore_to_ready_s": 94.855479717,
+    "request_to_ready_estimate_s": null,
+    "origin": "cb461d07ba134f768bc239b02674b325",
+    "runtime": "13f82d7f49664640b5d09caadbdf6e34",
+    "task_id": "ta-01M2SY3H8GVA8P5GCGV3ESWBTR",
+    "arithmetic_canary_passed": true,
+    "qualification": "Original cold-versus-warm probability check failed. Subsequent A-only and matched-cache controls on this runtime reproduced prefill variation and verified A/B/A recovery. No complete clock-corrected readiness record was collected for this round."
+  },
+  "validation": {
+    "full_suite": "3635 passed, 8 skipped; after final production changes",
+    "benchmark_after_control_changes": "9 passed",
+    "production_deployed": false,
+    "production_code_changed_after_full_suite": false
+  },
+  "caveats": [
+    "Small sequential dev sample; no p95, concurrency/load or quality benchmark.",
+    "35B uses manually registered synthetic attention-only adapters. Existing automatic registration excludes all MoE bases and still merges them; this test qualifies only their serving machinery, not the automatic MoE training-to-deployment route.",
+    "70B uses two real archived rank-8 adapters with distinct SHA256 fingerprints.",
+    "The 35B new-snapshot build is not a snapshot-restore measurement. Multiple snapshot origins can exist for a compatible profile.",
+    "One 35B sample discarded for client wall/monotonic clock divergence.",
+    "Later restore performance depends on storage/cache state. Do not advertise the later 70B numbers as guaranteed cold latency.",
+    "No matched non-snapshot baseline was rerun in this validation, so these numbers do not establish a causal speedup ratio."
+  ]
+}
