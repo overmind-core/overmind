@@ -19,7 +19,7 @@ from overbae.services.mcp.errors import MCPError
 
 _REGISTRY_MESSAGE = "No instrumentation registry is available for this project."
 _REGISTRY_INSTRUCTION = (
-    "Run `overmind setup` locally, then `overmind sync`, and request the plan again."
+    "Run `/overmind setup` in the coding agent, then `overmind sync`, and request the plan again."
 )
 
 

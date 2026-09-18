@@ -36,12 +36,21 @@ the server's summary/page fields; do not sum a partial page as a project total.
 
 Call `get_instrumentation_plan` with no capability for project-wide work, or
 with a capability and optional behaviour for a scoped change. Treat each
-returned placement as an edit ticket: copy its target file, qualname, import
-line, required scope, required decorators, capability id, behaviour key,
-version/fingerprint, grain, and allowed keys. File + qualname locates the
-function. A missing
-registry returns an explicit human action; run local `/overmind setup` and
-`overmind sync`.
+returned placement as an edit ticket and preserve its exact fields:
+`key`, `behaviour_id`, `version_id`, `version_analyzed_sha`,
+`contract_fingerprint`, `capability`, `capability_id`, `placement_mode`,
+`allowed_keys`, `grain`, `target`, `required_scope`, `required_spans`, and
+`required_identity`. File + qualname locates the function. A missing
+registry returns an explicit human action; report it and stop this attempt.
+Do not continue when `placements` is empty. If recovery is needed, run local
+`/overmind setup` followed by `overmind sync`, then request the plan again in a
+new attempt.
+
+When subagents are available and repository policy permits coding delegation,
+derive each ticket's touched files from its primary `target.file` and every
+`required_spans[].target.file`. Group overlapping tickets under one owner so
+two workers never edit the same file. The parent integrates the groups and owns
+all verification.
 
 The MCP server does not edit files. Apply the tickets locally and preserve the
 required identity. Current SDK decorators include:
@@ -85,12 +94,20 @@ Useful local helpers are `overmind.set_conversation_id`, `overmind.set_user`,
 
 ## Explicit run approval
 
-After applying the ticketed code changes, report the changed files and any local checks, then ask:
+After applying the ticketed code changes, report the changed files and local
+checks. Generate a unique verification correlation value, then ask the user to
+approve one fully specified choice. Fill every field; when a value is unknown,
+write `needs user input` and do not run:
 
 > How would you like to verify the instrumentation?
 >
-> - **Real run (recommended):** runs the actual workflow and provides the most representative trace coverage and highest-confidence verification. It may take longer and use normal provider, search, or application resources.
-> - **Smoke run:** bounded and faster, but may exercise fewer branches.
+> - **Real run (recommended):** `<exact command or input>` against `<capability>`
+>   in `<environment>` using `<provider/model>`. Expected side effects:
+>   `<effects>`. Correlation: `<value>`. Approved attempts: `<count>`.
+> - **Smoke run:** `<exact synthetic or read-only command or input>` against
+>   `<capability>` in `<environment>` using `<provider/model or none>`. Expected
+>   side effects: `<effects>`. Correlation: `<value>`. Approved attempts:
+>   `<count>`.
 
 No run begins until the user selects a mode. A real-run retry needs another
 explicit approval unless the approval names a bounded retry count and exact
@@ -99,38 +116,39 @@ an approval database field.
 
 ## Server-side trace verification
 
-Both modes use the same verification boundary. The smoke branch uses
-synthetic or read-only input. The real branch uses only the exact command or
-input, capability, environment, provider/model, expected side effects, and
-correlation value presented for approval. In either branch:
+Both modes use the same verification boundary. The smoke branch uses synthetic
+or read-only input. The real branch uses only the execution envelope presented
+for approval. In either branch:
 
-1. Use the plan's exact `capability_id` in the instrumented run boundary.
+1. Use each ticket's exact `capability_id` in the instrumented run boundary.
+   For scoped work, it may also be used as a query filter. For project-wide
+   work, rely on the unique session correlation instead of inventing one
+   capability filter.
 
-1. Generate a fresh unique correlation value such as
-   `instrumentation-real-<nonce>` or `instrumentation-smoke-<nonce>` and set it
-   as the conversation/session id.
+1. Stamp the approved correlation as `conversation.id` with the application's
+   existing mechanism or `overmind.set_conversation_id(...)` before the run.
 
 1. Run the approved workflow and flush spans. Normal run boundaries flush on
    exit; isolated helper processes may call `force_flush_traces()`.
 
-1. Query with the narrowest available correlation:
+1. Query the exact session for root rows only:
 
    ```text
    query_traces(
-     capability=<capability_id>,
      session=<unique correlation>,
-     trace_id=<known trace id if available>,
-     all_spans=true
+     all_spans=false,
+     limit=2
    )
    ```
 
-1. Poll only a bounded number of times for ingestion delay. Group results by
-   `trace_id` and require exactly one matching trace. Zero or multiple matches
-   is a correlation failure, not a verification pass.
+1. Poll only a bounded number of times for ingestion delay and require
+   `page.total == 1`. Zero or multiple root rows is a correlation failure, not
+   a verification pass. Use the single row's `trace_id`.
 
-1. Read `overmind://traces/<trace_id>` and pass its complete `spans` list to
-   `verify_instrumentation`. Respect the verifier's 100-span input limit and
-   never claim completeness when the resource reports `truncated=true`.
+1. Read `overmind://traces/<trace_id>`. Require `truncated == false` and
+   `span_count == len(spans)`, then pass its `spans` list unchanged to
+   `verify_instrumentation`. The trace resource and verifier share a 100-span
+   limit; a larger trace is a reported blocker, not a partial pass.
 
 1. Report instrumentation status separately from application outcome. A
    successful application run does not prove instrumentation quality, and a
