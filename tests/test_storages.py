@@ -40,5 +40,21 @@ def test_s3_profile_does_not_conflict_with_finetuning_keys():
     assert not storage.secret_key
 
 
+def test_s3_static_profile_does_not_conflict_with_finetuning_keys():
+    from storages.backends.s3boto3 import S3StaticStorage
+
+    cfg = _file_storages(
+        media_root=Path("/media"),
+        media_url="media/",
+        region="eu-west-1",
+        s3_static_bucket="hosted-static",
+        aws_profile_opt={"session_profile": "administrator"},
+    )
+    storage = S3StaticStorage(**cfg["staticfiles"]["OPTIONS"])
+    assert storage.session_profile == "administrator"
+    assert not storage.access_key
+    assert not storage.secret_key
+
+
 def test_hosted_static_cdn_default_kept():
     assert _HOSTED_STATIC_CDN == "static.overmindlab.ai"
