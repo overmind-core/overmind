@@ -1,4 +1,6 @@
-"""The one gate consumers pass: pick the cell, check both contracts, mark it used."""
+"""The one gate consumers pass. ``check`` picks the cell and checks both
+contracts; ``use`` also marks it used, and belongs in the transaction that
+creates the consumer's row."""
 
 from __future__ import annotations
 
@@ -11,10 +13,9 @@ from overbae.services.datasets.contract import public_intent
 from overbae.services.datasets.lifecycle import DatasetError
 
 
-def use(dataset: Dataset, intent: str, *, cell: Cell | None = None) -> Cell:
+def check(dataset: Dataset, intent: str, *, cell: Cell | None = None) -> Cell:
     """``intent`` is ``train`` or ``eval``: what the consumer needs. The dataset's
-    own intent must agree. Sets ``used_at`` the first time, which freezes the
-    cell and every cell it reads and starts a new major version."""
+    own intent must agree. Changes nothing."""
     if cell is not None and cell.dataset_id != dataset.id:
         raise DatasetError("That version belongs to another dataset.", code="cell_mismatch")
     stored = public_intent(dataset.intent)
@@ -37,10 +38,22 @@ def use(dataset: Dataset, intent: str, *, cell: Cell | None = None) -> Cell:
     ok, reason = cell.fits(intent)
     if not ok:
         raise DatasetError(f"{dataset.name} · {label(dataset, cell)}: {reason}", code="contract")
-    if cell.used_at is None:
-        Cell.objects.filter(pk=cell.pk).update(used_at=timezone.now())
-        cell.refresh_from_db()
     return cell
+
+
+def use(dataset: Dataset, intent: str, *, cell: Cell | None = None) -> Cell:
+    """``check``, then set ``used_at`` the first time, which freezes the cell
+    and every cell it reads and starts a new major version."""
+    cell = check(dataset, intent, cell=cell)
+    freeze(cell)
+    return cell
+
+
+def freeze(*cells: Cell | None) -> None:
+    for cell in cells:
+        if cell is not None and cell.used_at is None:
+            Cell.objects.filter(pk=cell.pk, used_at__isnull=True).update(used_at=timezone.now())
+            cell.refresh_from_db()
 
 
 def label(dataset: Dataset, cell: Cell) -> str:

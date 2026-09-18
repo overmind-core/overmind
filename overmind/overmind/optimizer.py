@@ -398,11 +398,12 @@ def start_optimise(
         max_iterations_without_improvement=max_iterations_without_improvement,
         openrouter_key_source=openrouter_key_source,
     )
-    dataset_path = pull_dataset(api, exp, cache_dir)
+    # The experiment exists from here on: its id is saved before the download,
+    # so a failed pull is resumed with --experiment and never starts a second one.
     state = {
         "experiment_id": exp["id"],
         "dataset_id": dataset_id,
-        "dataset_path": str(dataset_path),
+        "dataset_path": "",
         "capability_id": capability_id,
         "smoke_done": False,
         "next_order": 0,
@@ -410,6 +411,9 @@ def start_optimise(
         "kind": "optimise",
     }
     state_path.parent.mkdir(parents=True, exist_ok=True)
+    state_path.write_text(json.dumps(state, indent=2))
+    dataset_path = pull_dataset(api, exp, cache_dir)
+    state["dataset_path"] = str(dataset_path)
     state_path.write_text(json.dumps(state, indent=2))
     loop = OptimiseLoop(
         api,

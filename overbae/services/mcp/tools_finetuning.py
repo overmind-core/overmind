@@ -56,7 +56,13 @@ from overbae.services.mcp.contracts.inference import (
     RunInferenceInput,
     RunInferenceOutput,
 )
-from overbae.services.mcp.errors import MCPError, mcp_cell, mcp_cell_contract, mcp_use
+from overbae.services.mcp.errors import (
+    MCPError,
+    mcp_cell,
+    mcp_cell_contract,
+    mcp_check,
+    mcp_dataset,
+)
 from overbae.services.mcp.resources import resource_link, safe_json
 from overbae.services.recommendation import estimate_for_hyperparams, find_catalog_model
 
@@ -85,17 +91,7 @@ def _uuid_ref(value: str) -> str | None:
 
 
 def _resolve_dataset(context: MCPContext, reference: str) -> Dataset:
-    query = Dataset.objects.filter(project=context.project).select_related("capability")
-    normalized = _uuid_ref(reference)
-    dataset = query.filter(id=normalized).first() if normalized else None
-    if dataset is None:
-        matches = list(query.filter(name__iexact=reference.strip()).order_by("-created_at")[:2])
-        if len(matches) > 1:
-            raise MCPError("dataset_not_found", "Multiple datasets match; use the dataset id.")
-        dataset = matches[0] if matches else None
-    if dataset is None:
-        raise MCPError("dataset_not_found", "The dataset was not found in this project.")
-    return dataset
+    return mcp_dataset(context, reference)
 
 
 def _resolve_capability(context: MCPContext, reference: str) -> Capability:
@@ -198,14 +194,22 @@ def _credits_available(context: MCPContext) -> bool:
 
 
 def _serializer_error(error: DRFValidationError) -> MCPError:
+    """Each field keeps the serializer's own sentence: it names the fix."""
     detail = error.detail
-    fields = {str(key): "invalid value" for key in detail} if isinstance(detail, dict) else {}
-    text = str(detail).lower()
-    if "dataset" in text and ("intent" in text or "train" in text or "eval" in text):
-        code = "dataset_intent_mismatch"
-    else:
-        code = "finetune_invalid"
-    return MCPError(code, "The fine-tuning request failed validation.", fields=fields)
+    fields = (
+        {
+            str(key): " ".join(map(str, value) if isinstance(value, list) else [str(value)])[:500]
+            for key, value in detail.items()
+        }
+        if isinstance(detail, dict)
+        else {"request": str(detail)[:500]}
+    )
+    wrong_intent = any("dataset; this needs" in reason for reason in fields.values())
+    return MCPError(
+        "dataset_intent_mismatch" if wrong_intent else "finetune_invalid",
+        "The fine-tuning request was refused: " + " ".join(fields.values())[:600],
+        fields=fields,
+    )
 
 
 def _contains_sensitive_key(value: Any) -> bool:
@@ -402,6 +406,7 @@ def _estimate_sync(payload: EstimateFinetuneInput, context: MCPContext) -> Estim
             base_model=payload.base_model,
             n_epochs=payload.n_epochs,
             use_lora=payload.use_lora,
+            cell=cell,
         )
     except ValueError as error:
         raise MCPError(
@@ -421,7 +426,7 @@ def _start_sync(payload: StartFinetuneInput, context: MCPContext) -> StartFinetu
     if payload.hyperparameters is not None and _contains_sensitive_key(payload.hyperparameters):
         raise MCPError("invalid_input", "Provider credentials are not accepted in tool input.")
     dataset = _resolve_dataset(context, payload.dataset)
-    cell = mcp_use(dataset, "train", _cell_ref(payload.cell, payload.version))
+    cell = mcp_check(dataset, "train", _cell_ref(payload.cell, payload.version))
     capability = (
         _resolve_capability(context, payload.capability)
         if payload.capability
@@ -445,7 +450,7 @@ def _start_sync(payload: StartFinetuneInput, context: MCPContext) -> StartFinetu
     )
     if eval_dataset is None:
         raise MCPError("finetune_not_ready", "An eval dataset is required to start fine-tuning.")
-    mcp_use(eval_dataset, "eval", _cell_ref(payload.eval_cell, payload.eval_version))
+    eval_cell = mcp_check(eval_dataset, "eval", _cell_ref(payload.eval_cell, payload.eval_version))
     eval_set = (
         _resolve_eval_set(context, payload.eval_set, capability=capability)
         if payload.eval_set
@@ -461,7 +466,7 @@ def _start_sync(payload: StartFinetuneInput, context: MCPContext) -> StartFinetu
     )
     validation_cell = None
     if validation_dataset is not None:
-        validation_cell = mcp_use(
+        validation_cell = mcp_check(
             validation_dataset,
             "train",
             _cell_ref(payload.validation_cell, payload.validation_version),
@@ -483,7 +488,9 @@ def _start_sync(payload: StartFinetuneInput, context: MCPContext) -> StartFinetu
         )
     if payload.hyperparameters is None:
         try:
-            hyperparameters = stamp_hyperparameters_for_model(str(dataset.id), payload.base_model)
+            hyperparameters = stamp_hyperparameters_for_model(
+                str(dataset.id), payload.base_model, cell
+            )
         except ValueError as error:
             raise MCPError(
                 "finetune_invalid", "Default fine-tuning settings could not be derived."
@@ -519,6 +526,7 @@ def _start_sync(payload: StartFinetuneInput, context: MCPContext) -> StartFinetu
             group_id=group_id,
             cell=cell,
             validation_cell=validation_cell,
+            eval_cell=eval_cell,
         )
     except DRFValidationError as error:
         raise _serializer_error(error) from error

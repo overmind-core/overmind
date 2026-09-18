@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import time
 from contextlib import suppress
 from email.parser import Parser
 from pathlib import Path
@@ -89,10 +90,14 @@ def _required_int(payload: dict[str, Any], key: str, operation: str) -> int:
     return value
 
 
-def _next_actions(dataset_id: str) -> list[dict[str, Any]]:
+def _next_actions(*dataset_ids: str) -> list[dict[str, Any]]:
     return [
-        {"tool": "get_job", "arguments": {"kind": "dataset_run"}},
-        {"tool": "dataset_inspect", "arguments": {"dataset_name": dataset_id}},
+        action
+        for dataset_id in dataset_ids
+        for action in (
+            {"tool": "get_job", "arguments": {"kind": "dataset_run", "id": dataset_id}},
+            {"tool": "inspect_dataset", "arguments": {"dataset": dataset_id}},
+        )
     ]
 
 
@@ -115,6 +120,44 @@ def _normalize_split(split: int | None, position: str) -> tuple[int | None, str]
     if position not in SPLIT_POSITIONS:
         raise DatasetUploadError("split-position must be head, tail or random.")
     return split, position
+
+
+CHUNK_ATTEMPTS = 4
+_BUSY_STATES = ("landing", "diagnosing", "running")
+
+
+def wait_until_ready(
+    dataset_id: str,
+    *,
+    api_key: str,
+    api_url: str,
+    timeout: float = 3600,
+    poll: float = 3,
+    session: requests.Session | None = None,
+) -> dict[str, Any]:
+    """Poll until the landing and the first scan end. An ``error`` state raises
+    with the dataset's own message."""
+    client = session or requests.Session()
+    client.headers.update({"X-Api-Key": api_key})
+    deadline = time.monotonic() + timeout
+    try:
+        while True:
+            try:
+                response = client.get(f"{api_url.rstrip('/')}/api/datasets/{dataset_id}/", timeout=30)
+            except requests.RequestException as exc:
+                raise DatasetUploadError(f"read dataset failed: {exc}") from exc
+            dataset = _json(response, "read dataset")
+            state = str(dataset.get("state") or "")
+            if state == "error":
+                raise DatasetUploadError(str(dataset.get("error") or "The dataset failed."))
+            if state not in _BUSY_STATES:
+                return dataset
+            if time.monotonic() > deadline:
+                raise DatasetUploadError(f"Dataset {dataset_id} is still {state} after {int(timeout)}s.")
+            time.sleep(poll)
+    finally:
+        if session is None:
+            client.close()
 
 
 def upload_file(
@@ -178,16 +221,22 @@ def upload_file(
                 chunk = source.read(min(chunk_bytes, total - sent))
                 if not chunk:
                     raise DatasetUploadError("local file ended before the advertised size.")
-                try:
-                    chunk_response = client.put(
-                        f"{base_url}{UPLOAD_PATH}{upload_id}/chunk/",
-                        params={"offset": sent},
-                        data=chunk,
-                        headers={"Content-Type": "application/octet-stream"},
-                        timeout=CHUNK_TIMEOUT,
-                    )
-                except requests.RequestException as exc:
-                    raise DatasetUploadError(f"upload chunk failed: {exc}") from exc
+                # The server stores a chunk once however often it is sent, so a
+                # dropped connection is answered by sending the same bytes again.
+                for attempt in range(CHUNK_ATTEMPTS):
+                    try:
+                        chunk_response = client.put(
+                            f"{base_url}{UPLOAD_PATH}{upload_id}/chunk/",
+                            params={"offset": sent},
+                            data=chunk,
+                            headers={"Content-Type": "application/octet-stream"},
+                            timeout=CHUNK_TIMEOUT,
+                        )
+                        break
+                    except requests.RequestException as exc:
+                        if attempt == CHUNK_ATTEMPTS - 1:
+                            raise DatasetUploadError(f"upload chunk failed: {exc}") from exc
+                        time.sleep(2**attempt)
                 chunk_state = _json(chunk_response, "upload chunk")
                 received = chunk_state.get("received")
                 if isinstance(received, bool) or not isinstance(received, int) or received <= sent or received > total:
@@ -230,6 +279,7 @@ def upload_file(
             if not eval_id:
                 raise DatasetUploadError("create dataset returned no eval dataset.")
             result["eval_id"] = eval_id
+            result["next_mcp_actions"] = _next_actions(dataset_id, eval_id)
             result["eval_state"] = str(evaluation.get("state") or "landing")
         return result
     finally:
@@ -403,6 +453,10 @@ def upload(
         str,
         typer.Option("--split-position", help="Where the eval rows come from: head, tail or random"),
     ] = "tail",
+    wait: Annotated[
+        bool,
+        typer.Option("--wait", help="Wait for the landing and the first scan; exit 1 if either fails"),
+    ] = False,
     as_json: Annotated[bool, typer.Option("--json", help="Print machine-readable output")] = False,
 ) -> None:
     """Upload FILE and land it as a dataset, or with --split as a train and an eval dataset."""
@@ -425,6 +479,11 @@ def upload(
             split=split,
             split_position=split_position,
         )
+        if wait:
+            for id_key, state_key in (("id", "state"), ("eval_id", "eval_state")):
+                if id_key in result:
+                    ready = wait_until_ready(result[id_key], api_key=key, api_url=url)
+                    result[state_key] = str(ready.get("state") or "")
     except (DatasetUploadError, OSError, ValueError) as exc:
         _emit_error(str(exc), as_json=as_json)
         raise typer.Exit(1) from exc
@@ -435,7 +494,8 @@ def upload(
     console.print(f"Uploaded {file.name}; dataset {result['id']} is {result['state']}.")
     if "eval_id" in result:
         console.print(f"Eval dataset {result['eval_id']} is {result['eval_state']}.")
-    console.print("Next: get_job(kind=dataset_run), then inspect the dataset.")
+    if not wait:
+        console.print("Next: get_job(kind=dataset_run, id=<dataset id>), then inspect_dataset.")
 
 
 @dataset_app.command("export")
@@ -446,7 +506,7 @@ def export(
         typer.Option("--format", help="Export format: jsonl or csv"),
     ] = "jsonl",
     cell: Annotated[
-        str | None, typer.Option("--cell", help="Optional cell UUID; default is the active version")
+        str | None, typer.Option("--cell", help="A cell id or a version such as 1.2; default is the active version")
     ] = None,
     output: Annotated[Path | None, typer.Option("--output", help="Local output path")] = None,
     api_key: Annotated[

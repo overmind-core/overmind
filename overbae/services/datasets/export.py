@@ -5,8 +5,11 @@ from __future__ import annotations
 import csv
 import io
 import json
-from collections.abc import Iterator
+from collections.abc import AsyncIterator, Iterator
+from itertools import islice
 from pathlib import Path
+
+from asgiref.sync import sync_to_async
 
 from overbae.services.datasets import store
 
@@ -36,8 +39,18 @@ def iter_csv(path: Path) -> Iterator[str]:
         yield buf.getvalue()
 
 
-def stream(path: Path, fmt: str) -> tuple[Iterator[str], str, str]:
+_LINES_PER_CHUNK = 500
+
+
+async def _batched(lines: Iterator[str]) -> AsyncIterator[str]:
+    """Under ASGI Django drains a sync iterator into memory before the first
+    byte; an async one streams, a batch of lines per thread hop."""
+    while chunk := await sync_to_async(lambda: "".join(islice(lines, _LINES_PER_CHUNK)))():
+        yield chunk
+
+
+def stream(path: Path, fmt: str) -> tuple[AsyncIterator[str], str, str]:
     """``(chunks, content_type, extension)``."""
     if fmt == "csv":
-        return iter_csv(path), "text/csv", "csv"
-    return iter_jsonl(path), "application/x-ndjson", "jsonl"
+        return _batched(iter_csv(path)), "text/csv", "csv"
+    return _batched(iter_jsonl(path)), "application/x-ndjson", "jsonl"

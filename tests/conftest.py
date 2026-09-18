@@ -75,8 +75,15 @@ def _inline_dataset_tasks(monkeypatch):
             task, "apply_async", lambda kwargs, _t=task, **_: _t.apply(kwargs=kwargs)
         )
     # The agent needs Cursor; a test that wants a turn drives the agent module itself.
-    for task in (dataset_tasks.diagnose, dataset_tasks.turn):
-        monkeypatch.setattr(task, "apply_async", lambda kwargs, **_: None)
+    # Landing hands the dataset to its first scan, so the stub ends that scan.
+    from overbae.services.datasets.notebook import agent
+
+    monkeypatch.setattr(
+        dataset_tasks.diagnose,
+        "apply_async",
+        lambda kwargs, **_: agent.settle(kwargs["dataset_id"]),
+    )
+    monkeypatch.setattr(dataset_tasks.turn, "apply_async", lambda kwargs, **_: None)
 
 
 def _lift_messages(row):

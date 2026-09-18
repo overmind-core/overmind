@@ -145,9 +145,11 @@ export function useTrainWizard({
   // Seeded, not user work: main's wizard picked these too, and both stay visible
   // and changeable in the form.
   useEffect(() => {
-    if (evalDatasetId || evalDatasets.length === 0) return;
-    const own = capabilityId ? evalDatasets.find((d) => d.capability === capabilityId) : undefined;
-    setEvalDatasetId((own ?? evalDatasets[0]).id);
+    // The capability arrives after the datasets; seeding before it would keep
+    // whichever eval dataset is newest, whatever it belongs to.
+    if (evalDatasetId || !capabilityId) return;
+    const own = evalDatasets.find((d) => d.capability === capabilityId);
+    if (own) setEvalDatasetId(own.id);
   }, [evalDatasets, capabilityId, evalDatasetId]);
 
   const evalSetsQuery = useEvalSetsQuery(projectId);

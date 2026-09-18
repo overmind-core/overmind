@@ -66,9 +66,10 @@ const DEFAULT_EVAL_PERCENT = 20;
 const clampPercent = (n: number) => Math.min(99, Math.max(1, Math.round(n)));
 /** Mirrors the server cut: at least one row on each side. */
 const evalRows = (rows: number, percent: number) =>
-  rows < 2 ? 0 : Math.min(Math.max(Math.round((rows * percent) / 100), 1), rows - 1);
+  rows < 2 ? 0 : Math.min(Math.max(Math.floor((rows * percent + 50) / 100), 1), rows - 1);
 const AUTO_CAPABILITY = "__auto__";
-const stripExtension = (name: string) => name.replace(/\.(csv|tsv|json|jsonl|parquet)$/i, "");
+const stripExtension = (name: string) =>
+  name.replace(/\.(csv|tsv|json|jsonl|ndjson|parquet)(\.gz)?$/i, "");
 
 /** Either the source the request will carry, or the one line that says why not yet. */
 type Readiness = { source: SourceRequest; rows?: number } | { hint: string };
@@ -107,7 +108,9 @@ export function NewDatasetDialog({
   const [nameTouched, setNameTouched] = useState(false);
   const [capabilityId, setCapabilityId] = useState(initialCapabilityId ?? AUTO_CAPABILITY);
   const [purpose, setPurpose] = useState<Purpose>("propose");
-  const [evalPercent, setEvalPercent] = useState(DEFAULT_EVAL_PERCENT);
+  // The field holds what was typed; the clamp applies to the value used and on blur.
+  const [evalDraft, setEvalDraft] = useState(String(DEFAULT_EVAL_PERCENT));
+  const evalPercent = clampPercent(Number(evalDraft) || DEFAULT_EVAL_PERCENT);
   const [position, setPosition] = useState<SplitPosition>("tail");
   const [file, setFile] = useState<File | null>(null);
   const [uploadId, setUploadId] = useState<string | null>(null);
@@ -126,13 +129,16 @@ export function NewDatasetDialog({
   // Reset per open so a second create starts clean; the initial props re-seed it.
   // biome-ignore lint/correctness/useExhaustiveDependencies: seeds once per open
   useEffect(() => {
-    if (!open) return;
+    if (!open) {
+      upload.cancel();
+      return;
+    }
     setTab(fromTraces ? "traces" : "file");
     setName("");
     setNameTouched(false);
     setCapabilityId(initialCapabilityId ?? AUTO_CAPABILITY);
     setPurpose("propose");
-    setEvalPercent(DEFAULT_EVAL_PERCENT);
+    setEvalDraft(String(DEFAULT_EVAL_PERCENT));
     setPosition("tail");
     setFile(null);
     setUploadId(null);
@@ -197,7 +203,8 @@ export function NewDatasetDialog({
     initialSelectionCount,
     picked,
   ]);
-  const ready = "source" in readiness;
+  const tooFewToSplit = purpose === "split" && "source" in readiness && (readiness.rows ?? 2) < 2;
+  const ready = "source" in readiness && !tooFewToSplit;
 
   // The name follows the source until the user types one.
   const capabilityName = capabilities.find((c) => c.id === capabilityId)?.name;
@@ -334,7 +341,7 @@ export function NewDatasetDialog({
                   )}
                   <p className="text-xs text-muted-foreground">CSV, TSV, JSON, JSONL or Parquet</p>
                   <input
-                    accept=".csv,.tsv,.json,.jsonl,.parquet"
+                    accept=".csv,.tsv,.json,.jsonl,.ndjson,.parquet,.gz"
                     className="hidden"
                     onChange={(e) => {
                       const chosen = e.target.files?.[0];
@@ -353,12 +360,14 @@ export function NewDatasetDialog({
                     {file ? "Choose another file" : "Choose file"}
                   </Button>
                 </div>
-                {upload.progress && uploadPercent !== null && (
-                  <Progress
-                    label={uploadId ? "Uploaded" : `Uploading ${upload.progress.filename}`}
-                    percent={uploadPercent}
-                  />
-                )}
+                <div className="h-1.5">
+                  {upload.progress && uploadPercent !== null && (
+                    <Progress
+                      label={uploadId ? "Uploaded" : `Uploading ${upload.progress.filename}`}
+                      percent={uploadPercent}
+                    />
+                  )}
+                </div>
               </div>
             )}
 
@@ -424,13 +433,11 @@ export function NewDatasetDialog({
                       inputMode="numeric"
                       max={99}
                       min={1}
-                      onChange={(e) => {
-                        const n = Number(e.target.value);
-                        if (Number.isFinite(n)) setEvalPercent(clampPercent(n));
-                      }}
+                      onBlur={() => setEvalDraft(String(evalPercent))}
+                      onChange={(e) => setEvalDraft(e.target.value)}
                       size="xs"
                       type="number"
-                      value={evalPercent}
+                      value={evalDraft}
                     />
                     %
                   </Label>
@@ -472,8 +479,17 @@ export function NewDatasetDialog({
           <DismissibleAlert message={error} variant="destructive" />
         </DialogBody>
         <DialogFooter className="items-center">
-          <span className="mr-auto text-xs text-muted-foreground">
-            {ready ? rowsLabel : readiness.hint}
+          <span
+            className={cn(
+              "mr-auto text-xs",
+              tab === "file" && upload.error ? "text-destructive" : "text-muted-foreground"
+            )}
+          >
+            {tooFewToSplit
+              ? "Two rows are needed to split"
+              : "hint" in readiness
+                ? readiness.hint
+                : rowsLabel}
           </span>
           <Button disabled={busy} onClick={() => onOpenChange(false)} variant="secondary">
             Cancel

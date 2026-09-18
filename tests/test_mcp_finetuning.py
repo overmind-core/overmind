@@ -223,7 +223,12 @@ def test_estimate_uses_existing_estimator_without_creating_a_job(monkeypatch):
     assert result.isError is False, result.structuredContent
     assert calls == {
         "dataset_id": str(dataset.id),
-        "kwargs": {"base_model": "Qwen/Qwen2.5-7B-Instruct", "n_epochs": 4, "use_lora": False},
+        "kwargs": {
+            "base_model": "Qwen/Qwen2.5-7B-Instruct",
+            "n_epochs": 4,
+            "use_lora": False,
+            "cell": cell,
+        },
     }
     assert result.structuredContent["trained_tokens"] == 1000
     assert result.structuredContent["cell"]["id"] == str(cell.id)
@@ -666,6 +671,4 @@ def test_start_uses_explicit_cell_not_active(monkeypatch):
     )
     assert result.isError is False, result.structuredContent
     assert called["cell"].id == extra.id
-    extra.refresh_from_db()
-    assert extra.used_at is not None
     assert result.structuredContent["cell"]["id"] == str(extra.id)

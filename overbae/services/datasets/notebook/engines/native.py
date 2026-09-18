@@ -279,4 +279,7 @@ class NativeEngine:
         if isinstance(cause, openai.AuthenticationError | openai.PermissionDeniedError):
             logger.error("native engine: %s rejected the key", self.name, exc_info=exc)
             return f"The model provider rejected this server's {self.choice.provider.key_env}."
+        if isinstance(cause, openai.APIStatusError):
+            logger.error("native engine: %s refused the request", self.name, exc_info=exc)
+            return f"The model provider refused the request (HTTP {cause.status_code})."
         return f"The agent could not finish: {exc}"[:400]

@@ -25,7 +25,7 @@ export interface SourceRequest {
      * @type {string}
      * @memberof SourceRequest
      */
-    uploadId?: string;
+    uploadId?: string | null;
     /**
      *
      * @type {string}

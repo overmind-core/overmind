@@ -54,6 +54,7 @@ def estimate_for_hyperparams(
     base_model: str,
     n_epochs: int,
     use_lora: bool,
+    cell: Any = None,
 ) -> dict[str, Any]:
     """Re-estimate cost and duration for user-edited hyperparameters."""
     from overbae.modal.model_registry import context_headroom  # noqa: PLC0415
@@ -66,7 +67,7 @@ def estimate_for_hyperparams(
     from overbae.services.finetuning_pricing import estimate_training_run  # noqa: PLC0415
 
     dataset = Dataset.objects.get(pk=dataset_id)
-    stats = dataset_stats(dataset)
+    stats = dataset_stats(dataset, cell)
     entry = find_catalog_model(base_model)
     if entry is None:
         raise ValueError(f"Unknown base model: {base_model}")
@@ -97,7 +98,9 @@ def estimate_for_hyperparams(
     )
 
 
-def recommend_hyperparams_for_model(dataset_id: str, base_model: str) -> dict[str, Any]:
+def recommend_hyperparams_for_model(
+    dataset_id: str, base_model: str, cell: Any = None
+) -> dict[str, Any]:
     """A candidate row for an arbitrary catalog model, ungraded — the same derivation the
     ranked rows use, for a model the user picked themselves.
     """
@@ -105,7 +108,7 @@ def recommend_hyperparams_for_model(dataset_id: str, base_model: str) -> dict[st
     from overbae.services.datasets.rows import dataset_stats  # noqa: PLC0415
 
     dataset = Dataset.objects.get(pk=dataset_id)
-    stats = dataset_stats(dataset)
+    stats = dataset_stats(dataset, cell)
     entry = find_catalog_model(base_model)
     if entry is None:
         raise ValueError(f"Unknown base model: {base_model}")

@@ -44,6 +44,7 @@ class UploadViewSet(viewsets.ViewSet):
     through the router, so an action-level parser silently reverts elsewhere."""
 
     parser_classes = [JSONParser, OctetStreamParser]
+    lookup_value_regex = "[0-9a-f-]{36}"
 
     @extend_schema(
         summary="Reserve a chunked upload",

@@ -25,6 +25,7 @@ from overbae.models import (
     User,
 )
 from overbae.services.datasets.rows import row as _dataset_row
+from overbae.services.datasets.rows import row_from_record
 from overbae.services.finetuning_policy import qlora_learning_rate
 from overbae.services.finetuning_runner import (
     BaseFinetuningRunner,
@@ -241,7 +242,7 @@ class TestValidatorDB:
         ds = frozen_dataset(a.project, EVAL_ROWS, capability=a)
         result = validate_dataset(str(ds.id))
         assert result.valid is False
-        assert any("not a training row" in e for e in result.errors)
+        assert any("messages is empty" in e for e in result.errors)
 
     def test_nonexistent_dataset_returns_error(self):
         result = validate_dataset(str(uuid.uuid4()))
@@ -873,7 +874,7 @@ class TestJSONLMaterialisation:
                 {"role": "assistant", "content": "hello"},
             ]
         }
-        dp = SimpleNamespace(input=msgs, expected_output=None)
+        dp = row_from_record(0, msgs)
         assert row_to_finetuning_line(dp) == msgs
 
     def test_messages_with_tools_passthrough(self):
@@ -886,7 +887,7 @@ class TestJSONLMaterialisation:
             ],
             "tools": [{"type": "function", "function": {"name": "f"}}],
         }
-        dp = SimpleNamespace(input=row, expected_output=None)
+        dp = row_from_record(0, row)
         assert row_to_finetuning_line(dp) == row
 
     def test_non_native_input_raises(self):
@@ -894,10 +895,10 @@ class TestJSONLMaterialisation:
 
         # None of these are fine-tuning-native — explicit error, never a silent drop.
         for bad in (
-            SimpleNamespace(input="Q", expected_output="A"),
-            SimpleNamespace(input="Q", expected_output=None),
-            SimpleNamespace(input={"key": "val"}, expected_output="out"),
-            SimpleNamespace(input=[{"role": "user", "content": "hi"}], expected_output=None),
+            row_from_record(0, {"input": "Q", "expected_output": "A"}),
+            row_from_record(0, {"input": "Q"}),
+            row_from_record(0, {"input": {"key": "val"}, "expected_output": "out"}),
+            row_from_record(0, {"messages": [{"role": "user", "content": "hi"}]}),
         ):
             with pytest.raises(ValueError):
                 row_to_finetuning_line(bad)
@@ -1236,23 +1237,18 @@ class TestOpenAIFormatValidator:
         assert len(end_errors) == 0, "no spurious 'must end with assistant' error expected"
 
     def test_non_native_input_rejected(self):
-        from types import SimpleNamespace
 
         from overbae.services.finetuning_validator import row_to_finetuning_line
 
-        dp = SimpleNamespace(input=["not a dict", "also not"], expected_output=None)
+        dp = row_from_record(0, {"messages": "not a list"})
         with pytest.raises(ValueError):
             row_to_finetuning_line(dp)
 
     def test_user_only_messages_rejected(self):
-        from types import SimpleNamespace
 
         from overbae.services.finetuning_validator import row_to_finetuning_line
 
-        dp = SimpleNamespace(
-            input={"messages": [{"role": "user", "content": "hello"}]},
-            expected_output=None,
-        )
+        dp = row_from_record(0, {"messages": [{"role": "user", "content": "hello"}]})
         with pytest.raises(ValueError):
             row_to_finetuning_line(dp)
 

@@ -202,6 +202,8 @@ def finetune_prerequisite_report(
     }
 
 
-def stamp_hyperparameters_for_model(dataset_id: str, base_model: str) -> dict[str, Any]:
-    rec = recommend_hyperparams_for_model(dataset_id, base_model)
+def stamp_hyperparameters_for_model(
+    dataset_id: str, base_model: str, cell: Any = None
+) -> dict[str, Any]:
+    rec = recommend_hyperparams_for_model(dataset_id, base_model, cell)
     return job_hyperparameters_from_recommendation(rec)

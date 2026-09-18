@@ -149,9 +149,9 @@ EMPTY_STATS = {
 }
 
 
-def dataset_stats(dataset: Any) -> dict[str, Any]:
-    """The active cell's training stats; zeros when nothing ran."""
-    cell = dataset.active_cell
+def dataset_stats(dataset: Any, cell: Any = None) -> dict[str, Any]:
+    """The training stats of ``cell``, or of the active cell; zeros when nothing ran."""
+    cell = cell or dataset.active_cell
     if cell is None or not cell.stats:
         return dict(EMPTY_STATS)
     return dict(cell.stats)

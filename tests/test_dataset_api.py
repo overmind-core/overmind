@@ -173,7 +173,7 @@ def test_export_streams_a_version_raw_without_using_it():
     res = client.get(f"/api/datasets/{dataset.id}/export/", {"fmt": "jsonl"})
     assert res.status_code == 200
     assert res["X-Overmind-Cell"] == str(shape.id) and res["X-Overmind-Version"] == "1.2"
-    body = b"".join(res.streaming_content).decode()
+    body = b"".join(res).decode()
     assert body.count("\n") == 2 and '"input"' in body
     res = client.get(f"/api/datasets/{dataset.id}/export/", {"fmt": "csv", "cell": str(keep.id)})
     assert res.status_code == 200 and res["X-Overmind-Version"] == "1.1"
@@ -255,3 +255,38 @@ def test_delete_refused_while_a_version_is_used():
         cell.save(update_fields=["used_at"])
     res = client.delete(f"/api/datasets/{dataset.id}/")
     assert res.status_code == 204
+
+
+def test_another_project_reads_and_writes_nothing():
+    project = _project()
+    dataset = _create(_client(project), project, intent="eval")
+    cell = lifecycle.add_cell(dataset, title="Keep", script=KEEP)
+    run_svc.execute(dataset)
+    outsider_project = _project()
+    outsider = _client(outsider_project)
+    own = _create(outsider, outsider_project)
+    base = f"/api/datasets/{dataset.id}"
+    calls = [
+        ("get", f"{base}/"),
+        ("patch", f"{base}/"),
+        ("delete", f"{base}/"),
+        ("post", f"{base}/cells/"),
+        ("patch", f"{base}/cells/{cell.id}/"),
+        ("delete", f"{base}/cells/{cell.id}/"),
+        ("post", f"{base}/cells/{cell.id}/accept/"),
+        ("post", f"{base}/run/"),
+        ("post", f"{base}/chat/"),
+        ("get", f"{base}/rows/"),
+        ("get", f"{base}/rows/0/"),
+        ("get", f"{base}/columns/"),
+        ("get", f"{base}/export/"),
+        ("get", f"{base}/events/"),
+    ]
+    for method, url in calls:
+        res = getattr(outsider, method)(url, {"name": "x", "message": "hi"}, format="json")
+        assert res.status_code == 404, (method, url, res.status_code)
+    res = outsider.get(f"/api/datasets/{own.id}/rows/", {"cell": str(cell.id)})
+    assert res.status_code == 404
+    res = outsider.get("/api/datasets/", {"project": str(project.id)})
+    assert res.status_code == 200 and res.data["results"] == []
+    assert Dataset.objects.filter(pk=dataset.pk, name="ds").exists()

@@ -56,6 +56,12 @@ export interface FinetuningJobRequest {
      * @type {string}
      * @memberof FinetuningJobRequest
      */
+    evalCell?: string | null;
+    /**
+     *
+     * @type {string}
+     * @memberof FinetuningJobRequest
+     */
     evalSet?: string | null;
     /**
      *
@@ -175,6 +181,7 @@ export function FinetuningJobRequestFromJSONTyped(json: any, ignoreDiscriminator
         'capability': json['capability'] == null ? undefined : json['capability'],
         'dataset': json['dataset'],
         'evalDataset': json['eval_dataset'] == null ? undefined : json['eval_dataset'],
+        'evalCell': json['eval_cell'] == null ? undefined : json['eval_cell'],
         'evalSet': json['eval_set'] == null ? undefined : json['eval_set'],
         'validationEnabled': json['validation_enabled'] == null ? undefined : json['validation_enabled'],
         'validationSplitRatio': json['validation_split_ratio'] == null ? undefined : json['validation_split_ratio'],
@@ -207,6 +214,7 @@ export function FinetuningJobRequestToJSONTyped(value?: FinetuningJobRequest | n
         'capability': value['capability'],
         'dataset': value['dataset'],
         'eval_dataset': value['evalDataset'],
+        'eval_cell': value['evalCell'],
         'eval_set': value['evalSet'],
         'validation_enabled': value['validationEnabled'],
         'validation_split_ratio': value['validationSplitRatio'],

@@ -94,11 +94,16 @@ class FinetuningJob(models.Model):
         related_name="triggered_finetuning_jobs",
     )
 
-    # Rows whose trace_id also appears in eval_dataset are excluded
-    # from training.
     eval_dataset = models.ForeignKey(
         "overbae.Dataset",
         on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="eval_finetuning_jobs",
+    )
+    eval_cell = models.ForeignKey(
+        "overbae.Cell",
+        on_delete=models.PROTECT,
         null=True,
         blank=True,
         related_name="eval_finetuning_jobs",

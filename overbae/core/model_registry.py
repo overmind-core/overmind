@@ -405,6 +405,8 @@ class Provider:
     base_url: str | None = None
     openrouter_extras: bool = False
     reasoning_effort: bool = False
+    tools_reasoning_effort: str | None = None
+    output_cap_param: str = "max_tokens"
     headers: dict[str, str] = field(default_factory=dict)
 
     def key(self) -> str:
@@ -424,7 +426,15 @@ PROVIDERS: dict[str, Provider] = {
         openrouter_extras=True,
         headers={"HTTP-Referer": "https://overmindlab.ai", "X-Title": "Overmind Platform"},
     ),
-    "openai": Provider("openai", "OPENAI_API_KEY", reasoning_effort=True),
+    # OpenAI's reasoning models 400 on ``max_tokens``, and chat completions
+    # refuse function tools unless ``reasoning_effort`` is ``none``.
+    "openai": Provider(
+        "openai",
+        "OPENAI_API_KEY",
+        reasoning_effort=True,
+        tools_reasoning_effort="none",
+        output_cap_param="max_completion_tokens",
+    ),
     "anthropic": Provider("anthropic", "ANTHROPIC_API_KEY", "https://api.anthropic.com/v1/"),
     "gemini": Provider(
         "gemini",

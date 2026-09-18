@@ -6,7 +6,7 @@ from django.db import transaction
 
 from overbae.models import Dataset
 from overbae.services.datasets.land import SPLIT_POSITIONS
-from overbae.services.datasets.lifecycle import DatasetError, accept_proposal
+from overbae.services.datasets.lifecycle import DatasetError, accept_proposal, enter_busy
 
 _SOURCE_KEYS = ("traces", "rows", "upload_id")
 _BUSY = (Dataset.State.LANDING, Dataset.State.DIAGNOSING, Dataset.State.RUNNING)
@@ -82,6 +82,9 @@ def create_split(
         raise DatasetError("eval_percent must be between 1 and 99.", code="split")
     if position not in SPLIT_POSITIONS:
         raise DatasetError(f"position must be one of {', '.join(SPLIT_POSITIONS)}.", code="split")
+    known = source.get("rows") or (source.get("traces") or {}).get("trace_ids")
+    if known is not None and len(known) < 2:
+        raise DatasetError("Two rows are needed to split.", code="split")
     name = (name or "").strip()
     with transaction.atomic():
         train = _new(project, user, f"{name} train", source, Dataset.Intent.TRAIN, capability)
@@ -104,10 +107,9 @@ def create_split(
 
 
 def message_agent(dataset, user, message: str) -> Dataset:
-    n = Dataset.objects.filter(
-        pk=dataset.pk, state__in=[Dataset.State.IDLE, Dataset.State.ERROR]
-    ).update(state=Dataset.State.DIAGNOSING)
-    if n != 1:
+    if not enter_busy(
+        dataset.pk, Dataset.State.DIAGNOSING, from_states=[Dataset.State.IDLE, Dataset.State.ERROR]
+    ):
         dataset.refresh_from_db()
         raise DatasetError("The dataset is busy. Wait for it.", code=dataset.state)
     dataset.state = Dataset.State.DIAGNOSING
@@ -133,7 +135,7 @@ def run_dataset(dataset, user, proposal=None) -> Dataset:
             if proposal.dataset_id != locked.id:
                 raise DatasetError("That version belongs to another dataset.", code="cell_mismatch")
             accept_proposal(locked, proposal)
-        Dataset.objects.filter(pk=locked.pk).update(state=Dataset.State.RUNNING, error="")
+        enter_busy(locked.pk, Dataset.State.RUNNING, from_states=[locked.state])
         locked.state = Dataset.State.RUNNING
         locked.error = ""
     from overbae.tasks.datasets import run

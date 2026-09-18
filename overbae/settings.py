@@ -444,6 +444,10 @@ CELERY_BEAT_SCHEDULE = {
         "task": "overbae.tasks.datasets.reap_stuck_runs",
         "schedule": 600.0,
     },
+    "cleanup-dataset-uploads": {
+        "task": "overbae.tasks.cleanup_tmp.cleanup_uploads",
+        "schedule": 21600.0,
+    },
     "cleanup-data-tmp": {
         "task": "overbae.tasks.cleanup_tmp.cleanup_data_tmp",
         "schedule": 21600.0,

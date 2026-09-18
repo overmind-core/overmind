@@ -10,24 +10,20 @@ import type { ChatCellRef, ChatTurn } from "@/hooks/use-datasets";
 import { cn } from "@/lib/utils";
 import type { Cell } from "@/openapi";
 
-type ChipState = "created" | "edited" | "failed" | "ran" | "removed" | "discarded";
+type ChipState = "created" | "edited" | "failed" | "ran";
 
 const CHIP_STYLE: Record<ChipState, string> = {
   created: "border-border/70 text-foreground",
-  discarded: "border-dashed border-border/70 text-muted-foreground line-through",
   edited: "border-info/40 bg-info/10 text-foreground",
   failed: "border-destructive/40 bg-destructive/10 text-destructive",
   ran: "border-success/40 bg-success/10 text-foreground",
-  removed: "border-border/70 text-muted-foreground line-through",
 };
 
 const CHIP_ICON: Record<ChipState, IconName> = {
   created: "add",
-  discarded: "close",
   edited: "edit",
   failed: "warning",
   ran: "success",
-  removed: "close",
 };
 
 /** One chip per cell: the last thing the turn did to it. */
@@ -45,8 +41,7 @@ export interface LiveTurn {
 }
 
 /** The chip shows the cell as it is now: a proposal the user ran reads as ran. */
-function chipState(ref: ChatCellRef, cell: Cell | undefined): ChipState {
-  if (!cell || ref.action === "removed") return ref.action === "proposed" ? "discarded" : "removed";
+function chipState(ref: ChatCellRef, cell: Cell): ChipState {
   if (cell.state === "ok" && cell.fingerprint) return "ran";
   if (cell.state === "failed") return "failed";
   return ref.action === "edited" ? "edited" : "created";
@@ -58,22 +53,20 @@ function CellChip({
   onSelect,
 }: {
   ref: ChatCellRef;
-  cell: Cell | undefined;
+  cell: Cell;
   onSelect: (id: string) => void;
 }) {
   const state = chipState(cellRef, cell);
-  const gone = state === "removed" || state === "discarded";
   const Glyph = Icon[CHIP_ICON[state]];
-  const label = cell ? `${cell.version} ${cell.title}` : `${state} cell`;
+  const label = `${cell.version} ${cell.title}`;
   return (
     <button
       className={cn(
         "inline-flex h-6 max-w-full items-center gap-1 rounded-sm border px-1.5 font-mono text-xs",
         CHIP_STYLE[state],
-        !gone && "hover:bg-accent/60"
+        "hover:bg-accent/60"
       )}
-      disabled={gone}
-      onClick={() => cell && onSelect(cell.id)}
+      onClick={() => onSelect(cell.id)}
       title={state}
       type="button"
     >
@@ -151,7 +144,10 @@ const Turn = memo(function Turn({
   const proposals = refs
     .map((ref) => cellsById.get(ref.id))
     .filter((cell): cell is Cell => !!cell && cell.state === "proposed");
-  const chips = refs.filter((ref) => cellsById.get(ref.id)?.state !== "proposed");
+  const chips = refs.flatMap((ref) => {
+    const cell = cellsById.get(ref.id);
+    return cell && cell.state !== "proposed" ? [{ cell, ref }] : [];
+  });
   return (
     <div className="flex flex-col gap-1.5">
       <TurnSteps defaultOpen={false} isStreaming={!!live} parts={steps} turnMs={ms} />
@@ -162,8 +158,8 @@ const Turn = memo(function Turn({
       ) : null}
       {chips.length > 0 && (
         <div className="flex flex-wrap gap-1">
-          {chips.map((ref) => (
-            <CellChip cell={cellsById.get(ref.id)} key={ref.id} onSelect={onSelect} ref={ref} />
+          {chips.map(({ cell, ref }) => (
+            <CellChip cell={cell} key={ref.id} onSelect={onSelect} ref={ref} />
           ))}
         </div>
       )}
@@ -181,11 +177,20 @@ const Turn = memo(function Turn({
   );
 });
 
+/** What holds the dataset before the agent's first event: a turn that has not
+ *  been picked up yet is queued, not working. */
+const WAITING: Record<string, string> = {
+  diagnosing: "Queued",
+  landing: "Landing",
+  running: "Running",
+};
+
 export function DatasetChat({
   turns,
   live,
   cells,
   busy,
+  state,
   error,
   onSend,
   onSelect,
@@ -196,6 +201,7 @@ export function DatasetChat({
   live: LiveTurn | null;
   cells: Cell[];
   busy: boolean;
+  state: string;
   /** The dataset's own error, when its state is `error`. */
   error?: string;
   onSend: (message: string) => void;
@@ -207,13 +213,30 @@ export function DatasetChat({
   const scrollRef = useRef<HTMLDivElement>(null);
   const cellsById = useMemo(() => new Map(cells.map((c) => [c.id, c])), [cells]);
 
-  // biome-ignore lint/correctness/useExhaustiveDependencies: scroll to the newest text
+  const contentRef = useRef<HTMLDivElement>(null);
+  const pinned = useRef(true);
+
+  // The list follows its newest line until the reader scrolls away. Content
+  // grows after mount (markdown, proposal cards), so size drives it, not turns.
   useEffect(() => {
     const el = scrollRef.current;
-    if (!el) return;
-    const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 80;
-    if (atBottom) el.scrollTop = el.scrollHeight;
-  }, [turns.length, live?.text, live?.cells.length, live?.steps.length]);
+    const content = contentRef.current;
+    if (!el || !content) return;
+    const follow = () => {
+      if (pinned.current) el.scrollTop = el.scrollHeight;
+    };
+    const onScroll = () => {
+      pinned.current = el.scrollHeight - el.scrollTop - el.clientHeight < 80;
+    };
+    const observer = new ResizeObserver(follow);
+    observer.observe(content);
+    el.addEventListener("scroll", onScroll, { passive: true });
+    follow();
+    return () => {
+      observer.disconnect();
+      el.removeEventListener("scroll", onScroll);
+    };
+  }, []);
 
   const send = () => {
     const text = draft.trim();
@@ -231,20 +254,22 @@ export function DatasetChat({
 
   return (
     <div className="flex h-full min-h-0 flex-col">
-      <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto px-3 py-3" ref={scrollRef}>
-        {turns.length === 0 && !live && (
-          <p className="text-xs text-muted-foreground">The agent starts when the source lands.</p>
-        )}
-        {turns.map((turn, i) => (
-          <Turn key={`${turn.at}-${i}`} turn={turn} {...turnProps} />
-        ))}
-        {live && <Turn live turn={live} {...turnProps} />}
-        {busy && !live && (
-          <p className="inline-flex items-center gap-1.5 text-xs text-muted-foreground">
-            <Spinner className="size-3" />
-            Working
-          </p>
-        )}
+      <div className="min-h-0 flex-1 overflow-y-auto" ref={scrollRef}>
+        <div className="flex flex-col gap-3 px-3 py-3" ref={contentRef}>
+          {turns.length === 0 && !live && (
+            <p className="text-xs text-muted-foreground">The agent starts when the source lands.</p>
+          )}
+          {turns.map((turn, i) => (
+            <Turn key={`${turn.at}-${i}`} turn={turn} {...turnProps} />
+          ))}
+          {live && <Turn live turn={live} {...turnProps} />}
+          {busy && !live && (
+            <p className="inline-flex items-center gap-1.5 text-xs text-muted-foreground">
+              <Spinner className="size-3" />
+              {WAITING[state] ?? "Working"}
+            </p>
+          )}
+        </div>
       </div>
       <div className="shrink-0 border-t border-border/70 px-3 py-3">
         {error && (

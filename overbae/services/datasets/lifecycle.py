@@ -22,6 +22,16 @@ class DatasetError(ValueError):
         self.code = code
 
 
+def enter_busy(dataset_id: Any, state: str, *, from_states: list[str]) -> bool:
+    """Claim the dataset for a landing, a run or a turn. ``updated_at`` moves
+    with the claim because the reaper measures a busy state's age from it."""
+    return bool(
+        Dataset.objects.filter(pk=dataset_id, state__in=from_states).update(
+            state=state, error="", updated_at=timezone.now()
+        )
+    )
+
+
 def _refuse_while_busy(dataset: Dataset) -> None:
     if dataset.state == Dataset.State.RUNNING:
         raise DatasetError("The notebook is running. Wait for it to finish.", code="running")

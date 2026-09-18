@@ -2,6 +2,7 @@ import logging
 from datetime import timedelta
 
 from django.conf import settings
+from django.db import transaction
 from django.db.models import Count, Manager, Max, Q
 from django.utils import timezone
 from drf_spectacular.utils import extend_schema_field
@@ -1023,6 +1024,7 @@ class FinetuningJobListSerializer(serializers.ModelSerializer):
             "capability",
             "dataset",
             "eval_dataset",
+            "eval_cell",
             "eval_set",
             "validation_enabled",
             "validation_split_ratio",
@@ -1086,6 +1088,7 @@ class FinetuningJobSerializer(serializers.ModelSerializer):
             "capability",
             "dataset",
             "eval_dataset",
+            "eval_cell",
             "eval_set",
             "validation_enabled",
             "validation_split_ratio",
@@ -1159,14 +1162,22 @@ class FinetuningJobSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError("Must be between 0.05 and 0.5.")
         return value
 
-    def _use_train_cell(self, dataset: Dataset, *, field: str, explicit=None):
+    def _check_cell(self, dataset: Dataset, intent: str, *, field: str, explicit=None):
         from overbae.services.datasets import use  # noqa: PLC0415
         from overbae.services.datasets.lifecycle import DatasetError  # noqa: PLC0415
 
         try:
-            return use.use(dataset, "train", cell=explicit)
+            return use.check(dataset, intent, cell=explicit)
         except DatasetError as exc:
             raise serializers.ValidationError({field: exc.detail}) from exc
+
+    def create(self, validated_data):
+        from overbae.services.datasets import use  # noqa: PLC0415
+
+        with transaction.atomic():
+            job = super().create(validated_data)
+            use.freeze(job.cell, job.validation_cell, job.eval_cell)
+        return job
 
     def validate(self, attrs):
         attrs = super().validate(attrs)
@@ -1186,8 +1197,8 @@ class FinetuningJobSerializer(serializers.ModelSerializer):
                 {"capability": "Capability does not belong to this project."}
             )
         if dataset and (self.instance is None or "dataset" in attrs or "cell" in attrs):
-            attrs["cell"] = self._use_train_cell(
-                dataset, field="dataset", explicit=attrs.get("cell")
+            attrs["cell"] = self._check_cell(
+                dataset, "train", field="dataset", explicit=attrs.get("cell")
             )
 
         base_model = attrs.get("base_model") or getattr(self.instance, "base_model", None)
@@ -1231,8 +1242,9 @@ class FinetuningJobSerializer(serializers.ModelSerializer):
                 raise serializers.ValidationError(
                     {"validation_dataset": "Dataset does not belong to this project."}
                 )
-            attrs["validation_cell"] = self._use_train_cell(
+            attrs["validation_cell"] = self._check_cell(
                 validation_dataset,
+                "train",
                 field="validation_dataset",
                 explicit=attrs.get("validation_cell"),
             )
@@ -1247,15 +1259,11 @@ class FinetuningJobSerializer(serializers.ModelSerializer):
                 raise serializers.ValidationError(
                     {"eval_dataset": "Eval dataset does not belong to this project."}
                 )
-            eval_product = eval_dataset.active_cell
-            if eval_product is None or not eval_product.fits("eval")[0]:
-                raise serializers.ValidationError(
-                    {
-                        "eval_dataset": "The eval dataset needs a version that fits eval; "
-                        f"{eval_dataset.name} has "
-                        f"{eval_product.fits('eval')[1] if eval_product else 'no version'}."
-                    }
+            if self.instance is None or "eval_dataset" in attrs or "eval_cell" in attrs:
+                attrs["eval_cell"] = self._check_cell(
+                    eval_dataset, "eval", field="eval_dataset", explicit=attrs.get("eval_cell")
                 )
+            eval_product = attrs.get("eval_cell") or self.instance.eval_cell
             train_checkpoint = attrs.get("cell") or getattr(self.instance, "cell", None)
             if train_checkpoint is not None:
                 from overbae.services.datasets import rows as row_store  # noqa: PLC0415
@@ -1298,14 +1306,13 @@ class FinetuningJobSerializer(serializers.ModelSerializer):
             other_kind = "full" if training_kind_field == "lora" else "lora"
             other_max = training_context_length(entry, other_kind)
             other_supported = training_enabled(entry, other_kind)
-            for field_name, ds in (
-                ("dataset", dataset),
-                ("validation_dataset", validation_dataset),
+            for field_name, product in (
+                ("dataset", attrs.get("cell") or getattr(self.instance, "cell", None)),
+                ("validation_dataset", attrs.get("validation_cell")),
             ):
-                if not ds or model_max is None:
+                if product is None or model_max is None:
                     continue
-                product = ds.active_cell
-                stats = dict((product.stats if product is not None else None) or {})
+                stats = dict(product.stats or {})
                 try:
                     max_tokens = int(stats.get("max_token_length") or 0)
                 except (TypeError, ValueError):

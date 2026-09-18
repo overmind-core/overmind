@@ -181,7 +181,14 @@ const STATE_LABEL: Record<CellState, string> = {
   running: "running",
 };
 
-type Report = { ok?: boolean; reason?: string; rows?: number; rows_ok?: number };
+type Report = {
+  ok?: boolean;
+  reason?: string;
+  rows?: number;
+  rows_ok?: number;
+  /** false when no cell holds text, so no cell could shape the table. */
+  fixable?: boolean;
+};
 
 interface Check {
   label: string;
@@ -194,14 +201,16 @@ interface Check {
   found: string;
   /** What makes it pass. */
   fix?: string;
+  /** false when nothing the agent could add would make it pass. */
+  fixable?: boolean;
 }
 
 function intentCheck(intent: string, shape: Report, ran: boolean): Check {
   if (intent !== "train" && intent !== "eval") {
     return {
       columns: [],
-      fix: "Choose train or eval in the page header.",
-      found: "the intent is still pending",
+      fix: "Tell Overmind in the chat which one the rows are for.",
+      found: "train or eval not chosen",
       label: "Intent",
       ok: false,
       requires: "an intent, so the table has a shape to hold",
@@ -224,6 +233,16 @@ function intentCheck(intent: string, shape: Report, ran: boolean): Check {
     };
   if (shape.ok) return { columns, found: "every row holds the shape", label, ok: true, requires };
   const reason = shape.reason ?? "";
+  if (shape.fixable === false)
+    return {
+      columns,
+      fix: "None. The rows hold numbers and ids only; a different source is needed.",
+      fixable: false,
+      found: "no text in any column",
+      label,
+      ok: false,
+      requires,
+    };
   let fix = "Ask the agent to shape the table.";
   if (reason.startsWith("no input column"))
     fix = "Add an input column: rename the prompt column or build it from messages.";
@@ -232,7 +251,9 @@ function intentCheck(intent: string, shape: Report, ran: boolean): Check {
   else if (reason.startsWith("no expected_output"))
     fix = "Add an expected_output column with the reference answer.";
   else if (reason.includes("empty input")) fix = "Drop the rows whose input is empty.";
-  else if (reason.includes("no usable messages"))
+  else if (reason.includes("cut at landing"))
+    fix = "Drop the rows that landing cut: part of each transcript is missing.";
+  else if (reason.includes("no usable messages") || reason.includes(" rows: "))
     fix = "Drop the rows whose messages are empty or not a list.";
   else if (reason === "no rows") fix = "The table is empty. Land more rows or loosen a filter.";
   return { columns, fix, found: reason || "the shape does not hold", label, ok: false, requires };
@@ -366,6 +387,7 @@ function FitChip({
       }
       return out;
     }
+    if (failing.fixable === false) return out;
     out.push({
       hint: intentFails
         ? `Adds a cell so the table is a ${intent} table.`

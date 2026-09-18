@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-import json
-import os
 import uuid
 from unittest.mock import patch
 
@@ -31,7 +29,6 @@ from overbae.services.finetuning_pricing import (
 )
 from overbae.services.recommendation.analysis import build_analysis
 from overbae.services.recommendation.capability_context import collect_capability_context
-from overbae.tasks.finetuning import _build_training_jsonl
 
 pytestmark = pytest.mark.django_db
 
@@ -274,21 +271,6 @@ def test_overlapping_trace_ids_intersects_on_source_trace():
         row_store.trace_ids(blank_train.active_cell) & row_store.trace_ids(eval_ds.active_cell)
         == set()
     )
-
-
-def test_build_training_jsonl_excludes_overlapping_rows():
-    _, p, a = _setup()
-    train = _dataset(p, a, intent="ft", trace_ids=["t1", "t2", "t3"])
-
-    path, n = _build_training_jsonl(train.active_cell, exclude_trace_ids={"t2"})
-    try:
-        with open(path, encoding="utf-8") as f:
-            rows = [json.loads(line) for line in f]
-    finally:
-        os.unlink(path)
-    assert n == 2
-    contents = json.dumps(rows)
-    assert "q0" in contents and "q2" in contents and "q1" not in contents
 
 
 def test_dataset_overlap_endpoint():

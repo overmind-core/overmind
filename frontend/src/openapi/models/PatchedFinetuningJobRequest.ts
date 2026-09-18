@@ -56,6 +56,12 @@ export interface PatchedFinetuningJobRequest {
      * @type {string}
      * @memberof PatchedFinetuningJobRequest
      */
+    evalCell?: string | null;
+    /**
+     *
+     * @type {string}
+     * @memberof PatchedFinetuningJobRequest
+     */
     evalSet?: string | null;
     /**
      *
@@ -172,6 +178,7 @@ export function PatchedFinetuningJobRequestFromJSONTyped(json: any, ignoreDiscri
         'capability': json['capability'] == null ? undefined : json['capability'],
         'dataset': json['dataset'] == null ? undefined : json['dataset'],
         'evalDataset': json['eval_dataset'] == null ? undefined : json['eval_dataset'],
+        'evalCell': json['eval_cell'] == null ? undefined : json['eval_cell'],
         'evalSet': json['eval_set'] == null ? undefined : json['eval_set'],
         'validationEnabled': json['validation_enabled'] == null ? undefined : json['validation_enabled'],
         'validationSplitRatio': json['validation_split_ratio'] == null ? undefined : json['validation_split_ratio'],
@@ -204,6 +211,7 @@ export function PatchedFinetuningJobRequestToJSONTyped(value?: PatchedFinetuning
         'capability': value['capability'],
         'dataset': value['dataset'],
         'eval_dataset': value['evalDataset'],
+        'eval_cell': value['evalCell'],
         'eval_set': value['evalSet'],
         'validation_enabled': value['validationEnabled'],
         'validation_split_ratio': value['validationSplitRatio'],

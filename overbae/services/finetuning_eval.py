@@ -819,7 +819,7 @@ def _launch_eval(
         from overbae.services.datasets import use as dataset_use
 
         # Same pin the eval-run API applies: generate scoring reads ``run.cell``.
-        cell = dataset_use.use(job.eval_dataset, "eval")
+        cell = dataset_use.use(job.eval_dataset, "eval", cell=job.eval_cell)
         ref = _get_or_create_model_ref(job, model_id=model_id, label=label, kind=kind)
         run = EvalRun.objects.create(
             project=job.project,

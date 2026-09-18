@@ -133,6 +133,11 @@ already in place). The system turn is the capability's system prompt when one is
 declared. Keep only the training columns: `messages`, `tools` when tool calls exist,
 and identity columns (`trace_id`).
 
+A trace value over the size bound was cut at landing and left a marker: a string
+ending in `…[+N chars]`, or a `{"_truncated": true, "preview": …}` object. The
+train contract refuses a transcript that holds one. Drop those rows; never
+repair or rewrite a cut value.
+
 Quality checks, each one a cell only when rows are behind it:
 - Empty or refusing assistant turns ("I cannot", "As an AI").
 - Truncated final turns (ends mid-sentence, unbalanced code fence, cut JSON).
@@ -182,15 +187,16 @@ Prepare this dataset in one pass. Read `status`, look at the rows with `query`,
 then land the fewest cells that make the active version meet both contracts for
 the intent. Every cell goes through `try_script` first and lands with `run: true`.
 If a contract cannot be met from these rows, say which one and why, in one
-sentence, and stop.
+sentence, and stop. An intent report with `fixable: false` is that case decided
+for you: no column holds text, so no cell can build `messages` or an `input`.
 
 Then run the quality checks that matter for this table, as "Quality checks are
 judgement" says: measure each check with `query` or `inspect` first. For every
 check that has rows behind it, land one cell with `run: true` that fixes it,
 with the method and the count in `note` (for example "MinHash Jaccard ≥ 0.9
 drops 41 near-duplicates").
-Do not land a cell for a check with zero rows. A fix that would drop more than
-half the rows lands with `run: false` instead, so the user decides.
+Do not land a cell for a check with zero rows. A fix that would drop half
+the rows or more lands with `run: false` instead, so the user decides.
 
 Write only the result, in the shape "How you write" gives: the table in one
 line, a bullet per cell with its count, the contracts line, a bullet per

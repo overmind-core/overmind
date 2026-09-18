@@ -5,6 +5,7 @@ from __future__ import annotations
 import re
 import uuid
 
+import duckdb
 from asgiref.sync import sync_to_async
 
 from overbae.models import Capability, Dataset
@@ -28,12 +29,12 @@ from overbae.services.mcp.contracts.datasets import (
     RunDatasetInput,
     dataset_resource_link,
     mutation_output,
+    sanitize_error,
     serialize_dataset_detail,
     serialize_dataset_list_item,
 )
-from overbae.services.mcp.errors import MCPError, dataset_mcp_error
+from overbae.services.mcp.errors import MCPError, dataset_mcp_error, mcp_dataset
 
-_DATASET_URI = "overmind://datasets/"
 _READ_ONLY_SQL = re.compile(r"^\s*(?:select|with)\b", re.IGNORECASE)
 
 
@@ -44,26 +45,8 @@ def _uuid(value: str) -> str | None:
         return None
 
 
-def _dataset_id(reference: str) -> str:
-    value = str(reference).strip()
-    if value.startswith(_DATASET_URI):
-        value = value[len(_DATASET_URI) :]
-    normalized = _uuid(value)
-    if normalized is None:
-        raise MCPError("invalid_input", "Dataset references must be UUIDs.")
-    return normalized
-
-
 def _resolve_dataset(context: MCPContext, reference: str) -> Dataset:
-    dataset = (
-        Dataset.objects.filter(project=context.project, id=_dataset_id(reference))
-        .select_related("capability", "active")
-        .prefetch_related("cells")
-        .first()
-    )
-    if dataset is None:
-        raise MCPError("dataset_not_found", "The dataset was not found in this project.")
-    return dataset
+    return mcp_dataset(context, reference)
 
 
 def _resolve_capability(context: MCPContext, reference: str) -> Capability:
@@ -135,13 +118,13 @@ def _query_dataset_sync(payload: QueryDatasetInput, context: MCPContext) -> Quer
         raise MCPError("cell_not_found", "The cell was not found in this dataset.") from exc
     if cell.dataset_id != dataset.id:
         raise MCPError("cell_not_found", "The cell was not found in this dataset.")
+    limit = min(payload.limit, 100)
     try:
-        result = store.query(
-            sql, limit=min(payload.limit, 100), t=paths.cell_path(dataset.id, cell.id)
-        )
-    except Exception as exc:
-        raise MCPError("query_invalid", "The dataset query is invalid.") from exc
-    rows = list(result.get("rows") or [])[:100]
+        result = store.query(sql, limit=limit + 1, t=paths.cell_path(dataset.id, cell.id))
+    except duckdb.Error as exc:
+        reason = sanitize_error(str(exc).splitlines()[0], 300)
+        raise MCPError("query_invalid", f"The query failed: {reason}") from exc
+    rows = list(result["rows"])[:limit]
     columns = [str(column) for column in (result.get("columns") or [])[:200]]
     link = dataset_resource_link(dataset)
     return QueryDatasetOutput(
@@ -152,7 +135,7 @@ def _query_dataset_sync(payload: QueryDatasetInput, context: MCPContext) -> Quer
         columns=columns,
         rows=rows,
         n=len(rows),
-        truncated=len(result.get("rows") or []) > len(rows),
+        truncated=len(result["rows"]) > limit,
         resource_links=[link],
     )
 
@@ -277,7 +260,9 @@ def register_dataset_tools(catalog) -> None:
         (
             "query_dataset",
             "Query dataset",
-            "Run bounded read-only SQL against one ran cell in a project dataset.",
+            "Run one read-only SELECT over the table `t`, one ran cell of a project dataset "
+            "(the active version unless `cell` names an id or a version such as 1.2). "
+            "At most 100 rows return; `truncated` says when more matched.",
             QueryDatasetInput,
             QueryDatasetOutput,
             _query_dataset_sync,

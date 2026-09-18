@@ -117,9 +117,9 @@ def test_upload_file_small_hits_datasets_not_ingestions(tmp_path: Path):
     }
     assert {action["tool"] for action in result["next_mcp_actions"]} == {
         "get_job",
-        "dataset_inspect",
+        "inspect_dataset",
     }
-    assert result["next_mcp_actions"][0]["arguments"] == {"kind": "dataset_run"}
+    assert result["next_mcp_actions"][0]["arguments"] == {"kind": "dataset_run", "id": result["id"]}
 
 
 def test_upload_file_resumes_in_server_chunks_and_creates_dataset(tmp_path: Path):
@@ -178,7 +178,7 @@ def test_upload_file_with_split_hits_the_split_endpoint_and_returns_both_ids(tmp
     }
     assert (result["id"], result["eval_id"]) == ("dataset-1", "dataset-2")
     assert result["state"] == result["eval_state"] == "landing"
-    assert result["next_mcp_actions"][1]["arguments"] == {"dataset_name": "dataset-1"}
+    assert result["next_mcp_actions"][1]["arguments"] == {"dataset": "dataset-1"}
 
 
 def test_upload_file_rejects_a_bad_split_before_network(tmp_path: Path):
@@ -263,7 +263,7 @@ def test_upload_command_prints_uuid_state_and_mcp_follow_up(tmp_path: Path, monk
             "state": "landing",
             "next_mcp_actions": [
                 {"tool": "get_job", "arguments": {"kind": "dataset_run"}},
-                {"tool": "dataset_inspect", "arguments": {"dataset_name": "dataset-1"}},
+                {"tool": "inspect_dataset", "arguments": {"dataset": "dataset-1"}},
             ],
         },
     )
@@ -284,7 +284,7 @@ def test_upload_command_prints_uuid_state_and_mcp_follow_up(tmp_path: Path, monk
     assert human.exit_code == 0, human.output
     assert "dataset-1" in human.output
     assert "landing" in human.output
-    assert "get_job(kind=dataset_run)" in human.output
+    assert "get_job(kind=dataset_run, id=" in human.output
 
 
 def test_upload_command_passes_split_flags_and_prints_the_eval_dataset(tmp_path: Path, monkeypatch):
@@ -537,3 +537,61 @@ def test_upload_command_reports_missing_configuration(
 
     assert result.exit_code == 1
     assert message in json.loads(result.output)["error"]
+
+
+def test_wait_until_ready_polls_past_busy_states_and_raises_the_dataset_error(monkeypatch):
+    from overmind import dataset_cmd
+
+    class _Response:
+        ok = True
+
+        def __init__(self, body):
+            self._body = body
+
+        def json(self):
+            return self._body
+
+    class _Session:
+        def __init__(self, states):
+            self.states = list(states)
+            self.headers = {}
+
+        def get(self, *_args, **_kwargs):
+            return _Response(self.states.pop(0))
+
+    monkeypatch.setattr(dataset_cmd.time, "sleep", lambda _s: None)
+    done = dataset_cmd.wait_until_ready(
+        "d1",
+        api_key="k",
+        api_url="http://x",
+        session=_Session([{"state": "landing"}, {"state": "diagnosing"}, {"state": "idle"}]),
+    )
+    assert done == {"state": "idle"}
+    with pytest.raises(dataset_cmd.DatasetUploadError, match="Row 2 has 3 cells"):
+        dataset_cmd.wait_until_ready(
+            "d1",
+            api_key="k",
+            api_url="http://x",
+            session=_Session([{"state": "error", "error": "Row 2 has 3 cells; the header has 2."}]),
+        )
+
+
+def test_a_dropped_chunk_is_sent_again(monkeypatch, tmp_path):
+    from overmind import dataset_cmd
+
+    monkeypatch.setattr(dataset_cmd.time, "sleep", lambda _s: None)
+    path = tmp_path / "rows.jsonl"
+    path.write_text('{"input": "a"}\n')
+    session = FakeSession()
+    real_put = session.put
+    dropped = []
+
+    def flaky_put(*args, **kwargs):
+        if not dropped:
+            dropped.append(1)
+            raise dataset_cmd.requests.ConnectionError("reset")
+        return real_put(*args, **kwargs)
+
+    session.put = flaky_put
+    result = dataset_cmd.upload_file(path, project_id="p", api_key="k", api_url="http://x", session=session)
+    assert dropped and result["id"]
