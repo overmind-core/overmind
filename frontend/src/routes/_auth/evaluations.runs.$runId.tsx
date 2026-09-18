@@ -6,9 +6,11 @@ import { toast } from "sonner";
 import { UsedVersionChip } from "@/components/datasets/badges";
 import { EntityRef } from "@/components/entity-ref";
 import {
+  groupSampleRows,
   matchesSearch,
   scoreVerdict,
   sortRows,
+  type DatapointRow,
   type VerdictFilter,
 } from "@/components/evaluations/datapoint-filter";
 import { EvalWinnerCallout, PerModelOps } from "@/components/evaluations/eval-results-overview";
@@ -684,11 +686,6 @@ function VariantCard({
   );
 }
 
-interface DatapointRow {
-  datapointId: string | null;
-  fallbackSampleId: string;
-}
-
 type DatapointSortKey = "index" | "input" | "output" | `score:${string}`;
 
 interface ScoreRecord {
@@ -702,31 +699,15 @@ interface ScoreRecord {
 }
 
 function buildIndexes(
-  samples: Array<{ id?: string; datapoint?: string | null; variant?: string | null }>,
+  samples: Array<{
+    id?: string;
+    rowIndex?: number | null;
+    sourceTraceId?: string;
+    variant?: string | null;
+  }>,
   scores: Array<ScoreRecord>
 ) {
-  const sampleMap = new Map<string, Map<string, string>>();
-  const seenDatapoints = new Map<string, string>();
-  const sampleVariantMap = new Map<string, string>();
-
-  for (const s of samples) {
-    if (!s.id) continue;
-    const dpKey = s.datapoint ?? "__no_dp__";
-    if (!sampleMap.has(dpKey)) sampleMap.set(dpKey, new Map());
-    if (s.variant) {
-      sampleMap.get(dpKey)!.set(s.variant, s.id);
-      sampleVariantMap.set(s.id, s.variant);
-    }
-    if (!seenDatapoints.has(dpKey)) seenDatapoints.set(dpKey, s.id);
-  }
-
-  const datapointRows: DatapointRow[] = [];
-  for (const [dpKey, firstSampleId] of seenDatapoints) {
-    datapointRows.push({
-      datapointId: dpKey === "__no_dp__" ? null : dpKey,
-      fallbackSampleId: firstSampleId,
-    });
-  }
+  const { datapointRows, sampleMap, sampleVariantMap } = groupSampleRows(samples);
 
   const scoreIndex = new Map<string, Map<string, number>>();
   const verdictIndex = new Map<string, Map<string, "passed" | "failed">>();
@@ -875,8 +856,7 @@ function ComparisonTable({
 
   // Mirrors the render-time lookup below — keep the two in step.
   const rowSampleId = (row: DatapointRow, vid: string): string | undefined =>
-    sampleMap.get(row.datapointId ?? "")?.get(vid) ??
-    (row.datapointId == null ? row.fallbackSampleId : undefined);
+    sampleMap.get(row.key)?.get(vid);
 
   // The samples query fetches the whole run, so filtering can stay in memory.
   const hasActiveFilter = !!searchQuery.trim() || verdictFilter !== "all";
@@ -1287,14 +1267,13 @@ function ComparisonTable({
                     const ordinal = ordinalByRow.get(row) ?? 0;
                     const inputSample = previewBySample.get(row.fallbackSampleId);
                     const outSampleId = singleVariantId
-                      ? (sampleMap.get(row.datapointId ?? "")?.get(singleVariantId) ??
-                        (row.datapointId == null ? row.fallbackSampleId : undefined))
+                      ? rowSampleId(row, singleVariantId)
                       : undefined;
                     const outSample = outSampleId ? previewBySample.get(outSampleId) : undefined;
                     return (
                       <TableRow
                         className="cursor-pointer hover:bg-wash-raised"
-                        key={row.datapointId ?? row.fallbackSampleId}
+                        key={row.key}
                         onClick={() => setOpenRow(row)}
                       >
                         <TableCell className="text-xs text-muted-foreground/40">
@@ -1328,9 +1307,7 @@ function ComparisonTable({
                           </TableCell>
                         ) : null}
                         {variantIds.map((vid) => {
-                          const sampleId =
-                            sampleMap.get(row.datapointId ?? "")?.get(vid) ??
-                            (row.datapointId == null ? row.fallbackSampleId : undefined);
+                          const sampleId = rowSampleId(row, vid);
                           const perSampleScore = sampleId
                             ? scoreIndex.get(sampleId)?.get(currentMetric)
                             : undefined;
@@ -2469,8 +2446,7 @@ function SampleModal({
 }) {
   const firstSampleId =
     (row
-      ? (sampleMap.get(row.datapointId ?? "")?.get(variantIds[0] ?? "") ??
-        (row.datapointId == null ? row.fallbackSampleId : undefined))
+      ? (sampleMap.get(row.key)?.get(variantIds[0] ?? "") ?? row.fallbackSampleId)
       : undefined) ?? "";
 
   const { data: firstSample, isLoading } = useEvalSampleQuery(firstSampleId);
@@ -2503,15 +2479,11 @@ function SampleModal({
     messages?: Array<{ role: string; content?: string }>;
   };
 
-  const dpLabel = (row?.datapointId ?? row?.fallbackSampleId)?.slice(0, 8);
+  const dpLabel = row?.rowIndex != null ? String(row.rowIndex) : row?.fallbackSampleId.slice(0, 8);
 
   const variantSamples = variantIds.map((vid) => ({
     label: variants[vid]?.label ?? vid,
-    sampleId:
-      (row
-        ? (sampleMap.get(row.datapointId ?? "")?.get(vid) ??
-          (row.datapointId == null ? row.fallbackSampleId : undefined))
-        : undefined) ?? "",
+    sampleId: (row ? sampleMap.get(row.key)?.get(vid) : undefined) ?? "",
     vid,
   }));
 

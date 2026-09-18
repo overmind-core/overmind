@@ -1,6 +1,12 @@
 import { describe, expect, it } from "vitest";
 
-import { matchesSearch, scoreVerdict, sortRows } from "./datapoint-filter";
+import {
+  groupSampleRows,
+  matchesSearch,
+  sampleRowKey,
+  scoreVerdict,
+  sortRows,
+} from "./datapoint-filter";
 
 describe("scoreVerdict", () => {
   it("prefers the explicit passed flag over the numeric value", () => {
@@ -29,6 +35,49 @@ describe("matchesSearch", () => {
   it("treats blank queries as match-all and ignores null texts", () => {
     expect(matchesSearch("  ", [null, undefined])).toBe(true);
     expect(matchesSearch("x", [null, undefined])).toBe(false);
+  });
+});
+
+describe("sampleRowKey", () => {
+  it("prefers rowIndex, then sourceTraceId, then sample id", () => {
+    expect(sampleRowKey({ id: "s1", rowIndex: 3, sourceTraceId: "abc" })).toBe("row:3");
+    expect(sampleRowKey({ id: "s1", rowIndex: 0 })).toBe("row:0");
+    expect(sampleRowKey({ id: "s1", rowIndex: null, sourceTraceId: "abc" })).toBe("trace:abc");
+    expect(sampleRowKey({ id: "s1" })).toBe("sample:s1");
+    expect(sampleRowKey({})).toBeNull();
+  });
+});
+
+describe("groupSampleRows", () => {
+  it("emits one row per dataset row_index and maps each variant", () => {
+    const grouped = groupSampleRows([
+      { id: "a", rowIndex: 0, variant: "v1" },
+      { id: "b", rowIndex: 1, variant: "v1" },
+      { id: "c", rowIndex: 0, variant: "v2" },
+    ]);
+    expect(grouped.datapointRows.map((r) => r.rowIndex)).toEqual([0, 1]);
+    expect(grouped.sampleMap.get("row:0")?.get("v1")).toBe("a");
+    expect(grouped.sampleMap.get("row:0")?.get("v2")).toBe("c");
+    expect(grouped.sampleMap.get("row:1")?.get("v1")).toBe("b");
+  });
+
+  it("groups trace-filter samples by sourceTraceId when rowIndex is missing", () => {
+    const grouped = groupSampleRows([
+      { id: "a", rowIndex: null, sourceTraceId: "t1", variant: "v1" },
+      { id: "b", rowIndex: null, sourceTraceId: "t1", variant: "v2" },
+      { id: "c", rowIndex: null, sourceTraceId: "t2", variant: "v1" },
+    ]);
+    expect(grouped.datapointRows).toHaveLength(2);
+    expect(grouped.sampleMap.get("trace:t1")?.size).toBe(2);
+    expect(grouped.datapointRows[1]?.fallbackSampleId).toBe("c");
+  });
+
+  it("does not collapse unrelated samples onto one missing-datapoint row", () => {
+    const grouped = groupSampleRows([
+      { id: "a", variant: "v1" },
+      { id: "b", variant: "v1" },
+    ]);
+    expect(grouped.datapointRows.map((r) => r.fallbackSampleId)).toEqual(["a", "b"]);
   });
 });
 
