@@ -153,8 +153,9 @@ Follow these for ALL Overmind work:
 - Optimizer experiments (`/overmind optimise` — skill writes diffs/commands;
   SDK runs locally; server scores):
   [references/optimizer.md](references/optimizer.md)
-- Model backtest (skill rewrites provider + model onto OpenRouter via
-  `overmind.backtest.rewrite_repo`; MCP posts outputs; server scores):
+- Model backtest (skill rewrites provider onto OpenRouter via
+  `overmind.backtest.rewrite_repo`; CLI runs one iteration per model with
+  `OPENROUTER_MODEL`; server scores):
   [references/backtest.md](references/backtest.md)
 
 ## Conventions (read before any workflow)

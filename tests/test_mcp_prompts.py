@@ -148,6 +148,25 @@ def test_dataset_prompts_do_not_use_retired_workshop_language():
         assert retired not in text
 
 
+def test_compare_models_prompt_forbids_diffs_and_names_openrouter_swap():
+    text = (
+        get_prompt(
+            "compare-models",
+            {
+                "capability": "capability-id",
+                "dataset": "dataset-id",
+                "model_ids": "openai/gpt-5,anthropic/claude-sonnet-4",
+            },
+        )
+        .messages[0]
+        .content.text
+    )
+    assert "Do not write candidate diffs" in text
+    assert "OPENROUTER_MODEL" in text
+    assert "one iteration per model" in text
+    assert "mode model_comparison" in text
+
+
 def test_export_prompt_describes_local_download_and_trace_workflow():
     prompt = next(prompt for prompt in PROMPTS if prompt.name == "export-dataset")
     arguments = {argument.name: argument for argument in prompt.as_mcp_prompt().arguments or []}

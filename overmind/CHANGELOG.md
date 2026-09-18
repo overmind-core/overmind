@@ -55,6 +55,10 @@ entries here cover the SDK surface.
 - Packaging: default `pip install overmind` is the CLI (plus litellm).
   OpenTelemetry, LangChain, and HTTP instrumentors live on `overmind[tracing]`
   so an existing OTel pin does not clash.
+- `overmind optimise` `mode=model_comparison`: one iteration per selected model
+  with an empty harness diff; the runner stamps `target_model` and overlays
+  `OPENROUTER_MODEL`. Smoke and baseline stay on the incumbent. `next` asks
+  for `run-iteration`, not candidate diffs.
 - Orphan-span suppression: a `function` span that starts a new trace outside
   any run boundary (no parent, no unit declaration) is no longer exported —
   the platform quarantines such fragments as noise. A warning is logged once;

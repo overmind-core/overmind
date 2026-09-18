@@ -66,16 +66,16 @@ the required human authorization for local code or Git side effects.
 overmind optimise next
 ```
 
-| Action                   | What you do                                                  |
-| ------------------------ | ------------------------------------------------------------ |
-| `WRITE_COMMAND_TEMPLATE` | Write the template, then `set-template`                      |
-| `RUN_SMOKE`              | `overmind optimise run-smoke`                                |
-| `RUN_BASELINE`           | `overmind optimise run-baseline`                             |
-| `WRITE_CANDIDATES`       | Write unified diffs, `add-candidate --diff`, `run-iteration` |
-| `RUN_ITERATION`          | `overmind optimise run-iteration`                            |
-| `WAIT`                   | Server scoring — `next` again shortly                        |
-| `COMPLETE`               | `overmind optimise complete`                                 |
-| `DONE`                   | Finished — report scores                                     |
+| Action                   | What you do                                                                      |
+| ------------------------ | -------------------------------------------------------------------------------- |
+| `WRITE_COMMAND_TEMPLATE` | Write the template, then `set-template`                                          |
+| `RUN_SMOKE`              | `overmind optimise run-smoke`                                                    |
+| `RUN_BASELINE`           | `overmind optimise run-baseline`                                                 |
+| `WRITE_CANDIDATES`       | Write unified diffs, `add-candidate --diff`, `run-iteration` (optimize / hybrid) |
+| `RUN_ITERATION`          | `overmind optimise run-iteration` — comparison: next model, no diffs             |
+| `WAIT`                   | Server scoring — `next` again shortly                                            |
+| `COMPLETE`               | `overmind optimise complete`                                                     |
+| `DONE`                   | Finished — report scores                                                         |
 
 `next` returns `COMPLETE` early (with a `reason`) once
 `max_iterations_without_improvement` consecutive rounds fail to beat the best
