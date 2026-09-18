@@ -11,13 +11,11 @@ import json
 import os
 import resource
 import sys
-import threading
 import time
 from pathlib import Path
 from typing import Any
 
 import torch
-from tqdm.std import tqdm as _std_tqdm
 from transformers import TrainerCallback, TrainerControl, TrainerState, TrainingArguments
 
 _GB = 1024**3
@@ -188,8 +186,6 @@ def _patch_granite_aux_loss() -> None:
 
 
 _GB = 1024**3
-# Caps BT_DOWNLOAD chatter so a 28GB pull adds ~one line/3s, not thousands.
-_DOWNLOAD_EMIT_EVERY_S = 3.0
 
 
 def bt(prefix: str, payload: dict) -> None:
@@ -200,73 +196,6 @@ def bt(prefix: str, payload: dict) -> None:
 
 def emit_stage(stage: str, **extra) -> None:
     bt("BT_STAGE", {"stage": stage, **extra})
-
-
-class DownloadReporter(_std_tqdm):
-    """tqdm shim turning HF Hub byte bars into throttled BT_DOWNLOAD lines.
-
-    The platform's log stream drops ``\\r`` progress frames. HF fetches shards in
-    parallel (one bar per file), so bytes aggregate across every live byte-bar
-    via class-level counters under a lock.
-    """
-
-    _lock = threading.Lock()
-    _downloaded = 0
-    _total = 0
-    _last_emit = 0.0
-
-    @classmethod
-    def reset(cls) -> None:
-        with cls._lock:
-            cls._downloaded = 0
-            cls._total = 0
-            cls._last_emit = 0.0
-
-    def __init__(self, *args, **kwargs) -> None:
-        super().__init__(*args, **kwargs)
-        if getattr(self, "unit", "") == "B" and self.total:
-            with DownloadReporter._lock:
-                DownloadReporter._total += int(self.total)
-
-    def update(self, n=1):  # noqa: D102
-        ret = super().update(n)
-        if getattr(self, "unit", "") == "B":
-            with DownloadReporter._lock:
-                DownloadReporter._downloaded += int(n or 0)
-                now = time.monotonic()
-                if now - DownloadReporter._last_emit >= _DOWNLOAD_EMIT_EVERY_S:
-                    DownloadReporter._last_emit = now
-                    DownloadReporter._emit()
-        return ret
-
-    @classmethod
-    def _emit(cls) -> None:
-        rec: dict = {"downloaded_gb": round(cls._downloaded / _GB, 2)}
-        if cls._total > 0:
-            rec["total_gb"] = round(cls._total / _GB, 2)
-            rec["pct"] = min(99, int(100 * cls._downloaded / cls._total))
-        bt("BT_DOWNLOAD", rec)
-
-
-def prefetch_base_model(model_id: str) -> None:
-    """Pre-download the base model to the HF cache with visible progress.
-
-    Best-effort: on any failure ``from_pretrained`` still fetches normally, just
-    without granular progress.
-    """
-    emit_stage("downloading_base_model", model=model_id)
-    try:
-        from huggingface_hub import snapshot_download
-
-        DownloadReporter.reset()
-        snapshot_download(
-            model_id,
-            tqdm_class=DownloadReporter,
-            ignore_patterns=["*.pth", "*.gguf", "*.onnx", "original/*", "*.bin"],
-        )
-        DownloadReporter._emit()
-    except Exception as exc:  # noqa: BLE001 — download progress is best-effort
-        print(f"snapshot_download skipped ({exc!r}); from_pretrained will fetch directly")
 
 
 class ProgressCallback(TrainerCallback):

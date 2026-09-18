@@ -19,8 +19,7 @@ from modal_shared.stacks import (
 
 _SFT_ENV = {
     # Container-local on purpose. Base weights come from the weights Volume's .base_models/
-    # snapshot; anything the hub still serves here is a fallback or a tokenizer-sized file, and
-    # caching it on the sft Volume kept a second full copy of every base ever trained.
+    # snapshot after fetch_base_model; this cache is not a second copy of the catalog.
     "HF_HOME": "/tmp/hf_cache",
     "HF_XET_HIGH_PERFORMANCE": "1",
     "PYTHONUNBUFFERED": "1",

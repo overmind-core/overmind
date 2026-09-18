@@ -10,7 +10,7 @@ import os
 
 
 def base_weights_for(model_id: str) -> str:
-    """The shared ``.base_models/`` snapshot the worker staged, else the hub id.
+    """The shared ``.base_models/`` snapshot. Celery waits on ``fetch_base_model`` first.
 
     ``MODEL_ID`` stays the identity everywhere else — family resolution, pretok and the adapter's
     recorded base all need the repo id, not a path. The name check matters because env_overrides
@@ -18,19 +18,22 @@ def base_weights_for(model_id: str) -> str:
     weights under this model's identity would corrupt the run silently.
     """
     staged = os.getenv("BASE_MODEL_PATH", "")
-    if staged and os.path.basename(staged) == model_id.replace("/", "--"):
-        if _snapshot_is_usable(staged):
-            return staged
-        print(f"[base] staged snapshot at {staged} is absent or incomplete — falling back to hub")
-    return model_id
+    want = model_id.replace("/", "--")
+    if not staged or os.path.basename(staged) != want:
+        raise RuntimeError(
+            f"BASE_MODEL_PATH must be the volume snapshot for {model_id}, got {staged!r}"
+        )
+    if not _snapshot_is_usable(staged):
+        raise RuntimeError(
+            f"staged snapshot at {staged} is absent or incomplete — "
+            "fetch_base_model must finish before GPU training starts"
+        )
+    return staged
 
 
 def _snapshot_is_usable(path: str) -> bool:
-    """The prefetch is asynchronous, so the path can be named correctly and still be a shell.
-
-    ``snapshot_download`` fetches small files first and streams shards through ``*.incomplete``,
-    so a bare ``config.json`` proves nothing — loading that would fail deep inside
-    ``from_pretrained`` rather than falling back.
+    """``snapshot_download`` fetches small files first and streams shards through
+    ``*.incomplete``, so a bare ``config.json`` proves nothing.
     """
     if not os.path.isfile(os.path.join(path, "config.json")):
         return False

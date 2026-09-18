@@ -3,6 +3,8 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
+import pytest
+
 # sft_assets is uploaded to Modal as a flat directory, so its modules import each
 # other by bare name and only resolve with the directory itself on sys.path.
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "overbae" / "services" / "sft_assets"))
@@ -24,44 +26,46 @@ def _snapshot(root: Path, *, name: str = DIRNAME, weights: bool = True, partial:
     return path
 
 
-def test_falls_back_to_the_hub_id_when_nothing_is_staged(monkeypatch):
-    monkeypatch.delenv("BASE_MODEL_PATH", raising=False)
-    assert base_weights_for(MODEL) == MODEL
-
-
 def test_uses_the_staged_snapshot(monkeypatch, tmp_path):
     staged = _snapshot(tmp_path)
     monkeypatch.setenv("BASE_MODEL_PATH", str(staged))
     assert base_weights_for(MODEL) == str(staged)
 
 
+def test_missing_env_raises(monkeypatch):
+    monkeypatch.delenv("BASE_MODEL_PATH", raising=False)
+    with pytest.raises(RuntimeError, match="BASE_MODEL_PATH must be the volume snapshot"):
+        base_weights_for(MODEL)
+
+
 def test_ignores_a_snapshot_for_a_different_model(monkeypatch, tmp_path):
-    """env_overrides can swap MODEL_ID after the worker resolved the path; loading another
-    model's weights under this model's identity would corrupt the run silently."""
     staged = _snapshot(tmp_path)
     monkeypatch.setenv("BASE_MODEL_PATH", str(staged))
-    assert base_weights_for("openai/gpt-oss-20b") == "openai/gpt-oss-20b"
+    with pytest.raises(RuntimeError, match="BASE_MODEL_PATH must be the volume snapshot"):
+        base_weights_for("openai/gpt-oss-20b")
 
 
-def test_empty_env_is_not_treated_as_a_path(monkeypatch):
+def test_empty_env_raises(monkeypatch):
     monkeypatch.setenv("BASE_MODEL_PATH", "")
-    assert base_weights_for(MODEL) == MODEL
+    with pytest.raises(RuntimeError, match="BASE_MODEL_PATH must be the volume snapshot"):
+        base_weights_for(MODEL)
 
 
-def test_missing_directory_falls_back(monkeypatch, tmp_path):
-    """The prefetch is asynchronous — the path is named before it exists."""
+def test_missing_directory_raises(monkeypatch, tmp_path):
     monkeypatch.setenv("BASE_MODEL_PATH", str(tmp_path / DIRNAME))
-    assert base_weights_for(MODEL) == MODEL
+    with pytest.raises(RuntimeError, match="absent or incomplete"):
+        base_weights_for(MODEL)
 
 
-def test_config_without_weights_falls_back(monkeypatch, tmp_path):
-    """snapshot_download writes the small files first, so config.json alone proves nothing."""
+def test_config_without_weights_raises(monkeypatch, tmp_path):
     staged = _snapshot(tmp_path, weights=False)
     monkeypatch.setenv("BASE_MODEL_PATH", str(staged))
-    assert base_weights_for(MODEL) == MODEL
+    with pytest.raises(RuntimeError, match="absent or incomplete"):
+        base_weights_for(MODEL)
 
 
-def test_in_flight_download_falls_back(monkeypatch, tmp_path):
+def test_in_flight_download_raises(monkeypatch, tmp_path):
     staged = _snapshot(tmp_path, partial=True)
     monkeypatch.setenv("BASE_MODEL_PATH", str(staged))
-    assert base_weights_for(MODEL) == MODEL
+    with pytest.raises(RuntimeError, match="absent or incomplete"):
+        base_weights_for(MODEL)

@@ -977,8 +977,8 @@ def sync_modal_checkpoint_to_s3(
 def list_base_models() -> list[str]:
     """Repo ids whose ``.base_models/`` snapshot is complete.
 
-    The pre-warm sweep asks the Volume rather than trusting a name to mean "present", so a
-    half-finished download is re-driven instead of counted as done.
+    The volume listing is the source of truth for a complete snapshot: a
+    half-finished download is not counted as done.
     """
     weights_vol.reload()
     root = Path(WEIGHTS_MOUNT) / BASE_MODELS_DIRNAME
@@ -1006,9 +1006,10 @@ def fetch_base_model(*, base_model: str) -> dict:
     it a global mutex, so concurrent callers cannot corrupt a shared
     ``.base_models/{org--model}`` dir and the second caller just sees a complete snapshot.
 
-    Django ``.spawn()``s this when a fine-tune STARTS, so a ~145 GB base downloads alongside
-    training instead of adding ~25 min to the deploy. The deploy path calls the same Function, so
-    a cold base is still correct, only slower.
+    Django waits on this Function (``.remote()``) before spawning a GPU train job, so a
+    ~145 GB base downloads on a CPU container. Concurrent callers for the same repo
+    serialize here; the second sees a complete snapshot. The deploy path calls the same
+    Function, so a cold base is still correct.
     """
     from huggingface_hub import snapshot_download  # noqa: PLC0415
 
