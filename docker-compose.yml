@@ -27,7 +27,7 @@ x-env-common: &env-common
   MODAL_ENVIRONMENT: ${MODAL_ENVIRONMENT:-overmind-dev}
   # Fine-tuning checkpoint S3 archive — AWS_BUCKET_NAME / AWS_ACCESS_KEY_ID /
   # AWS_SECRET_ACCESS_KEY / AWS_REGION come from env_file (.env).
-  # Media-file S3Boto3Storage still uses AWS_PROFILE via session_profile.
+  # FileField storage is local unless AWS_STORAGE_BUCKET_NAME is set.
   AWS_SHARED_CREDENTIALS_FILE: /data/tmp/.aws/credentials
   AWS_CONFIG_FILE: /data/tmp/.aws/config
   AWS_PROFILE: ${AWS_PROFILE:-administrator}

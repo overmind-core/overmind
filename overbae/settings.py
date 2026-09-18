@@ -183,40 +183,77 @@ os.makedirs(TMPDIR, exist_ok=True)
 _tempfile.tempdir = TMPDIR
 os.environ.setdefault("TMPDIR", TMPDIR)
 
-# Covers FileField uploads only. Dataset files bypass Django storage and are
-# written to MEDIA_ROOT on the local/EFS filesystem.
-_S3_BUCKET = os.environ.get("AWS_STORAGE_BUCKET_NAME", "overmind-prod-media-318651457362")
-_S3_STATIC_BUCKET = os.environ.get("AWS_STATIC_BUCKET_NAME", "overmind-prod-static-318651457362")
+# FileField storage is local (MEDIA_ROOT / EFS) unless a bucket env is set.
+# Dataset files already bypass Django storage and write to MEDIA_ROOT.
 AWS_REGION = os.environ.get("AWS_REGION", "eu-west-1")
 _AWS_PROFILE = os.environ.get("AWS_PROFILE", "")
-_S3_CUSTOM_DOMAIN = os.environ.get("AWS_S3_CUSTOM_DOMAIN", "static.overmindlab.ai")
+_S3_BUCKET = os.environ.get("AWS_STORAGE_BUCKET_NAME", "")
+_S3_STATIC_BUCKET = os.environ.get("AWS_STATIC_BUCKET_NAME", "")
+# Hosted ECS does not inject this. DEBUG is false there, collectstatic is
+# swallowed, and /static/ is not served, so admin/swagger CSS comes from the CDN.
+_HOSTED_STATIC_CDN = "static.overmindlab.ai"
+_S3_CUSTOM_DOMAIN = os.environ.get("AWS_S3_CUSTOM_DOMAIN", _HOSTED_STATIC_CDN)
+_AWS_PROFILE_OPT = {"session_profile": _AWS_PROFILE} if _AWS_PROFILE else {}
 
-_STORAGES = {
-    "default": {
-        "BACKEND": "storages.backends.s3boto3.S3Boto3Storage",
-        "OPTIONS": {
-            "bucket_name": _S3_BUCKET,
-            "region_name": AWS_REGION,
-            "default_acl": None,
-            "querystring_auth": True,
-            "querystring_expire": 3600,
-            "file_overwrite": False,
-            **({"session_profile": _AWS_PROFILE} if _AWS_PROFILE else {}),
+
+def _file_storages(
+    *,
+    media_root: Path,
+    media_url: str,
+    region: str,
+    s3_bucket: str = "",
+    s3_static_bucket: str = "",
+    s3_custom_domain: str = "",
+    aws_profile_opt: dict | None = None,
+) -> dict:
+    profile = aws_profile_opt or {}
+    storages = {
+        "default": {
+            "BACKEND": "django.core.files.storage.FileSystemStorage",
+            "OPTIONS": {"location": str(media_root), "base_url": media_url},
         },
-    },
-    "staticfiles": {
-        "BACKEND": "storages.backends.s3boto3.S3StaticStorage",
-        "OPTIONS": {
-            "bucket_name": _S3_STATIC_BUCKET,
-            "region_name": AWS_REGION,
-            "default_acl": None,
-            "querystring_auth": False,
-            "file_overwrite": True,
-            "custom_domain": _S3_CUSTOM_DOMAIN,
-            **({"session_profile": _AWS_PROFILE} if _AWS_PROFILE else {}),
+        "staticfiles": {
+            "BACKEND": "django.contrib.staticfiles.storage.StaticFilesStorage",
         },
-    },
-}
+    }
+    if s3_bucket:
+        storages["default"] = {
+            "BACKEND": "storages.backends.s3boto3.S3Boto3Storage",
+            "OPTIONS": {
+                "bucket_name": s3_bucket,
+                "region_name": region,
+                "default_acl": None,
+                "querystring_auth": True,
+                "querystring_expire": 3600,
+                "file_overwrite": False,
+                **profile,
+            },
+        }
+    if s3_static_bucket:
+        storages["staticfiles"] = {
+            "BACKEND": "storages.backends.s3boto3.S3StaticStorage",
+            "OPTIONS": {
+                "bucket_name": s3_static_bucket,
+                "region_name": region,
+                "default_acl": None,
+                "querystring_auth": False,
+                "file_overwrite": True,
+                **({"custom_domain": s3_custom_domain} if s3_custom_domain else {}),
+                **profile,
+            },
+        }
+    return storages
+
+
+STORAGES = _file_storages(
+    media_root=MEDIA_ROOT,
+    media_url=MEDIA_URL,
+    region=AWS_REGION,
+    s3_bucket=_S3_BUCKET,
+    s3_static_bucket=_S3_STATIC_BUCKET,
+    s3_custom_domain=_S3_CUSTOM_DOMAIN,
+    aws_profile_opt=_AWS_PROFILE_OPT,
+)
 
 # Keep STATIC_URL local under DEBUG so DJDT / admin CSS resolve (CDN has no debug_toolbar).
 if not DEBUG:
@@ -565,8 +602,8 @@ if not HF_TOKEN:
 
 # Durable home for a fine-tune's checkpoint.zip / job_logs.txt / metrics.json.
 # The names match Modal's overmind-inference secret. These static keys go
-# straight to boto3.client() in finetuning_checkpoints; the media storage above
-# still authenticates with AWS_PROFILE instead.
+# straight to boto3.client() in finetuning_checkpoints. FileField media storage
+# is local unless AWS_STORAGE_BUCKET_NAME is set.
 AWS_BUCKET_NAME = os.environ.get("AWS_BUCKET_NAME", "")
 AWS_ACCESS_KEY_ID = os.environ.get("AWS_ACCESS_KEY_ID", "")
 AWS_SECRET_ACCESS_KEY = os.environ.get("AWS_SECRET_ACCESS_KEY", "")
