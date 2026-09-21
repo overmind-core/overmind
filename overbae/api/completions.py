@@ -25,6 +25,7 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.request import Request
 from rest_framework.response import Response
 
+from modal_shared.context_budget import reserve_output
 from overbae.api.scoping import project_ids_for
 from overbae.api.streaming import (
     JSON_IDLE_PING,
@@ -43,6 +44,7 @@ from overbae.models import (
 from overbae.services.billing_ledger import InsufficientCredits, charge_credits, ensure_credits
 from overbae.services.deployed_chat import is_cold_start, record_inference_call
 from overbae.services.inference_client import (
+    ContextBudgetError,
     InferenceClient,
     InferenceClientError,
     get_inference_client,
@@ -355,14 +357,12 @@ def chat_completions(request: Request) -> Response | StreamingHttpResponse:
     stream = bool(data.get("stream", False))
     try:
         temperature = float(data.get("temperature", 1.0) or 0.0)
-        max_tokens = data.get("max_tokens")
-        if max_tokens is not None:
-            max_tokens = int(max_tokens)
+        max_tokens = reserve_output(data)["max_tokens"]
     except (TypeError, ValueError):
         return Response(
             {
                 "error": {
-                    "message": "temperature/max_tokens must be numbers.",
+                    "message": "Temperature must be numeric and the output token budget a positive integer. Prompt truncation is not supported.",
                     "type": "invalid_request_error",
                 }
             },
@@ -581,7 +581,23 @@ def chat_completions(request: Request) -> Response | StreamingHttpResponse:
                 # Broad on purpose: a chunk-parse bug would otherwise kill the
                 # generator mid-stream with no error frame.
                 logger.exception("Inference streaming error for model %s: %s", model_id, exc)
-                yield 'data: {"error": {"message": "Inference backend error.", "type": "server_error"}}\n\n'
+                message = (
+                    str(exc) if isinstance(exc, ContextBudgetError) else "Inference backend error."
+                )
+                yield (
+                    "data: "
+                    + json.dumps(
+                        {
+                            "error": {
+                                "message": message,
+                                "type": "context_length_exceeded"
+                                if isinstance(exc, ContextBudgetError)
+                                else "server_error",
+                            }
+                        }
+                    )
+                    + "\n\n"
+                )
                 yield "data: [DONE]\n\n"
             finally:
                 if captured["usage"] is not None:
@@ -622,7 +638,16 @@ def chat_completions(request: Request) -> Response | StreamingHttpResponse:
             except Exception as exc:
                 logger.exception("Inference error for model %s: %s", model_id, exc)
                 yield json.dumps(
-                    {"error": {"message": "Inference backend error.", "type": "server_error"}}
+                    {
+                        "error": {
+                            "message": str(exc)
+                            if isinstance(exc, ContextBudgetError)
+                            else "Inference backend error.",
+                            "type": "context_length_exceeded"
+                            if isinstance(exc, ContextBudgetError)
+                            else "server_error",
+                        }
+                    }
                 )
                 return
             held["result"] = result

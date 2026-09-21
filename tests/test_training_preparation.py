@@ -9,11 +9,13 @@ from django.utils import timezone
 from modal.exception import NotFoundError
 from rest_framework.test import APIClient
 
+from modal_shared.preparation import preparation_failure
 from modal_shared.training_data import materialize_tokens, row_key
 from overbae.models import FinetuningJob, Project, ProjectMembership, User
 from overbae.services import training_preparation as preparation
 from overbae.services.datasets.lifecycle import DatasetError
 from overbae.services.sft_assets.preprocess import preprocess_rows
+from overbae.tasks.finetuning import run_finetuning
 
 pytestmark = pytest.mark.django_db
 
@@ -153,6 +155,44 @@ def test_uncertain_submission_and_expired_operations_fail_closed(cell):
     assert preparation.retry_preparation(other).state == "queued"
 
 
+@pytest.mark.parametrize(
+    ("report", "state", "error"),
+    [
+        (preparation_failure("worker_out_of_date"), "failed", "out of date"),
+        (preparation_failure("process_failed"), "failed", "worker logs"),
+        ({}, "failed", "invalid report"),
+        ({"ready": False, "incompatible_rows": 1, "issues": []}, "incompatible", ""),
+    ],
+)
+def test_preparation_distinguishes_worker_failures_from_incompatible_data(
+    cell, monkeypatch, report, state, error
+):
+    prep = preparation.request_preparation(cell, "Qwen/Qwen3-8B", 4096)
+    prep.state, prep.remote_id = "running", "fc-prep"
+    prep.save()
+    monkeypatch.setattr(
+        preparation.modal.FunctionCall,
+        "from_id",
+        Mock(return_value=SimpleNamespace(get=Mock(return_value=report))),
+    )
+    preparation.advance(prep.id)
+    prep.refresh_from_db()
+    assert prep.state == state and error in prep.error
+    if state == "failed":
+        assert prep.report["retryable"] is True and prep.error == prep.report["error"]
+
+
+def test_processor_update_does_not_reuse_failed_preparation(cell, monkeypatch):
+    previous = preparation.request_preparation(cell, "Qwen/Qwen3-8B", 4096)
+    previous.state, previous.report = "failed", preparation_failure("worker_out_of_date")
+    previous.save()
+    monkeypatch.setattr(preparation, "processor_fingerprint", lambda: "updated-processor")
+    current = preparation.request_preparation(cell, "Qwen/Qwen3-8B", 4096)
+    assert current.id != previous.id and current.state == "queued"
+    previous.refresh_from_db()
+    assert previous.state == "failed"
+
+
 def test_retry_cancels_confirmed_remote_attempt_and_preserves_uncertain_failures(cell, monkeypatch):
     prep = preparation.request_preparation(cell, "Qwen/Qwen3-8B", 4096)
     prep.state, prep.remote_id, prep.report = "failed", "fc-old", {"retryable": True}
@@ -180,6 +220,13 @@ def test_preparation_api_is_project_scoped_and_does_not_start_training(cell, mon
     assert response.status_code == 202, response.data
     queue.assert_called_once()
     assert client.get(f"/api/training-preparations/{response.data['id']}/").status_code == 200
+    failure = preparation_failure("worker_out_of_date")
+    preparation.TrainingPreparation.objects.filter(pk=response.data["id"]).update(
+        state="failed", report=failure, error=failure["error"]
+    )
+    failed = client.get(f"/api/training-preparations/{response.data['id']}/")
+    assert failed.data["state"] == "failed" and failed.data["error"] == failure["error"]
+    assert failed.data["report"]["retryable"] is True
     ProjectMembership.objects.filter(user=user).delete()
     assert client.get(f"/api/training-preparations/{response.data['id']}/").status_code == 404
     assert client.post("/api/training-preparations/", body, format="json").status_code == 404
@@ -285,3 +332,128 @@ def test_preparation_retry_skips_submitted_training_or_other_backends(retry_job,
     with patch.object(preparation, "for_job") as request:
         preparation.retry_for_job(job)
     request.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    "model", ["Qwen/Qwen3-8B", "Qwen/Qwen3.5-27B", "meta-llama/Llama-3.1-8B-Instruct"]
+)
+def test_job_preparation_sizes_pinned_rows_despite_smaller_requested_context(retry_job, model):
+    job, _, _, _ = retry_job
+    job.base_model = model
+    job.cell.stats = {**job.cell.stats, "max_token_length": 7145}
+    prep = preparation.for_job(job)
+    assert prep.config["context_length"] == 8192
+    assert prep.cell_id == job.cell_id
+    assert job.hyperparameters["context_length"] == 4096
+
+
+@pytest.mark.parametrize("enabled", [False, True])
+def test_job_preparation_includes_only_enabled_validation_rows(retry_job, enabled):
+    job, _, _, _ = retry_job
+    validation = frozen_dataset(job.project, TRAIN_ROWS).active_cell
+    validation.stats = {**validation.stats, "max_token_length": 10_000}
+    job.validation_enabled = enabled
+    job.validation_cell = validation
+    prep = preparation.for_job(job)
+    assert prep.config["context_length"] == (16384 if enabled else 4096)
+    assert prep.validation_cell_id == (validation.id if enabled else None)
+
+
+def test_exact_overflow_requests_matching_larger_artifact_before_training(retry_job):
+    job, _, _, _ = retry_job
+    first = preparation.for_job(job)
+    first.state = "incompatible"
+    first.report = {"max_tokens": 7190, "incompatible_rows": 3}
+    first.save()
+    resized = preparation.for_job(job)
+    assert resized.id != first.id and resized.state == "queued"
+    assert resized.config["context_length"] == 8192
+    assert resized.cell_id == first.cell_id
+    resized.state = "ready"
+    resized.save()
+    assert preparation.for_job(job).id == resized.id
+    assert preparation.ready_for_job(job, 8192).id == resized.id
+    first.refresh_from_db()
+    assert first.state == "incompatible" and first.report["max_tokens"] == 7190
+
+
+def test_training_retry_recovers_undersized_context_through_normal_queue(retry_job):
+    job, client, queue, _ = retry_job
+    first = preparation.for_job(job)
+    first.state, first.report = "incompatible", {"max_tokens": 7190, "incompatible_rows": 3}
+    first.save()
+    response = client.post(f"/api/finetuning-jobs/{job.id}/retry/")
+    assert response.status_code == 200, response.data
+    job.refresh_from_db()
+    assert job.status == "queued"
+    assert preparation.for_job(job).config["context_length"] == 8192
+    queue.assert_called_once_with(kwargs={"job_id": str(job.id)})
+
+
+def test_training_waits_for_resized_preparation_without_submitting_gpu_work(retry_job):
+    job, _, queue, _ = retry_job
+    job.status = "queued"
+    job.save(update_fields=["status"])
+    first = preparation.for_job(job)
+    first.state, first.report = "incompatible", {"max_tokens": 7190, "incompatible_rows": 3}
+    first.save()
+    with (
+        patch("overbae.services.finetuning_runner.get_runner") as runner,
+        patch("overbae.tasks.finetuning.inspect_preparation.delay") as inspect,
+    ):
+        result = run_finetuning(job_id=str(job.id))
+    resized = preparation.for_job(job)
+    assert result["status"] == "preparing"
+    inspect.assert_called_once_with(str(resized.id))
+    queue.assert_called_once_with(kwargs={"job_id": str(job.id)}, countdown=15)
+    runner.return_value.submit.assert_not_called()
+    job.refresh_from_db()
+    assert job.status == "preparing" and not job.remote_job_id
+
+
+def test_resizing_does_not_accept_other_incompatibilities(retry_job):
+    job, _, queue, _ = retry_job
+    first = preparation.for_job(job)
+    first.state, first.report = "incompatible", {"max_tokens": 7190, "incompatible_rows": 3}
+    first.save()
+    resized = preparation.for_job(job)
+    resized.state = "incompatible"
+    resized.report = {
+        "max_tokens": 7190,
+        "incompatible_rows": 1,
+        "issues": [{"row": 2, "reason": "No supervised next-token targets"}],
+    }
+    resized.save()
+    with pytest.raises(ValueError, match="1 rows are incompatible"):
+        preparation.retry_for_job(job)
+    queue.assert_not_called()
+
+
+@pytest.mark.parametrize("extra_tokens", [0, 1])
+def test_exact_sizing_respects_training_limit_without_estimate_headroom(retry_job, extra_tokens):
+    job, _, _, _ = retry_job
+    maximum = preparation.training_context_length(
+        preparation.get_model_config_any_backend(job.base_model), "lora"
+    )
+    first = preparation.for_job(job)
+    first.state = "incompatible"
+    first.report = {"max_tokens": maximum + extra_tokens, "incompatible_rows": 1}
+    first.save()
+    current = preparation.for_job(job)
+    if extra_tokens:
+        assert current.id == first.id and current.state == "incompatible"
+        assert f"{maximum + extra_tokens:,}" in preparation.preparation_error(current)
+        with pytest.raises(ValueError, match="larger training context"):
+            preparation.retry_for_job(job)
+    else:
+        assert current.id != first.id and current.config["context_length"] == maximum
+
+
+def test_overestimated_lengths_do_not_reject_data_before_exact_preparation(retry_job):
+    job, _, _, _ = retry_job
+    job.cell.stats = {**job.cell.stats, "max_token_length": 2_000_000}
+    current = preparation.for_job(job)
+    maximum = preparation.training_context_length(
+        preparation.get_model_config_any_backend(job.base_model), "lora"
+    )
+    assert current.config["context_length"] == maximum and current.state == "queued"

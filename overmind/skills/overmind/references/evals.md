@@ -36,6 +36,21 @@ mapping. Only capability-mapped sets can be activated for live trace scoring.
 Do not guess evaluator ids or bindings. Use the evaluator and eval-set data
 returned by readiness and keep sensitive values out of rubric/config JSON.
 
+Configurable rubric judges default to generative. Jev is an explicit opt-in after
+validating quality on representative labelled examples; confidence alone is not
+a quality gate. Fixed grounding, classification and workshop decision services
+use Jev with generative fallback. Authoring and holistic reasoning remain
+generative. `upsert_evaluator` accepts `config.decision` with `backend` (`jev` or
+`generative`), `model` (`typesafe/jev-1.13`), `min_confidence` (default `0.9`) and
+`version` (`1`). Low confidence, insufficient evidence where a binary verdict is
+required, oversized context and provider failures use the generative fallback.
+Independent checks retain accepted answers and recheck only unresolved questions;
+failed behaviour steps still receive a full causal review. Generated resolutions
+are distinguished from Jev choices and confidence in the score provenance.
+Snapshots preserve the policy; score `_decision` metadata records actual model,
+answers, confidence and fallback reason. Confidence is not measured accuracy.
+Use human-labelled examples to calibrate a policy before relying on its threshold.
+
 ## Run and compare
 
 Generate mode evaluates a raw model against recorded context; it does not invoke

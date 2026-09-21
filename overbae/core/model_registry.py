@@ -16,6 +16,7 @@ class Vendor(StrEnum):
     META = "meta-llama"
     QWEN = "qwen"
     CURSOR = "cursor"
+    TYPESAFE = "typesafe"
 
 
 class Tier(StrEnum):
@@ -24,6 +25,7 @@ class Tier(StrEnum):
     FLAGSHIP = "flagship"
     LEGACY = "legacy"
     OPEN = "open"
+    DECISION = "decision"
 
 
 @dataclass(frozen=True)
@@ -58,6 +60,13 @@ class Model:
 
 
 CATALOG: tuple[Model, ...] = (
+    Model(
+        "jev-1.13",
+        Vendor.TYPESAFE,
+        "typesafe/jev-1.13",
+        Tier.DECISION,
+        "Typed decisions over supplied evidence; not a chat or training model.",
+    ),
     Model(
         "gpt-5.6-sol",
         Vendor.OPENAI,
@@ -378,6 +387,14 @@ def resolve_model(task: TaskType) -> str:
 
 def default_judge_model() -> str:
     return model_chain(TaskType.JUDGE_SCORING)[0]
+
+
+def decision_model() -> Model:
+    return next(model for model in CATALOG if model.tier is Tier.DECISION)
+
+
+def is_decision_model(name: str) -> bool:
+    return name.startswith(("jev-", f"{Vendor.TYPESAFE}/", f"~{Vendor.TYPESAFE}/"))
 
 
 def judge_picker_models() -> list[str]:

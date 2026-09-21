@@ -184,9 +184,10 @@ def _run_analysis(
     )
 
     model = resolve_model(TaskType.EVAL_RECOMMENDATION)
+
     # Reasoning tokens count against max_tokens on reasoning models; a small
     # cap truncates every answer.
-    raw, _ = call_llm(
+    raw, stats = call_llm(
         prompt,
         system_prompt=_SYSTEM,
         response_format=_SemanticAnalysis,
@@ -197,7 +198,6 @@ def _run_analysis(
         reasoning_effort="low",
         request_kwargs={"timeout": _TIER1_LLM_TIMEOUT_S},
     )
-
     parsed = _SemanticAnalysis.model_validate_json(raw)
 
     scores: dict[str, dict[str, Any]] = {
@@ -212,6 +212,7 @@ def _run_analysis(
         "task_type": (parsed.task_type or "").strip().lower(),
         "evaluator_scores": scores,
         "suggested_rubrics": [r.model_dump() for r in parsed.suggested_rubrics],
+        "usage": stats,
     }
 
 

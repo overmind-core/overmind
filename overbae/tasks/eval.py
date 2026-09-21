@@ -19,7 +19,7 @@ from django.db import transaction
 from django.utils import timezone
 
 from overbae.core.llms import ModelSpec
-from overbae.models import EvalRun
+from overbae.models import EvalRun, FinetuningJob
 from overbae.services.datasets.examples import matches_reference
 from overbae.services.eval import chatml, evidence, normalizer, ranking, runner
 from overbae.services.eval.context import snapshot_context
@@ -582,6 +582,11 @@ def _assess_degradation(
     replay_misses = int(meta.get("replay_misses") or 0)
     final_output = (normalized.get("final_output") or "").strip()
 
+    if meta.get("output_truncated"):
+        return True, "output_token_limit: model response ended before completion"
+    if is_generate and meta.get("generation_error"):
+        return True, "generation_error: " + str(meta["generation_error"])[:210]
+
     if meta.get("generation_strategy") == "per_assistant_turn":
         if any(
             t.get("generated") or t.get("generated_final") for t in structured.get("per_turn", [])
@@ -835,6 +840,8 @@ def _generate_per_turn(
         "steps": 0,
     }
     errors = 0
+    finish_reasons = []
+    output_truncated = False
     first_seed: list[dict[str, Any]] = []
     first_request: dict[str, Any] = {}
 
@@ -859,8 +866,12 @@ def _generate_per_turn(
         totals["prompt_tokens"] += result.prompt_tokens or 0
         totals["completion_tokens"] += result.completion_tokens or 0
         totals["steps"] += result.steps or 0
+        finish_reasons.extend(result.finish_reasons)
+        output_truncated = output_truncated or result.truncated
 
         turn_meta: dict[str, Any] = {"turn_index": depth, "turn_depth": depth}
+        turn_meta["finish_reasons"] = result.finish_reasons
+        turn_meta["truncated"] = result.truncated
         gen_nodes: list[dict[str, Any]] = []
         gen_final = ""
         if result.error and not result.output_messages:
@@ -908,6 +919,9 @@ def _generate_per_turn(
         "completion_tokens": totals["completion_tokens"] or None,
         "total_tokens": total_tokens or None,
         "steps": totals["steps"],
+        "finish_reasons": finish_reasons,
+        "output_truncated": output_truncated,
+        "truncated": output_truncated,
     }
     return normalizer.normalize_generation(
         input_value=first_seed,
@@ -985,6 +999,9 @@ def _generate_sample(sample) -> dict[str, Any]:
         "max_steps": max_steps,
         "replay_fuzzy_hits": result.fuzzy_tool_hits,
         "replay_misses": result.tool_misses,
+        "finish_reasons": result.finish_reasons,
+        "output_truncated": result.truncated,
+        "truncated": result.truncated,
     }
     if result.error:
         metadata["generation_error"] = result.error
@@ -1289,6 +1306,23 @@ def execute_evaluator(self, *, sample_id: str, run_evaluator_id: str, **kwargs) 
     if sample.error:
         return {"status": "skipped", "reason": "sample_error"}
 
+    if (sample.trajectory.get("metadata") or {}).get("output_truncated"):
+        Score.objects.create(
+            project=sample.run.project,
+            run=sample.run,
+            variant=sample.variant,
+            sample=sample,
+            evaluator=run_eval.evaluator,
+            run_evaluator=run_eval,
+            name=evaluator.name,
+            data_type=evaluator.score_type,
+            value=None,
+            outcome=Score.Outcome.SKIPPED,
+            scope=evaluator.scope,
+            reasoning="Generation reached its output token limit. Incomplete response; quality was not scored.",
+        )
+        return {"status": "skipped", "reason": "output_token_limit"}
+
     # Refuse to score an evaluator in a mode that cannot produce its evidence, e.g. a
     # harness_artifact judge on a generate variant. The not-applicable Score keeps it
     # out of trusted aggregates and counted separately — never scored as a 0.
@@ -1505,6 +1539,12 @@ def aggregate_run(_eval_results=None, *, eval_run_id: str, **kwargs) -> dict[str
         summary=summary,
         completed_at=timezone.now(),
     )
+
+    # Training scheduling imports this task; defer the cyclic notification import.
+    from overbae.services.finetuning_eval import sync_eval_scores
+
+    for job in FinetuningJob.objects.filter(job_evals__eval_run_id=run.pk).distinct():
+        sync_eval_scores(job)
 
     return {"status": "completed", "metrics": summary.get("metrics", [])}
 

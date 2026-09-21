@@ -335,6 +335,8 @@ SPECTACULAR_SETTINGS = {
     "COMPONENT_SPLIT_REQUEST": True,
     "SCHEMA_PATH_PREFIX": r"/api/",
     "ENUM_NAME_OVERRIDES": {
+        "DecisionPolicyBackendEnum": [("jev", "jev"), ("generative", "generative")],
+        "BackendEnum": [("together", "together"), ("baseten", "baseten"), ("modal", "modal")],
         "IntentEnum": "overbae.models.datasets.Dataset.Intent",
         "CellStateEnum": "overbae.models.datasets.Cell.State",
         # Lane provenance shares the field name with finetuning evidence; pinned so

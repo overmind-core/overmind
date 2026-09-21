@@ -16,6 +16,7 @@ from overbae.models import Capability, Dataset, DatasetContext, Project
 from overbae.services.benchmarks.taxonomy import TaskType, weights_for
 from overbae.services.recommendation import get_recommendation
 from overbae.services.recommendation.constraints import eligible_models
+from overbae.services.recommendation.hyperparams import compute_hyperparams
 from overbae.services.recommendation.ranking import DEFAULT_PICKS
 
 _PACKAGE = Path(__file__).resolve().parents[1] / "overbae" / "services" / "recommendation"
@@ -88,7 +89,35 @@ def test_modal_candidates_wait_for_exact_preprocessing_instead_of_character_esti
         analysis = get_recommendation(str(dataset.id))
     assert analysis["candidates"]
     assert all("context" not in row["reason"].lower() for row in analysis["excluded"])
-    assert all(row["hyperparams"]["context_length"] for row in analysis["candidates"])
+    for row in analysis["candidates"]:
+        kind = "lora" if row["use_lora"] else "full"
+        maximum = row["training_type"][kind]["context_length"] or row["context_length_sft"]
+        assert row["hyperparams"]["context_length"] == maximum
+
+
+def test_modal_candidates_size_training_context_from_dataset_estimates(dataset):
+    _set_stats(dataset, max_token_length=7145)
+    with override_settings(FINETUNING_BACKEND="modal"):
+        analysis = get_recommendation(str(dataset.id))
+    assert analysis["candidates"]
+    for row in analysis["candidates"]:
+        kind = "lora" if row["use_lora"] else "full"
+        maximum = row["training_type"][kind]["context_length"] or row["context_length_sft"]
+        assert row["hyperparams"]["context_length"] == min(8192, maximum)
+
+
+@pytest.mark.parametrize(("use_lora", "expected"), [(True, 32768), (False, 8192)])
+def test_modal_defaults_respect_the_selected_training_method_limit(use_lora, expected):
+    entry = {
+        "context_length_sft": 131072,
+        "training_type": {
+            "lora": {"enabled": True, "context_length": 32768},
+            "full": {"enabled": True, "context_length": 8192},
+        },
+    }
+    with override_settings(FINETUNING_BACKEND="modal"):
+        hp = compute_hyperparams(900, model_entry=entry, use_lora=use_lora, max_row_tokens=20_000)
+    assert hp["context_length"] == expected
 
 
 def test_excluded_names_every_dropped_model_and_the_reason(dataset):

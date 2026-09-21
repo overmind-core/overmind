@@ -7,6 +7,7 @@ from django.db.models import Avg, Count, FloatField, Q, Sum
 from django.db.models.fields.json import KeyTextTransform
 from django.db.models.functions import Cast
 from drf_spectacular.utils import extend_schema_field
+from pydantic import ValidationError as PydanticValidationError
 from rest_framework import serializers
 from rest_framework.exceptions import PermissionDenied
 
@@ -29,7 +30,7 @@ from overbae.models import (
 )
 from overbae.services.datasets import use
 from overbae.services.datasets.lifecycle import DatasetError
-from overbae.services.eval import evidence
+from overbae.services.eval import decisions, evidence
 from overbae.services.eval.context import snapshot_context
 from overbae.services.eval.eval_set import create_with_evaluators
 from overbae.services.eval.sample_io import sample_io
@@ -109,6 +110,19 @@ def _require_membership(serializer, project):
     return project
 
 
+class DecisionPolicySerializer(serializers.Serializer):
+    backend = serializers.ChoiceField(choices=["jev", "generative"], default="generative")
+    model = serializers.CharField(required=False)
+    min_confidence = serializers.FloatField(default=0.9, min_value=0, max_value=1)
+    version = serializers.IntegerField(default=1, min_value=1, max_value=1)
+
+    def validate(self, attrs):
+        try:
+            return decisions.DecisionPolicy.model_validate(attrs).model_dump()
+        except PydanticValidationError as exc:
+            raise serializers.ValidationError("Invalid decision policy.") from exc
+
+
 class EvaluatorSerializer(serializers.ModelSerializer):
     checklist = serializers.JSONField(required=False)
     choices = serializers.JSONField(required=False)
@@ -120,6 +134,7 @@ class EvaluatorSerializer(serializers.ModelSerializer):
     # The exact instruction text the judge is given, per-sample inputs left as
     # placeholders. Empty for non-judge kinds.
     judge_prompt = serializers.SerializerMethodField()
+    decision_policy = serializers.SerializerMethodField()
 
     class Meta:
         model = Evaluator
@@ -131,6 +146,19 @@ class EvaluatorSerializer(serializers.ModelSerializer):
 
     def get_is_generic(self, obj) -> bool:
         return obj.capability_id is None
+
+    @extend_schema_field(DecisionPolicySerializer)
+    def get_decision_policy(self, obj) -> dict:
+        return decisions.policy_for(obj).model_dump()
+
+    def validate_config(self, value):
+        if not isinstance(value, dict):
+            raise serializers.ValidationError("Config must be an object.")
+        try:
+            decisions.policy_for(config=value)
+        except PydanticValidationError as exc:
+            raise serializers.ValidationError("Invalid config.decision policy.") from exc
+        return value
 
     def get_judge_prompt(self, obj) -> str:
         if obj.kind not in ("llm_judge", "agentic"):
@@ -1426,6 +1454,7 @@ class AuthorJudgeEvaluatorRequestSerializer(serializers.Serializer):
     )
     name = serializers.CharField(max_length=255)
     judge_model = serializers.CharField(required=False, allow_blank=True, default="")
+    decision_policy = DecisionPolicySerializer(required=False)
     evaluation_prompt = serializers.CharField()
     score_type = serializers.ChoiceField(choices=["numeric", "boolean", "categorical"])
     score_reasoning_prompt = serializers.CharField(required=False, allow_blank=True, default="")

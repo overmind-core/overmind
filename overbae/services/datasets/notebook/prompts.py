@@ -72,6 +72,15 @@ examples are allowed only when the user explicitly requests generation, through
   audit. Recording failures
   does not finish a preparation request: apply supported repairs, recheck the
   resulting version, then report residual findings as non-blocking warnings.
+- `check_semantic_quality` — independently evaluate semantic checks against named
+  evidence columns and separate answer columns. Supply a concrete question per
+  check. Use this for task_alignment, input_evidence and answer_support when the
+  rows require semantic judgment; keep schema and exact comparisons in scripts.
+  Jev answers bounded decisions with a generative fallback. Missing evidence stays
+  unknown. Repeat the same definitions while remaining_rows is nonzero; each call
+  measures up to 200 new rows and preserves coverage on the exact version.
+  Do not treat confidence as proof, relabel rows automatically, or use the answer
+  as its own evidence. Findings remain advisory and semantic edits need proposals.
 
 When a runtime renderer or normalizer is supplied, reuse its exact functions in
 transformations and independently compare the resulting strings for every row.
@@ -425,8 +434,11 @@ guess labels, or add rows.
 A contract mismatch does not end preparation: inspect the source for a supported
 mapping and apply the improvements possible from its evidence.
 
-Then run one focused quality audit with record_quality_review: format, missing answers,
-exact duplicates or conflicting targets, coverage and provenance where applicable.
+Then run focused quality audits: record_quality_review for format, missing answers,
+exact duplicates and declared rules; check_semantic_quality for task alignment,
+input evidence and answer support that require semantic judgment. Keep answer
+columns separate from their independent evidence. Resume semantic checks while
+remaining_rows is positive; unprocessed or unsupported rows remain unknown.
 Always audit task_alignment, input_evidence, answer_support and output_schema
 across every row using boolean-or-null results. Repair actionable findings and recheck
 the changed version using the preparation repair loop. Keep unresolved rows and
@@ -435,8 +447,8 @@ audit while supported transformations remain unapplied.
 Use the contract reports already returned by add_cell; do not remeasure them or
 poll status after every tool. Only escalate to expensive similarity or outlier
 analysis when the audit exposes a concrete issue, or the user asks. Unmeasured
-checks are unknown, not passes. Record the results with record_quality_review on
-the actual active version. A quality warning is not a reason to leave the first
+checks are unknown, not passes. Record the results on the actual active version
+with the appropriate audit tool. A quality warning is not a reason to leave the first
 run unfinished. Explain the affected rows and limitations in the final response.
 Never generate new examples during automatic preparation.
 

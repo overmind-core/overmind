@@ -409,6 +409,58 @@ def test_job_create_rejects_non_eval_intent_eval_dataset():
     mock_apply.assert_not_called()
 
 
+def test_job_create_rejects_evaluation_that_cannot_fit_serving_context():
+    u, project, capability = _setup()
+    train = _dataset(project, capability, intent="ft", trace_ids=["train"])
+    eval_set = EvalSet.objects.create(project=project, capability=capability, name="Evaluation")
+    evaluation = frozen_dataset(
+        project,
+        [{"input": "x" * 120000, "expected_output": "answer"}],
+        capability=capability,
+    )
+    with patch(CELERY_PATH) as submit:
+        response = _auth_client(u).post(
+            reverse("finetuningjob-list"),
+            {
+                "project": str(project.pk),
+                "capability": str(capability.pk),
+                "dataset": str(train.pk),
+                "eval_dataset": str(evaluation.pk),
+                "name": "Oversized evaluation",
+                "eval_set": str(eval_set.pk),
+                "base_model": "Qwen/Qwen3.5-27B",
+            },
+            format="json",
+        )
+    assert response.status_code == 400
+    assert "reserved output" in str(response.data.get("base_model")), response.data
+    assert not FinetuningJob.objects.filter(project=project).exists()
+    submit.assert_not_called()
+
+
+def test_recommendation_excludes_models_that_cannot_serve_evaluation():
+    u, project, capability = _setup()
+    train = _dataset(project, capability, intent="ft", trace_ids=["train"])
+    evaluation = frozen_dataset(
+        project,
+        [{"input": "x" * 120000, "expected_output": "answer"}],
+        capability=capability,
+    )
+    response = _auth_client(u).post(
+        reverse("finetuningjob-recommend"),
+        {"dataset_id": str(train.pk), "eval_dataset_id": str(evaluation.pk)},
+        format="json",
+    )
+    assert response.status_code == 200, response.data
+    exclusions = {row["model"]: row["reason"] for row in response.data["excluded"]}
+    assert "reserved output" in exclusions["Qwen/Qwen3.5-27B"]
+    for candidate in response.data["candidates"]:
+        plan = candidate["serving_context"]
+        assert plan["rows"] == 1
+        assert plan["max_model_len"] >= plan["required_context"]
+        assert plan["max_model_len"] <= plan["model_context_limit"]
+
+
 def test_recommend_endpoint_answers_the_same_way_twice():
     u, p, a = _setup()
     ds = _dataset(p, a, intent="ft", trace_ids=["t1"])

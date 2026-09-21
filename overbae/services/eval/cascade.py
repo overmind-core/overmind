@@ -7,10 +7,11 @@ import hashlib
 import json
 import logging
 import random
+import time
 from dataclasses import dataclass, field
 from typing import Any
 
-from overbae.services.eval import chatml
+from overbae.services.eval import chatml, decisions
 from overbae.services.eval import funnel as judging
 from overbae.services.eval.evaluators.base import (
     EvalUnit,
@@ -168,6 +169,7 @@ def run_cascade(
     budget: int,
     approx_tokens: int,
 ) -> CascadeOutcome:
+    started = time.monotonic()
     project_id = ctx.get("project_id")
     config = resolve_config(evaluator.config)
     structured = unit.structured or {}
@@ -212,6 +214,8 @@ def run_cascade(
         unit, evaluator, steps_to_judge, judge, project_id, config
     )
     total_cost += batch_cost
+    batch_decisions = [step.pop("decision") for step in step_scores if "decision" in step]
+    costs = [item.get("total_cost") for item in batch_decisions]
 
     _attribute_failures(step_scores, evaluator)
 
@@ -225,24 +229,43 @@ def run_cascade(
         holistic_value, holistic_reason, h_cost = _map_reduce_verdict(
             unit, evaluator, summary, judge, project_id
         )
-        total_cost += h_cost
+        total_cost += h_cost or 0.0
+        costs.append(h_cost)
         if holistic_value is not None:
-            agg_value = (agg_value + holistic_value) / 2
+            agg_value = (
+                (agg_value + holistic_value) / 2 if agg_value is not None else holistic_value
+            )
             holistic_ran = True
 
     if strategy == "agentic" and approx_tokens > budget:
         agentic_value, agentic_reason, a_cost = _agentic_verdict(unit, evaluator, judge, project_id)
-        total_cost += a_cost
+        total_cost += a_cost or 0.0
+        costs.append(a_cost)
         if agentic_value is not None:
-            agg_value = (agg_value + agentic_value) / 2
+            agg_value = (agg_value + agentic_value) / 2 if agg_value is not None else agentic_value
             holistic_reason = (holistic_reason + " " + agentic_reason).strip()
             holistic_ran = True
 
-    value, passed = normalize_numeric(agg_value, evaluator)
-    coverage = _coverage(len(steps_to_judge), len(nodes), approx_tokens, budget, holistic_ran)
+    value, passed = (
+        normalize_numeric(agg_value, evaluator) if agg_value is not None else (None, None)
+    )
+    coverage = _coverage(
+        sum(s["score"] is not None for s in step_scores),
+        len(nodes),
+        approx_tokens,
+        budget,
+        holistic_ran,
+    )
 
     root_causes = [s for s in step_scores if s.get("failure_role") == "root_cause"]
     summary_reason = holistic_reason or _reason_from_steps(step_scores, root_causes)
+    if step_scores and batch_decisions:
+        sources = {item.get("source") for item in batch_decisions}
+        step_scores[0]["_decision"] = {
+            "source": next(iter(sources)) if len(sources) == 1 else "mixed",
+            "batches": batch_decisions,
+            "total_cost": None if any(cost is None for cost in costs) else sum(costs),
+        }
 
     draft = ScoreDraft(
         name=evaluator.name,
@@ -254,6 +277,7 @@ def run_cascade(
         failure_role="root_cause" if root_causes else "none",
         scope=evaluator.scope or "trajectory",
         cost=total_cost,
+        latency_ms=(time.monotonic() - started) * 1000,
     )
     return CascadeOutcome(drafts=[draft], context_coverage=coverage)
 
@@ -342,24 +366,74 @@ def _batch_judge(
         rng.shuffle(shuffled)
 
         prompt = _batch_prompt(evaluator, goal, shuffled)
-        outcome = judging.invoke_judge(
-            prompt,
-            response_format=JudgeResult,
-            judge=judge,
+
+        def fallback(prompt=prompt):
+            return judging.invoke_judge(
+                prompt,
+                response_format=JudgeResult,
+                judge=judge,
+                project_id=project_id,
+                system_prompt=_BATCH_SYSTEM,
+            )
+
+        def convert(answers):
+            items = [
+                {
+                    "id": key,
+                    "score": float(answer.choice)
+                    if answer.choice not in {None, "insufficient"}
+                    else None,
+                    "reasoning": getattr(answer, "reasoning", "")
+                    or f"Step {key}: {answer.choice}.",
+                }
+                for key, answer in answers.items()
+            ]
+            scores = [item["score"] for item in items if item["score"] is not None]
+            return JudgeResult(
+                items=items,
+                score=sum(scores) / len(scores) if scores else 0.0,
+                abstained=not scores,
+                reasoning="Step quality measured against the supplied goal and rubric.",
+            )
+
+        outcome = decisions.invoke(
+            {
+                "goal": goal,
+                "conversation": (unit.trajectory or {}).get("messages", []),
+                "steps": shuffled,
+            },
+            {
+                str(node["id"]): decisions.decision_question(
+                    f"{_BATCH_SYSTEM}\nRubric: {evaluator.rubric_md}\n"
+                    f"Rate only the step with id {node['id']}, using the other steps as context.",
+                    {
+                        "0": "The step was unjustified or incorrect.",
+                        "0.5": "The step was partly justified and partly correct.",
+                        "1": "The step was justified and correct.",
+                        "insufficient": "The available evidence cannot establish step quality.",
+                    },
+                )
+                for node in shuffled
+            },
+            convert=convert,
+            fallback=fallback,
             project_id=project_id,
-            system_prompt=_BATCH_SYSTEM,
+            workload="trace_step_batch",
+            contract="step_anchored@1",
+            policy=decisions.policy_for(evaluator),
+            uncertain_choices=frozenset({"insufficient"}),
+            independent=True,
+            judge=judge,
         )
         total_cost += float(outcome.stats.get("response_cost", 0) or 0)
         items_by_id: dict[str, Any] = {}
-        overall = 0.0
         if outcome.parsed is not None:
-            overall = float(getattr(outcome.parsed, "score", 0.0) or 0.0)
             for it in outcome.parsed.items:
                 items_by_id[it.id] = it
 
-        for node in chunk:
+        for index, node in enumerate(chunk):
             it = items_by_id.get(node["id"])
-            score = float(it.score) if (it and it.score is not None) else overall
+            score = float(it.score) if (it and it.score is not None) else None
             reasoning = (it.reasoning if it else "") or ""
             step_scores.append(
                 {
@@ -369,6 +443,18 @@ def _batch_judge(
                     "reasoning": reasoning,
                     "depends_on": node.get("depends_on", []),
                     "error": node.get("error", ""),
+                    **(
+                        {
+                            "decision": outcome.stats.get("decision")
+                            or {
+                                "source": "generative",
+                                "total_cost": outcome.stats.get("response_cost"),
+                                "usage": outcome.stats,
+                            }
+                        }
+                        if index == 0
+                        else {}
+                    ),
                 }
             )
     return step_scores, total_cost
@@ -430,14 +516,16 @@ def _summary_from_steps(unit: EvalUnit, step_scores: list[dict[str, Any]]) -> st
     lines = [f"User goal: {_goal_text(unit)}", "Step grades:"]
     for s in step_scores:
         reasoning = _clip_clean(s.get("reasoning", ""), 140)
-        lines.append(f"- {s['id']} ({s.get('tool')}): {s['score']:.2f} {reasoning}")
+        score = f"{s['score']:.2f}" if s["score"] is not None else "unknown"
+        lines.append(f"- {s['id']} ({s.get('tool')}): {score} {reasoning}")
     summary = "\n".join(lines)
     return summary[-3500:]
 
 
-def _aggregate(step_scores: list[dict[str, Any]], policy: str) -> float:
+def _aggregate(step_scores: list[dict[str, Any]], policy: str) -> float | None:
+    step_scores = [step for step in step_scores if step["score"] is not None]
     if not step_scores:
-        return 0.0
+        return None
     vals = [s["score"] for s in step_scores]
     if policy == "min":
         return min(vals)
@@ -465,14 +553,17 @@ def _attribute_failures(step_scores: list[dict[str, Any]], evaluator) -> None:
     for s in step_scores:
         s["failure_role"] = "none"
     for s in step_scores:
-        if s["score"] >= threshold:
+        if s["score"] is None or s["score"] >= threshold:
             continue
         parents = [by_id.get(pid) for pid in s.get("depends_on", []) if by_id.get(pid)]
-        parent_failed = any(p and p["score"] < threshold for p in parents)
+        parent_failed = any(
+            p and p["score"] is not None and p["score"] < threshold for p in parents
+        )
         s["failure_role"] = "propagated" if parent_failed else "root_cause"
 
 
 def _reason_from_steps(step_scores: list[dict[str, Any]], root_causes: list[dict[str, Any]]) -> str:
+    step_scores = [step for step in step_scores if step["score"] is not None]
     if root_causes:
         rc = root_causes[0]
         reasoning = _clip_clean(rc.get("reasoning", ""), 300)
@@ -481,12 +572,12 @@ def _reason_from_steps(step_scores: list[dict[str, Any]], root_causes: list[dict
         worst = min(step_scores, key=lambda s: s["score"])
         reasoning = _clip_clean(worst.get("reasoning", ""), 300)
         return f"Weakest step {worst['id']} scored {worst['score']:.2f}: {reasoning}"
-    return "No steps to evaluate."
+    return "No resolved step scores."
 
 
 def _map_reduce_verdict(
     unit, evaluator, summary, judge, project_id
-) -> tuple[float | None, str, float]:
+) -> tuple[float | None, str, float | None]:
     final = (unit.trajectory or {}).get("final_output", "")
     trajectory_text = f"{summary}\n\nFinal answer:\n{final[:2000]}"
 
@@ -502,13 +593,13 @@ def _map_reduce_verdict(
     outcome = judging.invoke_judge(
         prompt, response_format=JudgeResult, judge=judge, project_id=project_id
     )
-    cost = float(outcome.stats.get("response_cost", 0) or 0)
+    cost = outcome.stats.get("response_cost")
     if outcome.parsed is None:
         return None, "", cost
     return float(outcome.parsed.score), outcome.parsed.reasoning, cost
 
 
-def _agentic_verdict(unit, evaluator, judge, project_id) -> tuple[float | None, str, float]:
+def _agentic_verdict(unit, evaluator, judge, project_id) -> tuple[float | None, str, float | None]:
     structured = unit.structured or {}
     index = {
         "num_turns": structured.get("num_turns"),
@@ -528,7 +619,7 @@ def _agentic_verdict(unit, evaluator, judge, project_id) -> tuple[float | None, 
     outcome = judging.invoke_judge(
         prompt, response_format=JudgeResult, judge=judge, project_id=project_id
     )
-    cost = float(outcome.stats.get("response_cost", 0) or 0)
+    cost = outcome.stats.get("response_cost")
     if outcome.parsed is None:
         return None, "", cost
     return float(outcome.parsed.score), outcome.parsed.reasoning, cost

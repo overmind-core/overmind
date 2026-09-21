@@ -22,12 +22,14 @@ from tenacity import (
     wait_exponential_jitter,
 )
 
+from modal_shared.context_budget import INCOMPLETE_FINISH_REASONS
 from modal_shared.modelfam import serve_image_key
 from modal_shared.shared import routing_headers as _modal_routing_headers
 from overbae.core.model_registry import (
     PROVIDERS,
     Provider,
     TaskType,
+    is_decision_model,
     normalize_model_name,
     openrouter_slug,
     reasoning_of,
@@ -75,6 +77,13 @@ class ModelSpec:
     # Env var name; secrets are never persisted.
     api_key_env: str = ""
     params: dict[str, Any] = field(default_factory=dict)
+
+
+class IncompleteCompletionError(RuntimeError):
+    def __init__(self, content: str, stats: dict):
+        super().__init__("The model reached its output token limit before completing the response.")
+        self.content = content
+        self.stats = stats
 
 
 @lru_cache(maxsize=8)
@@ -343,15 +352,18 @@ def _extract_llm_response(response) -> tuple[str, dict]:
         tool_calls = getattr(message, "tool_calls", None)
         if tool_calls:
             content = json.dumps({"tool_calls": [tc.model_dump() for tc in tool_calls]})
+        elif getattr(response.choices[0], "finish_reason", None) in INCOMPLETE_FINISH_REASONS:
+            content = ""
         else:
             raise ValueError("No content or tool calls received from LLM")
 
     usage = getattr(response, "usage", None)
     stats: dict = {
+        "finish_reason": getattr(response.choices[0], "finish_reason", None),
         "prompt_tokens": _usage_value(usage, "prompt_tokens"),
         "completion_tokens": _usage_value(usage, "completion_tokens"),
         "response_ms": getattr(response, "_response_ms", 0),
-        "response_cost": _usage_value(usage, "cost"),
+        "response_cost": _usage_value(usage, "cost", None),
         "cached_tokens": _cached_tokens(usage),
         "cache_discount": _usage_value(usage, "cache_discount", None),
     }
@@ -365,6 +377,8 @@ def _extract_llm_response(response) -> tuple[str, dict]:
     if reasoning_content:
         stats["reasoning_content"] = reasoning_content
 
+    if stats["finish_reason"] in INCOMPLETE_FINISH_REASONS:
+        raise IncompleteCompletionError(content.strip(), stats)
     return content.strip(), stats
 
 
@@ -444,6 +458,15 @@ def call_llm(
     fallback_models: list[str] | None = None,
     retry_deadline: float = RETRY_DEADLINE_BACKGROUND,
 ) -> tuple[str, dict]:
+    if any(
+        is_decision_model(name)
+        for name in [
+            model or "",
+            model_spec.model_id if model_spec else "",
+            *(fallback_models or []),
+        ]
+    ):
+        raise ValueError("Decision models require typed questions through the decision transport.")
     if request_kwargs is None:
         request_kwargs = {}
 
@@ -471,15 +494,9 @@ def call_llm(
                 "messages": messages,
                 "max_tokens": _effective_max_tokens(selected_model_name, max_tokens),
             }
-            # A spec-level max_tokens overrides the default budget, and an
-            # explicit None omits the param so the server sizes output itself.
-            # vLLM 400s any request whose max_tokens exceeds max_model_len, so
-            # small self-hosted deployments need that omission.
             if "max_tokens" in request_kwargs:
                 cap = request_kwargs.pop("max_tokens")
-                if cap is None:
-                    completion_kwargs.pop("max_tokens")
-                else:
+                if cap is not None:
                     completion_kwargs["max_tokens"] = int(cap)
             formatted_response = _response_format_param(response_format)
             if formatted_response:
@@ -540,6 +557,8 @@ def call_llm(
         response = _do_openai_completion(client, completion_kwargs, request_kwargs, retry_deadline)
         return _extract_llm_response(response)
 
+    except IncompleteCompletionError:
+        raise
     except Exception as e:
         raise RuntimeError(f"Error calling LLM: {e}") from e
 
@@ -606,7 +625,7 @@ def _tool_call_stats(usage: Any, served_model: Any, selected: str, response_ms: 
         "prompt_tokens": _usage_value(usage, "prompt_tokens"),
         "completion_tokens": _usage_value(usage, "completion_tokens"),
         "response_ms": response_ms or 0,
-        "response_cost": _usage_value(usage, "cost"),
+        "response_cost": _usage_value(usage, "cost", None),
         "cached_tokens": _cached_tokens(usage),
         "served_model": served_model or selected,
     }
@@ -646,6 +665,9 @@ def call_llm_tools(
         selected,
         getattr(response, "_response_ms", 0),
     )
+    stats["finish_reason"] = getattr(response.choices[0], "finish_reason", None)
+    if stats["finish_reason"] in INCOMPLETE_FINISH_REASONS:
+        raise IncompleteCompletionError(text, stats)
     return text, tool_calls, stats
 
 
@@ -738,6 +760,7 @@ def stream_llm_tools(
     calls: dict[int, dict] = {}
     usage = None
     served_model = None
+    finish_reason = None
     try:
         for chunk in stream:
             if getattr(chunk, "usage", None):
@@ -747,6 +770,7 @@ def stream_llm_tools(
             choices = getattr(chunk, "choices", None) or ()
             if not choices:
                 continue
+            finish_reason = getattr(choices[0], "finish_reason", None) or finish_reason
             delta = getattr(choices[0], "delta", None)
             if delta is None:
                 continue
@@ -769,6 +793,9 @@ def stream_llm_tools(
 
     tool_calls = [calls[index] for index in sorted(calls)]
     stats = _tool_call_stats(usage, served_model, selected, (time.monotonic() - started) * 1000)
+    stats["finish_reason"] = finish_reason
+    if finish_reason in INCOMPLETE_FINISH_REASONS:
+        raise IncompleteCompletionError("".join(parts).strip(), stats)
     yield ToolStreamResult(
         "".join(parts).strip(), tool_calls, stats, "".join(thoughts).strip(), details
     )

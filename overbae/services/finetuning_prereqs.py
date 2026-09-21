@@ -65,6 +65,7 @@ def slim_recommendation_row(row: dict[str, Any]) -> dict[str, Any]:
         "selected": bool(row.get("selected")),
         "use_lora": bool(row.get("use_lora", True)),
         "hyperparams": row.get("hyperparams") or {},
+        "serving_context": row.get("serving_context"),
         "cost_usd": cost.get("usd"),
         "time_human": time_est.get("human"),
     }
@@ -171,6 +172,7 @@ def finetune_prerequisite_report(
         analysis = get_recommendation(
             str(dataset.id),
             capability_id=str(capability.id) if capability is not None else None,
+            eval_dataset_id=str(eval_dataset.id) if eval_dataset is not None else None,
         )
     except Exception as exc:  # a checklist must still render without the ranking
         recommendation_error = str(exc)

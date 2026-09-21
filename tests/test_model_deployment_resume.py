@@ -375,6 +375,40 @@ def test_failed_baseline_does_not_reset_budget_for_same_waiter(deployed):
     assert baseline.deployment_attempts == 3
 
 
+@pytest.mark.parametrize("status", ["ready", "warming"])
+def test_shared_baseline_resizes_after_the_existing_operation_finishes(deployed, status):
+    job = deployed.finetuning_job
+    baseline = DeployedModel.objects.create(
+        project=job.project,
+        model_id=deployment.base_model_slug(deployment.get_hf_base(job.base_model)),
+        status=status,
+        deployment_stage="ready" if status == "ready" else "warm",
+        max_model_len=4096,
+        inference_url="https://inference.test",
+    )
+    generation = baseline.deployment_generation
+    with (
+        patch("overbae.services.finetuning_eval.job_wants_evals", return_value=True),
+        patch("overbae.services.finetuning_eval.baseline_needs_base_deploy", return_value=True),
+        patch("overbae.services.finetuning_eval.tick_job_evals") as tick,
+    ):
+        deployment.ensure_baseline_deployment(str(job.pk))
+        baseline.refresh_from_db()
+        if status == "warming":
+            assert baseline.status == "warming"
+            assert baseline.max_model_len == 4096
+            assert baseline.deployment_generation == generation
+            DeployedModel.objects.filter(pk=baseline.pk).update(
+                status="ready", deployment_stage="ready", deployment_notify=True
+            )
+            advance(baseline)
+    baseline.refresh_from_db()
+    assert baseline.status == "queued"
+    assert baseline.max_model_len == deployed.max_model_len
+    assert baseline.deployment_generation != generation
+    tick.assert_not_called()
+
+
 def test_cancellation_acknowledgement_must_be_terminal_before_retry(deployed):
     warming(deployed)
     DeployedModel.objects.filter(pk=deployed.pk).update(

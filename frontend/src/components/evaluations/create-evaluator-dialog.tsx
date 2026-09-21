@@ -142,6 +142,8 @@ export const CreateEvaluatorDialog = ({
   const [mode, setMode] = useState<AuthoringMode>("manual");
   const [name, setName] = useState("");
   const [judgeModel, setJudgeModel] = useState("");
+  const [decisionBackend, setDecisionBackend] = useState<"jev" | "generative">("generative");
+  const [decisionConfidence, setDecisionConfidence] = useState(0.9);
   const [evaluationPrompt, setEvaluationPrompt] = useState("");
   const [scoreType, setScoreType] = useState<ScoreType>("numeric");
   const [reasoningPrompt, setReasoningPrompt] = useState(REASONING_DEFAULTS.numeric);
@@ -212,6 +214,8 @@ export const CreateEvaluatorDialog = ({
     setMode("manual");
     setName("");
     setJudgeModel("");
+    setDecisionBackend("jev");
+    setDecisionConfidence(0.9);
     setEvaluationPrompt("");
     setScoreType("numeric");
     setReasoningPrompt(REASONING_DEFAULTS.numeric);
@@ -277,6 +281,8 @@ export const CreateEvaluatorDialog = ({
     setMode("manual");
     setName(editEvaluator.name);
     setJudgeModel(editEvaluator.judgeModel ?? "");
+    setDecisionBackend(editEvaluator.decisionPolicy?.backend ?? "generative");
+    setDecisionConfidence(editEvaluator.decisionPolicy?.minConfidence ?? 0.9);
     setEvaluationPrompt(
       readString(authoring, "evaluation_prompt") || (editEvaluator.rubricMd ?? "")
     );
@@ -339,12 +345,15 @@ export const CreateEvaluatorDialog = ({
   const categoriesValid = scoreType !== "categorical" || cleanCategories.length >= 2;
   const traceScoringTaskValid = applicableRole !== "trace_scoring" || !!taskScope?.behaviourId;
   const saving = author.isPending || edit.isPending;
+  const confidenceValid =
+    Number.isFinite(decisionConfidence) && decisionConfidence >= 0 && decisionConfidence <= 1;
   const canSave =
     !!resolvedProjectId &&
     name.trim().length > 0 &&
     evaluationPrompt.trim().length > 0 &&
     categoriesValid &&
     traceScoringTaskValid &&
+    confidenceValid &&
     !saving;
   // Surfaced next to the Save button so a disabled state is never a silent dead end.
   const saveBlockedReason = saving
@@ -357,7 +366,9 @@ export const CreateEvaluatorDialog = ({
           ? "Add at least two categories to save it."
           : !traceScoringTaskValid
             ? "Select a task to scope this trace-scoring evaluator."
-            : "";
+            : !confidenceValid
+              ? "Confidence must be between 0 and 1."
+              : "";
 
   const handleGenerate = async () => {
     if (!description.trim()) return;
@@ -393,6 +404,7 @@ export const CreateEvaluatorDialog = ({
   const buildInput = () => ({
     applicableRoles: [applicableRole],
     capability: capabilityId || undefined,
+    decisionPolicy: { backend: decisionBackend, minConfidence: decisionConfidence, version: 1 },
     evaluationPrompt: evaluationPrompt.trim(),
     judgeModel,
     name: name.trim(),
@@ -450,6 +462,45 @@ export const CreateEvaluatorDialog = ({
         </DialogHeader>
 
         <DialogBody className="space-y-5">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <div className="space-y-1.5">
+              <Label htmlFor="decision-backend">Decision engine</Label>
+              <Select
+                onValueChange={(value) =>
+                  setDecisionBackend(value === "generative" ? "generative" : "jev")
+                }
+                value={decisionBackend}
+              >
+                <SelectTrigger aria-label="Decision engine" id="decision-backend">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="jev">Jev + generative fallback</SelectItem>
+                  <SelectItem value="generative">Generative</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            {decisionBackend === "jev" && (
+              <div className="space-y-1.5">
+                <Label htmlFor="decision-confidence">Confidence floor</Label>
+                <Input
+                  id="decision-confidence"
+                  max={1}
+                  min={0}
+                  onChange={(event) => setDecisionConfidence(event.target.valueAsNumber)}
+                  step={0.05}
+                  type="number"
+                  value={Number.isFinite(decisionConfidence) ? decisionConfidence : ""}
+                />
+              </div>
+            )}
+          </div>
+          {decisionBackend === "jev" && (
+            <p className="text-xs text-muted-foreground">
+              Jev scores bounded checks with generative fallback. Confidence is not measured
+              accuracy.
+            </p>
+          )}
           {/* Same half/half grid as Capability + Test type, so Model left-aligns with it. */}
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <div className="space-y-1.5">
@@ -462,7 +513,7 @@ export const CreateEvaluatorDialog = ({
               />
             </div>
             <div className="space-y-1.5">
-              <Label htmlFor="judge-model">Model</Label>
+              <Label htmlFor="judge-model">Generative model</Label>
               <div className="flex items-center gap-2">
                 <Select onValueChange={setJudgeModel} value={judgeModel || defaultJudgeModel}>
                   <SelectTrigger

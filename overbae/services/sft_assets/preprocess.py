@@ -6,6 +6,7 @@ import hashlib
 import json
 from pathlib import Path
 
+from modal_shared.preparation import preparation_failure, processor_fingerprint
 from modal_shared.training_data import row_key
 
 
@@ -70,16 +71,11 @@ def preprocess_rows(rows, tokenizer, model_id, context_length, tokenize):
 
 def run(request_path: Path, output_dir: Path, load_tokenizer, tokenize):
     request = json.loads(request_path.read_text())
-    digest = hashlib.sha256()
-    for path in sorted(
-        p for p in Path(__file__).parent.rglob("*") if p.suffix in {".py", ".jinja"}
-    ):
-        digest.update(str(path.relative_to(Path(__file__).parent)).encode())
-        digest.update(path.read_bytes())
-    if digest.hexdigest() != request["processor"]:
-        raise ValueError(
-            "The preprocessing worker is out of date. Deploy the current SFT worker before training."
-        )
+    output_dir.mkdir(parents=True, exist_ok=True)
+    if processor_fingerprint(Path(__file__).parent) != request["processor"]:
+        report = preparation_failure("worker_out_of_date")
+        (output_dir / "report.json").write_text(json.dumps(report))
+        return
     tokenizer = load_tokenizer(request["tokenizer_model"], trust_remote_code=True)
     if not tokenizer.eos_token or tokenizer.eos_token == "<EOS_TOKEN>":
         for token in ("<|im_end|>", "<|eot_id|>", "</s>", "<|endoftext|>", "<|return|>"):
@@ -100,7 +96,6 @@ def run(request_path: Path, output_dir: Path, load_tokenizer, tokenize):
     report["chat_template_sha256"] = hashlib.sha256(str(serving_template).encode()).hexdigest()
     report["tokenizer_revision"] = tokenizer.init_kwargs.get("_commit_hash")
     report["context_length"] = request["context_length"]
-    output_dir.mkdir(parents=True, exist_ok=True)
     if report["ready"]:
         with (output_dir / "tokens.jsonl").open("w") as target:
             for artifact in artifacts:

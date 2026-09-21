@@ -19,6 +19,7 @@ from overbae.core.model_registry import PROVIDERS
 from overbae.models import FinetuningJob
 from overbae.services.eval.context import model_context
 from overbae.services.model_catalog import resolve_training_openrouter_slug
+from overbae.services.serving_context import evaluation_budget
 
 logger = logging.getLogger(__name__)
 
@@ -59,7 +60,8 @@ def _metric_scores_for_run(eval_run_id) -> list[dict[str, Any]]:
 
     return [
         {"name": r["name"], "score": round(float(r["avg"]), 6)}
-        for r in Score.objects.filter(run_id=eval_run_id, scope="sample")
+        for r in Score.objects.filter(run_id=eval_run_id, outcome=Score.Outcome.SCORED)
+        .exclude(sample__degraded=True)
         .values("name")
         .annotate(avg=Avg("value"))
         .order_by("name")
@@ -154,6 +156,17 @@ def sync_eval_scores(job) -> list[dict[str, Any]]:
         # A run that "completed" but scored nothing is a failure, not a result: a green
         # row with no score hides provider errors from the monitor.
         summary = run.summary or {}
+        degraded = int((summary.get("trust") or {}).get("degraded") or 0)
+        if degraded:
+            FinetuningJobEval.objects.filter(pk=row.pk).update(
+                status=FinetuningJobEval.Status.FAILED,
+                aggregate_score=None,
+                baseline_delta=None,
+                error_message=f"{degraded} evaluation samples have incomplete or degraded evidence. See the evaluation run before comparing model quality.",
+            )
+            if baseline is not None and row.pk == baseline.pk:
+                baseline_score = None
+            continue
         score = _aggregate_from_summary(summary)
         ec = summary.get("error_counts") or {}
         all_errored = (
@@ -191,6 +204,8 @@ def sync_eval_scores(job) -> list[dict[str, Any]]:
             delta = round(row.aggregate_score - baseline_score, 6)
             if row.baseline_delta != delta:
                 FinetuningJobEval.objects.filter(pk=row.pk).update(baseline_delta=delta)
+    else:
+        FinetuningJobEval.objects.filter(job=job).update(baseline_delta=None)
 
     rows = serialize_job_evals(job)
     # Deployment observations can update progress while eval scores are being read.
@@ -746,10 +761,9 @@ def _get_or_create_model_ref(
     from overbae.models import ModelRef
 
     provider, base_url, api_key_env = _provider_routing(job, kind=kind, target=target)
-    # Modal deployments run a right-sized max_model_len and vLLM 400s any request whose
-    # max_tokens exceeds it, so ``None`` makes call_llm omit the param and let the
-    # server size output to the remaining context.
-    params = {"max_tokens": None} if api_key_env == "INFERENCE_API_KEY" else {}
+    params = {
+        "max_tokens": evaluation_budget(job.eval_cell, capability=job.capability).output_tokens
+    }
     existing = ModelRef.objects.filter(
         project=job.project,
         model_id=model_id,

@@ -22,6 +22,7 @@ import {
   ScoreDistributions,
 } from "@/components/evaluations/score-distributions";
 import {
+  DecisionEvidence,
   type ScoreLike,
   type ScoreState,
   scoreState,
@@ -1959,6 +1960,7 @@ function ScoreRow({ score }: { score: ScoreLike }) {
           Ungraded — the evaluator abstained (no reason recorded).
         </p>
       ) : null}
+      <DecisionEvidence subScores={score.subScores} />
     </div>
   );
 }

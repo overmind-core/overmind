@@ -13,6 +13,7 @@ from typing import Any, Literal
 from pydantic import BaseModel, Field, ValidationError, field_validator, model_validator
 
 from overbae.models.evaluation import Evaluator
+from overbae.services.eval.decisions import freeze_config, policy_for
 from overbae.services.eval.evaluators.deterministic import CHECKS
 from overbae.services.eval.evaluators.statistical import METRICS
 from overbae.services.eval.evidence import infer_evidence_requirement
@@ -417,6 +418,7 @@ class EvaluatorSpec(BaseModel):
 
     @model_validator(mode="after")
     def _config_runnable(self) -> EvaluatorSpec:
+        policy_for(config=self.config)
         if self.kind == "deterministic":
             check = self.config.get("check")
             if check not in DETERMINISTIC_CHECKS:
@@ -445,7 +447,11 @@ class EvaluatorSpec(BaseModel):
         return (self.provenance.source, self.provenance.data_version)
 
     def to_evaluator_kwargs(self) -> dict[str, Any]:
-        config = dict(self.config)
+        config = (
+            freeze_config(self.config)
+            if self.kind in {"llm_judge", "agentic", "trajectory"}
+            else dict(self.config)
+        )
         config["provenance"] = self.provenance.model_dump(exclude_none=True)
         variable_mapping = [entry.model_dump() for entry in self.variable_mapping]
         requirement = self.evidence_requirement or infer_evidence_requirement(

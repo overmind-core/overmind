@@ -57,6 +57,8 @@ Eval results align model variants by the generated client's `rowIndex`, includin
 
 The eval datapoint popup selects one model at a time and shows its input beside its generated output, grading reference, and evaluator reasoning. `SampleInput` consumes the generated `EvalSampleIO` contract: captured initial runner requests include system prompts and tools; historical dataset inputs explicitly say the exact request was not captured. Never label a combined trajectory as input or an extracted statistical prediction as the model's full output.
 
+Trajectory model-call cards use `ModelProviderChip` as their title and a three-line system-prompt preview that opens in a dialog. Mode-specific model/prompt context requires an exact step-anchor match; unbound or shared calls show only context common to their candidates. Never borrow a conflicting worker prompt. Excerpts stay labelled as excerpts; missing capture has no expand control.
+
 ## App shell
 
 The left sidebar logic in `src/routes/_auth.tsx` and `src/components/ui/sidebar.tsx` is owned separately — pages adapt to the native in-flow sidebar. Don't add routes to focus-mode patterns or modify shell logic without explicit approval.

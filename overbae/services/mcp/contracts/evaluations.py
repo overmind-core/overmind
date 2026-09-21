@@ -8,6 +8,7 @@ from uuid import UUID
 
 from pydantic import AliasChoices, Field, field_validator, model_validator
 
+from overbae.services.eval.decisions import policy_for
 from overbae.services.mcp.contracts.common import (
     DatasetCellContract,
     MCPModel,
@@ -234,7 +235,11 @@ class EvaluatorUpsertInput(MCPModel):
     pass_threshold: float | None = Field(default=None, allow_inf_nan=False)
     requires_reference: bool = False
     variable_mapping: list[VariableMappingContract] = Field(default_factory=list, max_length=100)
-    config: dict[str, Any] = Field(default_factory=dict, max_length=100)
+    config: dict[str, Any] = Field(
+        default_factory=dict,
+        max_length=100,
+        description="config.decision selects backend generative (default) or jev (opt-in bounded decisions with generative fallback), min_confidence 0..1, and version 1. Qualify Jev against labelled examples for the rubric; confidence is not accuracy. The decision model must be a registered Jev release. judge_model remains the generative judge/fallback.",
+    )
     applicable_roles: list[EvaluationRole] = Field(default_factory=list, max_length=2)
     surface: Literal["model", "harness", "any"] = "any"
     choices: dict[str, float] | None = Field(default=None, max_length=20)
@@ -242,6 +247,7 @@ class EvaluatorUpsertInput(MCPModel):
     @field_validator("config")
     @classmethod
     def config_is_safe(cls, value: dict[str, Any]) -> dict[str, Any]:
+        policy_for(config=value)
         return _validate_safe_json(value, field="config")
 
     @model_validator(mode="after")

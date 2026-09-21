@@ -201,7 +201,8 @@ def test_sync_marks_all_errored_run_as_failed():
     assert "errored" in (final["error_message"] or "")
 
 
-def test_serialize_includes_per_metric_scores():
+@pytest.mark.parametrize("scope", ["sample", "final_output", "trajectory", "turn", "dataset"])
+def test_serialize_includes_per_metric_scores(scope):
     """Scores are per-metric means (0–1): one per rubric criterion, averaged across samples."""
     from overbae.models import EvalSample, EvalVariant, Score
     from overbae.services.finetuning_eval import serialize_job_evals
@@ -220,13 +221,26 @@ def test_serialize_includes_per_metric_scores():
     s2 = EvalSample.objects.create(run=run, variant=variant)
     # accuracy: 0.5 and 1.0 across samples → mean 0.75; faithfulness: scored once → 1.0.
     Score.objects.create(
-        project=job.project, run=run, sample=s1, scope="sample", name="accuracy", value=0.5
+        project=job.project, run=run, sample=s1, scope=scope, name="accuracy", value=0.5
     )
     Score.objects.create(
-        project=job.project, run=run, sample=s2, scope="sample", name="accuracy", value=1.0
+        project=job.project, run=run, sample=s2, scope=scope, name="accuracy", value=1.0
     )
     Score.objects.create(
-        project=job.project, run=run, sample=s1, scope="sample", name="faithfulness", value=1.0
+        project=job.project, run=run, sample=s1, scope=scope, name="faithfulness", value=1.0
+    )
+    degraded = EvalSample.objects.create(run=run, variant=variant, degraded=True)
+    Score.objects.create(
+        project=job.project, run=run, sample=degraded, scope=scope, name="accuracy", value=0.0
+    )
+    Score.objects.create(
+        project=job.project,
+        run=run,
+        sample=s1,
+        scope=scope,
+        name="accuracy",
+        value=None,
+        outcome=Score.Outcome.ERROR,
     )
     FinetuningJobEval.objects.create(
         job=job,
@@ -239,7 +253,7 @@ def test_serialize_includes_per_metric_scores():
     rows = serialize_job_evals(job)
     metrics = {m["name"]: m["score"] for m in rows[0]["metric_scores"]}
     assert metrics == {"accuracy": 0.75, "faithfulness": 1.0}
-    assert rows[0]["sample_count"] == 2
+    assert rows[0]["sample_count"] == 3
 
 
 def test_sync_copies_class_metrics_into_row_and_progress():
@@ -568,6 +582,7 @@ def _ready_base_deployment(project, base="Qwen/Qwen3-8B"):
         model_id=_base_slug(base),
         base_model_id=hf_base,
         status=DeployedModel.Status.READY,
+        max_model_len=16384,
         inference_url="https://example--vllm-base.modal.run/v1",
     )
 

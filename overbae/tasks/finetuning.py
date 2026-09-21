@@ -12,7 +12,7 @@ from typing import Any
 from celery import shared_task
 from django.utils import timezone
 
-from overbae.services.training_preparation import for_job
+from overbae.services.training_preparation import for_job, preparation_error
 from overbae.tasks.training_preparation import inspect_preparation
 
 logger = logging.getLogger(__name__)
@@ -409,7 +409,9 @@ def run_finetuning(*, job_id: str) -> dict[str, Any]:
     from overbae.services.finetuning_runner import get_runner
 
     try:
-        job = FinetuningJob.objects.select_related("capability").get(pk=job_id)
+        job = FinetuningJob.objects.select_related(
+            "capability", "cell__dataset", "validation_cell__dataset"
+        ).get(pk=job_id)
     except FinetuningJob.DoesNotExist:
         return {"error": f"FinetuningJob {job_id} not found"}
 
@@ -449,10 +451,7 @@ def run_finetuning(*, job_id: str) -> dict[str, Any]:
             if backend == "modal":
                 preparation = for_job(job)
                 if preparation.state in {"failed", "incompatible"}:
-                    raise ValueError(
-                        preparation.error
-                        or f"{preparation.report.get('incompatible_rows', 0)} rows are incompatible with this training configuration. Repair them in the data workshop or change the model settings."
-                    )
+                    raise ValueError(preparation_error(preparation))
                 if preparation.state != "ready":
                     _transition(
                         job,

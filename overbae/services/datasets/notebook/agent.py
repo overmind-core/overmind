@@ -10,10 +10,11 @@ from typing import Any
 
 from django.db import close_old_connections, transaction
 from django.utils import timezone
+from pydantic import ValidationError
 
 from overbae.models import Capability, Cell, Dataset
 from overbae.services.datasets import diff as diff_svc
-from overbae.services.datasets import lifecycle, paths, review, store, synthetic
+from overbae.services.datasets import lifecycle, paths, review, semantic_checks, store, synthetic
 from overbae.services.datasets.context import context_fingerprint, workshop_context
 from overbae.services.datasets.notebook import engines, events, libraries, prompts
 from overbae.services.datasets.notebook import run as run_svc
@@ -105,7 +106,7 @@ def _cell_line(
         "capability_report": cell.capability_report,
         "review": review.summary(cell.review),
         "readiness": review.readiness(dataset, cell, context=context) if cell.ran else None,
-        "quality_report": cell.quality_report,
+        "quality_report": review.summary(cell.quality_report),
     }
 
 
@@ -586,6 +587,17 @@ class Tools:
         self.emit({"type": "cells_changed"})
         return {"ok": True, "quality_report": report, "readiness": review.readiness(dataset, cell)}
 
+    def check_semantic_quality(self, args: dict[str, Any], _ctx: Any = None) -> dict[str, Any]:
+        dataset = _dataset(self.dataset_id)
+        try:
+            request = semantic_checks.SemanticReviewRequest.model_validate(args)
+            cell = resolve_cell(dataset, request.version, ran_only=True)
+            result = semantic_checks.run_checks(dataset, cell, request, user=self.user)
+        except (ValueError, ValidationError) as exc:
+            return {"ok": False, "error": str(exc)}
+        self.emit({"type": "cells_changed"})
+        return {"ok": True, **result, "readiness": review.readiness(dataset, cell)}
+
     def edit_cell(self, args: dict[str, Any], _ctx: Any = None) -> dict[str, Any]:
         dataset = _dataset(self.dataset_id)
         try:
@@ -735,6 +747,10 @@ class Tools:
 _TEXT = {"type": "string"}
 
 TOOL_SPECS: dict[str, tuple[str, dict]] = {
+    "check_semantic_quality": (
+        "Measure semantic row quality against named evidence and answer columns using Jev with a generative fallback. Never uses answers as their own evidence. Unknowns stay null; findings are advisory and do not authorize edits. Processes at most 200 unmeasured rows per call; repeat identical checks while remaining_rows is nonzero. Changing the version, task context, or checks starts a new audit. Use record_quality_review for deterministic format/schema checks.",
+        semantic_checks.SemanticReviewRequest.model_json_schema(),
+    ),
     "prepare_examples": (
         "Prepare conversations for the selected purpose without losing instructions, evidence or tools. Eval separates the final answer into expected_output; train retains the full transcript. Does not change task scope or invent missing evidence. Run before projecting columns.",
         {"type": "object", "properties": {}},
@@ -918,6 +934,7 @@ TOOL_TITLES = {
     "seed_examples": "Read generation seeds",
     "add_synthetic_rows": "Add synthetic examples",
     "record_quality_review": "Record quality review",
+    "check_semantic_quality": "Check semantic quality",
     "status": "Read the chain",
     "query": "Query the frame",
     "diff": "Diff two versions",
@@ -941,6 +958,7 @@ TOOL_REASONS = {
     "seed_examples": "Reading source examples and setting the generation target.",
     "add_synthetic_rows": "Checking format, capability, seed identities and duplicates before adding the batch.",
     "record_quality_review": "Saving measured quality checks for this version.",
+    "check_semantic_quality": "Checking rows against source evidence.",
 }
 
 

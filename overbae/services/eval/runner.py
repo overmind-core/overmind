@@ -18,7 +18,8 @@ from typing import Any, Protocol
 
 from celery.exceptions import SoftTimeLimitExceeded
 
-from overbae.core.llms import ModelSpec, call_llm
+from modal_shared.context_budget import INCOMPLETE_FINISH_REASONS
+from overbae.core.llms import IncompleteCompletionError, ModelSpec, call_llm
 from overbae.services.eval import chatml, normalizer
 
 logger = logging.getLogger(__name__)
@@ -255,6 +256,8 @@ class RunResult:
     prompt_tokens: int = 0
     completion_tokens: int = 0
     request: dict[str, Any] = field(default_factory=dict)
+    finish_reasons: list[str] = field(default_factory=list)
+    truncated: bool = False
 
 
 def generate_decision(
@@ -282,10 +285,13 @@ def generate_decision(
         )
     except SoftTimeLimitExceeded:
         raise
+    except IncompleteCompletionError as exc:
+        raw, stats = exc.content, exc.stats
     except Exception as exc:  # noqa: BLE001
         return RunResult([], 0, 0.0, 0, 0, error=str(exc), request=request)
 
-    assistant, _ = _parse_assistant(raw)
+    truncated = stats.get("finish_reason") in INCOMPLETE_FINISH_REASONS
+    assistant = {"role": "assistant", "content": raw} if truncated else _parse_assistant(raw)[0]
     # Teacher forcing evaluates the decision itself; executing its tools would
     # introduce replay misses and additional model turns before the next fixed seed.
     return RunResult(
@@ -298,6 +304,8 @@ def generate_decision(
         prompt_tokens=int(stats.get("prompt_tokens", 0) or 0),
         completion_tokens=int(stats.get("completion_tokens", 0) or 0),
         request=request,
+        finish_reasons=[stats["finish_reason"]] if stats.get("finish_reason") else [],
+        truncated=truncated,
     )
 
 
@@ -326,6 +334,8 @@ def run_capability(
     completion_tokens = 0
     fuzzy = 0
     misses = 0
+    finish_reasons = []
+    truncated = False
 
     for step in range(max_steps):
         # Force a final-answer turn at the budget edge: a divergent replay that
@@ -355,6 +365,8 @@ def run_capability(
             )
         except SoftTimeLimitExceeded:
             raise
+        except IncompleteCompletionError as exc:
+            raw, stats = exc.content, exc.stats
         except Exception as exc:  # noqa: BLE001
             logger.warning("Capability run failed at step %d: %s", step, exc)
             return RunResult(
@@ -368,12 +380,20 @@ def run_capability(
                 prompt_tokens=prompt_tokens,
                 completion_tokens=completion_tokens,
                 request=request,
+                finish_reasons=finish_reasons,
+                truncated=truncated,
             )
 
         total_cost += float(stats.get("response_cost", 0) or 0)
         total_latency_ms += float(stats.get("response_ms", 0) or 0)
         prompt_tokens += int(stats.get("prompt_tokens", 0) or 0)
         completion_tokens += int(stats.get("completion_tokens", 0) or 0)
+        if stats.get("finish_reason"):
+            finish_reasons.append(stats["finish_reason"])
+        if stats.get("finish_reason") in INCOMPLETE_FINISH_REASONS:
+            truncated = True
+            produced.append({"role": "assistant", "content": raw})
+            break
         assistant_msg, tool_calls = _parse_assistant(raw)
         working.append(assistant_msg)
         produced.append(assistant_msg)
@@ -409,6 +429,8 @@ def run_capability(
         prompt_tokens=prompt_tokens,
         completion_tokens=completion_tokens,
         request=request,
+        finish_reasons=finish_reasons,
+        truncated=truncated,
     )
 
 

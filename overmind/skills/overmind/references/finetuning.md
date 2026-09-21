@@ -62,7 +62,10 @@ report has `retryable=true` can be retried with `retry_failed=true`; its saved r
 call is cancelled first. An unacknowledged submission fails closed, not retried blindly.
 The Console's training-job Retry action also retries a confirmed-failed preparation
 when GPU training has not been submitted. It reuses ready or in-flight preparation
-and refuses unsafe or incompatible retries. MCP preparation retries continue to use
+and refuses unsafe or unresolved incompatible retries. Job preparation sizes context
+from the pinned train/validation data and can recheck an exact length overflow at a
+larger supported context without changing the rows. Model limits and other technical
+incompatibilities still block GPU training. MCP preparation retries continue to use
 `prepare_training_data(retry_failed=true)`; do not invent a training-job retry tool.
 The matching Modal worker must be deployed; a processor fingerprint mismatch means
 the worker is out of date. Non-Modal providers do not currently expose this exact
@@ -98,6 +101,8 @@ The job resource is `overmind://finetunes/{job_id}`. Poll with
 `get_job(kind="finetune_job", id=...)`. Fine-tune statuses are `queued`,
 `preparing`, `running`, `deploying`, `succeeded`, `failed`, and `cancelled`.
 
+Serving context is sized separately from training sequence length. Readiness recommendations include an estimated serving context and reserved output budget for the evaluation workload; launch rechecks the pinned eval version. Models that cannot accommodate that budget are excluded with a reason. A token-limited evaluation is incomplete, not a low quality score: inspect its degraded samples before comparing models. Increasing serving capacity does not require retraining.
+
 Without a capability, evaluation uses the untouched base model as its baseline.
 Eval sets without a capability can be used by any training job in the project.
 
@@ -124,6 +129,8 @@ Call `run_inference` only against a `ready` deployment and treat `is_cold` as
 normal first-request information. Then use `set_active_model` to activate a
 ready deployment or clear the active model. Verify the final state from the
 deployment and capability resources.
+
+Inspect `finish_reason` and `truncated` before using an inference answer. `truncated` means the model stopped at its token limit; `content_clipped` separately indicates the MCP response size bound. Neither is a complete response.
 
 ## Download an archived checkpoint
 

@@ -1253,6 +1253,7 @@ class FinetuningJobViewSet(viewsets.ModelViewSet):
             fields={
                 "dataset_id": drf_serializers.UUIDField(),
                 "capability_id": drf_serializers.UUIDField(required=False, allow_null=True),
+                "eval_dataset_id": drf_serializers.UUIDField(required=False, allow_null=True),
             },
         ),
         responses={200: FinetuningRecommendationResponseSerializer},
@@ -1284,7 +1285,20 @@ class FinetuningJobViewSet(viewsets.ModelViewSet):
             except (Capability.DoesNotExist, ValidationError, ValueError):
                 return Response({"detail": "Capability not found."}, status=404)
 
-        analysis = get_recommendation(str(dataset.id), capability_id=capability_id)
+        eval_dataset_id = request.data.get("eval_dataset_id") or None
+        if eval_dataset_id:
+            try:
+                Dataset.objects.get(
+                    pk=eval_dataset_id, project_id=dataset.project_id, intent=Dataset.Intent.EVAL
+                )
+            except (Dataset.DoesNotExist, ValidationError, ValueError):
+                return Response({"detail": "Eval dataset not found."}, status=404)
+        try:
+            analysis = get_recommendation(
+                str(dataset.id), capability_id=capability_id, eval_dataset_id=eval_dataset_id
+            )
+        except ValueError as exc:
+            return Response({"detail": str(exc)}, status=400)
         return Response(FinetuningRecommendationResponseSerializer(analysis).data)
 
     @extend_schema(

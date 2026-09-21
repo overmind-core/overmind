@@ -197,6 +197,7 @@ def test_guarded_tools_return_json_safe_errors():
             "seed_examples",
             "add_synthetic_rows",
             "record_quality_review",
+            "check_semantic_quality",
         }
     )
     out = handlers["query"]({"sql": "SELECT 1.5::DECIMAL(4,2) AS d FROM t LIMIT 1"})

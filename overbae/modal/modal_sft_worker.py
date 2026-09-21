@@ -36,6 +36,7 @@ from pathlib import Path
 
 import modal
 
+from modal_shared.preparation import run_preparation_process
 from modal_shared.training_data import materialize_tokens
 
 APP_NAME = "overmind-sft"
@@ -216,20 +217,13 @@ def _register_train(fn_name: str, image: modal.Image) -> None:
     def prepare(preparation_id: str, request: dict) -> dict:
         sft_vol.reload()
         destination = Path(DATA_MOUNT) / "preparations" / preparation_id
-        with tempfile.TemporaryDirectory(prefix="sft-prepare-") as workspace:
-            request_path = Path(workspace) / "request.json"
-            request_path.write_text(json.dumps(request))
-            subprocess.run(
-                [
-                    sys.executable,
-                    f"{_ASSETS_REMOTE_DIR}/prepare_training.py",
-                    str(request_path),
-                    str(destination),
-                ],
-                check=True,
-            )
-        sft_vol.commit()
-        return json.loads((destination / "report.json").read_text())
+        try:
+            with tempfile.TemporaryDirectory(prefix="sft-prepare-") as workspace:
+                request_path = Path(workspace) / "request.json"
+                request_path.write_text(json.dumps(request))
+                return run_preparation_process(Path(_ASSETS_REMOTE_DIR), request_path, destination)
+        finally:
+            sft_vol.commit()
 
     name = "prepare_" + fn_name
     prepare.__name__ = name

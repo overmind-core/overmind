@@ -21,7 +21,7 @@ from django.conf import settings
 from django.db import close_old_connections, connection
 from pydantic import BaseModel
 
-from overbae.core.llms import ModelSpec, call_llm, try_json_parsing
+from overbae.core.llms import IncompleteCompletionError, ModelSpec, call_llm, try_json_parsing
 from overbae.core.model_registry import (
     LLM_PROVIDER_BY_MODEL,
     TaskType,
@@ -244,14 +244,17 @@ def invoke_judge(
                 cached=True,
             )
 
-    raw, stats = call_llm(
-        prompt,
-        system_prompt=system_prompt,
-        model=judge.model_name,
-        model_spec=judge.model_spec,
-        response_format=response_format,
-        request_kwargs=request_kwargs,
-    )
+    try:
+        raw, stats = call_llm(
+            prompt,
+            system_prompt=system_prompt,
+            model=judge.model_name,
+            model_spec=judge.model_spec,
+            response_format=response_format,
+            request_kwargs=request_kwargs,
+        )
+    except IncompleteCompletionError as exc:
+        return JudgeOutcome(parsed=None, raw=exc.content, stats=exc.stats, judge_trace_id=trace_id)
     parsed = parse_structured(raw, response_format)
     # A cached parse failure would be sticky.
     if cache_on and parsed is not None:

@@ -702,12 +702,17 @@ def _inference_sync(payload: RunInferenceInput, context: MCPContext) -> RunInfer
     )
     link = resource_link("deployments", str(deployment.id), deployment.model_id)
     return RunInferenceOutput(
-        summary="Inference completed.",
+        summary="Inference reached its output token limit."
+        if result.get("truncated")
+        else "Inference completed.",
         model_id=deployment.model_id,
         content=str(result.get("content") or "")[:32_000],
         usage=usage_contract,
         latency_ms=float(result.get("latency_ms") or 0),
         is_cold=bool(result.get("is_cold")),
+        finish_reason=result.get("finish_reason"),
+        truncated=bool(result.get("truncated")),
+        content_clipped=len(str(result.get("content") or "")) > 32_000,
         resource=link,
     )
 
@@ -884,7 +889,7 @@ def register_finetuning_tools(catalog) -> None:
         (
             "run_inference",
             "Run inference",
-            "Run a bounded chat completion against a ready project deployment and return usage and latency.",
+            "Run a bounded chat completion against a ready project deployment. Returns usage, latency, finish_reason and truncated; a truncated answer is incomplete.",
             RunInferenceInput,
             RunInferenceOutput,
             _inference_sync,

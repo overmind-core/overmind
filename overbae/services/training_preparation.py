@@ -13,6 +13,8 @@ from django.utils import timezone
 from modal.exception import ConnectionError as ModalConnectionError
 from modal.exception import InternalError, NotFoundError, ServiceError
 
+from modal_shared.preparation import processor_fingerprint as asset_fingerprint
+from modal_shared.preparation import validate_preparation_report
 from modal_shared.stacks import train_function_name
 from overbae.modal.model_registry import (
     get_hf_base,
@@ -25,17 +27,15 @@ from overbae.services import finetuning_tool_validation, finetuning_validator
 from overbae.services.datasets import examples
 from overbae.services.datasets import rows as row_store
 from overbae.services.datasets import use as dataset_use
-from overbae.services.finetuning_policy import baseten_context_length
+from overbae.services.finetuning_policy import (
+    baseten_context_length,
+    estimated_training_context_length,
+)
 from overbae.services.finetuning_validator import row_to_finetuning_line
 
 
 def processor_fingerprint():
-    assets = Path(__file__).parent / "sft_assets"
-    digest = hashlib.sha256()
-    for path in sorted(p for p in assets.rglob("*") if p.suffix in {".py", ".jinja"}):
-        digest.update(str(path.relative_to(assets)).encode())
-        digest.update(path.read_bytes())
-    return digest.hexdigest()
+    return asset_fingerprint(Path(__file__).parent / "sft_assets")
 
 
 def data_format_fingerprint():
@@ -168,12 +168,18 @@ def advance(preparation_id):
                 pk=prep.pk, state="starting", deadline=prep.deadline
             ).update(state="running", remote_id=call.object_id, touched_at=timezone.now())
         else:
-            report = modal.FunctionCall.from_id(prep.remote_id).get(timeout=0)
+            report = validate_preparation_report(
+                modal.FunctionCall.from_id(prep.remote_id).get(timeout=0)
+            )
+            state = (
+                "failed" if report.get("error") else "ready" if report["ready"] else "incompatible"
+            )
             TrainingPreparation.objects.filter(
                 pk=prep.pk, state="running", remote_id=prep.remote_id
             ).update(
-                state="ready" if report.get("ready") else "incompatible",
+                state=state,
                 report=report,
+                error=report.get("error", ""),
                 touched_at=timezone.now(),
             )
     except TimeoutError:
@@ -213,16 +219,58 @@ def for_job(job):
     hp = job.hyperparameters or {}
     kind = "full" if hp.get("training_type", {}).get("type") == "Full" else "lora"
     config = get_model_config_any_backend(job.base_model) or {}
-    context = baseten_context_length(
-        model_max=training_context_length(config, kind),
+    maximum = training_context_length(config, kind)
+    validation = job.validation_cell if job.validation_enabled else None
+    estimated_tokens = max(
+        int((cell.stats or {}).get("max_token_length") or 0)
+        for cell in (job.cell, validation)
+        if cell is not None
+    )
+    context = estimated_training_context_length(
+        estimated_tokens,
+        model_max=maximum,
         requested=int(hp.get("context_length") or 0) or None,
     )
-    return request_preparation(
+    prep = request_preparation(
         job.cell,
         job.base_model,
         context,
-        validation_cell=job.validation_cell if job.validation_enabled else None,
+        validation_cell=validation,
         training_type=kind,
+    )
+    exact_tokens = int(prep.report.get("max_tokens") or 0)
+    if (
+        prep.state == "incompatible"
+        and exact_tokens > context
+        and (maximum is None or exact_tokens <= maximum)
+    ):
+        # Recheck every row at the measured size; length can coexist with other errors.
+        context = baseten_context_length(model_max=maximum, requested=exact_tokens)
+        prep = request_preparation(
+            job.cell,
+            job.base_model,
+            context,
+            validation_cell=validation,
+            training_type=kind,
+        )
+    return prep
+
+
+def preparation_error(prep):
+    if prep.error:
+        return prep.error
+    longest = int(prep.report.get("max_tokens") or 0)
+    context = int(prep.config["context_length"])
+    if longest > context:
+        return (
+            f"The longest training or validation row needs {longest:,} tokens; "
+            f"the selected training context is {context:,}. "
+            "Choose a model with a larger training context or restructure the affected rows "
+            "in the data workshop. No rows were truncated or dropped."
+        )
+    return (
+        f"{prep.report.get('incompatible_rows', 0)} rows are incompatible with this "
+        "training configuration. Inspect the preprocessing report for the affected rows."
     )
 
 
@@ -233,7 +281,4 @@ def retry_for_job(job):
     if prep.state == "failed":
         retry_preparation(prep)
     elif prep.state == "incompatible":
-        raise ValueError(
-            "The selected data is incompatible with this training configuration. "
-            "Repair the affected rows or change the model settings before retrying."
-        )
+        raise ValueError(preparation_error(prep))

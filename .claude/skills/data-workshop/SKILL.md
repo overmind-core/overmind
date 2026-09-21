@@ -40,7 +40,7 @@ chain; it is separate from the platform's MCP agent surface. `notebook/agent.py`
 owns everything the page sees: the `Tools` class, the one `TOOL_SPECS` table of
 tools — `status`, `prepare_examples`, `query`, `diff`, `try_script`, `inspect`, `add_cell`,
 `edit_cell`, `remove_cell`, `set_active`, `set_intent`, `set_capability`,
-`rename`, `install`, `seed_examples`, `add_synthetic_rows`, `record_quality_review` — the step and event shapes, the persisted turn and billing
+`rename`, `install`, `seed_examples`, `add_synthetic_rows`, `record_quality_review`, `check_semantic_quality` — the step and event shapes, the persisted turn and billing
 (`charge_llm_usage`, service `data-workshop`, engine and model in the metadata).
 Every tool result is JSON-safe; every error is `{ok: false, error}`. `status`
 carries each cell's script so `edit_cell` has something to edit. The system
@@ -52,6 +52,8 @@ schemas; all rows are counted, with 16 retained families and eight clipped examp
 Unlisted-family row counts are explicit and require targeted queries. This is
 structural context, not a semantic audit. MCP `inspect_dataset` exposes the same
 `preparation_context`; the volatile chain arrives through `status`.
+
+`check_semantic_quality` executes named semantic questions against actual rows and declared evidence/answer columns, using Jev with generative fallback. Answer support requires separate answer and independent evidence columns. Each call checks at most 200 rows, packed against the transport's UTF-8 state/question budgets; oversized groups split without truncating evidence. Every completed batch checkpoints results and usage before progress is emitted. Repeated calls reread the saved audit and resume the same frame/context/check contract; changed audit checkpoints cannot overwrite concurrent work. Persisted batch IDs make billing reconciliation idempotent on resume. Results are boolean/null, unprocessed and unsupported rows remain unknown, and reports stay advisory. The persisted audit records row identities, decisions, confidence, fallback and usage; status and MCP expose a bounded summary, not the full resumable state. Both quality tools share `review.record_quality_results`, which checks whole-frame coverage and locks the version/context before merging results. The semantic tool never edits rows, invents labels, or grants approval to a transformation. Deterministic scripts remain the tool for exact rules; generation and semantic-edit approval remain separate.
 
 `notebook/engines/` drives the model. `engines.select()` walks
 `core.model_registry.WORKSHOP_ENGINES` — Cursor, then OpenRouter, then the first

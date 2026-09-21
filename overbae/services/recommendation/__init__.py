@@ -9,6 +9,8 @@ from __future__ import annotations
 import logging
 from typing import Any
 
+from overbae.services.serving_context import evaluation_budget, serving_plan
+
 from .analysis import build_analysis
 from .candidates import build_candidate, dataset_total_tokens
 from .catalog import MODEL_MIN_BATCH, active_backend, find_catalog_model, tier_models
@@ -18,7 +20,9 @@ logger = logging.getLogger(__name__)
 _CLASSIFIER_INPUTS = ("output_kind", "modality", "has_tool_calls")
 
 
-def get_recommendation(dataset_id: str, capability_id: str | None = None) -> dict[str, Any]:
+def get_recommendation(
+    dataset_id: str, capability_id: str | None = None, *, eval_dataset_id: str | None = None
+) -> dict[str, Any]:
     """Ranked fine-tuning candidates for a dataset, grounded in its capability's context.
 
     Without ``capability_id`` classify the dataset, even if it has a capability mapping.
@@ -40,7 +44,7 @@ def get_recommendation(dataset_id: str, capability_id: str | None = None) -> dic
         source = "capability" if task_type != "unknown" else "unknown"
     else:
         task_type, source = _resolve_task_type(dataset, stats)
-    return build_analysis(
+    analysis = build_analysis(
         stats,
         task_type=task_type,
         task_type_source=source,
@@ -48,6 +52,26 @@ def get_recommendation(dataset_id: str, capability_id: str | None = None) -> dic
         if capability is not None
         else None,
     )
+    if eval_dataset_id:
+        evaluation = Dataset.objects.get(pk=eval_dataset_id, project_id=dataset.project_id)
+        cell = evaluation.active_cell
+        if cell is None:
+            raise ValueError("The evaluation dataset has no readable version.")
+        budget = evaluation_budget(cell, capability=capability)
+        accepted = []
+        for candidate in analysis["candidates"]:
+            try:
+                candidate["serving_context"] = serving_plan(candidate["model"], budget)
+                accepted.append(candidate)
+            except ValueError as exc:
+                analysis["excluded"].append({"model": candidate["model"], "reason": str(exc)})
+        analysis["candidates"] = accepted
+        remaining = {candidate["model"] for candidate in accepted}
+        analysis["shown"] = [model for model in analysis["shown"] if model in remaining]
+        if not analysis["shown"] and accepted:
+            analysis["shown"] = [accepted[0]["model"]]
+            accepted[0]["selected"] = True
+    return analysis
 
 
 def estimate_for_hyperparams(

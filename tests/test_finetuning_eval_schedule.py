@@ -5,6 +5,8 @@ from unittest.mock import Mock
 import pytest
 from conftest import TRAIN_ROWS, frozen_dataset
 
+from modal_shared.context_budget import DEFAULT_OUTPUT_TOKENS
+from modal_shared.preparation import preparation_failure
 from overbae.api.serializers import FinetuningJobSerializer
 from overbae.models import (
     Capability,
@@ -288,6 +290,28 @@ def test_launched_modal_job_prepares_data_before_gpu_submission(job, monkeypatch
     resume.assert_called_once_with(kwargs={"job_id": str(job.id)}, countdown=15)
 
 
+def test_preprocessing_worker_failure_preserves_actionable_error_and_never_submits_gpu(
+    job, monkeypatch, settings
+):
+    settings.FINETUNING_BACKEND = "modal"
+    failure = preparation_failure("worker_out_of_date")
+    prep = SimpleNamespace(state="failed", error=failure["error"], report=failure)
+    monkeypatch.setattr("overbae.tasks.finetuning.for_job", lambda _: prep)
+    runner = Mock()
+    monkeypatch.setattr("overbae.services.finetuning_runner.get_runner", lambda: runner)
+    job.max_retries = 0
+    job.save(update_fields=["max_retries"])
+
+    result = run_finetuning(job_id=str(job.id))
+
+    job.refresh_from_db()
+    assert result["status"] == job.status == "failed"
+    assert job.error_message == failure["error"]
+    assert FinetuningJobSerializer(job).data["error_message"] == failure["error"]
+    assert not job.remote_job_id and not job.job_evals.exists()
+    runner.submit.assert_not_called()
+
+
 @pytest.mark.parametrize("existing_waiter", [False, True])
 @pytest.mark.parametrize("cancel_pending", [False, True])
 def test_unresolved_baseline_does_not_change_running_training(
@@ -394,7 +418,7 @@ def test_starting_model_uses_openrouter_without_provisioning_inference(
     assert row.model_id == ref.model_id == "qwen/qwen3.5-9b"
     assert ref.base_url == "https://openrouter.ai/api/v1"
     assert ref.api_key_ref == "OPENROUTER_API_KEY"
-    assert ref.params == {}
+    assert ref.params == {"max_tokens": DEFAULT_OUTPUT_TOKENS}
     assert not baseline_needs_base_deploy(job)
     assert deployment.ensure_baseline_deployment(str(job.pk)) is None
     assert not DeployedModel.objects.exists()

@@ -44,6 +44,7 @@ from overbae.services.datasets import use as dataset_use
 from overbae.services.datasets.lifecycle import DatasetError
 from overbae.services.deployment import deployment_progress
 from overbae.services.eval.trace_scoring import STATUS_ERROR
+from overbae.services.serving_context import evaluation_budget, serving_plan
 
 logger = logging.getLogger(__name__)
 
@@ -1394,6 +1395,11 @@ class FinetuningJobSerializer(serializers.ModelSerializer):
                 explicit=attrs.get("eval_cell") or getattr(self.instance, "eval_cell", None),
             )
             attrs["eval_cell"] = eval_product
+            if base_model:
+                try:
+                    serving_plan(base_model, evaluation_budget(eval_product, capability=capability))
+                except ValueError as exc:
+                    raise serializers.ValidationError({"base_model": str(exc)}) from exc
         eval_set = attrs.get("eval_set") or getattr(self.instance, "eval_set", None)
         if eval_set and project and eval_set.project_id != project.id:
             raise serializers.ValidationError(
@@ -1523,6 +1529,16 @@ class FinetuningEvidenceSerializer(serializers.Serializer):
     provenance = serializers.ChoiceField(choices=["measured", "lab_claimed"])
 
 
+class ServingContextPlanSerializer(serializers.Serializer):
+    input_tokens = serializers.IntegerField()
+    output_tokens = serializers.IntegerField()
+    rows = serializers.IntegerField()
+    required_context = serializers.IntegerField()
+    max_model_len = serializers.IntegerField()
+    model_context_limit = serializers.IntegerField()
+    estimated = serializers.BooleanField()
+
+
 class FinetuningExperimentSerializer(serializers.Serializer):
     """``match`` and ``skill_scores`` are standing among the ``match_pool`` graded candidates
     for this dataset; ``grade`` and below are percentiles over every model the benchmark
@@ -1556,6 +1572,7 @@ class FinetuningExperimentSerializer(serializers.Serializer):
     learning_rate_lora = serializers.FloatField()
     learning_rate_full = serializers.FloatField()
     hyperparam_reasons = serializers.JSONField()
+    serving_context = ServingContextPlanSerializer(required=False)
 
 
 class FinetuningExcludedModelSerializer(serializers.Serializer):

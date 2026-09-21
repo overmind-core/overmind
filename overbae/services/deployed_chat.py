@@ -12,6 +12,7 @@ import time
 from decimal import Decimal
 from typing import Any
 
+from modal_shared.context_budget import INCOMPLETE_FINISH_REASONS
 from overbae.models import BillingService, DeployedModel, InferenceCall, User
 from overbae.services.billing_ledger import charge_credits
 from overbae.services.inference_client import (
@@ -155,11 +156,13 @@ def chat_with_deployed_model(
     record_inference_call(deployed, usage, latency_ms, cold, user=user, metrics=call_metrics)
 
     content = ""
+    finish_reason = None
     if isinstance(result, dict):
         choices = result.get("choices") or []
         if choices:
             message = choices[0].get("message") or {}
             content = message.get("content") or ""
+            finish_reason = choices[0].get("finish_reason")
 
     return {
         "model_id": deployed.model_id,
@@ -167,4 +170,6 @@ def chat_with_deployed_model(
         "usage": usage,
         "latency_ms": latency_ms,
         "is_cold": cold,
+        "finish_reason": finish_reason,
+        "truncated": finish_reason in INCOMPLETE_FINISH_REASONS,
     }

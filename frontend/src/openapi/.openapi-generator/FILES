@@ -125,6 +125,9 @@ models/DatasetStateEnum.ts
 models/DatasetValidateRequestRequest.ts
 models/DatasetValidationResponse.ts
 models/DatasetValidationStats.ts
+models/DecisionPolicy.ts
+models/DecisionPolicyBackendEnum.ts
+models/DecisionPolicyRequest.ts
 models/DeployedModel.ts
 models/DeployedModelStatusEnum.ts
 models/DeploymentProgress.ts
@@ -310,6 +313,7 @@ models/ScoreOutcomeEnum.ts
 models/ScoreSourceEnum.ts
 models/ScoreTypeD08Enum.ts
 models/ServiceEnum.ts
+models/ServingContextPlan.ts
 models/Session.ts
 models/SetCommandTemplateRequest.ts
 models/SourceRequest.ts

@@ -10,6 +10,7 @@ import pytest
 from conftest import TRAIN_ROWS, frozen_dataset
 from mcp_fixtures import training_setup
 
+from modal_shared.preparation import preparation_failure
 from overbae.models import (
     APIToken,
     Cell,
@@ -18,6 +19,7 @@ from overbae.models import (
     FinetuningJob,
     Project,
     ProjectMembership,
+    TrainingPreparation,
     User,
 )
 from overbae.services.datasets import paths, review, store
@@ -147,6 +149,16 @@ def test_exact_preparation_has_pollable_project_scoped_receipt(settings, monkeyp
         return json.loads(contents[0].content)
 
     assert asyncio.run(resource())["status"] == "queued"
+    failure = preparation_failure("worker_out_of_date")
+    TrainingPreparation.objects.filter(pk=receipt["id"]).update(
+        state="failed", report=failure, error=failure["error"]
+    )
+    failed = _call("get_job", {"kind": receipt["kind"], "id": receipt["id"]}, context)
+    assert not failed.isError
+    assert failed.structuredContent["status"] == "failed"
+    assert failed.structuredContent["job_error"] == failure["error"]
+    assert failed.structuredContent["progress"] == failure
+    assert asyncio.run(resource())["error"] == failure["error"]
     other = _context()
     denied = _call("get_job", {"kind": receipt["kind"], "id": receipt["id"]}, other)
     assert denied.isError

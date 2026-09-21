@@ -14,9 +14,10 @@ from typing import Any
 
 from pydantic import Field, create_model
 
+from overbae.core.decisions import merge_stats
 from overbae.models import EvalSetMember, Span, Verdict
 from overbae.models.traces import is_tool_operation
-from overbae.services.eval import funnel
+from overbae.services.eval import decisions, funnel
 from overbae.services.eval.evaluators import base as eval_base
 from overbae.services.eval.funnel import JudgeExecutor, JudgeTask
 from overbae.services.eval.rubric_compiler import numeric_anchor_scale
@@ -25,7 +26,7 @@ from overbae.services.eval.specs import DETAIL_TIERS, EvaluatorSpec, Warrant
 logger = logging.getLogger(__name__)
 
 GROUNDING_VERDICT_NAME = "grounding"
-_GROUNDING_RUBRIC_VERSION = "grounding@v2"
+_GROUNDING_RUBRIC_VERSION = "grounding@v3:jev-entailment"
 
 _OUTCOME_MAP = {
     eval_base.OUTCOME_SCORED: Verdict.Outcome.SCORED,
@@ -319,6 +320,9 @@ def _rubric_digest(evaluator) -> str:
         evaluator.scope,
         evaluator.score_type,
     )
+    digest = funnel.rubric_hash(
+        digest, decisions.policy_for(evaluator).model_dump_json(), decisions.ADAPTER_VERSION
+    )
     # The anchor scale is part of the judge contract: changing it re-dispatches.
     anchors = numeric_anchor_scale(evaluator)
     if anchors:
@@ -605,7 +609,13 @@ def verdict_kwargs_from_draft(
             float(draft.value), evaluator.score_min, evaluator.score_max
         )
     cost = draft.cost
-    if evaluator.kind not in ("deterministic", "statistical") and not cost:
+    decision = next((item["_decision"] for item in draft.sub_scores if "_decision" in item), None)
+    step_decisions = [item["decision"] for item in draft.sub_scores if item.get("decision")]
+    if decision and "total_cost" in decision:
+        cost = decision["total_cost"]
+    elif step_decisions and any(item.get("total_cost") is None for item in step_decisions):
+        cost = None
+    elif evaluator.kind not in ("deterministic", "statistical") and not cost:
         cost = None  # unknown judge cost poisons totals rather than undercounting
     provenance = (evaluator.config or {}).get("provenance") or {}
     return {
@@ -841,7 +851,13 @@ def _nli_schema(n: int):
 
 def grounding_identifier() -> str:
     judge = funnel.resolve_judge("")
-    digest = funnel.rubric_hash(_GROUNDING_RUBRIC_VERSION, _DECOMPOSE_PROMPT, _NLI_PROMPT)
+    digest = funnel.rubric_hash(
+        _GROUNDING_RUBRIC_VERSION,
+        _DECOMPOSE_PROMPT,
+        _NLI_PROMPT,
+        decisions.DecisionPolicy(backend="jev").model_dump_json(),
+        decisions.ADAPTER_VERSION,
+    )
     return funnel.judge_contract_identifier(judge, digest)
 
 
@@ -865,15 +881,13 @@ def grounding_verdict(
     """Score is supported / (supported + contradicted), coverage reported apart:
     a corpus that decides nothing is an abstention, never a zero."""
     judge = funnel.resolve_judge("")
-    digest = funnel.rubric_hash(_GROUNDING_RUBRIC_VERSION, _DECOMPOSE_PROMPT, _NLI_PROMPT)
-    identifier = funnel.judge_contract_identifier(judge, digest)
     base = {
         "project_id": project_id,
         "evaluator": None,
         "evaluator_name": GROUNDING_VERDICT_NAME,
         "target_kind": Verdict.TargetKind.SPAN,
         "target_id": target_id,
-        "identifier": identifier,
+        "identifier": grounding_identifier(),
         "annotator_kind": Verdict.AnnotatorKind.LLM,
     }
 
@@ -921,13 +935,50 @@ def grounding_verdict(
 
     corpus_text = "\n".join(corpus)[:240_000]
     claims_text = "\n".join(f"{i}. {c}" for i, c in enumerate(claims))
-    checked = funnel.invoke_judge(
-        _NLI_PROMPT.format(corpus=corpus_text, claims=claims_text),
-        response_format=_nli_schema(len(claims)),
-        judge=judge,
+    schema = _nli_schema(len(claims))
+
+    def fallback():
+        return funnel.invoke_judge(
+            _NLI_PROMPT.format(corpus=corpus_text, claims=claims_text),
+            response_format=schema,
+            judge=judge,
+            project_id=project_id,
+        )
+
+    checked = decisions.invoke(
+        {"environment_evidence": corpus},
+        {
+            str(index): decisions.decision_question(
+                f"Determine whether environment_evidence supports this claim: {claim}",
+                decisions.SUPPORT_OPTIONS,
+            )
+            for index, claim in enumerate(claims)
+        },
+        convert=lambda answers: schema.model_validate(
+            {
+                "checks": [
+                    {
+                        "index": int(index),
+                        "verdict": answer.choice or "insufficient",
+                        "explanation": f"Claim {index}: {answer.choice}.",
+                    }
+                    for index, answer in answers.items()
+                ]
+            }
+        ),
+        fallback=fallback,
         project_id=project_id,
+        workload="trace_grounding",
+        contract=_GROUNDING_RUBRIC_VERSION,
+        independent=True,
+        judge=judge,
     )
     costs.append(_call_cost(checked.stats))
+    if checked.stats.get("decision"):
+        checked.stats["decision"].update(
+            extraction_usage=decomposed.stats,
+            total_cost=merge_stats([decomposed.stats, checked.stats]).get("response_cost"),
+        )
     checks = getattr(checked.parsed, "checks", None) or []
     verdict_by_index = {int(c.index): str(c.verdict) for c in checks}
     per_claim = [
@@ -950,7 +1001,10 @@ def grounding_verdict(
             "outcome": Verdict.Outcome.ABSTAINED,
             "explanation": explanation,
             "unmet": ["claims:uncheckable"],
-            "metadata": {**_grounding_metadata(sub_scores=per_claim), "coverage": 0.0},
+            "metadata": {
+                **_grounding_metadata(sub_scores=per_claim + decisions.provenance(checked)),
+                "coverage": 0.0,
+            },
             "judge_trace_id": checked.judge_trace_id,
             "cost": _accrue(costs),
         }
@@ -963,6 +1017,7 @@ def grounding_verdict(
     )
     sub_scores = [
         *per_claim,
+        *decisions.provenance(checked),
         {
             "_grounding": {
                 "supported": supported,

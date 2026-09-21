@@ -1,7 +1,17 @@
 import { Handle, type NodeProps, Position } from "@xyflow/react";
 
 import { FileRef } from "@/components/capability-detail/file-ref";
+import { ModelProviderChip } from "@/components/model-provider-chip";
 import { Badge } from "@/components/ui/badge";
+import {
+  Dialog,
+  DialogBody,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
 import { Icon } from "@/components/ui/icons";
 import { PROSE } from "@/lib/typography";
 import { cn } from "@/lib/utils";
@@ -56,8 +66,8 @@ function NodeCard({
   selected,
   children,
 }: {
-  icon: React.ReactNode;
-  title: string;
+  icon?: React.ReactNode;
+  title: React.ReactNode;
   subtitle?: string;
   footer: React.ReactNode;
   width: number;
@@ -92,13 +102,18 @@ function NodeCard({
           children && "border-b border-border/70"
         )}
       >
-        <span className={cn("flex h-5 w-4 shrink-0 items-center justify-center", iconClass)}>
-          {icon}
-        </span>
+        {icon && (
+          <span className={cn("flex h-5 w-4 shrink-0 items-center justify-center", iconClass)}>
+            {icon}
+          </span>
+        )}
         <div className="min-w-0 flex-1">
-          <p className="text-sm font-semibold leading-5 text-foreground" title={title}>
+          <div
+            className="text-sm font-semibold leading-5 text-foreground"
+            title={typeof title === "string" ? title : undefined}
+          >
             {title}
-          </p>
+          </div>
           {subtitle ? (
             <p className="truncate text-xs leading-4 text-muted-foreground" title={subtitle}>
               {subtitle}
@@ -205,6 +220,50 @@ function MayUseList({ capabilities }: { capabilities: StepCapability[] }) {
   );
 }
 
+function SystemPrompt({ text, excerpt }: { text: string; excerpt: boolean }) {
+  const label = excerpt ? "System prompt (excerpt)" : "System prompt";
+  if (!text) return <ContractRow label="System prompt" text="Not captured" />;
+  return (
+    <Dialog>
+      <DialogTrigger asChild>
+        <button
+          aria-label={`Expand ${label.toLowerCase()}`}
+          className="nodrag nopan w-full min-w-0 rounded-sm text-left focus-visible:outline focus-visible:outline-2 focus-visible:outline-ring"
+          onClick={(event) => event.stopPropagation()}
+          type="button"
+        >
+          <span className="pixel-label mb-1 flex items-center justify-between gap-2 text-xs text-muted-foreground">
+            {label}
+            <Icon.expand className="size-3 shrink-0" />
+          </span>
+          <span className="line-clamp-3 whitespace-pre-wrap break-words text-xs leading-snug text-foreground">
+            {text}
+          </span>
+        </button>
+      </DialogTrigger>
+      <DialogContent
+        className="nodrag nopan nowheel"
+        onClick={(event) => event.stopPropagation()}
+        size="lg"
+      >
+        <DialogHeader>
+          <DialogTitle>{label}</DialogTitle>
+          <DialogDescription>
+            {excerpt
+              ? "Only an excerpt was captured from the capability source."
+              : "Captured from the capability source."}
+          </DialogDescription>
+        </DialogHeader>
+        <DialogBody>
+          <pre className="whitespace-pre-wrap break-words font-mono text-xs leading-relaxed">
+            {text}
+          </pre>
+        </DialogBody>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 function StepNode({ data, selected }: NodeProps) {
   const d = data as unknown as StepNodeData;
   const shared = d.pathNames.length > 1;
@@ -217,9 +276,7 @@ function StepNode({ data, selected }: NodeProps) {
         <PixelFooter>{invocation ? "Model call" : shared ? "Shared step" : "Step"}</PixelFooter>
       }
       icon={
-        invocation ? (
-          <Icon.model className="size-4" />
-        ) : branches || d.condition ? (
+        invocation ? null : branches || d.condition ? (
           <Icon.gitBranch className="size-4" />
         ) : (
           <Icon.algorithm className="size-4" />
@@ -227,10 +284,21 @@ function StepNode({ data, selected }: NodeProps) {
       }
       iconClass={invocation ? "text-primary" : "text-cat-4"}
       selected={selected}
-      subtitle={shared ? undefined : d.pathNames[0]}
-      title={d.label}
+      subtitle={invocation ? d.label : shared ? undefined : d.pathNames[0]}
+      title={
+        invocation ? (
+          d.model ? (
+            <ModelProviderChip compact model={d.model} />
+          ) : (
+            "Model not captured"
+          )
+        ) : (
+          d.label
+        )
+      }
       width={280}
     >
+      {invocation && <SystemPrompt excerpt={d.promptIsExcerpt} text={d.systemPrompt} />}
       {shared ? (
         <div className="flex flex-wrap gap-1">
           {d.pathNames.map((name) => (

@@ -24,6 +24,7 @@ const mocks = vi.hoisted(() => ({
         tier: "small",
       },
     ],
+    excluded: [] as Array<{ model: string; reason: string }>,
     shown: ["model"],
   },
   sets: {
@@ -65,6 +66,7 @@ vi.mock("@/hooks/use-finetuning", () => ({
   useValidateDatasetMutation: () => ({ mutateAsync: mocks.validate }),
 }));
 beforeEach(() => {
+  mocks.recommendation.excluded = [];
   mocks.catalog.backend = "baseten";
   mocks.overlapCount = 0;
   mocks.train.results[0].capability = "cap";
@@ -81,6 +83,18 @@ const args = {
   onLaunched: vi.fn(),
   projectId: "project",
 };
+
+it("blocks an already selected model after the evaluation context becomes incompatible", async () => {
+  const { result, rerender } = renderHook(() => useTrainWizard(args));
+  await waitFor(() => expect(result.current.canLaunch).toBe(true));
+  mocks.recommendation = {
+    ...mocks.recommendation,
+    excluded: [{ model: "model", reason: "Evaluation exceeds serving capacity." }],
+  };
+  rerender();
+  expect(result.current.launchBlocker).toBe("Evaluation exceeds serving capacity.");
+  expect(result.current.canLaunch).toBe(false);
+});
 
 it("launches Modal jobs without starting or waiting for setup preprocessing", async () => {
   mocks.catalog.backend = "modal";
@@ -193,7 +207,7 @@ it("launches with no capability and a project-scoped unassigned eval set", async
   await waitFor(() => expect(result.current.canLaunch).toBe(true));
   expect(result.current.capabilityId).toBe("");
   expect(result.current.evalSets.map((set) => set.id)).toEqual(["set"]);
-  expect(mocks.recommend).toHaveBeenCalledWith("train", undefined);
+  expect(mocks.recommend).toHaveBeenCalledWith("train", undefined, "eval");
   await act(() => result.current.launch());
   expect(mocks.create).toHaveBeenCalledWith([
     expect.objectContaining({

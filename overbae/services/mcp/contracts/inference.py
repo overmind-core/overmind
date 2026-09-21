@@ -34,6 +34,9 @@ class RunInferenceOutput(MCPModel):
     usage: InferenceUsage | None = None
     latency_ms: float = Field(ge=0)
     is_cold: bool
+    finish_reason: str | None = None
+    truncated: bool = False
+    content_clipped: bool = False
     resource: ResourceLinkContract
 
 

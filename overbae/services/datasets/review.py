@@ -7,7 +7,7 @@ import pandas as pd
 from django.db import transaction
 from django.utils import timezone
 
-from overbae.models import Cell
+from overbae.models import Cell, Dataset
 from overbae.services.datasets import paths, rows, store
 from overbae.services.datasets.context import context_fingerprint
 from overbae.services.datasets.contract import public_intent
@@ -37,7 +37,17 @@ _COVERAGE_COLUMNS = (
 
 
 def summary(report: dict) -> dict:
-    return {key: value for key, value in report.items() if not key.endswith("_examples")}
+    result = {key: value for key, value in report.items() if not key.endswith("_examples")}
+    if result.get("semantic_audit"):
+        audit = result["semantic_audit"]
+        result["semantic_audit"] = {
+            "method": audit["method"],
+            "contract": audit["contract"],
+            "definitions": audit["definitions"],
+            "processed_rows": len(audit.get("results", {})),
+            "batches": len(audit.get("batches", [])),
+        }
+    return result
 
 
 def same_frame(before: pd.DataFrame, after: pd.DataFrame) -> bool:
@@ -176,7 +186,10 @@ def quality_blockers(cell) -> list[str]:
     checks = (cell.quality_report or {}).get("checks") or []
     indexed = {check["name"]: check for check in checks}
     blockers = []
-    if (cell.quality_report or {}).get("audit", {}).get("method") != "row_results":
+    if (cell.quality_report or {}).get("audit", {}).get("method") not in {
+        "row_results",
+        "semantic_decisions",
+    }:
         blockers.append("Quality claims have no executed row-level audit.")
     for name, label in REQUIRED_CHECKS.items():
         check = indexed.get(name)
@@ -228,6 +241,39 @@ def record_quality(dataset, cell, checks: list[dict], *, script: str) -> dict:
     rows.verify(cell)
     if not script.strip():
         raise ValueError("Provide an audit script that computes row-level results.")
+    context = context_fingerprint(dataset.capability)
+    result = runner.run(
+        script,
+        paths.cell_path(dataset.id, cell.id),
+        library_cache=paths.library_cache(dataset.project_id),
+    )
+    if result.frame is None:
+        raise ValueError(result.error or "The audit produced no row results.")
+    return record_quality_results(
+        dataset,
+        cell,
+        checks,
+        result.frame,
+        audit={"method": "row_results", "script": script},
+        reviewer="workshop_agent",
+        context=context,
+    )
+
+
+def record_quality_results(
+    dataset,
+    cell,
+    checks: list[dict],
+    measured: pd.DataFrame,
+    *,
+    audit: dict,
+    reviewer: str,
+    context: str,
+    semantic_audit: dict | None = None,
+    expected_semantic_audit: dict | None = None,
+    original: pd.DataFrame | None = None,
+) -> dict:
+    rows.verify(cell)
     if not checks or len(checks) > 30:
         raise ValueError("Provide between 1 and 30 measured quality checks.")
     names = set()
@@ -244,15 +290,8 @@ def record_quality(dataset, cell, checks: list[dict], *, script: str) -> dict:
         if name == store.SOURCE_ROW or len(name) > 200:
             raise ValueError("Check names must be at most 200 characters and not source_row.")
         names.add(name)
-    original = store.read_frame(paths.cell_path(dataset.id, cell.id))
-    result = runner.run(
-        script,
-        paths.cell_path(dataset.id, cell.id),
-        library_cache=paths.library_cache(dataset.project_id),
-    )
-    if result.frame is None:
-        raise ValueError(result.error or "The audit produced no row results.")
-    measured = result.frame
+    if original is None:
+        original = store.read_frame(paths.cell_path(dataset.id, cell.id))
     if (
         set(measured.columns) != {store.SOURCE_ROW, *names}
         or len(measured) != len(original)
@@ -293,17 +332,46 @@ def record_quality(dataset, cell, checks: list[dict], *, script: str) -> dict:
     rows.verify(cell)
     report = {
         "fingerprint": cell.fingerprint,
-        "context_fingerprint": context_fingerprint(dataset.capability),
+        "context_fingerprint": context,
         "intent": public_intent(dataset.intent),
-        "reviewer": "workshop_agent",
+        "reviewer": reviewer,
         "at": timezone.now().isoformat(),
         "checks": outcomes,
-        "audit": {"method": "row_results", "script": script},
+        "audit": audit,
+        **({"semantic_audit": semantic_audit} if semantic_audit is not None else {}),
     }
     with transaction.atomic():
+        current_dataset = (
+            Dataset.objects.select_for_update(of=("self",))
+            .select_related("capability")
+            .get(pk=dataset.pk)
+        )
         current = Cell.objects.select_for_update().get(pk=cell.pk)
-        if current.fingerprint != cell.fingerprint:
+        if (
+            current.fingerprint != cell.fingerprint
+            or current_dataset.intent != dataset.intent
+            or current_dataset.capability_id != dataset.capability_id
+            or context_fingerprint(current_dataset.capability) != context
+        ):
             raise ValueError("The version changed during the audit. Run the audit again.")
+        previous = current.quality_report or {}
+        if semantic_audit is not None and previous.get("semantic_audit") != expected_semantic_audit:
+            raise ValueError(
+                "The semantic audit changed during this batch. Resume the audit again."
+            )
+        if (
+            previous.get("fingerprint") == cell.fingerprint
+            and previous.get("context_fingerprint") == context
+            and previous.get("intent") == report["intent"]
+        ):
+            report["checks"] = [
+                c for c in previous.get("checks", []) if c["name"] not in names
+            ] + outcomes
+            report["audits"] = {**previous.get("audits", {}), **dict.fromkeys(names, audit)}
+            if semantic_audit is None and previous.get("semantic_audit"):
+                report["semantic_audit"] = previous["semantic_audit"]
+        else:
+            report["audits"] = dict.fromkeys(names, audit)
         Cell.objects.filter(pk=cell.pk).update(quality_report=report)
     cell.quality_report = report
     return report

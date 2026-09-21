@@ -132,6 +132,14 @@ use or require an approval step. Report the remaining work from `quality_report`
 `readiness.quality_reason` and MCP cell `warnings`. Send requested corrections to
 `message_dataset_agent`, not to the training pipeline. Let the user continue.
 These are agent-reported semantic audits, not independent guarantees of truth.
+Request semantic checks through `message_dataset_agent`; the workshop's internal
+`check_semantic_quality` tool evaluates actual rows with Jev and generative fallback.
+Name the check and its independent evidence/answer columns. It checks at most 200
+rows per call, checkpoints each completed context-sized batch, and resumes the
+same version and check contract after interruption; ask it to continue
+until coverage is complete. Missing evidence remains unknown, never a pass.
+`inspect_dataset` returns counts and a bounded audit summary, not all row-level
+decision payloads. Running a check does not approve an edit or certify a label.
 The selected capability defines the target boundary and canonical prompt: worker
 outputs are not end-to-end outputs. Eval inputs must preserve the evidence and
 tool transcripts needed to derive their references. Never repair missing evidence

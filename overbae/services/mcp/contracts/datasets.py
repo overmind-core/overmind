@@ -510,7 +510,7 @@ def _cell_summary(dataset, cell: Cell, versions: dict, frozen_before: int) -> Ce
         intent_report=_jsonable(cell.intent_report or {}),
         capability_report=_jsonable(cell.capability_report or {}),
         review=_jsonable(cell.review),
-        quality_report=_jsonable(cell.quality_report),
+        quality_report=_jsonable(review.summary(cell.quality_report or {})),
         readiness=review.readiness(dataset, cell),
         fits=_fit(cell, public_intent(dataset.intent)),
         seconds=float(cell.seconds or 0),

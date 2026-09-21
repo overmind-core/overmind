@@ -34,6 +34,13 @@ import {
     FinetuningEvidenceToJSON,
     FinetuningEvidenceToJSONTyped,
 } from './FinetuningEvidence';
+import type { ServingContextPlan } from './ServingContextPlan';
+import {
+    ServingContextPlanFromJSON,
+    ServingContextPlanFromJSONTyped,
+    ServingContextPlanToJSON,
+    ServingContextPlanToJSONTyped,
+} from './ServingContextPlan';
 import type { ConfidenceEnum } from './ConfidenceEnum';
 import {
     ConfidenceEnumFromJSON,
@@ -239,6 +246,12 @@ export interface FinetuningExperiment {
      * @memberof FinetuningExperiment
      */
     hyperparamReasons: any | null;
+    /**
+     *
+     * @type {ServingContextPlan}
+     * @memberof FinetuningExperiment
+     */
+    servingContext?: ServingContextPlan;
 }
 
 
@@ -311,6 +324,7 @@ export function FinetuningExperimentFromJSONTyped(json: any, ignoreDiscriminator
         'learningRateLora': json['learning_rate_lora'],
         'learningRateFull': json['learning_rate_full'],
         'hyperparamReasons': json['hyperparam_reasons'],
+        'servingContext': json['serving_context'] == null ? undefined : ServingContextPlanFromJSON(json['serving_context']),
     };
 }
 
@@ -353,5 +367,6 @@ export function FinetuningExperimentToJSONTyped(value?: FinetuningExperiment | n
         'learning_rate_lora': value['learningRateLora'],
         'learning_rate_full': value['learningRateFull'],
         'hyperparam_reasons': value['hyperparamReasons'],
+        'serving_context': ServingContextPlanToJSON(value['servingContext']),
     };
 }

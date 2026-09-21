@@ -362,6 +362,7 @@ function ModelRow({
   estimate,
   grades,
   selected,
+  incompatibility,
   skillWeights,
   canRemove,
   onChange,
@@ -374,6 +375,7 @@ function ModelRow({
   estimate?: FinetuningEstimateResponse;
   grades: GradeIndex;
   selected: boolean;
+  incompatibility?: string;
   skillWeights: Record<string, number>;
   canRemove: boolean;
   onChange: (next: ModelDraft) => void;
@@ -386,6 +388,7 @@ function ModelRow({
   const [panel, setPanel] = useState<"evidence" | "tune" | null>(null);
   const panelId = useId();
   const tier = TIER_META[draft.tier];
+  const servingContext = grades.get(draft.model)?.servingContext;
   const openPanel = (next: "evidence" | "tune") =>
     setPanel((prev) => (prev === next ? null : next));
   // Swapping the model under an open evidence panel can leave it with nothing to show.
@@ -450,6 +453,14 @@ function ModelRow({
           </div>
 
           {draft.evidence.length === 0 && <UngradedNote className="mt-1.5" />}
+          {servingContext && (
+            <p className="mt-1.5 text-xs text-muted-foreground">
+              Serving context {servingContext.maxModelLen.toLocaleString()} tokens
+              {" · "}Output budget {servingContext.outputTokens.toLocaleString()} tokens
+              {" · "}Estimated from eval data
+            </p>
+          )}
+          {incompatibility && <p className="mt-1.5 text-xs text-destructive">{incompatibility}</p>}
         </div>
       </div>
 
@@ -587,6 +598,7 @@ export function ModelsPanel({ wizard }: { wizard: TrainWizard }) {
                   draft={draft}
                   estimate={estimates.get(draft.id)}
                   grades={candidateByModel}
+                  incompatibility={excluded.find((entry) => entry.model === draft.model)?.reason}
                   key={draft.id}
                   onChange={(next) => updateDraft(draft.id, next)}
                   onChangeModel={(modelId) => {

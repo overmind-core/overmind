@@ -264,7 +264,8 @@ export const useValidateDatasetMutation = () =>
 
 export const useRecommendModelsQuery = (
   datasetId: string | undefined,
-  capabilityId?: string | undefined
+  capabilityId?: string | undefined,
+  evalDatasetId?: string | undefined
 ) =>
   useQuery({
     enabled: !!datasetId,
@@ -274,9 +275,10 @@ export const useRecommendModelsQuery = (
         finetuningRecommendRequestRequest: {
           capabilityId: capabilityId ?? null,
           datasetId: datasetId!,
+          evalDatasetId: evalDatasetId ?? null,
         },
       }),
-    queryKey: ["finetuning-recommend", datasetId, capabilityId ?? null],
+    queryKey: ["finetuning-recommend", datasetId, capabilityId ?? null, evalDatasetId ?? null],
     staleTime: 60_000,
   });
 

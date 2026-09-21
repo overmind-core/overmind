@@ -222,7 +222,8 @@ export function useTrainWizard({
   // appear without a separate action.
   const recommendQuery = useRecommendModelsQuery(
     dataReady ? datasetId : "",
-    dataReady ? capabilityId || undefined : undefined
+    dataReady ? capabilityId || undefined : undefined,
+    dataReady ? evalDatasetId || undefined : undefined
   );
   const rec = recommendQuery.data;
 
@@ -447,9 +448,13 @@ export function useTrainWizard({
     if (!evalDatasetId) return "Select an eval dataset";
     if (!evalSetId) return "Select an eval set";
     if (benchmarkModel && !selectedBenchmark) return "Select an available benchmark model";
-    if (recommendQuery.isLoading && drafts.length === 0) return "Loading recommendations";
+    if (recommendQuery.isLoading) return "Checking model compatibility";
     if (drafts.length === 0) return "Add a model";
     if (selectedDrafts.length === 0) return "Select an experiment";
+    const incompatible = excluded.find((entry) =>
+      selectedDrafts.some((draft) => draft.model === entry.model)
+    );
+    if (incompatible) return incompatible.reason;
     if (!runName.trim()) return "Name the run";
     if (!hasCredits) return "Out of credits";
     return null;

@@ -145,6 +145,30 @@ const cards = () =>
   within(screen.getByRole("list", { name: "Experiments" })).getAllByRole("listitem");
 
 describe("candidate list", () => {
+  it("shows the serving reservation separately from training parameters", () => {
+    const candidate = {
+      ...CANDIDATES[0],
+      servingContext: {
+        estimated: true,
+        inputTokens: 6000,
+        maxModelLen: 16384,
+        modelContextLimit: 131072,
+        outputTokens: 8192,
+        requiredContext: 14704,
+        rows: 150,
+      },
+    };
+    setup({ candidateByModel: new Map([[candidate.model, candidate]]) });
+    expect(screen.getByText(/Serving context 16,384 tokens/)).toBeTruthy();
+    expect(screen.getByText(/Output budget 8,192 tokens/)).toBeTruthy();
+  });
+
+  it("shows why a selected model cannot fit the evaluation", () => {
+    setup({
+      excluded: [{ model: DRAFTS[0].model, reason: "Evaluation needs a larger serving context." }],
+    });
+    expect(within(cards()[0]).getByText("Evaluation needs a larger serving context.")).toBeTruthy();
+  });
   it("stacks the candidates one to a row", () => {
     setup();
 

@@ -2017,6 +2017,11 @@ class TestJudgeFieldRefs:
         draft = gen_judge._draft_from_outcome(self._outcome(items), ev, output='{"other": 1}')
         by_id = {s["id"]: s for s in draft.sub_scores if "id" in s}
         assert by_id["decision"]["verdict"] is False
+        assert (
+            by_id["decision"]["reasoning"]
+            == "Required output field 'decision' is missing from the JSON object."
+        )
+        assert draft.reasoning == "Missing required output fields: decision."
         assert draft.value == 0.0
 
     def test_field_bound_null_key_is_present(self):

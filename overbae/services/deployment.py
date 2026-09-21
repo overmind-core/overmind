@@ -21,6 +21,7 @@ from overbae.models import DeployedModel, FinetuningJob, FinetuningJobEval
 from overbae.services.finetuning_runner import MAX_ACTIVITY_LINES
 from overbae.services.model_catalog import resolve_training_openrouter_slug
 from overbae.services.plan_limits import PlanLimitExceeded, require_plan_quota
+from overbae.services.serving_context import job_serving_plan
 
 logger = logging.getLogger(__name__)
 
@@ -102,7 +103,7 @@ def ensure_training_deployment(job_id: str) -> DeployedModel | None:
     with transaction.atomic():
         job = (
             FinetuningJob.objects.select_for_update(of=("self",))
-            .select_related("project", "triggered_by")
+            .select_related("project", "triggered_by", "eval_cell", "capability")
             .filter(pk=job_id)
             .first()
         )
@@ -127,11 +128,7 @@ def ensure_training_deployment(job_id: str) -> DeployedModel | None:
                 )
                 return None
         cfg = get_model_config_any_backend(job.base_model) or {}
-        context = int(
-            (job.hyperparameters or {}).get("context_length")
-            or (cfg.get("inference") or {}).get("max_model_len")
-            or 8192
-        )
+        context = job_serving_plan(job)["max_model_len"]
         adapter = serves_as_adapter(job)
         gpu, _ = select_gpu({**cfg, "fp8_supported": False} if adapter else cfg, context)
         deployed = DeployedModel.objects.create(
@@ -156,18 +153,18 @@ def ensure_baseline_deployment(job_id: str) -> DeployedModel | None:
         tick_job_evals,
     )
 
-    job = FinetuningJob.objects.select_related("project", "capability").filter(pk=job_id).first()
+    job = (
+        FinetuningJob.objects.select_related("project", "capability", "eval_cell")
+        .filter(pk=job_id)
+        .first()
+    )
     if not job or job.status in ("failed", "cancelled") or not job_wants_evals(job):
         return None
     if not baseline_needs_base_deploy(job):
         tick_job_evals(job)
         return None
     cfg = get_model_config_any_backend(job.base_model) or {}
-    context = int(
-        (job.hyperparameters or {}).get("context_length")
-        or (cfg.get("inference") or {}).get("max_model_len")
-        or 8192
-    )
+    context = job_serving_plan(job)["max_model_len"]
     gpu, _ = select_gpu(cfg, context)
     with transaction.atomic():
         deployed, created = DeployedModel.objects.get_or_create(
@@ -181,6 +178,14 @@ def ensure_baseline_deployment(job_id: str) -> DeployedModel | None:
         )
         deployed = DeployedModel.objects.select_for_update().get(pk=deployed.pk)
         new_waiter = not deployed.deployment_waiters.filter(pk=job.pk).exists()
+        can_resize = (
+            deployed.status in ("ready", "deleted")
+            or (deployed.status == "failed" and new_waiter and bool(deployed.deployment_stage))
+        ) and not (deployed.deployment_dispatching or deployed.deployment_cancel_pending)
+        if not created and deployed.max_model_len < context and can_resize:
+            deployed.max_model_len = context
+            deployed.gpu_type = gpu
+            _reset(deployed)
         deployed.deployment_waiters.add(job)
         if not created and not deployed.deployment_stage and deployed.status == "failed":
             deployed.deployment_dispatching = True
@@ -499,7 +504,11 @@ def _publish_progress(deployed: DeployedModel) -> None:
 
 def _notify(deployed: DeployedModel) -> None:
     # Eval scheduling resolves deployments, so importing it at module scope cycles.
-    from overbae.services.finetuning_eval import resolve_baseline_model, tick_job_evals
+    from overbae.services.finetuning_eval import (
+        baseline_needs_base_deploy,
+        resolve_baseline_model,
+        tick_job_evals,
+    )
 
     with transaction.atomic():
         if deployed.finetuning_job_id:
@@ -519,11 +528,26 @@ def _notify(deployed: DeployedModel) -> None:
                 completed_at=timezone.now(),
                 error_message=deployed.error_message,
             )
-        for job in (
-            FinetuningJob.objects.select_related("capability__benchmark_model")
+        jobs = list(
+            FinetuningJob.objects.select_related("capability__benchmark_model", "eval_cell")
             .filter(pk__in=job_ids)
             .exclude(status__in=("failed", "cancelled"))
-        ):
+        )
+        # A larger workload can attach while the shared deployment is booting.
+        # Finish that remote operation before resizing, then notify all waiters.
+        if not deployed.finetuning_job_id and deployed.status == "ready":
+            requirements = [
+                (job_serving_plan(job)["max_model_len"], job)
+                for job in jobs
+                if baseline_needs_base_deploy(job)
+            ]
+            if requirements:
+                context, largest = max(requirements, key=lambda requirement: requirement[0])
+                if context > deployed.max_model_len:
+                    resized = ensure_baseline_deployment(str(largest.pk))
+                    if resized and resized.deployment_generation != deployed.deployment_generation:
+                        return
+        for job in jobs:
             if deployed.status == "failed" and job.eval_set_id and job.eval_dataset_id:
                 kinds = []
                 if deployed.finetuning_job_id and job.eval_model_after:

@@ -20,6 +20,13 @@ import {
     ApplicableRolesEnumToJSON,
     ApplicableRolesEnumToJSONTyped,
 } from './ApplicableRolesEnum';
+import type { DecisionPolicyRequest } from './DecisionPolicyRequest';
+import {
+    DecisionPolicyRequestFromJSON,
+    DecisionPolicyRequestFromJSONTyped,
+    DecisionPolicyRequestToJSON,
+    DecisionPolicyRequestToJSONTyped,
+} from './DecisionPolicyRequest';
 import type { ScoreTypeD08Enum } from './ScoreTypeD08Enum';
 import {
     ScoreTypeD08EnumFromJSON,
@@ -65,6 +72,12 @@ export interface AuthorJudgeEvaluatorRequestRequest {
      * @memberof AuthorJudgeEvaluatorRequestRequest
      */
     judgeModel?: string;
+    /**
+     *
+     * @type {DecisionPolicyRequest}
+     * @memberof AuthorJudgeEvaluatorRequestRequest
+     */
+    decisionPolicy?: DecisionPolicyRequest;
     /**
      *
      * @type {string}
@@ -187,6 +200,7 @@ export function AuthorJudgeEvaluatorRequestRequestFromJSONTyped(json: any, ignor
         'capability': json['capability'] == null ? undefined : json['capability'],
         'name': json['name'],
         'judgeModel': json['judge_model'] == null ? undefined : json['judge_model'],
+        'decisionPolicy': json['decision_policy'] == null ? undefined : DecisionPolicyRequestFromJSON(json['decision_policy']),
         'evaluationPrompt': json['evaluation_prompt'],
         'scoreType': ScoreTypeD08EnumFromJSON(json['score_type']),
         'scoreReasoningPrompt': json['score_reasoning_prompt'] == null ? undefined : json['score_reasoning_prompt'],
@@ -219,6 +233,7 @@ export function AuthorJudgeEvaluatorRequestRequestToJSONTyped(value?: AuthorJudg
         'capability': value['capability'],
         'name': value['name'],
         'judge_model': value['judgeModel'],
+        'decision_policy': DecisionPolicyRequestToJSON(value['decisionPolicy']),
         'evaluation_prompt': value['evaluationPrompt'],
         'score_type': ScoreTypeD08EnumToJSON(value['scoreType']),
         'score_reasoning_prompt': value['scoreReasoningPrompt'],
