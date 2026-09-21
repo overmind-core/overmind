@@ -1,95 +1,238 @@
-# Overmind Platform
+<img width="6000" height="2000" alt="X Company Banner Stone (1)" src="https://github.com/user-attachments/assets/8ba6a64f-0819-47bd-9d58-af89ee3e7bad" />
 
-Open-source platform for continuously improving production agents with real usage data.
+# The Training Platform for Specialized Model
 
-**Console:** [console.overmindlab.ai](https://console.overmindlab.ai/) ·
-**Site:** [overmindlab.ai](https://www.overmindlab.ai/) ·
-**Docs:** [docs.overmindlab.ai](https://docs.overmindlab.ai)
+<p align="center">
+  <a href="https://console.overmindlab.ai/">Console</a> | <a href="https://www.overmindlab.ai/">Site</a> | <a href="#run-it-yourself">Self-host</a>
+</p>
+<p align="center">
+  <a href="https://docs.overmindlab.ai"><img src="https://img.shields.io/badge/Docs-docs.overmindlab.ai-ed670f?style=for-the-badge" alt="Documentation"></a>
+  <a href="https://discord.gg/TPF722ZKuj"><img src="https://img.shields.io/badge/Discord-5865F2?style=for-the-badge&logo=discord&logoColor=white" alt="Discord"></a>
+  <a href="https://pypi.org/project/overmind/"><img src="https://img.shields.io/pypi/v/overmind?style=for-the-badge&label=PyPI&color=3b1b06" alt="PyPI"></a>
+  <a href="https://github.com/overmind-core/overmind/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/overmind-core/overmind/ci.yml?style=for-the-badge&label=CI" alt="CI"></a>
+</p>
 
-## What it does
+**Overmind trains models you own, on data only you have.** Point it at your repo and it turns production traces — or any dataset you bring — into a fine-tuned model, benchmarked against the model you run today and served on one API, with no ML infrastructure to build. The weights are yours to download, retrain or roll back. It starts by reading your code into a **context graph** of your agent, so it arrives already knowing what your agents do, and the evals, datasets and training are built for your agent rather than a generic recipe.
 
-Overmind scans your repo and builds a model of your agents — capabilities, behaviours, prompts, and tools, each pinned to the file and line that defines it. Production telemetry binds to that model, and every downstream stage reads it:
+Every stage is available from the [Console](https://console.overmindlab.ai/), the `overmind` CLI, the [REST API](https://docs.overmindlab.ai/latest/platform/api.md), and an [MCP server](#connect-your-coding-agent) for Cursor, Claude Code, OpenCode and Codex. Use the hosted version at [console.overmindlab.ai](https://console.overmindlab.ai/) or [run it yourself](#run-it-yourself) with Docker Compose.
 
-| Pillar             | What it does                                                                         |
-| ------------------ | ------------------------------------------------------------------------------------ |
-| **Observability**  | Capability scanning, auto-instrumentation, coverage scoring, live scoring on arrival |
-| **Data Workshop**  | Production traces become audited, redacted training and eval data                    |
-| **Agent Testing**  | Generated evals, scored candidates, winning diffs in your repo                       |
-| **Model Training** | Fine-tune on your own data, benchmark against the incumbent, serve it                |
+<table>
+<tr><td><b><a href="https://docs.overmindlab.ai/latest/core/capabilities.md">Context graph</a></b></td><td><code>overmind sync</code> scans your repo and builds a graph of your agent: each capability, its prompt, its tools, its inputs and outputs, and the tasks its code can perform.</td></tr>
+<tr><td><b><a href="https://docs.overmindlab.ai/latest/agent-testing/trace-scoring.md">Observability</a></b></td><td>Traces arrive over OpenTelemetry (<code>overmind.init()</code> instruments the SDKs you already use; any OTel exporter works), are matched to the part of the agent that produced them, and are scored in real time, with the reasoning behind each score.</td></tr>
+<tr><td><b><a href="https://docs.overmindlab.ai/latest/core/datasets.md">Data Workshop</a></b></td><td>A data agent that automates turning your traces or uploaded files into training and eval datasets, in a notebook where every step is versioned and can be edited or re-run. Every example traces back to the run it came from.</td></tr>
+<tr><td><b><a href="https://docs.overmindlab.ai/latest/agent-testing/eval.md">Evaluations</a></b></td><td>Evaluators are generated from the context graph for each capability — LLM judges, trajectory checks, deterministic and statistical tests — and run live on production traces.</td></tr>
+<tr><td><b><a href="https://docs.overmindlab.ai/latest/agent-testing/optimisers.md">Optimiser</a></b></td><td>Run experiments on your agent in its own environment: variants of prompts, tool descriptions, control flow and model are run against a dataset and scored; the best comes back as a git diff.</td></tr>
+<tr><td><b><a href="https://docs.overmindlab.ai/latest/models/training.md">Training</a></b></td><td>LoRA, QLoRA or full fine-tunes of open-weight models on your data. Overmind recommends the base models suited to the task, estimates cost and duration before you commit, and benchmarks the result against the model you run in production on the same eval set.</td></tr>
+<tr><td><b><a href="https://docs.overmindlab.ai/latest/models/inference.md">Inference</a></b></td><td>Trained and frontier models on one OpenAI-compatible API; a copy-paste prompt switches your agent to the new model. Download the weights and run them anywhere.</td></tr>
+</table>
 
-This repo contains the full stack:
+<p align="center">
+  <a href="https://youtu.be/m5V7Ox9OkrQ">
+    <img width="9872" height="5543" alt="playframe" src="https://github.com/user-attachments/assets/246a21c5-e07a-4414-981e-f60d6308a729" />
+  </a>
+</p>
 
-```
-overmind-platform/
-├── overbae/          # Django API
-│   ├── api/          # DRF views, serializers, OTLP + OpenAI-compatible endpoints
-│   ├── models/       # agents, traces, datasets, evaluation, finetuning, billing
-│   ├── services/     # domain logic (scan, eval, workshop, finetuning, mcp)
-│   ├── tasks/        # Celery tasks
-│   └── modal/        # Modal training/serving entrypoints
-├── frontend/         # React Console (Vite + TanStack Router)
-├── overmind/         # Tracing SDK + CLI (published to PyPI as `overmind`)
-└── .claude/skills/   # Agent skills (see below)
-```
+## Get started
 
-Traces arrive via the SDK (`pip install "overmind[tracing]"`, `npm install @overmind-lab/trace-sdk`), raw OTLP (`POST /api/v1/traces`), or Langfuse sync. Inference is OpenAI-compatible (`/api/v1/chat/completions`, `/api/v1/models`).
+### Hosted
 
-## Setup
+Sign up at [console.overmindlab.ai](https://console.overmindlab.ai/), pick your coding agent on **Get started** — Cursor, Claude Code, OpenCode or Codex — and paste the onboarding prompt into it with your agent's repo open. It installs `overmind`, runs `overmind init` and `overmind sync`, and builds the context graph. From then on everything is a `/overmind` command in the same chat:
 
-Requirements: Docker, [uv](https://docs.astral.sh/uv/), [Bun](https://bun.sh/).
+| Command                    | What it does                                  |
+| -------------------------- | --------------------------------------------- |
+| `/overmind ensure-tracing` | Inspect traces and instrument the agent       |
+| `/overmind dataset`        | Build, clean, upload or export a dataset      |
+| `/overmind finetune`       | Fine-tune, deploy and smoke-test a model      |
+| `/overmind optimise`       | Run prompt and code optimisation              |
+| `/overmind backtest`       | Compare models against the agent's own traces |
 
-```bash
-cp .env.example .env   # fill in at minimum OPENROUTER_API_KEY
-docker compose up      # API, Postgres, Redis, Celery workers
-```
+### Run it yourself
 
-The API runs at `http://localhost:8000`. The Console runs outside compose:
-
-```bash
-cd frontend && bun install && bun run dev   # http://localhost:5173, config from .env.development
-```
-
-Without `STRIPE_SECRET_KEY`, billing runs in OSS mode (spend metering only, no quotas). Training/serving backends (Modal, Baseten) are optional and selected with `FINETUNING_BACKEND`.
-
-The Data Workshop agent runs on the first key it finds: `CURSOR_API_KEY`, then `OPENROUTER_API_KEY`, then `OPENAI_API_KEY`, `ANTHROPIC_API_KEY` or `GEMINI_API_KEY`. With none set the workshop opens and the agent reports it is not configured.
-
-For development outside Docker:
+Self-hosting keeps traces and training data inside your own network. The hosted and self-hosted stacks are the same code.
 
 ```bash
-make worker            # local Celery (all queues, solo pool)
+git clone https://github.com/overmind-core/overmind.git && cd overmind
+cp .env.example .env                        # OpenRouter, S3, a training backend (Modal or Baseten), an LLM key for the Data Workshop agent
+docker compose up -d                        # Postgres, Redis, API on :8000, Celery workers, beat, Grafana on :3001
+cd frontend && bun install && bun run dev   # Console on :5173
 ```
 
-Common commands:
+On first boot the API runs migrations and seeds the built-in evaluators; Swagger is at `/api/docs/`. `docker compose exec -T api python manage.py shell < seed.py` loads a full demo workspace.
+
+<details>
+<summary><b>What the API needs to boot</b></summary>
+
+The API will not start without these. `.env.example` documents every other key.
+
+| Group            | Variables                                                                                                                 |
+| ---------------- | ------------------------------------------------------------------------------------------------------------------------- |
+| Object storage   | `AWS_BUCKET_NAME`, `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY` — checkpoint archive                                      |
+| Training backend | `FINETUNING_BACKEND=baseten` + `BASETEN_API_KEY`, or `FINETUNING_BACKEND=modal` + `MODAL_TOKEN_ID` + `MODAL_TOKEN_SECRET` |
+| Serving          | `INFERENCE_API_URL` — the Modal vLLM endpoint printed by `modal deploy`                                                   |
+
+Two keys gate features rather than boot: `OPENROUTER_API_KEY` for judges, evals and every routed model call, and one LLM key for the Data Workshop agent — it uses the first of `CURSOR_API_KEY`, `OPENROUTER_API_KEY`, `OPENAI_API_KEY`, `ANTHROPIC_API_KEY` or `GEMINI_API_KEY` it finds. Without `STRIPE_SECRET_KEY`, usage is metered and shown with no remaining-credit cap.
+
+</details>
+
+### Send a first trace
 
 ```bash
-make test                  # backend tests (test-serial for the non-parallel run)
-make lint-format           # or lint-backend / lint-frontend
-make generate_api_client   # after backend API changes — regenerates frontend/src/openapi/
+pip install "overmind[tracing]"
+export OVERMIND_API_KEY=ovr_…   # project key from Console → Settings; add OVERMIND_API_URL for self-host
 ```
 
-## Working with coding agents
+```python
+import overmind
 
-### MCP
+overmind.init(
+    service_name="support-agent", capability_id="<capability-uuid>", providers="auto"
+)
 
-MCP is the first-class agent surface. Create a project API key in Console (Settings → API keys), then point your agent at `POST {API_BASE}/api/mcp/` with an `X-Api-Key: ovr_…` header. For example, in Cursor's `.cursor/mcp.json`:
+
+@overmind.tool()
+def search(query: str) -> list[dict]: ...
+
+
+def handle(request: dict, session_id: str) -> dict:
+    with overmind.run(
+        "support-run", intent=request["question"], conversation_id=session_id
+    ) as run:
+        answer = agent(request)
+        run.deliver(answer)  # the final output that gets scored
+        return answer
+```
+
+`providers="auto"` instruments the LLM SDKs you already use over OpenTelemetry; without a key, tracing is off and nothing breaks. Any OTel exporter can `POST /api/v1/traces` instead, and existing traces in Langfuse, LangSmith, Braintrust or Galileo can be synced through a connector. Open **Observability → Task executions** to see the trace and its score.
+
+## Connect your coding agent
+
+Overmind ships an MCP server at `/api/mcp/`: 32 tools, 14 resources and 11 prompts covering everything the Console can do, scoped to one project by its API key. Every tool declares what it costs to run (`free`, `compute`, `llm`, `gpu`) and none can delete anything. `overmind init --ide <cursor|claude|opencode|codex>` writes the config for you, or by hand:
+
+<details>
+<summary><b>Cursor</b> — <code>.cursor/mcp.json</code></summary>
 
 ```json
 {
   "mcpServers": {
     "overmind": {
-      "url": "http://localhost:8000/api/mcp/",
+      "url": "https://api.overmindlab.ai/api/mcp/",
       "headers": { "X-Api-Key": "ovr_…" }
     }
   }
 }
 ```
 
-Claude Code: `claude mcp add --transport http overmind <url> --header "X-Api-Key: ovr_…"`. Codex: `overmind init --ide codex && overmind sync` from your agent repo.
+</details>
 
-### Skills
+<details>
+<summary><b>Claude Code</b></summary>
 
-`.claude/skills/` holds skills for working on this codebase — subsystem maps (`backend-architecture`, `data-workshop`, `mcp`), procedures (`api-endpoints`, `run-tests`, `pr-etiquette`), and conventions (`engineering-taste`, `code-comments`, `frontend-design`). Claude Code and Cursor load them automatically on demand; `AGENTS.md` is the always-on playbook that indexes them. If you contribute with a coding agent, no setup is needed — the agent reads the relevant skill before touching a subsystem.
+```bash
+claude mcp add --transport http overmind https://api.overmindlab.ai/api/mcp/ --header "X-Api-Key: ovr_…"
+```
 
-## Docs
+</details>
 
-Full product and API documentation lives at [docs.overmindlab.ai](https://docs.overmindlab.ai), maintained in the sibling [`overmind-core/docs`](https://github.com/overmind-core/docs) repo — quickstart, tracing setup, agent testing, data workshop, and model training guides.
+<details>
+<summary><b>OpenCode</b> — <code>opencode.json</code></summary>
+
+```json
+{
+  "$schema": "https://opencode.ai/config.json",
+  "mcp": {
+    "overmind": {
+      "type": "remote",
+      "url": "https://api.overmindlab.ai/api/mcp/",
+      "enabled": true,
+      "headers": { "X-Api-Key": "ovr_…" }
+    }
+  }
+}
+```
+
+</details>
+
+<details>
+<summary><b>Codex</b> — <code>.codex/config.toml</code></summary>
+
+```toml
+[mcp_servers.overmind]
+url = "https://api.overmindlab.ai/api/mcp/"
+http_headers = { "X-Api-Key" = "ovr_…" }
+```
+
+</details>
+
+<details>
+<summary><b>What the tools cover</b></summary>
+
+| Domain          | Tools                                                                                                                                               |
+| --------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Observability   | `inspect_capability_health`, `query_failures`, `query_traces`, `query_task_executions`, `get_job`                                                   |
+| Datasets        | `list_datasets`, `inspect_dataset`, `query_dataset`, `create_dataset_from_traces`, `message_dataset_agent`, `run_dataset`                           |
+| Evaluations     | `check_evaluation_readiness`, `upsert_evaluator`, `run_evaluation`, `compare_evaluations`, `annotate_evaluation_sample`                             |
+| Training        | `check_finetune_readiness`, `estimate_finetune`, `start_finetune`, `retry_deployment`, `set_active_model`, `run_inference`, `get_model_swap_prompt` |
+| Optimiser       | `check_optimizer_readiness`, `start_optimizer`, `inspect_optimizer_result`                                                                          |
+| Connectors      | `inspect_connectors`, `configure_connector`, `sync_connector`                                                                                       |
+| Instrumentation | `get_instrumentation_plan`, `verify_instrumentation`                                                                                                |
+| Catalog         | `get_model_catalog`                                                                                                                                 |
+
+Prompts such as `investigate-capability`, `finetune-capability` and `ship-model` chain the tools into complete workflows.
+
+</details>
+
+For a self-hosted instance, replace the host with your API URL (`http://localhost:8000` locally). Keys are written to git-ignored files only; `overmind sync` will not write a key into a tracked file.
+
+## Documentation
+
+All documentation lives at **[docs.overmindlab.ai](https://docs.overmindlab.ai)**:
+
+| Section                                                                                    | What's covered                                                              |
+| ------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------- |
+| [Quickstart](https://docs.overmindlab.ai/latest/quickstart.md)                             | Sign up, paste one prompt into your coding agent, run `/overmind` commands  |
+| [Agent & Capabilities](https://docs.overmindlab.ai/latest/core/capabilities.md)            | The context graph: repo scans, capabilities, tasks, telemetry attribution   |
+| [Observability](https://docs.overmindlab.ai/latest/core/observability.md)                  | OTLP ingest, span model, attribute mapping, the trace explorer              |
+| [Python SDK](https://docs.overmindlab.ai/latest/tracing/sdk-python.md)                     | `init()`, auto-instrumentation, `run()`, decorators, tasks and capabilities |
+| [Trace scoring](https://docs.overmindlab.ai/latest/agent-testing/trace-scoring.md)         | How a production trace becomes scored task executions and session scores    |
+| [Datasets](https://docs.overmindlab.ai/latest/core/datasets.md)                            | Source, cells, versions, the data agent, trace-to-dataset                   |
+| [Eval](https://docs.overmindlab.ai/latest/agent-testing/eval.md)                           | Evaluator kinds, eval sets, live scoring, eval runs                         |
+| [Optimisers](https://docs.overmindlab.ai/latest/agent-testing/optimisers.md)               | The optimisation loop, the local executioner, the winning diff              |
+| [Training](https://docs.overmindlab.ai/latest/models/training.md)                          | Dataset validation, model recommendations, loss curves, the benchmark       |
+| [Inference](https://docs.overmindlab.ai/latest/models/inference.md)                        | Serving lifecycle and `/api/v1/chat/completions`                            |
+| [REST API](https://docs.overmindlab.ai/latest/platform/api.md)                             | Auth, endpoint map, conventions, Swagger                                    |
+| [Projects & Administration](https://docs.overmindlab.ai/latest/platform/administration.md) | Projects, API keys, connectors, jobs, billing                               |
+| [Glossary](https://docs.overmindlab.ai/latest/platform/glossary.md)                        | Terms as they appear in the Console and the API                             |
+
+______________________________________________________________________
+
+## Repository
+
+```
+overbae/      Django 6 API — api/ (DRF, OTLP, OpenAI-compatible), models/, services/ (eval, datasets, mcp, sft_assets), tasks/ (Celery), modal/ (GPU workers)
+frontend/     React 19 Console — src/openapi/ is generated by `make generate_api_client`, never hand-edited
+overmind/     Python SDK + CLI, published to PyPI as `overmind`; skills/overmind/ is the /overmind skill
+tests/        pytest — `make test`
+AGENTS.md     how we work, for humans and coding agents; .claude/skills/ documents each subsystem
+```
+
+Backend is **uv** (`make test`, `make lint-backend`, `make check-migrations`); frontend is **Bun** (`bun run typecheck`, `bun run lint`, `bun run test`); SDK is `make -C overmind test`. Training and serving run on Modal or Baseten (`FINETUNING_BACKEND`); inference is vLLM behind `/api/v1/chat/completions`.
+
+______________________________________________________________________
+
+## Contributing
+
+Open an [issue](https://github.com/overmind-core/overmind/issues/new), or a PR from a feature branch using `.github/PULL_REQUEST_TEMPLATE.md` — `main` is protected and `AGENTS.md` describes how we work. Questions go to the [Discord](https://discord.gg/TPF722ZKuj).
+
+______________________________________________________________________
+
+## Telemetry
+
+The SDK and CLI send anonymous usage analytics to PostHog — one `cli.invoked` event per CLI run and `sdk_init` on library use; never prompts, trace contents, keys or dataset contents. Opt out with `OVERMIND_ANALYTICS_ENABLED=false` or `DO_NOT_TRACK=1`; analytics is also off when `CI` is set. Your traces go only to your own project.
+
+<p align="center">
+  <img alt="Overmind" src="frontend/src/assets/overmind-eye-copper.svg" width="96">
+</p>
+
+<p align="center">
+  <a href="https://docs.overmindlab.ai">docs.overmindlab.ai</a> · <a href="https://www.overmindlab.ai/">overmindlab.ai</a>
+</p>
