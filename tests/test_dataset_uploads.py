@@ -35,7 +35,7 @@ def client_project(db):
         ("array.json", b'[{"input":"one"},{"input":"two"}]', 2),
         ("wrapper.json", b'{"data":[{"input":"one"},{"input":"two"}]}', 2),
         ("lines.jsonl", b'{"input":"one"}\n\n{"input":"two"}\n', 2),
-        ("compressed.CSV.GZ", gzip.compress(b"input\none\ntwo\n"), 2),
+        ("compressed.CSV.GZ", gzip.compress(b"input\none\ntwo\n", mtime=0), 2),
         pytest.param("large-field.csv", b"input\n" + b"a" * 150_000, 1, id="long-transcript"),
     ],
 )
