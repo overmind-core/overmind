@@ -225,8 +225,6 @@ export function JudgeEvalTableRow({
   );
 }
 
-/** Duplicates `latestClassMetrics` from class-metrics.tsx on purpose: importing
-    that module statically would pull the lazy recharts chunk into this route. */
 export function latestClassMetricsOf(
   rows: FinetuningJudgeEvalRow[]
 ): { metrics: ClassMetrics; row: FinetuningJudgeEvalRow } | null {
