@@ -10,20 +10,25 @@
   <a href="https://discord.gg/TPF722ZKuj"><img src="https://img.shields.io/badge/Discord-5865F2?style=for-the-badge&logo=discord&logoColor=white" alt="Discord"></a>
   <a href="https://pypi.org/project/overmind/"><img src="https://img.shields.io/pypi/v/overmind?style=for-the-badge&label=PyPI&color=3b1b06" alt="PyPI"></a>
   <a href="https://github.com/overmind-core/overmind/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/overmind-core/overmind/ci.yml?style=for-the-badge&label=CI" alt="CI"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/Platform-AGPL--3.0-3b1b06?style=for-the-badge" alt="Platform AGPL-3.0"></a>
+  <a href="overmind/LICENSE"><img src="https://img.shields.io/badge/SDK-MIT-3b1b06?style=for-the-badge" alt="SDK MIT"></a>
 </p>
 
-**Overmind trains models you own, on data only you have.** Point it at your repo and it turns production traces — or any dataset you bring — into a fine-tuned model, benchmarked against the model you run today and served on one API, with no ML infrastructure to build. The weights are yours to download, retrain or roll back. It starts by reading your code into a **context graph** of your agent, so it arrives already knowing what your agents do, and the evals, datasets and training are built for your agent rather than a generic recipe.
+**Overmind continuously trains & improves models you own, on data from your production traces**
+Point it at your agent's codebase and it turns production traces (or any dataset) into a fine-tuned model, benchmarked against the eval metrics you define and served via 1 unified API, with no ML infrastructure to build.
 
-Every stage is available from the [Console](https://console.overmindlab.ai/), the `overmind` CLI, the [REST API](https://docs.overmindlab.ai/latest/platform/api.md), and an [MCP server](#connect-your-coding-agent) for Cursor, Claude Code, OpenCode and Codex. Use the hosted version at [console.overmindlab.ai](https://console.overmindlab.ai/) or [run it yourself](#run-it-yourself) with Docker Compose.
+> The weights are yours to download, retrain or roll back.
+
+Available from the [Console](https://console.overmindlab.ai/), the `overmind` CLI, the [REST API](https://docs.overmindlab.ai/latest/platform/api.md), and an [MCP server](#connect-your-coding-agent) for Cursor, Claude Code, OpenCode and Codex. Hosted at [console.overmindlab.ai](https://console.overmindlab.ai/) or [run it yourself](#run-it-yourself).
 
 <table>
-<tr><td><b><a href="https://docs.overmindlab.ai/latest/core/capabilities.md">Context graph</a></b></td><td><code>overmind sync</code> scans your repo and builds a graph of your agent: each capability, its prompt, its tools, its inputs and outputs, and the tasks its code can perform.</td></tr>
-<tr><td><b><a href="https://docs.overmindlab.ai/latest/agent-testing/trace-scoring.md">Observability</a></b></td><td>Traces arrive over OpenTelemetry (<code>overmind.init()</code> instruments the SDKs you already use; any OTel exporter works), are matched to the part of the agent that produced them, and are scored in real time, with the reasoning behind each score.</td></tr>
-<tr><td><b><a href="https://docs.overmindlab.ai/latest/core/datasets.md">Data Workshop</a></b></td><td>A data agent that automates turning your traces or uploaded files into training and eval datasets, in a notebook where every step is versioned and can be edited or re-run. Every example traces back to the run it came from.</td></tr>
-<tr><td><b><a href="https://docs.overmindlab.ai/latest/agent-testing/eval.md">Evaluations</a></b></td><td>Evaluators are generated from the context graph for each capability — LLM judges, trajectory checks, deterministic and statistical tests — and run live on production traces.</td></tr>
-<tr><td><b><a href="https://docs.overmindlab.ai/latest/agent-testing/optimisers.md">Optimiser</a></b></td><td>Run experiments on your agent in its own environment: variants of prompts, tool descriptions, control flow and model are run against a dataset and scored; the best comes back as a git diff.</td></tr>
-<tr><td><b><a href="https://docs.overmindlab.ai/latest/models/training.md">Training</a></b></td><td>LoRA, QLoRA or full fine-tunes of open-weight models on your data. Overmind recommends the base models suited to the task, estimates cost and duration before you commit, and benchmarks the result against the model you run in production on the same eval set.</td></tr>
-<tr><td><b><a href="https://docs.overmindlab.ai/latest/models/inference.md">Inference</a></b></td><td>Trained and frontier models on one OpenAI-compatible API; a copy-paste prompt switches your agent to the new model. Download the weights and run them anywhere.</td></tr>
+<tr><td><b><a href="https://docs.overmindlab.ai/latest/core/capabilities.md">Agent & Capabilities</a></b></td><td>A graph of your agent — capabilities, prompts, tools, and tasks — scanned from the repo.</td></tr>
+<tr><td><b><a href="https://docs.overmindlab.ai/latest/core/observability.md">Observability</a></b></td><td>OpenTelemetry traces, scored as they arrive and matched to the capability that produced them.</td></tr>
+<tr><td><b><a href="https://docs.overmindlab.ai/latest/core/datasets.md">Datasets</a></b></td><td>Production traces or uploaded files become versioned eval and training datasets.</td></tr>
+<tr><td><b><a href="https://docs.overmindlab.ai/latest/agent-testing/eval.md">Eval</a></b></td><td>What "good" means per capability, measured on live traces and in batch.</td></tr>
+<tr><td><b><a href="https://docs.overmindlab.ai/latest/agent-testing/optimisers.md">Optimisers</a></b></td><td>Prompt, tool, and control-flow experiments in your repo; the winner is a git diff.</td></tr>
+<tr><td><b><a href="https://docs.overmindlab.ai/latest/models/training.md">Models</a></b></td><td>Fine-tunes you own, trained on your data and benchmarked against production.</td></tr>
+<tr><td><b><a href="https://docs.overmindlab.ai/latest/models/inference.md">Inference</a></b></td><td>Trained and frontier models on one OpenAI-compatible API.</td></tr>
 </table>
 
 <p align="center">
@@ -202,6 +207,7 @@ All documentation lives at **[docs.overmindlab.ai](https://docs.overmindlab.ai)*
 | [REST API](https://docs.overmindlab.ai/latest/platform/api.md)                             | Auth, endpoint map, conventions, Swagger                                    |
 | [Projects & Administration](https://docs.overmindlab.ai/latest/platform/administration.md) | Projects, API keys, connectors, jobs, billing                               |
 | [Glossary](https://docs.overmindlab.ai/latest/platform/glossary.md)                        | Terms as they appear in the Console and the API                             |
+| [Licensing](https://docs.overmindlab.ai/latest/platform/licensing.md)                      | AGPL-3.0 for the platform, MIT for the SDK, commercial terms                |
 
 ______________________________________________________________________
 
@@ -210,8 +216,9 @@ ______________________________________________________________________
 ```
 overbae/      Django 6 API — api/ (DRF, OTLP, OpenAI-compatible), models/, services/ (eval, datasets, mcp, sft_assets), tasks/ (Celery), modal/ (GPU workers)
 frontend/     React 19 Console — src/openapi/ is generated by `make generate_api_client`, never hand-edited
-overmind/     Python SDK + CLI, published to PyPI as `overmind`; skills/overmind/ is the /overmind skill
+overmind/     Python SDK + CLI, published to PyPI as `overmind`; MIT; skills/overmind/ is the /overmind skill
 tests/        pytest — `make test`
+LICENSE       AGPL-3.0 for the platform; overmind/LICENSE is MIT
 AGENTS.md     how we work, for humans and coding agents; .claude/skills/ documents each subsystem
 ```
 
@@ -228,6 +235,12 @@ ______________________________________________________________________
 ## Telemetry
 
 The SDK and CLI send anonymous usage analytics to PostHog — one `cli.invoked` event per CLI run and `sdk_init` on library use; never prompts, trace contents, keys or dataset contents. Opt out with `OVERMIND_ANALYTICS_ENABLED=false` or `DO_NOT_TRACK=1`; analytics is also off when `CI` is set. Your traces go only to your own project.
+
+______________________________________________________________________
+
+## Licence
+
+The platform (`overbae/`, `frontend/`) is [AGPL-3.0](LICENSE). The SDK and CLI (`overmind/`) stay [MIT](overmind/LICENSE). A commercial licence is a paid alternative from Overmind Ltd if you need different terms — [hello@overmindlab.ai](mailto:hello@overmindlab.ai).
 
 <p align="center">
   <img alt="Overmind" src="frontend/src/assets/overmind-eye-copper.svg" width="96">

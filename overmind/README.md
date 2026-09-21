@@ -246,3 +246,7 @@ overmind skills sync <name>...      Sync one or more skills to the latest versio
 ```
 
 Run `overmind <command> --help` for full flag documentation.
+
+## Licence
+
+MIT. See [LICENSE](LICENSE). The Overmind platform that this package talks to is AGPL-3.0, with a commercial licence from Overmind Ltd if you need different terms.

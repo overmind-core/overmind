@@ -1,6 +1,6 @@
 # Overmind Platform
 
-Monorepo for the Overmind Console (`frontend/`, React), API (`overbae/`, Django + DRF + Celery), and SDK/CLI (`overmind/`). Agent improvement platform: observability → data workshop → evals → finetuning/inference.
+Monorepo for the Overmind Console (`frontend/`, React), API (`overbae/`, Django + DRF + Celery), and SDK/CLI (`overmind/`). Agent improvement platform: observability → data workshop → evals → finetuning/inference. The platform is AGPL-3.0; `overmind/` is MIT.
 
 This file is the single playbook. Cursor reads it natively; Claude Code reads it through the `@AGENTS.md` import in `CLAUDE.md`. It holds what every task needs; procedures and subsystem maps live in `.claude/skills/`, which both tools load on demand.
 
