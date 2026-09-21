@@ -16,6 +16,8 @@ Use the native `compare-models` prompt. This is optimizer mode
    and [datasets.md](datasets.md)). Train and pending datasets are refused.
 1. Pull the experiment's used version once to
    `.overmind/datasets/<cell_id>.jsonl` — never re-fetch per model.
+1. **No candidate diffs.** The executioner runs the current checkout once per
+   model and sets `OPENROUTER_MODEL`. Do not write harness patches.
 
 ## Main MCP path
 
@@ -42,14 +44,15 @@ local SDK/CLI executioner, not the main MCP server. When the returned
 overmind optimise start -e <experiment-id> && overmind optimise next
 ```
 
-The executioner owns local state, provider configuration, trace emission, and
-result reporting. MCP owns project-scoped scheduling and result inspection. Do
-not call removed per-iteration MCP tools or pretend the server runs local code.
+`next` drives template → smoke → baseline (incumbent, no overlay) → one
+`run-iteration` per selected model → `complete`. Each comparison iteration
+stamps `target_model` and overlays `OPENROUTER_MODEL`; smoke and baseline do
+not. Do not call `add-candidate`.
 
-If the repository needs model-provider translation, the local coding workflow may
-run `overmind.backtest.rewrite_repo(".")`, review its report, and patch only
-reported leftovers. Keep the model in `OPENROUTER_MODEL` or the repository's
-existing configuration; never hardcode a model slug in application code.
+If the repository needs model-provider translation, run
+`overmind.backtest.rewrite_repo(".")`, review its report, and patch only
+reported leftovers. Keep the model in `OPENROUTER_MODEL`; never hardcode a
+model slug in application code.
 
 Pinning a winner is a local repository/configuration change. A human reviews
 and applies any returned repository change.

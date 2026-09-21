@@ -162,9 +162,12 @@ def _print_action(action: dict) -> None:
             console.print(Panel(prompt, title="Prompt for your agent", border_style="yellow"))
 
     elif name == "RUN_ITERATION":
-        pending = action.get("pending", 0)
         console.print("\n[bold yellow]Action: RUN_ITERATION[/]")
-        console.print(f"Pending diffs: {pending}")
+        target = action.get("target_model") or ""
+        if target:
+            console.print(f"Model: {target}")
+        else:
+            console.print(f"Pending diffs: {action.get('pending', 0)}")
         console.print("Run:  [bold]overmind optimise run-iteration[/]")
 
     elif name == "WAIT":
@@ -204,11 +207,11 @@ def start(
     ] = "",
     mode: Annotated[
         str,
-        typer.Option("--mode", help="optimize | hybrid"),
+        typer.Option("--mode", help="optimize | model_comparison | hybrid"),
     ] = "optimize",
     models: Annotated[
         list[str] | None,
-        typer.Option("--model", "-m", help="OpenRouter model id (hybrid only, repeatable)"),
+        typer.Option("--model", "-m", help="OpenRouter model id (model_comparison and hybrid; repeatable)"),
     ] = None,
     iterations: Annotated[int, typer.Option("--iterations", help="Max candidate iterations")] = 5,
     candidates: Annotated[int, typer.Option("--candidates", help="Candidates per iteration")] = 3,
@@ -375,7 +378,7 @@ def run_iteration(
         typer.Option("--experiment", "-e"),
     ] = None,
 ) -> None:
-    """Apply queued diffs, run datapoints, post outputs, wait for scores."""
+    """Apply queued diffs, or the next comparison model, then score."""
     cfg = _load_config()
     loop = _make_loop(_resolve_experiment_id(experiment), cfg)
     try:

@@ -219,6 +219,116 @@ def test_command_template_prompt_keeps_tokens():
     assert "overmind optimise set-template" in prompt
 
 
+def test_next_action_model_comparison_runs_each_model_without_diffs(tmp_path):
+    loop = _loop_with_experiment(
+        tmp_path,
+        {
+            "id": "e1",
+            "mode": "model_comparison",
+            "status": "evaluated_baseline_outputs",
+            "command_template": "run.sh",
+            "iterations": [{"order": 0}],
+            "current_iteration": 0,
+            "num_iterations": 2,
+            "model_ids": ["openai/gpt-5", "anthropic/claude-sonnet-4"],
+            "scores": {"baseline": 70.0},
+        },
+    )
+    action = loop.next_action()
+    assert action["action"] == "RUN_ITERATION"
+    assert action["target_model"] == "openai/gpt-5"
+    assert "prompt" not in action
+
+
+def test_next_action_model_comparison_completes_after_every_model(tmp_path):
+    loop = _loop_with_experiment(
+        tmp_path,
+        {
+            "id": "e1",
+            "mode": "model_comparison",
+            "status": "evaluated_candidate_outputs",
+            "command_template": "run.sh",
+            "iterations": [{"order": 0}, {"order": 1}, {"order": 2}],
+            "current_iteration": 2,
+            "num_iterations": 2,
+            "model_ids": ["openai/gpt-5", "anthropic/claude-sonnet-4"],
+            "scores": {"baseline": 70.0, "best": 80.0},
+        },
+    )
+    (tmp_path / "state.json").write_text(json.dumps({"smoke_done": True, "next_order": 3}))
+    assert loop.next_action()["action"] == "COMPLETE"
+
+
+def test_model_comparison_run_iteration_overlays_openrouter_model(tmp_path, monkeypatch):
+    monkeypatch.setenv("OPENROUTER_API_KEY", "sk-or-test")
+    dataset = tmp_path / "ds.jsonl"
+    dataset.write_text('{"input": "q"}\n')
+    state_path = tmp_path / "state.json"
+    state_path.write_text(json.dumps({"smoke_done": True, "next_order": 1, "pending_diffs": []}))
+    api = MagicMock()
+    api.get_experiment.return_value = {
+        "id": "e1",
+        "mode": "model_comparison",
+        "status": "evaluated_candidate_outputs",
+        "command_template": 'printf %s "$OPENROUTER_MODEL"',
+        "model_ids": ["openai/gpt-5", "anthropic/claude-sonnet-4"],
+        "capability": "c",
+        "project": "p",
+    }
+    api.add_iteration.return_value = {
+        "id": "it1",
+        "candidates": [{"id": "cand1", "code_path": "", "target_model": "openai/gpt-5"}],
+    }
+    loop = OptimiseLoop(
+        api,
+        "e1",
+        repo_cwd=str(tmp_path),
+        dataset_path=dataset,
+        state_path=state_path,
+    )
+    loop.run_iteration()
+    posted = api.add_iteration.call_args.kwargs
+    assert posted["name"] == "openai/gpt-5"
+    assert posted["candidates"] == [
+        {
+            "candidate_index": 0,
+            "code_path": "",
+            "target_model": "openai/gpt-5",
+            "is_baseline": False,
+        }
+    ]
+    results = api.post_results.call_args.args[1]
+    assert results[0]["success"] is True
+    assert results[0]["output"].strip() == "openai/gpt-5"
+    assert json.loads(state_path.read_text())["next_order"] == 2
+
+
+def test_model_comparison_smoke_stays_on_the_incumbent(tmp_path, monkeypatch):
+    monkeypatch.setenv("OPENROUTER_API_KEY", "sk-or-test")
+    monkeypatch.delenv("OPENROUTER_MODEL", raising=False)
+    dataset = tmp_path / "ds.jsonl"
+    dataset.write_text('{"input": "q"}\n')
+    api = MagicMock()
+    api.get_experiment.return_value = {
+        "id": "e1",
+        "mode": "model_comparison",
+        "command_template": 'printf %s "${OPENROUTER_MODEL:-incumbent}"',
+        "model_ids": ["openai/gpt-5"],
+        "capability": "c",
+        "project": "p",
+    }
+    loop = OptimiseLoop(
+        api,
+        "e1",
+        repo_cwd=str(tmp_path),
+        dataset_path=dataset,
+        state_path=tmp_path / "state.json",
+    )
+    result = loop.run_smoke()
+    assert result["success"] is True
+    assert result["output"].strip() == "incumbent"
+
+
 def test_add_candidate_diff_queues_locally(tmp_path):
     api = MagicMock()
     dataset = tmp_path / "ds.jsonl"

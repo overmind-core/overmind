@@ -1,8 +1,8 @@
 """OpenRouter helpers for local model comparison.
 
-The ``/overmind backtest`` skill rewrites the user's repo onto OpenRouter, runs
-the eval dataset locally, and posts outputs. The CLI command only prints how.
-``openrouter_env`` is the env overlay hybrid ``overmind optimise --model`` uses.
+The ``/overmind backtest`` skill rewrites call sites onto ``OPENROUTER_MODEL``.
+``openrouter_env`` is the overlay ``overmind optimise`` applies per hybrid
+candidate and per ``model_comparison`` iteration.
 """
 
 from __future__ import annotations
