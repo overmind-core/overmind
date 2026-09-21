@@ -83,10 +83,17 @@ class CellSerializer(serializers.ModelSerializer):
 
 
 class ChatTurnSerializer(serializers.Serializer):
+    id = serializers.CharField(required=False)
     role = serializers.ChoiceField(choices=["user", "agent"])
     text = serializers.CharField(allow_blank=True)
     error = serializers.CharField(required=False, allow_blank=True)
     cells = serializers.ListField(child=serializers.JSONField(), required=False)
+    steps = serializers.ListField(child=serializers.JSONField(), required=False)
+    ms = serializers.IntegerField(required=False)
+    status = serializers.ChoiceField(
+        choices=["running", "awaiting_approval", "resolved", "complete", "error"], required=False
+    )
+    progress = serializers.JSONField(required=False)
     at = serializers.CharField()
 
 

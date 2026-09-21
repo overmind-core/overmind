@@ -16,6 +16,7 @@ import type {
   IntentEnum,
   PaginatedDatasetList,
   PositionEnum,
+  ChatTurn as SavedChatTurn,
   SourceRequest,
 } from "@/openapi";
 
@@ -41,19 +42,11 @@ export interface ChatCellRef {
   text_offset?: number;
 }
 
-export interface ChatTurn {
-  id?: string;
-  role: "user" | "agent";
-  text: string;
-  error?: string;
+export type ChatTurn = Omit<SavedChatTurn, "cells" | "steps" | "progress"> & {
   cells?: ChatCellRef[];
-  /** The agent's thinking and tool steps. */
   steps?: AgentActivityPart[];
-  ms?: number;
-  at: string;
-  status?: "running" | "awaiting_approval" | "resolved" | "complete" | "error";
   progress?: WorkshopProgress;
-}
+};
 
 export interface WorkshopProgress {
   stage:
@@ -179,8 +172,7 @@ export const fitOf = (cell: Cell | null | undefined): { ok: boolean; reason: str
 export const rankOf = (dataset: Dataset | null | undefined): CapabilityRank[] =>
   Array.isArray(dataset?.capabilityRank) ? (dataset.capabilityRank as CapabilityRank[]) : [];
 
-export const chatOf = (dataset: Dataset | null | undefined): ChatTurn[] =>
-  Array.isArray(dataset?.chat) ? (dataset.chat as unknown as ChatTurn[]) : [];
+export const chatOf = (dataset: Dataset | null | undefined): ChatTurn[] => dataset?.chat ?? [];
 
 /** The cell consumers read: the chosen one, else the last that ran. */
 export const activeCellOf = (dataset: Dataset | null | undefined): Cell | null => {
