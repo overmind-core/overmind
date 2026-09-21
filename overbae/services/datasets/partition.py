@@ -40,14 +40,12 @@ def content_key(row: dict, *, include_output: bool = False) -> str:
             messages = json.loads(messages)
     if isinstance(messages, list):
         turns = [m for m in messages if isinstance(m, dict) and m.get("role") != "system"]
-        if not include_output and turns and turns[-1].get("role") == "assistant":
+        if turns and turns[-1].get("role") == "assistant":
             turns = turns[:-1]
         value = (
-            turns[0].get("content")
-            if not include_output and len(turns) == 1 and turns[0].get("role") == "user"
-            else turns
+            turns[0].get("content") if len(turns) == 1 and turns[0].get("role") == "user" else turns
         )
-    elif not include_output:
+    else:
         value = next(
             (
                 row[k]
