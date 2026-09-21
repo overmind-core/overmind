@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import json
 
+from mcp_fixtures import EXPECTED_TOOL_NAMES
+
 from overbae.services.mcp.catalog import CATALOG
 
 MAX_MANIFEST_BYTES = 34 * 1024
@@ -19,44 +21,6 @@ SECRET_INPUT_PARTS = {
 }
 FORBIDDEN_NAME_PARTS = ("delete", "remove", "cancel", "retry", "undeploy")
 ALLOWED_LIFECYCLE_TOOLS = {"retry_deployment"}
-
-EXPECTED_TOOL_NAMES = {
-    "inspect_capability_health",
-    "query_failures",
-    "query_traces",
-    "query_task_executions",
-    "get_job",
-    "list_datasets",
-    "inspect_dataset",
-    "query_dataset",
-    "create_dataset_from_traces",
-    "message_dataset_agent",
-    "run_dataset",
-    "check_evaluation_readiness",
-    "upsert_evaluator",
-    "create_eval_set",
-    "run_evaluation",
-    "compare_evaluations",
-    "annotate_evaluation_sample",
-    "check_finetune_readiness",
-    "prepare_training_data",
-    "estimate_finetune",
-    "start_finetune",
-    "retry_deployment",
-    "set_active_model",
-    "set_benchmark_model",
-    "run_inference",
-    "get_model_swap_prompt",
-    "check_optimizer_readiness",
-    "start_optimizer",
-    "inspect_optimizer_result",
-    "inspect_connectors",
-    "configure_connector",
-    "sync_connector",
-    "get_instrumentation_plan",
-    "verify_instrumentation",
-    "get_model_catalog",
-}
 
 
 def _serialized_tools(permissions: frozenset[str]) -> bytes:
