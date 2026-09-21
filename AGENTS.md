@@ -17,7 +17,7 @@ This file is the single playbook. Cursor reads it natively; Claude Code reads it
 - SDK (**uv**, from `overmind/`): `make -C overmind test`, `make -C overmind lint-check`.
 - CI (`.github/workflows/ci.yml`) runs on `main` and `oss`: platform lint/frontend/test. SDK CI (`sdk-ci.yml`) runs on `overmind/` changes.
 - A local deployment already runs via `docker compose` with hot reload — do not start dev servers to verify changes. Celery workers auto-restart via watchmedo; `docker compose restart <worker>` if in doubt.
-- After changing backend API surface: `make generate_api_client` (api-endpoints skill — it leaves stale files behind).
+- After changing backend API surface: `make generate_api_client` (api-endpoints skill).
 - `pre-commit run --files <changed files>` at the end of any substantial multi-file task, before committing.
 
 ## Architecture facts you can't guess
