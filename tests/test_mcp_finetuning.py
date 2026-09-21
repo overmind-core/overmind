@@ -7,17 +7,14 @@ from types import SimpleNamespace
 
 import pandas as pd
 import pytest
-from conftest import EVAL_ROWS, TRAIN_ROWS, frozen_dataset
+from conftest import TRAIN_ROWS, frozen_dataset
+from mcp_fixtures import training_setup
 
 from overbae.models import (
     APIToken,
-    Capability,
     Cell,
     Dataset,
     DeployedModel,
-    EvalSet,
-    EvalSetMember,
-    Evaluator,
     FinetuningJob,
     Project,
     ProjectMembership,
@@ -100,42 +97,6 @@ def _ok_cell(dataset, *, intent, rows=2, title="source", position=0, active=True
         script="df = pd.DataFrame({'source_row': df.source_row, **{name: [True] * len(df) for name in ('task_alignment', 'input_evidence', 'answer_support', 'output_schema')}})",
     )
     return cell
-
-
-def _training_setup(context: MCPContext):
-    capability = Capability.objects.create(
-        project=context.project,
-        name="Support",
-        slug=f"support-{uuid.uuid4().hex[:6]}",
-        model="openai/gpt-5.6-sol",
-    )
-    train = frozen_dataset(
-        context.project, TRAIN_ROWS, name="Train", contract="train", capability=capability
-    )
-    evaluation = frozen_dataset(
-        context.project,
-        [{**row, "input": "held-out-" + row["input"]} for row in EVAL_ROWS],
-        name="Eval",
-        contract="eval",
-        capability=capability,
-    )
-    eval_set = EvalSet.objects.create(
-        project=context.project,
-        capability=capability,
-        name="Default evals",
-    )
-    evaluator = Evaluator.objects.create(
-        project=context.project,
-        name="Exact match",
-        kind=Evaluator.Kind.DETERMINISTIC,
-        config={"check": "exact_match"},
-    )
-    EvalSetMember.objects.create(
-        eval_set=eval_set,
-        evaluator=evaluator,
-        role=EvalSetMember.Role.GENERATIVE,
-    )
-    return capability, train, evaluation, eval_set
 
 
 def test_catalog_has_finetuning_tools_and_read_only_keys_hide_writes():
@@ -233,7 +194,7 @@ def test_readiness_treats_legacy_ft_as_train():
 
 def test_readiness_classifies_selected_capability_and_defers_to_data_for_none(monkeypatch):
     context = _context()
-    capability, dataset, _, _ = _training_setup(context)
+    capability, dataset, _, _ = training_setup(context)
     capability.description = "Write Python code."
     capability.save(update_fields=["description"])
     monkeypatch.setattr(
@@ -342,7 +303,7 @@ def test_start_uses_serializer_and_worker_task(
     monkeypatch, capability_choice, unassigned_set, disable_evals
 ):
     context = _context(permission=["read", "write"])
-    capability, train, _evaluation, _eval_set = _training_setup(context)
+    capability, train, _evaluation, _eval_set = training_setup(context)
     if unassigned_set:
         _eval_set.capability = None
         _eval_set.save(update_fields=["capability"])
@@ -427,7 +388,7 @@ def test_retry_returns_resource_and_dispatches_for_recoverable_deployment(
     monkeypatch, deployment_status
 ):
     context = _context(permission=["read", "write"])
-    _, train, _, _ = _training_setup(context)
+    _, train, _, _ = training_setup(context)
     job = FinetuningJob.objects.create(
         project=context.project,
         dataset=train,
@@ -525,7 +486,7 @@ def test_retry_rejects_deployment_without_usable_finetune_job():
 
 def test_retry_remains_durable_when_broker_is_unavailable(monkeypatch):
     context = _context(permission=["read", "write"])
-    _, train, _, _ = _training_setup(context)
+    _, train, _, _ = training_setup(context)
     job = FinetuningJob.objects.create(
         project=context.project,
         dataset=train,
@@ -563,7 +524,7 @@ def test_retry_remains_durable_when_broker_is_unavailable(monkeypatch):
 
 def test_set_active_model_validates_ready_same_project_and_clear(monkeypatch):
     context = _context(permission=["read", "write"])
-    capability, train, _, _ = _training_setup(context)
+    capability, train, _, _ = training_setup(context)
     deployment = DeployedModel.objects.create(
         project=context.project,
         model_id="ft-active",
@@ -589,7 +550,7 @@ def test_set_active_model_validates_ready_same_project_and_clear(monkeypatch):
 
 def test_benchmark_tool_and_capability_resource_preserve_serving():
     context = _context(permission=["read", "write", "train"])
-    capability, train, _, _ = _training_setup(context)
+    capability, train, _, _ = training_setup(context)
     job = FinetuningJob.objects.create(
         project=context.project, capability=capability, dataset=train, base_model="Qwen/Qwen3-8B"
     )
@@ -630,7 +591,7 @@ def test_benchmark_tool_and_capability_resource_preserve_serving():
 
 def test_benchmark_tool_rejects_infrastructure_and_foreign_projects():
     context = _context(permission=["read", "write", "train"])
-    capability, _, _, _ = _training_setup(context)
+    capability, _, _, _ = training_setup(context)
     foreign_context = _context()
     for project in (context.project, foreign_context.project):
         deployment = DeployedModel.objects.create(
@@ -674,7 +635,7 @@ def test_run_inference_redacts_service_errors(monkeypatch):
 
 def test_start_rejects_credential_shaped_hyperparameter_keys():
     context = _context(permission=["read", "write"])
-    capability, train, _, _ = _training_setup(context)
+    capability, train, _, _ = training_setup(context)
     result = _call(
         "start_finetune",
         {
@@ -692,7 +653,7 @@ def test_start_rejects_credential_shaped_hyperparameter_keys():
 
 def test_model_swap_prompt_returns_prompt_and_capability_refs(monkeypatch):
     context = _context(permission=["read", "write"])
-    capability, train, _, _ = _training_setup(context)
+    capability, train, _, _ = training_setup(context)
     job = FinetuningJob.objects.create(
         project=context.project,
         capability=capability,
@@ -731,7 +692,7 @@ def test_model_swap_prompt_returns_prompt_and_capability_refs(monkeypatch):
 
 def test_model_swap_prompt_reports_why_it_is_unavailable(monkeypatch):
     context = _context(permission=["read", "write"])
-    capability, train, _, _ = _training_setup(context)
+    capability, train, _, _ = training_setup(context)
     job = FinetuningJob.objects.create(
         project=context.project,
         capability=capability,
@@ -830,7 +791,7 @@ def test_readiness_reports_chosen_cell_rows_and_contract_failure(monkeypatch):
 
 def test_start_uses_explicit_cell_not_active(monkeypatch):
     context = _context(permission=["read", "write"])
-    capability, train, _evaluation, _eval_set = _training_setup(context)
+    capability, train, _evaluation, _eval_set = training_setup(context)
     extra = _ok_cell(train, intent="train", rows=9, title="shaped", position=1, active=False)
     called = {}
 
