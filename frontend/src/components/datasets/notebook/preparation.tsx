@@ -115,9 +115,7 @@ export function QualityChip({ cell }: { cell: Cell }) {
         ) : (
           <p>No current quality review for this version and capability.</p>
         )}
-        <p className="mt-2 text-muted-foreground">
-          Model and context checks run in training setup.
-        </p>
+        <p className="mt-2 text-muted-foreground">Model and context checks run before training.</p>
       </HoverCardContent>
     </HoverCard>
   );
