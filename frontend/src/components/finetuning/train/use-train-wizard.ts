@@ -151,12 +151,11 @@ export function useTrainWizard({
   const dataset = datasets.find((d) => d.id === datasetId);
 
   const evalDatasetsQuery = useProjectDatasetsForEvalQuery(projectId);
-  const allEvalDatasets = useMemo(
+  const evalDatasets = useMemo(
     () => evalDatasetsQuery.data?.results ?? [],
     [evalDatasetsQuery.data]
   );
-  const evalDatasets = allEvalDatasets;
-  const evalDataset = allEvalDatasets.find((d) => d.id === evalDatasetId);
+  const evalDataset = evalDatasets.find((d) => d.id === evalDatasetId);
 
   useEffect(() => {
     if (evalDatasetId || evalDatasets.length === 0) return;
@@ -218,7 +217,6 @@ export function useTrainWizard({
   const datasetValid = validation?.valid === true;
 
   const dataReady = !!datasetId && datasetValid && !validating;
-  const evaluationReady = dataReady && !!evalDatasetId && !!evalSetId;
 
   // Recommendations start the moment the dataset validates, so the models
   // appear without a separate action.
@@ -239,7 +237,6 @@ export function useTrainWizard({
   // Every constraint-passing model, ranked by grade; `shown` names the opening line-up.
   const candidates = useMemo(() => rec?.candidates ?? [], [rec]);
   const excluded = useMemo(() => rec?.excluded ?? [], [rec]);
-  const benchmarkSnapshot = rec?.benchmarkSnapshot;
   const shownModels = useMemo(() => rec?.shown ?? [], [rec]);
   const candidateByModel = useMemo(() => {
     const map = new Map<string, FinetuningExperiment>();
@@ -529,7 +526,6 @@ export function useTrainWizard({
     addModel,
     benchmarkModel,
     benchmarkOptions,
-    benchmarkSnapshot,
     benchmarksQuery,
     candidateByModel,
     candidates,
@@ -558,7 +554,6 @@ export function useTrainWizard({
     evalSets,
     evalSetsQuery,
     evaluationPlan,
-    evaluationReady,
     excluded,
     hasIncumbent,
     launch,
@@ -566,7 +561,6 @@ export function useTrainWizard({
     launchError,
     launching,
     overlapCount,
-    projectId,
     rec,
     recommendQuery,
     removeModel,
