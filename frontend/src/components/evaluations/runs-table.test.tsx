@@ -207,7 +207,7 @@ describe("RunsTable row click", () => {
 
     const { search, to } = navigate.mock.calls[0][0];
     const url = { page: 3, projectId: "proj-1", run_search: "nightly", run_status: "failed" };
-    expect(to).toBe("/evaluations/runs/$runId");
+    expect(to).toBe("/evaluations/$runId");
     expect(typeof search === "function" ? search(url) : search).toEqual(url);
   });
 });

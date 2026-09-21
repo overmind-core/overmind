@@ -72,7 +72,7 @@ export function EntityLink({
           className={className}
           onClick={onClick}
           params={{ runId: id }}
-          to="/evaluations/runs/$runId"
+          to="/evaluations/$runId"
           {...rest}
         >
           {children}

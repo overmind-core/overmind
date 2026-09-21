@@ -584,7 +584,7 @@ export function RunsTable({
           params: { runId: r.id! },
           resetScroll: false,
           search: (prev) => prev,
-          to: "/evaluations/runs/$runId",
+          to: "/evaluations/$runId",
         })
       }
       onRowMouseEnter={(r) => {

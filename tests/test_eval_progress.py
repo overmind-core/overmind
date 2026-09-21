@@ -224,3 +224,17 @@ def test_sample_output_preview_falls_back_to_last_assistant_message():
         },
     )
     assert EvalSampleListSerializer(sample).data["output_preview"] == "the answer"
+
+
+def test_sample_expected_preview_clips_string_and_json():
+    project = _project()
+    run = _run(project)
+    variant = EvalVariant.objects.create(run=run, label="model-a")
+    gold = EvalSample.objects.create(run=run, variant=variant, expected="Paris" + "!" * 300)
+    structured = EvalSample.objects.create(run=run, variant=variant, expected={"label": "positive"})
+    empty = EvalSample.objects.create(run=run, variant=variant, expected=None)
+
+    gold_preview = EvalSampleListSerializer(gold).data["expected_preview"]
+    assert gold_preview == ("Paris" + "!" * 300)[:240]
+    assert EvalSampleListSerializer(structured).data["expected_preview"] == '{"label": "positive"}'
+    assert EvalSampleListSerializer(empty).data["expected_preview"] == ""

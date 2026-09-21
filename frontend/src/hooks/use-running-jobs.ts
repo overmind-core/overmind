@@ -46,7 +46,7 @@ export function navigateToJob(
   void navigate({
     params: { runId: job.id },
     search: (prev) => ({ ...prev, projectId }),
-    to: "/evaluations/runs/$runId",
+    to: "/evaluations/$runId",
   });
 }
 

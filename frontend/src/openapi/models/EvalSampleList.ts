@@ -84,6 +84,12 @@ export interface EvalSampleList {
      * @type {string}
      * @memberof EvalSampleList
      */
+    readonly expectedPreview: string;
+    /**
+     *
+     * @type {string}
+     * @memberof EvalSampleList
+     */
     readonly error: string;
     /**
      *
@@ -107,6 +113,7 @@ export function instanceOfEvalSampleList(value: object): value is EvalSampleList
     if (!('isPrepared' in value) || value['isPrepared'] === undefined) return false;
     if (!('inputPreview' in value) || value['inputPreview'] === undefined) return false;
     if (!('outputPreview' in value) || value['outputPreview'] === undefined) return false;
+    if (!('expectedPreview' in value) || value['expectedPreview'] === undefined) return false;
     if (!('error' in value) || value['error'] === undefined) return false;
     if (!('createdAt' in value) || value['createdAt'] === undefined) return false;
     return true;
@@ -132,6 +139,7 @@ export function EvalSampleListFromJSONTyped(json: any, ignoreDiscriminator: bool
         'isPrepared': json['is_prepared'],
         'inputPreview': json['input_preview'],
         'outputPreview': json['output_preview'],
+        'expectedPreview': json['expected_preview'],
         'error': json['error'],
         'createdAt': (new Date(json['created_at'])),
     };
@@ -141,7 +149,7 @@ export function EvalSampleListToJSON(json: any): EvalSampleList {
     return EvalSampleListToJSONTyped(json, false);
 }
 
-export function EvalSampleListToJSONTyped(value?: Omit<EvalSampleList, 'id'|'run'|'variant'|'variant_label'|'row_index'|'source_trace_id'|'context_coverage'|'is_prepared'|'input_preview'|'output_preview'|'error'|'created_at'> | null, ignoreDiscriminator: boolean = false): any {
+export function EvalSampleListToJSONTyped(value?: Omit<EvalSampleList, 'id'|'run'|'variant'|'variant_label'|'row_index'|'source_trace_id'|'context_coverage'|'is_prepared'|'input_preview'|'output_preview'|'expected_preview'|'error'|'created_at'> | null, ignoreDiscriminator: boolean = false): any {
     if (value == null) {
         return value;
     }

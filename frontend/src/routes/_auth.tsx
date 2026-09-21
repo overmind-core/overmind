@@ -38,11 +38,12 @@ type Crumb = { label: string; path: string };
 
 const DYNAMIC_PARENTS = new Set([
   "capabilities",
-  "projects",
+  "datasets",
+  "evaluations",
   "jobs",
   "observability",
-  "datasets",
   "optimiser",
+  "projects",
 ]);
 
 // Not a CSS `capitalize` class: that title-cases every word and cannot keep
@@ -92,10 +93,18 @@ function useCachedName(kind: string | undefined, slug: string | undefined): stri
     select: (experiment) => `${experiment.capabilityName || "Run"} · ${experiment.id.slice(0, 8)}`,
   });
 
+  const evalRunNameQuery = useQuery({
+    enabled: kind === "evaluations" && !!slug,
+    queryFn: () => apiClient.evalRuns.evalRunsRetrieve({ id: slug ?? "" }),
+    queryKey: ["eval-run", slug],
+    select: (run) => run.name?.trim() || `Run ${run.id.slice(0, 8)}`,
+  });
+
   if (kind === "capabilities") return capabilityNameQuery.data;
   if (kind === "projects") return projectNameQuery.data;
   if (kind === "datasets") return datasetNameQuery.data;
   if (kind === "optimiser") return experimentNameQuery.data;
+  if (kind === "evaluations") return evalRunNameQuery.data;
   return undefined;
 }
 

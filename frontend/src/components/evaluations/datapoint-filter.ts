@@ -20,6 +20,63 @@ export function matchesSearch(query: string, texts: Array<string | null | undefi
   return texts.some((t) => !!t && t.toLowerCase().includes(q));
 }
 
+export interface DatapointRow {
+  key: string;
+  rowIndex: number | null;
+  fallbackSampleId: string;
+}
+
+// EvalSample has no datapoint FK. Dataset/optimizer runs share rowIndex;
+// trace-filter runs share sourceTraceId; otherwise each sample is its own row.
+export function sampleRowKey(s: {
+  id?: string;
+  rowIndex?: number | null;
+  sourceTraceId?: string;
+}): string | null {
+  if (!s.id) return null;
+  if (s.rowIndex != null) return `row:${s.rowIndex}`;
+  if (s.sourceTraceId) return `trace:${s.sourceTraceId}`;
+  return `sample:${s.id}`;
+}
+
+export function groupSampleRows(
+  samples: Array<{
+    id?: string;
+    rowIndex?: number | null;
+    sourceTraceId?: string;
+    variant?: string | null;
+  }>
+): {
+  datapointRows: DatapointRow[];
+  sampleMap: Map<string, Map<string, string>>;
+  sampleVariantMap: Map<string, string>;
+} {
+  const sampleMap = new Map<string, Map<string, string>>();
+  const seen = new Map<string, { rowIndex: number | null; sampleId: string }>();
+  const sampleVariantMap = new Map<string, string>();
+
+  for (const s of samples) {
+    const key = sampleRowKey(s);
+    if (!key || !s.id) continue;
+    if (!sampleMap.has(key)) sampleMap.set(key, new Map());
+    if (s.variant) {
+      sampleMap.get(key)!.set(s.variant, s.id);
+      sampleVariantMap.set(s.id, s.variant);
+    }
+    if (!seen.has(key)) seen.set(key, { rowIndex: s.rowIndex ?? null, sampleId: s.id });
+  }
+
+  return {
+    datapointRows: [...seen.entries()].map(([key, first]) => ({
+      fallbackSampleId: first.sampleId,
+      key,
+      rowIndex: first.rowIndex,
+    })),
+    sampleMap,
+    sampleVariantMap,
+  };
+}
+
 export type SortDir = "asc" | "desc";
 
 /** Null/undefined sort last in both directions. */

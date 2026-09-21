@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from collections import defaultdict
 
 from django.db.models import Avg, Count, FloatField, Q, Sum
@@ -30,6 +31,15 @@ from overbae.services.datasets import use
 from overbae.services.datasets.lifecycle import DatasetError
 from overbae.services.eval import evidence
 from overbae.services.model_catalog import is_model_available
+
+_PREVIEW_LEN = 240
+
+
+def _clip_preview(value: object) -> str:
+    if value in (None, "", []):
+        return ""
+    text = value if isinstance(value, str) else json.dumps(value, default=str, ensure_ascii=False)
+    return text[:_PREVIEW_LEN]
 
 
 def _eval_set_has_gold_comparator(eval_set: EvalSet) -> bool:
@@ -539,6 +549,7 @@ class EvalSampleListSerializer(serializers.ModelSerializer):
     is_prepared = serializers.SerializerMethodField()
     input_preview = serializers.SerializerMethodField()
     output_preview = serializers.SerializerMethodField()
+    expected_preview = serializers.SerializerMethodField()
 
     class Meta:
         model = EvalSample
@@ -553,6 +564,7 @@ class EvalSampleListSerializer(serializers.ModelSerializer):
             "is_prepared",
             "input_preview",
             "output_preview",
+            "expected_preview",
             "error",
             "created_at",
         ]
@@ -569,7 +581,7 @@ class EvalSampleListSerializer(serializers.ModelSerializer):
             (m.get("content") for m in messages if m.get("role") == "user" and m.get("content")),
             "",
         )
-        return text[:240] if isinstance(text, str) else ""
+        return _clip_preview(text)
 
     def get_output_preview(self, obj) -> str:
         traj = obj.trajectory or {}
@@ -584,9 +596,10 @@ class EvalSampleListSerializer(serializers.ModelSerializer):
                 ),
                 "",
             )
-        if not isinstance(output, str):
-            return ""
-        return output[:240]
+        return _clip_preview(output)
+
+    def get_expected_preview(self, obj) -> str:
+        return _clip_preview(obj.expected)
 
 
 class EvalSampleSerializer(serializers.ModelSerializer):
