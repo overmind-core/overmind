@@ -75,7 +75,6 @@ function wizard(over: Partial<TrainWizard>): TrainWizard {
       evalModelAfter: true,
       evalModelBefore: true,
     },
-    evaluationReady: false,
     hasIncumbent: false,
     overlapCount: 12,
     runName: "Support · transcripts",
