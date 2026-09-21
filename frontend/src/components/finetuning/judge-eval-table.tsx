@@ -12,7 +12,7 @@ import {
 import type { EvaluationDisplayRow } from "@/components/finetuning/evaluation-plan";
 import { DeltaChip, EvalScoreChip, FtStatusBadge } from "@/components/finetuning/finetuning-chrome";
 import { FinetuningModelChip } from "@/components/finetuning/finetuning-model-chip";
-import type { ExperimentSnapshot } from "@/components/finetuning/job-snapshot";
+import { type ExperimentSnapshot, experimentLabel } from "@/components/finetuning/job-snapshot";
 import { meanMetricScore } from "@/components/finetuning/judge-eval-score";
 import { ModelProviderChip } from "@/components/model-provider-chip";
 import { Button } from "@/components/ui/button";
@@ -20,11 +20,26 @@ import { DateTime } from "@/components/ui/datetime";
 import { fromScore } from "@/components/ui/delta-chip";
 import { Icon } from "@/components/ui/icons";
 import { TableCell, TableRow } from "@/components/ui/table";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import type { ClassMetrics, FinetuningJudgeEvalRow } from "@/hooks/use-finetuning";
 import { cn, scorePct } from "@/lib/utils";
 
-function ExperimentCell({ snapshot }: { snapshot: ExperimentSnapshot }) {
-  return <ModelProviderChip className="max-w-full" compact model={snapshot.job.baseModel} />;
+function ExperimentCell({ snapshots }: { snapshots: ExperimentSnapshot[] }) {
+  if (snapshots.length === 1) {
+    return <ModelProviderChip className="max-w-full" compact model={snapshots[0].job.baseModel} />;
+  }
+  return (
+    <Tooltip>
+      <TooltipTrigger className="text-xs text-muted-foreground">
+        Shared · {snapshots.length} experiments
+      </TooltipTrigger>
+      <TooltipContent>
+        {snapshots.map(({ job }) => (
+          <div key={job.id}>{experimentLabel(job)}</div>
+        ))}
+      </TooltipContent>
+    </Tooltip>
+  );
 }
 
 function judgeEvalStepLabel(row: FinetuningJudgeEvalRow): string {
@@ -112,13 +127,13 @@ function EvalRunBreakdownRows({
 
 export function JudgeEvalTableRow({
   row,
-  snapshot,
+  snapshots,
   isAll,
   projectId,
   deployedUuidByServingId,
 }: {
   row: EvaluationDisplayRow;
-  snapshot: ExperimentSnapshot;
+  snapshots: ExperimentSnapshot[];
   isAll: boolean;
   projectId: string;
   deployedUuidByServingId: Map<string, string>;
@@ -155,7 +170,7 @@ export function JudgeEvalTableRow({
         </TableCell>
         {isAll ? (
           <TableCell className="whitespace-nowrap px-2">
-            <ExperimentCell snapshot={snapshot} />
+            <ExperimentCell snapshots={snapshots} />
           </TableCell>
         ) : null}
         <TableCell className="w-56 whitespace-nowrap px-2 font-mono text-xs tabular-nums">

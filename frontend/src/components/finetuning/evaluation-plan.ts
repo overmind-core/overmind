@@ -1,3 +1,4 @@
+import type { ExperimentSnapshot } from "@/components/finetuning/job-snapshot";
 import type { FinetuningJudgeEvalRow } from "@/hooks/use-finetuning";
 import type { FinetuningJobList } from "@/openapi";
 
@@ -59,5 +60,45 @@ export function evaluationDisplayRows(
 export function hasPendingEvaluations(job: FinetuningJobList, rows: FinetuningJudgeEvalRow[]) {
   return evaluationDisplayRows(job, rows).some((row) =>
     ["pending", "queued", "running"].includes(row.status)
+  );
+}
+
+export function groupEvaluationDisplayRows(snapshots: ExperimentSnapshot[]) {
+  const groups = new Map<string, { row: EvaluationDisplayRow; snapshots: ExperimentSnapshot[] }>();
+  for (const snapshot of snapshots) {
+    for (const row of evaluationDisplayRows(snapshot.job, snapshot.judgeEvals)) {
+      // Matching model names alone do not establish identical data or grading context.
+      const key = row.eval_run_id
+        ? `${row.kind}:${row.eval_run_id}`
+        : `${snapshot.job.id}:${row.id}`;
+      const group = groups.get(key);
+      if (!group) {
+        groups.set(key, { row, snapshots: [snapshot] });
+        continue;
+      }
+      const current = group.row;
+      const preferIncoming =
+        current.status === "cancelled"
+          ? row.status !== "cancelled"
+          : row.status !== "cancelled" && (row.updated_at ?? "") > (current.updated_at ?? "");
+      group.row = {
+        ...(preferIncoming ? row : current),
+        // Deltas belong to each experiment's comparison, not the shared run.
+        baseline_delta: null,
+        comparison_label: null,
+        created_at:
+          current.created_at && row.created_at
+            ? current.created_at < row.created_at
+              ? current.created_at
+              : row.created_at
+            : (current.created_at ?? row.created_at),
+      };
+      group.snapshots.push(snapshot);
+    }
+  }
+  return [...groups.values()].sort(
+    (a, b) =>
+      evaluationKindRank(a.row.kind) - evaluationKindRank(b.row.kind) ||
+      (a.row.checkpoint_step ?? 0) - (b.row.checkpoint_step ?? 0)
   );
 }

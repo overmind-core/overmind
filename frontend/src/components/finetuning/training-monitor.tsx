@@ -5,8 +5,7 @@ import { Link } from "@tanstack/react-router";
 
 import apiClient from "@/client";
 import {
-  evaluationDisplayRows,
-  evaluationKindRank,
+  groupEvaluationDisplayRows,
   hasPendingEvaluations,
 } from "@/components/finetuning/evaluation-plan";
 import {
@@ -223,15 +222,7 @@ export function TrainingMonitorPanel({
     ? curvesQueries.some((q) => q.isLoading)
     : (curvesQueries[snapshots.indexOf(focus)]?.isLoading ?? false);
 
-  const judgeEvalRows = (isAll ? snapshots : [focus])
-    .flatMap((s) =>
-      evaluationDisplayRows(s!.job, s!.judgeEvals).map((row) => ({ row, snapshot: s! }))
-    )
-    .sort(
-      (a, b) =>
-        evaluationKindRank(a.row.kind) - evaluationKindRank(b.row.kind) ||
-        (a.row.checkpoint_step ?? 0) - (b.row.checkpoint_step ?? 0)
-    );
+  const judgeEvalRows = groupEvaluationDisplayRows(focus ? [focus] : snapshots);
 
   // The backend stamps class_metrics only for label-referenced eval datasets.
   const hasClassMetrics = snapshots.some((s) =>
@@ -552,14 +543,14 @@ export function TrainingMonitorPanel({
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {judgeEvalRows.map(({ row, snapshot }) => (
+                {judgeEvalRows.map(({ row, snapshots: rowSnapshots }) => (
                   <JudgeEvalTableRow
                     deployedUuidByServingId={deployedUuidByServingId}
                     isAll={isAll}
-                    key={`${snapshot.job.id}-${row.kind === "checkpoint" ? row.id : row.kind}`}
+                    key={`${row.kind}-${row.eval_run_id ?? `${rowSnapshots[0].job.id}-${row.id}`}`}
                     projectId={projectId}
                     row={row}
-                    snapshot={snapshot}
+                    snapshots={rowSnapshots}
                   />
                 ))}
               </TableBody>
