@@ -240,7 +240,7 @@ ______________________________________________________________________
 
 ## Licence
 
-The platform (`overbae/`, `frontend/`) is [AGPL-3.0](LICENSE). The SDK and CLI (`overmind/`) stay [MIT](overmind/LICENSE). A commercial licence is a paid alternative from Overmind Ltd if you need different terms — [hello@overmindlab.ai](mailto:hello@overmindlab.ai).
+The platform (`overbae/`, `frontend/`) is [AGPL-3.0](LICENSE). The SDK and CLI (`overmind/`) stay [MIT](overmind/LICENSE). A commercial licence is a paid alternative from Overmind Ltd if you need different terms — [support@overmindlab.ai](mailto:support@overmindlab.ai).
 
 <p align="center">
   <img alt="Overmind" src="frontend/src/assets/overmind-eye-copper.svg" width="96">
