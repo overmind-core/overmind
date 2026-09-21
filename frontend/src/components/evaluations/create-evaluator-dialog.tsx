@@ -214,7 +214,7 @@ export const CreateEvaluatorDialog = ({
     setMode("manual");
     setName("");
     setJudgeModel("");
-    setDecisionBackend("jev");
+    setDecisionBackend("generative");
     setDecisionConfidence(0.9);
     setEvaluationPrompt("");
     setScoreType("numeric");

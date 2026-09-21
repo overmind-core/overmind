@@ -138,8 +138,14 @@ class TestBasetenContextLength:
         with pytest.raises(TrainingPlanError, match="refusing to clamp"):
             baseten_context_length(20000, model_max=4096)
 
-    def test_uncapped_request_lands_on_largest_bucket(self):
-        assert baseten_context_length(999_999) == _BUCKETS[-1]
+    @pytest.mark.parametrize(
+        ("needed_tokens", "requested", "expected"),
+        [(999_999, None, 999_999 + _HEADROOM), (0, 999_999, 999_999)],
+    )
+    def test_uncapped_context_never_truncates_to_largest_bucket(
+        self, needed_tokens, requested, expected
+    ):
+        assert baseten_context_length(needed_tokens, requested=requested) == expected
 
 
 class TestRecommenderIncludesContext:
