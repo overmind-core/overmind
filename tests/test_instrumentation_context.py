@@ -55,8 +55,6 @@ def _behaviour(
     entry: str,
     file: str,
     grain: str = Behaviour.Grain.RUN,
-    lineno: int = 10,
-    source_line: str = "def run_agent(query: str):",
     anchors: list[dict[str, object]] | None = None,
     anchor_sequence: list[str] | None = None,
 ) -> tuple[Behaviour, BehaviourVersion]:
@@ -82,8 +80,6 @@ def _behaviour(
                     "qualname": entry,
                     "kind": "entry",
                     "file": file,
-                    "lineno": lineno,
-                    "source_line": source_line,
                 }
             ],
             "anchor_sequence": anchor_sequence if anchor_sequence is not None else [entry],
@@ -118,8 +114,6 @@ def test_plan_uses_registry_contract_target_and_only_stable_ticket_fields():
         "qualname": "app.main.run_agent",
         "module": "app.main",
         "import_line": "from app.main import run_agent",
-        "lineno": 10,
-        "source_line": "def run_agent(query: str):",
     }
     assert ticket["behaviour_id"] == str(behaviour.id)
     assert ticket["version_id"] == str(version.id)
@@ -185,15 +179,11 @@ def test_plan_uses_task_scope_for_fixed_turn():
             "qualname": "app.main.turn_agent",
             "kind": "entry_point",
             "file": "app/main.py",
-            "lineno": 10,
-            "source_line": "def turn_agent(query: str):",
         },
         {
             "qualname": "app.main.lookup",
             "kind": "retrieval",
             "file": "app/main.py",
-            "lineno": 20,
-            "source_line": "def lookup(query: str):",
         },
     ]
     behaviour, _ = _behaviour(
@@ -226,8 +216,6 @@ def test_plan_marks_shared_entry_dynamic():
             "qualname": "app.dispatch.run",
             "kind": "entry_point",
             "file": "app/dispatch.py",
-            "lineno": 10,
-            "source_line": "def run(request):",
         }
     ]
     _behaviour(
@@ -271,57 +259,41 @@ def test_plan_required_spans_map_kinds_in_sequence_and_deduplicate():
             "qualname": "app.agent.run",
             "kind": "entry_point",
             "file": "app/agent.py#L10-L12",
-            "lineno": 10,
-            "source_line": "def run(request):",
         },
         {
             "qualname": "app.agent.use_tool",
             "kind": "tool",
             "file": "app/agent.py#L20-L22",
-            "lineno": 20,
-            "source_line": "def use_tool(query):",
         },
         {
             "qualname": "app.agent.build_workflow",
             "kind": "workflow",
             "file": "app/agent.py#L30-L32",
-            "lineno": 30,
-            "source_line": "def build_workflow(state):",
         },
         {
             "qualname": "app.agent.fetch",
             "kind": "retrieval",
             "file": "app/agent.py#L40-L42",
-            "lineno": 40,
-            "source_line": "def fetch(query):",
         },
         {
             "qualname": "app.agent.nested_entry",
             "kind": "entry_point",
             "file": "app/agent.py#L50-L52",
-            "lineno": 50,
-            "source_line": "def nested_entry(state):",
         },
         {
             "qualname": "app.agent.helper",
             "kind": "function",
             "file": "app/agent.py#L60-L62",
-            "lineno": 60,
-            "source_line": "def helper(value):",
         },
         {
             "qualname": "app.agent.call_model",
             "kind": "llm_call",
             "file": "app/agent.py#L70-L72",
-            "lineno": 70,
-            "source_line": "def call_model(messages):",
         },
         {
             "qualname": "app.agent.other",
             "kind": "unknown",
             "file": "app/agent.py#L80-L82",
-            "lineno": 80,
-            "source_line": "def other(value):",
         },
     ]
     behaviour, _ = _behaviour(
@@ -357,25 +329,12 @@ def test_plan_required_spans_map_kinds_in_sequence_and_deduplicate():
         ("app.agent.other", "@overmind.observe()"),
     ]
     assert all(set(span) == {"target", "required_decorator"} for span in spans)
-    assert [
-        (span["target"]["file"], span["target"]["lineno"], span["target"]["source_line"])
-        for span in spans
-    ] == [
-        ("app/agent.py", 20, "def use_tool(query):"),
-        ("app/agent.py", 30, "def build_workflow(state):"),
-        ("app/agent.py", 40, "def fetch(query):"),
-        ("app/agent.py", 50, "def nested_entry(state):"),
-        ("app/agent.py", 60, "def helper(value):"),
-        ("app/agent.py", 70, "def call_model(messages):"),
-        ("app/agent.py", 80, "def other(value):"),
-    ]
+    assert [span["target"]["file"] for span in spans] == ["app/agent.py"] * 7
     assert spans[0]["target"] == {
         "file": "app/agent.py",
         "qualname": "app.agent.use_tool",
         "module": "app.agent",
         "import_line": "from app.agent import use_tool",
-        "lineno": 20,
-        "source_line": "def use_tool(query):",
     }
     assert ticket["required_scope"] == f'@overmind.run(capability_id="{capability.id}")'
 
