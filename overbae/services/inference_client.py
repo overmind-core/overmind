@@ -136,7 +136,10 @@ class InferenceClient:
             )
         if stream:
             return resp
-        return resp.json()
+        result = resp.json()
+        if isinstance(result, dict) and "error" in result:
+            raise InferenceClientError(f"InferenceAPIServer failed: {result['error']}")
+        return result
 
     def stream_chat_completions(
         self,
@@ -165,7 +168,7 @@ class InferenceClient:
             **kwargs,
         )
         try:
-            for line in resp.iter_lines():
+            for line in resp.iter_lines(chunk_size=1):
                 if line:
                     decoded = line.decode("utf-8") if isinstance(line, bytes) else line
                     yield decoded + "\n\n"

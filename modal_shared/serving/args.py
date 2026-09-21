@@ -41,6 +41,16 @@ def snap_lora_rank(rank: int) -> int:
     return _LORA_RANK_STEPS[-1]
 
 
+def lora_load_request(name: str, path: str) -> dict:
+    config = json.loads((Path(path) / "adapter_config.json").read_text())
+    parameters = config.get("target_parameters") or []
+    return {
+        "lora_name": name,
+        "lora_path": path,
+        "is_3d_lora_weight": any(p.endswith("experts.gate_up_proj") for p in parameters),
+    }
+
+
 @dataclass(frozen=True)
 class VllmServeContext:
     model_path: str
@@ -133,6 +143,8 @@ def build_vllm_args(ctx: VllmServeContext, spec: FamilySpec | None = None) -> li
         cmd += ["--dtype", spec.dtype_override or "bfloat16"]
 
     if ctx.lora_adapters or ctx.enable_lora:
+        if spec.mixed_moe_lora_format:
+            cmd.append("--enable-mixed-moe-lora-format")
         # A pool that loads adapters at runtime has none to count, so it takes the full
         # slot allowance.
         slots = min(len(ctx.lora_adapters), MAX_LORA_SLOTS) if ctx.lora_adapters else MAX_LORA_SLOTS

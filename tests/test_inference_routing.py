@@ -314,13 +314,12 @@ def test_inference_client_sends_muse_serve_image_header():
     ("base_model", "expected"),
     [
         ("Qwen/Qwen3-1.7B", True),
+        ("Qwen/Qwen3-Coder-30B-A3B-Instruct", True),
         ("nvidia/NVIDIA-Nemotron-3.5-Lightning-30B-A3B", False),
         ("openai/gpt-oss-20b", False),
     ],
 )
-def test_moe_lora_takes_the_merge_path(base_model, expected):
-    """vLLM cannot apply a LoRA that targets MoE experts — add_lora dies on a bare
-    AssertionError after the base has already loaded, so the gate has to be upstream."""
+def test_lora_routing_uses_verified_expert_support(base_model, expected):
     from overbae.tasks.model_deployment import _serves_as_adapter
 
     job = MagicMock()
