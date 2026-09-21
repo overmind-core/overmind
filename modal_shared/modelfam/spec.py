@@ -47,6 +47,7 @@ class FamilySpec:
     min_max_tokens: int | None = None
     # Force --dtype (e.g. "bfloat16" for LFM even when FP8).
     dtype_override: str | None = None
+    mixed_moe_lora_format: bool = False
     # Text-only fine-tune of a multimodal base needs --language-model-only.
     natively_multimodal: bool = False
     # Normalized id tokens for multimodal detection (qwen3-5, gemma-4, …).

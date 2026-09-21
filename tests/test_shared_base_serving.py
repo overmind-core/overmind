@@ -1,10 +1,37 @@
 import importlib
+import json
+import os
 from unittest.mock import Mock
 
 import pytest
 
 from modal_shared.stacks import WORKER_ALLOWED, worker_cls_name
 from overbae.modal import modal_vllm_worker as serving
+
+
+def test_shared_worker_resolves_family_from_sealed_base(monkeypatch, tmp_path):
+    obj = serving._BaseVLLMWorker()
+    obj.model_path = "base"
+    obj.model_name = "opaque-deployment-id"
+    obj.max_model_len = 512
+    obj.enable_lora = True
+    obj.max_lora_rank = 16
+    (tmp_path / "base").mkdir()
+    monkeypatch.setattr(serving, "WEIGHTS_MOUNT", str(tmp_path))
+    monkeypatch.setattr(serving, "weights_vol", Mock())
+    monkeypatch.setattr(serving, "vllm_cache_vol", Mock())
+    monkeypatch.setattr(
+        serving,
+        "read_base_manifest",
+        Mock(return_value={"repo": "Qwen/Qwen3-Coder-30B-A3B-Instruct"}),
+    )
+    monkeypatch.setattr(serving.subprocess, "Popen", Mock())
+    monkeypatch.setattr(serving, "_wait_for_vllm", Mock())
+    monkeypatch.setenv("VLLM_ALLOW_RUNTIME_LORA_UPDATING", "0")
+    monkeypatch.setenv("VLLM_SERVER_DEV_MODE", "0")
+    obj._startup_inner(_json=json, _os=os)
+    assert "--enable-mixed-moe-lora-format" in obj._serve_command
+    assert obj._serve_command[obj._serve_command.index("--tool-call-parser") + 1] == "qwen3_coder"
 
 
 @pytest.mark.parametrize("gpu,image", sorted(WORKER_ALLOWED))

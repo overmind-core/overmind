@@ -25,6 +25,7 @@ from pathlib import Path
 import modal
 from starlette.responses import StreamingResponse
 
+from modal_shared.serving.args import lora_load_request
 from modal_shared.serving.artifacts import read_base_manifest
 
 MODAL_ENVIRONMENT = os.environ.get("MODAL_ENVIRONMENT", "overmind-dev")
@@ -316,6 +317,7 @@ class _BaseVLLMWorker:
         # instead of booting its own container.
         if self.enable_lora:
             _os.environ["VLLM_ALLOW_RUNTIME_LORA_UPDATING"] = "1"
+            base_model = read_base_manifest(Path(full_path))["repo"]
 
         from modal_shared.modelfam import resolve
         from modal_shared.serving.args import (
@@ -413,7 +415,7 @@ class _BaseVLLMWorker:
             async with httpx.AsyncClient(timeout=300) as client:
                 resp = await client.post(
                     f"http://localhost:{VLLM_PORT}/v1/load_lora_adapter",
-                    json={"lora_name": name, "lora_path": full},
+                    json=lora_load_request(name, full),
                 )
             text = resp.text or ""
             # vLLM answers 400 "has already been loaded" when another container in this pool

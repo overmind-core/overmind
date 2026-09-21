@@ -197,6 +197,7 @@ QWEN3_CODER = FamilySpec(
     key="qwen3_coder",
     patterns=("qwen3-coder",),
     tool_call_parser="qwen3_coder",
+    mixed_moe_lora_format=True,
     pretok_headers=(r"<\|im_start\|>(\w+)\n",),
     notes="Qwen3-Coder XML tool calls (same parser as Qwen3.5).",
 )

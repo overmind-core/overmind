@@ -427,15 +427,14 @@ def _serves_as_adapter(job) -> bool:
     Volume, which is where ``publish_adapter`` reads it from. Baseten and Nebius runs come back
     through S3 and still take the merge path.
 
-    MoE bases are excluded. Training targets the MLP projections, which on an MoE are the experts,
-    and vLLM implements those as fused layers its LoRA path cannot wrap — ``add_lora`` fails on a
-    bare AssertionError once the base is already loaded. Merging sidesteps it entirely.
+    MoE adapter serving requires verified support for the training checkpoint's expert format.
     """
     training_type = (job.hyperparameters or {}).get("training_type")
     kind = (training_type or {}).get("type") if isinstance(training_type, dict) else None
     if job.provider != "modal" or str(kind or "Lora") != "Lora":
         return False
-    return not (get_model_config_any_backend(job.base_model) or {}).get("moe", False)
+    config = get_model_config_any_backend(job.base_model) or {}
+    return (config.get("inference") or {}).get("lora_supported", not config.get("moe", False))
 
 
 def _deploy_as_adapter(

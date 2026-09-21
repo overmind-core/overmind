@@ -48,17 +48,17 @@ GPU_TIERS: list[dict[str, Any]] = [
 ]
 
 
-def _smallest_tier_holding_weights(model_cfg: dict[str, Any]) -> str:
+def _smallest_tier_holding_weights(model_cfg: dict[str, Any], tiers: list[dict[str, Any]]) -> str:
     """Only for when architecture constants are missing and the KV-aware calculation cannot run.
     Reserves a nominal one sequence of KV on top of the weights so the pick is not wrong by a
     whole tier; the true requirement may still be higher."""
     params_b = model_cfg.get("total_params_b") or 0
     weights_gb = params_b * (1 if model_cfg.get("fp8_supported", False) else 2)
     need = weights_gb + ACTIVATION_OVERHEAD_GB + FALLBACK_KV_RESERVE_GB
-    for tier in GPU_TIERS:
-        if tier["enabled"] and tier["vram_gb"] * GPU_MEMORY_UTILIZATION >= need:
+    for tier in tiers:
+        if tier["vram_gb"] * GPU_MEMORY_UTILIZATION >= need:
             return tier["name"]
-    return next((t["name"] for t in reversed(GPU_TIERS) if t["enabled"]), GPU_TIERS[-1]["name"])
+    return tiers[-1]["name"]
 
 
 def select_gpu(
@@ -74,13 +74,18 @@ def select_gpu(
     num_attn_layers = model_cfg.get("num_attn_layers")
     num_kv_heads = model_cfg.get("num_kv_heads")
     head_dim = model_cfg.get("head_dim")
+    inference = model_cfg.get("inference") or {}
+    minimum_vram = inference.get("min_vram_gb", 0)
+    tiers = [t for t in GPU_TIERS if t["enabled"] and t["vram_gb"] >= minimum_vram]
+    if not tiers:
+        raise ValueError(f"No enabled GPU meets minimum VRAM {minimum_vram} GB")
 
     if not all([num_attn_layers, num_kv_heads, head_dim]):
         # The KV cache cannot be sized without them, but a flat default would pin a
         # 70B to a 24 GB card — at minimum refuse a GPU the weights alone overflow.
-        fallback_gpu = (model_cfg.get("inference") or {}).get("gpu_type")
-        if not fallback_gpu:
-            fallback_gpu = _smallest_tier_holding_weights(model_cfg)
+        fallback_gpu = inference.get("gpu_type")
+        if not fallback_gpu or (minimum_vram and fallback_gpu not in {t["name"] for t in tiers}):
+            fallback_gpu = _smallest_tier_holding_weights(model_cfg, tiers)
         logger.warning(
             "gpu_selector: missing arch constants for %s; falling back to gpu=%s",
             model_cfg.get("id"),
@@ -96,9 +101,7 @@ def select_gpu(
     kv_bytes_per_tok = 2 * num_attn_layers * num_kv_heads * head_dim * KV_DTYPE_BYTES
     min_kv_1seq_gb = (max_model_len * kv_bytes_per_tok) / (1024**3)
 
-    for tier in GPU_TIERS:
-        if not tier["enabled"]:
-            continue
+    for tier in tiers:
         usable = tier["vram_gb"] * GPU_MEMORY_UTILIZATION
         kv_budget = usable - weights_gb - ACTIVATION_OVERHEAD_GB
         if kv_budget < min_kv_1seq_gb:
@@ -119,7 +122,7 @@ def select_gpu(
         return tier["name"], max_concurrent
 
     # Nothing fits on a single GPU — return the largest enabled tier with concurrency=1.
-    largest = next((t for t in reversed(GPU_TIERS) if t["enabled"]), GPU_TIERS[-2])
+    largest = tiers[-1]
     logger.error(
         "gpu_selector: model=%s (%.0fB) at context %d exceeds all single-GPU tiers; "
         "falling back to %s concurrency=1",
