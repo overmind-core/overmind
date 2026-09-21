@@ -149,10 +149,6 @@ def read_rows(rows: list[dict[str, Any]], *, spec: dict[str, Any] | None = None)
     return Landing(rows, kind=Dataset.SourceKind.FILE, spec=spec or {})
 
 
-def land_file(dataset: Dataset, path: Path, *, filename: str, user: Any = None) -> Dataset:
-    return commit(dataset, read_file(path, filename=filename), user=user)
-
-
 def land_rows(
     dataset: Dataset,
     rows: list[dict[str, Any]],
