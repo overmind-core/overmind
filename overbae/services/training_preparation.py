@@ -65,7 +65,6 @@ def request_preparation(
         if target is not None:
             if target.dataset.project_id != cell.dataset.project_id:
                 raise ValueError("Both datasets must belong to the same project.")
-            row_store.verify(target)
             dataset_use.check(target.dataset, "train", cell=target)
     config = {
         "model": model,
