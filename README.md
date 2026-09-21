@@ -32,7 +32,7 @@ Available from the [Console](https://console.overmindlab.ai/), the `overmind` CL
 </table>
 
 <p align="center">
-  <a href="https://youtu.be/m5V7Ox9OkrQ">
+  <a href="https://youtu.be/DWC0BO48154">
     <img width="9872" height="5543" alt="playframe" src="https://github.com/user-attachments/assets/246a21c5-e07a-4414-981e-f60d6308a729" />
   </a>
 </p>
