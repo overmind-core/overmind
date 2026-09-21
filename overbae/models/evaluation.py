@@ -360,7 +360,11 @@ class EvalSet(models.Model):
         "overbae.Project", on_delete=models.CASCADE, related_name="eval_sets"
     )
     capability = models.ForeignKey(
-        "overbae.Capability", on_delete=models.CASCADE, related_name="eval_sets"
+        "overbae.Capability",
+        on_delete=models.CASCADE,
+        related_name="eval_sets",
+        null=True,
+        blank=True,
     )
     name = models.CharField(max_length=255)
     description = models.TextField(blank=True, default="")
@@ -387,6 +391,13 @@ class EvalSet(models.Model):
     class Meta:
         ordering = ["-created_at"]
         unique_together = [("capability", "name")]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["project", "name"],
+                condition=models.Q(capability__isnull=True),
+                name="uniq_project_eval_set_name_unbound",
+            )
+        ]
         indexes = [models.Index(fields=["capability", "-created_at"])]
 
     def __str__(self) -> str:

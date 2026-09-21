@@ -49,8 +49,9 @@ def land(
     source: dict[str, Any],
     user_id: str | None = None,
     split: dict[str, Any] | None = None,
+    infer_capability: bool = True,
 ) -> dict[str, Any]:
-    """``source`` is ``{"upload_id", "filename"}``, ``{"rows": [...]}`` or
+    """``source`` is ``{"uploads": [...]}``, ``{"upload_id", "filename"}``, ``{"rows": [...]}`` or
     ``{"traces": {trace_ids | filters}}``. With ``split`` (``eval_dataset_id``,
     ``eval_percent``, ``position``) the source is read once and cut in two.
     The diagnosis follows for every dataset that landed."""
@@ -78,8 +79,11 @@ def land(
         _emit(dataset_id, {"type": "land_progress", "traces": done})
 
     upload_id = source.get("upload_id")
+    upload_ids = source.get("uploads") or []
     try:
-        if upload_id:
+        if upload_ids:
+            read = landing.read_uploads(upload_ids)
+        elif upload_id:
             filename = source.get("filename") or files.upload_filename(upload_id) or "upload"
             path = files.upload_data_path(upload_id)
             if not path.exists():
@@ -94,7 +98,13 @@ def land(
         else:
             raise landing.LandError("No source given.")
         if split:
-            cut = {"eval_percent": int(split["eval_percent"]), "position": split["position"]}
+            cut = {
+                "eval_percent": int(split["eval_percent"]),
+                "position": split["position"],
+                "group_by": split.get("group_by", []),
+                "stratify_by": split.get("stratify_by"),
+                "deduplicate": split.get("deduplicate", True),
+            }
             train_part, eval_part = read.split(**cut)
             # Both halves land or neither does: a lone half would read as a whole dataset.
             with transaction.atomic():
@@ -108,9 +118,16 @@ def land(
                         replace(part, spec=spec),
                         user=user,
                         state=Dataset.State.DIAGNOSING,
+                        infer_capability=infer_capability,
                     )
         else:
-            landing.commit(dataset, read, user=user, state=Dataset.State.DIAGNOSING)
+            landing.commit(
+                dataset,
+                read,
+                user=user,
+                state=Dataset.State.DIAGNOSING,
+                infer_capability=infer_capability,
+            )
     except landing.LandError as exc:
         for target in targets:
             _fail(target.id, str(exc))
@@ -123,6 +140,8 @@ def land(
     finally:
         if upload_id:
             files.discard_upload(upload_id)
+        for uploaded_id in upload_ids:
+            files.discard_upload(uploaded_id)
 
     rows = 0
     for target in targets:
@@ -146,18 +165,38 @@ def land(
     acks_late=True,
     reject_on_worker_lost=True,
 )
-def run(*, dataset_id: str, user_id: str | None = None) -> dict[str, Any]:
+def run(
+    *, dataset_id: str, user_id: str | None = None, proposal_id: str | None = None
+) -> dict[str, Any]:
     from celery.exceptions import SoftTimeLimitExceeded
 
     from overbae.models import Dataset, User
+    from overbae.services.datasets import dispatch
     from overbae.services.datasets.notebook import run as run_svc
 
     dataset = Dataset.objects.filter(pk=dataset_id).first()
     if dataset is None:
         return {"status": "gone"}
+    if proposal_id and any(proposal_id in item.get("decisions", {}) for item in dataset.chat):
+        return {"status": dataset.state}
     user = User.objects.filter(pk=user_id).first() if user_id else None
     try:
-        run_svc.execute(dataset, user=user)
+        run_svc.execute(
+            dataset,
+            user=user,
+            activate_cell_id=proposal_id,
+            hold=Dataset.State.DIAGNOSING if proposal_id else None,
+        )
+        if dataset.error:
+            Dataset.objects.filter(pk=dataset_id).update(state=Dataset.State.ERROR)
+            dataset.state = Dataset.State.ERROR
+        elif proposal_id:
+            proposal = dataset.cells.get(pk=proposal_id)
+            dispatch.resume_after_decision(
+                dataset.id, proposal.id, proposal.title, "approved", user_id=user_id
+            )
+            dataset.refresh_from_db()
+            _emit(dataset_id, {"type": "dataset_changed"})
     except SoftTimeLimitExceeded:
         Dataset.objects.filter(pk=dataset_id).update(
             state=Dataset.State.ERROR, error="The run took too long and was stopped."
@@ -206,14 +245,16 @@ def diagnose(self, *, dataset_id: str, user_id: str | None = None) -> dict[str, 
     acks_late=True,
     reject_on_worker_lost=True,
 )
-def turn(self, *, dataset_id: str, message: str, user_id: str | None = None) -> dict[str, Any]:
+def turn(
+    self, *, dataset_id: str, message: str, user_id: str | None = None, display: str | None = None
+) -> dict[str, Any]:
     from overbae.models import User
     from overbae.services.datasets.notebook import agent
 
     user = User.objects.filter(pk=user_id).first() if user_id else None
     try:
         for _event in agent.follow_up(
-            dataset_id, message, user=user, turn_key=self.request.id or ""
+            dataset_id, message, user=user, turn_key=self.request.id or "", display=display
         ):
             pass
     except Exception as exc:  # noqa: BLE001

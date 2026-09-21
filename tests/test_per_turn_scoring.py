@@ -23,6 +23,7 @@ def test_per_turn_judge_emits_one_draft_per_dimension(monkeypatch):
     )
     ev = SimpleNamespace(
         name="Per-turn decision quality",
+        judge_model="",
         config={"per_turn_judge": True, "dimensions": ["tool_choice", "args_grounded", "progress"]},
         rubric_md="rubric",
     )
@@ -64,6 +65,7 @@ def test_per_turn_judge_gates_tool_dims_when_reference_has_no_tools(monkeypatch)
     )
     ev = SimpleNamespace(
         name="Per-turn decision quality",
+        judge_model="",
         config={"per_turn_judge": True, "dimensions": ["tool_choice", "args_grounded", "progress"]},
         rubric_md="r",
     )

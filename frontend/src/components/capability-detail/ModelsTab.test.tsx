@@ -201,3 +201,13 @@ describe("ModelsTab alias routing", () => {
     await waitFor(() => expect(mocks.capabilitiesPartialUpdate).toHaveBeenCalledTimes(1));
   });
 });
+
+describe("ModelsTab benchmarks", () => {
+  it("keeps benchmark selection in training setup, separate from live routing", () => {
+    renderTab({ count: 1, results: [model("m-live")] }, { ...capability, activeModel: "m-live" });
+    expect(screen.queryByRole("columnheader", { name: "Benchmark" })).toBeNull();
+    expect(screen.queryByLabelText(/as benchmark/)).toBeNull();
+    expect(screen.getByLabelText("ft:m-live is live")).toBeTruthy();
+    expect(mocks.capabilitiesPartialUpdate).not.toHaveBeenCalled();
+  });
+});

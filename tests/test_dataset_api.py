@@ -7,7 +7,7 @@ import uuid
 from unittest.mock import patch
 
 import pytest
-from conftest import EVAL_ROWS
+from conftest import EVAL_ROWS, review_fixture
 from rest_framework.test import APIClient
 from rest_framework_simplejwt.tokens import RefreshToken
 
@@ -66,6 +66,83 @@ def test_create_lands_the_source_and_reads_back_with_cells():
     assert body["chat"] == []
 
 
+@pytest.mark.parametrize(
+    "status", ["running", "awaiting_approval", "resolved", "error", "complete"]
+)
+def test_chat_refetch_preserves_activity_and_progress(status):
+    project = _project()
+    client = _client(project)
+    dataset = _create(client, project, rows=EVAL_ROWS)
+    legacy = {"role": "user", "text": "Prepare the data.", "at": "2026-09-20T10:00:00Z"}
+    turn = {
+        "id": "turn-1",
+        "role": "agent",
+        "text": "Checking the examples.",
+        "at": legacy["at"],
+        "error": "Check failed" if status == "error" else "",
+        "cells": [{"id": str(dataset.active_id), "action": "ran", "text_offset": 0}],
+        "steps": [
+            {
+                "type": "activity",
+                "phase": "thinking",
+                "id": "step-1",
+                "status": "done",
+                "duration_ms": 4200,
+                "text": "Checking the source.",
+                "text_offset": 0,
+            }
+        ],
+        "ms": 5000,
+        "status": status,
+        "progress": {
+            "stage": "generating",
+            "label": "Generating",
+            "detail": "Adding examples",
+            "generated_rows": 7,
+            "target_rows": 20,
+            "updated_at": legacy["at"],
+        },
+    }
+    dataset.chat = [legacy, {**turn, "turn_key": "internal-delivery-key"}]
+    dataset.save(update_fields=["chat"])
+    response = client.get(f"/api/datasets/{dataset.id}/")
+    assert response.status_code == 200
+    assert response.data["chat"] == [legacy, turn]
+
+
+@pytest.mark.parametrize("split", [False, True])
+@pytest.mark.parametrize("choice", ["automatic", "none", "selected"])
+def test_creation_distinguishes_no_capability_from_automatic_matching(split, choice):
+    project = _project()
+    client = _client(project)
+    matched = Capability.objects.create(project=project, name="Matched", slug="matched")
+    selected = Capability.objects.create(project=project, name="Selected", slug="selected")
+    rows = [{**row, "capability_id": str(matched.id)} for row in EVAL_ROWS * 2]
+    body = {"name": "Choice", "project": str(project.id), "source": {"rows": rows}}
+    if choice != "automatic":
+        body["capability"] = None if choice == "none" else str(selected.id)
+    if split:
+        body.update(eval_percent=30, position="tail")
+    else:
+        body["intent"] = "train"
+    response = client.post(
+        "/api/datasets/split/" if split else "/api/datasets/", body, format="json"
+    )
+    assert response.status_code == 201, response.data
+    ids = (
+        [response.data[role]["id"] for role in ("train", "eval")]
+        if split
+        else [response.data["id"]]
+    )
+    expected = {"automatic": matched.id, "none": None, "selected": selected.id}[choice]
+    for dataset in Dataset.objects.filter(pk__in=ids):
+        assert dataset.state == Dataset.State.IDLE, dataset.error
+        assert dataset.capability_rank[0]["capability_id"] == str(matched.id)
+        assert dataset.capability_id == expected
+        if not split:
+            assert dataset.intent == "train"
+
+
 def test_create_from_traces_validates_the_selection_before_creating():
     project = _project()
     client = _client(project)
@@ -122,7 +199,7 @@ def test_create_rejects_two_sources_and_a_foreign_capability():
     assert res.status_code == 404
 
 
-def test_cells_are_added_edited_run_and_removed():
+def test_cells_are_added_edited_run_and_removed(django_capture_on_commit_callbacks):
     project = _project()
     client = _client(project)
     dataset = _create(client, project)
@@ -131,7 +208,8 @@ def test_cells_are_added_edited_run_and_removed():
     )
     assert res.status_code == 201 and res.data["state"] == "queued" and res.data["version"] == "1.1"
     keep_id = res.data["id"]
-    res = client.post(f"/api/datasets/{dataset.id}/run/", format="json")
+    with django_capture_on_commit_callbacks(execute=True):
+        res = client.post(f"/api/datasets/{dataset.id}/run/", format="json")
     assert res.status_code == 202
     res = client.get(f"/api/datasets/{dataset.id}/")
     cells = {c["id"]: c for c in res.data["cells"]}
@@ -246,6 +324,7 @@ def test_delete_refused_while_a_version_is_used():
     project = _project()
     client = _client(project)
     dataset = _create(client, project, rows=[dict(r) for r in EVAL_ROWS], intent="eval")
+    review_fixture(dataset)
     use.use(dataset, "eval")
     res = client.delete(f"/api/datasets/{dataset.id}/")
     assert res.status_code == 409 and res.data["code"] == "dataset_referenced"

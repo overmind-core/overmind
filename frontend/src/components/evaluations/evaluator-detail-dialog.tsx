@@ -227,6 +227,15 @@ function EvaluatorDetail({ evaluator }: { evaluator: Evaluator }) {
     <DialogBody className="flex flex-col gap-5">
       <p className={cn(PROSE, "text-sm leading-relaxed text-foreground")}>{explanation}</p>
       <HowItWorks evaluator={evaluator} />
+      {JUDGE_KINDS.has(evaluator.kind) && evaluator.decisionPolicy && (
+        <Section title="Decision engine">
+          <p className="text-xs">
+            {evaluator.decisionPolicy.backend === "jev"
+              ? `${evaluator.decisionPolicy.model}: bounded checks, confidence floor ${evaluator.decisionPolicy.minConfidence ?? 0.9}. Generative fallback for uncertainty; holistic judgments remain generative.`
+              : "Generative judging."}
+          </p>
+        </Section>
+      )}
       <Section title="Scoring">
         <p className="text-xs">{scoringSummary(evaluator)}</p>
       </Section>

@@ -103,36 +103,6 @@ def test_progress_blob_thins_huge_series():
     assert thin_series(short) is short
 
 
-def test_record_deploy_stage_appends_and_caps_activity():
-    from overbae.services.finetuning_runner import MAX_ACTIVITY_LINES
-    from overbae.tasks.model_deployment import record_deploy_stage
-
-    u, p, ds = _setup()
-    job = FinetuningJob.objects.create(
-        project=p,
-        dataset=ds,
-        base_model="m",
-        status=FinetuningJob.Status.DEPLOYING,
-        progress={"phase": "finalizing", "activity": [{"ts": 1, "message": "training done"}]},
-    )
-
-    record_deploy_stage(job.pk, "Downloading checkpoint from Baseten…")
-    job.refresh_from_db()
-    # scrub_backend_names redacts vendor names at the write boundary.
-    assert [a["message"] for a in job.progress["activity"]] == [
-        "training done",
-        "Downloading checkpoint from the provider…",
-    ]
-    assert job.progress["phase"] == "finalizing"  # rest of the blob untouched
-
-    for i in range(MAX_ACTIVITY_LINES + 5):
-        record_deploy_stage(job.pk, f"stage {i}")
-    job.refresh_from_db()
-    activity = job.progress["activity"]
-    assert len(activity) == MAX_ACTIVITY_LINES
-    assert activity[-1]["message"] == f"stage {MAX_ACTIVITY_LINES + 4}"
-
-
 def test_cancel_calls_remote_runner_and_sets_cancelled():
     u, p, ds = _setup()
     job = FinetuningJob.objects.create(

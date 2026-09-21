@@ -2,10 +2,12 @@ from __future__ import annotations
 
 from collections import defaultdict
 
+from django.core.exceptions import ValidationError as DjangoValidationError
 from django.db.models import Avg, Count, FloatField, Q, Sum
 from django.db.models.fields.json import KeyTextTransform
 from django.db.models.functions import Cast
 from drf_spectacular.utils import extend_schema_field
+from pydantic import ValidationError as PydanticValidationError
 from rest_framework import serializers
 from rest_framework.exceptions import PermissionDenied
 
@@ -28,7 +30,10 @@ from overbae.models import (
 )
 from overbae.services.datasets import use
 from overbae.services.datasets.lifecycle import DatasetError
-from overbae.services.eval import evidence
+from overbae.services.eval import decisions, evidence
+from overbae.services.eval.context import snapshot_context
+from overbae.services.eval.eval_set import create_with_evaluators
+from overbae.services.eval.sample_io import sample_io
 from overbae.services.model_catalog import is_model_available
 
 
@@ -105,6 +110,19 @@ def _require_membership(serializer, project):
     return project
 
 
+class DecisionPolicySerializer(serializers.Serializer):
+    backend = serializers.ChoiceField(choices=["jev", "generative"], default="generative")
+    model = serializers.CharField(required=False)
+    min_confidence = serializers.FloatField(default=0.9, min_value=0, max_value=1)
+    version = serializers.IntegerField(default=1, min_value=1, max_value=1)
+
+    def validate(self, attrs):
+        try:
+            return decisions.DecisionPolicy.model_validate(attrs).model_dump()
+        except PydanticValidationError as exc:
+            raise serializers.ValidationError("Invalid decision policy.") from exc
+
+
 class EvaluatorSerializer(serializers.ModelSerializer):
     checklist = serializers.JSONField(required=False)
     choices = serializers.JSONField(required=False)
@@ -116,6 +134,7 @@ class EvaluatorSerializer(serializers.ModelSerializer):
     # The exact instruction text the judge is given, per-sample inputs left as
     # placeholders. Empty for non-judge kinds.
     judge_prompt = serializers.SerializerMethodField()
+    decision_policy = serializers.SerializerMethodField()
 
     class Meta:
         model = Evaluator
@@ -127,6 +146,19 @@ class EvaluatorSerializer(serializers.ModelSerializer):
 
     def get_is_generic(self, obj) -> bool:
         return obj.capability_id is None
+
+    @extend_schema_field(DecisionPolicySerializer)
+    def get_decision_policy(self, obj) -> dict:
+        return decisions.policy_for(obj).model_dump()
+
+    def validate_config(self, value):
+        if not isinstance(value, dict):
+            raise serializers.ValidationError("Config must be an object.")
+        try:
+            decisions.policy_for(config=value)
+        except PydanticValidationError as exc:
+            raise serializers.ValidationError("Invalid config.decision policy.") from exc
+        return value
 
     def get_judge_prompt(self, obj) -> str:
         if obj.kind not in ("llm_judge", "agentic"):
@@ -589,11 +621,25 @@ class EvalSampleListSerializer(serializers.ModelSerializer):
         return output[:240]
 
 
+class EvalSampleIOSerializer(serializers.Serializer):
+    input = serializers.JSONField(allow_null=True)
+    input_source = serializers.ChoiceField(choices=["recorded", "dataset", "unavailable"])
+    output = serializers.JSONField(allow_null=True)
+    output_messages = serializers.ListField(child=serializers.DictField())
+    reference = serializers.JSONField(allow_null=True)
+    truncated = serializers.BooleanField()
+
+
 class EvalSampleSerializer(serializers.ModelSerializer):
     trajectory = serializers.JSONField(read_only=True)
     structured = serializers.JSONField(read_only=True)
     expected = serializers.JSONField(read_only=True)
     scores = ScoreSerializer(many=True, read_only=True)
+    io = serializers.SerializerMethodField()
+
+    @extend_schema_field(EvalSampleIOSerializer)
+    def get_io(self, obj):
+        return EvalSampleIOSerializer(sample_io(obj)).data
 
     class Meta:
         model = EvalSample
@@ -604,6 +650,7 @@ class EvalSampleSerializer(serializers.ModelSerializer):
             "row_index",
             "source_trace_id",
             "trajectory",
+            "io",
             "structured",
             "expected",
             "context_coverage",
@@ -1211,6 +1258,7 @@ class EvalRunSerializer(serializers.ModelSerializer):
                 is_baseline=bool(v.get("is_baseline", i == 0)),
                 order=v.get("order", i),
             )
+        snapshot_context(run, run.variants.select_related("prompt"))
         return run
 
 
@@ -1222,6 +1270,11 @@ class EvalSetMemberSerializer(serializers.ModelSerializer):
     evaluator_name = serializers.CharField(source="evaluator.name", read_only=True)
     evaluator_display_name = serializers.CharField(source="evaluator.display_name", read_only=True)
     evaluator_kind = serializers.CharField(source="evaluator.kind", read_only=True)
+    evaluator_capability_name = serializers.CharField(
+        source="evaluator.capability.name",
+        read_only=True,
+        default=None,
+    )
     latest_score = serializers.SerializerMethodField()
     previous_score = serializers.SerializerMethodField()
     delta = serializers.SerializerMethodField()
@@ -1235,6 +1288,7 @@ class EvalSetMemberSerializer(serializers.ModelSerializer):
             "evaluator_name",
             "evaluator_display_name",
             "evaluator_kind",
+            "evaluator_capability_name",
             "role",
             "enabled",
             "sampling_rate",
@@ -1275,10 +1329,23 @@ class EvalSetMemberSerializer(serializers.ModelSerializer):
 
 
 class EvalSetSerializer(serializers.ModelSerializer):
+    capability = serializers.PrimaryKeyRelatedField(
+        queryset=Capability.objects.all(),
+        allow_null=True,
+        required=False,
+        default=None,
+    )
     members = EvalSetMemberSerializer(many=True, read_only=True)
     is_active = serializers.SerializerMethodField()
     generative_count = serializers.SerializerMethodField()
     trace_scoring_count = serializers.SerializerMethodField()
+    evaluator_ids = serializers.PrimaryKeyRelatedField(
+        queryset=Evaluator.objects.all(),
+        many=True,
+        required=False,
+        write_only=True,
+        help_text="Library evaluators to include on creation, in all applicable roles.",
+    )
 
     class Meta:
         model = EvalSet
@@ -1293,6 +1360,7 @@ class EvalSetSerializer(serializers.ModelSerializer):
             "generative_count",
             "trace_scoring_count",
             "members",
+            "evaluator_ids",
             "created_by",
             "created_at",
             "updated_at",
@@ -1307,8 +1375,32 @@ class EvalSetSerializer(serializers.ModelSerializer):
     def validate_project(self, value):
         return _require_membership(self, value)
 
+    def validate(self, attrs):
+        project = attrs.get("project", getattr(self.instance, "project", None))
+        capability = attrs.get("capability", getattr(self.instance, "capability", None))
+        if capability and (
+            capability.project_id != project.id or capability.status != Capability.Status.CURRENT
+        ):
+            raise serializers.ValidationError(
+                {"capability": "Select a current capability in this project."}
+            )
+        if "evaluator_ids" in attrs and self.instance is not None:
+            raise serializers.ValidationError({"evaluator_ids": "Use the members endpoint."})
+        if any(
+            p.capability_id != getattr(capability, "id", None) for p in attrs.get("prompts", [])
+        ):
+            raise serializers.ValidationError({"prompts": "Select prompts from this capability."})
+        return attrs
+
+    def create(self, validated_data):
+        evaluators = validated_data.pop("evaluator_ids", [])
+        try:
+            return create_with_evaluators(evaluators=evaluators, **validated_data)
+        except DjangoValidationError as exc:
+            raise serializers.ValidationError(exc.message_dict) from exc
+
     def get_is_active(self, obj) -> bool:
-        return obj.capability.active_eval_set_id == obj.id
+        return bool(obj.capability_id and obj.capability.active_eval_set_id == obj.id)
 
     def get_generative_count(self, obj) -> int:
         return sum(
@@ -1362,6 +1454,7 @@ class AuthorJudgeEvaluatorRequestSerializer(serializers.Serializer):
     )
     name = serializers.CharField(max_length=255)
     judge_model = serializers.CharField(required=False, allow_blank=True, default="")
+    decision_policy = DecisionPolicySerializer(required=False)
     evaluation_prompt = serializers.CharField()
     score_type = serializers.ChoiceField(choices=["numeric", "boolean", "categorical"])
     score_reasoning_prompt = serializers.CharField(required=False, allow_blank=True, default="")

@@ -10,6 +10,7 @@ from pydantic import BaseModel, Field
 
 from overbae.core.llms import RETRY_DEADLINE_INTERACTIVE, call_llm
 from overbae.core.model_registry import TaskType, model_chain, resolve_model
+from overbae.services.eval.decisions import DecisionPolicy
 from overbae.services.eval.envelope import CONVERSATION_CONTEXT_KEYS
 from overbae.services.eval.evaluators.base import (
     _CANONICAL_SOURCES,
@@ -864,6 +865,7 @@ def compose_judge_evaluator_kwargs(data: dict[str, Any]) -> dict[str, Any]:
 
     rubric_md = evaluation_prompt
     config = {
+        "decision": DecisionPolicy.model_validate(data.get("decision_policy", {})).model_dump(),
         "authoring": {
             "mode": "judge_dialog",
             "evaluation_prompt": evaluation_prompt,
@@ -873,7 +875,7 @@ def compose_judge_evaluator_kwargs(data: dict[str, Any]) -> dict[str, Any]:
             "category_selection_prompt": selection_prompt,
             "allow_multiple": allow_multiple,
             "categories": categories,
-        }
+        },
     }
     variable_mapping = _mapping_from_prompt(rubric_md, data.get("capability"))
     # scope="final_output" by default. A task-scoped judge always uses

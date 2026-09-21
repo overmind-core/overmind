@@ -40,6 +40,18 @@ def _offline_model_resolution(monkeypatch):
     same inert key; tests of the no-key path delete it themselves.
     """
     monkeypatch.setenv("OPENROUTER_API_KEY", "offline-test-key")
+    from overbae.core.decisions import DecisionError
+
+    def no_decision_network(*args, **kwargs):
+        raise DecisionError("offline_test")
+
+    monkeypatch.setattr("overbae.core.decisions._request", no_decision_network)
+    monkeypatch.setattr(
+        "overbae.services.finetuning_eval.resolve_training_openrouter_slug", lambda _: None
+    )
+    monkeypatch.setattr(
+        "overbae.services.deployment.resolve_training_openrouter_slug", lambda _: None
+    )
 
 
 @pytest.fixture(autouse=True)
@@ -120,7 +132,28 @@ def frozen_dataset(project, rows=None, *, capability=None, name="ds", contract=N
     land.land_rows(dataset, [_lift_messages(r) for r in rows], user=user)
     run_svc.execute(dataset, user=user)
     dataset.refresh_from_db()
+    review_fixture(dataset)
     return dataset
+
+
+def review_fixture(dataset, cell=None):
+    from overbae.services.datasets import review
+
+    cell = cell or dataset.active_cell
+    review.record_quality(
+        dataset,
+        cell,
+        [
+            {
+                "name": name,
+                "result": "pass",
+                "evidence": "Known test fixture.",
+                "rows_checked": cell.rows,
+            }
+            for name in review.REQUIRED_CHECKS
+        ],
+        script="df = pd.DataFrame({name: [True] * len(df) for name in ('task_alignment', 'input_evidence', 'answer_support', 'output_schema')})",
+    )
 
 
 @pytest.fixture(autouse=True)

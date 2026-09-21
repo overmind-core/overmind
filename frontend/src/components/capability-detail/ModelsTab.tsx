@@ -46,7 +46,7 @@ const DASH = <span className="text-muted-foreground">—</span>;
  * A block-level flex box, not `inline-flex`: an inline control sits on the text
  * baseline, which drifts the 16px box off the cell's optical centre.
  */
-function LiveCell({ children }: { children: ReactNode }) {
+function SelectionCell({ children }: { children: ReactNode }) {
   return (
     <TableCell>
       <div className="flex h-4 items-center justify-center leading-none">{children}</div>
@@ -60,7 +60,7 @@ function LiveCell({ children }: { children: ReactNode }) {
  * accessible name. A dash, not a greyed radio — the ghost box's `border-border/70`
  * measures 1.19:1, under the floor `check:contrast` enforces.
  */
-function BlockedLiveCell({ reason }: { reason: string }) {
+function BlockedSelection({ reason }: { reason: string }) {
   return (
     <Tooltip>
       <TooltipTrigger asChild>
@@ -82,17 +82,17 @@ function BlockedLiveCell({ reason }: { reason: string }) {
 
 /**
  * A `<button>` with `aria-pressed`, not a radio group: arrow keys would move
- * selection inside a real group, and every change retargets production traffic. An
+ * selection inside a real group, which would retarget traffic in the Live column. An
  * orphan `role="radio"` would need the group on `<TableBody>`, clobbering its
  * `rowgroup` role.
  */
-function LiveRadio({
-  isLive,
+function ModelSelection({
+  selected,
   isPending,
   label,
   onSelect,
 }: {
-  isLive: boolean;
+  selected: boolean;
   isPending: boolean;
   label: string;
   onSelect: () => void;
@@ -100,15 +100,15 @@ function LiveRadio({
   return (
     <button
       aria-label={label}
-      aria-pressed={isLive}
+      aria-pressed={selected}
       className={cn(
         // `after:-inset-1.5` grows the 16px box to the documented 28px target.
         "relative inline-flex size-4 items-center justify-center rounded-sm border transition-colors after:absolute after:-inset-1.5 after:content-[''] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/60",
-        isLive
+        selected
           ? "border-primary bg-primary/10"
           : "border-input hover:border-primary hover:bg-primary/10"
       )}
-      disabled={isLive || isPending}
+      disabled={selected || isPending}
       // The row navigates to the model's inference page; picking a model must not.
       onClick={(e) => {
         e.stopPropagation();
@@ -117,7 +117,7 @@ function LiveRadio({
       type="button"
     >
       {isPending ? <Spinner className="size-3" size="sm" /> : null}
-      {!isPending && isLive ? <span className="size-2 rounded-xs bg-primary" /> : null}
+      {!isPending && selected ? <span className="size-2 rounded-xs bg-primary" /> : null}
     </button>
   );
 }
@@ -160,18 +160,18 @@ function FineTunedRow({
           : undefined
       }
     >
-      <LiveCell>
+      <SelectionCell>
         {isLive || !reason ? (
-          <LiveRadio
-            isLive={isLive}
+          <ModelSelection
             isPending={isPending}
             label={isLive ? `${model.modelId} is live` : `Make ${model.modelId} live`}
             onSelect={() => onSetLive(model)}
+            selected={isLive}
           />
         ) : (
-          <BlockedLiveCell reason={reason} />
+          <BlockedSelection reason={reason} />
         )}
-      </LiveCell>
+      </SelectionCell>
       <TableCell className="align-middle text-foreground">
         <FineTunedModelIdentity
           baseModelId={model.baseModelId}
@@ -327,7 +327,6 @@ export function ModelsTab({ capability, capabilityId, projectId }: ModelsTabProp
 
         <SectionCard
           contentClassName="p-0"
-          description="Its base model, plus any fine-tunes trained from production traces."
           headerEnd={
             <div className="flex items-center gap-2">
               <Badge variant="secondary">{rowCount}</Badge>
@@ -350,10 +349,10 @@ export function ModelsTab({ capability, capabilityId, projectId }: ModelsTabProp
           <Table className="table-fixed">
             <TableHeader>
               <TableRow>
-                <TableHead className="w-[8%] text-center">Live</TableHead>
-                <TableHead className="w-[28%]">Model</TableHead>
+                <TableHead className="w-[6%] text-center">Live</TableHead>
+                <TableHead className="w-[34%]">Model</TableHead>
                 <TableHead className="w-[16%] text-center">Base model</TableHead>
-                <TableHead className="w-[22%] text-center">Training job</TableHead>
+                <TableHead className="w-[18%] text-center">Training job</TableHead>
                 <TableHead className="w-[16%] text-center">Reference</TableHead>
                 <TableHead className="w-[10%] text-center">Status</TableHead>
               </TableRow>
@@ -372,11 +371,11 @@ export function ModelsTab({ capability, capabilityId, projectId }: ModelsTabProp
 
               {capability.model && (
                 <TableRow>
-                  <LiveCell>
-                    <BlockedLiveCell reason="The alias only routes to deployed fine-tunes." />
-                  </LiveCell>
+                  <SelectionCell>
+                    <BlockedSelection reason="The alias only routes to deployed fine-tunes." />
+                  </SelectionCell>
                   <TableCell className="align-middle text-sm font-medium text-muted-foreground">
-                    base
+                    Codebase incumbent
                   </TableCell>
                   <TableCell className={cellCls}>
                     <BaseModelCell baseModelId={capability.model} />

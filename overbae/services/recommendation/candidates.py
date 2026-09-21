@@ -12,6 +12,7 @@ from dataclasses import asdict
 from typing import Any
 from urllib.parse import urlsplit
 
+from overbae.modal.model_registry import context_headroom
 from overbae.modal.training_type import dataset_training_type
 from overbae.services.benchmarks import artifact
 from overbae.services.benchmarks.schema import BenchmarkScore, Provenance
@@ -57,9 +58,8 @@ def build_candidate(
     """
     backend = active_backend()
     num_examples = int(stats.get("num_examples") or 0)
-    max_tokens = int(stats.get("max_token_length") or 0)
-
-    from overbae.modal.model_registry import context_headroom
+    estimated_max_tokens = int(stats.get("max_token_length") or 0)
+    max_tokens = 0 if backend == "modal" else estimated_max_tokens
 
     training_type = dataset_training_type(
         model_entry, max_tokens=max_tokens or None, headroom=context_headroom("baseten")
@@ -86,7 +86,7 @@ def build_candidate(
         num_examples,
         model_entry=model_entry,
         use_lora=use_lora,
-        max_row_tokens=max_tokens,
+        max_row_tokens=estimated_max_tokens,
     )
     trained_tokens = dataset_total_tokens(stats) * int(hyperparams.get("n_epochs") or 1)
     time_s = estimate_training_time_s(trained_tokens, total_params_b=params_b, use_lora=use_lora)

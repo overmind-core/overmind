@@ -94,6 +94,11 @@ PROMPTS = (
             "message_dataset_agent for intent, capability, name, or cell changes; poll with "
             "get_job(kind=dataset_run), inspect again, and use query_dataset to verify the "
             "chosen cell. Run check_evaluation_readiness with that dataset and cell. "
+            "For semantic row checks, ask message_dataset_agent to use check_semantic_quality "
+            "with separate evidence and answer columns; inspect measured coverage and unknowns. "
+            "Quality findings are advisory. Rubric judges default to generative. "
+            "config.decision on upsert_evaluator can opt into Jev for qualified bounded decisions; "
+            "judge_model is the generative judge or fallback. "
             "If readiness identifies missing evaluator configuration, collect the human "
             "rubric and use upsert_evaluator. Do not start a run until dataset intent, "
             "evaluator applicability and bindings, eval set, and credits are ready. "
@@ -124,19 +129,45 @@ PROMPTS = (
     PromptDefinition(
         name="finetune-capability",
         title="Fine-tune capability",
-        description="Check, estimate, and launch a validated fine-tuning job for a capability.",
+        description="Check, estimate, and launch a validated fine-tuning job with an optional capability.",
         arguments=(
-            _argument("capability", "Capability name, slug, or id."),
+            _optional_argument(
+                "capability", "Optional capability name, slug, or id; omit for none."
+            ),
             _argument("dataset", "Training dataset UUID from list_datasets."),
         ),
         template=(
             "Fine-tune capability {capability} from dataset {dataset}. Use list_datasets, "
             "inspect_dataset, and query_dataset to choose and verify a train cell. "
+            "Inspect preparation_context for source/active task families and downstream contracts; "
+            "do not assume the first sample or the bound capability describes every row. "
+            "Report current workshop findings for task_alignment, input_evidence, "
+            "answer_support and output_schema on both train and held-out eval versions. "
+            "Worker examples are not end-to-end capability examples. Resolve scope and missing "
+            "evidence through message_dataset_agent when the user wants repairs. Warn about "
+            "incomplete reviews, capability mismatch and overlap, but allow preprocessing and "
+            "launch without quality approval. Only unreadable or technically incompatible data blocks use. "
             "Begin with get_model_catalog for dataset-independent model discovery. "
-            "After the dataset, cell, and capability are selected, run "
+            "Capability is optional. An eval dataset and eval set with generative evaluators "
+            "are required; use create_eval_set to group existing evaluators if needed. "
+            "For incumbent comparisons, read benchmark_model on the capability resource. "
+            "It selects the codebase incumbent or a trained benchmark independently of the live "
+            "serving model; new jobs pin this choice. Change it with set_benchmark_model only "
+            "when the user requests a different benchmark. "
+            "After the training dataset and cell are selected, run "
             "check_finetune_readiness for dataset-specific "
             "narrowing and recommendations; use estimate_finetune for approved base models "
-            "before asking a human to approve GPU spend. After approval, use start_finetune "
+            "before asking a human to approve training and evaluation spend. "
+            "Every selected before/after evaluation runs every row of the pinned eval dataset, "
+            "without sampling or a row cap. Include that full-dataset cost in the approval. "
+            "For Modal training, call prepare_training_data after choosing a model and context length, "
+            "then poll get_job(kind=training_preparation). Inspect exact token counts, supervised content "
+            "and incompatible rows. Send concrete row-level fixes to message_dataset_agent, with no "
+            "model selector in the workshop, then prepare the revised cell again. "
+            "Starting-model before evaluations prefer an exact OpenRouter catalog match "
+            "when its key is configured, without provisioning baseline inference; otherwise "
+            "they use the existing provider or Modal route. Trained-checkpoint evaluations "
+            "still wait for their own deployment. After approval, use start_finetune "
             "with a validated base model, then "
             "track each job with get_job using kind finetune_job and "
             "overmind://finetunes/{{job_id}}. Follow the linked deployment with "

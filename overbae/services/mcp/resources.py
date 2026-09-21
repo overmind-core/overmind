@@ -18,13 +18,17 @@ from pydantic import AnyUrl
 from overbae.api.eval_serializers import compute_run_progress
 from overbae.models import (
     Capability,
+    Cell,
     Dataset,
     DeployedModel,
+    EvalSet,
     FinetuningJob,
     OptimizerCandidate,
     OptimizerExperiment,
     Span,
+    TrainingPreparation,
 )
+from overbae.services.deployment import deployment_progress
 from overbae.services.entity_resolution import (
     resolve_capability,
     resolve_connector,
@@ -32,6 +36,7 @@ from overbae.services.entity_resolution import (
     resolve_eval_run,
     resolve_session,
 )
+from overbae.services.eval.sample_io import sample_io
 from overbae.services.mcp.context import get_context
 from overbae.services.mcp.contracts.datasets import next_actions, serialize_dataset_detail
 from overbae.services.mcp.contracts.instrumentation import MAX_INSTRUMENTATION_SPANS
@@ -158,6 +163,13 @@ def _dataset_upload_resource(uri: str) -> dict:
         "flow": (
             "POST /api/uploads/, resume with PUT /api/uploads/{id}/chunk/?offset= using "
             "chunk_bytes, then POST /api/datasets/ with upload_id and project."
+        ),
+        "multiple_files": (
+            "Reserve and upload each file, then POST /api/uploads/{id}/inspect/ with size "
+            "in bytes to validate it and obtain rows. POST /api/datasets/ with project, name "
+            "and source.uploads containing the upload UUIDs in row order (up to 100 files). "
+            "For a train/eval pair, POST /api/datasets/split/ with the same source, "
+            "eval_percent (1–99) and position (head, tail or random)."
         ),
         "next_mcp_calls": [
             "get_job(kind=dataset_run, id=dataset_id)",
@@ -426,7 +438,11 @@ def _capability_resource(project, value: str, uri: str) -> dict:
     capability, _ = resolve_capability(project, value)
     if capability is None:
         raise _not_found("capability", value)
+    capability = Capability.objects.select_related("active_model", "benchmark_model").get(
+        pk=capability.pk
+    )
     active_model = capability.active_model
+    benchmark = capability.benchmark_model
     from overbae.services.datasets.rows import capability_dataset_rows
 
     return {
@@ -451,6 +467,19 @@ def _capability_resource(project, value: str, uri: str) -> dict:
             }
             if active_model is not None
             else None
+        ),
+        "benchmark_model": {
+            "id": str(benchmark.id) if benchmark else None,
+            "model_id": benchmark.model_id if benchmark else capability.model,
+            "source": "trained" if benchmark else "codebase",
+            "status": benchmark.status if benchmark else None,
+        },
+        "benchmark_candidates": list(
+            DeployedModel.objects.filter(
+                project=project, finetuning_job__capability=capability, status="ready"
+            )
+            .order_by("-created_at")
+            .values("id", "model_id", "base_model_id")[:100]
         ),
         "updated_at": capability.updated_at,
     }
@@ -537,28 +566,6 @@ def _dataset_human_action(dataset) -> dict:
     }
 
 
-def _dataset_next_actions(dataset) -> list[dict]:
-    return [
-        action.model_dump(mode="json")
-        for action in next_actions(dataset, dataset.chain, dataset.active_cell)
-    ]
-
-
-def _active_summary(dataset, versions: dict) -> dict | None:
-    active = dataset.active_cell
-    if active is None:
-        return None
-    ok, reason = active.fits(dataset.intent)
-    return {
-        "id": str(active.id),
-        "version": versions.get(active.id, ""),
-        "title": active.title,
-        "rows": active.rows,
-        "fingerprint": active.fingerprint,
-        "fits": {"ok": ok, "reason": reason},
-    }
-
-
 def _chat_turn(raw) -> dict | None:
     if not isinstance(raw, dict):
         return None
@@ -571,6 +578,8 @@ def _chat_turn(raw) -> dict | None:
         "cells": safe_json(cells[:20]),
         "at": _clip_text(raw.get("at"), 80) or None,
         "ms": ms if isinstance(ms, int) else None,
+        "status": raw.get("status"),
+        "progress": safe_json(raw.get("progress")),
     }
 
 
@@ -579,12 +588,6 @@ def _latest_turn(dataset) -> dict | None:
     if not chat:
         return None
     return _chat_turn(chat[-1])
-
-
-def _cell_counts(dataset) -> dict:
-    chain = dataset.chain
-    counts = Counter(cell.state for cell in chain)
-    return {"n": len(chain), "states": dict(counts)}
 
 
 def _dataset_detail_payload(dataset, *, uri: str, chat_limit: int = _CHAT_DEFAULT) -> dict:
@@ -598,39 +601,47 @@ def _dataset_detail_payload(dataset, *, uri: str, chat_limit: int = _CHAT_DEFAUL
 
 
 def dataset_run_job_payload(dataset, uri: str) -> dict:
-    versions = dataset.versions()
-    active = _active_summary(dataset, versions)
-    next_actions = _dataset_next_actions(dataset)
-    cells = _cell_counts(dataset)
+    chain = dataset.chain
+    versions = dataset.versions(chain=chain)
+    ran = [cell for cell in chain if cell.state == Cell.State.OK]
+    active = next((cell for cell in ran if cell.id == dataset.active_id), ran[-1] if ran else None)
+    actions = [action.model_dump(mode="json") for action in next_actions(dataset, chain, active)]
+    cells = {"n": len(chain), "states": dict(Counter(cell.state for cell in chain))}
     dataset_link = _dataset_link(dataset)
     job_link = resource_link(
         "jobs", f"dataset_run/{dataset.id}", (dataset.name or "Dataset run")[:160]
     )
     error = _clip_text(dataset.error, _ERROR_CAP) or None
+    latest_turn = _latest_turn(dataset)
+    waiting = dataset.state == "idle" and (latest_turn or {}).get("status") == "awaiting_approval"
     return {
         "uri": uri,
         "kind": "dataset_run",
         "id": str(dataset.id),
         "name": dataset.name,
-        "status": dataset.state,
+        "status": "awaiting_approval" if waiting else dataset.state,
         "state": dataset.state,
         "error": error,
         "active": (
             {
-                "id": active["id"],
-                "version": active["version"],
-                "title": active["title"],
-                "rows": active["rows"],
+                "id": str(active.id),
+                "version": versions.get(active.id, ""),
+                "title": active.title,
+                "rows": active.rows,
             }
             if active
             else None
         ),
-        "latest_turn": _latest_turn(dataset),
+        "latest_turn": latest_turn,
         "cells": cells,
-        "next_action": next_actions[0] if next_actions else None,
-        "next_actions": next_actions,
+        "next_action": actions[0] if actions else None,
+        "next_actions": actions,
         "dataset": dataset_link,
-        "progress": {"cells": cells["states"], "rows": active["rows"] if active else 0},
+        "progress": {
+            **((latest_turn or {}).get("progress") or {}),
+            "cells": cells["states"],
+            "rows": active.rows if active else 0,
+        },
         "resource_links": [job_link, dataset_link],
         "created_at": dataset.created_at,
         "updated_at": dataset.updated_at,
@@ -655,11 +666,54 @@ def _dataset_resource(project, value: str, uri: str) -> dict:
     return _dataset_detail_payload(dataset, uri=uri)
 
 
+def _eval_set_resource(project, value: str, uri: str) -> dict:
+    eval_set = (
+        EvalSet.objects.filter(project=project, id=_uuid_ref(value))
+        .select_related("capability")
+        .first()
+    )
+    if eval_set is None:
+        raise _not_found("eval set", value)
+    members = list(eval_set.members.select_related("evaluator", "evaluator__capability")[:101])
+    return {
+        "uri": uri,
+        "kind": "eval_set",
+        "id": str(eval_set.id),
+        "name": eval_set.name,
+        "capability": str(eval_set.capability_id) if eval_set.capability_id else None,
+        "is_active": bool(
+            eval_set.capability_id and eval_set.capability.active_eval_set_id == eval_set.id
+        ),
+        "members": [
+            {
+                "id": str(member.id),
+                "evaluator_id": str(member.evaluator_id),
+                "name": member.evaluator.display_name or member.evaluator.name,
+                "kind": member.evaluator.kind,
+                "role": member.role,
+                "enabled": member.enabled,
+                "capability": str(member.evaluator.capability_id)
+                if member.evaluator.capability_id
+                else None,
+                "capability_name": member.evaluator.capability.name
+                if member.evaluator.capability_id
+                else None,
+            }
+            for member in members[:100]
+        ],
+        "members_truncated": len(members) > 100,
+    }
+
+
 def _eval_run_resource(project, value: str, uri: str) -> dict:
     run, _ = resolve_eval_run(project, value)
     if run is None:
         raise _not_found("eval run", value)
     variants = list(run.variants.order_by("order", "created_at")[:_MAX_LIST])
+    samples = list(
+        run.samples.select_related("run__cell", "variant").prefetch_related("scores")[:5]
+    )
+    sample_count = run.samples.count()
     return {
         "uri": uri,
         "kind": "eval_run",
@@ -674,7 +728,29 @@ def _eval_run_resource(project, value: str, uri: str) -> dict:
         "error": run.error[:1_000],
         "summary": safe_json(run.summary or {}),
         "progress": safe_json(compute_run_progress(run)),
-        "sample_count": run.samples.count(),
+        "sample_count": sample_count,
+        "samples": [
+            {
+                "id": str(sample.id),
+                "row_index": sample.row_index,
+                "variant": sample.variant.label,
+                "io": safe_json(sample_io(sample)),
+                "error": sample.error[:_ERROR_CAP],
+                "scores": safe_json(
+                    [
+                        {
+                            "name": score.name,
+                            "value": score.value,
+                            "passed": score.passed,
+                            "reasoning": score.reasoning,
+                        }
+                        for score in sample.scores.all()[:50]
+                    ]
+                ),
+            }
+            for sample in samples
+        ],
+        "samples_truncated": sample_count > len(samples),
         "variants": [
             {
                 "id": str(variant.id),
@@ -714,8 +790,16 @@ def _finetune_resource(project, value: str, uri: str) -> dict:
         "status": job.status,
         "provider": job.provider,
         "base_model": job.base_model,
+        "evaluation_plan": {
+            "eval_incumbent_before": job.eval_incumbent_before,
+            "eval_incumbent_after": job.eval_incumbent_after,
+            "eval_model_before": job.eval_model_before,
+            "eval_model_after": job.eval_model_after,
+        },
         "capability": job.capability.slug if job.capability_id else None,
         "dataset": str(job.dataset_id) if job.dataset_id else None,
+        "cell": str(job.cell_id) if job.cell_id else None,
+        "eval_cell": str(job.eval_cell_id) if job.eval_cell_id else None,
         "progress": _safe_finetune_progress(progress),
         "loss": safe_json(loss[:100] if isinstance(loss, list) else []),
         "error": job.error_message[:1_000],
@@ -756,6 +840,7 @@ def _deployment_resource(project, value: str, uri: str) -> dict:
         "id": str(deployment.id),
         "model_id": deployment.model_id,
         "status": deployment.status,
+        "progress": deployment_progress(deployment),
         "base_model_id": deployment.base_model_id,
         "quantization": deployment.quantization,
         "gpu_type": deployment.gpu_type,
@@ -952,6 +1037,21 @@ def _optimizer_resource(project, value: str, uri: str) -> dict:
 
 
 def _job_resource(project, kind: str, value: str, uri: str) -> dict:
+    if kind == "training_preparation":
+        prep = TrainingPreparation.objects.filter(
+            pk=_uuid_ref(value), cell__dataset__project=project
+        ).first()
+        if prep is None:
+            raise _not_found("training preparation", value)
+        return {
+            "kind": kind,
+            "id": str(prep.id),
+            "status": prep.state,
+            "report": prep.report,
+            "config": prep.config,
+            "error": prep.error,
+            "resource": resource_link("jobs", f"{kind}/{prep.id}", "Training preparation"),
+        }
     if kind == "eval_run":
         return _eval_run_resource(project, value, uri)
     if kind in {"finetune", "finetune_job"}:
@@ -1000,6 +1100,7 @@ def _read_resource_sync(project, raw_uri: str) -> dict:
             "sessions",
             "datasets",
             "eval-runs",
+            "eval-sets",
             "finetunes",
             "deployments",
             "optimizer-runs",
@@ -1013,6 +1114,7 @@ def _read_resource_sync(project, raw_uri: str) -> dict:
             "sessions": _session_resource,
             "datasets": _dataset_resource,
             "eval-runs": _eval_run_resource,
+            "eval-sets": _eval_set_resource,
             "finetunes": _finetune_resource,
             "deployments": _deployment_resource,
             "optimizer-runs": _optimizer_resource,
@@ -1071,6 +1173,7 @@ def resource_templates() -> list[types.ResourceTemplate]:
         ("session", "overmind://sessions/{session}", "Session and trace references"),
         ("dataset", "overmind://datasets/{dataset}", "Dataset metadata"),
         ("eval-run", "overmind://eval-runs/{eval_run}", "Evaluation run status"),
+        ("eval-set", "overmind://eval-sets/{eval_set}", "Eval set and evaluator members"),
         ("finetune", "overmind://finetunes/{job_id}", "Fine-tuning job status"),
         ("deployment", "overmind://deployments/{deployment}", "Deployment status"),
         ("optimizer-run", "overmind://optimizer-runs/{experiment}", "Optimizer run status"),

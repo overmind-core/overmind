@@ -1,9 +1,14 @@
 import { type ReactNode, useMemo, useState } from "react";
 
-import { useQueries } from "@tanstack/react-query";
+import { type Query, useQueries } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 
 import apiClient from "@/client";
+import {
+  evaluationDisplayRows,
+  evaluationKindRank,
+  hasPendingEvaluations,
+} from "@/components/finetuning/evaluation-plan";
 import {
   ClassMetricsTable,
   ClassSeriesChart,
@@ -184,7 +189,14 @@ export function TrainingMonitorPanel({
           id: j.id,
         })) as unknown as LossCurveData,
       queryKey: ["finetuning-loss-curves", j.id] as const,
-      refetchInterval: isTerminalStatus(j.status as string) ? undefined : 3_000,
+      refetchInterval: (query: Query<LossCurveData>) =>
+        !isTerminalStatus(j.status as string) ||
+        hasPendingEvaluations(
+          j,
+          query.state.data?.judge_evals ?? (j.progress as LossCurveData | null)?.judge_evals ?? []
+        )
+          ? 3_000
+          : false,
     })),
   });
 
@@ -211,13 +223,13 @@ export function TrainingMonitorPanel({
     ? curvesQueries.some((q) => q.isLoading)
     : (curvesQueries[snapshots.indexOf(focus)]?.isLoading ?? false);
 
-  // Before/after reading order: Baseline → checkpoints (by step) → Final.
-  const evalKindRank = (k: string) => (k === "baseline" ? 0 : k === "final" ? 2 : 1);
   const judgeEvalRows = (isAll ? snapshots : [focus])
-    .flatMap((s) => s!.judgeEvals.map((row) => ({ row, snapshot: s! })))
+    .flatMap((s) =>
+      evaluationDisplayRows(s!.job, s!.judgeEvals).map((row) => ({ row, snapshot: s! }))
+    )
     .sort(
       (a, b) =>
-        evalKindRank(a.row.kind) - evalKindRank(b.row.kind) ||
+        evaluationKindRank(a.row.kind) - evaluationKindRank(b.row.kind) ||
         (a.row.checkpoint_step ?? 0) - (b.row.checkpoint_step ?? 0)
     );
 
@@ -512,7 +524,7 @@ export function TrainingMonitorPanel({
         {judgeEvalRows.length === 0 ? (
           <p className={cn(PROSE, "pb-4 text-sm text-muted-foreground")}>
             {job.evalDataset && job.evalSet
-              ? "No judge evals yet."
+              ? "No evaluations selected."
               : "No eval dataset or eval set linked. Judge scores stay empty."}
           </p>
         ) : (
@@ -531,8 +543,8 @@ export function TrainingMonitorPanel({
                   {isAll && (
                     <TableHead className="w-48 whitespace-nowrap px-2">Experiment</TableHead>
                   )}
-                  <TableHead className="w-28 whitespace-nowrap px-2">Step</TableHead>
-                  <TableHead className="w-32 whitespace-nowrap px-2">Status</TableHead>
+                  <TableHead className="w-56 whitespace-nowrap px-2">Evaluation</TableHead>
+                  <TableHead className="w-44 whitespace-nowrap px-2">Status</TableHead>
                   <TableHead className="w-36 whitespace-nowrap px-2">Score</TableHead>
                   <TableHead className="px-2">Model</TableHead>
                   <TableHead className="w-20 whitespace-nowrap px-2 text-center">Samples</TableHead>
@@ -544,7 +556,7 @@ export function TrainingMonitorPanel({
                   <JudgeEvalTableRow
                     deployedUuidByServingId={deployedUuidByServingId}
                     isAll={isAll}
-                    key={`${snapshot.job.id}-${row.id}`}
+                    key={`${snapshot.job.id}-${row.kind === "checkpoint" ? row.id : row.kind}`}
                     projectId={projectId}
                     row={row}
                     snapshot={snapshot}
@@ -820,7 +832,7 @@ function RunActivity({ snapshot, projectId }: { snapshot: ExperimentSnapshot; pr
       {expanded && activity.length > 0 && (
         <div
           aria-live="polite"
-          className="flex max-h-40 flex-col-reverse overflow-y-auto rounded-md bg-wash-subtle px-2.5 py-1.5"
+          className="flex max-h-40 flex-col-reverse overflow-y-auto rounded-md border border-border bg-wash-subtle px-2.5 py-1.5"
           role="log"
         >
           {[...activity].reverse().map((line, i) => {
@@ -906,7 +918,7 @@ function MonitorChartCard({
 }) {
   const hasContent = children != null && children !== false && children !== true;
   return (
-    <Card className={cn("flex flex-col gap-3 p-4", className)}>
+    <Card className={cn("flex flex-col gap-2 p-3", className)}>
       <div className="flex items-center gap-2">
         <Icon.chart className="size-4 shrink-0 text-muted-foreground" />
         <h3 className="text-xs leading-none">{title}</h3>

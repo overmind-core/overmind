@@ -1135,9 +1135,7 @@ class TestActiveModelValidation:
         assert capability.active_model_id == m.id
 
 
-class TestBaselineCoupling:
-    """The eval baseline must follow the routed deployment, not the stale text field."""
-
+class TestBenchmarkSelection:
     def _job(self, capability, project):
         from overbae.models import FinetuningJob
 
@@ -1150,13 +1148,13 @@ class TestBaselineCoupling:
             baseline_model="",  # not snapshotted yet → resolve live
         )
 
-    def test_active_model_outranks_capability_model_field(self):
+    def test_active_model_does_not_override_the_benchmark(self):
         from overbae.services.finetuning_eval import resolve_baseline_model
 
         p = _project()
         m = _deployed_model(p, model_id="ft-live-qwen3-8b")
         capability = _capability(p, active_model=m, model="openai/gpt-5.6-sol")
-        assert resolve_baseline_model(self._job(capability, p)) == "ft-live-qwen3-8b"
+        assert resolve_baseline_model(self._job(capability, p)) == "openai/gpt-5.6-sol"
 
     def test_falls_back_to_capability_model_when_no_active_model(self):
         from overbae.services.finetuning_eval import resolve_baseline_model
@@ -1173,7 +1171,7 @@ class TestBaselineCoupling:
         m = _deployed_model(p, model_id="ft-warming-qwen3-8b")
         m.status = DeployedModel.Status.WARMING
         m.save(update_fields=["status"])
-        capability = _capability(p, active_model=m)
+        capability = _capability(p, active_model=m, benchmark_model=m)
 
         target = _baseline_target(self._job(capability, p))
         assert target.kind == "gateway"

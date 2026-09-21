@@ -348,12 +348,18 @@ def test_numeric_judge_contract_hashes_the_anchor_scale(monkeypatch):
         score_max=1.0,
         config=dict(stored),
     )
-    assert dispatch_mod._rubric_digest(boolean) == "a" * 16
+    boolean_digest = dispatch_mod._rubric_digest(boolean)
+    assert boolean_digest != "a" * 16
     numeric_digest = dispatch_mod._rubric_digest(numeric)
     assert numeric_digest != "a" * 16
 
     monkeypatch.setattr(rubric_compiler, "NUMERIC_ANCHOR_SCALE", "different anchors")
     assert dispatch_mod._rubric_digest(numeric) != numeric_digest
+    assert dispatch_mod._rubric_digest(boolean) == boolean_digest
+    boolean.config["decision"] = {"backend": "generative"}
+    assert dispatch_mod._rubric_digest(boolean) == boolean_digest
+    boolean.config["decision"] = {"backend": "jev"}
+    assert dispatch_mod._rubric_digest(boolean) != boolean_digest
 
 
 def _unit_with_tools(*nodes: dict) -> eval_base.EvalUnit:

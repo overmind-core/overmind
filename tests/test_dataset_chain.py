@@ -5,7 +5,7 @@ from __future__ import annotations
 import uuid
 
 import pytest
-from conftest import EVAL_ROWS, TRAIN_ROWS
+from conftest import EVAL_ROWS, TRAIN_ROWS, review_fixture
 
 from overbae.models import Capability, Cell, Dataset, EvalRun, Project
 from overbae.services.datasets import diff, land, lifecycle, paths, store, use
@@ -206,14 +206,17 @@ def test_use_refuses_a_wrong_intent_and_a_failing_contract():
         use.use(dataset, "eval")
 
 
-def test_use_marks_the_cell_and_starts_a_new_major():
+def test_use_marks_the_cell_and_starts_a_new_major(django_assert_num_queries):
     dataset = _landed(_project(), ROWS, intent="eval")
     keep = lifecycle.add_cell(dataset, title="Keep", script=KEEP)
     shape = lifecycle.add_cell(dataset, title="Shape", script=SHAPE)
     run_svc.execute(dataset)
+    shape.refresh_from_db()
+    review_fixture(dataset, shape)
     cell = use.use(dataset, "eval")
     assert cell == shape and cell.used_at is not None
     assert dataset.versions()[shape.id] == "2.0"
+
     later = lifecycle.add_cell(dataset, title="More", script="df = df\n")
     run_svc.execute(dataset)
     assert dataset.versions()[later.id] == "2.1"
@@ -228,10 +231,22 @@ def test_use_marks_the_cell_and_starts_a_new_major():
     assert use.use(dataset, "eval", cell=shape).used_at == cell.used_at
     assert dataset.versions()[shape.id] == "2.0"
 
+    lifecycle.add_cell(dataset, title="Proposal", script="df = df", proposed=True)
+    chain = dataset.chain
+    with django_assert_num_queries(0):
+        assert dataset.versions(chain=chain) == {
+            chain[0].id: "1.0",
+            keep.id: "1.1",
+            shape.id: "2.0",
+            later.id: "2.1",
+        }
+        assert dataset.versions(chain=[]) == {}
+
 
 def test_a_used_cell_is_protected_and_blocks_deletion():
     project = _project()
     dataset = _landed(project, [dict(r) for r in EVAL_ROWS], intent="eval")
+    review_fixture(dataset)
     cell = use.use(dataset, "eval")
     EvalRun.objects.create(project=project, name="r", dataset=dataset, cell=cell)
     assert "used by runs" in lifecycle.delete_blocked_reason(dataset)

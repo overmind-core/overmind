@@ -12,6 +12,8 @@ from urllib.parse import quote
 from pydantic import AliasChoices, Field, field_validator, model_validator
 
 from overbae.models import Cell, Dataset
+from overbae.services.datasets import review
+from overbae.services.datasets.context import workshop_context
 from overbae.services.datasets.contract import public_intent
 from overbae.services.mcp.contracts.common import (
     JobReceipt,
@@ -124,6 +126,7 @@ class CellSummary(MCPModel):
     version: str = Field(min_length=1, max_length=32)
     title: str = Field(min_length=1, max_length=255)
     script: str = Field(default="", max_length=_SCRIPT_CHARS)
+    script_truncated: bool = False
     note: str = Field(default="", max_length=512)
     state: Literal["proposed", "queued", "running", "ok", "failed"]
     error: str | None = None
@@ -135,6 +138,9 @@ class CellSummary(MCPModel):
     capability_report: dict[str, Any] = Field(default_factory=dict)
     fits: FitReport
     seconds: float = 0.0
+    review: dict[str, Any] = Field(default_factory=dict)
+    quality_report: dict[str, Any] = Field(default_factory=dict)
+    readiness: dict[str, Any] = Field(default_factory=dict)
     used_at: datetime | None = None
     resource: ResourceLinkContract
 
@@ -155,6 +161,20 @@ class DatasetSample(MCPModel):
 class TouchedCell(MCPModel):
     id: str
     action: str = Field(default="", max_length=40)
+    text_offset: int | None = Field(default=None, ge=0)
+
+
+class AgentProgress(MCPModel):
+    stage: str = Field(max_length=40)
+    label: str = Field(max_length=255)
+    detail: str = Field(max_length=4000)
+    started_at: str | None = None
+    updated_at: str | None = None
+    rows_before: int | None = Field(default=None, ge=0)
+    target_rows: int | None = Field(default=None, ge=0)
+    generated_rows: int | None = Field(default=None, ge=0)
+    cell_id: str | None = None
+    proposal_id: str | None = None
 
 
 class ChatTurn(MCPModel):
@@ -164,6 +184,8 @@ class ChatTurn(MCPModel):
     cells: list[TouchedCell] = Field(default_factory=list, max_length=20)
     at: str | None = Field(default=None, max_length=80)
     ms: int | None = Field(default=None, ge=0)
+    status: Literal["running", "awaiting_approval", "resolved", "complete", "error"] | None = None
+    progress: AgentProgress | None = None
 
 
 class NextAction(MCPModel):
@@ -178,6 +200,8 @@ class DatasetHumanAction(MCPModel):
 
 
 class DatasetDetail(DatasetListItem):
+    preparation_context: dict[str, Any] = Field(default_factory=dict)
+    contamination_report: dict[str, Any] = Field(default_factory=dict)
     capability_rank: list[CapabilityRankItem] = Field(default_factory=list, max_length=_RANK_CAP)
     cells: list[CellSummary] = Field(default_factory=list, max_length=_CELL_CAP)
     cells_truncated: bool = False
@@ -265,6 +289,9 @@ class QueryDatasetOutput(MCPModel):
 
 
 class SplitInput(MCPModel):
+    group_by: list[str] = Field(default_factory=list, max_length=10)
+    stratify_by: str | None = Field(default=None, max_length=255)
+    deduplicate: bool = True
     eval_percent: int = Field(
         default=20, ge=1, le=99, description="Share of the rows that lands as the eval dataset."
     )
@@ -311,7 +338,7 @@ class CreateDatasetFromTracesInput(MCPModel):
         default=None,
         min_length=1,
         max_length=255,
-        description="Capability uuid. Omit to let landing propose it from the rows.",
+        description="Capability uuid. Omit to infer from the rows; null means none.",
     )
     split: SplitInput | None = Field(
         default=None,
@@ -397,23 +424,6 @@ def _chain(dataset) -> list[Cell]:
     return dataset.chain
 
 
-def _versions(chain: list[Cell]) -> dict:
-    out: dict = {}
-    major, minor = 1, 0
-    for cell in chain:
-        if cell.state == Cell.State.PROPOSED:
-            continue
-        if cell.position == 0:
-            out[cell.id] = "1.0"
-            continue
-        if cell.used_at is not None:
-            major, minor = major + 1, 0
-        else:
-            minor += 1
-        out[cell.id] = f"{major}.{minor}"
-    return out
-
-
 def _active_cell(dataset, chain: list[Cell]) -> Cell | None:
     ran = [cell for cell in chain if cell.state == Cell.State.OK and cell.fingerprint]
     if dataset.active_id is not None:
@@ -459,7 +469,7 @@ def _active_version(dataset, chain: list[Cell], versions: dict) -> ActiveVersion
 
 
 def _list_fields(dataset, chain: list[Cell]) -> dict[str, Any]:
-    versions = _versions(chain)
+    versions = dataset.versions(chain=chain)
     return {
         "id": str(dataset.id),
         "name": dataset.name or "",
@@ -489,6 +499,7 @@ def _cell_summary(dataset, cell: Cell, versions: dict, frozen_before: int) -> Ce
         version=version,
         title=cell.title.strip() or "Cell",
         script=_clip(cell.script or ""),
+        script_truncated=len(cell.script or "") > _SCRIPT_CHARS,
         note=cell.note or "",
         state=cell.state,
         error=error,
@@ -498,6 +509,9 @@ def _cell_summary(dataset, cell: Cell, versions: dict, frozen_before: int) -> Ce
         fingerprint=cell.fingerprint or "",
         intent_report=_jsonable(cell.intent_report or {}),
         capability_report=_jsonable(cell.capability_report or {}),
+        review=_jsonable(cell.review),
+        quality_report=_jsonable(review.summary(cell.quality_report or {})),
+        readiness=review.readiness(dataset, cell),
         fits=_fit(cell, public_intent(dataset.intent)),
         seconds=float(cell.seconds or 0),
         used_at=cell.used_at,
@@ -587,6 +601,8 @@ def _chat(raw, limit: int) -> list[ChatTurn]:
                 cells=_touched(item.get("cells")),
                 at=str(item.get("at") or "")[:80] or None,
                 ms=int(ms) if isinstance(ms, (int, float)) and ms >= 0 else None,
+                status=item.get("status"),
+                progress=item.get("progress"),
             )
         )
     return out
@@ -656,14 +672,23 @@ def next_actions(dataset, chain: list[Cell], active: Cell | None) -> list[NextAc
                 arguments={"dataset": ds_id},
             )
         ]
+    actions: list[NextAction] = []
+    if findings := review.warnings(dataset, active):
+        actions.append(
+            NextAction(
+                tool="message_dataset_agent",
+                reason="Review recommended: " + "; ".join(findings),
+                arguments={"dataset": ds_id},
+            )
+        )
     args = {"dataset": ds_id, "cell": str(active.id)}
     if intent == Dataset.Intent.TRAIN:
-        return [
+        return actions + [
             NextAction(
                 tool="check_finetune_readiness", reason="Active version fits train.", arguments=args
             )
         ]
-    actions = [
+    actions += [
         NextAction(
             tool="check_evaluation_readiness", reason="Active version fits eval.", arguments=args
         )
@@ -699,7 +724,7 @@ def _detail_summary(dataset, chain: list[Cell], active: Cell | None) -> str:
 
 def serialize_dataset_detail(dataset, *, chat_limit: int = _CHAT_DEFAULT) -> DatasetDetail:
     chain = _chain(dataset)
-    versions = _versions(chain)
+    versions = dataset.versions(chain=chain)
     frozen_before = _frozen_before(chain)
     active = _active_cell(dataset, chain)
     cells = [_cell_summary(dataset, cell, versions, frozen_before) for cell in chain[:_CELL_CAP]]
@@ -712,7 +737,9 @@ def serialize_dataset_detail(dataset, *, chat_limit: int = _CHAT_DEFAULT) -> Dat
     return DatasetDetail.model_validate(
         {
             **fields,
+            "preparation_context": _jsonable(workshop_context(dataset)),
             "capability_rank": _rank(dataset.capability_rank),
+            "contamination_report": _jsonable(dataset.source_spec.get("contamination_report", {})),
             "cells": cells,
             "cells_truncated": len(chain) > _CELL_CAP,
             "sample": _sample(dataset, active, versions),

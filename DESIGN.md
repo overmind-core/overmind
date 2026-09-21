@@ -676,19 +676,51 @@ page with this version chosen. Any other version that ran shows **Set active**
 as a plain outline on the right. A failed cell prints its traceback under an
 **Error** label.
 
-The chat on the right has no header. A turn shows the agent's steps in the
-dataset activity rail (**Asking Overmind** while thinking, each tool with its
-input and output, `Ran n steps · 4.2s` after), then the agent's Markdown: one
-result line, a bullet per cell with its count, one contracts line. Under it
-sits one chip per cell the turn touched. The chip reads the cell as it is now:
-`ran` on `success/10`, `failed` on `destructive/10`, `edited` on `info/10`,
-`removed` struck through, a discarded proposal dashed and struck through. A
-proposal is not a cell in the notebook: it is a dashed card in the chat with
-the title, the note and **Run** / **Discard**. Run lands and runs it; Discard
-drops it for good. A Working line with a spinner sits under the last turn
-while the dataset is busy without a live turn. The dataset's error (state
-`error`) sits above the composer as a monospace block, and the composer card
-is at the bottom. A chip jumps to its cell.
+The quality chip shows **Quality passed** or a warning-tinted **Review recommended**.
+Its hover card lists measured checks and remaining work. Quality and capability
+findings never disable consumer buttons. Review recommendations remain in the
+workshop, not training setup. Setup has no per-model preprocessing cards or
+preprocessing gate; model-specific preparation runs within the launched job.
+Overlap is advisory in setup.
+Unreadable data, invalid technical formats and incompatible model settings still
+block execution. There is no extra quality-approval step.
+
+The chat on the right has no header or repeated agent-name labels.
+Explanations, thinking/tool sections and cell results appear in execution order.
+The current activity section opens while work runs; earlier sections collapse
+into **Thought for…** when narration resumes. The user can expand or collapse
+them at any time. Provider-exposed thinking text reads as Markdown prose, not
+a clipped code block. Tool calls keep their inputs and results in individual
+disclosures. Shared elbow connectors group the steps; no enclosing status card.
+Generation counts remain secondary below the live conversation.
+A quiet-period notice reports time since the last activity, never invented
+progress. Thinking snapshots and progress survive a reload. Assistant responses
+explain the approach, findings and caveats in normal paragraphs rather than a
+fixed one-line result; verified generation counts accompany that explanation.
+One full-width result row per non-proposed cell shows its title, row count,
+version and current state: `ran` on `success/10`,
+`failed` on `destructive/10`, `edited` on `info/10`, `removed` struck through,
+and discarded proposals dashed and struck through. A result row jumps to its cell.
+
+Initial preparation runs its cleaning and shaping cells end-to-end without
+routine per-cell approval. Judgement calls remain explicit proposals, including
+during initial preparation. The original source and coverage impact remain available;
+the user adjusts the result through chat. Requested synthetic generation also
+adds validated rows directly, without a draft or Apply step. Batches accumulate
+in one active cell; progress shows rows added. An interrupted run keeps the
+added rows, and a follow-up prompt resumes generation.
+
+All pending proposals appear in the chat's review section as shared bordered
+cards with impact counts and expandable input/output examples. **Approve** consumes
+the saved transformation preview; **Deny** removes it. Stale proposals
+cannot be applied. Generated data uses the normal cell-result row instead.
+Chat Markdown has no horizontal rules or heading underlines; tables and thinking
+elbows keep their borders. No divider sits above the composer or proposal actions.
+The composer has an input and vendored pixel Send icon, without helper subtext. It stays
+at the bottom and accepts a draft while a request runs;
+Send is disabled until completion. New activity follows the bottom only while
+the user is already there. These surfaces reuse Card, Badge, Progress, Alert
+and shared activity data, with no separate chat theme or model selector.
 
 ### Motion (system-wide)
 

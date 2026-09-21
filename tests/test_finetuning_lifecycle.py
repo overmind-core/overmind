@@ -8,7 +8,6 @@ from overbae.services.finetuning_runner import (
     LIFECYCLE_SETUP,
     LIFECYCLE_TRAINING,
     lifecycle_stage,
-    sanitize_modal_log_lines,
     scrub_backend_names,
 )
 
@@ -34,6 +33,11 @@ def test_evaluation_while_final_eval_runs():
     assert lifecycle_stage("succeeded", prog) == LIFECYCLE_EVALUATION
 
 
+def test_evaluation_while_incumbent_after_runs_without_final_eval():
+    prog = {"judge_evals": [{"kind": "incumbent_after", "status": "running"}]}
+    assert lifecycle_stage("succeeded", prog) == LIFECYCLE_EVALUATION
+
+
 def test_completed_when_final_eval_done():
     prog = {"judge_evals": [{"kind": "final", "status": "completed", "aggregate_score": 0.8}]}
     assert lifecycle_stage("succeeded", prog) == LIFECYCLE_COMPLETED
@@ -50,32 +54,6 @@ def test_backward_compat_missing_progress():
     assert lifecycle_stage("running", None) == LIFECYCLE_SETUP
     assert lifecycle_stage("deploying", None) == LIFECYCLE_DEPLOYMENT
     assert lifecycle_stage("succeeded", None) == LIFECYCLE_COMPLETED
-
-
-def test_sanitize_maps_modal_stage_markers():
-    raw = [
-        'MODAL_STAGE {"stage": "downloading_checkpoint"}',
-        'MODAL_STAGE {"stage": "merging_lora"}',
-        'MODAL_STAGE {"stage": "quantizing_fp8"}',
-    ]
-    assert sanitize_modal_log_lines(raw) == [
-        "Downloading checkpoint…",
-        "Merging LoRA adapter into base weights…",
-        "Quantising to FP8…",
-    ]
-
-
-def test_sanitize_maps_raw_prints_and_strips_ansi():
-    raw = [
-        "\x1b[32m[Baseten] Listing checkpoint files for job-1\x1b[0m",
-        "[FP8] Dispatching abc to L40S FP8 worker (is_lora=True)",
-        "[Baseten] Download done — staged at /weights/.staging/x",
-    ]
-    assert sanitize_modal_log_lines(raw) == [
-        "Listing checkpoint files…",
-        "Merging + quantising to FP8 on GPU…",
-        "Checkpoint download complete.",
-    ]
 
 
 def test_scrub_backend_names_redacts_all_providers():
@@ -113,14 +91,3 @@ def test_sanitize_job_error_hides_internal_failures():
     assert sanitize_job_error(
         "Polling timed out — fine-tuning did not complete within 4 hours"
     ) == ("Polling timed out — fine-tuning did not complete within 4 hours")
-
-
-def test_sanitize_drops_noise_and_dedupes():
-    raw = [
-        "Collecting torch==2.3.0",
-        "some random framework log",
-        "\rDownloading shards:  40%|████      | 2/5",
-        'MODAL_STAGE {"stage": "quantizing_fp8"}',
-        'MODAL_STAGE {"stage": "quantizing_fp8"}',
-    ]
-    assert sanitize_modal_log_lines(raw) == ["Quantising to FP8…"]

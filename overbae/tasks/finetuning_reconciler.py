@@ -1,4 +1,4 @@
-"""Observe live trains; re-enqueue submit/register only when the driving task is gone.
+"""Observe live trains; re-enqueue submission only when the driving task is gone.
 Beat: every 15 s."""
 
 import logging
@@ -9,18 +9,10 @@ from overbae.tasks.utils.task_lock import with_task_lock
 
 logger = logging.getLogger(__name__)
 
-_ACTIVE_STATUSES = {"queued", "preparing", "running", "deploying"}
+_ACTIVE_STATUSES = {"queued", "preparing", "running"}
 
 
-_REGISTER_TASK = "overbae.tasks.model_deployment.register_finetuned_model"
 _RUN_TASK = "overbae.tasks.finetuning.run_finetuning"
-
-
-def rescue_task_for(job_status: str) -> str:
-    """``deploying`` means remote training already succeeded and only Modal registration
-    remains: rescuing it with run_finetuning re-polls the finished remote job every beat and
-    stacks another register_finetuned_model (plus a pre_warm container) on every pass."""
-    return _REGISTER_TASK if job_status == "deploying" else _RUN_TASK
 
 
 def _reconcile() -> dict:
@@ -35,15 +27,10 @@ def _reconcile() -> dict:
     reserved: dict = inspect.reserved() or {}
     scheduled: dict = inspect.scheduled() or {}
     running_task_ids: set[str] = set()
-    registering_job_ids: set[str] = set()
     for tasks in (*active.values(), *reserved.values(), *scheduled.values()):
         for t in tasks:
             req = t.get("request", t)  # scheduled entries nest under "request"
             running_task_ids.add(req.get("id"))
-            if req.get("name") == _REGISTER_TASK:
-                kwargs = req.get("kwargs") or {}
-                if isinstance(kwargs, dict) and kwargs.get("job_id"):
-                    registering_job_ids.add(str(kwargs["job_id"]))
 
     orphaned_jobs = list(
         FinetuningJob.objects.filter(status__in=_ACTIVE_STATUSES).order_by("created_at")
@@ -61,12 +48,7 @@ def _reconcile() -> dict:
             continue
         if job.celery_task_id and job.celery_task_id in running_task_ids:
             continue
-        # register_finetuned_model's task id is NOT stored on the job — match by
-        # task kwargs instead of blindly re-kicking.
-        if job.status == "deploying" and str(job.id) in registering_job_ids:
-            continue
-
-        task_name = rescue_task_for(job.status)
+        task_name = _RUN_TASK
         logger.info(
             "Reconciler: re-enqueuing %s for orphaned job %s (status=%s)",
             task_name,

@@ -1,6 +1,10 @@
 import { describe, expect, it, vi } from "vitest";
 
-import type { CapabilityFlow } from "@/openapi";
+import type {
+  CapabilityFlow,
+  CapabilityFlowTrajectoryPath,
+  CapabilityFlowTrajectoryStep,
+} from "@/openapi";
 import { buildTrajectoryGraph, collectAncestors } from "./buildTrajectoryGraph";
 
 // ELK is a GWT-compiled browser bundle that reaches for a Web Worker vitest has
@@ -43,7 +47,7 @@ vi.mock("elkjs/lib/elk.bundled.js", () => {
   };
 });
 
-const path = (overrides: Record<string, unknown>) => ({
+const path = (overrides: Partial<CapabilityFlowTrajectoryPath> & { id: string }) => ({
   divergences: [],
   name: "",
   provenance: [],
@@ -54,7 +58,7 @@ const path = (overrides: Record<string, unknown>) => ({
   ...overrides,
 });
 
-const step = (label: string, overrides: Record<string, unknown> = {}) => ({
+const step = (label: string, overrides: Partial<CapabilityFlowTrajectoryStep> = {}) => ({
   anchors: [],
   kind: "agent_step",
   mayUse: [],
@@ -143,6 +147,102 @@ describe("buildTrajectoryGraph", () => {
       },
       kind: "step",
       label: "decide: gather evidence or answer",
+    });
+  });
+
+  const invocation = (overrides: Partial<CapabilityFlow>) =>
+    buildTrajectoryGraph({ ...FLOW, ...overrides }, "Brain").nodes.find(
+      (node) => node.id === "step:answer-question:1"
+    )?.data;
+
+  it("attaches the captured model and full prompt to model calls only", () => {
+    const result = buildTrajectoryGraph({ ...FLOW, systemPrompt: "  Full prompt  " }, "Brain");
+    expect(result.nodes.find((node) => node.id === "step:answer-question:1")?.data).toMatchObject({
+      model: FLOW.model,
+      promptIsExcerpt: false,
+      systemPrompt: "Full prompt",
+    });
+    expect(
+      result.nodes.find((node) => node.id === "shared:assemble-turn-context")?.data
+    ).toMatchObject({
+      model: "",
+      promptIsExcerpt: false,
+      systemPrompt: "",
+    });
+  });
+
+  it("labels excerpts and uses them when the full prompt is blank", () => {
+    expect(
+      invocation({ systemPrompt: " \n", systemPromptExcerpt: "  Partial prompt  " })
+    ).toMatchObject({
+      promptIsExcerpt: true,
+      systemPrompt: "Partial prompt",
+    });
+    expect(
+      invocation({ systemPrompt: "Full prompt", systemPromptExcerpt: "Partial" })
+    ).toMatchObject({
+      promptIsExcerpt: false,
+      systemPrompt: "Full prompt",
+    });
+  });
+
+  it("does not invent uncaptured models or prompts", () => {
+    expect(invocation({ model: "" })).toMatchObject({ model: "", systemPrompt: "" });
+  });
+
+  const mode = (overrides: Partial<NonNullable<CapabilityFlow["modes"]>[number]> = {}) => ({
+    entrypointFn: "workers.extract",
+    model: "openai/gpt-4.1-mini",
+    name: "Extraction",
+    prompt: "Extract documents",
+    sourcePath: "workers.py",
+    ...overrides,
+  });
+
+  it("does not assign a capability prompt to an unbound worker call", () => {
+    expect(invocation({ modes: [mode()], systemPrompt: "Orchestrate workers" })).toMatchObject({
+      model: "",
+      systemPrompt: "",
+    });
+  });
+
+  it("uses a mode's model and prompt when its entrypoint anchors the call", () => {
+    expect(
+      invocation({
+        modes: [mode()],
+        systemPrompt: "Orchestrate workers",
+        trajectoryMap: [
+          path({
+            id: "answer-question",
+            steps: [
+              step("Prepare"),
+              step("Extract", { anchors: ["workers.extract"], kind: "model_invocation" }),
+            ],
+          }),
+        ],
+      })
+    ).toMatchObject({ model: "openai/gpt-4.1-mini", systemPrompt: "Extract documents" });
+  });
+
+  it("does not pick one worker prompt when a shared step spans distinct modes", () => {
+    const result = buildTrajectoryGraph(
+      {
+        ...FLOW,
+        modes: [mode(), mode({ entrypointFn: "workers.screen", prompt: "Screen entities" })],
+        trajectoryMap: ["extract", "screen"].map((name) =>
+          path({
+            id: name,
+            steps: [
+              step("Call worker", { anchors: [`workers.${name}`], kind: "model_invocation" }),
+            ],
+          })
+        ),
+      },
+      "Brain"
+    );
+    expect(result.nodes.find((node) => node.id === "shared:call-worker")?.data).toMatchObject({
+      model: "openai/gpt-4.1-mini",
+      systemPrompt: "",
     });
   });
 

@@ -18,6 +18,9 @@ from overbae.modal.model_registry import baseten_finetuning_catalog
 from overbae.models import (
     Capability,
     Dataset,
+    EvalSet,
+    EvalSetMember,
+    Evaluator,
     FinetuningJob,
     FinetuningJobEvent,
     Project,
@@ -80,14 +83,16 @@ def _capability(project: Project) -> Capability:
     return Capability.objects.create(project=project, name=slug, slug=slug)
 
 
-def _dataset_with_messages(capability: Capability, *, n: int = 3) -> Dataset:
+def _dataset_with_messages(
+    capability: Capability, *, n: int = 3, prefix: str = "Question"
+) -> Dataset:
     ds = frozen_dataset(
         capability.project,
         [
             {
                 "input": {
                     "messages": [
-                        {"role": "user", "content": f"Question {i}"},
+                        {"role": "user", "content": f"{prefix} {i}"},
                         {"role": "assistant", "content": f"Answer {i}"},
                     ]
                 },
@@ -110,9 +115,22 @@ def _dataset_with_pairs(capability: Capability, *, n: int = 3) -> Dataset:
 
 
 def _ft_job_payload(project: Project, dataset: Dataset, **overrides) -> dict:
+    evaluation = frozen_dataset(project, EVAL_ROWS)
+    eval_set = EvalSet.objects.create(project=project, name="Training evals")
+    evaluator = Evaluator.objects.create(
+        project=project,
+        name="Exact match",
+        kind=Evaluator.Kind.DETERMINISTIC,
+        config={"check": "exact_match"},
+    )
+    EvalSetMember.objects.create(
+        eval_set=eval_set, evaluator=evaluator, role=EvalSetMember.Role.GENERATIVE
+    )
     payload = {
         "project": str(project.id),
         "dataset": str(dataset.id),
+        "eval_dataset": str(evaluation.id),
+        "eval_set": str(eval_set.id),
         "name": "ft-test",
         "use_case": "test run",
         "base_model": "meta-llama/Llama-3.2-3B-Instruct",
@@ -206,16 +224,6 @@ class TestToolCallingValidation:
         result = check_tool_calling_rows([row])
         assert result.issue_count >= 1
         assert any("tools list" in e for e in result.errors)
-
-    def test_resolve_tool_name_maps_collapsed_names(self):
-        from overbae.services.finetuning_tool_validation import resolve_tool_name
-
-        tools = {"User Feed (Video Posts) V2", "Get Trending News"}
-        assert resolve_tool_name("User Feed V2", tools) == "User Feed (Video Posts) V2"
-        assert (
-            resolve_tool_name("Earnings Per Share Trend", {"Earnings Per Share (EPS) Trend"})
-            == "Earnings Per Share (EPS) Trend"
-        )
 
 
 class TestValidatorDB:
@@ -676,7 +684,7 @@ class TestValidateDatasetEndpoint:
     def test_validate_dataset_preview_separate_validation_dataset(self):
         u, p, a = _setup()
         train_ds = _dataset_with_messages(a, n=8)
-        val_ds = _dataset_with_messages(a, n=3)
+        val_ds = _dataset_with_messages(a, n=3, prefix="Held out")
 
         r = _auth_client(u).post(
             reverse("finetuningjob-validate-dataset"),
@@ -1927,16 +1935,17 @@ class TestBasetenContextLengthPersistence:
         )
         assert env["MODEL_ID"] == "unsloth/NVIDIA-Nemotron-3.5-Lightning-30B-A3B"
 
-    def test_await_base_model_blocks_on_fetch_remote(self):
+    def test_await_base_model_blocks_on_fetch_remote(self, monkeypatch):
         from unittest.mock import MagicMock, patch
 
         from overbae.services.finetuning_runner import ModalRunner
 
+        monkeypatch.setenv("MODAL_ENVIRONMENT", "test-environment")
         fetch = MagicMock()
         with patch("modal.Function.from_name", return_value=fetch) as from_name:
             ModalRunner()._await_base_model("unsloth/Qwen3-8B")
         from_name.assert_called_once_with(
-            "overmind-register", "fetch_base_model", environment_name=None
+            "overmind-register", "fetch_base_model", environment_name="test-environment"
         )
         fetch.remote.assert_called_once_with(base_model="unsloth/Qwen3-8B")
 

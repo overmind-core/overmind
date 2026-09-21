@@ -13,6 +13,13 @@
  */
 
 import { mapValues } from '../runtime';
+import type { DecisionPolicy } from './DecisionPolicy';
+import {
+    DecisionPolicyFromJSON,
+    DecisionPolicyFromJSONTyped,
+    DecisionPolicyToJSON,
+    DecisionPolicyToJSONTyped,
+} from './DecisionPolicy';
 import type { ScoreDataTypeEnum } from './ScoreDataTypeEnum';
 import {
     ScoreDataTypeEnumFromJSON,
@@ -103,6 +110,12 @@ export interface Evaluator {
      * @memberof Evaluator
      */
     readonly judgePrompt: string;
+    /**
+     *
+     * @type {DecisionPolicy}
+     * @memberof Evaluator
+     */
+    readonly decisionPolicy: DecisionPolicy;
     /**
      *
      * @type {string}
@@ -259,6 +272,7 @@ export function instanceOfEvaluator(value: object): value is Evaluator {
     if (!('capabilityName' in value) || value['capabilityName'] === undefined) return false;
     if (!('isGeneric' in value) || value['isGeneric'] === undefined) return false;
     if (!('judgePrompt' in value) || value['judgePrompt'] === undefined) return false;
+    if (!('decisionPolicy' in value) || value['decisionPolicy'] === undefined) return false;
     if (!('name' in value) || value['name'] === undefined) return false;
     if (!('version' in value) || value['version'] === undefined) return false;
     if (!('kind' in value) || value['kind'] === undefined) return false;
@@ -286,6 +300,7 @@ export function EvaluatorFromJSONTyped(json: any, ignoreDiscriminator: boolean):
         'capabilityName': json['capability_name'],
         'isGeneric': json['is_generic'],
         'judgePrompt': json['judge_prompt'],
+        'decisionPolicy': DecisionPolicyFromJSON(json['decision_policy']),
         'name': json['name'],
         'displayName': json['display_name'] == null ? undefined : json['display_name'],
         'version': json['version'],
@@ -317,7 +332,7 @@ export function EvaluatorToJSON(json: any): Evaluator {
     return EvaluatorToJSONTyped(json, false);
 }
 
-export function EvaluatorToJSONTyped(value?: Omit<Evaluator, 'id'|'capability_name'|'is_generic'|'judge_prompt'|'version'|'created_at'|'updated_at'|'created_by'> | null, ignoreDiscriminator: boolean = false): any {
+export function EvaluatorToJSONTyped(value?: Omit<Evaluator, 'id'|'capability_name'|'is_generic'|'judge_prompt'|'decision_policy'|'version'|'created_at'|'updated_at'|'created_by'> | null, ignoreDiscriminator: boolean = false): any {
     if (value == null) {
         return value;
     }

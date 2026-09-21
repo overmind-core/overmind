@@ -15,11 +15,14 @@ import { EvalWinnerCallout, PerModelOps } from "@/components/evaluations/eval-re
 import { renderPayload, type ViewMode } from "@/components/evaluations/payload-format";
 import { RunComparison } from "@/components/evaluations/run-comparison";
 import { StatusBadge } from "@/components/evaluations/runs-table";
+import { type DatapointRow, indexSamples } from "@/components/evaluations/sample-index";
+import { SampleInput } from "@/components/evaluations/sample-input";
 import {
   type DistributionScore,
   ScoreDistributions,
 } from "@/components/evaluations/score-distributions";
 import {
+  DecisionEvidence,
   type ScoreLike,
   type ScoreState,
   scoreState,
@@ -684,11 +687,6 @@ function VariantCard({
   );
 }
 
-interface DatapointRow {
-  datapointId: string | null;
-  fallbackSampleId: string;
-}
-
 type DatapointSortKey = "index" | "input" | "output" | `score:${string}`;
 
 interface ScoreRecord {
@@ -701,32 +699,8 @@ interface ScoreRecord {
   reasoning?: string | null;
 }
 
-function buildIndexes(
-  samples: Array<{ id?: string; datapoint?: string | null; variant?: string | null }>,
-  scores: Array<ScoreRecord>
-) {
-  const sampleMap = new Map<string, Map<string, string>>();
-  const seenDatapoints = new Map<string, string>();
-  const sampleVariantMap = new Map<string, string>();
-
-  for (const s of samples) {
-    if (!s.id) continue;
-    const dpKey = s.datapoint ?? "__no_dp__";
-    if (!sampleMap.has(dpKey)) sampleMap.set(dpKey, new Map());
-    if (s.variant) {
-      sampleMap.get(dpKey)!.set(s.variant, s.id);
-      sampleVariantMap.set(s.id, s.variant);
-    }
-    if (!seenDatapoints.has(dpKey)) seenDatapoints.set(dpKey, s.id);
-  }
-
-  const datapointRows: DatapointRow[] = [];
-  for (const [dpKey, firstSampleId] of seenDatapoints) {
-    datapointRows.push({
-      datapointId: dpKey === "__no_dp__" ? null : dpKey,
-      fallbackSampleId: firstSampleId,
-    });
-  }
+function buildIndexes(samples: EvalSampleList[], scores: Array<ScoreRecord>) {
+  const { datapointRows, sampleMap, sampleVariantMap } = indexSamples(samples);
 
   const scoreIndex = new Map<string, Map<string, number>>();
   const verdictIndex = new Map<string, Map<string, "passed" | "failed">>();
@@ -873,10 +847,8 @@ function ComparisonTable({
   const previewBySample = new Map(allSamples.map((s) => [s.id, s]));
   const singleVariantId = variantIds.length === 1 ? variantIds[0] : null;
 
-  // Mirrors the render-time lookup below — keep the two in step.
   const rowSampleId = (row: DatapointRow, vid: string): string | undefined =>
-    sampleMap.get(row.datapointId ?? "")?.get(vid) ??
-    (row.datapointId == null ? row.fallbackSampleId : undefined);
+    sampleMap.get(row.key)?.get(vid);
 
   // The samples query fetches the whole run, so filtering can stay in memory.
   const hasActiveFilter = !!searchQuery.trim() || verdictFilter !== "all";
@@ -884,7 +856,7 @@ function ComparisonTable({
     ? datapointRows
     : datapointRows.filter((row) => {
         const texts: Array<string | null | undefined> = [
-          previewBySample.get(row.fallbackSampleId)?.inputPreview,
+          previewBySample.get(row.inputSampleId)?.inputPreview,
         ];
         for (const vid of variantIds) {
           const sid = rowSampleId(row, vid);
@@ -915,8 +887,7 @@ function ComparisonTable({
 
   const sortValue = (row: DatapointRow): number | string | null => {
     if (sort.key === "index") return ordinalByRow.get(row) ?? null;
-    if (sort.key === "input")
-      return previewBySample.get(row.fallbackSampleId)?.inputPreview ?? null;
+    if (sort.key === "input") return previewBySample.get(row.inputSampleId)?.inputPreview ?? null;
     if (sort.key === "output") {
       const sid = singleVariantId ? rowSampleId(row, singleVariantId) : undefined;
       return sid ? (previewBySample.get(sid)?.outputPreview ?? null) : null;
@@ -1285,16 +1256,15 @@ function ComparisonTable({
                   )}
                   {pageRows.map((row) => {
                     const ordinal = ordinalByRow.get(row) ?? 0;
-                    const inputSample = previewBySample.get(row.fallbackSampleId);
+                    const inputSample = previewBySample.get(row.inputSampleId);
                     const outSampleId = singleVariantId
-                      ? (sampleMap.get(row.datapointId ?? "")?.get(singleVariantId) ??
-                        (row.datapointId == null ? row.fallbackSampleId : undefined))
+                      ? rowSampleId(row, singleVariantId)
                       : undefined;
                     const outSample = outSampleId ? previewBySample.get(outSampleId) : undefined;
                     return (
                       <TableRow
                         className="cursor-pointer hover:bg-wash-raised"
-                        key={row.datapointId ?? row.fallbackSampleId}
+                        key={row.key}
                         onClick={() => setOpenRow(row)}
                       >
                         <TableCell className="text-xs text-muted-foreground/40">
@@ -1328,9 +1298,7 @@ function ComparisonTable({
                           </TableCell>
                         ) : null}
                         {variantIds.map((vid) => {
-                          const sampleId =
-                            sampleMap.get(row.datapointId ?? "")?.get(vid) ??
-                            (row.datapointId == null ? row.fallbackSampleId : undefined);
+                          const sampleId = rowSampleId(row, vid);
                           const perSampleScore = sampleId
                             ? scoreIndex.get(sampleId)?.get(currentMetric)
                             : undefined;
@@ -1510,6 +1478,8 @@ function LiveRunMonitor({
   const total = progress?.total ?? 0;
   const scored = progress?.scored ?? 0;
   const scoreTotal = progress?.scoreTotal ?? 0;
+  const evaluatorStats = progress?.evaluatorStats ?? [];
+  const errorCount = (progress?.errors ?? 0) + evaluatorErrorCount;
 
   return (
     <section aria-label="Live run progress" className="flex flex-col gap-3">
@@ -1519,22 +1489,28 @@ function LiveRunMonitor({
         scored={scored}
         scoreTotal={scoreTotal}
         total={total}
+        variants={progress?.variants ?? []}
       />
 
-      <div className="grid grid-cols-1 gap-3 lg:grid-cols-5">
-        <div className="flex flex-col gap-3 lg:col-span-2">
-          <VariantProgressList variants={progress?.variants ?? []} />
-          <PartialEvaluatorStats stats={progress?.evaluatorStats ?? []} />
-          <ErrorsPanel
-            evaluatorErrorCount={evaluatorErrorCount}
-            generationErrorCount={progress?.errors ?? 0}
-            samples={samples}
-          />
+      <LiveSampleFeed onOpen={setOpenSampleId} samples={samples} />
+
+      {(evaluatorStats.length > 0 || errorCount > 0) && (
+        <div
+          className={cn(
+            "grid grid-cols-1 gap-3",
+            evaluatorStats.length > 0 && errorCount > 0 && "lg:grid-cols-2"
+          )}
+        >
+          {evaluatorStats.length > 0 && <PartialEvaluatorStats stats={evaluatorStats} />}
+          {errorCount > 0 && (
+            <ErrorsPanel
+              evaluatorErrorCount={evaluatorErrorCount}
+              generationErrorCount={progress?.errors ?? 0}
+              samples={samples}
+            />
+          )}
         </div>
-        <div className="lg:col-span-3">
-          <LiveSampleFeed onOpen={setOpenSampleId} samples={samples} />
-        </div>
-      </div>
+      )}
 
       <SampleQuickView onClose={() => setOpenSampleId(null)} sampleId={openSampleId} />
     </section>
@@ -1547,12 +1523,14 @@ function PhaseStepper({
   total,
   scored,
   scoreTotal,
+  variants,
 }: {
   phase: string;
   prepared: number;
   total: number;
   scored: number;
   scoreTotal: number;
+  variants: EvalRunVariantProgress[];
 }) {
   const activeIdx = phaseIndex(phase);
   const steps = [
@@ -1630,59 +1608,58 @@ function PhaseStepper({
           );
         })}
       </ol>
+      {variants.length > 0 && (
+        <div className="mt-4 border-t border-border/70 pt-4">
+          <VariantProgressBars variants={variants} />
+        </div>
+      )}
     </div>
   );
 }
 
-function VariantProgressList({ variants }: { variants: EvalRunVariantProgress[] }) {
-  if (variants.length === 0) return null;
+function VariantProgressBars({ variants }: { variants: EvalRunVariantProgress[] }) {
   return (
-    <div className="rounded-md border bg-wash-subtle p-4">
-      <h3 className="mb-2.5 text-xs text-muted-foreground">Models</h3>
-      <ul className="flex flex-col gap-2.5">
-        {variants.map((v) => {
-          const pct = v.total > 0 ? Math.round((v.prepared / v.total) * 100) : 0;
-          const state =
-            v.prepared >= v.total && v.total > 0
-              ? "done"
-              : v.prepared > 0
-                ? "generating"
-                : "pending";
-          return (
-            <li className="flex flex-col gap-1" key={v.id}>
-              <div className="flex items-center justify-between gap-2 text-xs">
-                <span className="flex min-w-0 items-center gap-1.5">
-                  <span className="truncate font-medium">{v.label}</span>
-                  {v.errors > 0 && (
-                    <Badge className="shrink-0 text-xs" variant="destructive">
-                      {v.errors} failed
-                    </Badge>
-                  )}
+    <ul className="flex flex-col gap-2">
+      {variants.map((v) => {
+        const pct = v.total > 0 ? Math.round((v.prepared / v.total) * 100) : 0;
+        const state =
+          v.prepared >= v.total && v.total > 0 ? "done" : v.prepared > 0 ? "generating" : "pending";
+        return (
+          <li className="flex flex-col gap-1" key={v.id}>
+            <div className="flex items-center justify-between gap-2 text-xs">
+              <span className="flex min-w-0 items-center gap-1.5">
+                <span className="truncate font-medium" title={v.label}>
+                  {v.label}
                 </span>
-                <span className="flex shrink-0 items-center gap-1 tabular-nums text-muted-foreground">
-                  {state === "generating" && <Spinner className="size-3" size="sm" />}
-                  {state === "pending" && "queued"}
-                  {state !== "pending" && `${v.prepared} / ${v.total}`}
-                </span>
-              </div>
+                {v.errors > 0 && (
+                  <Badge className="shrink-0 text-xs" variant="destructive">
+                    {v.errors} failed
+                  </Badge>
+                )}
+              </span>
+              <span className="flex shrink-0 items-center gap-1 tabular-nums text-muted-foreground">
+                {state === "generating" && <Spinner className="size-3" size="sm" />}
+                {state === "pending" && "Queued"}
+                {state !== "pending" && `${v.prepared} / ${v.total} · ${pct}%`}
+              </span>
+            </div>
+            <div
+              aria-label={`${v.label} generation progress`}
+              aria-valuemax={v.total || 1}
+              aria-valuemin={0}
+              aria-valuenow={v.prepared}
+              className="h-1.5 w-full overflow-hidden rounded-xs bg-muted"
+              role="progressbar"
+            >
               <div
-                aria-label={`${v.label} generation progress`}
-                aria-valuemax={v.total || 1}
-                aria-valuemin={0}
-                aria-valuenow={v.prepared}
-                className="h-1 w-full overflow-hidden rounded-xs bg-muted"
-                role="progressbar"
-              >
-                <div
-                  className="h-full rounded-xs bg-primary transition-all duration-700 motion-reduce:transition-none"
-                  style={{ width: `${pct}%` }}
-                />
-              </div>
-            </li>
-          );
-        })}
-      </ul>
-    </div>
+                className="h-full rounded-xs bg-primary transition-all duration-700 motion-reduce:transition-none"
+                style={{ width: `${pct}%` }}
+              />
+            </div>
+          </li>
+        );
+      })}
+    </ul>
   );
 }
 
@@ -1726,9 +1703,7 @@ function ErrorsPanel({
   const failed = samples.filter((s) => s.error);
   const totalErrors = generationErrorCount + evaluatorErrorCount;
 
-  if (totalErrors === 0) {
-    return <p className="px-1 text-xs text-muted-foreground/50">No errors so far</p>;
-  }
+  if (totalErrors === 0) return null;
 
   return (
     <div className="rounded-md border border-warning/30 bg-warning/5 p-4 text-xs">
@@ -1863,6 +1838,7 @@ function SampleQuickView({ sampleId, onClose }: { sampleId: string | null; onClo
             <LoadingState label="Loading…" />
           ) : (
             <div className="flex flex-col gap-3">
+              <SampleInput io={sample.io} viewMode={viewMode} />
               {sample.error && (
                 <div className="rounded-md border border-destructive/40 bg-destructive/5 px-3 py-2 text-xs text-destructive">
                   {sample.error}
@@ -1887,10 +1863,10 @@ function SampleQuickView({ sampleId, onClose }: { sampleId: string | null; onClo
                   <div className="mb-1.5 flex items-center gap-1.5">
                     <Icon.dataset className="size-3.5 text-muted-foreground" />
                     <span className="text-xs font-semibold text-muted-foreground">
-                      Expected output
+                      Reference answer
                     </span>
                     <span className="rounded-sm bg-muted px-1 py-0.5 text-xs font-semibold text-muted-foreground">
-                      from dataset
+                      used for grading
                     </span>
                   </div>
                   <p className="whitespace-pre-wrap break-words font-mono text-xs text-muted-foreground">
@@ -1984,6 +1960,7 @@ function ScoreRow({ score }: { score: ScoreLike }) {
           Ungraded — the evaluator abstained (no reason recorded).
         </p>
       ) : null}
+      <DecisionEvidence subScores={score.subScores} />
     </div>
   );
 }
@@ -2238,41 +2215,25 @@ function TurnTimeline({
   );
 }
 
-function VariantAccordionCard({
+function SampleOutput({
   sampleId,
   label,
-  isOpen,
-  onToggle,
   datasetScores,
   viewMode,
 }: {
   sampleId: string;
   label: string;
-  isOpen: boolean;
-  onToggle: () => void;
   datasetScores: Map<string, number>;
   viewMode: ViewMode;
 }) {
-  const [hasOpened, setHasOpened] = useState(isOpen);
-
-  useEffect(() => {
-    if (isOpen) setHasOpened(true);
-  }, [isOpen]);
-
-  const { data: sample, isLoading } = useEvalSampleQuery(hasOpened ? sampleId : "");
+  const { data: sample, isLoading, error } = useEvalSampleQuery(sampleId);
   const isTraceScoringRun = useContext(TraceScoringRunContext);
-
-  const handleToggle = () => onToggle();
 
   const traj = (sample?.trajectory ?? {}) as { final_output?: string };
   const scores = (sample?.scores ?? []).filter((s) => !s.name?.endsWith("__prediction"));
 
-  const predScore = (sample?.scores ?? []).find((s) => s.name?.endsWith("__prediction"));
-  const predSubScores = (
-    predScore?.subScores as Array<{ prediction?: string; reference?: string }> | null | undefined
-  )?.[0];
-  const prediction: string | null = predSubScores?.prediction ?? traj.final_output ?? null;
-  const rawExpected = predSubScores?.reference ?? sample?.expected;
+  const prediction: string | null = traj.final_output ?? null;
+  const rawExpected = sample?.expected;
   // Compact stringify, so "Raw" shows the exact payload and "Formatted" indents it.
   const reference: string | null =
     rawExpected == null
@@ -2296,158 +2257,146 @@ function VariantAccordionCard({
   const isReplaySample = turnDepths.length > 0 || perTurnEntries.length > 0;
 
   return (
-    <div
-      className={cn(
-        "flex flex-col overflow-hidden rounded-md border",
-        isOpen ? "min-h-0 flex-1" : "shrink-0"
-      )}
-    >
-      <button
-        aria-expanded={isOpen}
-        className="flex w-full shrink-0 items-center justify-between px-3 py-2.5 text-left transition-colors hover:bg-wash-subtle"
-        onClick={handleToggle}
-        type="button"
-      >
+    <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+      <div className="shrink-0 px-4 py-3">
         <ModelProviderChip model={label} />
-        <Icon.chevronDown
-          className={cn(
-            "size-4 shrink-0 text-muted-foreground transition-transform duration-200 motion-reduce:transition-none",
-            isOpen && "rotate-180"
-          )}
-        />
-      </button>
+      </div>
 
-      {isOpen && (
-        <div className="min-h-40 flex-1 overflow-y-auto border-t">
-          {isLoading ? (
-            <div className="px-4 py-3">
-              <LoadingState label="Loading…" />
-            </div>
-          ) : (
-            <div className="divide-y divide-border/70">
-              {!isReplaySample && prediction != null && (
-                <div className="px-4 py-3">
-                  <div className="mb-1.5 flex items-center gap-1.5">
-                    <Icon.model className="size-3.5 text-primary" />
-                    <span className="text-xs font-semibold text-foreground">Model output</span>
-                    <span className="rounded-sm bg-primary/15 px-1 py-0.5 text-xs font-semibold text-primary">
-                      this run
-                    </span>
-                  </div>
-                  <ModelOutputContent
-                    fallback={prediction}
-                    structured={sample?.structured as Record<string, unknown> | undefined}
-                    viewMode={viewMode}
-                  />
+      <div className="min-h-40 flex-1 overflow-y-auto border-t">
+        {isLoading ? (
+          <div className="px-4 py-3">
+            <LoadingState label="Loading…" />
+          </div>
+        ) : error ? (
+          <p className="px-4 py-3 text-sm text-destructive">Could not load this sample.</p>
+        ) : (
+          <div className="divide-y divide-border/70">
+            {sample?.error && <p className="px-4 py-3 text-xs text-destructive">{sample.error}</p>}
+            {!isReplaySample && (
+              <div className="px-4 py-3">
+                <div className="mb-1.5 flex items-center gap-1.5">
+                  <Icon.model className="size-3.5 text-primary" />
+                  <span className="text-xs font-semibold text-foreground">Generated output</span>
                 </div>
-              )}
-              {!isReplaySample && !isTraceScoringRun && reference != null && (
-                <div className="bg-wash-subtle px-4 py-3">
-                  <div className="mb-1.5 flex items-center gap-1.5">
-                    <Icon.dataset className="size-3.5 text-muted-foreground" />
-                    <span className="text-xs font-semibold text-muted-foreground">
-                      Expected output
-                    </span>
-                    <span className="rounded-sm bg-muted px-1 py-0.5 text-xs font-semibold text-muted-foreground">
-                      from dataset
-                    </span>
-                  </div>
-                  <p className="break-words whitespace-pre-wrap font-mono text-xs text-muted-foreground">
-                    {renderPayload(reference, viewMode)}
-                  </p>
-                </div>
-              )}
-
-              {(() => {
-                const toRow = (s: (typeof scores)[number]) => ({
-                  id: s.id,
-                  name: s.name,
-                  passed: s.passed,
-                  reasoning: s.reasoning,
-                  scope: s.scope,
-                  value: s.value,
-                });
-                if (isReplaySample) {
-                  return (
-                    <>
-                      {sampleScores.length > 0 && (
-                        <div className="py-3">
-                          <span className="mb-1.5 block px-4 text-xs font-semibold text-muted-foreground/60">
-                            Conversation
-                          </span>
-                          <div className="divide-y divide-border/70">
-                            {sampleScores.map((s) => (
-                              <ScoreRow key={s.id} score={toRow(s)} />
-                            ))}
-                          </div>
-                        </div>
-                      )}
-                      <div className="px-4 py-3">
-                        <TurnTimeline
-                          perTurn={perTurnEntries}
-                          turnDepths={turnDepths}
-                          viewMode={viewMode}
-                        />
-                      </div>
-                    </>
-                  );
-                }
-                if (scores.length === 0) return null;
-                return (
-                  <div className="divide-y divide-border/70 py-3">
-                    {scores.map((s) => (
-                      <ScoreRow key={s.id} score={toRow(s)} />
-                    ))}
-                  </div>
-                );
-              })()}
-              {datasetScores.size > 0 && (
-                <div className="px-4 py-3">
-                  <span className="mb-2 block text-xs font-semibold text-muted-foreground/60">
-                    Dataset metrics
+                <ModelOutputContent
+                  fallback={prediction}
+                  structured={sample?.structured as Record<string, unknown> | undefined}
+                  viewMode={viewMode}
+                />
+                {(sample?.io?.outputMessages.length ?? 0) > 0 && (
+                  <details className="mt-3 rounded-md border border-border p-3">
+                    <summary className="cursor-pointer text-xs">Generated messages</summary>
+                    <pre className="mt-3 whitespace-pre-wrap break-words font-mono text-xs">
+                      {renderPayload(JSON.stringify(sample?.io?.outputMessages), viewMode)}
+                    </pre>
+                  </details>
+                )}
+              </div>
+            )}
+            {!isReplaySample && !isTraceScoringRun && reference != null && (
+              <div className="bg-wash-subtle px-4 py-3">
+                <div className="mb-1.5 flex items-center gap-1.5">
+                  <Icon.dataset className="size-3.5 text-muted-foreground" />
+                  <span className="text-xs font-semibold text-muted-foreground">
+                    Reference answer
                   </span>
-                  <div className="flex flex-col gap-2">
-                    {Array.from(datasetScores.entries()).map(([name, value]) => {
-                      const pct = scorePct(value);
-                      return (
-                        <div
-                          className="rounded-md bg-wash-subtle p-3 opacity-80"
-                          key={name}
-                          title="Dataset-level aggregate score — same for all samples in this variant"
-                        >
-                          <div className="flex items-center justify-between gap-2">
-                            <div className="flex items-center gap-1.5">
-                              <span className="text-sm font-medium">
-                                {humanizeMetricName(name)}
-                              </span>
-                              <span className="rounded-sm bg-muted px-1 py-0.5 text-xs font-semibold text-muted-foreground">
-                                dataset
-                              </span>
-                            </div>
-                            <ScoreChip value={value} />
-                          </div>
-                          <div className="mt-2 h-1 w-full overflow-hidden rounded-xs bg-muted">
-                            <div
-                              className={cn("h-full rounded-xs", scoreFillClass(pct))}
-                              style={{ width: `${pct}%` }}
-                            />
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
+                  <span className="rounded-sm bg-muted px-1 py-0.5 text-xs font-semibold text-muted-foreground">
+                    used for grading
+                  </span>
                 </div>
-              )}
-
-              {scores.length === 0 && datasetScores.size === 0 && (
-                <p className="px-4 py-6 text-center text-xs text-muted-foreground">
-                  No scores for this sample.
+                <p className="break-words whitespace-pre-wrap font-mono text-xs text-muted-foreground">
+                  {renderPayload(reference, viewMode)}
                 </p>
-              )}
-            </div>
-          )}
-        </div>
-      )}
+              </div>
+            )}
+
+            {(() => {
+              const toRow = (s: (typeof scores)[number]) => ({
+                id: s.id,
+                name: s.name,
+                passed: s.passed,
+                reasoning: s.reasoning,
+                scope: s.scope,
+                value: s.value,
+              });
+              if (isReplaySample) {
+                return (
+                  <>
+                    {sampleScores.length > 0 && (
+                      <div className="py-3">
+                        <span className="mb-1.5 block px-4 text-xs font-semibold text-muted-foreground/60">
+                          Conversation
+                        </span>
+                        <div className="divide-y divide-border/70">
+                          {sampleScores.map((s) => (
+                            <ScoreRow key={s.id} score={toRow(s)} />
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                    <div className="px-4 py-3">
+                      <TurnTimeline
+                        perTurn={perTurnEntries}
+                        turnDepths={turnDepths}
+                        viewMode={viewMode}
+                      />
+                    </div>
+                  </>
+                );
+              }
+              if (scores.length === 0) return null;
+              return (
+                <div className="divide-y divide-border/70 py-3">
+                  {scores.map((s) => (
+                    <ScoreRow key={s.id} score={toRow(s)} />
+                  ))}
+                </div>
+              );
+            })()}
+            {datasetScores.size > 0 && (
+              <div className="px-4 py-3">
+                <span className="mb-2 block text-xs font-semibold text-muted-foreground/60">
+                  Dataset metrics
+                </span>
+                <div className="flex flex-col gap-2">
+                  {Array.from(datasetScores.entries()).map(([name, value]) => {
+                    const pct = scorePct(value);
+                    return (
+                      <div
+                        className="rounded-md bg-wash-subtle p-3 opacity-80"
+                        key={name}
+                        title="Dataset-level aggregate score — same for all samples in this variant"
+                      >
+                        <div className="flex items-center justify-between gap-2">
+                          <div className="flex items-center gap-1.5">
+                            <span className="text-sm font-medium">{humanizeMetricName(name)}</span>
+                            <span className="rounded-sm bg-muted px-1 py-0.5 text-xs font-semibold text-muted-foreground">
+                              dataset
+                            </span>
+                          </div>
+                          <ScoreChip value={value} />
+                        </div>
+                        <div className="mt-2 h-1 w-full overflow-hidden rounded-xs bg-muted">
+                          <div
+                            className={cn("h-full rounded-xs", scoreFillClass(pct))}
+                            style={{ width: `${pct}%` }}
+                          />
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            {scores.length === 0 && datasetScores.size === 0 && (
+              <p className="px-4 py-6 text-center text-xs text-muted-foreground">
+                No scores for this sample.
+              </p>
+            )}
+          </div>
+        )}
+      </div>
     </div>
   );
 }
@@ -2467,28 +2416,19 @@ function SampleModal({
   datasetScoreIndex: Map<string, Map<string, number>>;
   onClose: () => void;
 }) {
-  const firstSampleId =
-    (row
-      ? (sampleMap.get(row.datapointId ?? "")?.get(variantIds[0] ?? "") ??
-        (row.datapointId == null ? row.fallbackSampleId : undefined))
-      : undefined) ?? "";
-
-  const { data: firstSample, isLoading } = useEvalSampleQuery(firstSampleId);
-
+  const rowKey = row?.key;
+  const firstVariantId = variantIds.find((vid) => rowKey && sampleMap.get(rowKey)?.has(vid));
   const [viewMode, setViewMode] = useState<ViewMode>("formatted");
-
-  const [openCards, setOpenCards] = useState<Set<string>>(() => new Set([variantIds[0] ?? ""]));
+  const [selectedVariant, setSelectedVariant] = useState(firstVariantId ?? "");
   useEffect(() => {
-    setOpenCards(new Set([variantIds[0] ?? ""]));
-  }, [variantIds]);
-
-  const toggleCard = (vid: string) =>
-    setOpenCards((prev) => {
-      const next = new Set(prev);
-      if (next.has(vid)) next.delete(vid);
-      else next.add(vid);
-      return next;
-    });
+    setSelectedVariant(rowKey ? (firstVariantId ?? "") : "");
+  }, [firstVariantId, rowKey]);
+  const activeVariant =
+    rowKey && sampleMap.get(rowKey)?.has(selectedVariant)
+      ? selectedVariant
+      : (firstVariantId ?? "");
+  const sampleId = rowKey ? sampleMap.get(rowKey)?.get(activeVariant) : undefined;
+  const { data: sample, isLoading, error } = useEvalSampleQuery(sampleId);
 
   useEffect(() => {
     if (!row) return;
@@ -2499,21 +2439,10 @@ function SampleModal({
     return () => window.removeEventListener("keydown", handler);
   }, [row, onClose]);
 
-  const traj = (firstSample?.trajectory ?? {}) as {
-    messages?: Array<{ role: string; content?: string }>;
-  };
-
-  const dpLabel = (row?.datapointId ?? row?.fallbackSampleId)?.slice(0, 8);
-
-  const variantSamples = variantIds.map((vid) => ({
-    label: variants[vid]?.label ?? vid,
-    sampleId:
-      (row
-        ? (sampleMap.get(row.datapointId ?? "")?.get(vid) ??
-          (row.datapointId == null ? row.fallbackSampleId : undefined))
-        : undefined) ?? "",
-    vid,
-  }));
+  const variantSamples = variantIds.flatMap((vid) => {
+    const sampleId = row ? sampleMap.get(row.key)?.get(vid) : undefined;
+    return sampleId ? [{ label: variants[vid]?.label ?? vid, sampleId, vid }] : [];
+  });
 
   return (
     <Dialog
@@ -2523,14 +2452,33 @@ function SampleModal({
       open={!!row}
     >
       <DialogContent size="full">
-        <DialogHeader>
-          <DialogTitle>Datapoint {dpLabel}</DialogTitle>
+        <DialogHeader end={<ViewModeToggle onChange={setViewMode} value={viewMode} />}>
+          <DialogTitle>Datapoint {row?.label}</DialogTitle>
           <DialogDescription className="sr-only">
             Input, expected output and per-model evaluator results for this datapoint.
           </DialogDescription>
         </DialogHeader>
 
-        {isLoading || !firstSample ? (
+        {variantSamples.length > 1 && (
+          <Tabs
+            className="shrink-0 px-5 pb-3"
+            onValueChange={setSelectedVariant}
+            value={activeVariant}
+          >
+            <TabsList aria-label="Model results">
+              {variantSamples.map(({ vid, label }) => (
+                <TabsTrigger key={vid} value={vid}>
+                  {label}
+                </TabsTrigger>
+              ))}
+            </TabsList>
+          </Tabs>
+        )}
+        {error ? (
+          <DialogBody>
+            <p className="text-sm text-destructive">Could not load this sample.</p>
+          </DialogBody>
+        ) : isLoading || !sample ? (
           <DialogBody>
             <LoadingState label="Loading…" />
           </DialogBody>
@@ -2540,51 +2488,25 @@ function SampleModal({
             <div className="col-span-2 flex min-h-0 flex-col overflow-hidden">
               <div className="flex h-10 shrink-0 items-center gap-1.5 border-b px-5">
                 <Icon.dataset className="size-3.5 text-muted-foreground" />
-                <p className="text-xs font-medium text-muted-foreground">Input · from dataset</p>
+                <p className="text-xs font-medium text-muted-foreground">Input</p>
               </div>
               <div className="min-h-0 flex-1 overflow-y-auto">
-                <div className="divide-y divide-border/70">
-                  {(traj.messages ?? []).map((m, i) => (
-                    <div className="px-5 py-4" key={i}>
-                      <span
-                        className={cn(
-                          "mb-1.5 block text-xs font-semibold capitalize",
-                          m.role === "assistant" ? "text-primary/70" : "text-muted-foreground"
-                        )}
-                      >
-                        {m.role}
-                      </span>
-                      <span className="whitespace-pre-wrap break-words font-mono text-xs leading-relaxed">
-                        {renderPayload(m.content ?? "", viewMode)}
-                      </span>
-                    </div>
-                  ))}
-                  {!traj.messages?.length && (
-                    <p className="px-5 py-8 text-center text-sm text-muted-foreground">
-                      No messages available.
-                    </p>
-                  )}
-                </div>
+                <SampleInput io={sample.io} viewMode={viewMode} />
               </div>
             </div>
 
             <div className="col-span-3 flex min-h-0 flex-col overflow-hidden">
               <div className="flex h-10 shrink-0 items-center justify-between gap-2 border-b px-5">
-                <p className="text-xs font-medium text-muted-foreground">Models</p>
-                <ViewModeToggle onChange={setViewMode} value={viewMode} />
+                <p className="text-xs font-medium text-muted-foreground">Output and evaluation</p>
               </div>
-              <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto px-5 py-4">
-                {variantSamples.map(({ vid, label, sampleId }) => (
-                  <VariantAccordionCard
-                    datasetScores={datasetScoreIndex.get(vid) ?? new Map()}
-                    isOpen={openCards.has(vid)}
-                    key={vid}
-                    label={label}
-                    onToggle={() => toggleCard(vid)}
-                    sampleId={sampleId}
-                    viewMode={viewMode}
-                  />
-                ))}
+              <div className="flex min-h-0 flex-1 flex-col">
+                <SampleOutput
+                  datasetScores={datasetScoreIndex.get(activeVariant) ?? new Map()}
+                  key={sample.id}
+                  label={variants[activeVariant]?.label ?? activeVariant}
+                  sampleId={sample.id}
+                  viewMode={viewMode}
+                />
               </div>
             </div>
           </div>

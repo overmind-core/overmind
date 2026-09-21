@@ -26,27 +26,11 @@ import { cn } from "@/lib/utils";
 export function evalStepOf(row: FinetuningJudgeEvalRow, maxStep: number): number {
   if (row.kind === "baseline") return 0;
   if (typeof row.checkpoint_step === "number") return row.checkpoint_step;
-  return row.kind === "final" ? maxStep + 1 : 0;
+  return row.kind === "final" || row.kind === "incumbent_after" ? maxStep + 1 : 0;
 }
 
 function rowsWithClassMetrics(rows: FinetuningJudgeEvalRow[]): FinetuningJudgeEvalRow[] {
   return rows.filter((r) => r.class_metrics?.classes?.length);
-}
-
-export function latestClassMetrics(rows: FinetuningJudgeEvalRow[]): {
-  metrics: ClassMetrics;
-  row: FinetuningJudgeEvalRow;
-} | null {
-  const scored = rowsWithClassMetrics(rows);
-  if (scored.length === 0) return null;
-  const rank = (r: FinetuningJudgeEvalRow) =>
-    r.kind === "final"
-      ? Number.MAX_SAFE_INTEGER
-      : r.kind === "baseline"
-        ? -1
-        : (r.checkpoint_step ?? 0);
-  const best = [...scored].sort((a, b) => rank(a) - rank(b)).at(-1)!;
-  return { metrics: best.class_metrics!, row: best };
 }
 
 export const classColor = seriesColor;

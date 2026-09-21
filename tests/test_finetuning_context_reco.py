@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import json
+import os
 import uuid
 from unittest.mock import patch
 
@@ -29,6 +31,7 @@ from overbae.services.finetuning_pricing import (
 )
 from overbae.services.recommendation.analysis import build_analysis
 from overbae.services.recommendation.capability_context import collect_capability_context
+from overbae.tasks.finetuning import _build_training_jsonl
 
 pytestmark = pytest.mark.django_db
 
@@ -67,12 +70,12 @@ def _dataset(
     for i, tid in enumerate(trace_ids):
         row = {
             "messages": [
-                {"role": "user", "content": f"q{i}"},
+                {"role": "user", "content": f"q{tid or i}"},
                 {"role": "assistant", "content": f"a{i}"},
             ]
         }
         if intent == "eval":
-            row = {"input": f"q{i}", "expected_output": f"a{i}"}
+            row = {"input": f"q{tid or i}", "expected_output": f"a{i}"}
         if tid:
             row["trace_id"] = tid
         rows.append(row)
@@ -273,6 +276,21 @@ def test_overlapping_trace_ids_intersects_on_source_trace():
     )
 
 
+def test_build_training_jsonl_preserves_selected_version_rows():
+    _, p, a = _setup()
+    train = _dataset(p, a, intent="ft", trace_ids=["t1", "t2", "t3"])
+
+    path, n = _build_training_jsonl(train.active_cell)
+    try:
+        with open(path, encoding="utf-8") as f:
+            rows = [json.loads(line) for line in f]
+    finally:
+        os.unlink(path)
+    assert n == 3
+    contents = json.dumps(rows)
+    assert all(value in contents for value in ("qt1", "qt2", "qt3"))
+
+
 def test_dataset_overlap_endpoint():
     u, p, a = _setup()
     train = _dataset(p, a, intent="ft", trace_ids=["t1", "t2", "t3"])
@@ -283,7 +301,11 @@ def test_dataset_overlap_endpoint():
         {"dataset": str(train.id), "eval_dataset": str(eval_ds.id)},
     )
     assert r.status_code == 200, r.data
-    assert r.data == {"overlap_count": 1, "train_total": 3, "basis": "trace_id"}
+    assert r.data["overlap_count"] == 1
+    assert r.data["train_total"] == 3
+    assert "content" in r.data["basis"]
+    assert r.data["near_duplicate_check"] == "not_checked"
+    assert "trace_id" in r.data["examples"][0]["matches"]
 
 
 def test_dataset_overlap_endpoint_scopes_to_user_projects():
@@ -367,6 +389,7 @@ def test_job_create_rejects_non_eval_intent_eval_dataset():
     u, p, a = _setup()
     train = _dataset(p, a, intent="ft", trace_ids=["t1"])
     wrong = _dataset(p, a, intent="ft", trace_ids=["t2"])
+    eval_set = EvalSet.objects.create(project=p, capability=a, name="Eval set")
 
     with patch(CELERY_PATH) as mock_apply:
         r = _auth_client(u).post(
@@ -375,6 +398,7 @@ def test_job_create_rejects_non_eval_intent_eval_dataset():
                 "project": str(p.id),
                 "dataset": str(train.id),
                 "eval_dataset": str(wrong.id),
+                "eval_set": str(eval_set.id),
                 "name": "bad-eval",
                 "base_model": "meta-llama/Llama-3.2-3B-Instruct",
             },
@@ -383,6 +407,58 @@ def test_job_create_rejects_non_eval_intent_eval_dataset():
     assert r.status_code == 400
     assert "eval_dataset" in r.data
     mock_apply.assert_not_called()
+
+
+def test_job_create_rejects_evaluation_that_cannot_fit_serving_context():
+    u, project, capability = _setup()
+    train = _dataset(project, capability, intent="ft", trace_ids=["train"])
+    eval_set = EvalSet.objects.create(project=project, capability=capability, name="Evaluation")
+    evaluation = frozen_dataset(
+        project,
+        [{"input": "x" * 120000, "expected_output": "answer"}],
+        capability=capability,
+    )
+    with patch(CELERY_PATH) as submit:
+        response = _auth_client(u).post(
+            reverse("finetuningjob-list"),
+            {
+                "project": str(project.pk),
+                "capability": str(capability.pk),
+                "dataset": str(train.pk),
+                "eval_dataset": str(evaluation.pk),
+                "name": "Oversized evaluation",
+                "eval_set": str(eval_set.pk),
+                "base_model": "Qwen/Qwen3.5-27B",
+            },
+            format="json",
+        )
+    assert response.status_code == 400
+    assert "reserved output" in str(response.data.get("base_model")), response.data
+    assert not FinetuningJob.objects.filter(project=project).exists()
+    submit.assert_not_called()
+
+
+def test_recommendation_excludes_models_that_cannot_serve_evaluation():
+    u, project, capability = _setup()
+    train = _dataset(project, capability, intent="ft", trace_ids=["train"])
+    evaluation = frozen_dataset(
+        project,
+        [{"input": "x" * 120000, "expected_output": "answer"}],
+        capability=capability,
+    )
+    response = _auth_client(u).post(
+        reverse("finetuningjob-recommend"),
+        {"dataset_id": str(train.pk), "eval_dataset_id": str(evaluation.pk)},
+        format="json",
+    )
+    assert response.status_code == 200, response.data
+    exclusions = {row["model"]: row["reason"] for row in response.data["excluded"]}
+    assert "reserved output" in exclusions["Qwen/Qwen3.5-27B"]
+    for candidate in response.data["candidates"]:
+        plan = candidate["serving_context"]
+        assert plan["rows"] == 1
+        assert plan["max_model_len"] >= plan["required_context"]
+        assert plan["max_model_len"] <= plan["model_context_limit"]
 
 
 def test_recommend_endpoint_answers_the_same_way_twice():
@@ -401,6 +477,36 @@ def test_recommend_endpoint_answers_the_same_way_twice():
         c["model"] for c in second.data["candidates"]
     ]
     assert first.data["capability_context"]["capability_id"] == str(a.id)
+
+
+def test_recommend_endpoint_uses_selected_capability_then_dataset_for_none():
+    u, p, capability = _setup()
+    capability.description = "Generate Python code from requirements."
+    capability.save(update_fields=["description"])
+    dataset = _dataset(p, capability, intent="train", trace_ids=["code-1"])
+    client = _auth_client(u)
+    with patch(
+        "overbae.services.codebase.task_type.call_llm",
+        return_value=('{"task_type":"code_generation"}', {}),
+    ) as classify:
+        selected = client.post(
+            reverse("finetuningjob-recommend"),
+            {"dataset_id": str(dataset.id), "capability_id": str(capability.id)},
+            format="json",
+        )
+        unassigned = client.post(
+            reverse("finetuningjob-recommend"),
+            {"dataset_id": str(dataset.id), "capability_id": None},
+            format="json",
+        )
+
+    classify.assert_called_once()
+    assert selected.status_code == unassigned.status_code == 200
+    assert selected.data["task_type"] == "code_generation"
+    assert selected.data["task_type_source"] == "capability"
+    assert selected.data["skill_weights"]["Coding"] == 0.6
+    assert unassigned.data["task_type_source"] == "heuristic"
+    assert unassigned.data["capability_context"] is None
 
 
 def test_estimate_endpoint_scales_with_epochs_and_lora():

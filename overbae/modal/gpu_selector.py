@@ -10,6 +10,8 @@ from __future__ import annotations
 import logging
 from typing import Any
 
+from overbae.core.errors import InputValidationError
+
 logger = logging.getLogger(__name__)
 
 GPU_MEMORY_UTILIZATION = 0.90
@@ -68,8 +70,7 @@ def select_gpu(
     """Returns ``(gpu_type, max_concurrent_inputs)``, falling back to the model's static
     ``inference.gpu_type`` when architecture constants are missing.
 
-    ``max_model_len`` is in tokens: pass the training ``context_length`` so the model can take
-    prompts as long as it was trained on.
+    ``max_model_len`` includes both input and reserved output at inference time.
     """
     num_attn_layers = model_cfg.get("num_attn_layers")
     num_kv_heads = model_cfg.get("num_kv_heads")
@@ -121,17 +122,10 @@ def select_gpu(
         )
         return tier["name"], max_concurrent
 
-    # Nothing fits on a single GPU — return the largest enabled tier with concurrency=1.
-    largest = tiers[-1]
-    logger.error(
-        "gpu_selector: model=%s (%.0fB) at context %d exceeds all single-GPU tiers; "
-        "falling back to %s concurrency=1",
-        model_cfg.get("id"),
-        model_cfg.get("total_params_b", 0),
-        max_model_len,
-        largest["name"],
+    raise InputValidationError(
+        f"{model_cfg.get('id') or 'This model'} at {max_model_len:,} serving tokens "
+        "exceeds available single-GPU capacity. Choose a smaller model or a shorter workload."
     )
-    return largest["name"], 1
 
 
 if __name__ == "__main__":

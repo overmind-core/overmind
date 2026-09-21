@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import inspect
+import logging
 from collections.abc import Awaitable, Callable, Iterable
 from typing import Any, Literal
 
@@ -13,6 +14,8 @@ from overbae.services.mcp.annotations import annotations_for
 from overbae.services.mcp.context import MCPContext
 from overbae.services.mcp.errors import MCPError, error_result, internal_error
 from overbae.services.mcp.result_compat import tool_result
+
+logger = logging.getLogger(__name__)
 
 CostClass = Literal["free", "compute", "llm", "gpu"]
 AsyncMode = Literal["sync", "job", "task"]
@@ -189,6 +192,7 @@ class ToolCatalog:
         except ValidationError:
             return error_result(MCPError("invalid_output", "The tool returned an invalid result."))
         except Exception:
+            logger.exception("MCP tool %s failed for project %s", name, context.project.id)
             return error_result(internal_error())
 
         structured = output.model_dump(mode="json", by_alias=True)

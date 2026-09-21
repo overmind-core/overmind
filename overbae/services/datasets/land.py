@@ -10,7 +10,6 @@ from __future__ import annotations
 import datetime as dt
 import json
 import logging
-import random
 from collections.abc import Iterable, Iterator
 from dataclasses import dataclass, field, replace
 from pathlib import Path
@@ -22,6 +21,7 @@ from django.utils import timezone
 from overbae.models import Cell, Dataset, TaskExecution
 from overbae.models.traces import Span
 from overbae.services.datasets import alignment, contract, files, measure, paths, selection, store
+from overbae.services.datasets.partition import preserve_lineage, split_rows
 
 logger = logging.getLogger(__name__)
 
@@ -42,41 +42,45 @@ class Landing:
     spec: dict[str, Any] = field(default_factory=dict)
     manifest: list[dict] | None = None
 
-    def split(self, *, eval_percent: int, position: str) -> tuple[Landing, Landing]:
+    def split(
+        self, *, eval_percent: int, position: str, group_by=(), stratify_by=None, deduplicate=True
+    ) -> tuple[Landing, Landing]:
         """The train part and the eval part. The eval slice is ``eval_percent`` of
         the rows, at least one and never all, taken from the head, the tail, or a
         fixed-seed random draw; both parts keep the source order."""
         if position not in SPLIT_POSITIONS:
             raise LandError(f"position must be one of {', '.join(SPLIT_POSITIONS)}.")
-        n = len(self.rows)
-        if n < 2:
-            raise LandError("Two rows are needed to split.")
-        # Half rounds up in integers, the rule the wizard's preview uses; ``round``
-        # would send a tie to the even count and land one row off the preview.
-        k = min(max((n * eval_percent + 50) // 100, 1), n - 1)
-        if position == "head":
-            held = set(range(k))
-        elif position == "tail":
-            held = set(range(n - k, n))
-        else:
-            held = set(random.Random(n).sample(range(n), k))
-        train = [row for i, row in enumerate(self.rows) if i not in held]
-        evaluation = [row for i, row in enumerate(self.rows) if i in held]
-        return replace(self, rows=train), replace(self, rows=evaluation)
+        try:
+            train, evaluation, report = split_rows(
+                self.rows,
+                eval_percent=eval_percent,
+                position=position,
+                group_by=group_by,
+                stratify_by=stratify_by,
+                deduplicate=deduplicate,
+            )
+        except ValueError as exc:
+            raise LandError(str(exc)) from exc
+        spec = {**self.spec, "contamination_report": report}
+        return replace(self, rows=train, spec=spec), replace(self, rows=evaluation, spec=spec)
 
 
 def _stamp_source_rows(rows: list[dict[str, Any]]) -> None:
     for offset, row in enumerate(rows):
         row[store.SOURCE_ROW] = offset
+        row["_overmind_provenance"] = preserve_lineage(row)
 
 
 @transaction.atomic
 def commit(
-    dataset: Dataset, landing: Landing, *, user: Any = None, state: str = Dataset.State.IDLE
+    dataset: Dataset,
+    landing: Landing,
+    *,
+    user: Any = None,
+    state: str = Dataset.State.IDLE,
+    infer_capability: bool = True,
 ) -> Dataset:
-    """Write cell 0, measure it, propose the capability and the intent.
-    ``state`` is what the dataset is handed to: the landing task passes
-    ``diagnosing`` so the dataset never reads as ready before its first scan."""
+    """Write cell 0 without exposing an idle dataset before automatic preparation."""
     rows = landing.rows
     _stamp_source_rows(rows)
     source = dataset.cells.filter(position=0).first()
@@ -89,7 +93,10 @@ def commit(
             created_by=user if getattr(user, "pk", None) else None,
         )
     path = paths.cell_path(dataset.id, source.id)
-    store.write_rows(path, rows, landing.manifest)
+    manifest = landing.manifest
+    if manifest and not any(column["name"] == "_overmind_provenance" for column in manifest):
+        manifest = [*manifest, {"name": "_overmind_provenance", "type": "json"}]
+    store.write_rows(path, rows, manifest)
     fields: dict[str, Any] = {
         "source_kind": landing.kind,
         "source_spec": {**landing.spec, "landed_at": timezone.now().isoformat()},
@@ -98,7 +105,7 @@ def commit(
     }
     df = store.read_frame(path)
     fields["capability_rank"] = alignment.rank(dataset.project_id, df)
-    if dataset.capability_id is None and fields["capability_rank"]:
+    if infer_capability and dataset.capability_id is None and fields["capability_rank"]:
         best = fields["capability_rank"][0]
         if best["score"] > 0:
             fields["capability_id"] = best["capability_id"]
@@ -121,15 +128,25 @@ def read_file(path: Path, *, filename: str) -> Landing:
     return read_rows(rows, spec={"filename": filename})
 
 
+def read_uploads(upload_ids: list[str]) -> Landing:
+    rows: list[dict[str, Any]] = []
+    sources = []
+    for upload_id in upload_ids:
+        filename = files.upload_filename(upload_id)
+        path = files.upload_data_path(upload_id)
+        if not filename or not path.exists():
+            raise LandError("An upload has expired. Start it again.")
+        part = read_file(path, filename=filename)
+        sources.append({"filename": filename, "bytes": path.stat().st_size, "rows": len(part.rows)})
+        rows.extend(part.rows)
+    return read_rows(rows, spec={"files": sources})
+
+
 def read_rows(rows: list[dict[str, Any]], *, spec: dict[str, Any] | None = None) -> Landing:
     rows = [dict(r) if isinstance(r, dict) else {"value": r} for r in rows]
     for row in rows:
         row.pop(store.SOURCE_ROW, None)
     return Landing(rows, kind=Dataset.SourceKind.FILE, spec=spec or {})
-
-
-def land_file(dataset: Dataset, path: Path, *, filename: str, user: Any = None) -> Dataset:
-    return commit(dataset, read_file(path, filename=filename), user=user)
 
 
 def land_rows(

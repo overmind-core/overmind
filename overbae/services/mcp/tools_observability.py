@@ -29,6 +29,7 @@ from overbae.models import (
     Score,
     Span,
     TaskExecution,
+    TrainingPreparation,
 )
 from overbae.services.entity_resolution import (
     resolve_behaviour,
@@ -542,7 +543,22 @@ def _get_job_sync(payload: GetJobInput, context: MCPContext) -> GetJobOutput:
     label = kind
     underlying: list[ResourceLinkContract] = []
 
-    if kind == "eval_run":
+    if kind == "training_preparation":
+        job = (
+            TrainingPreparation.objects.filter(
+                cell__dataset__project=context.project, id=normalized_id
+            ).first()
+            if normalized_id
+            else None
+        )
+        if job is None:
+            raise MCPError("resource_not_found", "The training preparation was not found.")
+        created_at, updated_at = job.created_at, job.touched_at
+        label, status, job_error = "Training preparation", job.state, job.error or None
+        progress = safe_json(job.report)
+        details = safe_json(job.config)
+        primary = _link("jobs", f"training_preparation/{job.id}", label)
+    elif kind == "eval_run":
         job, error = resolve_eval_run(context.project, ref)
         if job is None:
             raise MCPError("resource_not_found", error or "The evaluation run was not found.")
@@ -592,7 +608,11 @@ def _get_job_sync(payload: GetJobInput, context: MCPContext) -> GetJobOutput:
             ],
         )
         created_at, updated_at = job.created_at, job.updated_at
-        label, status, job_error = (job.name or "Dataset")[:160], job.state, job.error or None
+        label, status, job_error = (
+            (job.name or "Dataset")[:160],
+            snapshot["status"],
+            job.error or None,
+        )
         progress = snapshot["progress"]
         details = {
             "name": job.name,

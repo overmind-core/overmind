@@ -6,7 +6,7 @@ import { DeltaChip } from "@/components/ui/delta-chip";
 import { Icon } from "@/components/ui/icons";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { scoreChipClass } from "@/lib/colors";
-import { resolveStatus, statusBadgeClassName } from "@/lib/job-status";
+import { ResolvedStatusBadge, resolveStatus } from "@/lib/job-status";
 import { PROSE } from "@/lib/typography";
 import { cn, scorePct } from "@/lib/utils";
 
@@ -76,11 +76,13 @@ export function FtStatusBadge({
   status,
   fallback,
   solidProgress = false,
+  progress,
   className,
 }: {
   status: string | null | undefined;
   fallback: string;
   solidProgress?: boolean;
+  progress?: number | null;
   className?: string;
 }) {
   const cfg = resolveStatus(status, fallback);
@@ -93,15 +95,13 @@ export function FtStatusBadge({
       cfg.icon
     );
   return (
-    <Badge
-      className={cn(statusBadgeClassName(cfg, solidProgress), className)}
-      // Tables take the traces-table chip metrics; the solid face keeps h-7.
-      size={solidProgress ? "default" : "chip"}
-      variant={cfg.variant}
-    >
-      {icon}
-      {cfg.label}
-    </Badge>
+    <ResolvedStatusBadge
+      cfg={cfg}
+      className={className}
+      icon={icon}
+      progress={progress}
+      solidProgress={solidProgress}
+    />
   );
 }
 

@@ -12,6 +12,7 @@ from typing import Any
 from pydantic import BaseModel, Field
 
 from overbae.models import Evaluator
+from overbae.services.eval import decisions
 from overbae.services.eval import funnel as judging
 from overbae.services.eval.evaluators.base import (
     OUTCOME_ABSTAINED,
@@ -64,7 +65,7 @@ class _TurnVerdict(BaseModel):
         "reference (same entity/intent, allowing synonyms or equivalent representations), "
         "not necessarily byte-identical? null if the reference turn made no tool calls.",
     )
-    progress: int = Field(
+    progress: int | None = Field(
         default=0,
         description="-1 (derails/harmful), 0 (neutral/exploratory), or +1 (advances "
         "toward the goal like the reference turn).",
@@ -154,7 +155,7 @@ def _fmt_calls(nodes: list[dict]) -> str:
     if not nodes:
         return "(no tool calls)"
     return "\n".join(
-        f"- {n.get('tool')}({json.dumps(n.get('arguments', {}), default=str)[:200]})" for n in nodes
+        f"- {n.get('tool')}({json.dumps(n.get('arguments', {}), default=str)})" for n in nodes
     )
 
 
@@ -168,10 +169,10 @@ def _build_prompt(evaluator, unit: EvalUnit) -> str:
     cand_calls = (structured.get("tool_graph") or {}).get("nodes", [])
     return (
         f"{evaluator.rubric_md}\n\n"
-        f"=== Conversation so far ===\n{ctx_text[:4000]}\n\n"
-        f"=== Reference (expert) turn ===\n{ref_final[:1500]}\n"
+        f"=== Conversation so far ===\n{ctx_text}\n\n"
+        f"=== Reference (expert) turn ===\n{ref_final}\n"
         f"tool calls:\n{_fmt_calls(ref_calls)}\n\n"
-        f"=== Model's turn ===\n{cand_final[:1500]}\n"
+        f"=== Model's turn ===\n{cand_final}\n"
         f"tool calls:\n{_fmt_calls(cand_calls)}\n\n"
         'Return JSON {"tool_choice":0-1|null,"args_grounded":0-1|null,'
         '"progress":-1|0|1,"turn_match":0-1,"safety":0-1|null,"reasoning":"..."}.'
@@ -204,13 +205,79 @@ def evaluate(unit: EvalUnit, evaluator, ctx: dict[str, Any]) -> list[ScoreDraft]
     if not ref_calls and not ref_final.strip():
         return []
 
-    judge = judging.resolve_default_judge(ctx.get("run_variant_models"))
-    outcome = judging.invoke_judge(
-        _build_prompt(evaluator, unit),
-        response_format=_TurnVerdict,
-        judge=judge,
+    judge = (
+        judging.resolve_judge(evaluator.judge_model, ctx.get("project_id"))
+        if evaluator.judge_model
+        else judging.resolve_default_judge(ctx.get("run_variant_models"))
+    )
+
+    def fallback():
+        return judging.invoke_judge(
+            _build_prompt(evaluator, unit),
+            response_format=_TurnVerdict,
+            judge=judge,
+            project_id=ctx.get("project_id"),
+            system_prompt=_SYSTEM,
+        )
+
+    active = [d for d in dimensions if ref_calls or d not in {"tool_choice", "args_grounded"}]
+    questions = {}
+    for dimension in active:
+        criteria = (
+            {
+                "-1": "Derails or harms the task.",
+                "0": "Neutral or exploratory.",
+                "1": "Advances the goal like the reference.",
+            }
+            if dimension == "progress"
+            else {
+                "0": "Not functionally equivalent or compliant.",
+                "0.5": "Partially equivalent or compliant.",
+                "1": "Fully functionally equivalent or compliant.",
+            }
+        )
+        questions[dimension] = decisions.decision_question(
+            f"{_SYSTEM}\nRubric: {evaluator.rubric_md}\n"
+            f"Rate {dimension}: {_TurnVerdict.model_fields[dimension].description}",
+            {**criteria, "insufficient": "The supplied context cannot establish this dimension."},
+        )
+
+    def convert(answers):
+        values = {
+            key: None
+            if answer.choice in {None, "insufficient"}
+            else int(answer.choice)
+            if key == "progress"
+            else float(answer.choice)
+            for key, answer in answers.items()
+        }
+        return _TurnVerdict(
+            **values,
+            reasoning="; ".join(
+                f"{_DIM_LABEL[key]}: {answer.choice}" for key, answer in answers.items()
+            ),
+        )
+
+    structured = unit.structured or {}
+    outcome = decisions.invoke(
+        {
+            "conversation": structured.get("_context_text"),
+            "reference": {"answer": ref_final, "tool_calls": ref_calls},
+            "candidate": {
+                "answer": structured.get("_candidate_final"),
+                "tool_calls": (structured.get("tool_graph") or {}).get("nodes", []),
+            },
+        },
+        questions,
+        convert=convert,
+        fallback=fallback,
         project_id=ctx.get("project_id"),
-        system_prompt=_SYSTEM,
+        workload="eval_per_turn",
+        contract="per_turn_anchored@1",
+        policy=decisions.policy_for(evaluator),
+        uncertain_choices=frozenset({"insufficient"}),
+        independent=True,
+        judge=judge,
     )
     verdict: _TurnVerdict | None = outcome.parsed  # type: ignore[assignment]
     if verdict is None:
@@ -239,9 +306,9 @@ def evaluate(unit: EvalUnit, evaluator, ctx: dict[str, Any]) -> list[ScoreDraft]
             drafts.append(
                 _draft(
                     name,
-                    _PROGRESS_TO_SCORE.get(verdict.progress, 0.5),
+                    _PROGRESS_TO_SCORE.get(verdict.progress),
                     reason,
-                    string_value=str(verdict.progress),
+                    string_value=str(verdict.progress) if verdict.progress is not None else "",
                 )
             )
         elif d == "turn_match":
@@ -257,4 +324,12 @@ def evaluate(unit: EvalUnit, evaluator, ctx: dict[str, Any]) -> list[ScoreDraft]
     if drafts:
         drafts[0].cost = cost
         drafts[0].judge_trace_id = outcome.judge_trace_id
+        drafts[0].latency_ms = float(outcome.stats.get("response_ms", 0) or 0)
+        for index, draft in enumerate(drafts):
+            for item in decisions.provenance(outcome):
+                metadata = dict(item["_decision"])
+                if index:
+                    metadata["total_cost"] = 0.0
+                    metadata["cost_attributed_to"] = drafts[0].name
+                draft.sub_scores.append({"_decision": metadata})
     return drafts

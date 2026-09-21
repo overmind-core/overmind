@@ -1,7 +1,4 @@
-"""What the platform already observed about a capability, gathered for the wizard payload.
-
-The only module here that touches the ORM.
-"""
+"""What the platform already observed about a capability, gathered for the wizard payload."""
 
 from __future__ import annotations
 

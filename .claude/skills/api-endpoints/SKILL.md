@@ -1,6 +1,6 @@
 ---
 name: api-endpoints
-description: End-to-end workflow for adding or changing a backend API endpoint — which module the serializer and view belong in, URL registration, OpenAPI client regeneration and its stale-file defect, and typed consumption from the frontend. Use when adding, changing, or removing a DRF endpoint or serializer.
+description: End-to-end workflow for adding or changing a backend API endpoint — which module the serializer and view belong in, URL registration, OpenAPI client regeneration, and typed consumption from the frontend. Use when adding, changing, or removing a DRF endpoint or serializer.
 ---
 
 # Adding or changing an API endpoint
@@ -12,6 +12,8 @@ The frontend consumes the backend exclusively through the generated typescript-f
 `overbae/api/` is one module per surface — `eval_views.py`/`eval_serializers.py`, `datasets.py`/`dataset_serializers.py`, `optimizer.py`, `billing.py`, `otlp.py`, and so on. `views.py` and `serializers.py` are the legacy monoliths; a new surface gets its own module rather than growing them.
 
 Never return a raw dict from a view — request and response shapes are serializers. Keep business logic in `services/` or on the model; annotate with `@extend_schema` where drf-spectacular needs help.
+
+Expected input failures may use `core.errors.InputValidationError` with an authored public `detail`. Never build that detail from a caught exception, provider response or stored diagnostic. Return the authored detail for known failures; log unexpected exceptions server-side and return a fixed message. Apply the same boundary to MCP adapters.
 
 ## 2. Register the route
 
@@ -33,15 +35,7 @@ Settings refuse to load without Modal tokens when `.env` has none: prefix with `
 
 Runs `manage.py spectacular` → dockerized `openapi-generator-cli` → rewrites `frontend/src/openapi/{apis,models}`.
 
-### Known defect: stale files survive
-
-The Makefile's `rm -rf .../{docs,models,apis}` does **not** brace-expand under `/bin/sh`, so files for *removed* endpoints and models are left behind. After regenerating:
-
-```bash
-cd frontend && git status --short src/openapi/
-```
-
-Untracked-but-unmodified files matching deleted endpoints must be removed by hand, then `bun run typecheck` to confirm nothing imports them.
+The Compose frontend uses polling because Docker bind mounts can miss files recreated by generation. A method present on disk but missing at runtime can be a stale Vite transform: check the JavaScript served at `/src/openapi/apis/<Api>.ts`. Recreate the frontend with `docker compose up -d --no-deps frontend` after changing its watcher environment; restarting alone does not apply environment changes.
 
 ## 4. Register the API class in `client.ts`
 

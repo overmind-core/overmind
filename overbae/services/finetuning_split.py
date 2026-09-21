@@ -1,134 +1,42 @@
-"""Trace-safe train/validation splits for finetuning JSONL materialisation.
-
-Callers pass any datapoint-like object (model instance, dict, SimpleNamespace).
-
-``random`` (default) groups on ``source_trace_id`` so a multi-row trace never
-straddles train and val; blank trace ids form singleton groups. ``ordered`` is a
-plain first-N-by-``order`` holdout and deliberately does not group — intentional
-for time-ordered corpora. When ``n >= 2`` both splits receive at least one row.
-"""
-
 from __future__ import annotations
 
-from typing import Any
+from overbae.services.datasets.partition import split_rows
 
-import numpy as np
-from sklearn.model_selection import GroupShuffleSplit, train_test_split
 
-SPLIT_SEED = 42  # deterministic split so re-runs train on the same rows
+def _get(row, key, default=None):
+    return row.get(key, default) if isinstance(row, dict) else getattr(row, key, default)
 
 
 def split_datapoint_ids(
-    datapoints: list,
-    val_ratio: float,
-    *,
-    method: str = "random",
-) -> tuple[list, list, list[str]]:
-    """Return ``(train_ids, val_ids, warnings)``."""
-    warnings: list[str] = []
-    if not datapoints:
-        return [], [], warnings
-
-    ordered = _sorted_datapoints(datapoints)
-    all_ids = [_id(dp) for dp in ordered]
-    n = len(all_ids)
-
-    if n == 1:
-        return all_ids[:], [], warnings
-
-    if method == "ordered":
-        train_ids, val_ids = _ordered_split(ordered, val_ratio)
-    else:
-        train_ids, val_ids = _random_split(ordered, val_ratio, warnings)
-
-    train_ids, val_ids = _ensure_min_one_each(train_ids, val_ids, all_ids)
-    return train_ids, val_ids, warnings
-
-
-def _get(dp: Any, name: str, default: Any = None) -> Any:
-    if hasattr(dp, name):
-        return getattr(dp, name, default)
-    if isinstance(dp, dict):
-        return dp.get(name, default)
-    return default
-
-
-def _id(dp: Any):
-    return _get(dp, "id")
-
-
-def _order(dp: Any) -> int:
-    return int(_get(dp, "order", 0) or 0)
-
-
-def _sorted_datapoints(datapoints: list) -> list:
-    return sorted(datapoints, key=lambda dp: (_order(dp), str(_id(dp))))
-
-
-def _group_key(dp: Any) -> str:
-    trace_id = (_get(dp, "source_trace_id", "") or "").strip()
-    return trace_id if trace_id else str(_id(dp))
-
-
-def _ordered_split(datapoints: list, val_ratio: float) -> tuple[list, list]:
-    ids = [_id(dp) for dp in datapoints]
-    split_idx = max(1, int(len(ids) * (1 - val_ratio)))
-    return ids[:split_idx], ids[split_idx:]
-
-
-def _random_split(
-    datapoints: list,
-    val_ratio: float,
-    warnings: list[str],
-) -> tuple[list, list]:
-    groups = [_group_key(dp) for dp in datapoints]
-    unique_groups = set(groups)
-
-    if len(unique_groups) < 2:
-        return _row_level_split(datapoints, val_ratio, warnings=warnings)
-
-    indices = np.arange(len(datapoints))
-    gss = GroupShuffleSplit(n_splits=1, test_size=val_ratio, random_state=SPLIT_SEED)
-    train_idx, val_idx = next(gss.split(indices, groups=groups))
-    return _ids_from_indices(datapoints, train_idx, val_idx)
-
-
-def _row_level_split(
-    datapoints: list,
-    val_ratio: float,
-    *,
-    warnings: list[str],
-) -> tuple[list, list]:
-    ids = [_id(dp) for dp in datapoints]
-    try:
-        train_ids, val_ids = train_test_split(
-            ids,
-            test_size=val_ratio,
-            random_state=SPLIT_SEED,
+    datapoints: list, val_ratio: float, *, method="random", group_by=(), stratify_by=None
+):
+    if not 0 < val_ratio < 1 or method not in {"ordered", "random"}:
+        raise ValueError(
+            "Choose a validation ratio between zero and one and a random or ordered split."
         )
-    except ValueError:
-        warnings.append("Random split fell back to ordered holdout")
-        return _ordered_split(datapoints, val_ratio)
-    return list(train_ids), list(val_ids)
-
-
-def _ids_from_indices(
-    datapoints: list, train_idx: np.ndarray, val_idx: np.ndarray
-) -> tuple[list, list]:
-    all_ids = [_id(dp) for dp in datapoints]
-    return [all_ids[i] for i in train_idx], [all_ids[i] for i in val_idx]
-
-
-def _ensure_min_one_each(train_ids: list, val_ids: list, all_ids: list) -> tuple[list, list]:
-    if len(all_ids) < 2:
-        return train_ids, val_ids
-
-    train = list(train_ids)
-    val = list(val_ids)
-
-    if not val and len(train) > 1:
-        val = [train.pop()]
-    elif not train and len(val) > 1:
-        train = [val.pop()]
-
-    return train, val
+    ordered = sorted(datapoints, key=lambda row: (_get(row, "order", 0), str(_get(row, "id"))))
+    if len(ordered) < 2:
+        return [_get(row, "id") for row in ordered], [], []
+    records = []
+    for row in ordered:
+        records.append(
+            {
+                **(_get(row, "extra", {}) or {}),
+                "source_row": _get(row, "id"),
+                "input": _get(row, "input", str(_get(row, "id"))),
+                "expected_output": _get(row, "expected_output"),
+                "source_trace_id": _get(row, "source_trace_id", ""),
+            }
+        )
+    train, validation, report = split_rows(
+        records,
+        eval_percent=val_ratio * 100,
+        position="tail" if method == "ordered" else "random",
+        group_by=group_by,
+        stratify_by=stratify_by,
+        deduplicate=False,
+    )
+    warnings = []
+    if report["eval_rows"] != report["target_eval_rows"]:
+        warnings.append(f"Group boundaries produced {report['eval_rows']} validation rows.")
+    return [row["source_row"] for row in train], [row["source_row"] for row in validation], warnings

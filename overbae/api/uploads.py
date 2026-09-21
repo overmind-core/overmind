@@ -1,5 +1,4 @@
-"""Chunked file upload: bytes to disk, never through browser memory. Parsing
-happens when the dataset lands."""
+"""Chunked file staging and row counts before dataset creation."""
 
 from __future__ import annotations
 
@@ -7,6 +6,7 @@ from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import OpenApiParameter, extend_schema
 from rest_framework import serializers, status, viewsets
 from rest_framework.decorators import action
+from rest_framework.exceptions import ValidationError
 from rest_framework.parsers import BaseParser, JSONParser
 from rest_framework.response import Response
 
@@ -29,6 +29,16 @@ class UploadReservedSerializer(serializers.Serializer):
     max_bytes = serializers.IntegerField()
 
 
+class InspectUploadSerializer(serializers.Serializer):
+    size = serializers.IntegerField(min_value=0, max_value=files.MAX_UPLOAD_BYTES)
+
+
+class UploadInspectionSerializer(serializers.Serializer):
+    filename = serializers.CharField()
+    bytes = serializers.IntegerField()
+    rows = serializers.IntegerField()
+
+
 class OctetStreamParser(BaseParser):
     """Hands the view the raw body. Without it DRF's FileUploadParser matches
     ``*/*`` and 400s every chunk for having no Content-Disposition filename."""
@@ -47,6 +57,22 @@ class UploadViewSet(viewsets.ViewSet):
     lookup_value_regex = "[0-9a-f-]{36}"
 
     @extend_schema(
+        summary="Validate an uploaded file and count its rows",
+        request=InspectUploadSerializer,
+        responses={200: UploadInspectionSerializer},
+    )
+    @action(detail=True, methods=["post"], url_path="inspect")
+    def inspect(self, request, pk=None):
+        upload_id = str(serializers.UUIDField().run_validation(pk))
+        payload = InspectUploadSerializer(data=request.data)
+        payload.is_valid(raise_exception=True)
+        try:
+            result = files.inspect_upload(upload_id, size=payload.validated_data["size"])
+        except files.FileError as exc:
+            raise ValidationError({"detail": exc.detail}) from exc
+        return Response(UploadInspectionSerializer(result).data)
+
+    @extend_schema(
         summary="Reserve a chunked upload",
         request=BeginUploadSerializer,
         responses={201: UploadReservedSerializer},
@@ -57,7 +83,7 @@ class UploadViewSet(viewsets.ViewSet):
         try:
             upload_id, name = files.begin_upload(payload.validated_data["filename"])
         except files.FileError as exc:
-            return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+            raise ValidationError({"detail": exc.detail}) from exc
         return Response(
             {
                 "upload_id": upload_id,
@@ -91,5 +117,5 @@ class UploadViewSet(viewsets.ViewSet):
         try:
             size = files.append_chunk(pk, offset, body)
         except files.FileError as exc:
-            return Response({"detail": str(exc)}, status=status.HTTP_409_CONFLICT)
+            return Response({"detail": exc.detail}, status=status.HTTP_409_CONFLICT)
         return Response({"upload_id": pk, "received": size})

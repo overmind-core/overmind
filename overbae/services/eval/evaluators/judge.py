@@ -6,8 +6,8 @@ from __future__ import annotations
 import logging
 from typing import Any
 
+from overbae.services.eval import decisions, predicates
 from overbae.services.eval import funnel as judging
-from overbae.services.eval import predicates
 from overbae.services.eval.evaluators.base import (
     OUTCOME_ABSTAINED,
     OUTCOME_ERROR,
@@ -26,7 +26,7 @@ from overbae.services.eval.evaluators.base import (
     resolve_variables_detailed,
     with_resolution,
 )
-from overbae.services.eval.rubric_compiler import build_judge_prompt
+from overbae.services.eval.rubric_compiler import build_judge_prompt, numeric_anchor_scale
 from overbae.services.eval.span_evidence import render_span_tree
 
 logger = logging.getLogger(__name__)
@@ -260,36 +260,88 @@ def evaluate(unit: EvalUnit, evaluator, ctx: dict[str, Any]) -> list[ScoreDraft]
             span_tree=render_span_tree((unit.trajectory or {}).get("span_tree")),
         )
         project_id = ctx.get("project_id")
-        if evaluator.judge_model:
-            outcome = judging.invoke_judge(
+        judge = (
+            None
+            if evaluator.judge_model
+            else judging.resolve_default_judge(ctx.get("run_variant_models"))
+        )
+
+        def fallback():
+            return judging.invoke_judge(
                 prompt,
                 response_format=JudgeResult,
                 judge_model=evaluator.judge_model,
-                project_id=project_id,
-                system_prompt=JUDGE_SYSTEM_PROMPT,
-            )
-            drafts = [
-                with_resolution(
-                    _draft_from_outcome(outcome, evaluator, checklist=effective_checklist),
-                    resolved,
-                )
-            ]
-        else:
-            # A family differing from the models under test avoids self-preference bias.
-            judge = judging.resolve_default_judge(ctx.get("run_variant_models"))
-            outcome = judging.invoke_judge(
-                prompt,
-                response_format=JudgeResult,
                 judge=judge,
                 project_id=project_id,
                 system_prompt=JUDGE_SYSTEM_PROMPT,
             )
-            drafts = [
-                with_resolution(
-                    _draft_from_outcome(outcome, evaluator, checklist=effective_checklist),
-                    resolved,
+
+        if (
+            behaviour_role == "step"
+            and evaluator.score_type == "numeric"
+            and evaluator.score_min == 0
+            and evaluator.score_max == 1
+        ):
+            questions = {
+                f"item_{index}": decisions.decision_question(
+                    f"Rubric: {evaluator.rubric_md}\nCriterion: {item.get('q') or ''}"
                 )
-            ]
+                for index, item in enumerate(effective_checklist)
+            }
+            questions["quality"] = decisions.decision_question(
+                f"Rate only the named behaviour step using this rubric: {evaluator.rubric_md}\n"
+                f"{numeric_anchor_scale(evaluator)}",
+                {
+                    "0.3": "Major quality failure under the rubric.",
+                    "0.6": "Partial success with material quality problems.",
+                    "0.9": "The step served its intended purpose with only minor imperfections.",
+                    "1.0": "The step fully satisfied its intended purpose and quality requirements.",
+                    "insufficient": "The evidence cannot establish step quality.",
+                },
+            )
+
+            def convert(answers):
+                return JudgeResult(
+                    items=[
+                        {
+                            "id": item["id"],
+                            "verdict": True,
+                            "reasoning": f"Criterion {item['id']}: pass.",
+                        }
+                        for item in effective_checklist
+                    ],
+                    gates=[
+                        {"id": item["id"], "passed": True}
+                        for item in effective_checklist
+                        if item.get("gate")
+                    ],
+                    score=float(answers["quality"].choice),
+                    reasoning="The step satisfied the applicable criteria.",
+                )
+
+            # Failed steps need causal explanations; Jev only owns the bounded success path.
+            outcome = decisions.invoke(
+                {
+                    "bound_evidence": variables,
+                    "runtime": prompt_runtime,
+                    "grounding": ctx.get("grounding"),
+                },
+                questions,
+                convert=convert,
+                fallback=fallback,
+                project_id=project_id,
+                workload="trace_behaviour_step",
+                contract="behaviour_step_anchored@1",
+                policy=decisions.policy_for(evaluator),
+                uncertain_choices=frozenset({"fail", "insufficient", "0.3", "0.6"}),
+            )
+        else:
+            outcome = fallback()
+        draft = with_resolution(
+            _draft_from_outcome(outcome, evaluator, checklist=effective_checklist), resolved
+        )
+        draft.sub_scores.extend(decisions.provenance(outcome))
+        drafts = [draft]
 
     if intent_only:
         if na_subs:

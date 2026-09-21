@@ -4,6 +4,7 @@ import { createFileRoute, redirect } from "@tanstack/react-router";
 
 import floppyDiskIcon from "@/assets/floppy-disk-save.svg";
 import { DatasetsBrowser, DatasetsToolbar } from "@/components/datasets/datasets-table";
+import type { DatasetSource } from "@/components/datasets/new-dataset-button";
 import { NewDatasetDialog } from "@/components/datasets/new-dataset-dialog";
 import { ProjectRequiredEmptyState } from "@/components/project-required-empty-state";
 import { Icon } from "@/components/ui/icons";
@@ -48,18 +49,20 @@ function DatasetsIndexPage() {
   } = Route.useSearch();
   const navigate = Route.useNavigate();
   const [createOpen, setCreateOpen] = useState(false);
-  const [pendingFile, setPendingFile] = useState<File | null>(null);
+  const [pendingFiles, setPendingFiles] = useState<File[]>([]);
+  const [source, setSource] = useState<DatasetSource>("file");
   const [pageDragging, setPageDragging] = useState(false);
 
-  const openCreate = useCallback((file?: File | null) => {
-    setPendingFile(file ?? null);
+  const openCreate = useCallback((source: DatasetSource, files: File[] = []) => {
+    setSource(source);
+    setPendingFiles(files);
     setCreateOpen(true);
   }, []);
 
   // Consume `?create=true` once so a refresh doesn't re-open forever.
   useEffect(() => {
     if (!createParam) return;
-    openCreate(null);
+    openCreate("file");
     void navigate({
       replace: true,
       resetScroll: false,
@@ -71,11 +74,11 @@ function DatasetsIndexPage() {
     (e: React.DragEvent) => {
       e.preventDefault();
       setPageDragging(false);
-      if (!projectId) return;
-      const file = e.dataTransfer.files?.[0];
-      if (file) openCreate(file);
+      if (!projectId || createOpen) return;
+      const files = Array.from(e.dataTransfer.files);
+      if (files.length) openCreate("file", files);
     },
-    [openCreate, projectId]
+    [openCreate, projectId, createOpen]
   );
 
   const datasetsQuery = useDatasetsQuery(projectId, { pageSize: 200 });
@@ -127,7 +130,7 @@ function DatasetsIndexPage() {
           if (e.currentTarget === e.target) setPageDragging(false);
         }}
         onDragOver={(e) => {
-          if (e.dataTransfer.types.includes("Files")) {
+          if (!createOpen && e.dataTransfer.types.includes("Files")) {
             e.preventDefault();
             setPageDragging(true);
           }
@@ -140,7 +143,7 @@ function DatasetsIndexPage() {
             capabilityNameById={capabilityNameById}
             datasets={datasets}
             intentFilter={intentFilter}
-            onCreate={() => openCreate(null)}
+            onCreate={openCreate}
             search={search}
             setCapabilityFilter={setCapabilityFilter}
             setIntentFilter={setIntentFilter}
@@ -173,10 +176,11 @@ function DatasetsIndexPage() {
 
         <NewDatasetDialog
           initialCapabilityId={capabilityFilter !== "all" ? capabilityFilter : undefined}
-          initialFile={pendingFile}
+          initialFiles={pendingFiles}
+          initialSource={source}
           onOpenChange={(o) => {
             setCreateOpen(o);
-            if (!o) setPendingFile(null);
+            if (!o) setPendingFiles([]);
           }}
           open={createOpen}
           projectId={projectId}

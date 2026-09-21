@@ -14,7 +14,6 @@ from overbae.api.span_ordering import (
 from overbae.models import (
     Capability,
     Conversation,
-    Dataset,
     DeployedModel,
     EvalRun,
     EvalSample,
@@ -42,15 +41,6 @@ class CapabilityFilter(filters.FilterSet):
     class Meta:
         model = Capability
         fields = ["project", "name", "slug", "model", "status"]
-
-
-class DatasetFilter(filters.FilterSet):
-    project = filters.UUIDFilter(field_name="project_id")
-    intent = filters.CharFilter(field_name="intent")
-
-    class Meta:
-        model = Dataset
-        fields = ["capability", "source_kind"]
 
 
 class FinetuningJobFilter(filters.FilterSet):
@@ -423,8 +413,6 @@ class DeployedModelFilter(filters.FilterSet):
 
     def filter_capability(self, queryset, name, value):
         if value == NO_CAPABILITY:
-            # Nullable join, so this LEFT OUTER also catches deployments with no
-            # fine-tuning job at all — the list shows those with no capability too.
             return queryset.filter(finetuning_job__capability__isnull=True)
         try:
             capability_id = uuid.UUID(value)

@@ -4,16 +4,19 @@ models.json catalog the code does."""
 from __future__ import annotations
 
 import uuid
+from unittest.mock import Mock
 
 import pytest
-from conftest import TRAIN_ROWS, frozen_dataset
+from conftest import EVAL_ROWS, TRAIN_ROWS, frozen_dataset
 from django.test import override_settings
 
+from overbae.core.errors import InputValidationError
 from overbae.modal.model_registry import (
     get_sft_context_length,
     get_training_context_policy,
     min_sft_context_length,
 )
+from overbae.models import Capability, EvalSet, EvalSetMember, Evaluator
 from overbae.services.finetuning_runner import baseten_context_length
 from overbae.services.recommendation.analysis import build_analysis
 from overbae.services.recommendation.constraints import eligible_models
@@ -137,8 +140,14 @@ class TestBasetenContextLength:
         with pytest.raises(TrainingPlanError, match="refusing to clamp"):
             baseten_context_length(20000, model_max=4096)
 
-    def test_uncapped_request_lands_on_largest_bucket(self):
-        assert baseten_context_length(999_999) == _BUCKETS[-1]
+    @pytest.mark.parametrize(
+        ("needed_tokens", "requested", "expected"),
+        [(999_999, None, 999_999 + _HEADROOM), (0, 999_999, 999_999)],
+    )
+    def test_uncapped_context_never_truncates_to_largest_bucket(
+        self, needed_tokens, requested, expected
+    ):
+        assert baseten_context_length(needed_tokens, requested=requested) == expected
 
 
 class TestRecommenderIncludesContext:
@@ -182,6 +191,26 @@ class TestRecommenderIncludesContext:
 
 @pytest.mark.django_db
 class TestJobSerializerContextValidation:
+    @pytest.mark.parametrize("source", ["evaluation_budget", "serving_plan"])
+    @pytest.mark.parametrize(
+        "failure_type", [ValueError, RuntimeError, OSError, InputValidationError]
+    )
+    def test_context_validation_only_exposes_authored_messages(
+        self, monkeypatch, source, failure_type
+    ):
+        private = "Traceback: /srv/private/evaluation.py credential=hidden"
+        known = failure_type is InputValidationError
+        detail = "This workload needs a larger context window." if known else private
+        operation = Mock(side_effect=failure_type(detail))
+        monkeypatch.setattr(f"overbae.api.serializers.{source}", operation)
+        serializer = self._serializer(max_token_length=100, base_model="Qwen/Qwen3-8B")
+        assert not serializer.is_valid()
+        operation.assert_called_once()
+        assert private not in str(serializer.errors)
+        assert "base_model" in serializer.errors
+        if known:
+            assert detail in str(serializer.errors)
+
     def _serializer(self, *, max_token_length: int, base_model: str):
         from overbae.api.serializers import FinetuningJobSerializer
         from overbae.models import Project, ProjectMembership, User
@@ -195,6 +224,15 @@ class TestJobSerializerContextValidation:
         project = Project.objects.create(name="ctx", slug=f"ctx-{uuid.uuid4().hex[:8]}")
         ProjectMembership.objects.create(user=user, project=project)
         dataset = frozen_dataset(project, TRAIN_ROWS)
+        evaluation = frozen_dataset(
+            project,
+            [{**row, "input": "held-out-" + row["input"]} for row in EVAL_ROWS],
+            contract="eval",
+        )
+        capability = Capability.objects.create(project=project, name="Judge", slug="judge")
+        eval_set = EvalSet.objects.create(project=project, capability=capability, name="Judges")
+        evaluator = Evaluator.objects.create(project=project, name="Accuracy", kind="llm_judge")
+        EvalSetMember.objects.create(eval_set=eval_set, evaluator=evaluator, role="generative")
         version = dataset.active_cell
         version.stats = {**version.stats, "max_token_length": max_token_length}
         version.save(update_fields=["stats"])
@@ -203,8 +241,8 @@ class TestJobSerializerContextValidation:
             "project": str(project.id),
             "capability": None,
             "dataset": str(dataset.id),
-            "eval_dataset": None,
-            "eval_set": None,
+            "eval_dataset": str(evaluation.id),
+            "eval_set": str(eval_set.id),
             "group_id": str(uuid.uuid4()),
             "base_model": base_model,
             "model_tier": "small",
@@ -232,6 +270,17 @@ class TestJobSerializerContextValidation:
     def test_rows_within_model_max_pass(self):
         s = self._serializer(max_token_length=12309, base_model="Qwen/Qwen3-8B")
         assert s.is_valid(), s.errors
+
+    @pytest.mark.parametrize("field", ["eval_dataset", "eval_set"])
+    @pytest.mark.parametrize("omit", [True, False])
+    def test_training_requires_evaluation_inputs_without_capability(self, field, omit):
+        s = self._serializer(max_token_length=100, base_model="Qwen/Qwen3-8B")
+        if omit:
+            s.initial_data.pop(field)
+        else:
+            s.initial_data[field] = None
+        assert not s.is_valid()
+        assert field in s.errors
 
     @override_settings(FINETUNING_BACKEND="baseten")
     def test_rows_over_model_max_still_rejected(self):

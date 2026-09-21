@@ -7,7 +7,7 @@ capability in MCP calls; behaviours and task executions belong underneath it.
 
 Read `overmind://capabilities/{capability}` for safe capability metadata,
 including name, slug, stored status, model, active dataset, active eval set,
-and active model. A capability reference may be a name, slug, or id where the
+active model, selected benchmark and ready trained benchmark candidates. A capability reference may be a name, slug, or id where the
 tool schema accepts it. `get_instrumentation_plan` with no capability returns
 placements for every current capability; `inspect_capability_health` reads
 one. There is no `list_capabilities` tool.
@@ -37,3 +37,12 @@ active model. Verify the result from the capability and deployment resources.
 
 Fine-tune rollout uses `get_model_swap_prompt` only after a successful deployed
 fine-tune is ready. Applying the prompt stays a human action.
+
+## Benchmark model
+
+`set_benchmark_model` selects a ready trained deployment for future incumbent
+evaluations. Read `benchmark_candidates` on the capability resource for available
+choices. Omit `deployment` to use the codebase incumbent instead. This choice is
+independent of `set_active_model`: it does not change serving. The Console exposes
+the same selection on the capability's Models tab, not in training setup.
+New training jobs pin the selection; changing it does not retarget existing jobs.

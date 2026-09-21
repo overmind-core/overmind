@@ -31,6 +31,12 @@ export interface FinetuningRecommendRequestRequest {
      * @memberof FinetuningRecommendRequestRequest
      */
     capabilityId?: string | null;
+    /**
+     *
+     * @type {string}
+     * @memberof FinetuningRecommendRequestRequest
+     */
+    evalDatasetId?: string | null;
 }
 
 /**
@@ -53,6 +59,7 @@ export function FinetuningRecommendRequestRequestFromJSONTyped(json: any, ignore
 
         'datasetId': json['dataset_id'],
         'capabilityId': json['capability_id'] == null ? undefined : json['capability_id'],
+        'evalDatasetId': json['eval_dataset_id'] == null ? undefined : json['eval_dataset_id'],
     };
 }
 
@@ -69,5 +76,6 @@ export function FinetuningRecommendRequestRequestToJSONTyped(value?: FinetuningR
 
         'dataset_id': value['datasetId'],
         'capability_id': value['capabilityId'],
+        'eval_dataset_id': value['evalDatasetId'],
     };
 }

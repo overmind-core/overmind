@@ -11,6 +11,10 @@ from collections import Counter
 from typing import Any
 
 import pandas as pd
+from jsonschema import Draft202012Validator, SchemaError
+from referencing.exceptions import Unresolvable
+
+from overbae.services.datasets.examples import messages as example_messages
 
 
 def _missing(value: Any) -> bool:
@@ -25,7 +29,7 @@ def _card(capability: Any) -> dict[str, Any]:
     return card if isinstance(card, dict) else {}
 
 
-def _system_prompt(capability: Any) -> str:
+def system_prompt(capability: Any) -> str:
     meta = (
         capability.improvement_metadata if isinstance(capability.improvement_metadata, dict) else {}
     )
@@ -63,13 +67,146 @@ def _required_keys(schema: Any) -> list[str]:
 
 
 def _as_object(value: Any) -> Any:
-    if isinstance(value, str) and value[:1] in "{[":
+    if isinstance(value, str) and value.strip()[:1] in ("{", "["):
         with contextlib.suppress(ValueError):
             return json.loads(value)
     return value
 
 
+def _json_schema(schema: Any) -> dict:
+    if not isinstance(schema, dict) or not schema:
+        return {}
+    if set(schema) <= {"properties", "required_keys", "provenance"} and not (
+        schema.get("properties") or schema.get("required_keys")
+    ):
+        return {}
+    if not any(
+        key in schema
+        for key in (
+            "type",
+            "properties",
+            "required_keys",
+            "$schema",
+            "$ref",
+            "anyOf",
+            "oneOf",
+            "allOf",
+        )
+    ):
+        schema = {"type": "object", "properties": schema, "required": _required_keys(schema)}
+    schema = dict(schema)
+    if "required_keys" in schema:
+        schema["required"] = schema.pop("required_keys")
+    schema.pop("provenance", None)
+    if "properties" in schema:
+        schema.setdefault("type", "object")
+        schema["properties"] = {
+            name: {
+                k: v
+                for k, v in value.items()
+                if k != "provenance" and not (k == "required" and isinstance(v, bool))
+            }
+            if isinstance(value, dict)
+            else {}
+            for name, value in schema["properties"].items()
+        }
+    return schema
+
+
+def _schema_failures(df, capability, intent, invalid_rows: set[int]) -> list[str]:
+    declared = _card(capability).get("output_schema")
+    targets = [("expected_output" if intent == "eval" else "messages", declared)]
+    if intent == "eval":
+        targets.append(("input", _schema(capability)))
+    failures = []
+    prompt = system_prompt(capability)
+    if intent == "eval" and prompt and "input" in df:
+        wrong = 0
+        for index, raw in enumerate(df["input"].tolist()):
+            value = _as_object(raw)
+            messages = value.get("messages") if isinstance(value, dict) else value
+            supplied = (
+                [
+                    message.get("content")
+                    for message in messages
+                    if isinstance(message, dict) and message.get("role") == "system"
+                ]
+                if isinstance(messages, list)
+                else []
+            )
+            if isinstance(value, dict) and "system_prompt" in value:
+                supplied.append(value["system_prompt"])
+            if any(str(system or "").strip() != prompt for system in supplied):
+                wrong += 1
+                invalid_rows.add(index)
+        if wrong:
+            failures.append(f"eval system prompt differs from the capability's on {wrong:,} rows")
+    for column, raw_schema in targets:
+        if not raw_schema:
+            continue
+        try:
+            schema = _json_schema(raw_schema)
+
+            # Scanned schemas must be self-contained; validation never fetches a remote reference.
+            def local_refs(value):
+                if isinstance(value, dict):
+                    if "$ref" in value and not str(value["$ref"]).startswith("#"):
+                        raise SchemaError("external schema references are unsupported")
+                    for nested in value.values():
+                        local_refs(nested)
+                elif isinstance(value, list):
+                    for nested in value:
+                        local_refs(nested)
+
+            local_refs(schema)
+            Draft202012Validator.check_schema(schema)
+            validator = Draft202012Validator(schema)
+        except SchemaError:
+            invalid_rows.update(range(len(df)))
+            failures.append(
+                f"the capability's {column} schema is invalid; correct it in capability context"
+            )
+            continue
+        invalid = 0
+        for index, value in enumerate(df[column].tolist() if column in df else [None] * len(df)):
+            value = _as_object(value)
+            if column == "input" and example_messages(value):
+                continue
+            if column == "messages":
+                last = value[-1] if isinstance(value, list) and value else {}
+                value = _as_object(last.get("content")) if isinstance(last, dict) else None
+            try:
+                valid = validator.is_valid(value)
+            except Unresolvable:
+                valid = False
+            if not valid:
+                invalid += 1
+                invalid_rows.add(index)
+        if invalid:
+            failures.append(f"{column} violates the capability's schema on {invalid:,} rows")
+    return failures
+
+
 def capability_contract(capability: Any, df: pd.DataFrame, intent: str) -> dict[str, Any]:
+    invalid_rows: set[int] = set()
+    report = _capability_contract(capability, df, intent, invalid_rows)
+    if intent not in {"train", "eval"}:
+        return report
+    failures = _schema_failures(df, capability, intent, invalid_rows)
+    if failures:
+        reasons = ([report["reason"]] if not report["ok"] else []) + failures
+        return {
+            **report,
+            "ok": False,
+            "rows_ok": len(df) - len(invalid_rows),
+            "reason": "; ".join(reasons),
+        }
+    return report
+
+
+def _capability_contract(
+    capability: Any, df: pd.DataFrame, intent: str, invalid_rows: set[int]
+) -> dict[str, Any]:
     """Row by row, does the table belong to this capability? eval: every ``input``
     carries the required input keys. train: every transcript is the capability's
     own — its system turn, its tools. Vacuous when nothing is declared."""
@@ -79,18 +216,23 @@ def capability_contract(capability: Any, df: pd.DataFrame, intent: str) -> dict[
         if not required:
             return {"ok": True, "rows": rows, "rows_ok": rows, "reason": "no input schema declared"}
         if "input" not in df.columns:
+            invalid_rows.update(range(rows))
             return {"ok": False, "rows": rows, "rows_ok": 0, "reason": "no input column"}
         missing: Counter[str] = Counter()
         ok = 0
-        for value in df["input"].tolist():
+        for index, value in enumerate(df["input"].tolist()):
             value = _as_object(value)
+            if example_messages(value):
+                ok += 1
+                continue
             absent = [k for k in required if not isinstance(value, dict) or _missing(value.get(k))]
             if absent:
                 missing.update(absent)
+                invalid_rows.add(index)
             else:
                 ok += 1
         reason = (
-            "every input carries " + ", ".join(required)
+            "every input carries a model transcript or " + ", ".join(required)
             if ok == rows
             else "missing " + ", ".join(f"{k} on {n:,} rows" for k, n in missing.most_common(4))
         )
@@ -98,9 +240,9 @@ def capability_contract(capability: Any, df: pd.DataFrame, intent: str) -> dict[
     if intent != "train":
         return {}
 
-    system_prompt = _system_prompt(capability)
+    canonical_prompt = system_prompt(capability)
     tools = _tools(capability)
-    if not system_prompt and not tools:
+    if not canonical_prompt and not tools:
         return {
             "ok": True,
             "rows": rows,
@@ -108,20 +250,22 @@ def capability_contract(capability: Any, df: pd.DataFrame, intent: str) -> dict[
             "reason": "no system prompt or tools declared",
         }
     if "messages" not in df.columns:
+        invalid_rows.update(range(rows))
         return {"ok": False, "rows": rows, "rows_ok": 0, "reason": "no messages column"}
     wrong_system = 0
     wrong_tools = 0
-    for value in df["messages"].tolist():
+    for index, value in enumerate(df["messages"].tolist()):
         value = _as_object(value)
         if not isinstance(value, list):
             wrong_system += 1
+            invalid_rows.add(index)
             continue
         bad = False
-        if system_prompt:
+        if canonical_prompt:
             first = value[0] if value and isinstance(value[0], dict) else {}
             if (
                 first.get("role") != "system"
-                or str(first.get("content") or "").strip() != system_prompt
+                or str(first.get("content") or "").strip() != canonical_prompt
             ):
                 wrong_system += 1
                 bad = True
@@ -137,6 +281,8 @@ def capability_contract(capability: Any, df: pd.DataFrame, intent: str) -> dict[
                         break
                 if bad:
                     break
+        if bad:
+            invalid_rows.add(index)
     rows_ok = max(rows - wrong_system - wrong_tools, 0)
     bits = []
     if wrong_system:
@@ -204,7 +350,7 @@ def rank(project_id: Any, df: pd.DataFrame) -> list[dict[str, Any]]:
         if by_id:
             score = max(score, by_id)
             reasons.append(f"{by_id:.0%} of rows bound to it")
-        prompt = _system_prompt(capability)
+        prompt = system_prompt(capability)
         if prompt and systems:
             by_prompt = systems.get(prompt, 0) / n
             if by_prompt:

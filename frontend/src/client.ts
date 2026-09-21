@@ -45,6 +45,7 @@ import {
   SessionsApi,
   TaskExecutionsApi,
   TracesApi,
+  TrainingPreparationsApi,
   UploadsApi,
   VerdictsApi,
 } from "./openapi";
@@ -410,6 +411,7 @@ export class API {
   feedback: FeedbackApi;
   finetuningJobs: FinetuningJobsApi;
   uploads: UploadsApi;
+  trainingPreparations: TrainingPreparationsApi;
   optimizerExperiments: OptimizerExperimentsApi;
   /** OTLP trace ingestion (`POST /api/v1/traces`). */
   projects: ProjectsApi;
@@ -439,6 +441,7 @@ export class API {
     this.feedback = new FeedbackApi(this.cfg);
     this.finetuningJobs = new FinetuningJobsApi(this.cfg);
     this.uploads = new UploadsApi(this.cfg);
+    this.trainingPreparations = new TrainingPreparationsApi(this.cfg);
     this.optimizerExperiments = new OptimizerExperimentsApi(this.cfg);
     this.projects = new ProjectsApi(this.cfg);
     this.sessions = new SessionsApi(this.cfg);

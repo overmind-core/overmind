@@ -5,16 +5,12 @@ import uuid
 from types import SimpleNamespace
 
 import pytest
-from conftest import EVAL_ROWS, TRAIN_ROWS, frozen_dataset
+from mcp_fixtures import training_setup
 
 from overbae.models import (
     APIToken,
-    Capability,
     Dataset,
     DeployedModel,
-    EvalSet,
-    EvalSetMember,
-    Evaluator,
     FinetuningJob,
     Project,
     ProjectMembership,
@@ -43,43 +39,11 @@ def _call(name: str, arguments: dict, context: MCPContext):
     return asyncio.run(CATALOG.call(name, arguments, context))
 
 
-def _training_setup(context: MCPContext):
-    capability = Capability.objects.create(
-        project=context.project,
-        name="Support",
-        slug=f"support-{uuid.uuid4().hex[:6]}",
-        model="openai/gpt-5.6-sol",
-    )
-    train = frozen_dataset(context.project, TRAIN_ROWS, name="Train", contract="train")
-    train.capability = capability
-    train.save(update_fields=["capability"])
-    evaluation = frozen_dataset(context.project, EVAL_ROWS, name="Eval", contract="eval")
-    evaluation.capability = capability
-    evaluation.save(update_fields=["capability"])
-    eval_set = EvalSet.objects.create(
-        project=context.project,
-        capability=capability,
-        name="Default evals",
-    )
-    evaluator = Evaluator.objects.create(
-        project=context.project,
-        name="Exact match",
-        kind=Evaluator.Kind.DETERMINISTIC,
-        config={"check": "exact_match"},
-    )
-    EvalSetMember.objects.create(
-        eval_set=eval_set,
-        evaluator=evaluator,
-        role=EvalSetMember.Role.GENERATIVE,
-    )
-    return capability, train, evaluation
-
-
 def test_start_finetune_job_receipt_has_kind_and_preserves_reference(monkeypatch):
     from overbae.services.mcp import tools_finetuning
 
     context = _context()
-    capability, train, _evaluation = _training_setup(context)
+    capability, train, _evaluation, _eval_set = training_setup(context)
     monkeypatch.setattr(
         tools_finetuning,
         "validate_dataset",
@@ -132,6 +96,7 @@ def test_retry_deployment_returns_named_deployment_job_receipt(monkeypatch):
         dataset=train,
         base_model="Qwen/Qwen2.5-7B-Instruct",
         status=FinetuningJob.Status.SUCCEEDED,
+        remote_job_id="remote",
     )
     deployment = DeployedModel.objects.create(
         project=context.project,

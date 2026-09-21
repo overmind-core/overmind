@@ -1,18 +1,9 @@
-"""In-training Overmind judge evals for fine-tuning jobs.
+"""Selected baseline/final evaluations through the normal EvalRun pipeline.
 
-Reuses the normal :class:`~overbae.models.evaluation.EvalRun` pipeline (generate-mode
-variant → ``run_eval_run``) against a :class:`ModelRef` pointing at the provider's chat
-API — never a parallel scorer.
-
-* **Baseline** — the capability's PRODUCTION incumbent (see ``_baseline_target``), never the
-  base model of the family. Frontier incumbents fire immediately via OpenRouter, a
-  self-hosted one routes through our Modal gateway, and only a capability with no
-  resolvable model falls back to Modal-deploying the untouched base. Wizard
-  multi-model groups share one baseline EvalRun per identical target.
-* **Checkpoint** — only when the checkpoint is chat-callable. Together needs the path
-  to look like a served model id; Baseten and Modal ship weights only, so never.
-* **Final** — the fine-tune's own Modal deployment once ``output_model_name`` is set,
-  so ``baseline_delta`` on that row is *finetuned − incumbent*.
+The incumbent is snapshotted at submission; the training model is its untouched
+base for the baseline and its served checkpoint afterward. Baseline evaluations
+launch alongside training. All evaluations reuse the first run's data cell and
+evaluator snapshots. Grouped jobs share identical incumbent baseline runs.
 """
 
 from __future__ import annotations
@@ -22,11 +13,15 @@ from dataclasses import dataclass
 from typing import Any
 
 from django.db import transaction
+from django.utils import timezone
+
+from overbae.core.model_registry import PROVIDERS
+from overbae.models import FinetuningJob
+from overbae.services.eval.context import model_context
+from overbae.services.model_catalog import resolve_training_openrouter_slug
+from overbae.services.serving_context import evaluation_budget
 
 logger = logging.getLogger(__name__)
-
-# Same default as EvalRun.max_items; 0 is uncapped (EvalRun treats 0 as no slice).
-DEFAULT_EVAL_MAX_ITEMS = 100
 
 
 def _is_self_hosted(job) -> bool:
@@ -39,42 +34,18 @@ def _is_self_hosted(job) -> bool:
 
 
 def job_wants_evals(job) -> bool:
-    return bool(job.eval_dataset_id and job.eval_set_id)
-
-
-def eval_max_items(job) -> int:
-    hp = job.hyperparameters if isinstance(job.hyperparameters, dict) else {}
-    raw = hp.get("eval_max_items", DEFAULT_EVAL_MAX_ITEMS)
-    try:
-        n = int(raw)
-    except (TypeError, ValueError):
-        n = DEFAULT_EVAL_MAX_ITEMS
-    if n <= 0:
-        return 0
-    return min(n, 200)
-
-
-def is_checkpoint_inferable(job, ckpt: dict[str, Any]) -> bool:
-    """Return True only when the checkpoint artifact can be scored via chat."""
-    path = str(ckpt.get("path") or "").strip()
-    if not path:
-        return False
-
-    from overbae.models import FinetuningJob
-
-    if job.provider == FinetuningJob.Provider.TOGETHER_AI:
-        lower = path.lower()
-        if any(
-            lower.endswith(ext)
-            for ext in (".tar", ".tgz", ".gz", ".pt", ".bin", ".safetensors", ".zip")
-        ):
-            return False
-        # Together served models are usually org/name or ft-…
-        return "/" in path or path.startswith("ft-") or path.startswith("together/")
-
-    # Baseten mid-run checkpoints are weight artifacts, not chat-callable; the final
-    # eval runs against the Modal deployment instead.
-    return False
+    return bool(
+        job.eval_dataset_id
+        and job.eval_set_id
+        and any(
+            (
+                job.eval_incumbent_before,
+                job.eval_incumbent_after,
+                job.eval_model_before,
+                job.eval_model_after,
+            )
+        )
+    )
 
 
 def _metric_scores_for_run(eval_run_id) -> list[dict[str, Any]]:
@@ -89,7 +60,8 @@ def _metric_scores_for_run(eval_run_id) -> list[dict[str, Any]]:
 
     return [
         {"name": r["name"], "score": round(float(r["avg"]), 6)}
-        for r in Score.objects.filter(run_id=eval_run_id, scope="sample")
+        for r in Score.objects.filter(run_id=eval_run_id, outcome=Score.Outcome.SCORED)
+        .exclude(sample__degraded=True)
         .values("name")
         .annotate(avg=Avg("value"))
         .order_by("name")
@@ -108,11 +80,22 @@ def serialize_job_evals(job) -> list[dict[str, Any]]:
     from overbae.models import FinetuningJobEval
 
     rows = []
+    comparison = comparison_eval(job)
+    labels = {
+        "baseline": "Incumbent · before" if resolve_baseline_model(job) else "Base model · before",
+        "model_before": "Base model · before",
+        "incumbent_after": "Incumbent · after",
+        "final": "Trained model · after",
+    }
     for row in FinetuningJobEval.objects.filter(job=job).order_by("checkpoint_step", "created_at"):
         rows.append(
             {
                 "id": str(row.id),
                 "kind": row.kind,
+                "label": labels.get(row.kind, f"Checkpoint {row.checkpoint_step or ''}".strip()),
+                "comparison_label": labels.get(comparison.kind)
+                if comparison is not None and comparison.pk != row.pk
+                else None,
                 "status": row.status,
                 "checkpoint_id": row.checkpoint_id or None,
                 "checkpoint_step": row.checkpoint_step,
@@ -139,11 +122,7 @@ def sync_eval_scores(job) -> list[dict[str, Any]]:
     """Pull completed EvalRun summaries onto FinetuningJobEval rows."""
     from overbae.models import EvalRun, FinetuningJobEval
 
-    baseline = (
-        FinetuningJobEval.objects.filter(job=job, kind=FinetuningJobEval.Kind.BASELINE)
-        .order_by("created_at")
-        .first()
-    )
+    baseline = comparison_eval(job)
     baseline_score = baseline.aggregate_score if baseline else None
 
     for row in FinetuningJobEval.objects.filter(job=job, eval_run_id__isnull=False).select_related(
@@ -177,6 +156,17 @@ def sync_eval_scores(job) -> list[dict[str, Any]]:
         # A run that "completed" but scored nothing is a failure, not a result: a green
         # row with no score hides provider errors from the monitor.
         summary = run.summary or {}
+        degraded = int((summary.get("trust") or {}).get("degraded") or 0)
+        if degraded:
+            FinetuningJobEval.objects.filter(pk=row.pk).update(
+                status=FinetuningJobEval.Status.FAILED,
+                aggregate_score=None,
+                baseline_delta=None,
+                error_message=f"{degraded} evaluation samples have incomplete or degraded evidence. See the evaluation run before comparing model quality.",
+            )
+            if baseline is not None and row.pk == baseline.pk:
+                baseline_score = None
+            continue
         score = _aggregate_from_summary(summary)
         ec = summary.get("error_counts") or {}
         all_errored = (
@@ -194,11 +184,7 @@ def sync_eval_scores(job) -> list[dict[str, Any]]:
             )
             continue
         delta = None
-        if (
-            score is not None
-            and baseline_score is not None
-            and row.kind != FinetuningJobEval.Kind.BASELINE
-        ):
+        if score is not None and baseline_score is not None and row.pk != baseline.pk:
             delta = round(score - baseline_score, 6)
         FinetuningJobEval.objects.filter(pk=row.pk).update(
             status=FinetuningJobEval.Status.COMPLETED,
@@ -207,28 +193,28 @@ def sync_eval_scores(job) -> list[dict[str, Any]]:
             class_metrics=row.class_metrics or _class_metrics_from_run(run),
             error_message="",
         )
-        if row.kind == FinetuningJobEval.Kind.BASELINE and score is not None:
+        if baseline is not None and row.pk == baseline.pk and score is not None:
             baseline_score = score
 
     # Recompute deltas once baseline is known (baseline may finish after a ckpt).
     if baseline_score is not None:
-        for row in FinetuningJobEval.objects.filter(job=job).exclude(
-            kind=FinetuningJobEval.Kind.BASELINE
-        ):
+        for row in FinetuningJobEval.objects.filter(job=job).exclude(pk=baseline.pk):
             if row.aggregate_score is None:
                 continue
             delta = round(row.aggregate_score - baseline_score, 6)
             if row.baseline_delta != delta:
                 FinetuningJobEval.objects.filter(pk=row.pk).update(baseline_delta=delta)
+    else:
+        FinetuningJobEval.objects.filter(job=job).update(baseline_delta=None)
 
     rows = serialize_job_evals(job)
-    # Mirror onto progress so list/detail payloads also see live scores.
-    progress = dict(job.progress or {}) if isinstance(job.progress, dict) else {}
-    progress["judge_evals"] = rows
-    from overbae.models import FinetuningJob
-
-    FinetuningJob.objects.filter(pk=job.pk).update(progress=progress)
-    job.progress = progress
+    # Deployment observations can update progress while eval scores are being read.
+    with transaction.atomic():
+        current = FinetuningJob.objects.select_for_update().get(pk=job.pk)
+        progress = dict(current.progress or {})
+        progress["judge_evals"] = rows
+        FinetuningJob.objects.filter(pk=job.pk).update(progress=progress)
+        job.progress = progress
     return rows
 
 
@@ -318,36 +304,92 @@ def cancel_related_evals(job) -> int:
     return revoked
 
 
-def tick_job_evals(job, *, checkpoints: list[dict[str, Any]] | None = None) -> list[dict[str, Any]]:
+def comparison_eval(job):
+    from overbae.models import FinetuningJobEval
+
+    for kind in (
+        FinetuningJobEval.Kind.MODEL_BEFORE,
+        FinetuningJobEval.Kind.BASELINE,
+        FinetuningJobEval.Kind.INCUMBENT_AFTER,
+    ):
+        row = FinetuningJobEval.objects.filter(job=job, kind=kind).first()
+        if row is not None:
+            return row
+    return None
+
+
+def start_before_evals(job) -> None:
+    """Launch selected baseline evaluations without gating training submission."""
+    from overbae.models import FinetuningJob
+    from overbae.tasks.model_deployment import deploy_base_model_for_eval
+
+    if not job_wants_evals(job) or not (job.eval_incumbent_before or job.eval_model_before):
+        return
+    progress = dict(job.progress or {})
+    first_launch = progress.get("before_evals_started_at") is None
+    if first_launch:
+        progress["before_evals_started_at"] = timezone.now().timestamp()
+        FinetuningJob.objects.filter(pk=job.pk).update(progress=progress)
+        job.progress = progress
+    try:
+        if first_launch and baseline_needs_base_deploy(job):
+            deploy_base_model_for_eval.delay(job_id=str(job.id))
+    except Exception:  # noqa: BLE001 — evaluation setup must not block GPU training
+        logger.exception("Baseline deployment launch failed for FT job %s", job.id)
+    tick_job_evals(job)
+
+
+def reset_before_evals_for_retry(job) -> None:
+    from overbae.models import FinetuningJob, FinetuningJobEval
+    from overbae.services.deployment import retry_baseline_deployments
+
+    if job.remote_job_id:
+        return
+    retry_baseline_deployments(job)
+    # Keep EvalRuns and their results; only detach unsuccessful attempt links.
+    job.job_evals.filter(
+        kind__in=(FinetuningJobEval.Kind.BASELINE, FinetuningJobEval.Kind.MODEL_BEFORE),
+        status__in=(
+            FinetuningJobEval.Status.FAILED,
+            FinetuningJobEval.Status.CANCELLED,
+            FinetuningJobEval.Status.SKIPPED,
+        ),
+    ).delete()
+    progress = dict(job.progress or {})
+    progress.pop("before_evals_started_at", None)
+    FinetuningJob.objects.filter(pk=job.pk).update(progress=progress)
+    job.progress = progress
+
+
+def tick_job_evals(job) -> list[dict[str, Any]]:
     """Idempotent: launch any missing evals + sync scores. Safe every poll."""
     if not job_wants_evals(job):
         return serialize_job_evals(job)
 
+    from overbae.models import FinetuningJob, FinetuningJobEval
+
+    if job.status in (FinetuningJob.Status.FAILED, FinetuningJob.Status.CANCELLED):
+        return serialize_job_evals(job)
+    after_training = job.status in (FinetuningJob.Status.DEPLOYING, FinetuningJob.Status.SUCCEEDED)
     try:
         ensure_baseline_eval(job)
-    except Exception:  # noqa: BLE001 — never fail the training poll on eval launch
+        if job.eval_model_before:
+            ensure_target_eval(job, kind=FinetuningJobEval.Kind.MODEL_BEFORE)
+    except Exception:  # noqa: BLE001
         logger.exception("Baseline eval launch failed for FT job %s", job.id)
-
-    if checkpoints is not None:
+    if after_training:
         try:
-            ensure_checkpoint_evals(job, checkpoints)
-        except Exception:  # noqa: BLE001
-            logger.exception("Checkpoint eval launch failed for FT job %s", job.id)
-
-    if getattr(job, "output_model_name", ""):
-        try:
+            if job.eval_incumbent_after:
+                ensure_target_eval(job, kind=FinetuningJobEval.Kind.INCUMBENT_AFTER)
             ensure_final_eval(job)
         except Exception:  # noqa: BLE001
-            logger.exception("Final eval launch failed for FT job %s", job.id)
+            logger.exception("After-training eval launch failed for FT job %s", job.id)
 
     try:
         result = sync_eval_scores(job)
     except Exception:  # noqa: BLE001
         logger.exception("Eval score sync failed for FT job %s", job.id)
         result = serialize_job_evals(job)
-    # The only place FinetuningJobEval rows settle, so the graph projection belongs
-    # here. Best-effort.
-
     return result
 
 
@@ -374,7 +416,7 @@ def _base_deployment(job):
 
     from overbae.modal.model_registry import get_hf_base
     from overbae.models import DeployedModel
-    from overbae.tasks.model_deployment import base_model_slug
+    from overbae.services.deployment import base_model_slug
 
     slug = base_model_slug(get_hf_base(job.base_model))
     return (
@@ -408,22 +450,16 @@ class _BaselineTarget:
 
 
 def resolve_baseline_model(job) -> str:
-    """The capability's production ('incumbent') model — the real before-comparison.
-
-    Order: the submit-time snapshot, then ``Capability.active_model`` (what
-    ``overmind/<capability-uuid>`` traffic actually hits), then the free-text ``Capability.model``.
-    The FK outranks the text field because once routing lives on ``active_model`` the
-    text goes stale, and a stale baseline benchmarks against a model nobody runs.
-    """
+    """Submitted jobs retain their benchmark even when capability selections change."""
     snap = (getattr(job, "baseline_model", "") or "").strip()
     if snap:
         return snap
     capability = getattr(job, "capability", None)
     if capability is None:
         return ""
-    active = getattr(capability, "active_model", None)
-    if active is not None:
-        return (active.model_id or "").strip()
+    benchmark = getattr(capability, "benchmark_model", None)
+    if benchmark is not None:
+        return (benchmark.model_id or "").strip()
     return (getattr(capability, "model", "") or "").strip()
 
 
@@ -436,17 +472,9 @@ def _baseline_target(job) -> _BaselineTarget | None:
     gateway = (settings.INFERENCE_API_URL or "").rstrip("/")
     current = resolve_baseline_model(job)
     if current:
-        # (a) Self-hosted incumbent already serving on our Modal infra → gateway.
-        dep = (
-            DeployedModel.objects.filter(
-                project=job.project,
-                model_id=current,
-                status=DeployedModel.Status.READY,
-            )
-            .exclude(inference_url="")
-            .first()
-        )
+        dep = DeployedModel.objects.filter(project=job.project, model_id=current).first()
         if dep is not None:
+            # A warming local deployment must wait, not fall back to OpenRouter.
             return _BaselineTarget(
                 kind="gateway",
                 model_id=current,
@@ -454,25 +482,9 @@ def _baseline_target(job) -> _BaselineTarget | None:
                 base_url=f"{gateway}/v1",
                 api_key_ref="INFERENCE_API_KEY",
                 label=f"Current model · {current}",
-                ready=bool(gateway),
-            )
-        # (b) A set incumbent that is not one of our live deployments is an external
-        # model the capability runs in production → OpenRouter, with no prefix/slug gate: a
-        # set incumbent must never silently fall back to the base FT model, or the
-        # "before" comparison scores the wrong thing.
-        #
-        # An incumbent that IS one of our deployments but is not callable yet would 404
-        # at OpenRouter, so defer instead — ready=False means "not launchable" and
-        # tick_job_evals retries idempotently.
-        if DeployedModel.objects.filter(project=job.project, model_id=current).exists():
-            return _BaselineTarget(
-                kind="gateway",
-                model_id=current,
-                provider=ModelRef.Provider.CUSTOM,
-                base_url=f"{gateway}/v1",
-                api_key_ref="INFERENCE_API_KEY",
-                label=f"Current model · {current}",
-                ready=False,
+                ready=bool(
+                    dep.status == DeployedModel.Status.READY and dep.inference_url and gateway
+                ),
             )
         return _BaselineTarget(
             kind="openrouter",
@@ -484,8 +496,64 @@ def _baseline_target(job) -> _BaselineTarget | None:
             ready=True,
         )
 
-    # (c) Fallback ONLY when the capability has no resolvable model at all: score the
-    # untouched base model on Modal (deploy_base_model_for_eval).
+    return _base_target(job)
+
+
+def _base_target(job) -> _BaselineTarget:
+    from django.conf import settings
+
+    from overbae.models import ModelRef
+
+    # Once an evaluation starts, catalog refreshes must not change its route or
+    # provision a second copy of the same starting model.
+    kinds = ["model_before"] if resolve_baseline_model(job) else ["model_before", "baseline"]
+    existing = (
+        job.job_evals.filter(kind__in=kinds, eval_run__isnull=False)
+        .select_related("eval_run")
+        .order_by("created_at")
+        .first()
+    )
+    if existing:
+        variant = existing.eval_run.variants.select_related("model_ref").first()
+        if variant and variant.model_ref:
+            ref = variant.model_ref
+            return _BaselineTarget(
+                "base_deploy" if ref.api_key_ref == "INFERENCE_API_KEY" else "provider",
+                ref.model_id,
+                ref.provider,
+                ref.base_url,
+                ref.api_key_ref,
+                f"Base model · {job.base_model}",
+                True,
+            )
+    # An attached deployment is already preparing this model. Keep that attempt
+    # until an explicit retry, even if the provider catalog changes meanwhile.
+    slug = (
+        None
+        if job.evaluation_deployments.exists()
+        else resolve_training_openrouter_slug(job.base_model)
+    )
+    if slug:
+        return _BaselineTarget(
+            "openrouter",
+            slug,
+            ModelRef.Provider.CUSTOM,
+            PROVIDERS["openrouter"].base_url,
+            PROVIDERS["openrouter"].key_env,
+            f"Base model · {job.base_model}",
+            True,
+        )
+    if not _is_self_hosted(job):
+        return _BaselineTarget(
+            "provider",
+            job.base_model,
+            ModelRef.Provider.TOGETHER,
+            "",
+            "TOGETHER_API_KEY",
+            f"Base model · {job.base_model}",
+            True,
+        )
+    gateway = (settings.INFERENCE_API_URL or "").rstrip("/")
     base = _base_deployment(job)
     return _BaselineTarget(
         kind="base_deploy",
@@ -502,7 +570,11 @@ def baseline_needs_base_deploy(job) -> bool:
     """True only when the baseline falls back to Modal-deploying the base model —
     frontier and self-hosted incumbents route directly and need no GPU work.
     """
-    if not _is_self_hosted(job):
+    if not job_wants_evals(job) or not _is_self_hosted(job):
+        return False
+    if job.eval_model_before and _base_target(job).kind == "base_deploy":
+        return True
+    if not job.eval_incumbent_before:
         return False
     target = _baseline_target(job)
     return target is not None and target.kind == "base_deploy"
@@ -528,6 +600,8 @@ def _sibling_baseline_eval(job, *, model_id: str):
             kind=FinetuningJobEval.Kind.BASELINE,
             model_id=model_id,
             eval_run_id__isnull=False,
+            eval_run__max_items=0,
+            eval_run__sampling=1.0,
         )
         .exclude(job_id=job.id)
         .exclude(
@@ -569,32 +643,20 @@ def _attach_shared_baseline(job, shared):
 def ensure_baseline_eval(job):
     from overbae.models import FinetuningJobEval
 
+    if not job.eval_incumbent_before:
+        return None
     existing = FinetuningJobEval.objects.filter(
         job=job, kind=FinetuningJobEval.Kind.BASELINE
     ).first()
     if existing is not None:
         return existing
 
-    if not _is_self_hosted(job):
-        # Together serves the base model directly — score the incumbent later.
-        model_id = job.base_model
-        label = f"FT baseline · {job.name or job.base_model}"
-    else:
-        target = _baseline_target(job)
-        if target is None or not target.ready or not target.model_id:
-            return None
-        model_id = target.model_id
-        label = target.label
-
-    # Multi-model wizard group: one baseline EvalRun per (group, target).
-    shared = _sibling_baseline_eval(job, model_id=model_id)
-    if shared is not None:
-        return _attach_shared_baseline(job, shared)
-
-    # Self-hosted/base incumbents wait for a READY route; frontier ones fire at once.
     target = _baseline_target(job)
     if target is None or not target.ready or not target.model_id:
         return None
+    model_id = target.model_id
+    label = f"Incumbent before · {model_id}"
+
     return _launch_eval(
         job,
         kind=FinetuningJobEval.Kind.BASELINE,
@@ -602,12 +664,15 @@ def ensure_baseline_eval(job):
         label=label,
         checkpoint_id="",
         checkpoint_step=None,
+        target=target,
     )
 
 
 def ensure_final_eval(job):
     from overbae.models import FinetuningJobEval
 
+    if not job.eval_model_after:
+        return None
     model_id = (job.output_model_name or "").strip()
     if not model_id:
         return None
@@ -616,7 +681,7 @@ def ensure_final_eval(job):
         return existing
     if _is_self_hosted(job):
         # Weights are chat-callable only once the Modal deployment is READY; defer,
-        # because register_finetuned_model re-ticks evals at READY.
+        # because the deployment controller re-ticks evals at READY.
         deployment = _ready_deployment(job)
         if deployment is None:
             return None
@@ -631,54 +696,46 @@ def ensure_final_eval(job):
     )
 
 
-def ensure_checkpoint_evals(job, checkpoints: list[dict[str, Any]]) -> list:
+def ensure_target_eval(job, *, kind: str):
     from overbae.models import FinetuningJobEval
 
-    launched = []
-    for ckpt in checkpoints or []:
-        if not is_checkpoint_inferable(job, ckpt):
-            continue
-        ckpt_id = str(ckpt.get("id") or ckpt.get("path") or "").strip()
-        path = str(ckpt.get("path") or "").strip()
-        if not ckpt_id or not path:
-            continue
-        step = ckpt.get("step")
-        try:
-            step_i = int(step) if step is not None else None
-        except (TypeError, ValueError):
-            step_i = None
-        if FinetuningJobEval.objects.filter(
-            job=job, kind=FinetuningJobEval.Kind.CHECKPOINT, checkpoint_id=ckpt_id
-        ).exists():
-            continue
-        row = _launch_eval(
-            job,
-            kind=FinetuningJobEval.Kind.CHECKPOINT,
-            model_id=path,
-            label=f"FT ckpt step {step_i if step_i is not None else ckpt_id}",
-            checkpoint_id=ckpt_id,
-            checkpoint_step=step_i,
-        )
-        if row is not None:
-            launched.append(row)
-    return launched
+    existing = FinetuningJobEval.objects.filter(job=job, kind=kind).first()
+    if existing is not None:
+        return existing
+    target = (
+        _base_target(job) if kind == FinetuningJobEval.Kind.MODEL_BEFORE else _baseline_target(job)
+    )
+    if target is None or not target.ready or not target.model_id:
+        return None
+    label = (
+        "Base model before" if kind == FinetuningJobEval.Kind.MODEL_BEFORE else "Incumbent after"
+    )
+    return _launch_eval(
+        job,
+        kind=kind,
+        model_id=target.model_id,
+        label=f"{label} · {target.model_id}",
+        checkpoint_id="",
+        checkpoint_step=None,
+        target=target,
+    )
 
 
-def _provider_routing(job, *, kind: str) -> tuple[str, str, str]:
+def _provider_routing(job, *, kind: str, target: _BaselineTarget | None) -> tuple[str, str, str]:
     """Return ``(ModelRef.provider, base_url, api_key_env)`` for one eval kind."""
     from overbae.models import FinetuningJobEval, ModelRef
 
+    if kind in (
+        FinetuningJobEval.Kind.BASELINE,
+        FinetuningJobEval.Kind.INCUMBENT_AFTER,
+        FinetuningJobEval.Kind.MODEL_BEFORE,
+    ):
+        if target is None or not target.ready:
+            raise RuntimeError("The evaluation model has no ready route.")
+        return target.provider, target.base_url, target.api_key_ref
     if _is_self_hosted(job):
         # Baseline follows the incumbent's own route; final always goes through the
         # gateway to the fine-tune's Modal deployment.
-        if kind == FinetuningJobEval.Kind.BASELINE:
-            target = _baseline_target(job)
-            if target is None or not target.ready:
-                raise RuntimeError(
-                    f"{job.provider} job {job.id} baseline has no ready route — eval must wait for it"
-                )
-            return target.provider, target.base_url, target.api_key_ref
-
         deployment = _ready_deployment(job)
         if deployment is None:
             raise RuntimeError(
@@ -698,14 +755,15 @@ def _provider_routing(job, *, kind: str) -> tuple[str, str, str]:
     return ModelRef.Provider.TOGETHER, "", "TOGETHER_API_KEY"
 
 
-def _get_or_create_model_ref(job, *, model_id: str, label: str, kind: str):
+def _get_or_create_model_ref(
+    job, *, model_id: str, label: str, kind: str, target: _BaselineTarget | None
+):
     from overbae.models import ModelRef
 
-    provider, base_url, api_key_env = _provider_routing(job, kind=kind)
-    # Modal deployments run a right-sized max_model_len and vLLM 400s any request whose
-    # max_tokens exceeds it, so ``None`` makes call_llm omit the param and let the
-    # server size output to the remaining context.
-    params = {"max_tokens": None} if api_key_env == "INFERENCE_API_KEY" else {}
+    provider, base_url, api_key_env = _provider_routing(job, kind=kind, target=target)
+    params = {
+        "max_tokens": evaluation_budget(job.eval_cell, capability=job.capability).output_tokens
+    }
     existing = ModelRef.objects.filter(
         project=job.project,
         model_id=model_id,
@@ -742,9 +800,7 @@ def _copy_baseline_snapshots(job, run) -> int:
     from overbae.models import FinetuningJobEval, RunEvaluator
 
     baseline = (
-        FinetuningJobEval.objects.filter(
-            job=job, kind=FinetuningJobEval.Kind.BASELINE, eval_run_id__isnull=False
-        )
+        FinetuningJobEval.objects.filter(job=job, eval_run_id__isnull=False)
         .order_by("created_at")
         .first()
     )
@@ -770,6 +826,7 @@ def _launch_eval(
     label: str,
     checkpoint_id: str,
     checkpoint_step: int | None,
+    target: _BaselineTarget | None = None,
 ):
     from overbae.models import EvalRun, EvalVariant, FinetuningJobEval
     from overbae.services.eval.eval_set import expand_to_run_evaluators
@@ -779,48 +836,44 @@ def _launch_eval(
         return None
 
     with transaction.atomic():
-        # Re-check uniqueness inside the transaction.
-        if kind == FinetuningJobEval.Kind.BASELINE:
-            if FinetuningJobEval.objects.filter(
-                job=job, kind=FinetuningJobEval.Kind.BASELINE
-            ).exists():
-                return FinetuningJobEval.objects.filter(
-                    job=job, kind=FinetuningJobEval.Kind.BASELINE
-                ).first()
-            # Serialize group baseline creation so concurrent sibling ticks
-            # attach to one EvalRun instead of racing three identical ones.
-            gid = getattr(job, "group_id", None)
-            if gid:
-                from overbae.models import FinetuningJob
+        from overbae.models import FinetuningJob
 
-                list(
-                    FinetuningJob.objects.select_for_update()
-                    .filter(group_id=gid)
-                    .order_by("id")
-                    .only("id")
-                )
-                shared = _sibling_baseline_eval(job, model_id=model_id)
-                if shared is not None:
-                    return _attach_shared_baseline(job, shared)
-        elif kind == FinetuningJobEval.Kind.FINAL:
-            if FinetuningJobEval.objects.filter(
-                job=job, kind=FinetuningJobEval.Kind.FINAL
-            ).exists():
-                return FinetuningJobEval.objects.filter(
-                    job=job, kind=FinetuningJobEval.Kind.FINAL
-                ).first()
-        elif FinetuningJobEval.objects.filter(
-            job=job, kind=FinetuningJobEval.Kind.CHECKPOINT, checkpoint_id=checkpoint_id
-        ).exists():
-            return FinetuningJobEval.objects.filter(
-                job=job, kind=FinetuningJobEval.Kind.CHECKPOINT, checkpoint_id=checkpoint_id
-            ).first()
+        # Lock the entire group in one order: before-eval sharing and per-job
+        # uniqueness must not race between deployment callbacks and poll ticks.
+        jobs = (
+            FinetuningJob.objects.filter(group_id=job.group_id)
+            if job.group_id
+            else FinetuningJob.objects.filter(pk=job.pk)
+        )
+        list(jobs.select_for_update().order_by("id").values_list("id", flat=True))
+        existing = FinetuningJobEval.objects.filter(job=job, kind=kind)
+        if kind == FinetuningJobEval.Kind.CHECKPOINT:
+            existing = existing.filter(checkpoint_id=checkpoint_id)
+        row = existing.first()
+        if row is not None:
+            return row
+        if kind == FinetuningJobEval.Kind.BASELINE:
+            shared = _sibling_baseline_eval(job, model_id=model_id)
+            if shared is not None:
+                return _attach_shared_baseline(job, shared)
 
         from overbae.services.datasets import use as dataset_use
 
         # Same pin the eval-run API applies: generate scoring reads ``run.cell``.
-        cell = dataset_use.use(job.eval_dataset, "eval", cell=job.eval_cell)
-        ref = _get_or_create_model_ref(job, model_id=model_id, label=label, kind=kind)
+        previous = (
+            FinetuningJobEval.objects.filter(job=job, eval_run__cell__isnull=False)
+            .select_related("eval_run")
+            .order_by("created_at")
+            .first()
+        )
+        cell = (
+            previous.eval_run.cell
+            if previous
+            else dataset_use.use(job.eval_dataset, "eval", cell=job.eval_cell)
+        )
+        ref = _get_or_create_model_ref(
+            job, model_id=model_id, label=label, kind=kind, target=target
+        )
         run = EvalRun.objects.create(
             project=job.project,
             name=label[:255],
@@ -829,13 +882,13 @@ def _launch_eval(
             dataset_id=job.eval_dataset_id,
             cell=cell,
             eval_set_id=job.eval_set_id,
-            max_items=eval_max_items(job),
+            max_items=0,
+            sampling=1.0,
             triggered_by=job.triggered_by,
             status=EvalRun.Status.PENDING,
         )
         expand_to_run_evaluators(run, job.eval_set)
-        if kind != FinetuningJobEval.Kind.BASELINE:
-            _copy_baseline_snapshots(job, run)
+        _copy_baseline_snapshots(job, run)
         if not run.run_evaluators.exists():
             run.delete()
             row = FinetuningJobEval.objects.create(
@@ -849,12 +902,24 @@ def _launch_eval(
             )
             return row
 
+        previous_variant = (
+            previous.eval_run.variants.order_by("order").first() if previous else None
+        )
+        context = model_context(run, capability=job.capability)
+        if previous_variant and "system_prompt" in (previous_variant.params or {}):
+            context = {
+                key: previous_variant.params[key]
+                for key in ("system_prompt", "execution_mode")
+                if key in previous_variant.params
+            }
         EvalVariant.objects.create(
             run=run,
             label=label[:255],
             model_ref=ref,
             mode=EvalVariant.Mode.GENERATE,
-            is_baseline=kind == FinetuningJobEval.Kind.BASELINE,
+            is_baseline=kind
+            in (FinetuningJobEval.Kind.BASELINE, FinetuningJobEval.Kind.MODEL_BEFORE),
+            params=context,
             order=0,
         )
         row = FinetuningJobEval.objects.create(
@@ -877,7 +942,7 @@ def _launch_eval(
             job.id,
             run.id,
             model_id,
-            eval_max_items(job),
+            run.max_items,
         )
 
     # Enqueue only after the EvalRun row is COMMITTED: a caller holding an open

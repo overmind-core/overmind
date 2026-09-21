@@ -19,6 +19,7 @@ export type StepCapability = {
 
 /** The In/Action/Out facets of a model-invocation backbone step. */
 type InvocationContract = { input: string; action: string; output: string };
+type ModelContext = Pick<StepNodeData, "model" | "systemPrompt" | "promptIsExcerpt">;
 
 export type StepNodeData = {
   kind: "step";
@@ -28,6 +29,9 @@ export type StepNodeData = {
   outputs: { label: string; condition: string }[];
   condition: string;
   actor: "agent" | "model";
+  model: string;
+  systemPrompt: string;
+  promptIsExcerpt: boolean;
   /** Set on model invocations; null on agent steps. */
   contract: InvocationContract | null;
   /** Conditional capability slots of a backbone step. */
@@ -126,6 +130,7 @@ const estimateHeight = (data: TrajectoryNodeData): number => {
           : data.inputs.length * 20 +
             data.outputs.reduce((sum, o) => sum + 20 + (o.condition ? 28 : 0), 0)) +
         (data.condition ? 52 : 0) +
+        (data.actor === "model" ? 80 : 0) +
         // The rendered may-use list is capped (max-h-56 + scroll).
         (data.mayUse.length > 0 ? Math.min(28 + data.mayUse.length * 36, 252) : 0)
       );
@@ -171,11 +176,30 @@ type StepMeta = {
   pathIds: Set<string>;
   actor: "agent" | "model";
   contract: InvocationContract | null;
+  modelContexts: ModelContext[];
   mayUse: Map<string, string>;
   /** Model invocation on a decision_surface path: option space = whole tool_spec. */
   decisionSurface: boolean;
 };
 type EdgeMeta = { source: string; target: string; pathIds: Set<string> };
+
+const capturedContext = (model = "", prompt = "", excerpt = ""): ModelContext => ({
+  model: model.trim(),
+  promptIsExcerpt: !prompt.trim() && !!excerpt.trim(),
+  systemPrompt: prompt.trim() || excerpt.trim(),
+});
+
+// Shared calls and unbound modes may not have one model or prompt. Never pick
+// the first worker's configuration as if it applied to every invocation.
+const commonContext = (contexts: ModelContext[]): ModelContext => ({
+  model: contexts.every((context) => context.model === contexts[0]?.model)
+    ? (contexts[0]?.model ?? "")
+    : "",
+  promptIsExcerpt: contexts.some((context) => context.promptIsExcerpt),
+  systemPrompt: contexts.every((context) => context.systemPrompt === contexts[0]?.systemPrompt)
+    ? (contexts[0]?.systemPrompt ?? "")
+    : "",
+});
 
 /**
  * One graph reflecting the backbone execution topology: entry fans out into
@@ -197,6 +221,23 @@ export const buildTrajectoryGraph = (
   const paths = (flow.trajectoryMap ?? []).filter((p) => p.id);
   const byId = new Map(paths.map((p) => [p.id, p]));
   const entryLabel = (flow.task ?? "").trim() || "agent input";
+  const capabilityContext = capturedContext(
+    flow.model,
+    flow.systemPrompt,
+    flow.systemPromptExcerpt
+  );
+  const modelContextFor = (step: CapabilityFlowTrajectoryStep): ModelContext => {
+    const modes = flow.modes ?? [];
+    const matchingModes = modes.filter((mode) =>
+      [mode.entrypointFn, mode.promptBuilder].some(
+        (anchor) => !!anchor && step.anchors?.includes(anchor)
+      )
+    );
+    const contexts = (matchingModes.length ? matchingModes : modes).map((mode) =>
+      capturedContext(mode.model || flow.model, mode.prompt, mode.promptExcerpt)
+    );
+    return commonContext(matchingModes.length ? contexts : [capabilityContext, ...contexts]);
+  };
 
   const backbones = new Map<string, CapabilityFlowTrajectoryStep[]>();
   for (const p of paths) {
@@ -234,15 +275,17 @@ export const buildTrajectoryGraph = (
       const label = (step.step ?? "").trim();
       const id = stepIdFor(path.id, label, index);
       const isModel = step.kind === "model_invocation";
-      const meta = stepMetas.get(id) ?? {
+      const meta: StepMeta = stepMetas.get(id) ?? {
         actor: isModel ? ("model" as const) : ("agent" as const),
         contract: null,
         decisionSurface: false,
         id,
         label,
         mayUse: new Map<string, string>(),
+        modelContexts: [],
         pathIds: new Set<string>(),
       };
+      if (isModel) meta.modelContexts.push(modelContextFor(step));
       if (isModel && !meta.contract) {
         meta.actor = "model";
         meta.contract = {
@@ -442,6 +485,7 @@ export const buildTrajectoryGraph = (
       kind: "step",
       label: meta.label,
       mayUse: capabilitiesOf(meta),
+      ...commonContext(meta.modelContexts),
       outputs: outputsOf.get(meta.id) ?? [],
       pathNames: paths.filter((p) => meta.pathIds.has(p.id)).map((p) => p.name || p.id),
     });

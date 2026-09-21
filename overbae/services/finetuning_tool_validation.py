@@ -8,13 +8,59 @@ the problem at dataset selection time.
 
 from __future__ import annotations
 
+import json
 import re
 from dataclasses import dataclass, field
+from functools import lru_cache
 from typing import Any
+
+from jsonschema import SchemaError
+from jsonschema.validators import validator_for
 
 _FN_CHARS = r"A-Za-z0-9 _/'.\-"
 _TEXT_TOOL_RE = re.compile(rf"\[([A-Za-z/][{_FN_CHARS}]{{0,80}})\([^)]{{0,500}}\)\]")
-_NON_ALNUM_RE = re.compile(r"[^a-z0-9]+")
+
+
+@lru_cache(maxsize=128)
+def _valid_parameters(encoded: str) -> bool:
+    parameters = json.loads(encoded)
+    try:
+        validator_for(parameters).check_schema(parameters)
+    except SchemaError:
+        return False
+    return True
+
+
+def tool_schema_errors(tools) -> list[str]:
+    if tools is None:
+        return []
+    if not isinstance(tools, list):
+        return ["tools must be a list of function schemas, not " + type(tools).__name__]
+    errors = []
+    names = set()
+    for index, tool in enumerate(tools):
+        label = f"tools[{index}]"
+        if not isinstance(tool, dict) or tool.get("type") != "function":
+            errors.append(f"{label} must be an object with type=function")
+            continue
+        function = tool.get("function")
+        if not isinstance(function, dict):
+            errors.append(f"{label}.function must be an object")
+            continue
+        name = function.get("name")
+        if not isinstance(name, str) or not name.strip():
+            errors.append(f"{label}.function.name must be a non-empty string")
+        elif name in names:
+            errors.append(f"{label}.function.name is duplicated: {name}")
+        else:
+            names.add(name)
+        if "parameters" in function:
+            parameters = function["parameters"]
+            if not isinstance(parameters, dict):
+                errors.append(f"{label}.function.parameters must be a JSON Schema object")
+            elif not _valid_parameters(json.dumps(parameters, sort_keys=True)):
+                errors.append(f"{label}.function.parameters is not a valid JSON Schema")
+    return errors
 
 
 def tool_names_from_row(row: dict[str, Any]) -> set[str]:
@@ -22,56 +68,11 @@ def tool_names_from_row(row: dict[str, Any]) -> set[str]:
     for tool in row.get("tools") or []:
         if not isinstance(tool, dict):
             continue
-        name = (tool.get("function") or {}).get("name")
+        function = tool.get("function")
+        name = function.get("name") if isinstance(function, dict) else None
         if isinstance(name, str) and name.strip():
             names.add(name.strip())
     return names
-
-
-def normalize_tool_label(name: str) -> str:
-    return _NON_ALNUM_RE.sub("", (name or "").lower())
-
-
-def tool_name_tokens(name: str) -> list[str]:
-    return [token for token in _NON_ALNUM_RE.split((name or "").lower()) if token]
-
-
-def resolve_tool_name(name: str, tool_names: set[str]) -> str:
-    """Map a tool-call name to the canonical name from the row's ``tools`` list."""
-    if not name or not tool_names:
-        return name
-    if name in tool_names:
-        return name
-
-    norm = normalize_tool_label(name)
-    if not norm:
-        return name
-
-    exact_norm = [tn for tn in tool_names if normalize_tool_label(tn) == norm]
-    if len(exact_norm) == 1:
-        return exact_norm[0]
-
-    tokens = tool_name_tokens(name)
-    if tokens:
-        token_matches = [
-            tn for tn in tool_names if all(token in tool_name_tokens(tn) for token in tokens)
-        ]
-        if len(token_matches) == 1:
-            return token_matches[0]
-        if token_matches:
-            return min(token_matches, key=lambda tn: len(tool_name_tokens(tn)))
-
-    substring_matches = [
-        tn
-        for tn in tool_names
-        if norm in normalize_tool_label(tn) or normalize_tool_label(tn) in norm
-    ]
-    if len(substring_matches) == 1:
-        return substring_matches[0]
-    if substring_matches:
-        return min(substring_matches, key=lambda tn: abs(len(normalize_tool_label(tn)) - len(norm)))
-
-    return name
 
 
 @dataclass
@@ -103,6 +104,12 @@ def check_tool_calling_rows(
     tool_rows = 0
 
     for example_idx, row in enumerate(rows):
+        if not isinstance(row, dict):
+            continue
+        schema_issues = tool_schema_errors(row.get("tools"))
+        if schema_issues:
+            affected.add(example_idx)
+            issues.extend(f"Example {example_idx + 1}: {issue}" for issue in schema_issues)
         messages = row.get("messages")
         if not isinstance(messages, list) or not row_uses_tool_calling(row):
             continue

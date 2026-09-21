@@ -101,7 +101,11 @@ export function buildExperimentSnapshot(
 
   return {
     baselineScore:
+      judgeEvals.find((e) => e.kind === "model_before" && e.aggregate_score != null)
+        ?.aggregate_score ??
       judgeEvals.find((e) => e.kind === "baseline" && e.aggregate_score != null)?.aggregate_score ??
+      judgeEvals.find((e) => e.kind === "incumbent_after" && e.aggregate_score != null)
+        ?.aggregate_score ??
       null,
     checkpoints:
       curves?.checkpoints ??
@@ -116,7 +120,7 @@ export function buildExperimentSnapshot(
     job,
     judgeEvals,
     latestScored:
-      [...judgeEvals].reverse().find((e) => e.kind !== "baseline" && e.aggregate_score != null) ??
+      [...judgeEvals].reverse().find((e) => e.kind === "final" && e.aggregate_score != null) ??
       null,
     liveProgress:
       (live?.metrics_history?.length ?? 0) > 0 ||

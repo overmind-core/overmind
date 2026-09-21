@@ -244,6 +244,12 @@ export interface Capability {
      * @memberof Capability
      */
     activeModel?: string | null;
+    /**
+     *
+     * @type {string}
+     * @memberof Capability
+     */
+    benchmarkModel?: string | null;
 }
 
 
@@ -308,6 +314,7 @@ export function CapabilityFromJSONTyped(json: any, ignoreDiscriminator: boolean)
         'project': json['project'],
         'activeEvalSet': json['active_eval_set'] == null ? undefined : json['active_eval_set'],
         'activeModel': json['active_model'] == null ? undefined : json['active_model'],
+        'benchmarkModel': json['benchmark_model'] == null ? undefined : json['benchmark_model'],
     };
 }
 
@@ -351,5 +358,6 @@ export function CapabilityToJSONTyped(value?: Omit<Capability, 'id'|'dataset_siz
         'project': value['project'],
         'active_eval_set': value['activeEvalSet'],
         'active_model': value['activeModel'],
+        'benchmark_model': value['benchmarkModel'],
     };
 }

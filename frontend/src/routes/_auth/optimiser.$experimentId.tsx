@@ -954,15 +954,20 @@ function OptimiserRunPage() {
             </Badge>
           )}
           <OptimizerRunTypeBadge experiment={experiment} showModelCount />
-          {(comparison || hybrid) &&
-            comparedModels.map((modelId) => (
-              <Badge className="max-w-64 font-mono" key={modelId} variant="outline">
-                <span className="truncate">{modelId}</span>
-              </Badge>
-            ))}
         </div>
 
-        <div className="flex flex-wrap items-start gap-x-10 gap-y-4">
+        {(comparison || hybrid) && comparedModels.length > 0 && (
+          <section className="flex flex-col gap-2 border-t border-border/70 pt-3">
+            <h3 className="text-xs text-muted-foreground">Selected models</h3>
+            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-4">
+              {comparedModels.map((modelId) => (
+                <ModelProviderChip className="w-full" key={modelId} model={modelId} />
+              ))}
+            </div>
+          </section>
+        )}
+
+        <div className="grid grid-cols-2 gap-x-6 gap-y-4 sm:grid-cols-3 lg:grid-cols-5">
           <HeaderStat label="Baseline score">
             {baseline != null ? baseline.toFixed(1) : "—"}
           </HeaderStat>
@@ -1065,21 +1070,14 @@ function OptimiserRunPage() {
           {chartPoints.some((p) => p.best != null) ? (
             <OptimizerScoreChart baseline={baseline} points={chartPoints} />
           ) : (
-            <div className="flex h-[220px] items-center justify-center text-center text-sm text-muted-foreground">
-              Scores appear here as iterations are evaluated.
+            <div className="flex items-center justify-center py-8 text-sm text-muted-foreground">
+              No scores yet.
             </div>
           )}
         </div>
 
-        <dl className="flex flex-wrap items-start gap-x-8 gap-y-3 border-t border-border/70 pt-3">
-          {comparison || hybrid ? (
-            <div className="flex min-w-0 flex-col gap-1">
-              <dt className="text-xs leading-none text-muted-foreground">Models selected</dt>
-              <dd className="max-w-xl truncate font-mono text-xs font-medium leading-none">
-                {comparedModels.join(", ") || "—"}
-              </dd>
-            </div>
-          ) : (
+        <dl className="grid grid-cols-2 gap-x-8 gap-y-3 border-t border-border/70 pt-3 sm:grid-cols-3 lg:grid-cols-5">
+          {!comparison && !hybrid && (
             <>
               <div className="flex flex-col gap-1">
                 <dt className="text-xs leading-none text-muted-foreground">

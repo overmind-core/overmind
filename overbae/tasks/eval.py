@@ -19,10 +19,13 @@ from django.db import transaction
 from django.utils import timezone
 
 from overbae.core.llms import ModelSpec
-from overbae.models import EvalRun
+from overbae.models import EvalRun, FinetuningJob
+from overbae.services.datasets.examples import matches_reference
 from overbae.services.eval import chatml, evidence, normalizer, ranking, runner
+from overbae.services.eval.context import snapshot_context
 from overbae.services.eval.evaluators import base as eval_base
 from overbae.services.eval.evaluators import statistical
+from overbae.services.eval.sampling import select_rows
 
 logger = logging.getLogger(__name__)
 
@@ -267,7 +270,9 @@ def run_eval_run(*, eval_run_id: str, **kwargs) -> dict[str, Any]:
     from overbae.models import EvalRun, EvalSample
 
     try:
-        run = EvalRun.objects.get(id=eval_run_id)
+        run = EvalRun.objects.select_related("dataset__capability", "eval_set__capability").get(
+            id=eval_run_id
+        )
     except EvalRun.DoesNotExist:
         return {"error": f"EvalRun {eval_run_id} not found"}
 
@@ -279,11 +284,13 @@ def run_eval_run(*, eval_run_id: str, **kwargs) -> dict[str, Any]:
 
     try:
         items = _resolve_items(run)
-        variants = list(run.variants.all())
+        variants = list(run.variants.select_related("prompt", "model_ref"))
         if not variants:
             raise ValueError("EvalRun has no variants")
         if not items:
             raise ValueError("No items resolved from the data source")
+
+        snapshot_context(run, variants)
 
         _attach_per_turn_judge(run, variants)
 
@@ -419,16 +426,11 @@ def _resolve_items(run) -> list[dict[str, Any]]:
     rng = random.Random(str(run.id))
 
     if run.data_source == run.DataSource.DATASET and run.dataset_id:
-        from overbae.services.datasets import rows as row_store
         from overbae.services.eval.profiler import bind_eval_reference
 
         _verify_pinned_version(run)
         items = []
-        for dp in row_store.iter_rows(run.cell):
-            if run.max_items and dp.index >= run.max_items:
-                break
-            if sampling < 1.0 and rng.random() > sampling:
-                continue
+        for dp in select_rows(run.cell, limit=run.max_items, fraction=sampling):
             # Object rows can still carry ``answer``/``gold`` on input; rebound
             # so ``{input}`` never contains the gold the judge is scoring against.
             inp, expected = bind_eval_reference(dp.input, dp.expected_output)
@@ -579,6 +581,11 @@ def _assess_degradation(
     raw_count = len(raw_tool_spans)
     replay_misses = int(meta.get("replay_misses") or 0)
     final_output = (normalized.get("final_output") or "").strip()
+
+    if meta.get("output_truncated"):
+        return True, "output_token_limit: model response ended before completion"
+    if is_generate and meta.get("generation_error"):
+        return True, "generation_error: " + str(meta["generation_error"])[:210]
 
     if meta.get("generation_strategy") == "per_assistant_turn":
         if any(
@@ -743,7 +750,15 @@ def _seed_from_datapoint(dp) -> tuple[list[dict[str, Any]], list[dict[str, Any]]
     if not msgs:
         return _seed_from_domain_input(dp.input), [], ReplayToolProvider()
 
-    seed_messages = _seed_strip_last_assistant(msgs)
+    prefix = msgs
+    if msgs[-1].get("role") == "assistant" and (
+        (dp.extra or {}).get("messages")
+        or dp.expected_output is None
+        or matches_reference(msgs[-1], dp.expected_output)
+        or matches_reference(msgs[-1], (dp.extra or {}).get("model_expected_output"))
+    ):
+        prefix = msgs[:-1]
+    seed_messages = _normalize_seed(prefix)
     raw_tools = dp.input.get("tools", []) if isinstance(dp.input, dict) else []
     tool_defs = chatml.parse_tool_definitions(raw_tools)
 
@@ -825,10 +840,13 @@ def _generate_per_turn(
         "steps": 0,
     }
     errors = 0
+    finish_reasons = []
+    output_truncated = False
     first_seed: list[dict[str, Any]] = []
+    first_request: dict[str, Any] = {}
 
     for depth, idx in enumerate(assistant_indices):
-        seed = _seed_strip_last_assistant(messages[: idx + 1])
+        seed = _normalize_seed(messages[:idx])
         if depth == 0:
             first_seed = seed
         reference = messages[idx]
@@ -840,14 +858,20 @@ def _generate_per_turn(
             system_prompt=system_prompt,
             reasoning_effort=(variant.params or {}).get("reasoning_effort"),
         )
+        if depth == 0:
+            first_request = result.request
         _record_generation_activity(sample.run_id)
         totals["cost"] += result.cost or 0.0
         totals["latency_ms"] += result.latency_ms or 0.0
         totals["prompt_tokens"] += result.prompt_tokens or 0
         totals["completion_tokens"] += result.completion_tokens or 0
         totals["steps"] += result.steps or 0
+        finish_reasons.extend(result.finish_reasons)
+        output_truncated = output_truncated or result.truncated
 
         turn_meta: dict[str, Any] = {"turn_index": depth, "turn_depth": depth}
+        turn_meta["finish_reasons"] = result.finish_reasons
+        turn_meta["truncated"] = result.truncated
         gen_nodes: list[dict[str, Any]] = []
         gen_final = ""
         if result.error and not result.output_messages:
@@ -895,12 +919,16 @@ def _generate_per_turn(
         "completion_tokens": totals["completion_tokens"] or None,
         "total_tokens": total_tokens or None,
         "steps": totals["steps"],
+        "finish_reasons": finish_reasons,
+        "output_truncated": output_truncated,
+        "truncated": output_truncated,
     }
     return normalizer.normalize_generation(
         input_value=first_seed,
         output_messages=generated,
         tool_definitions=tool_defs,
         metadata=metadata,
+        request=first_request,
     )
 
 
@@ -927,7 +955,9 @@ def _generate_sample(sample) -> dict[str, Any]:
     elif sample.source_trace_id:
         seed_messages, tool_defs, replay = _seed_from_trace(sample)
 
-    system_prompt = variant.prompt.system_prompt if variant.prompt_id and variant.prompt else None
+    system_prompt = (variant.params or {}).get("system_prompt")
+    if system_prompt is None and variant.prompt_id:
+        system_prompt = variant.prompt.system_prompt
 
     # The step budget tracks the depth of the recorded workflow. A fixed default
     # strands deep tool-calling replays mid-loop.
@@ -969,6 +999,9 @@ def _generate_sample(sample) -> dict[str, Any]:
         "max_steps": max_steps,
         "replay_fuzzy_hits": result.fuzzy_tool_hits,
         "replay_misses": result.tool_misses,
+        "finish_reasons": result.finish_reasons,
+        "output_truncated": result.truncated,
+        "truncated": result.truncated,
     }
     if result.error:
         metadata["generation_error"] = result.error
@@ -977,6 +1010,7 @@ def _generate_sample(sample) -> dict[str, Any]:
         output_messages=result.output_messages,
         tool_definitions=tool_defs,
         metadata=metadata,
+        request=result.request,
     )
 
 
@@ -996,32 +1030,13 @@ def _seed_from_messages(messages: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return seed
 
 
-def _seed_strip_last_assistant(messages: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    """Keeps all prior context so a multi-turn input has the model predict only the final
-    response. Tool messages and tool_calls belonging to the last assistant exchange are stripped
-    too, so it generates the whole final step from scratch."""
-    last_assistant_idx: int | None = None
-    for i in range(len(messages) - 1, -1, -1):
-        if messages[i].get("role") == "assistant":
-            last_assistant_idx = i
-            break
-
-    if last_assistant_idx is None:
-        return [
-            {"role": m["role"], "content": m.get("content", "")}
-            for m in messages
-            if m.get("role") in ("system", "user")
-        ]
-
-    # Tool results between the second-to-last assistant and last_assistant_idx belong
-    # to the prior exchange, so they stay in for context.
+def _normalize_seed(prefix: list[dict[str, Any]]) -> list[dict[str, Any]]:
     import json as _json
     import uuid as _uuid
 
     # OpenAI requires exactly N tool messages after an assistant with N tool_calls.
     # A dataset with fewer results than calls (common in Hermes) needs the tool_calls
     # list trimmed to match, so count the results up front.
-    prefix = messages[:last_assistant_idx]
     tool_results_after: list[int] = []  # indexed same as prefix
     for idx in range(len(prefix)):
         if prefix[idx].get("role") == "assistant" and prefix[idx].get("tool_calls"):
@@ -1291,6 +1306,23 @@ def execute_evaluator(self, *, sample_id: str, run_evaluator_id: str, **kwargs) 
     if sample.error:
         return {"status": "skipped", "reason": "sample_error"}
 
+    if (sample.trajectory.get("metadata") or {}).get("output_truncated"):
+        Score.objects.create(
+            project=sample.run.project,
+            run=sample.run,
+            variant=sample.variant,
+            sample=sample,
+            evaluator=run_eval.evaluator,
+            run_evaluator=run_eval,
+            name=evaluator.name,
+            data_type=evaluator.score_type,
+            value=None,
+            outcome=Score.Outcome.SKIPPED,
+            scope=evaluator.scope,
+            reasoning="Generation reached its output token limit. Incomplete response; quality was not scored.",
+        )
+        return {"status": "skipped", "reason": "output_token_limit"}
+
     # Refuse to score an evaluator in a mode that cannot produce its evidence, e.g. a
     # harness_artifact judge on a generate variant. The not-applicable Score keeps it
     # out of trusted aggregates and counted separately — never scored as a 0.
@@ -1507,6 +1539,12 @@ def aggregate_run(_eval_results=None, *, eval_run_id: str, **kwargs) -> dict[str
         summary=summary,
         completed_at=timezone.now(),
     )
+
+    # Training scheduling imports this task; defer the cyclic notification import.
+    from overbae.services.finetuning_eval import sync_eval_scores
+
+    for job in FinetuningJob.objects.filter(job_evals__eval_run_id=run.pk).distinct():
+        sync_eval_scores(job)
 
     return {"status": "completed", "metrics": summary.get("metrics", [])}
 

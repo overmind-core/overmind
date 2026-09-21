@@ -6,6 +6,7 @@ from __future__ import annotations
 from types import SimpleNamespace
 from typing import Any
 
+from overbae.services.eval.decisions import freeze_config
 from overbae.services.eval.evidence import infer_evidence_requirement
 
 # ``description`` is display-only; frozen so the run view never re-fetches the library row.
@@ -56,6 +57,8 @@ def build_snapshot(evaluator) -> dict[str, Any]:
             "variables it does bind."
         )
     snap = {f: getattr(evaluator, f, None) for f in SNAPSHOT_FIELDS}
+    if evaluator.kind in {"llm_judge", "agentic", "trajectory"}:
+        snap["config"] = freeze_config(snap.get("config"))
     snap["evaluator_id"] = str(getattr(evaluator, "id", "") or "")
     return snap
 

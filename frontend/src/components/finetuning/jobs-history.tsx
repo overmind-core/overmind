@@ -205,14 +205,12 @@ export function JobsHistory({
         const status = groupStatusOf(row.original.jobs);
         const percent = isTerminalStatus(status) ? null : groupPercent(row.original.jobs);
         return (
-          <div className="inline-flex items-center gap-1.5 whitespace-nowrap">
-            <FtStatusBadge className="w-[6rem] justify-center" fallback="queued" status={status} />
-            {percent != null && (
-              <span className="font-mono text-xs tabular-nums text-muted-foreground">
-                {percent.toFixed(0)}%
-              </span>
-            )}
-          </div>
+          <FtStatusBadge
+            className="min-w-[7rem] justify-center"
+            fallback="queued"
+            progress={status === "running" ? percent : null}
+            status={status}
+          />
         );
       },
       header: "Status",

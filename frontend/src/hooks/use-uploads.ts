@@ -50,9 +50,12 @@ async function uploadFile(
 ): Promise<string> {
   let reserved: UploadReserved;
   try {
-    reserved = await apiClient.uploads.uploadsCreate({
-      beginUploadRequest: { filename: file.name },
-    });
+    reserved = await apiClient.uploads.uploadsCreate(
+      {
+        beginUploadRequest: { filename: file.name },
+      },
+      { signal }
+    );
   } catch (err) {
     throw await uploadError(err);
   }
@@ -61,7 +64,8 @@ async function uploadFile(
       `${file.name} is ${gb(file.size)} — files are capped at ${gb(reserved.maxBytes)}.`
     );
   }
-  let sent = (await apiClient.uploads.uploadsRetrieve({ id: reserved.uploadId })).received;
+  let sent = (await apiClient.uploads.uploadsRetrieve({ id: reserved.uploadId }, { signal }))
+    .received;
   onProgress({ filename: file.name, sent, total: file.size });
   while (sent < file.size) {
     if (signal?.aborted) throw new DOMException("Upload cancelled", "AbortError");
@@ -72,38 +76,100 @@ async function uploadFile(
   return reserved.uploadId;
 }
 
-export function useFileUpload() {
-  const [progress, setProgress] = useState<UploadProgress | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const abortRef = useRef<AbortController | null>(null);
+export interface DatasetUpload {
+  id: string;
+  file: File;
+  status: "queued" | "uploading" | "counting" | "ready" | "error";
+  percent: number;
+  uploadId?: string;
+  rows?: number;
+  error?: string;
+}
 
-  useEffect(() => () => abortRef.current?.abort(), []);
-
-  const start = useCallback(async (file: File): Promise<string | null> => {
-    abortRef.current?.abort();
-    const controller = new AbortController();
-    abortRef.current = controller;
-    setError(null);
-    setProgress({ filename: file.name, sent: 0, total: file.size });
-    try {
-      return await uploadFile(file, setProgress, controller.signal);
-    } catch (err) {
-      if ((err as Error)?.name === "AbortError") return null;
-      setProgress(null);
-      setError((err as Error)?.message || "Upload failed.");
-      return null;
-    }
-  }, []);
-
-  const cancel = useCallback(() => {
-    abortRef.current?.abort();
-    setProgress(null);
-  }, []);
+export function useDatasetUploads() {
+  const [files, setFiles] = useState<DatasetUpload[]>([]);
+  const controllers = useRef(new Map<string, AbortController>());
+  const queue = useRef(Promise.resolve());
 
   const reset = useCallback(() => {
-    setProgress(null);
-    setError(null);
+    for (const controller of controllers.current.values()) controller.abort();
+    controllers.current.clear();
+    queue.current = Promise.resolve();
+    setFiles([]);
   }, []);
 
-  return { cancel, error, progress, reset, start };
+  useEffect(() => reset, [reset]);
+
+  const enqueue = useCallback((entry: DatasetUpload) => {
+    const controller = new AbortController();
+    controllers.current.set(entry.id, controller);
+    const update = (patch: Partial<DatasetUpload>) => {
+      if (!controller.signal.aborted) {
+        setFiles((previous) =>
+          previous.map((file) => (file.id === entry.id ? { ...file, ...patch } : file))
+        );
+      }
+    };
+    queue.current = queue.current.then(async () => {
+      if (controller.signal.aborted) return;
+      try {
+        update({ status: "uploading" });
+        const uploadId = await uploadFile(
+          entry.file,
+          (progress) => {
+            update({ percent: Math.round((progress.sent / Math.max(progress.total, 1)) * 100) });
+          },
+          controller.signal
+        );
+        if (controller.signal.aborted) return;
+        update({ status: "counting" });
+        const inspected = await apiClient.uploads.uploadsInspectCreate(
+          {
+            id: uploadId,
+            inspectUploadRequest: { size: entry.file.size },
+          },
+          { signal: controller.signal }
+        );
+        update({ rows: inspected.rows, status: "ready", uploadId });
+      } catch (err) {
+        if (!controller.signal.aborted) {
+          const error = await uploadError(err);
+          update({ error: error.message, status: "error" });
+        }
+      } finally {
+        if (controllers.current.get(entry.id) === controller) controllers.current.delete(entry.id);
+      }
+    });
+  }, []);
+
+  const add = useCallback(
+    (incoming: File[]) => {
+      const entries: DatasetUpload[] = incoming.map((file) => ({
+        file,
+        id: crypto.randomUUID(),
+        percent: 0,
+        status: "queued",
+      }));
+      setFiles((previous) => [...previous, ...entries]);
+      for (const entry of entries) enqueue(entry);
+    },
+    [enqueue]
+  );
+
+  const remove = useCallback((id: string) => {
+    controllers.current.get(id)?.abort();
+    controllers.current.delete(id);
+    setFiles((previous) => previous.filter((file) => file.id !== id));
+  }, []);
+
+  const retry = useCallback(
+    (entry: DatasetUpload) => {
+      const next: DatasetUpload = { ...entry, error: undefined, percent: 0, status: "queued" };
+      setFiles((previous) => previous.map((file) => (file.id === entry.id ? next : file)));
+      enqueue(next);
+    },
+    [enqueue]
+  );
+
+  return { add, files, remove, reset, retry };
 }

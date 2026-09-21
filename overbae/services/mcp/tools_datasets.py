@@ -171,7 +171,11 @@ def _create_dataset_from_traces_sync(
                 source={"traces": source.spec()},
                 eval_percent=payload.split.eval_percent,
                 position=payload.split.position,
+                group_by=payload.split.group_by,
+                stratify_by=payload.split.stratify_by,
+                deduplicate=payload.split.deduplicate,
                 capability=capability,
+                infer_capability="capability" not in payload.model_fields_set,
             )
         else:
             train = dispatch.create_dataset(
@@ -181,6 +185,7 @@ def _create_dataset_from_traces_sync(
                 source={"traces": source.spec()},
                 intent=payload.intent,
                 capability=capability,
+                infer_capability="capability" not in payload.model_fields_set,
             )
             evaluation = None
     except DatasetError as exc:
@@ -216,7 +221,7 @@ def _run_dataset_sync(payload: RunDatasetInput, context: MCPContext) -> DatasetM
         proposal_id = _uuid(payload.proposal_cell)
         if proposal_id is None:
             raise MCPError("invalid_input", "Proposal cell references must be UUIDs.")
-        proposal = dataset.cells.filter(id=proposal_id, state="proposed").first()
+        proposal = dataset.cells.filter(id=proposal_id).first()
         if proposal is None:
             raise MCPError("cell_not_found", "The proposal was not found in this dataset.")
     try:
@@ -250,7 +255,7 @@ def register_dataset_tools(catalog) -> None:
         (
             "inspect_dataset",
             "Inspect dataset",
-            "Inspect one project dataset, its bounded cell chain, sample, recent agent chat, and next actions.",
+            "Inspect one project dataset, its bounded cell chain, source/active task-family profiles, downstream consumer requirements, sample, recent agent chat, and next actions.",
             InspectDatasetInput,
             DatasetDetail,
             _inspect_dataset_sync,
@@ -294,7 +299,7 @@ def register_dataset_tools(catalog) -> None:
         (
             "run_dataset",
             "Run dataset",
-            "Run a project dataset, optionally accepting one proposal from its cell chain.",
+            "Run a dataset; approving a proposal activates it and resumes its agent request.",
             RunDatasetInput,
             DatasetMutationOutput,
             _run_dataset_sync,
@@ -325,7 +330,7 @@ def register_dataset_tools(catalog) -> None:
                 required_scopes=frozenset(
                     {"overmind:read"} if read_only else {"overmind:data:write"}
                 ),
-                cost_class="free",
+                cost_class="llm" if name == "run_dataset" else "free",
                 async_mode=mode,
             ),
             _async_handler(function),

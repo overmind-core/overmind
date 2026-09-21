@@ -1,11 +1,9 @@
 import { useState } from "react";
 
 import { DatasetsBrowser, DatasetsToolbar } from "@/components/datasets/datasets-table";
+import { type DatasetSource, NewDatasetButton } from "@/components/datasets/new-dataset-button";
 import { NewDatasetDialog } from "@/components/datasets/new-dataset-dialog";
-import { Button } from "@/components/ui/button";
-import { Icon } from "@/components/ui/icons";
 import { useDatasetsQuery } from "@/hooks/use-datasets";
-import { useGuestGate } from "@/hooks/use-guest-gate";
 
 interface DatasetTabProps {
   capabilityId: string;
@@ -14,10 +12,13 @@ interface DatasetTabProps {
 
 export function DatasetTab({ capabilityId, projectId }: DatasetTabProps) {
   const [createOpen, setCreateOpen] = useState(false);
+  const [source, setSource] = useState<DatasetSource>("file");
   const [search, setSearch] = useState("");
   const [intentFilter, setIntentFilter] = useState("all");
-  const guard = useGuestGate();
-  const openCreate = guard(() => setCreateOpen(true));
+  const openCreate = (source: DatasetSource) => {
+    setSource(source);
+    setCreateOpen(true);
+  };
 
   const datasetsQuery = useDatasetsQuery(projectId ?? undefined, {
     capability: capabilityId,
@@ -46,12 +47,8 @@ export function DatasetTab({ capabilityId, projectId }: DatasetTabProps) {
 
       <DatasetsBrowser
         datasets={datasets}
-        emptyAction={
-          <Button onClick={openCreate}>
-            <Icon.datasetAdd /> New dataset
-          </Button>
-        }
-        emptyDescription="Upload a file, paste rows, or land traces."
+        emptyAction={<NewDatasetButton onSelect={openCreate} />}
+        emptyDescription="Upload files or select data from traces."
         error={datasetsQuery.error}
         fill={false}
         hideCapabilityColumn
@@ -67,6 +64,7 @@ export function DatasetTab({ capabilityId, projectId }: DatasetTabProps) {
       {projectId && (
         <NewDatasetDialog
           initialCapabilityId={capabilityId}
+          initialSource={source}
           onOpenChange={setCreateOpen}
           open={createOpen}
           projectId={projectId}

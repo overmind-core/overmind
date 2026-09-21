@@ -12,6 +12,7 @@ import csv
 import gzip
 import io
 import json
+import logging
 import math
 import os
 import re
@@ -24,6 +25,10 @@ from typing import Any
 import pyarrow as pa
 import pyarrow.parquet as pq
 
+from overbae.core.errors import InputValidationError
+
+logger = logging.getLogger(__name__)
+
 ALLOWED_SUFFIXES = (".csv", ".tsv", ".json", ".jsonl", ".ndjson", ".parquet")
 CHUNK_BYTES = 8 * 1024 * 1024
 MAX_UPLOAD_BYTES = 2 * 1024 * 1024 * 1024
@@ -35,7 +40,7 @@ UNSUPPORTED = "Use a CSV, TSV, JSON, JSONL or Parquet file."
 csv.field_size_limit(MAX_UPLOAD_BYTES)
 
 
-class FileError(ValueError):
+class FileError(InputValidationError):
     """A parse or upload problem the user can act on."""
 
 
@@ -47,7 +52,7 @@ def _iter_jsonl(fh: io.TextIOBase) -> Iterator[dict[str, Any]]:
         try:
             value = json.loads(line)
         except ValueError as exc:
-            raise FileError(f"Line {lineno} is not valid JSON: {exc}") from exc
+            raise FileError(f"Line {lineno} is not valid JSON.") from exc
         yield value if isinstance(value, dict) else {"value": value}
 
 
@@ -58,7 +63,7 @@ def _iter_json(fh: io.TextIOBase) -> Iterator[dict[str, Any]]:
         value = json.loads(text)
     except json.JSONDecodeError as exc:
         if exc.msg != "Extra data":
-            raise FileError(f"Not valid JSON: {exc}") from exc
+            raise FileError(f"Not valid JSON at line {exc.lineno}, column {exc.colno}.") from exc
         yield from _iter_jsonl(io.StringIO(text))
         return
     if isinstance(value, dict):
@@ -101,7 +106,7 @@ def _iter_delimited(fh: io.TextIOBase, delimiter: str) -> Iterator[dict[str, Any
                 )
             yield dict(zip(header, cells + [None] * (len(header) - len(cells)), strict=True))
     except csv.Error as exc:
-        raise FileError(f"Row {reader.line_num}: {exc}") from exc
+        raise FileError(f"Row {reader.line_num} is not valid delimited text.") from exc
 
 
 def _clean_names(names: list[Any]) -> list[str]:
@@ -202,6 +207,44 @@ def read_file_rows(path: Path, *, filename: str) -> list[dict[str, Any]]:
         raise FileError("The file is not UTF-8. Save it as UTF-8 and upload it again.") from exc
     except (gzip.BadGzipFile, EOFError) as exc:
         raise FileError("The file is not readable gzip.") from exc
+
+
+def inspect_upload(upload_id: str, *, size: int) -> dict[str, Any]:
+    filename = upload_filename(upload_id)
+    if not filename or upload_received(upload_id) != size:
+        raise FileError("The upload is incomplete or has expired.")
+    if size == 0:
+        raise FileError("The file has no rows.")
+    path = upload_data_path(upload_id)
+    bare = filename.lower().removesuffix(".gz")
+    try:
+        if bare.endswith(".parquet"):
+            rows = pq.ParquetFile(path).metadata.num_rows
+        else:
+            if bare.endswith(".json") and size > JSON_ARRAY_MAX_BYTES:
+                raise FileError(
+                    f"JSON files are capped at {JSON_ARRAY_MAX_BYTES // 1024**2} MB. "
+                    "Use JSONL for larger files."
+                )
+            with _open_text(path, filename.lower()) as fh:
+                rows = sum(1 for _ in iter_stream_rows(fh, filename=bare))
+    except FileError:
+        raise
+    except UnicodeDecodeError as exc:
+        raise FileError("The file is not UTF-8. Save it as UTF-8 and upload it again.") from exc
+    except (gzip.BadGzipFile, EOFError) as exc:
+        raise FileError("The file is not readable gzip.") from exc
+    except (OSError, ValueError, csv.Error, pa.ArrowException) as exc:
+        logger.exception("Upload %s inspection failed", upload_id)
+        message = (
+            "The file is not readable Parquet."
+            if bare.endswith(".parquet")
+            else "The uploaded file could not be read. Upload it again."
+        )
+        raise FileError(message) from exc
+    if not rows:
+        raise FileError("The file has no rows.")
+    return {"filename": filename, "bytes": size, "rows": rows}
 
 
 def parse_text(text: str, *, filename: str = "") -> list[dict[str, Any]]:

@@ -1,3 +1,4 @@
+from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 import openai
@@ -31,7 +32,10 @@ def mock_openrouter_completion():
     client = MagicMock()
     create = client.chat.completions.create
     create.return_value = _make_completion_response()
-    with patch("overbae.core.llms._openrouter_client", return_value=client):
+    with (
+        patch("overbae.core.llms._openrouter_client", return_value=client),
+        patch("overbae.core.llms._provider_client", return_value=client),
+    ):
         yield create
 
 
@@ -68,6 +72,23 @@ def test_call_llm_uses_default_model():
     assert stats["prompt_tokens"] == 10
     assert stats["response_cost"] == 0.001
     assert client.chat.completions.create.call_args.kwargs["model"] == "openai/gpt-5-mini"
+
+
+@pytest.mark.parametrize("cost", [None, 0.0, 0.001])
+@pytest.mark.parametrize("with_tools", [False, True])
+def test_usage_distinguishes_missing_cost_from_reported_zero(
+    mock_openrouter_completion, cost, with_tools
+):
+    mock_openrouter_completion.return_value.usage = SimpleNamespace(
+        prompt_tokens=10, completion_tokens=5, model_extra={} if cost is None else {"cost": cost}
+    )
+    if with_tools:
+        _, _, stats = _llms_module.call_llm_tools(
+            [{"role": "user", "content": "hello"}], [], model="gpt-5-mini", retry_deadline=0
+        )
+    else:
+        _, stats = call_llm("hello", model="gpt-5-mini")
+    assert stats["response_cost"] == cost
 
 
 class _DummyResponseFormat(BaseModel):

@@ -4,6 +4,7 @@ import json
 import uuid
 
 import pytest
+from mcp_fixtures import EXPECTED_TOOL_NAMES
 from starlette.testclient import TestClient
 
 from overbae.models import APIToken, Capability, Project, ProjectMembership, Span, User
@@ -82,40 +83,7 @@ def test_ping_is_protocol_level_and_catalog_lists_curated_tools():
         ping = _post(client, raw, _rpc("ping"))
 
     assert response.status_code == 200
-    assert {tool["name"] for tool in response.json()["result"]["tools"]} == {
-        "inspect_capability_health",
-        "query_failures",
-        "query_traces",
-        "query_task_executions",
-        "get_job",
-        "list_datasets",
-        "inspect_dataset",
-        "query_dataset",
-        "create_dataset_from_traces",
-        "message_dataset_agent",
-        "run_dataset",
-        "check_evaluation_readiness",
-        "upsert_evaluator",
-        "run_evaluation",
-        "compare_evaluations",
-        "annotate_evaluation_sample",
-        "check_finetune_readiness",
-        "estimate_finetune",
-        "start_finetune",
-        "retry_deployment",
-        "set_active_model",
-        "run_inference",
-        "get_model_swap_prompt",
-        "check_optimizer_readiness",
-        "start_optimizer",
-        "inspect_optimizer_result",
-        "inspect_connectors",
-        "configure_connector",
-        "sync_connector",
-        "get_instrumentation_plan",
-        "verify_instrumentation",
-        "get_model_catalog",
-    }
+    assert {tool["name"] for tool in response.json()["result"]["tools"]} == EXPECTED_TOOL_NAMES
     assert ping.status_code == 200
     assert ping.json()["result"] == {}
 
@@ -133,8 +101,8 @@ def test_tools_list_is_permission_filtered_and_stays_within_manifest_budget():
     assert read_response.status_code == 200
     assert full_response.status_code == 200
     assert read_names < {tool["name"] for tool in full_tools}
-    assert len(full_tools) == 32
-    assert len(full_response.content) <= 30 * 1024
+    assert len(full_tools) == len(EXPECTED_TOOL_NAMES)
+    assert len(full_response.content) <= 34 * 1024
 
 
 def test_resources_and_prompts_list_over_streamable_http():

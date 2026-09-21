@@ -11,6 +11,8 @@ import math
 from dataclasses import dataclass, field
 from typing import Any
 
+from overbae.modal.model_registry import context_headroom, get_training_context_policy
+
 # Epochs when unset: enough example-visits that tiny datasets get real optimizer-step
 # counts (49 rows × 2 epochs still improved on every batch when the LR hit zero).
 TARGET_EXAMPLE_VISITS = 300
@@ -174,15 +176,13 @@ def baseten_context_length(
     training targets. Buckets and headroom come from models.json, never from code.
     Raises when the model cannot cover the dataset's longest row (plus headroom).
     """
-    from overbae.modal.model_registry import get_training_context_policy  # noqa: PLC0415
-
     policy = get_training_context_policy("baseten")
     buckets: list[int] = sorted(int(b) for b in policy["context_buckets"])
     need = int(needed_tokens or 0)
     if need > 0:
         need += int(policy["context_headroom"])
     target = max(need, int(requested or 0), buckets[0])
-    chosen = next((b for b in buckets if b >= target), buckets[-1])
+    chosen = next((b for b in buckets if b >= target), target)
     if model_max is not None and model_max > 0:
         if int(model_max) < need:
             raise TrainingPlanError(
@@ -192,6 +192,21 @@ def baseten_context_length(
             )
         chosen = min(chosen, int(model_max))
     return chosen
+
+
+def estimated_training_context_length(
+    estimated_tokens: int = 0,
+    *,
+    model_max: int | None = None,
+    requested: int | None = None,
+) -> int:
+    # Estimates size the first exact preprocessing pass; only tokenization can reject data.
+    target = max(0, estimated_tokens)
+    if target:
+        target += context_headroom("baseten")
+    if model_max:
+        target = min(target, model_max)
+    return baseten_context_length(model_max=model_max, requested=max(target, requested or 0))
 
 
 def should_pack(num_examples: int, avg_row_tokens: int, context_length: int) -> bool:

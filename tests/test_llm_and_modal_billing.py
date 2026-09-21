@@ -107,6 +107,56 @@ def test_charge_llm_usage_skips_an_empty_turn(monkeypatch):
     assert BillingTelemetry.objects.filter(idempotency_key="data-workshop:empty").count() == 0
 
 
+def test_composite_decision_billing_preserves_known_cost_when_one_attempt_is_unknown(monkeypatch):
+    user = _user("decision-partial@example.com")
+    monkeypatch.setattr("overbae.services.model_catalog.estimate_cost", lambda *a, **k: None)
+    row = charge_llm_usage(
+        user,
+        {
+            "response_cost": None,
+            "attempts": [
+                {"response_cost": None, "served_model": "typesafe/jev-1.13"},
+                {"response_cost": 0.02, "served_model": "openai/gpt-5.6-terra"},
+            ],
+        },
+        service=BillingService.DATA_WORKSHOP,
+        idempotency_key="semantic-check:partial",
+    )
+    assert row.amount == Decimal("-0.02")
+    assert row.metadata["cost_incomplete"] is True
+
+
+def test_cached_decision_is_not_repriced_as_a_fresh_call(monkeypatch):
+    user = _user("decision-cache@example.com")
+    monkeypatch.setattr("overbae.services.model_catalog.estimate_cost", lambda *a, **k: 9.99)
+    assert (
+        charge_llm_usage(
+            user,
+            {"response_cost": 0, "cached": True, "prompt_tokens": 100},
+            service=BillingService.DATA_WORKSHOP,
+            idempotency_key="semantic-check:cached",
+        )
+        is None
+    )
+
+
+def test_provider_reported_zero_cost_is_not_repriced(monkeypatch):
+    user = _user("provider-zero@example.com")
+    monkeypatch.setattr("overbae.services.model_catalog.estimate_cost", lambda *a, **k: 9.99)
+    assert (
+        charge_llm_usage(
+            user,
+            {"response_cost": 0.0, "prompt_tokens": 100, "served_model": "openai/gpt-5.6-terra"},
+            service=BillingService.DATA_WORKSHOP,
+            idempotency_key="semantic-check:reported-zero",
+        )
+        is None
+    )
+    assert not BillingTelemetry.objects.filter(
+        idempotency_key="semantic-check:reported-zero"
+    ).exists()
+
+
 def test_modal_terminal_transition_charges_once():
     user = _user("modal-ft@example.com")
     project = _project()

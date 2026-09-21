@@ -201,6 +201,12 @@ export interface PatchedCapabilityRequest {
      * @memberof PatchedCapabilityRequest
      */
     activeModel?: string | null;
+    /**
+     *
+     * @type {string}
+     * @memberof PatchedCapabilityRequest
+     */
+    benchmarkModel?: string | null;
 }
 
 
@@ -251,6 +257,7 @@ export function PatchedCapabilityRequestFromJSONTyped(json: any, ignoreDiscrimin
         'project': json['project'] == null ? undefined : json['project'],
         'activeEvalSet': json['active_eval_set'] == null ? undefined : json['active_eval_set'],
         'activeModel': json['active_model'] == null ? undefined : json['active_model'],
+        'benchmarkModel': json['benchmark_model'] == null ? undefined : json['benchmark_model'],
     };
 }
 
@@ -294,5 +301,6 @@ export function PatchedCapabilityRequestToJSONTyped(value?: PatchedCapabilityReq
         'project': value['project'],
         'active_eval_set': value['activeEvalSet'],
         'active_model': value['activeModel'],
+        'benchmark_model': value['benchmarkModel'],
     };
 }

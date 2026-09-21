@@ -335,6 +335,8 @@ SPECTACULAR_SETTINGS = {
     "COMPONENT_SPLIT_REQUEST": True,
     "SCHEMA_PATH_PREFIX": r"/api/",
     "ENUM_NAME_OVERRIDES": {
+        "DecisionPolicyBackendEnum": [("jev", "jev"), ("generative", "generative")],
+        "BackendEnum": [("together", "together"), ("baseten", "baseten"), ("modal", "modal")],
         "IntentEnum": "overbae.models.datasets.Dataset.Intent",
         "CellStateEnum": "overbae.models.datasets.Cell.State",
         # Lane provenance shares the field name with finetuning evidence; pinned so
@@ -406,6 +408,7 @@ CELERY_TIMEZONE = "UTC"
 CELERY_TASK_DEFAULT_QUEUE = "control"
 
 CELERY_TASK_ROUTES = {
+    "overbae.tasks.training_preparation.inspect_preparation": {"queue": "io"},
     "overbae.tasks.datasets.run": {"queue": "interactive"},
     "overbae.tasks.datasets.turn": {"queue": "interactive"},
     "overbae.tasks.datasets.diagnose": {"queue": "interactive"},
@@ -413,6 +416,7 @@ CELERY_TASK_ROUTES = {
     "overbae.tasks.datasets.land": {"queue": "batch"},
     "overbae.tasks.connector_sync.sync_connector_chunk": {"queue": "batch"},
     "overbae.tasks.eval.execute_evaluator": {"queue": "io"},
+    "overbae.tasks.model_deployment.advance_model_deployment": {"queue": "io"},
     "overbae.tasks.connector_sync.poll_connectors": {"queue": "io"},
     "overbae.tasks.connector_sync.sweep_abandoned_drafts": {"queue": "io"},
     "overbae.tasks.capability_rebind.rebind_unbound_spans": {"queue": "io"},
@@ -421,7 +425,11 @@ CELERY_TASK_ROUTES = {
 }
 
 CELERY_BEAT_SCHEDULE = {
-    # Observe live trains; re-drive submit/register if the Celery task vanished.
+    "training-preparation": {
+        "task": "overbae.tasks.training_preparation.reconcile",
+        "schedule": 15.0,
+    },
+    # Observe remote training independently of its submitting worker.
     "reconcile-finetuning-jobs": {
         "task": "overbae.tasks.finetuning_reconciler.reconcile_finetuning_jobs",
         "schedule": 15.0,
@@ -461,10 +469,9 @@ CELERY_BEAT_SCHEDULE = {
         "task": "overbae.tasks.optimizer_reconciler.reconcile_optimizer_experiments",
         "schedule": 10.0,
     },
-    # Fails DeployedModels stuck in QUANTIZING/DEPLOYING for >90 min.
-    "janitor-stuck-fsm": {
-        "task": "overbae.tasks.inference_controller.janitor_stuck_fsm",
-        "schedule": 300.0,
+    "reconcile-deployments": {
+        "task": "overbae.tasks.inference_controller.reconcile_deployments",
+        "schedule": 15.0,
     },
     # Backstop for stragglers whose live scoring enqueue was lost.
     "sweep-unscored-traces": {

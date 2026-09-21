@@ -201,6 +201,12 @@ export interface CapabilityRequest {
      * @memberof CapabilityRequest
      */
     activeModel?: string | null;
+    /**
+     *
+     * @type {string}
+     * @memberof CapabilityRequest
+     */
+    benchmarkModel?: string | null;
 }
 
 
@@ -253,6 +259,7 @@ export function CapabilityRequestFromJSONTyped(json: any, ignoreDiscriminator: b
         'project': json['project'],
         'activeEvalSet': json['active_eval_set'] == null ? undefined : json['active_eval_set'],
         'activeModel': json['active_model'] == null ? undefined : json['active_model'],
+        'benchmarkModel': json['benchmark_model'] == null ? undefined : json['benchmark_model'],
     };
 }
 
@@ -296,5 +303,6 @@ export function CapabilityRequestToJSONTyped(value?: CapabilityRequest | null, i
         'project': value['project'],
         'active_eval_set': value['activeEvalSet'],
         'active_model': value['activeModel'],
+        'benchmark_model': value['benchmarkModel'],
     };
 }

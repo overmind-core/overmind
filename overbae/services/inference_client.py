@@ -12,13 +12,20 @@ from typing import Any
 
 import requests
 from django.conf import settings
+from django.db.models import Q
+from django.utils import timezone
 
+from modal_shared.context_budget import reserve_output
 from modal_shared.modelfam import serve_image_key
 from modal_shared.shared import WEIGHTS_PATH_HEADER
 from modal_shared.shared import routing_headers as _routing_headers
 
 
 class InferenceClientError(Exception):
+    pass
+
+
+class ContextBudgetError(InferenceClientError):
     pass
 
 
@@ -111,6 +118,10 @@ class InferenceClient:
         if max_tokens is not None:
             payload["max_tokens"] = max_tokens
         payload.update(kwargs)
+        try:
+            payload = reserve_output(payload)
+        except ValueError as exc:
+            raise InferenceClientError(str(exc)) from exc
 
         url = f"{self._base_url}/v1/chat/completions"
         headers = self._headers_for(
@@ -131,6 +142,19 @@ class InferenceClient:
             raise InferenceClientError(f"Request to InferenceAPIServer failed: {exc}") from exc
 
         if not resp.ok:
+            if resp.status_code == 400 and any(
+                marker in resp.text.lower()
+                for marker in (
+                    "context length",
+                    "max_model_len",
+                    "max_tokens",
+                    "max_completion_tokens",
+                )
+            ):
+                raise ContextBudgetError(
+                    "The input and reserved output exceed the deployed context. "
+                    "Reduce the request or redeploy with a larger serving context."
+                )
             raise InferenceClientError(
                 f"InferenceAPIServer returned {resp.status_code}: {resp.text[:400]}"
             )
@@ -192,6 +216,13 @@ class InferenceClient:
         """
         from overbae.models import DeployedModel
 
+        # Fence pending stage results before changing remote serving state.
+        DeployedModel.objects.filter(model_id=model_id).update(
+            status=DeployedModel.Status.DELETING,
+            deployment_notify=False,
+            deployment_cancel_pending=~Q(deployment_call_id=""),
+            deployment_next_poll_at=timezone.now(),
+        )
         row = DeployedModel.objects.filter(model_id=model_id).first()
         if row is not None and row.adapter_path:
             weights_path = row.adapter_path

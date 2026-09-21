@@ -115,3 +115,18 @@ def test_catalog_never_exposes_delete_or_protocol_tools():
 
 def test_catalog_allows_only_the_curated_retry_tool():
     assert _definition(name="retry_deployment").name == "retry_deployment"
+
+
+@pytest.mark.asyncio
+async def test_unexpected_failure_is_logged_but_not_exposed_to_the_client(caplog):
+    def handler(_payload, _context):
+        raise RuntimeError("private database diagnostic")
+
+    catalog = ToolCatalog()
+    catalog.register(_definition(), handler)
+    result = await catalog.call("read_state", {"query": "user data"}, _context("read"))
+    assert result.structuredContent["error"]["code"] == "internal_error"
+    assert "private database diagnostic" not in result.content[0].text
+    assert "MCP tool read_state failed" in caplog.text
+    assert "private database diagnostic" in caplog.text
+    assert "user data" not in caplog.text

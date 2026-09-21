@@ -22,6 +22,7 @@ apis/PublicApi.ts
 apis/SessionsApi.ts
 apis/TaskExecutionsApi.ts
 apis/TracesApi.ts
+apis/TrainingPreparationsApi.ts
 apis/UploadsApi.ts
 apis/V1Api.ts
 apis/VerdictsApi.ts
@@ -80,6 +81,7 @@ models/ChatRequest.ts
 models/ChatTurn.ts
 models/ChatTurnRequest.ts
 models/ChatTurnRoleEnum.ts
+models/ChatTurnStatusEnum.ts
 models/CheckoutSessionResponse.ts
 models/CheckpointFile.ts
 models/ColumnStat.ts
@@ -116,14 +118,19 @@ models/Dataset.ts
 models/DatasetCreateRequest.ts
 models/DatasetOverlapResponse.ts
 models/DatasetPair.ts
+models/DatasetReadiness.ts
 models/DatasetSourceKindEnum.ts
 models/DatasetSplitCreateRequest.ts
 models/DatasetStateEnum.ts
 models/DatasetValidateRequestRequest.ts
 models/DatasetValidationResponse.ts
 models/DatasetValidationStats.ts
+models/DecisionPolicy.ts
+models/DecisionPolicyBackendEnum.ts
+models/DecisionPolicyRequest.ts
 models/DeployedModel.ts
 models/DeployedModelStatusEnum.ts
+models/DeploymentProgress.ts
 models/Detail.ts
 models/EvalRun.ts
 models/EvalRunDataSourceEnum.ts
@@ -136,6 +143,7 @@ models/EvalRunVariantProgress.ts
 models/EvalRunWarning.ts
 models/EvalRunsDatasetsRetrieve200ResponseInner.ts
 models/EvalSample.ts
+models/EvalSampleIO.ts
 models/EvalSampleList.ts
 models/EvalSet.ts
 models/EvalSetAddMembersRequestRequest.ts
@@ -204,6 +212,8 @@ models/InferenceActivity.ts
 models/InferenceActivityPoint.ts
 models/InferenceLiveStats.ts
 models/InferenceMetrics.ts
+models/InputSourceEnum.ts
+models/InspectUploadRequest.ts
 models/IntegrationTypeEnum.ts
 models/IntentEnum.ts
 models/LocalSessionRequest.ts
@@ -303,6 +313,7 @@ models/ScoreOutcomeEnum.ts
 models/ScoreSourceEnum.ts
 models/ScoreTypeD08Enum.ts
 models/ServiceEnum.ts
+models/ServingContextPlan.ts
 models/Session.ts
 models/SetCommandTemplateRequest.ts
 models/SourceRequest.ts
@@ -327,6 +338,10 @@ models/TraceProviderEnum.ts
 models/TraceStatusEnum.ts
 models/TraceUsage.ts
 models/TracesServicesList200Response.ts
+models/TrainingPreparation.ts
+models/TrainingPreparationRequestRequest.ts
+models/TrainingTypeEnum.ts
+models/UploadInspection.ts
 models/UploadReserved.ts
 models/UploadState.ts
 models/UserMe.ts

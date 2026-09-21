@@ -100,11 +100,11 @@ class Dataset(models.Model):
         used = self.cells.filter(used_at__isnull=False).order_by("-position").first()
         return used.position if used is not None else -1
 
-    def versions(self) -> dict[uuid.UUID, str]:
+    def versions(self, *, chain: list["Cell"] | None = None) -> dict[uuid.UUID, str]:
         """Cell id → ``major.minor``. The source is 1.0; a use starts a new major."""
         out: dict[uuid.UUID, str] = {}
         major, minor = 1, 0
-        for cell in self.chain:
+        for cell in self.chain if chain is None else chain:
             if cell.state == Cell.State.PROPOSED:
                 continue
             if cell.position == 0:
@@ -150,6 +150,8 @@ class Cell(models.Model):
     capability_report = models.JSONField(default=dict, blank=True)
     # The six numbers training planners read; see contract.stats.
     stats = models.JSONField(default=dict, blank=True)
+    review = models.JSONField(default=dict, blank=True)
+    quality_report = models.JSONField(default=dict, blank=True)
     seconds = models.FloatField(default=0.0)
     used_at = models.DateTimeField(null=True, blank=True)
     created_by = models.ForeignKey(
@@ -186,7 +188,7 @@ class Cell(models.Model):
         return self.state == self.State.OK and bool(self.fingerprint)
 
     def fits(self, intent: str) -> tuple[bool, str]:
-        """Both contracts for ``intent``: the shape and the capability's rows."""
+        """Whether a consumer can read this version; quality findings are advisory."""
         if intent not in (Dataset.Intent.TRAIN, Dataset.Intent.EVAL):
             return False, "The intent is still pending. Choose train or eval."
         if not self.ran:
@@ -194,7 +196,4 @@ class Cell(models.Model):
         shape = (self.intent_report or {}).get(intent) or {}
         if not shape.get("ok"):
             return False, str(shape.get("reason") or f"the table is not a {intent} table")
-        fit = self.capability_report or {}
-        if fit and not fit.get("ok"):
-            return False, str(fit.get("reason") or "rows do not match the capability")
         return True, ""

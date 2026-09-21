@@ -8,15 +8,17 @@ from __future__ import annotations
 
 from typing import Any
 
+from overbae.modal.training_type import training_context_length
 from overbae.services.finetuning_policy import (
     baseten_context_length,
     default_epochs,
+    estimated_training_context_length,
     openai_batch_size,
     qlora_learning_rate,
     qlora_lora_params,
 )
 
-from .catalog import catalog_backend
+from .catalog import active_backend, catalog_backend
 
 
 def compute_hyperparams(
@@ -44,10 +46,13 @@ def compute_hyperparams(
 
     context_length: int | None = None
     if catalog_backend() == "baseten":
-        # Modal (Unsloth) shares this policy — both self-hosted scripts truncate at
-        # MAX_LENGTH the same way.
-        model_max = entry.get("context_length_sft")
-        context_length = baseten_context_length(
+        model_max = training_context_length(entry, "lora" if use_lora else "full")
+        choose_context = (
+            estimated_training_context_length
+            if active_backend() == "modal"
+            else baseten_context_length
+        )
+        context_length = choose_context(
             max_row_tokens,
             model_max=int(model_max) if model_max else None,
         )

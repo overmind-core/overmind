@@ -48,63 +48,16 @@ const STATUS_FILTER_LABELS: Record<string, string> = {
   running: "Running",
 };
 
-export function StatusBadge({ status }: { status: string }) {
-  return <JobStatusBadge fallback="pending" status={status} />;
+export function StatusBadge({ status, progress }: { status: string; progress?: number | null }) {
+  return <JobStatusBadge fallback="pending" progress={progress} status={status} />;
 }
 
-function formatElapsedShort(ms: number): string {
-  const s = Math.max(0, Math.floor(ms / 1000));
-  if (s < 60) return `${s}s`;
-  const m = Math.floor(s / 60);
-  if (m < 60) return `${m}m`;
-  return `${Math.floor(m / 60)}h ${String(m % 60).padStart(2, "0")}m`;
-}
-
-function RunRowProgress({
-  progress,
-  createdAt,
-}: {
-  progress?: EvalRunProgress | null;
-  createdAt?: Date;
-}) {
+function runProgressPercent(progress?: EvalRunProgress | null): number | null {
   if (!progress) return null;
-  const phase = progress.phase;
-  const isGenerating = phase === "generating" || phase === "pending";
+  const isGenerating = progress.phase === "generating" || progress.phase === "pending";
   const done = isGenerating ? progress.prepared : progress.scored;
   const total = isGenerating ? progress.total : progress.scoreTotal;
-  const pct = phase === "aggregating" ? 100 : total > 0 ? Math.round((done / total) * 100) : 0;
-  const label =
-    phase === "pending"
-      ? "Queued"
-      : phase === "generating"
-        ? `Generating ${done}/${total}`
-        : phase === "scoring"
-          ? `Scoring ${done}/${total}`
-          : phase === "aggregating"
-            ? "Aggregating"
-            : phase;
-  const elapsed = createdAt ? formatElapsedShort(Date.now() - createdAt.getTime()) : null;
-  return (
-    <div className="flex flex-col gap-1">
-      <span className="text-xs tabular-nums text-muted-foreground">
-        {label}
-        {elapsed ? ` · ${elapsed}` : ""}
-      </span>
-      <div
-        aria-label={label}
-        aria-valuemax={total || 1}
-        aria-valuemin={0}
-        aria-valuenow={done}
-        className="h-1 w-28 overflow-hidden rounded-sm bg-muted"
-        role="progressbar"
-      >
-        <div
-          className="h-full rounded-xs bg-primary transition-all duration-500 motion-reduce:transition-none"
-          style={{ width: `${pct}%` }}
-        />
-      </div>
-    </div>
-  );
+  return progress.phase === "aggregating" ? 100 : total > 0 ? (done / total) * 100 : null;
 }
 
 type RunsFilters = Pick<
@@ -333,12 +286,10 @@ export function RunsTable({
       cell: ({ row }) => {
         const r = row.original;
         return (
-          <div className="flex min-w-0 flex-col items-start gap-1">
-            <StatusBadge status={r.status ?? "pending"} />
-            {(r.status === "running" || r.status === "pending") && (
-              <RunRowProgress createdAt={r.createdAt} progress={r.progress} />
-            )}
-          </div>
+          <StatusBadge
+            progress={r.status === "running" ? runProgressPercent(r.progress) : null}
+            status={r.status ?? "pending"}
+          />
         );
       },
       header: "Status",

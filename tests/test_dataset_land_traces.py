@@ -88,7 +88,8 @@ def test_one_row_per_trace_in_selection_order_with_the_fixed_columns():
     first, _ = _chat_trace(project, text="one", capability=capability)
     second, _ = _chat_trace(project, text="two", capability=capability)
     dataset, df = _land(project, {"trace_ids": [second, first, second]})
-    assert list(df.columns) == COLUMNS
+    assert [column for column in df.columns if column != "_overmind_provenance"] == COLUMNS
+    assert df["_overmind_provenance"].map(bool).all()
     assert df["trace_id"].tolist() == [second, first]
     row = df.iloc[0]
     assert (row["capability"], row["capability_id"]) == ("Concierge", str(capability.id))

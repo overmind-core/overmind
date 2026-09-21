@@ -95,6 +95,30 @@ export interface FinetuningJobList {
      * @type {boolean}
      * @memberof FinetuningJobList
      */
+    readonly evalIncumbentBefore: boolean;
+    /**
+     *
+     * @type {boolean}
+     * @memberof FinetuningJobList
+     */
+    readonly evalIncumbentAfter: boolean;
+    /**
+     *
+     * @type {boolean}
+     * @memberof FinetuningJobList
+     */
+    readonly evalModelBefore: boolean;
+    /**
+     *
+     * @type {boolean}
+     * @memberof FinetuningJobList
+     */
+    readonly evalModelAfter: boolean;
+    /**
+     *
+     * @type {boolean}
+     * @memberof FinetuningJobList
+     */
     readonly validationEnabled: boolean;
     /**
      *
@@ -273,6 +297,10 @@ export function instanceOfFinetuningJobList(value: object): value is FinetuningJ
     if (!('evalDataset' in value) || value['evalDataset'] === undefined) return false;
     if (!('evalCell' in value) || value['evalCell'] === undefined) return false;
     if (!('evalSet' in value) || value['evalSet'] === undefined) return false;
+    if (!('evalIncumbentBefore' in value) || value['evalIncumbentBefore'] === undefined) return false;
+    if (!('evalIncumbentAfter' in value) || value['evalIncumbentAfter'] === undefined) return false;
+    if (!('evalModelBefore' in value) || value['evalModelBefore'] === undefined) return false;
+    if (!('evalModelAfter' in value) || value['evalModelAfter'] === undefined) return false;
     if (!('validationEnabled' in value) || value['validationEnabled'] === undefined) return false;
     if (!('validationSplitRatio' in value) || value['validationSplitRatio'] === undefined) return false;
     if (!('validationDataset' in value) || value['validationDataset'] === undefined) return false;
@@ -321,6 +349,10 @@ export function FinetuningJobListFromJSONTyped(json: any, ignoreDiscriminator: b
         'evalDataset': json['eval_dataset'],
         'evalCell': json['eval_cell'],
         'evalSet': json['eval_set'],
+        'evalIncumbentBefore': json['eval_incumbent_before'],
+        'evalIncumbentAfter': json['eval_incumbent_after'],
+        'evalModelBefore': json['eval_model_before'],
+        'evalModelAfter': json['eval_model_after'],
         'validationEnabled': json['validation_enabled'],
         'validationSplitRatio': json['validation_split_ratio'],
         'validationDataset': json['validation_dataset'],
@@ -356,7 +388,7 @@ export function FinetuningJobListToJSON(json: any): FinetuningJobList {
     return FinetuningJobListToJSONTyped(json, false);
 }
 
-export function FinetuningJobListToJSONTyped(value?: Omit<FinetuningJobList, 'id'|'project'|'capability'|'dataset'|'eval_dataset'|'eval_cell'|'eval_set'|'validation_enabled'|'validation_split_ratio'|'validation_dataset'|'cell'|'cell_info'|'validation_cell'|'split_method'|'name'|'use_case'|'base_model'|'status'|'group_id'|'model_tier'|'provider'|'output_model_name'|'deployed_model_id'|'model_weights_location'|'progress'|'retry_count'|'max_retries'|'error_message'|'cost_usd'|'billed_minutes'|'cost_synced_at'|'created_at'|'updated_at'|'started_at'|'completed_at'> | null, ignoreDiscriminator: boolean = false): any {
+export function FinetuningJobListToJSONTyped(value?: Omit<FinetuningJobList, 'id'|'project'|'capability'|'dataset'|'eval_dataset'|'eval_cell'|'eval_set'|'eval_incumbent_before'|'eval_incumbent_after'|'eval_model_before'|'eval_model_after'|'validation_enabled'|'validation_split_ratio'|'validation_dataset'|'cell'|'cell_info'|'validation_cell'|'split_method'|'name'|'use_case'|'base_model'|'status'|'group_id'|'model_tier'|'provider'|'output_model_name'|'deployed_model_id'|'model_weights_location'|'progress'|'retry_count'|'max_retries'|'error_message'|'cost_usd'|'billed_minutes'|'cost_synced_at'|'created_at'|'updated_at'|'started_at'|'completed_at'> | null, ignoreDiscriminator: boolean = false): any {
     if (value == null) {
         return value;
     }

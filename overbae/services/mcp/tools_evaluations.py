@@ -11,7 +11,7 @@ from django.db import transaction
 from django.db.models import Q
 from rest_framework.exceptions import ValidationError as DRFValidationError
 
-from overbae.api.eval_serializers import AnnotationSerializer, EvalRunSerializer
+from overbae.api.eval_serializers import AnnotationSerializer, EvalRunSerializer, EvalSetSerializer
 from overbae.models import (
     Annotation,
     Capability,
@@ -39,6 +39,8 @@ from overbae.services.mcp.contracts.evaluations import (
     CheckEvaluationReadinessOutput,
     CompareEvaluationsInput,
     CompareEvaluationsOutput,
+    CreateEvalSetInput,
+    CreateEvalSetOutput,
     CreditReadinessContract,
     EvalSetReadinessContract,
     EvaluationDatasetContract,
@@ -83,7 +85,7 @@ def _resolve_eval_set(
 ) -> EvalSet:
     query = EvalSet.objects.filter(project=context.project).select_related("capability")
     if capability is not None:
-        query = query.filter(capability=capability)
+        query = query.filter(Q(capability=capability) | Q(capability__isnull=True))
     normalized = _uuid(reference)
     if normalized:
         eval_set = query.filter(id=normalized).first()
@@ -275,11 +277,12 @@ def _readiness_sync(
         intent=public_intent(dataset.intent),
         cell=mcp_cell_contract(dataset, cell, "eval"),
     )
+    ready = ready and bool(dataset_data.cell and dataset_data.cell.fits)
     eval_set_data = (
         EvalSetReadinessContract(
             id=str(eval_set.id),
             name=eval_set.name,
-            capability=eval_set.capability.slug,
+            capability=eval_set.capability.slug if eval_set.capability_id else None,
             active=capability is not None and capability.active_eval_set_id == eval_set.id,
             member_count=len(readiness),
         )
@@ -694,6 +697,40 @@ def _annotation_sync(
     )
 
 
+def _create_eval_set_sync(payload: CreateEvalSetInput, context: MCPContext) -> CreateEvalSetOutput:
+    capability = _resolve_capability(context, payload.capability) if payload.capability else None
+    evaluators = [_resolve_evaluator(context, str(id_)) for id_ in payload.evaluator_ids]
+    serializer = EvalSetSerializer(
+        data={
+            "name": payload.name,
+            "project": str(context.project.id),
+            "capability": str(capability.id) if capability else None,
+            "evaluator_ids": [str(ev.id) for ev in evaluators],
+        },
+        context={"request": SimpleNamespace(user=context.user)},
+    )
+    try:
+        serializer.is_valid(raise_exception=True)
+        eval_set = serializer.save(created_by=context.user)
+    except DRFValidationError as exc:
+        raise MCPError(
+            "eval_set_invalid",
+            "The eval set failed validation.",
+            fields={str(key): str(value) for key, value in exc.detail.items()},
+        ) from exc
+    return CreateEvalSetOutput(
+        summary="Eval set created.",
+        eval_set=EvalSetReadinessContract(
+            id=str(eval_set.id),
+            name=eval_set.name,
+            capability=str(capability.id) if capability else None,
+            active=False,
+            member_count=eval_set.members.count(),
+        ),
+        resource_links=[resource_link("eval-sets", str(eval_set.id), eval_set.name)],
+    )
+
+
 def _async_handler(function):
     async def handler(payload, context):
         return await sync_to_async(function, thread_sensitive=True)(payload, context)
@@ -705,6 +742,19 @@ def register_evaluation_tools(catalog) -> None:
     from overbae.services.mcp.catalog import ToolDefinition
 
     definitions = [
+        (
+            "create_eval_set",
+            "Create eval set",
+            "Create an eval set from project library evaluators in their applicable roles. Capability is optional. Does not activate it or start a run.",
+            CreateEvalSetInput,
+            CreateEvalSetOutput,
+            _create_eval_set_sync,
+            False,
+            False,
+            "free",
+            "sync",
+            {"overmind:evaluate"},
+        ),
         (
             "check_evaluation_readiness",
             "Check evaluation readiness",
@@ -721,7 +771,7 @@ def register_evaluation_tools(catalog) -> None:
         (
             "upsert_evaluator",
             "Upsert evaluator",
-            "Create or update a project evaluator.",
+            "Create or update a project evaluator. Rubric judges default to generative; config.decision can opt into Jev with confidence fallback after workload validation. judge_model selects the generative judge. Rubric authoring and holistic judgments remain generative.",
             EvaluatorUpsertInput,
             EvaluatorUpsertOutput,
             _upsert_sync,

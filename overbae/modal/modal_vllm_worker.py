@@ -24,6 +24,7 @@ from pathlib import Path
 
 import modal
 
+from modal_shared.context_budget import completion_body
 from modal_shared.serving.args import lora_load_request
 from modal_shared.serving.artifacts import read_base_manifest
 
@@ -457,6 +458,16 @@ class _BaseVLLMWorker:
         if adapter:
             await self._ensure_adapter(adapter[0], adapter[1])
 
+        try:
+            body = completion_body(path, body)
+        except ValueError as exc:
+            return {
+                "status": 400,
+                "headers": {"content-type": "application/json"},
+                "body": json.dumps(
+                    {"error": {"message": str(exc), "type": "invalid_request_error"}}
+                ).encode(),
+            }
         url = f"http://localhost:{VLLM_PORT}{path}"
         safe_headers = {
             k: v for k, v in headers.items() if k.lower() not in ("host", "content-length")
@@ -496,6 +507,14 @@ class _BaseVLLMWorker:
         if adapter:
             await self._ensure_adapter(adapter[0], adapter[1])
 
+        try:
+            body = completion_body(path, body)
+        except ValueError as exc:
+            yield {"status": 400, "headers": {"content-type": "application/json"}}
+            yield json.dumps(
+                {"error": {"message": str(exc), "type": "invalid_request_error"}}
+            ).encode()
+            return
         url = f"http://localhost:{VLLM_PORT}{path}"
         safe_headers = {
             k: v for k, v in headers.items() if k.lower() not in ("host", "content-length")

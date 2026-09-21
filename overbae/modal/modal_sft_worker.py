@@ -23,16 +23,21 @@ has landed and the S3 archive is confirmed.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import shutil
 import subprocess
 import sys
+import tempfile
 import threading
 import time
 from pathlib import Path
 
 import modal
+
+from modal_shared.preparation import run_preparation_process
+from modal_shared.training_data import materialize_tokens
 
 APP_NAME = "overmind-sft"
 VOLUME_NAME = "overmind-sft"
@@ -97,6 +102,8 @@ def _run_training(run_id: str, env: dict[str, str]) -> dict:
     shutil.copy2(run_dir / "data.jsonl", work_dir / "data.jsonl")
     if (run_dir / "val.jsonl").exists():
         shutil.copy2(run_dir / "val.jsonl", work_dir / "val.jsonl")
+    shutil.copy2(run_dir / "preparation.json", work_dir / "preparation.json")
+    shutil.copytree(run_dir / "tokenizer", work_dir / "tokenizer", dirs_exist_ok=True)
 
     os.chdir(work_dir)
 
@@ -207,6 +214,30 @@ def _register_train(fn_name: str, image: modal.Image) -> None:
     _sft.__qualname__ = fn_name
     globals()[fn_name] = app.function(image=image, name=fn_name, **_TRAIN_FN_KWARGS)(_sft)
 
+    def prepare(preparation_id: str, request: dict) -> dict:
+        sft_vol.reload()
+        destination = Path(DATA_MOUNT) / "preparations" / preparation_id
+        try:
+            with tempfile.TemporaryDirectory(prefix="sft-prepare-") as workspace:
+                request_path = Path(workspace) / "request.json"
+                request_path.write_text(json.dumps(request))
+                return run_preparation_process(Path(_ASSETS_REMOTE_DIR), request_path, destination)
+        finally:
+            sft_vol.commit()
+
+    name = "prepare_" + fn_name
+    prepare.__name__ = name
+    prepare.__qualname__ = name
+    globals()[name] = app.function(
+        image=image,
+        name=name,
+        cpu=2,
+        memory=8192,
+        timeout=900,
+        volumes={DATA_MOUNT: sft_vol},
+        secrets=[inference_secret],
+    )(prepare)
+
 
 for _stack, _fn_name in TRAIN_FUNCTION_NAMES.items():
     _register_train(_fn_name, TRAIN_IMAGES[_stack])
@@ -263,15 +294,31 @@ def mark_cancelled(run_id: str) -> dict:
     timeout=3600,
     volumes={DATA_MOUNT: sft_vol},
 )
-def upload_dataset(run_id: str, data_jsonl: str, val_jsonl: str | None = None) -> dict:
+def upload_dataset(
+    run_id: str, data_jsonl: str, val_jsonl: str | None = None, preparation_id: str | None = None
+) -> dict:
     """Content arrives as a string rather than a batch_upload, so ModalRunner.submit needs no
     local Modal Volume mount access — just a normal Function call."""
     sft_vol.reload()
     run_dir = _run_dir(run_id)
     run_dir.mkdir(parents=True, exist_ok=True)
-    (run_dir / "data.jsonl").write_text(data_jsonl)
-    if val_jsonl:
-        (run_dir / "val.jsonl").write_text(val_jsonl)
+    if not preparation_id:
+        raise ValueError("A validated preprocessing artifact is required.")
+    preparation = Path(DATA_MOUNT) / "preparations" / preparation_id
+    report = json.loads((preparation / "report.json").read_text())
+    if not report.get("ready"):
+        raise ValueError("This preprocessing artifact has incompatible rows.")
+    artifact = (preparation / "tokens.jsonl").read_bytes()
+    if hashlib.sha256(artifact).hexdigest() != report["artifact_sha256"]:
+        raise ValueError("The preprocessing artifact changed.")
+    tokens = {row["key"]: row for row in (json.loads(line) for line in artifact.splitlines())}
+    for name, text in (("data.jsonl", data_jsonl), ("val.jsonl", val_jsonl)):
+        if not text:
+            continue
+        with (run_dir / name).open("w") as target:
+            target.writelines(materialize_tokens(text, tokens))
+    shutil.copytree(preparation / "tokenizer", run_dir / "tokenizer", dirs_exist_ok=True)
+    (run_dir / "preparation.json").write_text(json.dumps(report))
     sft_vol.commit()
     return {"run_id": run_id, "run_dir": str(run_dir)}
 

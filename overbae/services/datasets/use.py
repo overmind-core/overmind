@@ -1,21 +1,22 @@
-"""The one gate consumers pass. ``check`` picks the cell and checks both
-contracts; ``use`` also marks it used, and belongs in the transaction that
-creates the consumer's row."""
+"""Pick a readable version and freeze it; quality findings do not prevent use."""
 
 from __future__ import annotations
 
+import logging
 from typing import Any
 
+from django.db import transaction
 from django.utils import timezone
 
 from overbae.models import Cell, Dataset
+from overbae.services.datasets import rows
 from overbae.services.datasets.contract import public_intent
 from overbae.services.datasets.lifecycle import DatasetError
 
+logger = logging.getLogger(__name__)
+
 
 def check(dataset: Dataset, intent: str, *, cell: Cell | None = None) -> Cell:
-    """``intent`` is ``train`` or ``eval``: what the consumer needs. The dataset's
-    own intent must agree. Changes nothing."""
     if cell is not None and cell.dataset_id != dataset.id:
         raise DatasetError("That version belongs to another dataset.", code="cell_mismatch")
     stored = public_intent(dataset.intent)
@@ -30,7 +31,8 @@ def check(dataset: Dataset, intent: str, *, cell: Cell | None = None) -> Cell:
     if cell is None:
         if dataset.state == Dataset.State.ERROR:
             raise DatasetError(
-                f"The last run of {dataset.name} failed: {dataset.error}", code="run_failed"
+                f"The last run of {dataset.name} failed. Run it again in the data workshop.",
+                code="run_failed",
             )
         if dataset.state in (Dataset.State.RUNNING, Dataset.State.DIAGNOSING):
             raise DatasetError(f"{dataset.name} is running. Wait for it to finish.", code="running")
@@ -38,12 +40,27 @@ def check(dataset: Dataset, intent: str, *, cell: Cell | None = None) -> Cell:
     ok, reason = cell.fits(intent)
     if not ok:
         raise DatasetError(f"{dataset.name} · {label(dataset, cell)}: {reason}", code="contract")
+    try:
+        rows.verify(cell)
+    except (ValueError, rows.RowStoreError) as exc:
+        logger.exception("Could not verify dataset cell %s", cell.pk)
+        raise DatasetError(
+            f"{dataset.name}: this version is unreadable or has changed. Run it again in the data workshop.",
+            code="workshop_validation",
+        ) from exc
     return cell
 
 
+@transaction.atomic
 def use(dataset: Dataset, intent: str, *, cell: Cell | None = None) -> Cell:
     """``check``, then set ``used_at`` the first time, which freezes the cell
     and every cell it reads and starts a new major version."""
+    # Share generation's lock so a consumed version cannot change between batches.
+    dataset = (
+        Dataset.objects.select_for_update(of=("self",))
+        .select_related("capability")
+        .get(pk=dataset.pk)
+    )
     cell = check(dataset, intent, cell=cell)
     freeze(cell)
     return cell

@@ -132,6 +132,7 @@ class DatasetViewSet(viewsets.ModelViewSet):
             source=source,
             intent=data.get("intent"),
             capability=capability,
+            infer_capability="capability" not in data,
         )
         return Response(DatasetSerializer(dataset).data, status=status.HTTP_201_CREATED)
 
@@ -154,7 +155,11 @@ class DatasetViewSet(viewsets.ModelViewSet):
                 source=source,
                 eval_percent=data["eval_percent"],
                 position=data["position"],
+                group_by=data["group_by"],
+                stratify_by=data["stratify_by"],
+                deduplicate=data["deduplicate"],
                 capability=capability,
+                infer_capability="capability" not in data,
             )
         except lifecycle.DatasetError as exc:
             raise ValidationError({"detail": exc.detail, "code": exc.code}) from exc
@@ -197,6 +202,9 @@ class DatasetViewSet(viewsets.ModelViewSet):
                 raise ValidationError({"source": "Nothing to read."})
         if payload.get("upload_id") and files.upload_received(payload["upload_id"]) == 0:
             raise ValidationError({"source": "The upload is empty or has expired."})
+        for upload_id in payload.get("uploads", []):
+            if not files.upload_filename(upload_id) or files.upload_received(upload_id) == 0:
+                raise ValidationError({"source": "An upload is empty or has expired."})
         return payload
 
     def perform_update(self, serializer):
@@ -293,7 +301,9 @@ class DatasetViewSet(viewsets.ModelViewSet):
             return refused
         cell = self._cell(dataset, cell_id)
         try:
-            lifecycle.remove_cell(dataset, cell)
+            dispatch.discard_cell(
+                dataset, cell, request.user if request.user.is_authenticated else None
+            )
         except lifecycle.DatasetError as exc:
             return _error(exc)
         events.publish(dataset.id, {"dataset_id": str(dataset.id), "type": "cells_changed"})

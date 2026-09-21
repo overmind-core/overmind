@@ -37,9 +37,9 @@ pytestmark = pytest.mark.django_db
 
 @pytest.fixture(autouse=True)
 def clear_model_catalog_cache():
-    cache.delete("openrouter_model_catalog_v1")
+    cache.delete("openrouter_model_catalog")
     yield
-    cache.delete("openrouter_model_catalog_v1")
+    cache.delete("openrouter_model_catalog")
 
 
 URL = "/api/v1/chat/completions"

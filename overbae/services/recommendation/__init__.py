@@ -1,14 +1,16 @@
 """Which models to fine-tune on a dataset, and the evidence behind the order.
 
-Entry points read the database; everything they call is pure. No LLM takes part in any
-answer here — the same dataset always produces the same recommendation, so there is
-nothing to cache.
+The selected capability supplies the task; without one, the dataset does.
+Capability classification is cached by codebase context. Benchmark ranking is pure.
 """
 
 from __future__ import annotations
 
 import logging
 from typing import Any
+
+from overbae.core.errors import InputValidationError
+from overbae.services.serving_context import evaluation_budget, serving_plan
 
 from .analysis import build_analysis
 from .candidates import build_candidate, dataset_total_tokens
@@ -19,12 +21,15 @@ logger = logging.getLogger(__name__)
 _CLASSIFIER_INPUTS = ("output_kind", "modality", "has_tool_calls")
 
 
-def get_recommendation(dataset_id: str, capability_id: str | None = None) -> dict[str, Any]:
+def get_recommendation(
+    dataset_id: str, capability_id: str | None = None, *, eval_dataset_id: str | None = None
+) -> dict[str, Any]:
     """Ranked fine-tuning candidates for a dataset, grounded in its capability's context.
 
-    Without ``capability_id`` the dataset's own capability is used.
+    Without ``capability_id`` classify the dataset, even if it has a capability mapping.
     """
     from overbae.models import Capability, Dataset  # noqa: PLC0415
+    from overbae.services.codebase.task_type import classify_capability_task  # noqa: PLC0415
     from overbae.services.datasets.rows import dataset_stats  # noqa: PLC0415
 
     from .capability_context import collect_capability_context  # noqa: PLC0415
@@ -33,12 +38,14 @@ def get_recommendation(dataset_id: str, capability_id: str | None = None) -> dic
     capability = None
     if capability_id:
         capability = Capability.objects.get(pk=capability_id, project_id=dataset.project_id)
-    elif dataset.capability_id:
-        capability = dataset.capability
 
     stats = dataset_stats(dataset)
-    task_type, source = _resolve_task_type(dataset, stats)
-    return build_analysis(
+    if capability is not None:
+        task_type = classify_capability_task(capability)
+        source = "capability" if task_type != "unknown" else "unknown"
+    else:
+        task_type, source = _resolve_task_type(dataset, stats)
+    analysis = build_analysis(
         stats,
         task_type=task_type,
         task_type_source=source,
@@ -46,6 +53,26 @@ def get_recommendation(dataset_id: str, capability_id: str | None = None) -> dic
         if capability is not None
         else None,
     )
+    if eval_dataset_id:
+        evaluation = Dataset.objects.get(pk=eval_dataset_id, project_id=dataset.project_id)
+        cell = evaluation.active_cell
+        if cell is None:
+            raise InputValidationError("The evaluation dataset has no readable version.")
+        budget = evaluation_budget(cell, capability=capability)
+        accepted = []
+        for candidate in analysis["candidates"]:
+            try:
+                candidate["serving_context"] = serving_plan(candidate["model"], budget)
+                accepted.append(candidate)
+            except InputValidationError as exc:
+                analysis["excluded"].append({"model": candidate["model"], "reason": exc.detail})
+        analysis["candidates"] = accepted
+        remaining = {candidate["model"] for candidate in accepted}
+        analysis["shown"] = [model for model in analysis["shown"] if model in remaining]
+        if not analysis["shown"] and accepted:
+            analysis["shown"] = [accepted[0]["model"]]
+            accepted[0]["selected"] = True
+    return analysis
 
 
 def estimate_for_hyperparams(
@@ -79,7 +106,7 @@ def estimate_for_hyperparams(
     if not training_enabled(entry, kind):
         raise ValueError(f"Model {base_model} does not support {kind_label} fine-tuning")
     max_tokens = int(stats.get("max_token_length") or 0)
-    if max_tokens:
+    if max_tokens and active_backend() != "modal":
         model_max = training_context_length(entry, kind)
         headroom = context_headroom("baseten")
         if model_max is not None and model_max < max_tokens + headroom:
@@ -113,7 +140,7 @@ def recommend_hyperparams_for_model(
     if entry is None:
         raise ValueError(f"Unknown base model: {base_model}")
     max_tokens = int(stats.get("max_token_length") or 0)
-    if max_tokens:
+    if max_tokens and active_backend() != "modal":
         from overbae.modal.model_registry import context_headroom
         from overbae.modal.training_type import training_context_length, usable_training_kinds
 
