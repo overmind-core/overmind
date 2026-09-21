@@ -5,8 +5,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { DatasetChat } from "@/components/datasets/notebook/chat";
 import { Icon } from "@/components/ui/icons";
-import type { ChatTurn } from "@/hooks/use-datasets";
-import type { Cell } from "@/openapi";
+import { type ChatTurn, chatOf } from "@/hooks/use-datasets";
+import { type Cell, DatasetFromJSON } from "@/openapi";
 
 const source = { fingerprint: "source-hash", id: "source", state: "ok", title: "Source" } as Cell;
 const proposal = {
@@ -56,6 +56,53 @@ afterEach(() => {
 });
 
 describe("Workshop chat", () => {
+  it.each([
+    "running",
+    "awaiting_approval",
+    "resolved",
+    "error",
+    "complete",
+  ] as const)("restores %s turns through the generated dataset decoder", (status) => {
+    const saved: ChatTurn = {
+      at: "2026-09-20T10:00:00Z",
+      cells: [{ action: "ran", id: source.id, text_offset: 0 }],
+      error: status === "error" ? "Check failed" : "",
+      id: "turn-1",
+      ms: 4200,
+      progress: {
+        detail: "Adding examples",
+        generated_rows: 7,
+        label: "Generating",
+        stage: "generating",
+        target_rows: 20,
+      },
+      role: "agent",
+      status,
+      steps: [
+        {
+          duration_ms: 4200,
+          id: "thought",
+          phase: "thinking",
+          status: "done",
+          text: "Checking the source.",
+          text_offset: 0,
+          type: "activity",
+        },
+      ],
+      text: "Checking the examples.",
+    };
+    const refetched = chatOf(DatasetFromJSON({ cells: [], chat: [saved] }));
+    expect(refetched).toEqual([saved]);
+    const props = { ...callbacks(), busy: status === "running", cells: [source], live: null };
+    const { rerender } = render(<DatasetChat {...props} turns={[]} />);
+    rerender(<DatasetChat {...props} turns={refetched} />);
+    expect(screen.getByRole("button", { name: "Thought for 4s" })).toBeTruthy();
+    expect(screen.getByText("Checking the examples.")).toBeTruthy();
+    expect(!!screen.queryByText("Awaiting approval")).toBe(status === "awaiting_approval");
+    expect(!!screen.queryByText("Incomplete")).toBe(status === "error");
+    if (status === "running") expect(screen.getByText("7 of 20 rows added")).toBeTruthy();
+  });
+
   it("shows a pending approval without a failure or a running spinner after reload", () => {
     const turns: ChatTurn[] = [
       {

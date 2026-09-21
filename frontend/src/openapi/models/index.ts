@@ -53,6 +53,7 @@ export * from './ChatRequest';
 export * from './ChatTurn';
 export * from './ChatTurnRequest';
 export * from './ChatTurnRoleEnum';
+export * from './ChatTurnStatusEnum';
 export * from './CheckoutSessionResponse';
 export * from './CheckpointFile';
 export * from './ColumnStat';

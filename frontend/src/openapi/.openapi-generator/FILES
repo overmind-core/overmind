@@ -81,6 +81,7 @@ models/ChatRequest.ts
 models/ChatTurn.ts
 models/ChatTurnRequest.ts
 models/ChatTurnRoleEnum.ts
+models/ChatTurnStatusEnum.ts
 models/CheckoutSessionResponse.ts
 models/CheckpointFile.ts
 models/ColumnStat.ts

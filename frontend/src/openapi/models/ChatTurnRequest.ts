@@ -13,6 +13,13 @@
  */
 
 import { mapValues } from '../runtime';
+import type { ChatTurnStatusEnum } from './ChatTurnStatusEnum';
+import {
+    ChatTurnStatusEnumFromJSON,
+    ChatTurnStatusEnumFromJSONTyped,
+    ChatTurnStatusEnumToJSON,
+    ChatTurnStatusEnumToJSONTyped,
+} from './ChatTurnStatusEnum';
 import type { ChatTurnRoleEnum } from './ChatTurnRoleEnum';
 import {
     ChatTurnRoleEnumFromJSON,
@@ -27,6 +34,12 @@ import {
  * @interface ChatTurnRequest
  */
 export interface ChatTurnRequest {
+    /**
+     *
+     * @type {string}
+     * @memberof ChatTurnRequest
+     */
+    id?: string;
     /**
      *
      * @type {ChatTurnRoleEnum}
@@ -51,6 +64,30 @@ export interface ChatTurnRequest {
      * @memberof ChatTurnRequest
      */
     cells?: Array<any>;
+    /**
+     *
+     * @type {Array<any>}
+     * @memberof ChatTurnRequest
+     */
+    steps?: Array<any>;
+    /**
+     *
+     * @type {number}
+     * @memberof ChatTurnRequest
+     */
+    ms?: number;
+    /**
+     *
+     * @type {ChatTurnStatusEnum}
+     * @memberof ChatTurnRequest
+     */
+    status?: ChatTurnStatusEnum;
+    /**
+     *
+     * @type {any}
+     * @memberof ChatTurnRequest
+     */
+    progress?: any | null;
     /**
      *
      * @type {string}
@@ -81,10 +118,15 @@ export function ChatTurnRequestFromJSONTyped(json: any, ignoreDiscriminator: boo
     }
     return {
 
+        'id': json['id'] == null ? undefined : json['id'],
         'role': ChatTurnRoleEnumFromJSON(json['role']),
         'text': json['text'],
         'error': json['error'] == null ? undefined : json['error'],
         'cells': json['cells'] == null ? undefined : json['cells'],
+        'steps': json['steps'] == null ? undefined : json['steps'],
+        'ms': json['ms'] == null ? undefined : json['ms'],
+        'status': json['status'] == null ? undefined : ChatTurnStatusEnumFromJSON(json['status']),
+        'progress': json['progress'] == null ? undefined : json['progress'],
         'at': json['at'],
     };
 }
@@ -100,10 +142,15 @@ export function ChatTurnRequestToJSONTyped(value?: ChatTurnRequest | null, ignor
 
     return {
 
+        'id': value['id'],
         'role': ChatTurnRoleEnumToJSON(value['role']),
         'text': value['text'],
         'error': value['error'],
         'cells': value['cells'],
+        'steps': value['steps'],
+        'ms': value['ms'],
+        'status': ChatTurnStatusEnumToJSON(value['status']),
+        'progress': value['progress'],
         'at': value['at'],
     };
 }

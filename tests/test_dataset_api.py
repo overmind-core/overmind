@@ -66,6 +66,50 @@ def test_create_lands_the_source_and_reads_back_with_cells():
     assert body["chat"] == []
 
 
+@pytest.mark.parametrize(
+    "status", ["running", "awaiting_approval", "resolved", "error", "complete"]
+)
+def test_chat_refetch_preserves_activity_and_progress(status):
+    project = _project()
+    client = _client(project)
+    dataset = _create(client, project, rows=EVAL_ROWS)
+    legacy = {"role": "user", "text": "Prepare the data.", "at": "2026-09-20T10:00:00Z"}
+    turn = {
+        "id": "turn-1",
+        "role": "agent",
+        "text": "Checking the examples.",
+        "at": legacy["at"],
+        "error": "Check failed" if status == "error" else "",
+        "cells": [{"id": str(dataset.active_id), "action": "ran", "text_offset": 0}],
+        "steps": [
+            {
+                "type": "activity",
+                "phase": "thinking",
+                "id": "step-1",
+                "status": "done",
+                "duration_ms": 4200,
+                "text": "Checking the source.",
+                "text_offset": 0,
+            }
+        ],
+        "ms": 5000,
+        "status": status,
+        "progress": {
+            "stage": "generating",
+            "label": "Generating",
+            "detail": "Adding examples",
+            "generated_rows": 7,
+            "target_rows": 20,
+            "updated_at": legacy["at"],
+        },
+    }
+    dataset.chat = [legacy, {**turn, "turn_key": "internal-delivery-key"}]
+    dataset.save(update_fields=["chat"])
+    response = client.get(f"/api/datasets/{dataset.id}/")
+    assert response.status_code == 200
+    assert response.data["chat"] == [legacy, turn]
+
+
 @pytest.mark.parametrize("split", [False, True])
 @pytest.mark.parametrize("choice", ["automatic", "none", "selected"])
 def test_creation_distinguishes_no_capability_from_automatic_matching(split, choice):
