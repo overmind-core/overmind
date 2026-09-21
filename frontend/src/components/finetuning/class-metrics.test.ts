@@ -1,12 +1,11 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import type { ClassMetrics, FinetuningJudgeEvalRow } from "@/hooks/use-finetuning";
-import {
-  buildClassSeries,
-  buildMacroSeries,
-  evalStepOf,
-  latestClassMetrics,
-} from "./class-metrics";
+import { buildClassSeries, buildMacroSeries, evalStepOf } from "./class-metrics";
+import { latestClassMetricsOf } from "./judge-eval-table";
+
+// Provider-logo ESM subpaths do not resolve in Vitest; selection uses no logo rendering.
+vi.mock("@/components/model-provider-chip", () => ({ ModelProviderChip: () => null }));
 
 const metricsAt = (f1: number): ClassMetrics => ({
   aggregates: {
@@ -54,12 +53,21 @@ describe("evalStepOf", () => {
   });
 });
 
-describe("latestClassMetrics", () => {
+describe("latestClassMetricsOf", () => {
   it("prefers final over checkpoints over baseline", () => {
-    expect(latestClassMetrics(rows)?.row.kind).toBe("final");
-    expect(latestClassMetrics(rows.slice(0, 2))?.row.kind).toBe("checkpoint");
-    expect(latestClassMetrics([rows[0]])?.row.kind).toBe("baseline");
-    expect(latestClassMetrics([rows[3]])).toBeNull();
+    expect(latestClassMetricsOf(rows)?.row.kind).toBe("final");
+    expect(latestClassMetricsOf(rows.slice(0, 2))?.row.kind).toBe("checkpoint");
+    expect(latestClassMetricsOf([rows[0]])?.row.kind).toBe("baseline");
+    expect(latestClassMetricsOf([rows[3]])).toBeNull();
+  });
+
+  it("ranks the incumbent after checkpoints and the base model before them", () => {
+    const incumbent = row("incumbent_after", null, metricsAt(0.7));
+    const base = row("model_before", null, metricsAt(0.5));
+    expect(latestClassMetricsOf([...rows, incumbent, base])?.row.kind).toBe("final");
+    expect(latestClassMetricsOf([...rows.slice(0, 2), incumbent, base])?.row).toBe(incumbent);
+    expect(latestClassMetricsOf([...rows.slice(0, 2), base])?.row.kind).toBe("checkpoint");
+    expect(latestClassMetricsOf([rows[0], base])?.row).toBe(base);
   });
 });
 

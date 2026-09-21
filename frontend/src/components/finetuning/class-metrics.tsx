@@ -33,24 +33,6 @@ function rowsWithClassMetrics(rows: FinetuningJudgeEvalRow[]): FinetuningJudgeEv
   return rows.filter((r) => r.class_metrics?.classes?.length);
 }
 
-export function latestClassMetrics(rows: FinetuningJudgeEvalRow[]): {
-  metrics: ClassMetrics;
-  row: FinetuningJudgeEvalRow;
-} | null {
-  const scored = rowsWithClassMetrics(rows);
-  if (scored.length === 0) return null;
-  const rank = (r: FinetuningJudgeEvalRow) =>
-    r.kind === "final"
-      ? Number.MAX_SAFE_INTEGER
-      : r.kind === "incumbent_after"
-        ? Number.MAX_SAFE_INTEGER - 1
-        : r.kind === "baseline"
-          ? -1
-          : (r.checkpoint_step ?? 0);
-  const best = [...scored].sort((a, b) => rank(a) - rank(b)).at(-1)!;
-  return { metrics: best.class_metrics!, row: best };
-}
-
 export const classColor = seriesColor;
 
 export type ClassSeriesMetric = "precision" | "recall" | "f1";
