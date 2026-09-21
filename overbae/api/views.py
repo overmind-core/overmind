@@ -78,6 +78,7 @@ from overbae.api.span_ordering import (
     annotate_spans_for_ordering,
     llm_model_sql,
 )
+from overbae.core.errors import InputValidationError
 from overbae.models import (
     APIToken,
     ConnectorCredential,
@@ -955,8 +956,11 @@ class FinetuningJobViewSet(viewsets.ModelViewSet):
         try:
             retry_training_preparation(job)
             reset_before_evals_for_retry(job)
-        except (ValueError, RuntimeError) as exc:
-            raise drf_serializers.ValidationError(str(exc)) from exc
+        except InputValidationError as exc:
+            raise drf_serializers.ValidationError(exc.detail) from exc
+        except (ValueError, RuntimeError, OSError) as exc:
+            logger.exception("Could not prepare training job %s for retry", job.pk)
+            raise drf_serializers.ValidationError("Could not retry training. Try again.") from exc
         FinetuningJob.objects.filter(pk=job.pk).update(
             status=FinetuningJob.Status.QUEUED,
             error_message="",
@@ -1297,8 +1301,13 @@ class FinetuningJobViewSet(viewsets.ModelViewSet):
             analysis = get_recommendation(
                 str(dataset.id), capability_id=capability_id, eval_dataset_id=eval_dataset_id
             )
-        except ValueError as exc:
-            return Response({"detail": str(exc)}, status=400)
+        except InputValidationError as exc:
+            raise drf_serializers.ValidationError({"detail": exc.detail}) from exc
+        except (ValueError, RuntimeError, OSError) as exc:
+            logger.exception("Could not recommend models for dataset %s", dataset.pk)
+            raise drf_serializers.ValidationError(
+                {"detail": "Could not recommend models for this dataset. Try again."}
+            ) from exc
         return Response(FinetuningRecommendationResponseSerializer(analysis).data)
 
     @extend_schema(
@@ -1985,8 +1994,13 @@ class DeployedModelViewSet(
                 retry_deployment(instance.pk)
             else:
                 ensure_training_deployment(str(instance.finetuning_job_id))
-        except ValueError as exc:
-            return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        except InputValidationError as exc:
+            raise drf_serializers.ValidationError({"detail": exc.detail}) from exc
+        except (ValueError, RuntimeError, OSError) as exc:
+            logger.exception("Could not deploy model %s", instance.pk)
+            raise drf_serializers.ValidationError(
+                {"detail": "Could not start model deployment. Try again."}
+            ) from exc
         instance.refresh_from_db()
         return Response(DeployedModelSerializer(instance).data)
 
@@ -2027,8 +2041,13 @@ class DeployedModelViewSet(
         require_credits(request.user)
         try:
             retry_deployment(instance.pk)
-        except ValueError as exc:
-            return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        except InputValidationError as exc:
+            raise drf_serializers.ValidationError({"detail": exc.detail}) from exc
+        except (ValueError, RuntimeError, OSError) as exc:
+            logger.exception("Could not retry model deployment %s", instance.pk)
+            raise drf_serializers.ValidationError(
+                {"detail": "Could not retry model deployment. Try again."}
+            ) from exc
         instance.refresh_from_db()
         return Response(DeployedModelSerializer(instance).data)
 

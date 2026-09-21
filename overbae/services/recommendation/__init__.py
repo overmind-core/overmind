@@ -9,6 +9,7 @@ from __future__ import annotations
 import logging
 from typing import Any
 
+from overbae.core.errors import InputValidationError
 from overbae.services.serving_context import evaluation_budget, serving_plan
 
 from .analysis import build_analysis
@@ -56,15 +57,15 @@ def get_recommendation(
         evaluation = Dataset.objects.get(pk=eval_dataset_id, project_id=dataset.project_id)
         cell = evaluation.active_cell
         if cell is None:
-            raise ValueError("The evaluation dataset has no readable version.")
+            raise InputValidationError("The evaluation dataset has no readable version.")
         budget = evaluation_budget(cell, capability=capability)
         accepted = []
         for candidate in analysis["candidates"]:
             try:
                 candidate["serving_context"] = serving_plan(candidate["model"], budget)
                 accepted.append(candidate)
-            except ValueError as exc:
-                analysis["excluded"].append({"model": candidate["model"], "reason": str(exc)})
+            except InputValidationError as exc:
+                analysis["excluded"].append({"model": candidate["model"], "reason": exc.detail})
         analysis["candidates"] = accepted
         remaining = {candidate["model"] for candidate in accepted}
         analysis["shown"] = [model for model in analysis["shown"] if model in remaining]

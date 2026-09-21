@@ -4,6 +4,7 @@ import asyncio
 import json
 import uuid
 from types import SimpleNamespace
+from unittest.mock import Mock
 
 import pandas as pd
 import pytest
@@ -11,6 +12,7 @@ from conftest import TRAIN_ROWS, frozen_dataset
 from mcp_fixtures import training_setup
 
 from modal_shared.preparation import preparation_failure
+from overbae.core.errors import InputValidationError
 from overbae.models import (
     APIToken,
     Cell,
@@ -47,6 +49,40 @@ def _context(*, permission: str | list[str] = "read") -> MCPContext:
 
 def _call(name: str, arguments: dict, context: MCPContext):
     return asyncio.run(CATALOG.call(name, arguments, context))
+
+
+@pytest.mark.parametrize("tool", ["prepare_training_data", "retry_deployment"])
+@pytest.mark.parametrize("known", [True, False])
+def test_preparation_and_deployment_errors_are_safe_for_agents(monkeypatch, tool, known):
+    context = _context(permission=["read", "write"])
+    _, train, _, _ = training_setup(context)
+    private = "Traceback: /srv/private/worker.py provider_token=hidden"
+    detail = "The previous operation has not stopped." if known else private
+    failure = InputValidationError(detail) if known else ValueError(detail)
+    if tool == "prepare_training_data":
+        monkeypatch.setattr(tools_finetuning, "request_preparation", Mock(side_effect=failure))
+        arguments = {
+            "dataset": str(train.id),
+            "base_model": "Qwen/Qwen3-8B",
+            "context_length": 4096,
+        }
+    else:
+        job = FinetuningJob.objects.create(
+            project=context.project, dataset=train, status="succeeded", remote_job_id="remote"
+        )
+        deployed = DeployedModel.objects.create(
+            project=context.project, finetuning_job=job, status="failed", model_id="retry-error"
+        )
+        monkeypatch.setattr("overbae.api.credit_gate.require_credits", lambda _: None)
+        monkeypatch.setattr(tools_finetuning, "retry_deployment", Mock(side_effect=failure))
+        arguments = {"deployment": str(deployed.id)}
+    result = _call(tool, arguments, context)
+    assert result.isError
+    assert private not in json.dumps(result.structuredContent)
+    if known:
+        assert result.structuredContent["error"]["message"] == detail
+    else:
+        assert result.structuredContent["error"]["code"] == "internal_error"
 
 
 def _ok_cell(dataset, *, intent, rows=2, title="source", position=0, active=True, fits=True):

@@ -11,6 +11,7 @@ from rest_framework import serializers
 from rest_framework.validators import UniqueTogetherValidator
 
 from overbae.api.scoping import project_ids_for
+from overbae.core.errors import InputValidationError
 from overbae.models import (
     APIToken,
     BillingTelemetry,
@@ -1398,8 +1399,13 @@ class FinetuningJobSerializer(serializers.ModelSerializer):
             if base_model:
                 try:
                     serving_plan(base_model, evaluation_budget(eval_product, capability=capability))
-                except ValueError as exc:
-                    raise serializers.ValidationError({"base_model": str(exc)}) from exc
+                except InputValidationError as exc:
+                    raise serializers.ValidationError({"base_model": exc.detail}) from exc
+                except (ValueError, RuntimeError, OSError) as exc:
+                    logger.exception("Could not validate evaluation serving context")
+                    raise serializers.ValidationError(
+                        {"base_model": "Could not validate the evaluation workload for this model."}
+                    ) from exc
         eval_set = attrs.get("eval_set") or getattr(self.instance, "eval_set", None)
         if eval_set and project and eval_set.project_id != project.id:
             raise serializers.ValidationError(

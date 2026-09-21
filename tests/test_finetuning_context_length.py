@@ -4,11 +4,13 @@ models.json catalog the code does."""
 from __future__ import annotations
 
 import uuid
+from unittest.mock import Mock
 
 import pytest
 from conftest import EVAL_ROWS, TRAIN_ROWS, frozen_dataset
 from django.test import override_settings
 
+from overbae.core.errors import InputValidationError
 from overbae.modal.model_registry import (
     get_sft_context_length,
     get_training_context_policy,
@@ -189,6 +191,26 @@ class TestRecommenderIncludesContext:
 
 @pytest.mark.django_db
 class TestJobSerializerContextValidation:
+    @pytest.mark.parametrize("source", ["evaluation_budget", "serving_plan"])
+    @pytest.mark.parametrize(
+        "failure_type", [ValueError, RuntimeError, OSError, InputValidationError]
+    )
+    def test_context_validation_only_exposes_authored_messages(
+        self, monkeypatch, source, failure_type
+    ):
+        private = "Traceback: /srv/private/evaluation.py credential=hidden"
+        known = failure_type is InputValidationError
+        detail = "This workload needs a larger context window." if known else private
+        operation = Mock(side_effect=failure_type(detail))
+        monkeypatch.setattr(f"overbae.api.serializers.{source}", operation)
+        serializer = self._serializer(max_token_length=100, base_model="Qwen/Qwen3-8B")
+        assert not serializer.is_valid()
+        operation.assert_called_once()
+        assert private not in str(serializer.errors)
+        assert "base_model" in serializer.errors
+        if known:
+            assert detail in str(serializer.errors)
+
     def _serializer(self, *, max_token_length: int, base_model: str):
         from overbae.api.serializers import FinetuningJobSerializer
         from overbae.models import Project, ProjectMembership, User

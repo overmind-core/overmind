@@ -10,6 +10,8 @@ from __future__ import annotations
 import logging
 from typing import Any
 
+from overbae.core.errors import InputValidationError
+
 logger = logging.getLogger(__name__)
 
 GPU_MEMORY_UTILIZATION = 0.90
@@ -120,7 +122,7 @@ def select_gpu(
         )
         return tier["name"], max_concurrent
 
-    raise ValueError(
+    raise InputValidationError(
         f"{model_cfg.get('id') or 'This model'} at {max_model_len:,} serving tokens "
         "exceeds available single-GPU capacity. Choose a smaller model or a shorter workload."
     )

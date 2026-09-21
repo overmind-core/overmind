@@ -1,6 +1,7 @@
 import gzip
 import json
 import uuid
+from unittest.mock import Mock
 
 import pyarrow as pa
 import pyarrow.parquet as pq
@@ -62,7 +63,7 @@ def test_inspection_counts_parquet_metadata():
         ("empty.json", b"[]", "no rows"),
         ("invalid.jsonl", b'{"input":', "not valid JSON"),
         ("invalid.parquet", b"not parquet", "Parquet"),
-        ("truncated.csv.gz", b"\x1f\x8b", "end-of-stream"),
+        ("truncated.csv.gz", b"\x1f\x8b", "not readable gzip"),
     ],
 )
 def test_inspection_rejects_empty_or_invalid_files(name, content, message):
@@ -100,6 +101,24 @@ def test_inspection_endpoint_counts_rows_and_reports_validation_errors(client_pr
     assert client.post(url, {"size": 999}, format="json").status_code == 400
     assert client.post("/api/uploads/not-a-uuid/inspect/", {"size": 0}).status_code == 404
     assert APIClient().post(url, {"size": len(content)}, format="json").status_code == 401
+
+
+@pytest.mark.parametrize("failure_type", [OSError, ValueError, pa.ArrowInvalid])
+def test_inspection_does_not_expose_parser_or_storage_diagnostics(
+    client_project, monkeypatch, caplog, failure_type
+):
+    client, _ = client_project
+    content = b"input\none\n"
+    upload_id = _upload("data.csv", content)
+    private = "Traceback: /srv/private/uploads/data token=hidden"
+    monkeypatch.setattr(files, "_open_text", Mock(side_effect=failure_type(private)))
+    result = client.post(
+        f"/api/uploads/{upload_id}/inspect/", {"size": len(content)}, format="json"
+    )
+    assert result.status_code == 400
+    assert "could not be read" in result.data["detail"]
+    assert private not in result.content.decode()
+    assert private in caplog.text
 
 
 @pytest.mark.parametrize("split", [False, True])

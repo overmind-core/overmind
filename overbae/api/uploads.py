@@ -69,7 +69,7 @@ class UploadViewSet(viewsets.ViewSet):
         try:
             result = files.inspect_upload(upload_id, size=payload.validated_data["size"])
         except files.FileError as exc:
-            raise ValidationError({"detail": str(exc)}) from exc
+            raise ValidationError({"detail": exc.detail}) from exc
         return Response(UploadInspectionSerializer(result).data)
 
     @extend_schema(
@@ -83,7 +83,7 @@ class UploadViewSet(viewsets.ViewSet):
         try:
             upload_id, name = files.begin_upload(payload.validated_data["filename"])
         except files.FileError as exc:
-            return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+            raise ValidationError({"detail": exc.detail}) from exc
         return Response(
             {
                 "upload_id": upload_id,
@@ -117,5 +117,5 @@ class UploadViewSet(viewsets.ViewSet):
         try:
             size = files.append_chunk(pk, offset, body)
         except files.FileError as exc:
-            return Response({"detail": str(exc)}, status=status.HTTP_409_CONFLICT)
+            return Response({"detail": exc.detail}, status=status.HTTP_409_CONFLICT)
         return Response({"upload_id": pk, "received": size})

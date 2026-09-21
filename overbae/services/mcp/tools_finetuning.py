@@ -11,6 +11,7 @@ from django.db.models import Q
 from rest_framework.exceptions import ValidationError as DRFValidationError
 
 from overbae.api.serializers import CapabilitySerializer
+from overbae.core.errors import InputValidationError
 from overbae.models import Capability, Dataset, DeployedModel, EvalSet, EvalSetMember, FinetuningJob
 from overbae.services.capabilities import identity
 from overbae.services.datasets import review
@@ -587,8 +588,8 @@ def _retry_deployment_sync(
     _require_credits(context)
     try:
         deployment = retry_deployment(deployment.pk)
-    except ValueError as error:
-        raise MCPError("deployment_not_ready", str(error)) from error
+    except InputValidationError as error:
+        raise MCPError("deployment_not_ready", error.detail) from error
     deployment.refresh_from_db()
     link = resource_link("deployments", str(deployment.id), deployment.model_id)
     retry_link = resource_link(
@@ -763,8 +764,8 @@ def _prepare_training_sync(payload, context):
         )
         if payload.retry_failed and prep.state == "failed":
             prep = retry_preparation(prep)
-    except (ValueError, RuntimeError) as exc:
-        raise MCPError("preparation_invalid", str(exc)) from exc
+    except (InputValidationError, DatasetError) as exc:
+        raise MCPError("preparation_invalid", exc.detail) from exc
     if prep.state == "queued":
         inspect_preparation.delay(str(prep.id))
     return PrepareTrainingOutput(

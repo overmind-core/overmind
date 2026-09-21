@@ -15,6 +15,7 @@ from django.db.models import Q
 from django.utils import timezone
 from modal.call_graph import InputStatus
 
+from overbae.core.errors import InputValidationError
 from overbae.modal.gpu_selector import select_gpu
 from overbae.modal.model_registry import get_hf_base, get_model_config_any_backend
 from overbae.models import DeployedModel, FinetuningJob, FinetuningJobEval
@@ -213,7 +214,7 @@ def retry_baseline_deployments(job: FinetuningJob) -> None:
     with transaction.atomic():
         rows = list(job.evaluation_deployments.select_for_update().filter(status="failed"))
         if any(row.deployment_dispatching or row.deployment_cancel_pending for row in rows):
-            raise ValueError(
+            raise InputValidationError(
                 "The previous evaluation deployment is unresolved; confirm it has stopped before retrying."
             )
         for row in rows:
@@ -233,14 +234,14 @@ def retry_deployment(deployment_id) -> DeployedModel:
             .get(pk=deployment_id)
         )
         if deployed.status not in ("failed", "deleted"):
-            raise ValueError("Only failed or deleted deployments can be retried.")
+            raise InputValidationError("Only failed or deleted deployments can be retried.")
         if deployed.deployment_cancel_pending or deployed.deployment_dispatching:
-            raise ValueError(
+            raise InputValidationError(
                 "The previous remote operation is unresolved; confirm it has stopped before retrying."
             )
         job = deployed.finetuning_job
         if not job or job.status not in ("succeeded", "deploying") or not job.remote_job_id:
-            raise ValueError(
+            raise InputValidationError(
                 "Training job has no usable checkpoint — retry the training job first."
             )
         _reset(deployed)

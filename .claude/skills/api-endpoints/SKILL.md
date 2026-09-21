@@ -13,6 +13,8 @@ The frontend consumes the backend exclusively through the generated typescript-f
 
 Never return a raw dict from a view — request and response shapes are serializers. Keep business logic in `services/` or on the model; annotate with `@extend_schema` where drf-spectacular needs help.
 
+Expected input failures may use `core.errors.InputValidationError` with an authored public `detail`. Never build that detail from a caught exception, provider response or stored diagnostic. Return the authored detail for known failures; log unexpected exceptions server-side and return a fixed message. Apply the same boundary to MCP adapters.
+
 ## 2. Register the route
 
 `overbae/urls.py`, on the `DefaultRouter` for viewsets:

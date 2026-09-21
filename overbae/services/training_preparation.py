@@ -16,6 +16,7 @@ from modal.exception import InternalError, NotFoundError, ServiceError
 from modal_shared.preparation import processor_fingerprint as asset_fingerprint
 from modal_shared.preparation import validate_preparation_report
 from modal_shared.stacks import train_function_name
+from overbae.core.errors import InputValidationError
 from overbae.modal.model_registry import (
     get_hf_base,
     get_model_config_any_backend,
@@ -49,22 +50,26 @@ def request_preparation(
     cell, model: str, context_length: int, *, validation_cell=None, training_type="lora"
 ):
     if settings.FINETUNING_BACKEND != "modal":
-        raise ValueError("Exact preprocessing is available for the Modal training backend.")
+        raise InputValidationError(
+            "Exact preprocessing is available for the Modal training backend."
+        )
     model_config = get_model_config_any_backend(model)
     if not model_config:
-        raise ValueError("Choose a catalog training model.")
+        raise InputValidationError("Choose a catalog training model.")
     if training_type not in {"lora", "full"} or not training_enabled(model_config, training_type):
-        raise ValueError("This model does not support the selected training type.")
+        raise InputValidationError("This model does not support the selected training type.")
     maximum = training_context_length(model_config, training_type)
     if maximum is not None and context_length > maximum:
-        raise ValueError(f"This training configuration supports at most {maximum} context tokens.")
+        raise InputValidationError(
+            f"This training configuration supports at most {maximum} context tokens."
+        )
     if not 128 <= context_length <= 2_000_000:
-        raise ValueError("Context length must be between 128 and 2,000,000 tokens.")
+        raise InputValidationError("Context length must be between 128 and 2,000,000 tokens.")
     context_length = baseten_context_length(model_max=maximum, requested=context_length)
     for target in (cell, validation_cell):
         if target is not None:
             if target.dataset.project_id != cell.dataset.project_id:
-                raise ValueError("Both datasets must belong to the same project.")
+                raise InputValidationError("Both datasets must belong to the same project.")
             dataset_use.check(target.dataset, "train", cell=target)
     config = {
         "model": model,
@@ -94,7 +99,7 @@ def request_preparation(
 
 def retry_preparation(preparation):
     if preparation.state != "failed" or not preparation.report.get("retryable"):
-        raise ValueError("This preprocessing operation cannot be retried safely.")
+        raise InputValidationError("This preprocessing operation cannot be retried safely.")
     if preparation.remote_id:
         modal.FunctionCall.from_id(preparation.remote_id).cancel()
     TrainingPreparation.objects.filter(
@@ -281,4 +286,8 @@ def retry_for_job(job):
     if prep.state == "failed":
         retry_preparation(prep)
     elif prep.state == "incompatible":
-        raise ValueError(preparation_error(prep))
+        raise InputValidationError(
+            "Training data is incompatible with this configuration. Inspect the preprocessing report."
+            if prep.error
+            else preparation_error(prep)
+        )

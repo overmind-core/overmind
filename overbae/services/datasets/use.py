@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from typing import Any
 
 from django.db import transaction
@@ -11,6 +12,8 @@ from overbae.models import Cell, Dataset
 from overbae.services.datasets import rows
 from overbae.services.datasets.contract import public_intent
 from overbae.services.datasets.lifecycle import DatasetError
+
+logger = logging.getLogger(__name__)
 
 
 def check(dataset: Dataset, intent: str, *, cell: Cell | None = None) -> Cell:
@@ -28,7 +31,8 @@ def check(dataset: Dataset, intent: str, *, cell: Cell | None = None) -> Cell:
     if cell is None:
         if dataset.state == Dataset.State.ERROR:
             raise DatasetError(
-                f"The last run of {dataset.name} failed: {dataset.error}", code="run_failed"
+                f"The last run of {dataset.name} failed. Run it again in the data workshop.",
+                code="run_failed",
             )
         if dataset.state in (Dataset.State.RUNNING, Dataset.State.DIAGNOSING):
             raise DatasetError(f"{dataset.name} is running. Wait for it to finish.", code="running")
@@ -39,7 +43,11 @@ def check(dataset: Dataset, intent: str, *, cell: Cell | None = None) -> Cell:
     try:
         rows.verify(cell)
     except (ValueError, rows.RowStoreError) as exc:
-        raise DatasetError(f"{dataset.name}: {exc}", code="workshop_validation") from exc
+        logger.exception("Could not verify dataset cell %s", cell.pk)
+        raise DatasetError(
+            f"{dataset.name}: this version is unreadable or has changed. Run it again in the data workshop.",
+            code="workshop_validation",
+        ) from exc
     return cell
 
 
