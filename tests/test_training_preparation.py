@@ -12,6 +12,7 @@ from rest_framework.test import APIClient
 from modal_shared.training_data import materialize_tokens, row_key
 from overbae.models import FinetuningJob, Project, ProjectMembership, User
 from overbae.services import training_preparation as preparation
+from overbae.services.datasets.lifecycle import DatasetError
 from overbae.services.sft_assets.preprocess import preprocess_rows
 
 pytestmark = pytest.mark.django_db
@@ -63,8 +64,42 @@ def test_preparation_caches_exact_version_and_configuration(cell):
     assert first.id == same.id and first.id != different.id
     cell.fingerprint = "different"
     cell.save(update_fields=["fingerprint"])
-    with pytest.raises(RuntimeError, match="changed"):
+    with pytest.raises(DatasetError, match="changed") as error:
         preparation.request_preparation(cell, "Qwen/Qwen3-8B", 4096)
+    assert error.value.code == "workshop_validation"
+
+
+def test_preparation_verifies_each_target_once_then_rechecks_in_worker(cell, monkeypatch):
+    validation = frozen_dataset(cell.dataset.project, TRAIN_ROWS).active_cell
+    with patch.object(
+        preparation.row_store, "verify", wraps=preparation.row_store.verify
+    ) as verify:
+        prep = preparation.request_preparation(
+            cell, "Qwen/Qwen3-8B", 4096, validation_cell=validation
+        )
+    assert [call.args[0].id for call in verify.call_args_list] == [cell.id, validation.id]
+    validation.fingerprint = "tampered-after-request"
+    validation.save(update_fields=["fingerprint"])
+    lookup = Mock()
+    monkeypatch.setattr(preparation.modal.Function, "from_name", lookup)
+    preparation.advance(prep.id)
+    prep.refresh_from_db()
+    assert prep.state == "failed" and "changed" in prep.error
+    lookup.assert_not_called()
+
+
+@pytest.mark.parametrize("problem", ["intent", "project"])
+def test_preparation_keeps_validation_dataset_boundaries(cell, problem):
+    project = (
+        Project.objects.create(name="Other", slug="other")
+        if problem == "project"
+        else cell.dataset.project
+    )
+    validation = frozen_dataset(project, contract="eval" if problem == "intent" else "train")
+    with pytest.raises(ValueError, match="needs train" if problem == "intent" else "same project"):
+        preparation.request_preparation(
+            cell, "Qwen/Qwen3-8B", 4096, validation_cell=validation.active_cell
+        )
 
 
 def test_export_format_changes_invalidate_cached_preprocessing(cell, monkeypatch):
