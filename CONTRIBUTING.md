@@ -41,6 +41,10 @@ Run the same checks CI runs:
 
 `.claude/skills/` holds subsystem maps and procedures that Claude Code and Cursor load on demand; `AGENTS.md` indexes them. If you contribute with a coding agent, point it at the repo root and it picks these up. Hooks in `.claude/hooks/` guard generated files and dangerous commands; a denial names the fix.
 
+## Licence
+
+The platform (`overbae/`, `frontend/`, and the rest of this repository) is AGPL-3.0. The SDK and CLI under `overmind/` are MIT. A PR licenses your changes under the licence of the files they touch.
+
 ## Reporting bugs and security issues
 
 Open a GitHub issue for bugs and feature requests. For vulnerabilities, follow `SECURITY.md` instead of opening a public issue.

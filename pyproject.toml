@@ -1,6 +1,7 @@
 [project]
 authors = [{ name = "Overmindlab.ai" }]
 classifiers = [
+    "License :: OSI Approved :: GNU Affero General Public License v3",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.13",
 ]
@@ -57,6 +58,7 @@ dependencies = [
     "jsonschema>=4.26.0",
 ]
 description = "Overbae — unified Django API for the Overclaw / Overmind platform"
+license = { text = "AGPL-3.0" }
 name = "bae"
 readme = "README.md"
 requires-python = ">=3.13"
