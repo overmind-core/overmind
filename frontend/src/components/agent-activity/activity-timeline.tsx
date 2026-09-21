@@ -22,6 +22,7 @@ export interface AgentActivityPart {
   preview?: string;
   ok?: boolean;
   text?: string;
+  text_offset?: number;
 }
 
 export type TimelineStep =

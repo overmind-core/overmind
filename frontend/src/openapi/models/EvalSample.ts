@@ -20,6 +20,13 @@ import {
     ScoreToJSON,
     ScoreToJSONTyped,
 } from './Score';
+import type { EvalSampleIO } from './EvalSampleIO';
+import {
+    EvalSampleIOFromJSON,
+    EvalSampleIOFromJSONTyped,
+    EvalSampleIOToJSON,
+    EvalSampleIOToJSONTyped,
+} from './EvalSampleIO';
 
 /**
  *
@@ -63,6 +70,12 @@ export interface EvalSample {
      * @memberof EvalSample
      */
     readonly trajectory: any | null;
+    /**
+     *
+     * @type {EvalSampleIO}
+     * @memberof EvalSample
+     */
+    readonly io: EvalSampleIO;
     /**
      *
      * @type {any}
@@ -111,6 +124,7 @@ export function instanceOfEvalSample(value: object): value is EvalSample {
     if (!('rowIndex' in value) || value['rowIndex'] === undefined) return false;
     if (!('sourceTraceId' in value) || value['sourceTraceId'] === undefined) return false;
     if (!('trajectory' in value) || value['trajectory'] === undefined) return false;
+    if (!('io' in value) || value['io'] === undefined) return false;
     if (!('structured' in value) || value['structured'] === undefined) return false;
     if (!('expected' in value) || value['expected'] === undefined) return false;
     if (!('contextCoverage' in value) || value['contextCoverage'] === undefined) return false;
@@ -136,6 +150,7 @@ export function EvalSampleFromJSONTyped(json: any, ignoreDiscriminator: boolean)
         'rowIndex': json['row_index'],
         'sourceTraceId': json['source_trace_id'],
         'trajectory': json['trajectory'],
+        'io': EvalSampleIOFromJSON(json['io']),
         'structured': json['structured'],
         'expected': json['expected'],
         'contextCoverage': json['context_coverage'],
@@ -149,7 +164,7 @@ export function EvalSampleToJSON(json: any): EvalSample {
     return EvalSampleToJSONTyped(json, false);
 }
 
-export function EvalSampleToJSONTyped(value?: Omit<EvalSample, 'id'|'run'|'variant'|'row_index'|'source_trace_id'|'trajectory'|'structured'|'expected'|'context_coverage'|'error'|'scores'|'created_at'> | null, ignoreDiscriminator: boolean = false): any {
+export function EvalSampleToJSONTyped(value?: Omit<EvalSample, 'id'|'run'|'variant'|'row_index'|'source_trace_id'|'trajectory'|'io'|'structured'|'expected'|'context_coverage'|'error'|'scores'|'created_at'> | null, ignoreDiscriminator: boolean = false): any {
     if (value == null) {
         return value;
     }

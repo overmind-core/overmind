@@ -16,6 +16,8 @@ from overbae.models import (
     Span,
     User,
 )
+from overbae.services.datasets import land, paths, store
+from overbae.services.datasets.notebook import agent, engines
 from overbae.services.mcp import tools_datasets
 from overbae.services.mcp.catalog import CATALOG
 from overbae.services.mcp.context import MCPContext
@@ -87,6 +89,35 @@ def test_dataset_catalog_has_only_six_bounded_tools():
     }
 
 
+def test_approving_a_later_proposal_preserves_earlier_proposals_and_saved_data():
+    context = _context()
+    dataset = _dataset(context)
+    land.land_rows(
+        dataset,
+        [{"input": "one", "expected_output": "yes"}, {"input": "two", "expected_output": "no"}],
+    )
+    dataset.refresh_from_db()
+    tools = agent.Tools(dataset.id, context.user, lambda _: None)
+    earlier = tools.add_cell(
+        {"title": "Alternative", "script": "df['expected_output'] = 'unknown'", "kind": "semantic"}
+    )
+    selected = tools.add_cell(
+        {"title": "Keep eligible rows", "script": "df = df.iloc[:1]", "kind": "semantic"}
+    )
+    source = dataset.source
+    fingerprint = store.file_sha256(paths.cell_path(dataset.id, source.id))
+    result = _call(
+        "run_dataset", {"dataset": str(dataset.id), "proposal_cell": selected["id"]}, context
+    )
+    assert not result.isError, result.structuredContent
+    dataset.refresh_from_db()
+    assert str(dataset.active_cell.id) == selected["id"]
+    assert dataset.active_cell.rows == 1
+    assert dataset.cells.get(pk=earlier["id"]).state == Cell.State.PROPOSED
+    assert list(dataset.cells.values_list("position", flat=True)) == [0, 1, 2]
+    assert store.file_sha256(paths.cell_path(dataset.id, source.id)) == fingerprint
+
+
 def test_list_datasets_is_project_scoped_filtered_paginated_and_uses_uuids():
     context = _context()
     capability = Capability.objects.create(project=context.project, name="Support", slug="support")
@@ -111,6 +142,97 @@ def test_list_datasets_is_project_scoped_filtered_paginated_and_uses_uuids():
         "next_cursor": None,
     }
     uuid.UUID(result.structuredContent["datasets"][0]["id"])
+
+
+def test_inspection_and_job_report_saved_generation_progress():
+    context = _context()
+    dataset = _dataset(
+        context,
+        state="diagnosing",
+        chat=[
+            {
+                "role": "agent",
+                "text": "",
+                "status": "running",
+                "progress": {
+                    "stage": "generating",
+                    "label": "Generating examples",
+                    "detail": "Cover rare cases",
+                    "rows_before": 270,
+                    "target_rows": 500,
+                    "generated_rows": 50,
+                    "cell_id": "generated-cell",
+                },
+            }
+        ],
+    )
+    result = _call("inspect_dataset", {"dataset": str(dataset.id)}, context)
+    assert not result.isError
+    assert result.structuredContent["recent_chat"][-1]["progress"]["generated_rows"] == 50
+    assert result.structuredContent["recent_chat"][-1]["progress"]["cell_id"] == "generated-cell"
+    job = _call("get_job", {"kind": "dataset_run", "id": str(dataset.id)}, context)
+    assert not job.isError
+    assert job.structuredContent["details"]["latest_turn"]["status"] == "running"
+
+
+def test_inspection_exposes_the_workshops_source_families_and_consumer_requirements():
+    context = _context()
+    dataset = _dataset(context)
+    land.land_rows(
+        dataset,
+        [
+            {
+                "input": {
+                    "messages": [
+                        {"role": "system", "content": prompt},
+                        {"role": "user", "content": "evidence"},
+                    ]
+                },
+                "expected_output": {"answer": "supported"},
+            }
+            for prompt in ["Extract fields"] * 25 + ["Apply rules"] * 5
+        ],
+    )
+    result = _call("inspect_dataset", {"dataset": str(dataset.id)}, context)
+    assert not result.isError
+    preparation = result.structuredContent["preparation_context"]
+    assert preparation["profiles"]["source"]["rows_scanned"] == 30
+    assert [family["rows"] for family in preparation["profiles"]["source"]["families"]] == [25, 5]
+    assert "not the application" in preparation["consumers"]["model_evaluation"]["execution"]
+
+
+def test_requested_generation_is_active_and_queryable_without_an_mcp_approval_step(monkeypatch):
+    context = _context()
+    dataset = _dataset(context)
+    land.land_rows(dataset, [{"input": "seed", "expected_output": "yes"}])
+
+    class GeneratingEngine:
+        name = "test"
+
+        def run(self, dataset, message, tools, pending):
+            tools.respond("Adding a contrasting example.")
+            tools.seed_examples({"target_rows": 2, "instruction": "Cover variants"})
+            tools.add_synthetic_rows(
+                {"examples": [{"seed_row": 0, "row": {"input": "new", "expected_output": "no"}}]}
+            )
+            yield from pending
+            return engines.Outcome(text="One example added.")
+
+    monkeypatch.setattr(engines, "select", lambda: GeneratingEngine())
+    list(agent.follow_up(dataset.id, "Generate and add one example"))
+    result = _call("inspect_dataset", {"dataset": str(dataset.id)}, context)
+    assert not result.isError
+    body = result.structuredContent
+    assert body["active"]["rows"] == 2
+    assert all(cell["state"] != "proposed" for cell in body["cells"])
+    assert all(action["tool"] != "run_dataset" for action in body["next_actions"])
+    turn = body["recent_chat"][-1]
+    assert turn["progress"]["cell_id"] == body["active"]["id"]
+    assert turn["cells"][0]["action"] == "ran"
+    queried = _call(
+        "query_dataset", {"dataset": str(dataset.id), "sql": "SELECT count(*) AS n FROM t"}, context
+    )
+    assert not queried.isError and queried.structuredContent["rows"] == [{"n": 2}]
 
 
 def test_inspect_is_bounded_ordered_and_refuses_an_ambiguous_name(monkeypatch):
@@ -231,6 +353,7 @@ def _root_span(project, trace_id: str) -> Span:
         start_time_ns=1,
         end_time_ns=2,
         duration_ns=1,
+        attributes={"overmind.input.data": trace_id, "overmind.output.data": "answer"},
     )
 
 
@@ -256,6 +379,35 @@ def test_trace_creation_refuses_unknown_filters_mixed_sources_and_empty_selectio
     assert empty.isError is True
     assert empty.structuredContent["error"]["code"] == "no_traces"
     assert Dataset.objects.filter(project=context.project).count() == 0
+
+
+@pytest.mark.parametrize("split", [False, True])
+@pytest.mark.parametrize("choice", ["automatic", "none", "selected"])
+def test_trace_creation_respects_the_capability_choice(split, choice):
+    context = _context()
+    matched = Capability.objects.create(project=context.project, name="Matched", slug="matched")
+    selected = Capability.objects.create(project=context.project, name="Selected", slug="selected")
+    trace_ids = [uuid.uuid4().hex for _ in range(4)]
+    for trace_id in trace_ids:
+        span = _root_span(context.project, trace_id)
+        span.capability = matched
+        span.save(update_fields=["capability"])
+    arguments = {"name": "Choice", "trace_ids": trace_ids}
+    if choice != "automatic":
+        arguments["capability"] = None if choice == "none" else str(selected.id)
+    if split:
+        arguments["split"] = {"eval_percent": 30, "position": "tail"}
+    result = _call("create_dataset_from_traces", arguments, context)
+    assert result.isError is False, result.structuredContent
+    body = result.structuredContent
+    ids = [body["dataset"]["id"]]
+    if split:
+        ids.append(body["eval_dataset"]["id"])
+    expected = {"automatic": matched.id, "none": None, "selected": selected.id}[choice]
+    for dataset in Dataset.objects.filter(pk__in=ids):
+        assert dataset.state == Dataset.State.IDLE, dataset.error
+        assert dataset.capability_id == expected
+        assert dataset.capability_rank[0]["capability_id"] == str(matched.id)
 
 
 def test_trace_creation_returns_a_dataset_run_receipt(monkeypatch):
@@ -326,13 +478,12 @@ def test_message_agent_refuses_busy_then_queues_one_turn(monkeypatch):
 def test_run_accepts_only_a_proposal_from_that_dataset(monkeypatch):
     context = _context()
     dataset = _dataset(context)
-    _ran_cell(dataset)
-    proposal = Cell.objects.create(
-        dataset=dataset,
-        position=1,
-        title="Proposal",
-        state=Cell.State.PROPOSED,
+    land.land_rows(dataset, [{"input": "question", "expected_output": "answer"}])
+    dataset.refresh_from_db()
+    proposed = agent.Tools(dataset.id, None, lambda _: None).add_cell(
+        {"title": "Proposal", "script": "df['expected_output'] = 'unknown'", "kind": "semantic"}
     )
+    proposal = dataset.cells.get(pk=proposed["id"])
     other = _dataset(context, "Other")
     foreign = Cell.objects.create(
         dataset=other,
@@ -361,6 +512,15 @@ def test_run_accepts_only_a_proposal_from_that_dataset(monkeypatch):
     assert accepted.isError is False
     assert accepted.structuredContent["dataset"]["state"] == Dataset.State.RUNNING
     assert len(queued) == 1
+    repeated = _call(
+        "run_dataset",
+        {"dataset": str(dataset.id), "proposal_cell": str(proposal.id)},
+        context,
+    )
+    assert repeated.isError is False
+    assert len(queued) == 1
+    definition = next(d for d in CATALOG.definitions() if d.name == "run_dataset")
+    assert definition.cost_class == "llm"
 
 
 def test_dataset_tool_text_is_complete_structured_json():

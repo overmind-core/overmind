@@ -81,22 +81,74 @@ export function StatusBadge({
   status,
   fallback,
   solidProgress = false,
+  progress,
   className,
 }: {
   status: string | null | undefined;
   fallback: string;
   solidProgress?: boolean;
+  progress?: number | null;
   className?: string;
 }) {
   const cfg = resolveStatus(status, fallback);
   return (
+    <ResolvedStatusBadge
+      cfg={cfg}
+      className={className}
+      progress={progress}
+      solidProgress={solidProgress}
+    />
+  );
+}
+
+export function ResolvedStatusBadge({
+  cfg,
+  icon = cfg.icon,
+  solidProgress = false,
+  progress,
+  className,
+}: {
+  cfg: StatusMeta;
+  icon?: React.ReactNode;
+  solidProgress?: boolean;
+  progress?: number | null;
+  className?: string;
+}) {
+  const normalizedProgress =
+    progress == null || !Number.isFinite(progress) ? null : Math.min(100, Math.max(0, progress));
+  return (
     <Badge
-      className={cn(statusBadgeClassName(cfg, solidProgress), className)}
+      aria-label={
+        normalizedProgress == null
+          ? undefined
+          : `${cfg.label}, ${Math.round(normalizedProgress)}% complete`
+      }
+      aria-valuemax={normalizedProgress == null ? undefined : 100}
+      aria-valuemin={normalizedProgress == null ? undefined : 0}
+      aria-valuenow={normalizedProgress == null ? undefined : normalizedProgress}
+      className={cn(
+        statusBadgeClassName(cfg, solidProgress),
+        normalizedProgress != null && "relative isolate overflow-hidden",
+        className
+      )}
+      role={normalizedProgress == null ? undefined : "progressbar"}
       size={solidProgress ? "default" : "chip"}
       variant={cfg.variant}
     >
-      {cfg.icon}
-      {cfg.label}
+      {normalizedProgress != null && (
+        <span
+          aria-hidden="true"
+          className="absolute inset-y-0 left-0 z-0 bg-info/20 transition-[width] duration-500 motion-reduce:transition-none"
+          style={{ width: `${normalizedProgress}%` }}
+        />
+      )}
+      <span className="relative z-10 inline-flex items-center gap-1">
+        {icon}
+        <span>{cfg.label}</span>
+        {normalizedProgress != null && (
+          <span className="font-mono tabular-nums">{Math.round(normalizedProgress)}%</span>
+        )}
+      </span>
     </Badge>
   );
 }

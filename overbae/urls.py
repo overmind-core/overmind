@@ -41,6 +41,7 @@ from overbae.api.optimizer import OptimizerCandidateViewSet, OptimizerExperiment
 from overbae.api.otlp import otlp_traces
 from overbae.api.public_models import PublicModelLibraryDetailView, PublicModelLibraryListView
 from overbae.api.sync import SyncView
+from overbae.api.training_preparation import TrainingPreparationViewSet
 from overbae.api.uploads import UploadViewSet
 from overbae.api.views import (
     ConnectorCredentialViewSet,
@@ -69,6 +70,9 @@ router.register(
 router.register(r"projects", ProjectViewSet, basename="project")
 router.register(r"capabilities", CapabilityViewSet, basename="capability")
 router.register(r"datasets", DatasetViewSet, basename="dataset")
+router.register(
+    r"training-preparations", TrainingPreparationViewSet, basename="training-preparation"
+)
 router.register(r"uploads", UploadViewSet, basename="upload")
 # Backed by the Span table: list returns root spans, retrieve returns every span
 # sharing the trace_id. There is no separate /spans/.

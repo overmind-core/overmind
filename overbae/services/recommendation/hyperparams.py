@@ -44,8 +44,7 @@ def compute_hyperparams(
 
     context_length: int | None = None
     if catalog_backend() == "baseten":
-        # Modal (Unsloth) shares this policy — both self-hosted scripts truncate at
-        # MAX_LENGTH the same way.
+        # Modal also uses these buckets; its exact preflight rejects overflow.
         model_max = entry.get("context_length_sft")
         context_length = baseten_context_length(
             max_row_tokens,

@@ -4,6 +4,7 @@ import { useNavigate } from "@tanstack/react-router";
 import type { ColumnDef } from "@tanstack/react-table";
 
 import { IntentBadge, SOURCE_KIND_LABEL, StateBadge } from "@/components/datasets/badges";
+import { type DatasetSource, NewDatasetButton } from "@/components/datasets/new-dataset-button";
 import { EntityRef } from "@/components/entity-ref";
 import { Button } from "@/components/ui/button";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
@@ -72,8 +73,7 @@ export function DatasetsToolbar({
   setCapabilityFilter,
   capabilityNameById = {},
   onCreate,
-}: DatasetsFilterProps & { onCreate: () => void }) {
-  const guard = useGuestGate();
+}: DatasetsFilterProps & { onCreate: (source: DatasetSource) => void }) {
   const capabilityIds = useMemo(() => {
     const ids = new Set<string>(Object.keys(capabilityNameById));
     for (const ds of datasets) ids.add(ds.capability || NO_CAPABILITY);
@@ -124,12 +124,7 @@ export function DatasetsToolbar({
         setIntentFilter("all");
         setCapabilityFilter?.("all");
       }}
-      primary={
-        <Button onClick={guard(onCreate)}>
-          <Icon.datasetAdd />
-          New dataset
-        </Button>
-      }
+      primary={<NewDatasetButton onSelect={onCreate} />}
       search={
         <SearchInput
           className="min-w-[200px] flex-1"
@@ -333,7 +328,7 @@ export function DatasetsBrowser({
   error,
   hideCapabilityColumn,
   emptyAction,
-  emptyDescription = "Upload a file, paste rows, or land traces to create the first one.",
+  emptyDescription = "Upload files or select data from traces.",
   fill = true,
   rowSearch,
 }: DatasetsFilterProps & {

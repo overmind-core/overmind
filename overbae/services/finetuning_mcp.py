@@ -18,7 +18,7 @@ def launch_finetune(
     user,
     project,
     dataset: Dataset,
-    capability: Capability,
+    capability: Capability | None,
     eval_dataset: Dataset,
     eval_set: EvalSet,
     base_model: str,
@@ -33,11 +33,16 @@ def launch_finetune(
     cell=None,
     validation_cell=None,
     eval_cell=None,
+    eval_incumbent_before: bool | None = None,
+    eval_incumbent_after: bool = False,
+    eval_model_before: bool | None = None,
+    eval_model_after: bool = True,
+    baseline_model: str | None = None,
 ) -> FinetuningJob:
     payload: dict[str, Any] = {
         "project": str(project.id),
         "dataset": str(dataset.id),
-        "capability": str(capability.id),
+        "capability": str(capability.id) if capability else None,
         "eval_dataset": str(eval_dataset.id),
         "eval_set": str(eval_set.id),
         "base_model": base_model,
@@ -48,7 +53,15 @@ def launch_finetune(
         "validation_enabled": validation_enabled,
         "validation_split_ratio": validation_split_ratio,
         "split_method": split_method,
+        "eval_incumbent_after": eval_incumbent_after,
+        "eval_model_after": eval_model_after,
     }
+    if eval_incumbent_before is not None:
+        payload["eval_incumbent_before"] = eval_incumbent_before
+    if baseline_model is not None:
+        payload["baseline_model"] = baseline_model
+    if eval_model_before is not None:
+        payload["eval_model_before"] = eval_model_before
     if cell is not None:
         payload["cell"] = str(cell.id)
     if eval_cell is not None:

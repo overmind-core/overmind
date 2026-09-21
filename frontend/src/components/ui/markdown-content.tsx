@@ -8,6 +8,7 @@ import { cn } from "@/lib/utils";
 export interface MarkdownContentProps {
   children: string;
   compact?: boolean;
+  dividers?: boolean;
   className?: string;
 }
 
@@ -16,6 +17,7 @@ export interface MarkdownContentProps {
 export default function MarkdownContentImpl({
   children,
   compact = false,
+  dividers = true,
   className,
 }: MarkdownContentProps) {
   return (
@@ -53,7 +55,8 @@ export default function MarkdownContentImpl({
           h1: ({ children }) => (
             <h1
               className={cn(
-                "mb-2 mt-4 border-b border-border/70 pb-1 font-semibold tracking-tight first:mt-0",
+                "mb-2 mt-4 font-semibold tracking-tight first:mt-0",
+                dividers && "border-b border-border/70 pb-1",
                 compact ? "text-xs" : "text-base"
               )}
             >
@@ -80,7 +83,7 @@ export default function MarkdownContentImpl({
               {children}
             </h3>
           ),
-          hr: () => <hr className="my-3 border-border/60" />,
+          hr: () => (dividers ? <hr className="my-3 border-border/60" /> : null),
           li: ({ children }) => <li className="mb-1">{children}</li>,
           ol: ({ children }) => (
             <ol className="mb-3 list-decimal pl-5 last:mb-0 space-y-0.5">{children}</ol>

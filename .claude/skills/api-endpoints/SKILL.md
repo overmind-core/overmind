@@ -33,6 +33,8 @@ Settings refuse to load without Modal tokens when `.env` has none: prefix with `
 
 Runs `manage.py spectacular` → dockerized `openapi-generator-cli` → rewrites `frontend/src/openapi/{apis,models}`.
 
+The Compose frontend uses polling because Docker bind mounts can miss files recreated by generation. A method present on disk but missing at runtime can be a stale Vite transform: check the JavaScript served at `/src/openapi/apis/<Api>.ts`. Recreate the frontend with `docker compose up -d --no-deps frontend` after changing its watcher environment; restarting alone does not apply environment changes.
+
 ### Known defect: stale files survive
 
 The Makefile's `rm -rf .../{docs,models,apis}` does **not** brace-expand under `/bin/sh`, so files for *removed* endpoints and models are left behind. After regenerating:

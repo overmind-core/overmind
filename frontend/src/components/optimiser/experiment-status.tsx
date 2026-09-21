@@ -1,5 +1,5 @@
 import { Badge } from "@/components/ui/badge";
-import { resolveStatus, statusBadgeClassName } from "@/lib/job-status";
+import { ResolvedStatusBadge, resolveStatus } from "@/lib/job-status";
 import { humanizeKey } from "@/lib/label-case";
 import type { ModeCd6Enum, OptimizerExperiment } from "@/openapi";
 
@@ -96,7 +96,13 @@ export function OptimizerRunTypeBadge({
 
 /** Tone comes from the shared job-status registry; only the label stays
  * optimiser-specific. */
-export function ExperimentStatusChip({ status }: { status: string }) {
+export function ExperimentStatusChip({
+  status,
+  progress,
+}: {
+  status: string;
+  progress?: number | null;
+}) {
   const key =
     status === "completed" || status === "failed" || status === "cancelled"
       ? status
@@ -106,12 +112,7 @@ export function ExperimentStatusChip({ status }: { status: string }) {
           ? "paused"
           : "running";
   const cfg = resolveStatus(key, "queued");
-  return (
-    <Badge className={statusBadgeClassName(cfg, true)} size="default" variant={cfg.variant}>
-      {cfg.icon}
-      {prettyStatus(status)}
-    </Badge>
-  );
+  return <ResolvedStatusBadge cfg={{ ...cfg, label: prettyStatus(status) }} progress={progress} />;
 }
 
 const TERMINAL = new Set(["completed", "failed", "cancelled"]);

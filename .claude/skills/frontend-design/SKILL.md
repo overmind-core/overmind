@@ -53,6 +53,10 @@ A table fix applied to one codepath silently misses the other:
 
 Sort headers are in `components/ui/sortable-header.tsx` for hand-built tables and inline inside `data-table.tsx` for the shared one — check both before declaring a header fix done.
 
+Eval results align model variants by the generated client's `rowIndex`, including zero. Trace-filter samples use `sourceTraceId`; samples with neither keep their own identity. Use `components/evaluations/sample-index.ts` for table and detail lookups so unrelated outputs never collapse or stand in for another model's missing response.
+
+The eval datapoint popup selects one model at a time and shows its input beside its generated output, grading reference, and evaluator reasoning. `SampleInput` consumes the generated `EvalSampleIO` contract: captured initial runner requests include system prompts and tools; historical dataset inputs explicitly say the exact request was not captured. Never label a combined trajectory as input or an extracted statistical prediction as the model's full output.
+
 ## App shell
 
 The left sidebar logic in `src/routes/_auth.tsx` and `src/components/ui/sidebar.tsx` is owned separately — pages adapt to the native in-flow sidebar. Don't add routes to focus-mode patterns or modify shell logic without explicit approval.

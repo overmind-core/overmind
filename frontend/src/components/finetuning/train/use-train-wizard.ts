@@ -30,28 +30,33 @@ import {
   useModelCatalogQuery,
   useProjectDatasetsQuery,
   useRecommendModelsQuery,
+  useTrainingBenchmarksQuery,
   useValidateDatasetMutation,
 } from "@/hooks/use-finetuning";
 import { useCredits } from "@/hooks/use-subscription";
 import { isPaymentRequired } from "@/lib/credits";
 import { errorMessage } from "@/lib/notify";
 import type {
-  Dataset,
   DatasetValidationResponse,
   FinetuningEstimateResponse,
   FinetuningExperiment,
   FinetuningJobRequest,
   FinetuningJobRequestModelTierEnum,
-  SplitMethodEnum,
 } from "@/openapi";
 import { BackendEnum } from "@/openapi";
 
-export interface Holdout {
-  enabled: boolean;
-  ratio: number;
-  method: SplitMethodEnum;
-  datasetId: string;
-}
+const VALIDATION_SPLIT = {
+  splitMethod: "random",
+  validationEnabled: true,
+  validationSplitRatio: 0.2,
+} as const;
+
+export type EvaluationPlan = Required<
+  Pick<
+    FinetuningJobRequest,
+    "evalIncumbentBefore" | "evalIncumbentAfter" | "evalModelBefore" | "evalModelAfter"
+  >
+>;
 
 const EMPTY_CATALOG: ModelCatalog = {
   backend: BackendEnum.baseten,
@@ -69,13 +74,6 @@ const FAILED_VALIDATION: DatasetValidationResponse = {
   valid: false,
   warnings: [],
 };
-
-/** A dataset belongs to one capability or to none; another capability's rows are off
- *  distribution for this run, so they never reach a picker. */
-function forCapability(datasets: Dataset[], capabilityId: string): Dataset[] {
-  if (!capabilityId) return datasets;
-  return datasets.filter((d) => !d.capability || d.capability === capabilityId);
-}
 
 export interface TrainWizardArgs {
   projectId: string;
@@ -96,16 +94,12 @@ export function useTrainWizard({
 }: TrainWizardArgs) {
   const [capabilityId, setCapabilityIdState] = useState(initialCapabilityId ?? "");
   const [datasetId, setDatasetIdState] = useState(initialDatasetId ?? "");
-  const [holdout, setHoldoutState] = useState<Holdout>({
-    datasetId: "",
-    enabled: true,
-    method: "random",
-    ratio: 0.2,
-  });
   const [validation, setValidation] = useState<DatasetValidationResponse | null>(null);
   const [validating, setValidating] = useState(false);
   const [evalDatasetId, setEvalDatasetId] = useState(initialEvalDatasetId ?? "");
   const [evalSetId, setEvalSetId] = useState("");
+  const [evaluationOverrides, setEvaluationOverrides] = useState<Partial<EvaluationPlan>>({});
+  const [benchmarkChoice, setBenchmarkChoice] = useState<string | null>(null);
   const [drafts, setDrafts] = useState<ModelDraft[]>([]);
   const [deselected, setDeselected] = useState<Set<string>>(new Set());
   const [runName, setRunName] = useState("");
@@ -122,46 +116,69 @@ export function useTrainWizard({
     [capabilitiesQuery.data]
   );
   const capability = capabilities.find((a) => a.id === capabilityId);
+  const benchmarksQuery = useTrainingBenchmarksQuery(projectId);
+  const benchmarkOptions = useMemo(() => {
+    const incumbent = capability?.model?.trim();
+    return [
+      ...(incumbent ? [{ kind: "Codebase incumbent", label: incumbent, value: incumbent }] : []),
+      ...(benchmarksQuery.data ?? [])
+        .filter((model) => model.modelId !== incumbent)
+        .map((model) => ({
+          kind: "Trained model",
+          label: `${model.finetuningJobName || model.modelId}${model.baseModelId ? ` · ${model.baseModelId}` : ""}`,
+          value: model.modelId,
+        })),
+    ];
+  }, [capability?.model, benchmarksQuery.data]);
+  const benchmarkModel = benchmarkChoice ?? capability?.model?.trim() ?? "";
+  const selectedBenchmark = benchmarkOptions.find((option) => option.value === benchmarkModel);
+  const hasIncumbent = Boolean(selectedBenchmark);
+  const evaluationPlan = useMemo<EvaluationPlan>(
+    () => ({
+      evalIncumbentAfter: hasIncumbent && (evaluationOverrides.evalIncumbentAfter ?? false),
+      evalIncumbentBefore: hasIncumbent && (evaluationOverrides.evalIncumbentBefore ?? false),
+      evalModelAfter: evaluationOverrides.evalModelAfter ?? true,
+      evalModelBefore: evaluationOverrides.evalModelBefore ?? true,
+    }),
+    [hasIncumbent, evaluationOverrides]
+  );
+  const setEvaluationChoice = useCallback((field: keyof EvaluationPlan, value: boolean) => {
+    setEvaluationOverrides((previous) => ({ ...previous, [field]: value }));
+  }, []);
 
   const datasetsQuery = useProjectDatasetsQuery(projectId);
-  const allDatasets = useMemo(() => datasetsQuery.data?.results ?? [], [datasetsQuery.data]);
-  const datasets = useMemo(
-    () => forCapability(allDatasets, capabilityId),
-    [allDatasets, capabilityId]
-  );
-  const dataset = allDatasets.find((d) => d.id === datasetId);
+  const datasets = useMemo(() => datasetsQuery.data?.results ?? [], [datasetsQuery.data]);
+  const dataset = datasets.find((d) => d.id === datasetId);
 
   const evalDatasetsQuery = useProjectDatasetsForEvalQuery(projectId);
   const allEvalDatasets = useMemo(
     () => evalDatasetsQuery.data?.results ?? [],
     [evalDatasetsQuery.data]
   );
-  const evalDatasets = useMemo(
-    () => forCapability(allEvalDatasets, capabilityId),
-    [allEvalDatasets, capabilityId]
-  );
+  const evalDatasets = allEvalDatasets;
   const evalDataset = allEvalDatasets.find((d) => d.id === evalDatasetId);
 
-  // Seeded, not user work: main's wizard picked these too, and both stay visible
-  // and changeable in the form.
   useEffect(() => {
-    // The capability arrives after the datasets; seeding before it would keep
-    // whichever eval dataset is newest, whatever it belongs to.
-    if (evalDatasetId || !capabilityId) return;
-    const own = evalDatasets.find((d) => d.capability === capabilityId);
-    if (own) setEvalDatasetId(own.id);
+    if (evalDatasetId || evalDatasets.length === 0) return;
+    const own = capabilityId ? evalDatasets.find((d) => d.capability === capabilityId) : undefined;
+    setEvalDatasetId((own ?? evalDatasets[0]).id);
   }, [evalDatasets, capabilityId, evalDatasetId]);
 
   const evalSetsQuery = useEvalSetsQuery(projectId);
   const evalSets = useMemo(
-    () => (evalSetsQuery.data?.results ?? []).filter((s) => s.capability === capabilityId),
-    [evalSetsQuery.data, capabilityId]
+    () =>
+      (evalSetsQuery.data?.results ?? []).filter(
+        (s) =>
+          s.project === projectId &&
+          (!capabilityId || !s.capability || s.capability === capabilityId)
+      ),
+    [evalSetsQuery.data, capabilityId, projectId]
   );
   const evalSet = evalSets.find((s) => s.id === evalSetId);
   useEffect(() => {
-    if (!capabilityId || evalSetId || evalSets.length === 0) return;
+    if (evalSetId || evalSets.length === 0) return;
     setEvalSetId((evalSets.find((s) => s.isActive) ?? evalSets[0]).id);
-  }, [evalSets, capabilityId, evalSetId]);
+  }, [evalSets, evalSetId]);
   const evalPreload = useCapabilityEvalPreload(capabilityId, {
     enabled: !!capabilityId,
     projectId,
@@ -171,9 +188,6 @@ export function useTrainWizard({
   const validateRef = useRef(validateMutation);
   validateRef.current = validateMutation;
 
-  // One effect owns validation so a holdout edit re-derives the split counts the
-  // same way a dataset change does. `holdout` is a new object only when the user
-  // edits it, so it is a safe dependency.
   useEffect(() => {
     if (!datasetId) {
       setValidation(null);
@@ -184,10 +198,8 @@ export function useTrainWizard({
     void validateRef.current
       .mutateAsync({
         datasetId,
-        splitMethod: holdout.method,
-        validationDatasetId: holdout.datasetId || null,
-        validationEnabled: holdout.enabled,
-        validationSplitRatio: holdout.ratio,
+        ...VALIDATION_SPLIT,
+        validationDatasetId: null,
       })
       .then((result) => {
         if (!cancelled) setValidation(result);
@@ -201,22 +213,11 @@ export function useTrainWizard({
     return () => {
       cancelled = true;
     };
-  }, [datasetId, holdout]);
-
-  // A deep link can carry a dataset without its capability (the workshop rail does),
-  // and the capability grounds the recommendation.
-  const seededCapability = useRef(false);
-  useEffect(() => {
-    if (seededCapability.current || capabilityId || !datasetId) return;
-    const picked = allDatasets.find((d) => d.id === datasetId);
-    if (!picked?.capability) return;
-    seededCapability.current = true;
-    setCapabilityIdState(picked.capability);
-  }, [capabilityId, datasetId, allDatasets]);
+  }, [datasetId]);
 
   const datasetValid = validation?.valid === true;
 
-  const dataReady = !!capabilityId && !!datasetId && datasetValid && !validating;
+  const dataReady = !!datasetId && datasetValid && !validating;
   const evaluationReady = dataReady && !!evalDatasetId && !!evalSetId;
 
   // Recommendations start the moment the dataset validates, so the models
@@ -391,35 +392,22 @@ export function useTrainWizard({
     if (!runNameDirty) setRunName(computedName);
   }, [computedName, runNameDirty]);
 
-  const setCapabilityId = useCallback(
-    (id: string) => {
-      setCapabilityIdState(id);
-      // Eval sets and recommendations are both capability-scoped.
-      setEvalSetId("");
-      setDrafts([]);
-      setSeededFor("");
-      setLaunchError(null);
-      // Drop picks that belong to the capability being switched away from.
-      const stale = (list: Dataset[], picked: string) =>
-        !!picked && !forCapability(list, id).some((d) => d.id === picked);
-      if (stale(allDatasets, datasetId)) setDatasetIdState("");
-      if (stale(allDatasets, holdout.datasetId)) setHoldoutState((h) => ({ ...h, datasetId: "" }));
-      if (stale(allEvalDatasets, evalDatasetId)) setEvalDatasetId("");
-    },
-    [allDatasets, allEvalDatasets, datasetId, evalDatasetId, holdout.datasetId]
-  );
+  const setCapabilityId = useCallback((id: string) => {
+    setCapabilityIdState(id);
+    setBenchmarkChoice(null);
+    // Eval sets and recommendations are both capability-scoped.
+    setEvalSetId("");
+    setDrafts([]);
+    setSeededFor("");
+    setLaunchError(null);
+  }, []);
 
-  const setDatasetId = useCallback(
-    (id: string) => {
-      setDatasetIdState(id);
-      setDrafts([]);
-      setSeededFor("");
-      setLaunchError(null);
-      const picked = allDatasets.find((d) => d.id === id);
-      if (picked?.capability && !capabilityId) setCapabilityIdState(picked.capability);
-    },
-    [capabilityId, allDatasets]
-  );
+  const setDatasetId = useCallback((id: string) => {
+    setDatasetIdState(id);
+    setDrafts([]);
+    setSeededFor("");
+    setLaunchError(null);
+  }, []);
 
   const addModel = useCallback(
     (modelId: string) => {
@@ -456,12 +444,12 @@ export function useTrainWizard({
   /** Everything the page still needs, in the order it reads top to bottom.
    *  Surfaced on the Start button, not printed beside it. */
   const launchBlocker = ((): string | null => {
-    if (!capabilityId) return "Select a capability";
     if (!datasetId) return "Select a training dataset";
     if (validating) return "Validating the dataset";
     if (!datasetValid) return "This dataset can't be trained on yet";
     if (!evalDatasetId) return "Select an eval dataset";
     if (!evalSetId) return "Select an eval set";
+    if (benchmarkModel && !selectedBenchmark) return "Select an available benchmark model";
     if (recommendQuery.isLoading && drafts.length === 0) return "Loading recommendations";
     if (drafts.length === 0) return "Add a model";
     if (selectedDrafts.length === 0) return "Select an experiment";
@@ -474,6 +462,7 @@ export function useTrainWizard({
   const createMutation = useCreateFinetuningJobsMutation(projectId);
 
   const launch = useCallback(async () => {
+    if (!canLaunch) return;
     setLaunching(true);
     setLaunchError(null);
     try {
@@ -481,10 +470,12 @@ export function useTrainWizard({
         const fixed = applyCatalogTrainingFlags(draft, catalogModelById(draft.model)?.model);
         return {
           baseModel: fixed.model,
+          ...(benchmarkModel ? { baselineModel: benchmarkModel } : {}),
           capability: capabilityId || null,
           dataset: datasetId,
-          evalDataset: evalDatasetId || null,
-          evalSet: evalSetId || null,
+          evalDataset: evalDatasetId,
+          evalSet: evalSetId,
+          ...evaluationPlan,
           groupId,
           hyperparameters: buildHyperparameters(fixed),
           modelTier: fixed.tier as FinetuningJobRequestModelTierEnum,
@@ -496,10 +487,8 @@ export function useTrainWizard({
             .filter(Boolean)
             .join(" · "),
           project: projectId,
-          splitMethod: holdout.method,
-          validationDataset: holdout.datasetId || null,
-          validationEnabled: holdout.enabled,
-          validationSplitRatio: holdout.ratio,
+          ...VALIDATION_SPLIT,
+          validationDataset: null,
         };
       });
       await createMutation.mutateAsync(payloads);
@@ -511,6 +500,8 @@ export function useTrainWizard({
       setLaunching(false);
     }
   }, [
+    canLaunch,
+    benchmarkModel,
     capabilityId,
     catalogModelById,
     computedName,
@@ -518,8 +509,8 @@ export function useTrainWizard({
     datasetId,
     evalDatasetId,
     evalSetId,
+    evaluationPlan,
     groupId,
-    holdout,
     onLaunched,
     projectId,
     runName,
@@ -527,6 +518,8 @@ export function useTrainWizard({
   ]);
 
   const dirty =
+    benchmarkChoice !== null ||
+    Object.keys(evaluationOverrides).length > 0 ||
     datasetId !== (initialDatasetId ?? "") ||
     capabilityId !== (initialCapabilityId ?? "") ||
     runNameDirty ||
@@ -534,7 +527,10 @@ export function useTrainWizard({
 
   return {
     addModel,
+    benchmarkModel,
+    benchmarkOptions,
     benchmarkSnapshot,
+    benchmarksQuery,
     candidateByModel,
     candidates,
     canLaunch,
@@ -561,23 +557,29 @@ export function useTrainWizard({
     evalSetId,
     evalSets,
     evalSetsQuery,
+    evaluationPlan,
     evaluationReady,
     excluded,
+    hasIncumbent,
     launch,
     launchBlocker,
     launchError,
     launching,
     overlapCount,
+    projectId,
     rec,
     recommendQuery,
     removeModel,
     replaceDraftModel,
     runName,
+    selectedBenchmark,
     selectedDrafts,
+    setBenchmarkModel: setBenchmarkChoice,
     setCapabilityId,
     setDatasetId,
     setEvalDatasetId,
     setEvalSetId,
+    setEvaluationChoice,
     setRunName: (value: string) => {
       setRunNameDirty(true);
       setRunName(value);

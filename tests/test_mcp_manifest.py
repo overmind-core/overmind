@@ -4,7 +4,7 @@ import json
 
 from overbae.services.mcp.catalog import CATALOG
 
-MAX_MANIFEST_BYTES = 30 * 1024
+MAX_MANIFEST_BYTES = 34 * 1024
 SECRET_INPUT_PARTS = {
     "access_token",
     "api_key",
@@ -34,14 +34,17 @@ EXPECTED_TOOL_NAMES = {
     "run_dataset",
     "check_evaluation_readiness",
     "upsert_evaluator",
+    "create_eval_set",
     "run_evaluation",
     "compare_evaluations",
     "annotate_evaluation_sample",
     "check_finetune_readiness",
+    "prepare_training_data",
     "estimate_finetune",
     "start_finetune",
     "retry_deployment",
     "set_active_model",
+    "set_benchmark_model",
     "run_inference",
     "get_model_swap_prompt",
     "check_optimizer_readiness",
@@ -85,11 +88,11 @@ def _property_names(value):
             yield from _property_names(child)
 
 
-def test_manifest_keeps_the_curated_catalog_at_32_tools():
+def test_manifest_keeps_the_curated_catalog():
     definitions = CATALOG.definitions()
     names = {definition.name for definition in definitions}
 
-    assert len(definitions) == 32
+    assert len(definitions) == len(EXPECTED_TOOL_NAMES)
     assert names == EXPECTED_TOOL_NAMES
 
 
@@ -126,7 +129,7 @@ def test_input_schemas_keep_strict_validation_without_secret_fields():
         assert schema["type"] == "object"
         assert schema["additionalProperties"] is False
         assert "title" not in json.dumps(schema)
-        assert "default" not in json.dumps(schema)
+        assert '"default":' not in json.dumps(schema)
         for name in _property_names(schema):
             parts = name.casefold().replace("-", "_").split("_")
             assert not SECRET_INPUT_PARTS.intersection(parts), (definition.name, name)
@@ -143,6 +146,7 @@ def test_manifest_annotations_cover_read_only_world_and_cost_metadata():
         "configure_connector": (False, False, False, "free", "sync"),
         "sync_connector": (False, False, True, "free", "task"),
         "get_model_catalog": (True, True, False, "free", "sync"),
+        "set_benchmark_model": (False, True, False, "free", "sync"),
     }
     definitions = {definition.name: definition for definition in CATALOG.definitions()}
 

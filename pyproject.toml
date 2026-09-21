@@ -27,7 +27,7 @@ dependencies = [
     "psycopg2-binary>=2.9.10",
     "clerk-backend-api>=5.0.6",
     # Data Workshop / AI engineer feature (pre-installed for Cursor SDK agent scripts)
-    "cursor-sdk>=1.0.26",
+    "cursor-sdk>=1.0.31",
     # Overmind OTel SDK — internal pipeline observability (code analysis agent tracing)
     "overmind>=0.1.49",
     "pandas>=2.2.0",
@@ -54,6 +54,7 @@ dependencies = [
     "mcp>=1.26.0,<2",
     "gunicorn>=26.2.0",
     "uvicorn-worker>=0.4.0",
+    "jsonschema>=4.26.0",
 ]
 description = "Overbae — unified Django API for the Overclaw / Overmind platform"
 name = "bae"

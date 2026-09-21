@@ -72,6 +72,8 @@ Two systems share the evaluator engine but never share a judge. `ctx["eval_surfa
 
 The default is `trace_scoring`. `rubric_compiler` mirrors the split: `build_checklist_prompt` for generative, `build_judge_prompt` for trace scoring.
 
+Generated samples snapshot the runner's initial messages and tool schemas after system-prompt injection in `trajectory.model_request`; `metadata.output_start` separates context from newly generated messages. This is the initial runner request, not provider chat-template bytes or every replay turn. `services/eval/sample_io.py` supplies the REST detail and MCP resource with separate input, generated output, and grading reference. Historical samples fall back only to the verified pinned dataset row and label it `input_source=dataset`, never an exact captured request; absent sources are `unavailable`. The eval-run MCP resource exposes five bounded sample inspections with grader reasoning.
+
 Trace scoring carves a trace into units in `services/eval/units.py` (explicit precedence: turn spans > entry_point invocations > key-segment shim > structural root; beside the lattice, a run boundary enclosing turn slices becomes a run-grain execution surface when a run-grain behaviour binds it, and a boundary-less single-function-span trace is an unscorable orphan fragment); `services/eval/trace_scoring.py` judges the units and `services/behaviour/binder.py` binds them.
 
 ## Capabilities and sync
@@ -103,9 +105,98 @@ Clerk when `CLERK_API_SECRET_KEY` is set; blank secret is self-hosted local JWT 
 - Commercial billing (remaining-credit 402s, Free/Pro quotas, Stripe Checkout) injects when `STRIPE_SECRET_KEY` is set (`overbae/services/billing_provider.py`). Ledger charges always run. Empty key → uncapped OSS: spend is recorded and shown, gates and grants no-op.
 - API keys are either `scope=account` (every project the user belongs to) or `scope=project` with one `resourceIds` entry. Creating a key with `project` always mints project scope.
 
+## Training preparation
+
+Workshop findings are advisory before model-specific work: incomplete task/evidence/answer/schema reviews, capability mismatches and train/eval overlap produce warnings, not launch blockers. Exact preprocessing checks technical compatibility and does not repair datasets. Fine-tuning validation is read-only, and successful creation freezes the selected train, validation and `eval_cell` versions atomically. The same pinned eval cell is reused for before/after runs; dataset versions and capability cannot be swapped after creation. Internal loss-validation splitting preserves duplicates and cannot silently clean selected data.
+
+The workshop is model-independent. `services/training_preparation.py` caches exact Modal preprocessing by training/validation cell fingerprints, model, training type, context length, training stack and the SFT asset code fingerprint. REST `POST /api/training-preparations/` and MCP `prepare_training_data` share the service; MCP returns a `training_preparation` job receipt readable through `get_job` and the jobs resource. Preparation uses CPU-only `prepare_<train_function>` in the matching Modal training image; it does not start GPU training.
+
+Console setup does not submit or await preprocessing and has no per-model preparation cards or workshop review recommendations. `run_finetuning` requests or reuses the exact artifact after launch, reports preparation as job progress, and starts GPU training only when ready. Explicit REST/MCP preparation remains available.
+
+`TrainingPreparation` persists queued/starting/running/ready/incompatible/failed, the remote call ID and a 20-minute deadline. A 15-second controller queues short `io` observers. Restarts poll the saved call; transport failures retain it. An unacknowledged submission fails closed. Explicit retry of a confirmed failure cancels its saved remote operation before requeueing; uncertain submissions cannot be retried automatically. REST `/retry/` and MCP `retry_failed` use the same guard. Retrying a failed/cancelled training job also retries its cached confirmed-failed preparation before queuing training, unless GPU training already has a remote ID. Ready or in-flight preparations are reused; unsafe failures and incompatible data refuse the retry without resetting job or eval state.
+
+`sft_assets/preprocess.py` uses the trainer's `pretok` path, reporting exact token counts, shifted supervised targets, decoded masked previews and incompatible source-row IDs. It rejects over-context rows and zero-supervision examples without truncation or silent deletion. A ready artifact stores token IDs/labels, checksum and tokenizer; `upload_dataset` only materializes rows present in that artifact. The GPU engine validates context/vocabulary and consumes those tokens without preprocessing them again. Changes to the model/context or data require a matching artifact. Other providers retain their existing provider-side preprocessing; do not label those configurations exact-preflight-ready.
+
+Changes to the SFT assets or preparation functions require `modal deploy overbae/modal/modal_sft_worker.py`. A worker/code fingerprint mismatch blocks preparation until the matching worker is deployed.
+
+Unsloth token accuracy is measured from the final decoder output through the actual
+output head, in bounded chunks over supervised next-token targets. Fused CE stays
+enabled; accuracy does not depend on returned logits or a batch/context threshold.
+Counts are token-weighted across microbatches, with separate training and validation
+windows; checkpoint recomputation does not count twice. A missing decoder capture
+fails explicitly rather than silently dropping the metric. A rolling Modal deploy
+leaves active calls on their existing code; it cannot add metrics to an already-running
+trainer or reconstruct historical accuracy.
+
 ## Serving and weights
 
-- Serving splits by finetune shape in `_serves_as_adapter`. A dense Modal-trained LoRA is served as an adapter on a shared BF16 base — `publish_adapter` copies the adapter, and every deployment on that base shares one container pool, so a second adapter deploys in seconds. Everything else (full finetunes, MoE, non-Modal providers) is merged and quantized into a private checkpoint. The shared base must stay BF16: an FP8 base measurably degrades adapter quality. MoE is excluded because vLLM cannot apply a LoRA that targets fused expert layers, flagged by `"moe": true` in `models.json`.
+Training jobs and eval sets may have no capability. Training still requires an eval dataset
+and an eval set with enabled generative evaluators; a job without a capability can also
+select a ready trained benchmark. Unassigned eval sets are project-scoped and cannot be activated
+for live trace scoring. `eval.eval_set.create_with_evaluators` atomically creates a set and
+its library members in their applicable roles; REST and MCP share that creation path.
+
+Training has four persisted evaluation choices: `eval_incumbent_before/after` and
+`eval_model_before/after`. The training model's before target is its untouched base;
+after is its ready trained deployment. The training setup's **Benchmark model** selector
+chooses the codebase incumbent or a ready, project-scoped trained model for this run.
+REST and MCP `start_finetune` accept its serving model ID as `baseline_model`; the choice
+is immutable once the job is created and never changes `active_model` or serving.
+Omitting it uses the capability's separate `benchmark_model` default (set through MCP
+`set_benchmark_model`), or the codebase `model` when that default is null. The Console
+defaults to the codebase incumbent and sends its selection explicitly. New incumbent
+evaluations reject an unavailable selection. The capability Models tab only selects live routing.
+When OpenRouter is configured and its cached
+catalog has an exact model ID or
+Hugging Face checkpoint match, before evals use OpenRouter without a base deployment.
+Unavailable models or catalogs keep the existing provider/Modal fallback. A started
+eval or attached baseline deployment pins the route until an explicit retry; catalog
+refreshes do not switch live evals or provision duplicate baseline infrastructure.
+Defaults are untouched-base-before + trained-after; incumbent comparisons are
+separate opt-ins. The matched base is the preferred delta reference. All four can be off, but the eval
+dataset and eval set remain required. Baseline evals launch as independent jobs alongside
+GPU training; their completion and failure do not gate training. Retries retain EvalRuns
+but detach failed baseline-eval links. After evals start once training finishes.
+The same pinned eval cell and grader snapshots are reused across the job's evaluations.
+Generate variants snapshot the capability prompt in params, injecting it only when
+the row has no system turn. They evaluate the raw model with recorded context, not
+the live application. Every selected training evaluation uses all rows of the pinned
+version, with no row cap or sampling; shared group baselines must also cover all rows.
+Automatic intermediate-checkpoint judging is replaced by this explicit schedule;
+historical checkpoint results remain readable. MCP `start_finetune` accepts all four
+choices and the fine-tune resource returns `evaluation_plan`.
+The Console projects selected evaluations into waiting rows immediately and replaces
+each by kind when its run arrives. Loss-curve polling continues after deployment while
+evaluations remain pending. `services.deployment` persists each deployment's stage,
+remote call handle, generation, retry budget, deadline, and evaluation waiters.
+The single 15-second deployment controller covers training outputs and baselines;
+short IO tasks claim a row for 45 seconds, spawn or observe one remote call, then exit.
+Worker death reconnects to the saved call rather than restarting GPU work. Each
+attempt has a four-hour deadline and at most three confirmed-failure attempts with
+30/60-second backoff. Transport errors retain the handle. Submission without a saved
+acknowledgement fails closed; never launch another call until remote state is resolved.
+Failed baseline deployments notify waiting evaluations even without a remote handle
+or while cancellation is pending. Baseline stage progress is mirrored to the training
+job while it runs; eval score updates merge into freshly locked progress.
+Base preparation always uses `fetch_base_model` before publishing/merging and booting.
+Cancelled jobs and superseded generations cannot become ready; terminal notifications
+and remote cancellation are durable work too. Explicit retries reset the generation
+and budget without losing checkpoint metadata. Training remains successful if only
+deployment fails; the dependent evaluation is marked failed. REST and MCP share the
+retry service and expose stage, attempt, retry time, deadline, and last error.
+The deployed-model list includes only deployments linked to training jobs, before
+pagination and filtering. Baseline eval infrastructure remains addressable by ID
+but is excluded from the Console's model lists and counts.
+
+Training recommendations classify the selected capability's recorded codebase context
+(`codebase.task_type`), cached by context fingerprint. Task type drives benchmark skill
+weights; dataset stats still drive context/tool compatibility, hyperparameters and cost.
+With no selected capability, use the dataset's stored semantic task or profile heuristic,
+even if the dataset has a capability mapping. An unclassifiable selected capability stays
+unknown and ungraded; it does not fall back to the dataset. Console and MCP readiness use
+the same recommendation service; an uncached capability classification may call an LLM.
+
+- Serving splits by finetune shape in `deployment.serves_as_adapter`. A dense Modal-trained LoRA is served as an adapter on a shared BF16 base — `publish_adapter` copies the adapter, and every deployment on that base shares one container pool, so a second adapter deploys in seconds. Everything else (full finetunes, MoE, non-Modal providers) is merged and quantized into a private checkpoint. The shared base must stay BF16: an FP8 base measurably degrades adapter quality. MoE is excluded because vLLM cannot apply a LoRA that targets fused expert layers, flagged by `"moe": true` in `models.json`.
 - Base weights live in exactly one place: `.base_models/{org--model}` on the weights Volume. `fetch_base_model` is the only writer and a global mutex (`max_containers=1`), so concurrent callers cannot corrupt a shared dir or download twice. Celery waits on that Function (`.remote()`) before spawning a GPU train job, so a cold base downloads on CPU. Training then loads `BASE_MODEL_PATH` and fails if the snapshot is incomplete — no Hub fallback, no AWS for bases, no catalog prewarm.
 - Nothing on the `overmind-sft` Volume is read at serve time — the GPU worker mounts only weights and vllm-cache. `tasks/cleanup_modal.py` sweeps it daily, ages run dirs with no `FinetuningJob` row off the Volume's own mtimes, and drops `runs/{run_id}/final/` once the deploy has landed (a READY deployment means the serving copy is on the weights Volume and a confirmed S3 archive covers a rebuild). The same beat drops spent `/weights/.staging/{id}/` trees. `stage_modal_checkpoint` and `publish_adapter` fall back to `download_checkpoint_from_s3` when the checkpoint is absent — the one place an S3 round trip is allowed, never the first deploy. Both delete the job's staging dir as soon as the serving copy is written.
 - GPU memory snapshots are off deliberately — measured first requests of 113-675s against a ~15s target. `pre_warm` is a single boot-and-verify pass. Serving captures CUDA graphs instead (`CUDAGRAPH_CAPTURE_SIZES`); widening that list means re-checking `ACTIVATION_OVERHEAD_GB` in `gpu_selector`, which budgets the graph memory. After a healthy boot the worker `commit()`s `overmind-vllm-cache` (`/root/.cache/vllm`) so inductor artifacts survive scale-to-zero, and `reload()`s that Volume on enter. Weight load uses `--load-format runai_streamer`; the serve images install `runai-model-streamer>=0.15.7`. `@enter` does not fire warmup chats — `/health` is enough to take traffic. Completions (SSE and JSON) and playground SSE write an idle ping immediately and every 15s while waiting on vLLM (SSE comment / leading JSON newline), because the edge ALB drops a connection after 60s with no bytes and a genuine cold boot is 2–7 min; a non-stream finetuned completion is therefore a streaming JSON response that reports a late failure as `{"error": {...}}` under status 200.

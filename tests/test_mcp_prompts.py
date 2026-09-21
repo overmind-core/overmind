@@ -221,6 +221,12 @@ def test_finetune_prompt_discovers_models_before_dataset_readiness():
     assert text.index("get_model_catalog") < text.index("check_finetune_readiness")
     assert "dataset-independent model discovery" in text
     assert "dataset-specific narrowing and recommendations" in text
+    assert "approve training and evaluation spend" in text
+    assert "every row of the pinned eval dataset" in text
+    assert "without sampling or a row cap" in text
+    assert "exact OpenRouter catalog match" in text
+    assert "without provisioning baseline inference" in text
+    assert "Trained-checkpoint evaluations still wait for their own deployment" in text
     assert "get_job using kind deployment" in text
     assert "run_inference only when it is ready" in text
     assert "deploy_model" not in text

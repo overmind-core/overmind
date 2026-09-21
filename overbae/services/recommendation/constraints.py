@@ -15,7 +15,7 @@ from overbae.modal.training_type import (
     usable_training_kinds,
 )
 
-from .catalog import tier_models
+from .catalog import active_backend, tier_models
 
 
 @dataclass(frozen=True, slots=True)
@@ -43,7 +43,7 @@ def eligible_models(
             reason = _rejection(
                 entry,
                 has_tool_calling=has_tool_calling,
-                max_row_tokens=max_row_tokens,
+                max_row_tokens=None if (backend or active_backend()) == "modal" else max_row_tokens,
             )
             if reason is None:
                 survivors.append(entry)

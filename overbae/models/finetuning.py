@@ -4,6 +4,29 @@ from django.conf import settings
 from django.db import models
 
 
+class TrainingPreparation(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    cell = models.ForeignKey(
+        "overbae.Cell", on_delete=models.CASCADE, related_name="training_preparations"
+    )
+    validation_cell = models.ForeignKey(
+        "overbae.Cell",
+        on_delete=models.CASCADE,
+        null=True,
+        blank=True,
+        related_name="validation_preparations",
+    )
+    signature = models.CharField(max_length=64, unique=True)
+    config = models.JSONField(default=dict)
+    state = models.CharField(max_length=16, default="queued")
+    remote_id = models.CharField(max_length=255, blank=True, default="")
+    report = models.JSONField(default=dict)
+    error = models.TextField(blank=True, default="")
+    deadline = models.DateTimeField()
+    touched_at = models.DateTimeField(auto_now=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+
 class FinetuningJob(models.Model):
     """API-side handle for one training run. A Celery worker dispatches the run
     to the configured provider and reconciles the remote state back onto this row.
@@ -72,6 +95,13 @@ class FinetuningJob(models.Model):
         blank=True,
         related_name="validation_finetuning_jobs",
     )
+    eval_cell = models.ForeignKey(
+        "overbae.Cell",
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="evaluation_finetuning_jobs",
+    )
     validation_enabled = models.BooleanField(default=True)
     validation_split_ratio = models.FloatField(default=0.2)
     validation_dataset = models.ForeignKey(
@@ -101,13 +131,6 @@ class FinetuningJob(models.Model):
         blank=True,
         related_name="eval_finetuning_jobs",
     )
-    eval_cell = models.ForeignKey(
-        "overbae.Cell",
-        on_delete=models.PROTECT,
-        null=True,
-        blank=True,
-        related_name="eval_finetuning_jobs",
-    )
     eval_set = models.ForeignKey(
         "overbae.EvalSet",
         on_delete=models.SET_NULL,
@@ -115,6 +138,10 @@ class FinetuningJob(models.Model):
         blank=True,
         related_name="finetuning_jobs",
     )
+    eval_incumbent_before = models.BooleanField(default=False)
+    eval_incumbent_after = models.BooleanField(default=False)
+    eval_model_before = models.BooleanField(default=True)
+    eval_model_after = models.BooleanField(default=True)
 
     name = models.CharField(max_length=255, blank=True, default="")
     use_case = models.TextField(blank=True, default="")
@@ -224,14 +251,12 @@ class FinetuningJobEvent(models.Model):
 
 
 class FinetuningJobEval(models.Model):
-    """One judge-eval against a fine-tune job's model artifact. Baseline rows
-    score the untouched ``base_model``; checkpoint and final rows score provider
-    artifacts, and only when those are callable for inference. Results are
-    denormalised here once the linked ``EvalRun`` completes.
-    """
+    """One selected model/time evaluation; checkpoint rows retain historical results."""
 
     class Kind(models.TextChoices):
         BASELINE = "baseline"
+        INCUMBENT_AFTER = "incumbent_after"
+        MODEL_BEFORE = "model_before"
         CHECKPOINT = "checkpoint"
         FINAL = "final"
 
@@ -278,6 +303,11 @@ class FinetuningJobEval(models.Model):
             models.Index(fields=["job", "checkpoint_id"]),
         ]
         constraints = [
+            models.UniqueConstraint(
+                fields=["job", "kind"],
+                condition=models.Q(kind__in=["incumbent_after", "model_before"]),
+                name="uniq_ft_job_eval_optional",
+            ),
             models.UniqueConstraint(
                 fields=["job", "kind"],
                 condition=models.Q(kind="baseline"),

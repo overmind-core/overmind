@@ -30,7 +30,7 @@ export interface PatchedEvalSetRequest {
      * @type {string}
      * @memberof PatchedEvalSetRequest
      */
-    capability?: string;
+    capability?: string | null;
     /**
      *
      * @type {string}
@@ -49,6 +49,12 @@ export interface PatchedEvalSetRequest {
      * @memberof PatchedEvalSetRequest
      */
     prompts?: Array<string>;
+    /**
+     * Library evaluators to include on creation, in all applicable roles.
+     * @type {Array<string>}
+     * @memberof PatchedEvalSetRequest
+     */
+    evaluatorIds?: Array<string>;
 }
 
 /**
@@ -73,6 +79,7 @@ export function PatchedEvalSetRequestFromJSONTyped(json: any, ignoreDiscriminato
         'name': json['name'] == null ? undefined : json['name'],
         'description': json['description'] == null ? undefined : json['description'],
         'prompts': json['prompts'] == null ? undefined : json['prompts'],
+        'evaluatorIds': json['evaluator_ids'] == null ? undefined : json['evaluator_ids'],
     };
 }
 
@@ -92,5 +99,6 @@ export function PatchedEvalSetRequestToJSONTyped(value?: PatchedEvalSetRequest |
         'name': value['name'],
         'description': value['description'],
         'prompts': value['prompts'],
+        'evaluator_ids': value['evaluatorIds'],
     };
 }

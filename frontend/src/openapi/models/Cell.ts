@@ -13,6 +13,13 @@
  */
 
 import { mapValues } from '../runtime';
+import type { DatasetReadiness } from './DatasetReadiness';
+import {
+    DatasetReadinessFromJSON,
+    DatasetReadinessFromJSONTyped,
+    DatasetReadinessToJSON,
+    DatasetReadinessToJSONTyped,
+} from './DatasetReadiness';
 import type { CellStateEnum } from './CellStateEnum';
 import {
     CellStateEnumFromJSON,
@@ -126,6 +133,24 @@ export interface Cell {
     readonly stats: any | null;
     /**
      *
+     * @type {any}
+     * @memberof Cell
+     */
+    readonly review: any | null;
+    /**
+     *
+     * @type {any}
+     * @memberof Cell
+     */
+    readonly qualityReport: any | null;
+    /**
+     *
+     * @type {DatasetReadiness}
+     * @memberof Cell
+     */
+    readonly readiness: DatasetReadiness;
+    /**
+     *
      * @type {number}
      * @memberof Cell
      */
@@ -172,6 +197,9 @@ export function instanceOfCell(value: object): value is Cell {
     if (!('capabilityReport' in value) || value['capabilityReport'] === undefined) return false;
     if (!('fits' in value) || value['fits'] === undefined) return false;
     if (!('stats' in value) || value['stats'] === undefined) return false;
+    if (!('review' in value) || value['review'] === undefined) return false;
+    if (!('qualityReport' in value) || value['qualityReport'] === undefined) return false;
+    if (!('readiness' in value) || value['readiness'] === undefined) return false;
     if (!('seconds' in value) || value['seconds'] === undefined) return false;
     if (!('usedAt' in value) || value['usedAt'] === undefined) return false;
     if (!('createdAt' in value) || value['createdAt'] === undefined) return false;
@@ -205,6 +233,9 @@ export function CellFromJSONTyped(json: any, ignoreDiscriminator: boolean): Cell
         'capabilityReport': json['capability_report'],
         'fits': json['fits'],
         'stats': json['stats'],
+        'review': json['review'],
+        'qualityReport': json['quality_report'],
+        'readiness': DatasetReadinessFromJSON(json['readiness']),
         'seconds': json['seconds'],
         'usedAt': (json['used_at'] == null ? null : new Date(json['used_at'])),
         'createdAt': (new Date(json['created_at'])),
@@ -216,7 +247,7 @@ export function CellToJSON(json: any): Cell {
     return CellToJSONTyped(json, false);
 }
 
-export function CellToJSONTyped(value?: Omit<Cell, 'id'|'position'|'version'|'title'|'script'|'note'|'state'|'error'|'frozen'|'rows'|'columns'|'fingerprint'|'intent_report'|'capability_report'|'fits'|'stats'|'seconds'|'used_at'|'created_at'|'updated_at'> | null, ignoreDiscriminator: boolean = false): any {
+export function CellToJSONTyped(value?: Omit<Cell, 'id'|'position'|'version'|'title'|'script'|'note'|'state'|'error'|'frozen'|'rows'|'columns'|'fingerprint'|'intent_report'|'capability_report'|'fits'|'stats'|'review'|'quality_report'|'readiness'|'seconds'|'used_at'|'created_at'|'updated_at'> | null, ignoreDiscriminator: boolean = false): any {
     if (value == null) {
         return value;
     }

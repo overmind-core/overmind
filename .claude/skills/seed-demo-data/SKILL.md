@@ -59,9 +59,10 @@ workers to re-drive seeded rows against **real providers** and spend credits:
   helper (executemany), not via the ORM.
 - Datasets land through `services/datasets/land` and run through
   `notebook/run.execute`, so every dataset has an active cell with a real
-  frame; consumers pass `cell=dataset.active_cell` through `use.use`, which
-  PROTECTs the cell — the reset deletes jobs, experiments and eval runs before
-  the project.
+  frame. Historical demo consumption stamps `used_at` directly and pins cells,
+  including each training job's `eval_cell`; it does not fabricate a semantic
+  quality review. Live use reports missing reviews as warnings. The reset deletes
+  jobs, experiments and eval runs before the project.
 - Eval run summaries come from the real `aggregate_run` task applied inline;
   scores per variant are `Score` rows, so per-variant numbers are read from
   `run.scores`, never recomputed from the summary.

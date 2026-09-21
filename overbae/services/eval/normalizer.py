@@ -237,7 +237,8 @@ def _build(
     meta["truncated"] = bool(meta.get("truncated")) or truncated
     # Without ``output_start`` an earlier assistant message from the context
     # wins over the model's actual new response.
-    if output_start is not None and output_start < len(guarded):
+    if output_start is not None:
+        meta["output_start"] = min(output_start, len(guarded))
         output_slice = guarded[output_start:]
     else:
         output_slice = guarded
@@ -616,6 +617,7 @@ def normalize_generation(
     output_messages: list[dict[str, Any]],
     tool_definitions: list[dict[str, Any]] | None = None,
     metadata: dict[str, Any] | None = None,
+    request: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     meta = {"source": "dataset_run", **(metadata or {})}
     in_msgs = chatml.parse_messages(input_value)
@@ -624,7 +626,15 @@ def normalize_generation(
         in_msgs = [{"role": "user", "content": _as_text(raw)}] if raw not in (None, "") else []
     normalized_output = [chatml.normalize_message(m) for m in output_messages]
     messages = [*in_msgs, *normalized_output]
-    return _build(messages, tool_definitions or [], meta, output_start=len(in_msgs))
+    normalized = _build(messages, tool_definitions or [], meta, output_start=len(in_msgs))
+    if request:
+        request_messages, truncated = _apply_size_guard(request.get("messages", []))
+        normalized["model_request"] = {
+            "messages": request_messages,
+            "tools": request.get("tools", []),
+            "truncated": truncated,
+        }
+    return normalized
 
 
 def structure_trajectory(normalized: dict[str, Any]) -> dict[str, Any]:

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 from typing import Annotated, Any, Literal
+from uuid import UUID
 
 from pydantic import AliasChoices, Field, field_validator, model_validator
 
@@ -180,9 +181,21 @@ class EvaluatorReadinessContract(MCPModel):
 class EvalSetReadinessContract(MCPModel):
     id: str
     name: str
-    capability: str
+    capability: str | None
     active: bool
     member_count: int = Field(ge=0)
+
+
+class CreateEvalSetInput(MCPModel):
+    name: str = Field(min_length=1, max_length=255)
+    capability: str | None = Field(default=None, min_length=1, max_length=255)
+    evaluator_ids: list[UUID] = Field(min_length=1, max_length=100)
+
+
+class CreateEvalSetOutput(MCPModel):
+    summary: str = Field(min_length=1, max_length=240)
+    eval_set: EvalSetReadinessContract
+    resource_links: list[ResourceLinkContract] = Field(max_length=1)
 
 
 class CheckEvaluationReadinessOutput(MCPModel):

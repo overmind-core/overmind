@@ -2,11 +2,14 @@ import { Link } from "@tanstack/react-router";
 
 import { IntentBadge } from "@/components/datasets/badges";
 import { EvalSetEmptyWizardState } from "@/components/evaluations/eval-set-empty-wizard-state";
+import { FinetuningModelChip } from "@/components/finetuning/finetuning-model-chip";
 import { Column, EmptyField, Field, SetupGrid } from "@/components/finetuning/train/field";
 import type { TrainWizard } from "@/components/finetuning/train/use-train-wizard";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Icon } from "@/components/ui/icons";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import {
   Select,
   SelectContent,
@@ -85,35 +88,41 @@ export function SetupPanel({ wizard, projectId }: { wizard: TrainWizard; project
   // Each consequence block below is gated on the same condition as the control that
   // produces it: a pick outlives the capability it was made under, so the id alone would
   // describe a value the control cannot show.
-  const datasetShown =
-    !datasetsQuery.isLoading && !!capabilityId && datasets.length > 0 && !!datasetId;
+  const datasetShown = !datasetsQuery.isLoading && datasets.some((d) => d.id === datasetId);
   const shownEvalDataset =
-    !evalDatasetsQuery.isLoading && capabilityId && evalDatasets.length > 0
+    !evalDatasetsQuery.isLoading && evalDatasets.some((d) => d.id === evalDatasetId)
       ? evalDataset
       : undefined;
 
   return (
     <Column className="border-b border-border/70 pb-4">
       <SetupGrid>
-        <Field htmlFor="train-capability" label="Capability">
+        <Field className="sm:col-span-2 lg:col-span-3" htmlFor="train-run-name" label="Name">
+          <Input
+            id="train-run-name"
+            onChange={(e) => setRunName(e.target.value)}
+            size="default"
+            value={runName}
+          />
+        </Field>
+
+        <Field htmlFor="train-capability" label="Capability (optional)">
           {capabilitiesQuery.isLoading ? (
             <Skeleton className="h-8 w-full" />
-          ) : capabilities.length === 0 ? (
-            <EmptyField>
-              {capabilitiesQuery.error
-                ? "Couldn't load capabilities."
-                : "No capabilities in this project."}
-            </EmptyField>
           ) : (
-            <Select onValueChange={setCapabilityId} value={capabilityId}>
+            <Select
+              onValueChange={(value) => setCapabilityId(value === "none" ? "" : value)}
+              value={capabilityId || "none"}
+            >
               <SelectTrigger className="w-full" id="train-capability" size="default">
                 {/* Name only: the list carries the measurements, and a busy trigger
                   truncates the one thing the user needs to read. */}
-                <SelectValue placeholder="Select a capability">
-                  <span className="truncate">{capability?.name}</span>
+                <SelectValue>
+                  <span className="truncate">{capability?.name ?? "None"}</span>
                 </SelectValue>
               </SelectTrigger>
               <SelectContent>
+                <SelectItem value="none">None</SelectItem>
                 {capabilities.map((a) => (
                   <SelectItem key={a.id} value={a.id}>
                     <span className="truncate">{a.name}</span>
@@ -136,13 +145,13 @@ export function SetupPanel({ wizard, projectId }: { wizard: TrainWizard; project
         >
           {datasetsQuery.isLoading ? (
             <Skeleton className="h-8 w-full" />
-          ) : !capabilityId ? (
-            <EmptyField>Select a capability first.</EmptyField>
           ) : datasets.length === 0 ? (
             <EmptyField>
               {datasetsQuery.error
                 ? "Couldn't load datasets."
-                : "No train datasets for this capability."}
+                : capabilityId
+                  ? "No train datasets for this capability."
+                  : "No train datasets in this project."}
             </EmptyField>
           ) : (
             <Select onValueChange={setDatasetId} value={datasetId}>
@@ -200,19 +209,24 @@ export function SetupPanel({ wizard, projectId }: { wizard: TrainWizard; project
               )}
             </>
           )}
+          {datasetShown && !invalid && !!validation?.warnings.length && (
+            <Findings items={validation.warnings} tone="warning" />
+          )}
         </Field>
 
         <Field
-          hint="Scored against the capability's production model and the fine-tuned model. Rows whose source trace is in the training set are dropped from training."
+          hint="Used for the selected model evaluations."
           htmlFor="train-eval-dataset"
           label="Eval Dataset"
         >
           {evalDatasetsQuery.isLoading ? (
             <Skeleton className="h-8 w-full" />
-          ) : !capabilityId ? (
-            <EmptyField>Select a capability first.</EmptyField>
           ) : evalDatasets.length === 0 ? (
-            <EmptyField>No eval datasets for this capability.</EmptyField>
+            <EmptyField>
+              {capabilityId
+                ? "No eval datasets for this capability."
+                : "No eval datasets in this project."}
+            </EmptyField>
           ) : (
             <Select onValueChange={setEvalDatasetId} value={evalDatasetId}>
               <SelectTrigger className="w-full" id="train-eval-dataset" size="default">
@@ -237,22 +251,20 @@ export function SetupPanel({ wizard, projectId }: { wizard: TrainWizard; project
           {shownEvalDataset && overlapCount > 0 && (
             <p className="flex items-start gap-1.5 text-xs text-warning">
               <Icon.warning className="mt-0.5 size-3 shrink-0" />
-              {overlapCount.toLocaleString()} rows also appear in the training set and are excluded
-              from training
+              {overlapCount.toLocaleString()} training rows overlap this eval dataset. Review the
+              split before training.
             </p>
           )}
         </Field>
 
         <Field
-          hint="Graders run against both scored models."
+          hint="Graders used for each selected evaluation."
           htmlFor="train-eval-set"
-          label="Graders"
+          label="Eval set"
         >
-          {!capabilityId ? (
-            <EmptyField>Select a capability first.</EmptyField>
-          ) : evalSetsQuery.isLoading ? (
+          {evalSetsQuery.isLoading ? (
             <Skeleton className="h-8 w-full" />
-          ) : evalSets.length === 0 ? (
+          ) : evalSets.length === 0 && capabilityId ? (
             <EvalSetEmptyWizardState
               capabilityId={capabilityId}
               error={evalPreload.data?.error}
@@ -260,6 +272,8 @@ export function SetupPanel({ wizard, projectId }: { wizard: TrainWizard; project
               status={evalPreload.data?.status ?? null}
               variant="compact"
             />
+          ) : evalSets.length === 0 ? (
+            <EmptyField>No eval sets in this project.</EmptyField>
           ) : (
             <Select onValueChange={setEvalSetId} value={evalSetId}>
               <SelectTrigger className="w-full" id="train-eval-set" size="default">
@@ -271,6 +285,11 @@ export function SetupPanel({ wizard, projectId }: { wizard: TrainWizard; project
                 {evalSets.map((set) => (
                   <SelectItem key={set.id} value={set.id}>
                     <span className="truncate">{set.name}</span>
+                    {!capabilityId && (
+                      <span className="text-xs text-muted-foreground">
+                        {capabilities.find((c) => c.id === set.capability)?.name}
+                      </span>
+                    )}
                     {set.isActive && <span className="text-xs text-muted-foreground">Active</span>}
                     <span className="text-xs text-muted-foreground">
                       {count(set.generativeCount, "grader")}
@@ -282,14 +301,125 @@ export function SetupPanel({ wizard, projectId }: { wizard: TrainWizard; project
           )}
         </Field>
 
-        {/* Spans the trailing cell so the grid stays closed. */}
-        <Field className="sm:col-span-2" htmlFor="train-run-name" label="Name">
-          <Input
-            id="train-run-name"
-            onChange={(e) => setRunName(e.target.value)}
-            size="default"
-            value={runName}
-          />
+        <Field
+          hint="Model to evaluate and compare against in this run."
+          htmlFor="train-benchmark-model"
+          label="Benchmark model"
+        >
+          <Select onValueChange={wizard.setBenchmarkModel} value={wizard.benchmarkModel}>
+            <SelectTrigger
+              className="w-full"
+              id="train-benchmark-model"
+              size="default"
+              title={wizard.selectedBenchmark?.label}
+            >
+              <SelectValue placeholder="Select a model to compare against">
+                {wizard.selectedBenchmark && (
+                  <FinetuningModelChip
+                    compact
+                    model={wizard.selectedBenchmark.value}
+                    projectId={projectId}
+                  />
+                )}
+              </SelectValue>
+            </SelectTrigger>
+            <SelectContent>
+              {wizard.benchmarkOptions.map((option) => (
+                <SelectItem key={option.value} textValue={option.label} value={option.value}>
+                  <FinetuningModelChip compact model={option.value} projectId={projectId} />
+                  {option.kind === "Trained model" && (
+                    <span className="max-w-60 truncate">{option.label}</span>
+                  )}
+                  <span className="text-xs text-muted-foreground">{option.kind}</span>
+                </SelectItem>
+              ))}
+              {wizard.benchmarksQuery.isLoading && (
+                <div className="p-2">
+                  <Spinner size="sm" />
+                </div>
+              )}
+              {!wizard.benchmarksQuery.isLoading && wizard.benchmarkOptions.length === 0 && (
+                <div className="p-2 text-sm text-muted-foreground">
+                  No benchmark models available.
+                </div>
+              )}
+            </SelectContent>
+          </Select>
+          {wizard.benchmarksQuery.isError && (
+            <p className="text-xs text-destructive">Couldn't load trained models.</p>
+          )}
+          <div aria-label="Incumbent evaluations" className="grid grid-cols-2 gap-2" role="group">
+            <Label
+              className="h-8 rounded-sm bg-control px-3 has-disabled:cursor-not-allowed has-disabled:opacity-50 [&:not(:has(:disabled))]:cursor-pointer [&:not(:has(:disabled))]:hover:bg-control-hover"
+              htmlFor="train-eval-incumbent-before"
+            >
+              <Checkbox
+                aria-label="Evaluate incumbent baseline"
+                checked={wizard.evaluationPlan.evalIncumbentBefore}
+                disabled={!wizard.hasIncumbent}
+                id="train-eval-incumbent-before"
+                onCheckedChange={(value) =>
+                  wizard.setEvaluationChoice("evalIncumbentBefore", value === true)
+                }
+              />
+              Baseline
+            </Label>
+            <Label
+              className="h-8 rounded-sm bg-control px-3 has-disabled:cursor-not-allowed has-disabled:opacity-50 [&:not(:has(:disabled))]:cursor-pointer [&:not(:has(:disabled))]:hover:bg-control-hover"
+              htmlFor="train-eval-incumbent-after"
+            >
+              <Checkbox
+                aria-label="Evaluate incumbent after training"
+                checked={wizard.evaluationPlan.evalIncumbentAfter}
+                disabled={!wizard.hasIncumbent}
+                id="train-eval-incumbent-after"
+                onCheckedChange={(value) =>
+                  wizard.setEvaluationChoice("evalIncumbentAfter", value === true)
+                }
+              />
+              After
+            </Label>
+          </div>
+        </Field>
+
+        <Field
+          hint="Compare the untouched base model with the trained checkpoint."
+          label="Training model evals"
+        >
+          <div
+            aria-label="Training model evaluations"
+            className="grid grid-cols-2 gap-2"
+            role="group"
+          >
+            <Label
+              className="h-8 cursor-pointer rounded-sm bg-control px-3 hover:bg-control-hover"
+              htmlFor="train-eval-model-before"
+            >
+              <Checkbox
+                aria-label="Evaluate base model"
+                checked={wizard.evaluationPlan.evalModelBefore}
+                id="train-eval-model-before"
+                onCheckedChange={(value) =>
+                  wizard.setEvaluationChoice("evalModelBefore", value === true)
+                }
+              />
+              Base
+            </Label>
+            <Label
+              className="h-8 cursor-pointer rounded-sm bg-control px-3 hover:bg-control-hover"
+              htmlFor="train-eval-model-after"
+            >
+              <Checkbox
+                aria-label="Evaluate trained model"
+                checked={wizard.evaluationPlan.evalModelAfter}
+                id="train-eval-model-after"
+                onCheckedChange={(value) =>
+                  wizard.setEvaluationChoice("evalModelAfter", value === true)
+                }
+              />
+              Trained
+            </Label>
+          </div>
         </Field>
       </SetupGrid>
     </Column>

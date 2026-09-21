@@ -24,6 +24,7 @@ from overbae.services.finetuning_policy import (
     baseten_context_length,  # noqa: F401 — re-exported; tests/consumers import it from here
     derive_baseten_training_plan,
 )
+from overbae.services.training_preparation import ready_for_job
 
 logger = logging.getLogger(__name__)
 
@@ -329,8 +330,11 @@ def lifecycle_stage(status: str | None, progress: dict | None) -> str:
         return LIFECYCLE_FAILED
 
     evals = progress.get("judge_evals") or []
-    final = next((e for e in evals if (e or {}).get("kind") == "final"), None)
-    final_pending = bool(final and str(final.get("status") or "").lower() in ("running", "pending"))
+    final_pending = any(
+        (e or {}).get("kind") in ("final", "incumbent_after")
+        and str(e.get("status") or "").lower() in ("running", "pending")
+        for e in evals
+    )
 
     if s in ("succeeded", "completed"):
         # Model is deployed READY; a final eval may still be scoring.
@@ -347,53 +351,6 @@ def lifecycle_stage(status: str | None, progress: dict | None) -> str:
             trained_i = None
         return LIFECYCLE_TRAINING if (trained_i and trained_i > 0) else LIFECYCLE_SETUP
     return LIFECYCLE_SETUP
-
-
-# Readable feed lines for structured MODAL_STAGE markers and the raw prints
-# register_model.py emits, so the deployment feed reads as steps, not logs.
-_MODAL_STAGE_LABELS = {
-    "downloading_checkpoint": "Downloading checkpoint…",
-    "merging_lora": "Merging LoRA adapter into base weights…",
-    "quantizing_fp8": "Quantising to FP8…",
-    "registering": "Registering model with the inference server…",
-    "prewarming": "Booting the model to verify it serves…",
-    "ready": "Model deployed and ready.",
-}
-_MODAL_PREFIX_LABELS: tuple[tuple[str, str], ...] = (
-    ("Listing checkpoint files", "Listing checkpoint files…"),
-    ("already staged", "Checkpoint already staged — reusing."),
-    ("Promoting nested artifact", "Consolidating checkpoint artefacts…"),
-    ("Downloading base model", "Downloading base model for the LoRA merge…"),
-    ("Base model already cached", "Base model cached — merging LoRA…"),
-    ("Base model saved", "Base model downloaded."),
-    ("LoRA adapter staged", "LoRA adapter staged — merging + quantising…"),
-    ("Full SFT checkpoint staged", "Checkpoint staged — quantising to FP8…"),
-    ("FP8 worker", "Merging + quantising to FP8 on GPU…"),
-    ("already FP8-ready", "Weights already prepared — reusing."),
-    ("Download done", "Checkpoint download complete."),
-)
-
-
-def _clean_modal_line(raw: str) -> str | None:
-    """One raw Modal log line → a clean feed message, or None to drop it."""
-    msg = _ANSI_RE.sub("", raw or "")
-    if "\r" in msg:  # keep only the last frame of a \r-overwritten progress bar
-        frames = [f for f in msg.split("\r") if f.strip()]
-        msg = frames[-1] if frames else ""
-    stripped = msg.strip()
-    if not stripped:
-        return None
-    if stripped.startswith("MODAL_STAGE "):
-        try:
-            rec = json.loads(stripped[len("MODAL_STAGE ") :])
-        except ValueError:
-            return None
-        return _MODAL_STAGE_LABELS.get(str(rec.get("stage") or "")) or None
-    for needle, label in _MODAL_PREFIX_LABELS:
-        if needle in stripped:
-            return label
-    # Everything else (pip chatter, tqdm frames, framework noise) is dropped.
-    return None
 
 
 # Backend names must never reach the frontend — error strings and log lines
@@ -457,19 +414,6 @@ def sanitize_job_error(text: str) -> str:
             return USER_FACING_DEPLOY_FAILURE
         return USER_FACING_TRAIN_FAILURE
     return scrubbed[:300]
-
-
-def sanitize_modal_log_lines(raw_lines: list[str], *, cap: int = MAX_ACTIVITY_LINES) -> list[str]:
-    """Clean raw Modal deploy logs into feed-ready lines, collapsing consecutive
-    duplicates so a chatty download becomes one line.
-    """
-    out: list[str] = []
-    for raw in raw_lines:
-        msg = _clean_modal_line(raw)
-        if not msg or (out and out[-1] == msg):
-            continue
-        out.append(msg)
-    return out[-cap:]
 
 
 def parse_download_stage(logs: list[dict]) -> tuple[str, dict[str, Any] | None]:
@@ -1510,8 +1454,7 @@ class BasetenRunner(BaseFinetuningRunner):
         loss_series = [loss_by_step[s] for s in sorted(loss_by_step)]
         token_accuracy_series = [ta_by_step[s] for s in sorted(ta_by_step)]
 
-        # Baseten checkpoints are weight artifacts in the job's checkpoint volume, not
-        # chat-callable endpoints, so is_checkpoint_inferable stays False.
+        # Baseten checkpoints are volume artifacts, not chat-callable endpoints.
         checkpoints: list[dict[str, Any]] = []
         for ckpt in checkpoint_history:
             c_step = ckpt.get("step")
@@ -1827,6 +1770,9 @@ class ModalRunner(BaseFinetuningRunner):
         hp = dict(job.hyperparameters or {})
         training_kind = "full" if str(hp.get("training_type", {}).get("type")) == "Full" else "lora"
         # Modal reuses the Baseten catalog — models.json has no "modal" rows.
+        # Exact preprocessing, not the character estimate, owns the chosen context.
+        max_row_tokens = 0
+        stats["max_token_length"] = 0
         model_max = training_context_length(model_cfg, training_kind)
         requested_ctx = int(hp.get("context_length") or 0) or None
         early_ctx = baseten_context_length(
@@ -1900,7 +1846,13 @@ class ModalRunner(BaseFinetuningRunner):
         upload_fn = modal.Function.from_name(
             self._app_name, "upload_dataset", environment_name=env_name
         )
-        upload_fn.remote(run_id=run_id, data_jsonl=data_text, val_jsonl=val_text)
+        preparation = ready_for_job(job, plan.context_length)
+        upload_fn.remote(
+            run_id=run_id,
+            data_jsonl=data_text,
+            val_jsonl=val_text,
+            preparation_id=str(preparation.id),
+        )
 
         self._await_base_model(env["MODEL_ID"])
 

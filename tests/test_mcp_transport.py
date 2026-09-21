@@ -96,14 +96,17 @@ def test_ping_is_protocol_level_and_catalog_lists_curated_tools():
         "run_dataset",
         "check_evaluation_readiness",
         "upsert_evaluator",
+        "create_eval_set",
         "run_evaluation",
         "compare_evaluations",
         "annotate_evaluation_sample",
         "check_finetune_readiness",
+        "prepare_training_data",
         "estimate_finetune",
         "start_finetune",
         "retry_deployment",
         "set_active_model",
+        "set_benchmark_model",
         "run_inference",
         "get_model_swap_prompt",
         "check_optimizer_readiness",
@@ -133,8 +136,8 @@ def test_tools_list_is_permission_filtered_and_stays_within_manifest_budget():
     assert read_response.status_code == 200
     assert full_response.status_code == 200
     assert read_names < {tool["name"] for tool in full_tools}
-    assert len(full_tools) == 32
-    assert len(full_response.content) <= 30 * 1024
+    assert len(full_tools) == 35
+    assert len(full_response.content) <= 34 * 1024
 
 
 def test_resources_and_prompts_list_over_streamable_http():

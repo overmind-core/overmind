@@ -138,8 +138,13 @@ def create_optimizer_experiment(
     if error := optimizer_dataset_error(capability, dataset, cell):
         raise ValidationError({"dataset": error})
     eval_set = eval_set or capability.active_eval_set
-    if eval_set is not None and eval_set.capability_id != capability.id:
-        raise ValidationError({"eval_set": "Eval set does not belong to this capability."})
+    if eval_set is not None and (
+        eval_set.project_id != capability.project_id
+        or eval_set.capability_id not in (None, capability.id)
+    ):
+        raise ValidationError(
+            {"eval_set": "Eval set does not belong to this project or capability."}
+        )
     entrypoint = entrypoint or capability.entrypoint_fn
 
     if user is not None:

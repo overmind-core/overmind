@@ -446,8 +446,8 @@ class EvalSetViewSet(viewsets.ModelViewSet):
         # sets strands the "Manage sets" link on a 404.
         qs = (
             EvalSet.objects.filter(
+                Q(capability__status="current") | Q(capability__isnull=True),
                 project_id__in=_user_project_ids(self.request.user),
-                capability__status="current",
             )
             .select_related("capability")
             .prefetch_related(
@@ -455,13 +455,15 @@ class EvalSetViewSet(viewsets.ModelViewSet):
                 # the owning capability — otherwise one back-reference query per member.
                 Prefetch(
                     "members",
-                    queryset=EvalSetMember.objects.select_related("evaluator", "eval_set"),
+                    queryset=EvalSetMember.objects.select_related(
+                        "evaluator__capability", "eval_set"
+                    ),
                 )
             )
         )
         capability_id = self.request.query_params.get("capability")
         if capability_id:
-            qs = qs.filter(capability_id=capability_id)
+            qs = qs.filter(Q(capability_id=capability_id) | Q(capability__isnull=True))
         return qs
 
     def get_serializer_context(self):
@@ -499,7 +501,7 @@ class EvalSetViewSet(viewsets.ModelViewSet):
         # The FK is SET_NULL, so this only exists to hand the active pointer to
         # another set rather than leave the capability with none.
         capability = instance.capability
-        if capability.active_eval_set_id == instance.id:
+        if capability is not None and capability.active_eval_set_id == instance.id:
             replacement = (
                 EvalSet.objects.filter(capability=capability)
                 .exclude(id=instance.id)
@@ -645,6 +647,8 @@ class EvalSetViewSet(viewsets.ModelViewSet):
         from overbae.services.eval.eval_set import activate as activate_set
 
         eval_set = self.get_object()
+        if eval_set.capability_id is None:
+            raise ValidationError({"capability": "Assign a capability before activating this set."})
         activate_set(eval_set.capability, eval_set)
         eval_set.refresh_from_db()
         return Response(EvalSetSerializer(eval_set, context=self.get_serializer_context()).data)
@@ -930,7 +934,7 @@ class EvalSampleViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, viewse
             run__project_id__in=_user_project_ids(self.request.user)
         ).select_related("run", "variant")
         if self.action == "retrieve":
-            qs = qs.prefetch_related("scores")
+            qs = qs.select_related("run__cell").prefetch_related("scores")
         return qs
 
 

@@ -9,6 +9,7 @@ import {
   type ComparisonSummary,
   primaryValue,
 } from "@/components/evaluations/run-comparison";
+import type { EvaluationDisplayRow } from "@/components/finetuning/evaluation-plan";
 import { DeltaChip, EvalScoreChip, FtStatusBadge } from "@/components/finetuning/finetuning-chrome";
 import { FinetuningModelChip } from "@/components/finetuning/finetuning-model-chip";
 import type { ExperimentSnapshot } from "@/components/finetuning/job-snapshot";
@@ -27,8 +28,11 @@ function ExperimentCell({ snapshot }: { snapshot: ExperimentSnapshot }) {
 }
 
 function judgeEvalStepLabel(row: FinetuningJudgeEvalRow): string {
-  if (row.kind === "baseline") return "Baseline";
-  if (row.kind === "final") return "Final";
+  if (row.label) return row.label;
+  if (row.kind === "baseline") return "Incumbent · before";
+  if (row.kind === "incumbent_after") return "Incumbent · after";
+  if (row.kind === "model_before") return "Base model · before";
+  if (row.kind === "final") return "Trained model · after";
   return row.checkpoint_step != null ? String(row.checkpoint_step) : "—";
 }
 
@@ -113,7 +117,7 @@ export function JudgeEvalTableRow({
   projectId,
   deployedUuidByServingId,
 }: {
-  row: FinetuningJudgeEvalRow;
+  row: EvaluationDisplayRow;
   snapshot: ExperimentSnapshot;
   isAll: boolean;
   projectId: string;
@@ -154,7 +158,7 @@ export function JudgeEvalTableRow({
             <ExperimentCell snapshot={snapshot} />
           </TableCell>
         ) : null}
-        <TableCell className="w-28 whitespace-nowrap px-2 font-mono text-xs tabular-nums">
+        <TableCell className="w-56 whitespace-nowrap px-2 font-mono text-xs tabular-nums">
           {row.eval_run_id ? (
             <EntityRef
               id={row.eval_run_id}
@@ -166,14 +170,18 @@ export function JudgeEvalTableRow({
             judgeEvalStepLabel(row)
           )}
         </TableCell>
-        <TableCell className="w-32 whitespace-nowrap px-2">
+        <TableCell className="w-44 whitespace-nowrap px-2" title={row.waitingReason}>
           <FtStatusBadge fallback={row.status} status={row.status} />
         </TableCell>
         <TableCell className="w-36 whitespace-nowrap px-2">
           <span className="inline-flex items-center gap-1.5">
             <EvalScoreChip value={mean} />
             {row.baseline_delta != null ? (
-              <DeltaChip value={fromScore(row.baseline_delta)} />
+              <span
+                title={row.comparison_label ? `Compared with ${row.comparison_label}` : undefined}
+              >
+                <DeltaChip value={fromScore(row.baseline_delta)} />
+              </span>
             ) : null}
           </span>
         </TableCell>
@@ -182,7 +190,9 @@ export function JudgeEvalTableRow({
           title={row.error_message || row.model_id || undefined}
         >
           <div className="min-w-0 max-w-full overflow-hidden">
-            {row.model_id ? (
+            {row.planned && row.model_id ? (
+              <ModelProviderChip className="max-w-full" compact model={row.model_id} />
+            ) : row.model_id ? (
               <FinetuningModelChip
                 className="max-w-full"
                 compact
@@ -191,7 +201,9 @@ export function JudgeEvalTableRow({
                 projectId={projectId}
               />
             ) : (
-              <span className="text-muted-foreground/40">—</span>
+              <span className="text-xs text-muted-foreground">
+                {row.planned ? "Incumbent model" : "—"}
+              </span>
             )}
           </div>
         </TableCell>
@@ -223,14 +235,18 @@ export function latestClassMetricsOf(
   const rank = (r: FinetuningJudgeEvalRow) =>
     r.kind === "final"
       ? Number.MAX_SAFE_INTEGER
-      : r.kind === "baseline"
-        ? -1
-        : (r.checkpoint_step ?? 0);
+      : r.kind === "incumbent_after"
+        ? Number.MAX_SAFE_INTEGER - 1
+        : r.kind === "baseline"
+          ? -1
+          : (r.checkpoint_step ?? 0);
   const best = [...scored].sort((a, b) => rank(a) - rank(b)).at(-1);
   return best ? { metrics: best.class_metrics as ClassMetrics, row: best } : null;
 }
 
 export function classMetricsSourceLabel(row: FinetuningJudgeEvalRow): string {
+  if (row.kind === "incumbent_after") return "incumbent after training";
+  if (row.kind === "model_before") return "base model baseline";
   if (row.kind === "final") return "final eval";
   if (row.kind === "baseline") return "baseline eval";
   return row.checkpoint_step != null ? `checkpoint step ${row.checkpoint_step}` : "checkpoint eval";

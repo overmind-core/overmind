@@ -7,7 +7,6 @@ import uuid
 from unittest.mock import patch
 
 import pytest
-from conftest import EVAL_ROWS
 from rest_framework.test import APIClient
 from rest_framework_simplejwt.tokens import RefreshToken
 
@@ -80,7 +79,7 @@ def test_create_split_lands_two_datasets_with_disjoint_rows_and_queues_both_diag
             project=project,
             user=user,
             name="Support",
-            source={"rows": [dict(r) for r in EVAL_ROWS * 5]},
+            source={"rows": [dict(r) for r in ROWS]},
             eval_percent=20,
             position="tail",
         )
@@ -96,6 +95,9 @@ def test_create_split_lands_two_datasets_with_disjoint_rows_and_queues_both_diag
     assert train.source_spec["split"] == {
         "eval_percent": 20,
         "position": "tail",
+        "group_by": [],
+        "stratify_by": None,
+        "deduplicate": True,
         "role": "train",
         "sibling": str(evaluation.id),
     }
@@ -182,6 +184,7 @@ def test_mcp_create_from_traces_with_split_returns_both_datasets():
             start_time_ns=1,
             end_time_ns=2,
             duration_ns=1,
+            attributes={"overmind.input.data": trace_id, "overmind.output.data": "answer"},
         )
 
     def call(arguments):

@@ -27,7 +27,6 @@ from overbae.models import (
 )
 from overbae.services.finetuning_eval import (
     _aggregate_from_summary,
-    is_checkpoint_inferable,
     job_wants_evals,
     serialize_job_evals,
     sync_eval_scores,
@@ -79,11 +78,12 @@ def _setup(*, with_eval_link=True):
         eval_dataset=eval_ds if with_eval_link else None,
         eval_set=eset if with_eval_link else None,
         base_model="Qwen/Qwen2.5-0.5B-Instruct",
+        eval_incumbent_before=True,
+        eval_model_before=False,
         status=FinetuningJob.Status.RUNNING,
         provider=FinetuningJob.Provider.BASETEN,
         remote_job_id="proj-1:job-x",
         triggered_by=u,
-        hyperparameters={"eval_max_items": 3},
     )
     return u, p, job, eval_ds, eset
 
@@ -93,26 +93,6 @@ def test_job_wants_evals_requires_both_links():
     assert job_wants_evals(job) is True
     job.eval_set = None
     assert job_wants_evals(job) is False
-
-
-def test_eval_max_items_defaults_to_one_hundred_and_zero_is_uncapped():
-    from types import SimpleNamespace
-
-    from overbae.services.finetuning_eval import DEFAULT_EVAL_MAX_ITEMS, eval_max_items
-
-    assert DEFAULT_EVAL_MAX_ITEMS == 100
-    assert eval_max_items(SimpleNamespace(hyperparameters={})) == 100
-    assert eval_max_items(SimpleNamespace(hyperparameters={"eval_max_items": 0})) == 0
-    assert eval_max_items(SimpleNamespace(hyperparameters={"eval_max_items": -3})) == 0
-    assert eval_max_items(SimpleNamespace(hyperparameters={"eval_max_items": 3})) == 3
-    assert eval_max_items(SimpleNamespace(hyperparameters={"eval_max_items": 999})) == 200
-    assert eval_max_items(SimpleNamespace(hyperparameters=None)) == 100
-
-
-def test_together_checkpoint_skips_archive_paths():
-    job = FinetuningJob(provider=FinetuningJob.Provider.TOGETHER_AI)
-    assert is_checkpoint_inferable(job, {"path": "s3://bucket/ckpt.tar"}) is False
-    assert is_checkpoint_inferable(job, {"path": "org/model-ft-abc"}) is True
 
 
 def test_aggregate_from_summary_means():
@@ -453,11 +433,12 @@ def test_group_jobs_share_one_baseline_eval_run(django_capture_on_commit_callbac
         eval_dataset=eval_ds,
         eval_set=eset,
         base_model="meta-llama/Llama-3.1-8B-Instruct",
+        eval_incumbent_before=True,
+        eval_model_before=False,
         status=FinetuningJob.Status.RUNNING,
         provider=FinetuningJob.Provider.BASETEN,
         group_id=gid,
         baseline_model="openai/gpt-5.6-sol",
-        hyperparameters={"eval_max_items": 3},
         triggered_by=job_a.triggered_by,
     )
     job_c = FinetuningJob.objects.create(
@@ -467,11 +448,12 @@ def test_group_jobs_share_one_baseline_eval_run(django_capture_on_commit_callbac
         eval_dataset=eval_ds,
         eval_set=eset,
         base_model="mistralai/Mistral-7B-Instruct-v0.3",
+        eval_incumbent_before=True,
+        eval_model_before=False,
         status=FinetuningJob.Status.RUNNING,
         provider=FinetuningJob.Provider.BASETEN,
         group_id=gid,
         baseline_model="openai/gpt-5.6-sol",
-        hyperparameters={"eval_max_items": 3},
         triggered_by=job_a.triggered_by,
     )
 
@@ -480,9 +462,9 @@ def test_group_jobs_share_one_baseline_eval_run(django_capture_on_commit_callbac
         django_capture_on_commit_callbacks(execute=True),
     ):
         apply.return_value = MagicMock(id="celery-shared-base")
-        tick_job_evals(job_a, checkpoints=None)
-        tick_job_evals(job_b, checkpoints=None)
-        tick_job_evals(job_c, checkpoints=None)
+        tick_job_evals(job_a)
+        tick_job_evals(job_b)
+        tick_job_evals(job_c)
 
     assert apply.call_count == 1  # one EvalRun, not three
     rows = list(
@@ -571,7 +553,7 @@ def _resolved_base(base: str) -> str:
 
 
 def _base_slug(base: str) -> str:
-    from overbae.tasks.model_deployment import base_model_slug
+    from overbae.services.deployment import base_model_slug
 
     return base_model_slug(_resolved_base(base))
 
@@ -590,12 +572,6 @@ def _ready_base_deployment(project, base="Qwen/Qwen3-8B"):
     )
 
 
-def test_baseten_checkpoints_never_inferable():
-    job = FinetuningJob(provider=FinetuningJob.Provider.BASETEN)
-    ckpt = {"path": "checkpoint-2", "result_files": [], "id": "checkpoint-2"}
-    assert is_checkpoint_inferable(job, ckpt) is False
-
-
 @override_settings(INFERENCE_API_URL="https://gateway.example.modal.run")
 def test_baseten_baseline_waits_for_base_deployment_then_fires(
     django_capture_on_commit_callbacks,
@@ -604,7 +580,7 @@ def test_baseten_baseline_waits_for_base_deployment_then_fires(
     _basetenify(job)
 
     with patch("overbae.tasks.eval.run_eval_run.apply_async") as apply:
-        tick_job_evals(job, checkpoints=[{"id": "checkpoint-2", "step": 2, "path": "checkpoint-2"}])
+        tick_job_evals(job)
     assert apply.call_count == 0
     assert FinetuningJobEval.objects.filter(job=job).count() == 0  # pending, not skipped
 
@@ -615,7 +591,7 @@ def test_baseten_baseline_waits_for_base_deployment_then_fires(
         django_capture_on_commit_callbacks(execute=True),
     ):
         apply2.return_value = MagicMock(id="celery-eval-b1")
-        tick_job_evals(job, checkpoints=None)
+        tick_job_evals(job)
 
     assert apply2.call_count == 1
     row = FinetuningJobEval.objects.get(job=job, kind=FinetuningJobEval.Kind.BASELINE)
@@ -630,7 +606,7 @@ def test_baseten_baseline_waits_for_base_deployment_then_fires(
 
     # Idempotent — a second tick doesn't duplicate the baseline.
     with patch("overbae.tasks.eval.run_eval_run.apply_async") as apply3:
-        tick_job_evals(job, checkpoints=None)
+        tick_job_evals(job)
     assert apply3.call_count == 0
     assert FinetuningJobEval.objects.filter(job=job).count() == 1
 
@@ -735,15 +711,14 @@ def test_deploy_base_model_for_eval_deploys_then_launches_baseline(
         apply.return_value = MagicMock(id="celery-eval-b2")
         deploy_base_model_for_eval(job_id=str(job.id))
 
-    assert [c[0] for c in calls] == ["register_base", "register_model", "pre_warm"]
+    assert calls == []
     dep = DeployedModel.objects.get(model_id=_base_slug("Qwen/Qwen3-8B"))
-    assert dep.status == DeployedModel.Status.READY
+    assert dep.status == DeployedModel.Status.QUEUED
+    assert dep.deployment_stage == "base"
+    assert dep.deployment_waiters.filter(pk=job.pk).exists()
     assert dep.finetuning_job is None  # shared, not tied to this job
-    assert dep.inference_url
-
-    assert apply.call_count == 1
-    row = FinetuningJobEval.objects.get(job=job, kind=FinetuningJobEval.Kind.BASELINE)
-    assert row.model_id == dep.model_id
+    assert not dep.inference_url
+    assert apply.call_count == 0
 
 
 @override_settings(INFERENCE_API_URL="https://gateway.example.modal.run")
@@ -766,7 +741,10 @@ def test_deploy_base_model_dedupes_ready_deployment(
         deploy_base_model_for_eval(job_id=str(job.id))
 
     assert calls == []  # no deploy work
-    assert apply.call_count == 1  # baseline launched against the existing one
+    assert apply.call_count == 0  # the durable notification is processed by the controller
+    from overbae.models import DeployedModel
+
+    assert DeployedModel.objects.get(model_id=_base_slug(job.base_model)).deployment_notify
 
 
 def test_deploy_base_model_skips_cancelled_job(monkeypatch):
@@ -795,7 +773,8 @@ def test_baseten_final_eval_fires_after_ready_deployment(django_capture_on_commi
     _, _, job, _, _ = _setup()
     _basetenify(job)
     job.output_model_name = "baseten/abc/final"
-    job.save(update_fields=["output_model_name"])
+    job.status = FinetuningJob.Status.SUCCEEDED
+    job.save(update_fields=["output_model_name", "status"])
 
     DeployedModel.objects.create(
         project=job.project,
@@ -811,7 +790,7 @@ def test_baseten_final_eval_fires_after_ready_deployment(django_capture_on_commi
         django_capture_on_commit_callbacks(execute=True),
     ):
         apply.return_value = MagicMock(id="celery-eval-t1")
-        tick_job_evals(job, checkpoints=None)
+        tick_job_evals(job)
 
     assert apply.call_count == 1
     final = FinetuningJobEval.objects.get(job=job, kind=FinetuningJobEval.Kind.FINAL)

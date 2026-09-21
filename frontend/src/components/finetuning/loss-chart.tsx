@@ -167,11 +167,11 @@ export function LossChart({ data, height = 200 }: LossChartProps) {
 
   return (
     <ResponsiveContainer height={height} width="100%">
-      <LineChart data={points} margin={{ bottom: 4, left: -8, right: 8, top: 4 }}>
+      <LineChart data={points} margin={{ bottom: 0, left: -8, right: 4, top: 4 }}>
         <CartesianGrid className="stroke-border/50" strokeDasharray="3 3" />
         <XAxis
           dataKey="epoch"
-          label={{ fontSize: 10, offset: -4, position: "insideBottomRight", value: "step" }}
+          height={20}
           tick={{ fontSize: 10 }}
           tickLine={false}
           {...stepAxisProps(points.map((p) => p.epoch))}
@@ -264,11 +264,11 @@ export function MultiSeriesChart({
 
   return (
     <ResponsiveContainer height={height} width="100%">
-      <LineChart data={rows} margin={{ bottom: 4, left: -8, right: 8, top: 4 }}>
+      <LineChart data={rows} margin={{ bottom: 0, left: -8, right: 4, top: 4 }}>
         <CartesianGrid className="stroke-border/50" strokeDasharray="3 3" />
         <XAxis
           dataKey="step"
-          label={{ fontSize: 10, offset: -4, position: "insideBottomRight", value: xLabel }}
+          height={20}
           tick={{ fontSize: 10 }}
           tickLine={false}
           {...stepAxisProps(rows.map((r) => r.step as number))}
@@ -278,7 +278,7 @@ export function MultiSeriesChart({
           tick={{ fontSize: 10 }}
           tickFormatter={(v) => (typeof v === "number" ? formatTick(v) : String(v))}
           tickLine={false}
-          width={56}
+          width={48}
         />
         <Tooltip
           content={({ active, payload, label }) => {
@@ -348,11 +348,11 @@ export function MetricSeriesChart({
 
   return (
     <ResponsiveContainer height={height} width="100%">
-      <LineChart data={points} margin={{ bottom: 4, left: -8, right: 8, top: 4 }}>
+      <LineChart data={points} margin={{ bottom: 0, left: -8, right: 4, top: 4 }}>
         <CartesianGrid className="stroke-border/50" strokeDasharray="3 3" />
         <XAxis
           dataKey="step"
-          label={{ fontSize: 10, offset: -4, position: "insideBottomRight", value: xLabel }}
+          height={20}
           tick={{ fontSize: 10 }}
           tickLine={false}
           {...stepAxisProps(points.map((p) => p.step))}
@@ -362,7 +362,7 @@ export function MetricSeriesChart({
           tick={{ fontSize: 10 }}
           tickFormatter={(v) => (typeof v === "number" ? formatTick(v) : String(v))}
           tickLine={false}
-          width={56}
+          width={48}
         />
         <Tooltip
           content={({ active, payload, label }) => {

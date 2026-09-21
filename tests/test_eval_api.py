@@ -1156,6 +1156,108 @@ class TestAgentEvalMetricsApi:
         assert "eval_metrics_validated_at" not in r.json()
 
 
+class TestEvalSetCreation:
+    @pytest.mark.parametrize("capability_field", [{}, {"capability": None}])
+    def test_unassigned_sets_can_be_created_listed_and_read(self, capability_field):
+        _, client, project = _setup()
+        evaluator = Evaluator.objects.create(project=project, name="Accuracy", kind="deterministic")
+        response = client.post(
+            "/api/eval-sets/",
+            {
+                "project": str(project.id),
+                "name": "General",
+                "evaluator_ids": [str(evaluator.id)],
+                **capability_field,
+            },
+            format="json",
+        )
+        assert response.status_code == 201, response.content
+        data = response.json()
+        assert data["capability"] is None
+        assert data["is_active"] is False
+        assert data["members"][0]["evaluator_capability_name"] is None
+        assert client.get(f"/api/eval-sets/{data['id']}/").status_code == 200
+        listed = client.get("/api/eval-sets/").json()["results"]
+        assert any(row["id"] == data["id"] for row in listed)
+        assert client.post(f"/api/eval-sets/{data['id']}/activate/").status_code == 400
+        duplicate = client.post(
+            "/api/eval-sets/",
+            {
+                "project": str(project.id),
+                "name": "General",
+                "capability": None,
+            },
+            format="json",
+        )
+        assert duplicate.status_code == 400
+        assert EvalSet.objects.filter(project=project, name="General").count() == 1
+
+    def test_creates_members_in_supported_roles_atomically(self):
+        user, client, project = _setup()
+        capability = Capability.objects.create(project=project, name="Support", slug="support")
+        generic = Evaluator.objects.create(
+            name="Accuracy", kind="deterministic", is_managed=True, surface="model"
+        )
+        mapped = Evaluator.objects.create(
+            project=project, capability=capability, name="Tone", kind="llm_judge", surface="any"
+        )
+        response = client.post(
+            "/api/eval-sets/",
+            {
+                "project": str(project.id),
+                "capability": str(capability.id),
+                "name": "Quality",
+                "evaluator_ids": [str(generic.id), str(mapped.id), str(generic.id)],
+            },
+            format="json",
+        )
+        assert response.status_code == 201, response.content
+        eval_set = EvalSet.objects.get(id=response.json()["id"])
+        assert eval_set.created_by == user
+        assert set(eval_set.members.values_list("evaluator_id", "role")) == {
+            (generic.id, "generative"),
+            (mapped.id, "generative"),
+            (mapped.id, "trace_scoring"),
+        }
+        capability.refresh_from_db()
+        assert capability.active_eval_set_id is None
+
+    @pytest.mark.parametrize(
+        "invalid", ["foreign_evaluator", "foreign_capability", "archived", "duplicate_name"]
+    )
+    def test_rejects_invalid_members_without_creating_set(self, invalid):
+        _, client, project = _setup()
+        capability = Capability.objects.create(project=project, name="Support", slug="support")
+        foreign = Project.objects.create(name="Other", slug="other")
+        evaluator = Evaluator.objects.create(project=project, name="Quality", kind="llm_judge")
+        ids = [str(evaluator.id)]
+        if invalid == "foreign_evaluator":
+            evaluator.project = foreign
+            evaluator.save(update_fields=["project"])
+        elif invalid == "foreign_capability":
+            capability = Capability.objects.create(project=foreign, name="Other", slug="other")
+        elif invalid == "archived":
+            evaluator.is_archived = True
+            evaluator.save(update_fields=["is_archived"])
+        else:
+            duplicate = Evaluator.objects.create(
+                project=project, capability=capability, name="Quality", kind="deterministic"
+            )
+            ids.append(str(duplicate.id))
+        response = client.post(
+            "/api/eval-sets/",
+            {
+                "project": str(project.id),
+                "capability": str(capability.id),
+                "name": "New",
+                "evaluator_ids": ids,
+            },
+            format="json",
+        )
+        assert response.status_code == 400, response.content
+        assert not EvalSet.objects.filter(name="New").exists()
+
+
 class TestEvalSetMemberDedupe:
     def _capability_and_evaluator(self, project):
         capability = Capability.objects.create(

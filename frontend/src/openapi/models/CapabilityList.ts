@@ -77,6 +77,12 @@ export interface CapabilityList {
     activeModel?: string | null;
     /**
      *
+     * @type {string}
+     * @memberof CapabilityList
+     */
+    benchmarkModel?: string | null;
+    /**
+     *
      * @type {number}
      * @memberof CapabilityList
      */
@@ -225,6 +231,7 @@ export function CapabilityListFromJSONTyped(json: any, ignoreDiscriminator: bool
         'sourcePath': json['source_path'] == null ? undefined : json['source_path'],
         'model': json['model'] == null ? undefined : json['model'],
         'activeModel': json['active_model'] == null ? undefined : json['active_model'],
+        'benchmarkModel': json['benchmark_model'] == null ? undefined : json['benchmark_model'],
         'structureWeight': json['structure_weight'] == null ? undefined : json['structure_weight'],
         'totalPoints': json['total_points'] == null ? undefined : json['total_points'],
         'toolUsageWeight': json['tool_usage_weight'] == null ? undefined : json['tool_usage_weight'],
@@ -264,6 +271,7 @@ export function CapabilityListToJSONTyped(value?: Omit<CapabilityList, 'id'|'sug
         'source_path': value['sourcePath'],
         'model': value['model'],
         'active_model': value['activeModel'],
+        'benchmark_model': value['benchmarkModel'],
         'structure_weight': value['structureWeight'],
         'total_points': value['totalPoints'],
         'tool_usage_weight': value['toolUsageWeight'],

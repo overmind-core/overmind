@@ -6,20 +6,25 @@ import uuid
 from types import SimpleNamespace
 
 import pytest
+from conftest import review_fixture
+from mcp.shared.exceptions import McpError
 
 from overbae.models import (
     Annotation,
     APIToken,
+    Capability,
     Cell,
     Dataset,
     EvalRun,
     EvalSample,
+    EvalSet,
     Evaluator,
     EvalVariant,
     Project,
     ProjectMembership,
     User,
 )
+from overbae.services.datasets import paths, store
 from overbae.services.mcp.catalog import CATALOG
 from overbae.services.mcp.context import MCPContext, bind_context
 from overbae.services.mcp.resources import read_resource
@@ -64,6 +69,14 @@ def _ok_cell(dataset, *, intent="eval", rows=2, title="source", position=0, acti
     if active:
         dataset.active = cell
         dataset.save(update_fields=["active"])
+    path = paths.cell_path(dataset.id, cell.id)
+    store.write_rows(
+        path,
+        [{"source_row": i, "input": f"q{i}", "expected_output": f"a{i}"} for i in range(rows)],
+    )
+    cell.fingerprint = store.file_sha256(path)
+    cell.save(update_fields=["fingerprint"])
+    review_fixture(dataset, cell)
     return cell
 
 
@@ -77,9 +90,10 @@ def _dataset(context: MCPContext, name: str = "Eval") -> Dataset:
     return dataset
 
 
-def test_catalog_has_exactly_five_evaluation_tools_and_hides_writes():
+def test_catalog_exposes_evaluation_tools_and_hides_writes():
     evaluation_names = {
         "check_evaluation_readiness",
+        "create_eval_set",
         "upsert_evaluator",
         "run_evaluation",
         "compare_evaluations",
@@ -95,6 +109,47 @@ def test_catalog_has_exactly_five_evaluation_tools_and_hides_writes():
     }
 
     result = _call("upsert_evaluator", {"name": "Hidden", "rubric_md": "x"}, _context())
+    assert result.isError is True
+    assert result.structuredContent["error"]["code"] == "permission_denied"
+
+
+@pytest.mark.parametrize("with_capability", [True, False])
+def test_create_eval_set_returns_readable_members_and_enforces_project_scope(with_capability):
+    context = _context(permission=["read", "write"])
+    capability = Capability.objects.create(project=context.project, name="Support", slug="support")
+    evaluator = Evaluator.objects.create(
+        project=context.project, name="Accuracy", kind="deterministic"
+    )
+    payload = {"name": "Quality", "evaluator_ids": [str(evaluator.id)]}
+    if with_capability:
+        payload["capability"] = str(capability.id)
+    result = _call("create_eval_set", payload, context)
+    assert result.isError is False, result.structuredContent
+    assert json.loads(result.content[0].text) == result.structuredContent
+    uri = result.structuredContent["resource_links"][0]["uri"]
+    with bind_context(context):
+        resource = json.loads(asyncio.run(read_resource(uri))[0].content)
+    assert resource["members"][0]["name"] == "Accuracy"
+    assert resource["members"][0]["capability"] is None
+    assert resource["is_active"] is False
+    other = _context(permission=["read", "write"])
+    denied = _call("create_eval_set", payload, other)
+    assert denied.isError is True
+    with bind_context(other), pytest.raises(McpError):
+        asyncio.run(read_resource(uri))
+    assert EvalSet.objects.filter(name="Quality").count() == 1
+    payload["name"] = "Rejected"
+    payload["evaluator_ids"] = [
+        str(Evaluator.objects.create(project=other.project, name="Other").id)
+    ]
+    assert _call("create_eval_set", payload, context).isError is True
+    assert not EvalSet.objects.filter(name="Rejected").exists()
+
+
+def test_create_eval_set_is_not_available_to_read_only_keys():
+    result = _call(
+        "create_eval_set", {"name": "Quality", "evaluator_ids": [str(uuid.uuid4())]}, _context()
+    )
     assert result.isError is True
     assert result.structuredContent["error"]["code"] == "permission_denied"
 

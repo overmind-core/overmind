@@ -185,6 +185,32 @@ describe("candidate list", () => {
 });
 
 describe("analysis strip", () => {
+  it("identifies capability context separately from the training rows", () => {
+    setup({ rec: { ...REC, taskType: "code_generation", taskTypeSource: "capability" } });
+
+    expect(screen.getByText("Code generation").getAttribute("title")).toBe(
+      "Classified from capability codebase context"
+    );
+    expect(screen.getByText("Capability context")).toBeTruthy();
+    expect(screen.getByText("Training data")).toBeTruthy();
+    expect(screen.getByText("342 rows")).toBeTruthy();
+  });
+
+  it("labels the dataset fallback", () => {
+    setup();
+    expect(screen.getByText("Dataset")).toBeTruthy();
+    expect(screen.queryByText("Capability context")).toBeNull();
+  });
+
+  it("keeps an unresolved capability task distinct from a dataset classification", () => {
+    setup({ rec: { ...REC, skillWeights: {}, taskType: "unknown", taskTypeSource: "unknown" } });
+    expect(screen.getByText("Unknown").getAttribute("title")).toBe(
+      "Capability task could not be classified from codebase context"
+    );
+    expect(screen.getByText("Capability context")).toBeTruthy();
+    expect(screen.getByText("No skill weights")).toBeTruthy();
+  });
+
   it("states the task type, the blend and the run split on one line each", () => {
     setup();
 

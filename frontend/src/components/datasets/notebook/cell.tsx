@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 
+import { QualityChip } from "@/components/datasets/notebook/preparation";
 import { RowsGrid } from "@/components/datasets/notebook/rows-grid";
 import { ScriptCode } from "@/components/datasets/notebook/script-code";
 import { Button } from "@/components/ui/button";
@@ -439,7 +440,7 @@ function FitChip({
   const present = new Set(columnsOf(cell).map((c) => c.name));
   const failing = checks.find((c) => !c.ok);
   const headline = !failing
-    ? "Fits"
+    ? "Format valid"
     : failing.label === "Intent"
       ? "Intent pending"
       : failing.label.endsWith(" rows")
@@ -559,7 +560,7 @@ export function NotebookCell({
   }, [cell.state]);
   const dirty = script !== cell.script;
   const fit = fitOf(cell);
-  const columns = columnsOf(cell).filter((c) => c.name !== "source_row").length;
+  const columns = columnsOf(cell).length;
 
   const version = cell.version;
   const stateTone =
@@ -750,6 +751,7 @@ export function NotebookCell({
                     cell={cell}
                     intent={intent}
                   />
+                  <QualityChip cell={cell} />
                   <span className="flex-1" />
                   {intent === "train" && (
                     <Button

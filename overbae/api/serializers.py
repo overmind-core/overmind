@@ -1,5 +1,6 @@
 import logging
 from datetime import timedelta
+from types import SimpleNamespace
 
 from django.conf import settings
 from django.db import transaction
@@ -19,6 +20,7 @@ from overbae.models import (
     Conversation,
     Dataset,
     DeployedModel,
+    EvalSet,
     EvalSetMember,
     Feedback,
     FinetuningJob,
@@ -38,6 +40,9 @@ from overbae.services.codebase.flow import (
     capability_input_keys,
     capability_tool_names,
 )
+from overbae.services.datasets import use as dataset_use
+from overbae.services.datasets.lifecycle import DatasetError
+from overbae.services.deployment import deployment_progress
 from overbae.services.eval.trace_scoring import STATUS_ERROR
 
 logger = logging.getLogger(__name__)
@@ -442,6 +447,7 @@ class CapabilityListSerializer(serializers.ModelSerializer):
             "source_path",
             "model",
             "active_model",
+            "benchmark_model",
             "structure_weight",
             "total_points",
             "tool_usage_weight",
@@ -674,6 +680,20 @@ class CapabilitySerializer(serializers.ModelSerializer):
             raise serializers.ValidationError(
                 "Only a ready deployment can be set as the capability's active model."
             )
+        return value
+
+    def validate_benchmark_model(self, value):
+        if value is None:
+            return value
+        project_id = self.instance.project_id if self.instance else self.initial_data.get("project")
+        if str(value.project_id) != str(project_id):
+            raise serializers.ValidationError("The benchmark model must belong to this project.")
+        if not value.finetuning_job_id:
+            raise serializers.ValidationError(
+                "Select a trained model, not evaluation infrastructure."
+            )
+        if value.status != DeployedModel.Status.READY:
+            raise serializers.ValidationError("Only a ready trained model can be the benchmark.")
         return value
 
     def validate(self, attrs):
@@ -1026,6 +1046,10 @@ class FinetuningJobListSerializer(serializers.ModelSerializer):
             "eval_dataset",
             "eval_cell",
             "eval_set",
+            "eval_incumbent_before",
+            "eval_incumbent_after",
+            "eval_model_before",
+            "eval_model_after",
             "validation_enabled",
             "validation_split_ratio",
             "validation_dataset",
@@ -1079,6 +1103,9 @@ class FinetuningJobSerializer(serializers.ModelSerializer):
     events = FinetuningJobEventSerializer(many=True, read_only=True)
     deployed_model_id = serializers.SerializerMethodField()
     cell_info = serializers.SerializerMethodField()
+    eval_dataset = serializers.PrimaryKeyRelatedField(queryset=Dataset.objects.all())
+    eval_set = serializers.PrimaryKeyRelatedField(queryset=EvalSet.objects.all())
+    baseline_model = serializers.CharField(required=False, max_length=255)
 
     class Meta:
         model = FinetuningJob
@@ -1090,6 +1117,10 @@ class FinetuningJobSerializer(serializers.ModelSerializer):
             "eval_dataset",
             "eval_cell",
             "eval_set",
+            "eval_incumbent_before",
+            "eval_incumbent_after",
+            "eval_model_before",
+            "eval_model_after",
             "validation_enabled",
             "validation_split_ratio",
             "validation_dataset",
@@ -1101,6 +1132,7 @@ class FinetuningJobSerializer(serializers.ModelSerializer):
             "name",
             "use_case",
             "base_model",
+            "baseline_model",
             "hyperparameters",
             "status",
             "group_id",
@@ -1163,24 +1195,62 @@ class FinetuningJobSerializer(serializers.ModelSerializer):
         return value
 
     def _check_cell(self, dataset: Dataset, intent: str, *, field: str, explicit=None):
-        from overbae.services.datasets import use  # noqa: PLC0415
-        from overbae.services.datasets.lifecycle import DatasetError  # noqa: PLC0415
-
         try:
-            return use.check(dataset, intent, cell=explicit)
+            return dataset_use.check(dataset, intent, cell=explicit)
         except DatasetError as exc:
             raise serializers.ValidationError({field: exc.detail}) from exc
 
+    @transaction.atomic
     def create(self, validated_data):
-        from overbae.services.datasets import use  # noqa: PLC0415
-
-        with transaction.atomic():
-            job = super().create(validated_data)
-            use.freeze(job.cell, job.validation_cell, job.eval_cell)
-        return job
+        datasets = [
+            validated_data.get(key) for key in ("dataset", "validation_dataset", "eval_dataset")
+        ]
+        # Consistent lock order prevents concurrent jobs over the same pair from deadlocking.
+        locked = {
+            dataset.pk: dataset
+            for dataset in Dataset.objects.select_for_update(of=("self",))
+            .select_related("capability")
+            .filter(pk__in=[dataset.pk for dataset in datasets if dataset is not None])
+            .order_by("pk")
+        }
+        for field, cell_field, intent in (
+            ("dataset", "cell", "train"),
+            ("validation_dataset", "validation_cell", "train"),
+            ("eval_dataset", "eval_cell", "eval"),
+        ):
+            dataset = validated_data.get(field)
+            if dataset is None:
+                continue
+            try:
+                validated_data[cell_field] = dataset_use.use(
+                    locked[dataset.pk],
+                    intent,
+                    cell=validated_data.get(cell_field),
+                )
+            except DatasetError as exc:
+                raise serializers.ValidationError({field: exc.detail}) from exc
+        return super().create(validated_data)
 
     def validate(self, attrs):
         attrs = super().validate(attrs)
+        if self.instance is not None:
+            for field in (
+                "project",
+                "capability",
+                "dataset",
+                "cell",
+                "validation_dataset",
+                "validation_cell",
+                "eval_dataset",
+                "eval_cell",
+                "baseline_model",
+            ):
+                if field in attrs and attrs[field] != getattr(self.instance, field):
+                    raise serializers.ValidationError(
+                        {
+                            field: "Dataset versions, capability and benchmark model are fixed when the job is created."
+                        }
+                    )
         project = attrs.get("project") or getattr(self.instance, "project", None)
         dataset = attrs.get("dataset") or getattr(self.instance, "dataset", None)
         capability = attrs.get("capability") or getattr(self.instance, "capability", None)
@@ -1196,6 +1266,64 @@ class FinetuningJobSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError(
                 {"capability": "Capability does not belong to this project."}
             )
+        from overbae.services.finetuning_eval import resolve_baseline_model
+
+        incumbent = attrs.get(
+            "baseline_model",
+            resolve_baseline_model(
+                SimpleNamespace(
+                    capability=capability,
+                    baseline_model=getattr(self.instance, "baseline_model", ""),
+                )
+            ),
+        )
+        if self.instance is None and "baseline_model" in attrs and incumbent:
+            codebase_model = (getattr(capability, "model", "") or "").strip()
+            if (
+                incumbent != codebase_model
+                and not DeployedModel.objects.filter(
+                    project=project,
+                    model_id=incumbent,
+                    status=DeployedModel.Status.READY,
+                    finetuning_job__isnull=False,
+                ).exists()
+            ):
+                raise serializers.ValidationError(
+                    {
+                        "baseline_model": "Select the codebase incumbent or a ready trained model in this project."
+                    }
+                )
+        if self.instance is not None and self.instance.status != FinetuningJob.Status.QUEUED:
+            for field in (
+                "eval_incumbent_before",
+                "eval_incumbent_after",
+                "eval_model_before",
+                "eval_model_after",
+            ):
+                if field in attrs and attrs[field] != getattr(self.instance, field):
+                    raise serializers.ValidationError(
+                        {field: "Evaluation choices cannot change after setup starts."}
+                    )
+        if self.instance is None:
+            attrs.setdefault("eval_incumbent_before", False)
+            attrs.setdefault("eval_model_before", True)
+            attrs["baseline_model"] = incumbent
+        for field in ("eval_incumbent_before", "eval_incumbent_after"):
+            if not attrs.get(field, getattr(self.instance, field, False)):
+                continue
+            if not incumbent:
+                raise serializers.ValidationError(
+                    {field: "Select a benchmark model in training setup."}
+                )
+            if self.instance is None:
+                selected = DeployedModel.objects.filter(project=project, model_id=incumbent).first()
+                if selected is not None and selected.status != DeployedModel.Status.READY:
+                    raise serializers.ValidationError(
+                        {
+                            field: "The benchmark model is unavailable. Select another in training setup."
+                        }
+                    )
+            break
         if dataset and (self.instance is None or "dataset" in attrs or "cell" in attrs):
             attrs["cell"] = self._check_cell(
                 dataset, "train", field="dataset", explicit=attrs.get("cell")
@@ -1259,24 +1387,13 @@ class FinetuningJobSerializer(serializers.ModelSerializer):
                 raise serializers.ValidationError(
                     {"eval_dataset": "Eval dataset does not belong to this project."}
                 )
-            if self.instance is None or "eval_dataset" in attrs or "eval_cell" in attrs:
-                attrs["eval_cell"] = self._check_cell(
-                    eval_dataset, "eval", field="eval_dataset", explicit=attrs.get("eval_cell")
-                )
-            eval_product = attrs.get("eval_cell") or self.instance.eval_cell
-            train_checkpoint = attrs.get("cell") or getattr(self.instance, "cell", None)
-            if train_checkpoint is not None:
-                from overbae.services.datasets import rows as row_store  # noqa: PLC0415
-
-                shared = row_store.trace_ids(train_checkpoint) & row_store.trace_ids(eval_product)
-                if shared:
-                    raise serializers.ValidationError(
-                        {
-                            "eval_dataset": f"{len(shared)} rows of {eval_dataset.name} "
-                            f"also appear in {dataset.name} (same trace_id). "
-                            "Split them before training."
-                        }
-                    )
+            eval_product = self._check_cell(
+                eval_dataset,
+                "eval",
+                field="eval_dataset",
+                explicit=attrs.get("eval_cell") or getattr(self.instance, "eval_cell", None),
+            )
+            attrs["eval_cell"] = eval_product
         eval_set = attrs.get("eval_set") or getattr(self.instance, "eval_set", None)
         if eval_set and project and eval_set.project_id != project.id:
             raise serializers.ValidationError(
@@ -1297,7 +1414,7 @@ class FinetuningJobSerializer(serializers.ModelSerializer):
         # training targets. Check train + validation; require headroom.
         from django.conf import settings
 
-        if getattr(settings, "FINETUNING_BACKEND", "") in ("baseten", "modal") and entry:
+        if getattr(settings, "FINETUNING_BACKEND", "") == "baseten" and entry:
             from overbae.modal.model_registry import context_headroom
             from overbae.modal.training_type import training_context_length, training_enabled
 
@@ -1462,7 +1579,10 @@ class FinetuningBenchmarkSnapshotSerializer(serializers.Serializer):
 
 class FinetuningRecommendationResponseSerializer(serializers.Serializer):
     task_type = serializers.CharField()
-    task_type_source = serializers.ChoiceField(choices=["semantic", "heuristic"])
+    task_type_source = serializers.ChoiceField(
+        choices=["capability", "semantic", "heuristic", "unknown"]
+    )
+    capability_context = serializers.DictField(allow_null=True)
     skill_weights = serializers.DictField(child=serializers.FloatField())
     dataset = FinetuningRecommendationDatasetSerializer()
     candidates = FinetuningExperimentSerializer(many=True)
@@ -1495,6 +1615,8 @@ class DatasetOverlapResponseSerializer(serializers.Serializer):
     overlap_count = serializers.IntegerField()
     train_total = serializers.IntegerField()
     basis = serializers.CharField()
+    examples = serializers.ListField(child=serializers.JSONField(), required=False)
+    near_duplicate_check = serializers.CharField(required=False)
 
 
 class FinetuningModelCatalogEntrySerializer(serializers.Serializer):
@@ -2078,7 +2200,17 @@ class BillingTelemetrySerializer(serializers.ModelSerializer):
         ]
 
 
+class DeploymentProgressSerializer(serializers.Serializer):
+    stage = serializers.CharField()
+    label = serializers.CharField()
+    attempt = serializers.IntegerField()
+    retry_at = serializers.DateTimeField(allow_null=True)
+    deadline = serializers.DateTimeField(allow_null=True)
+    last_error = serializers.CharField(allow_null=True)
+
+
 class DeployedModelSerializer(serializers.ModelSerializer):
+    deployment_progress = serializers.SerializerMethodField()
     finetuning_job_id = serializers.UUIDField(read_only=True)
     finetuning_job_name = serializers.SerializerMethodField()
     capability_id = serializers.SerializerMethodField()
@@ -2099,6 +2231,7 @@ class DeployedModelSerializer(serializers.ModelSerializer):
             "id",
             "project",
             "model_id",
+            "deployment_progress",
             "status",
             "quantization",
             "base_model_id",
@@ -2127,6 +2260,10 @@ class DeployedModelSerializer(serializers.ModelSerializer):
             "cost_this_month",
         ]
         read_only_fields = fields
+
+    @extend_schema_field(DeploymentProgressSerializer)
+    def get_deployment_progress(self, obj):
+        return deployment_progress(obj)
 
     def get_finetuning_job_name(self, obj) -> str | None:
         if obj.finetuning_job_id:

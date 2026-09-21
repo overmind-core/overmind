@@ -21,6 +21,28 @@ export interface ValidateDatasetParams {
   splitMethod?: string;
 }
 
+export const useTrainingBenchmarksQuery = (projectId: string) =>
+  useQuery({
+    enabled: !!projectId,
+    queryFn: async () => {
+      const models = [];
+      for (let page = 1; ; page += 1) {
+        const response = await apiClient.deployedModels.deployedModelsList({
+          page,
+          pageSize: 100,
+          project: projectId,
+          status: "ready",
+        });
+        models.push(
+          ...response.results.filter((model) => model.finetuningJobId && model.status === "ready")
+        );
+        if (!response.next) return models;
+      }
+    },
+    queryKey: ["training-benchmarks", projectId],
+    refetchInterval: 10_000,
+  });
+
 /** Stored as `base · dataset · capability`; pages strip the base and capability
  *  segments, which have columns of their own. */
 export function defaultFinetuneName({
@@ -255,8 +277,7 @@ export const useRecommendModelsQuery = (
         },
       }),
     queryKey: ["finetuning-recommend", datasetId, capabilityId ?? null],
-    // Cached server-side.
-    staleTime: Infinity,
+    staleTime: 60_000,
   });
 
 /** Count of training datapoints whose source trace also appears in the eval
@@ -312,6 +333,8 @@ export interface ClassMetrics {
 export interface FinetuningJudgeEvalRow {
   id: string;
   kind: "baseline" | "checkpoint" | "final" | string;
+  label?: string;
+  comparison_label?: string | null;
   status: string;
   checkpoint_id?: string | null;
   checkpoint_step?: number | null;

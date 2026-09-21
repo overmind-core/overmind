@@ -37,6 +37,18 @@ export interface DatasetOverlapResponse {
      * @memberof DatasetOverlapResponse
      */
     basis: string;
+    /**
+     *
+     * @type {Array<any>}
+     * @memberof DatasetOverlapResponse
+     */
+    examples?: Array<any>;
+    /**
+     *
+     * @type {string}
+     * @memberof DatasetOverlapResponse
+     */
+    nearDuplicateCheck?: string;
 }
 
 /**
@@ -62,6 +74,8 @@ export function DatasetOverlapResponseFromJSONTyped(json: any, ignoreDiscriminat
         'overlapCount': json['overlap_count'],
         'trainTotal': json['train_total'],
         'basis': json['basis'],
+        'examples': json['examples'] == null ? undefined : json['examples'],
+        'nearDuplicateCheck': json['near_duplicate_check'] == null ? undefined : json['near_duplicate_check'],
     };
 }
 
@@ -79,5 +93,7 @@ export function DatasetOverlapResponseToJSONTyped(value?: DatasetOverlapResponse
         'overlap_count': value['overlapCount'],
         'train_total': value['trainTotal'],
         'basis': value['basis'],
+        'examples': value['examples'],
+        'near_duplicate_check': value['nearDuplicateCheck'],
     };
 }

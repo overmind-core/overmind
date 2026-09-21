@@ -4,11 +4,68 @@ from __future__ import annotations
 
 import logging
 
-from overbae.models import Capability, EvalSet, EvalSetMember, Evaluator, RunEvaluator
+from django.core.exceptions import ValidationError
+from django.db import transaction
+from django.db.models import Q
+
+from overbae.models import Capability, EvalSet, EvalSetMember, Evaluator, Project, RunEvaluator
 from overbae.services.eval import snapshots
+from overbae.services.eval.roles import roles_for_evaluator
 from overbae.services.eval.specs import AUTHORED_GENERATORS, TIER0_GENERATOR
 
 logger = logging.getLogger(__name__)
+
+
+@transaction.atomic
+def create_with_evaluators(
+    *, project, name, capability=None, created_by=None, evaluators=(), description="", prompts=()
+) -> EvalSet:
+    if capability is not None and (
+        capability.project_id != project.id or capability.status != Capability.Status.CURRENT
+    ):
+        raise ValidationError({"capability": "Select a current capability in this project."})
+    Project.objects.select_for_update().get(pk=project.pk)
+    if EvalSet.objects.filter(project=project, capability=capability, name=name).exists():
+        raise ValidationError({"name": "An eval set with this name already exists."})
+
+    evaluator_ids = {ev.id for ev in evaluators}
+    available = Evaluator.objects.filter(
+        Q(project=project) | Q(project__isnull=True, is_managed=True)
+    ).visible_catalog()
+    if evaluator_ids - set(available.values_list("id", flat=True)):
+        raise ValidationError({"evaluator_ids": "Select evaluators from this project's library."})
+    members = []
+    taken = set()
+    for ev in dict.fromkeys(evaluators):
+        roles = roles_for_evaluator(ev)
+        if not roles:
+            raise ValidationError({"evaluator_ids": f"'{ev.name}' has no runnable roles."})
+        for role in roles:
+            key = (ev.name, role)
+            if key in taken:
+                # Run summaries key scores by name, so two rows would double-weight a metric.
+                raise ValidationError(
+                    {"evaluator_ids": f"Select only one evaluator named '{ev.name}' per role."}
+                )
+            taken.add(key)
+            members.append(EvalSetMember(evaluator=ev, role=role, order=len(members)))
+
+    eval_set = EvalSet.objects.create(
+        project=project,
+        capability=capability,
+        name=name,
+        description=description,
+        created_by=created_by,
+    )
+    eval_set.prompts.set(prompts)
+    for member in members:
+        member.eval_set = eval_set
+    EvalSetMember.objects.bulk_create(members)
+    return (
+        EvalSet.objects.select_related("capability")
+        .prefetch_related("members__evaluator__capability", "prompts")
+        .get(pk=eval_set.pk)
+    )
 
 
 def eval_dataset_ready_for_sync(dataset) -> bool:

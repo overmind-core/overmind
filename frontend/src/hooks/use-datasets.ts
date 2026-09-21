@@ -38,9 +38,11 @@ export interface CapabilityRank {
 export interface ChatCellRef {
   id: string;
   action: "created" | "proposed" | "edited" | "ran" | "failed" | "removed";
+  text_offset?: number;
 }
 
 export interface ChatTurn {
+  id?: string;
   role: "user" | "agent";
   text: string;
   error?: string;
@@ -49,6 +51,28 @@ export interface ChatTurn {
   steps?: AgentActivityPart[];
   ms?: number;
   at: string;
+  status?: "running" | "awaiting_approval" | "resolved" | "complete" | "error";
+  progress?: WorkshopProgress;
+}
+
+export interface WorkshopProgress {
+  stage:
+    | "working"
+    | "generating"
+    | "validating"
+    | "review"
+    | "awaiting_approval"
+    | "partial"
+    | "complete"
+    | "error";
+  label: string;
+  detail: string;
+  started_at?: string;
+  updated_at?: string;
+  rows_before?: number;
+  target_rows?: number;
+  generated_rows?: number;
+  cell_id?: string;
 }
 
 /** A page of the grid: `marks` says which rows are new and which values changed. */
@@ -93,9 +117,16 @@ export type DatasetEvent =
   | { type: "cells_changed" | "dataset_changed" }
   | { type: "chat_turn"; role: "user" | "agent"; text: string; cells?: ChatCellRef[]; at: string }
   | { type: "chat_delta"; text: string }
+  | {
+      type: "chat_progress";
+      progress: WorkshopProgress;
+      text: string;
+      steps: AgentActivityPart[];
+      cells: ChatCellRef[];
+    }
   | { type: "chat_thinking"; id: string; text: string }
   | ({ type: "chat_step" } & Omit<AgentActivityPart, "type">)
-  | { type: "chat_cell"; cell_id: string; action: ChatCellRef["action"] }
+  | { type: "chat_cell"; cell_id: string; action: ChatCellRef["action"]; text_offset?: number }
   | { type: "chat_failed"; error: string };
 
 /** The query that produced a traces selection, not the ids it matched. */
@@ -134,8 +165,11 @@ export const intentOf = (dataset: Dataset | null | undefined): Intent =>
 export const cellsOf = (dataset: Dataset | null | undefined): Cell[] =>
   Array.isArray(dataset?.cells) ? (dataset.cells as Cell[]) : [];
 
+export const isVisibleDatasetColumn = (column: { name: string }): boolean =>
+  column.name !== "source_row" && column.name !== "_overmind_provenance";
+
 export const columnsOf = (cell: Cell | null | undefined): ColumnInfo[] =>
-  Array.isArray(cell?.columns) ? (cell.columns as ColumnInfo[]) : [];
+  Array.isArray(cell?.columns) ? (cell.columns as ColumnInfo[]).filter(isVisibleDatasetColumn) : [];
 
 export const fitOf = (cell: Cell | null | undefined): { ok: boolean; reason: string } =>
   cell?.fits && typeof cell.fits === "object"
@@ -287,8 +321,8 @@ export function useColumnsQuery(id: string | undefined, cell: string | undefined
 export interface CreateDatasetInput {
   projectId: string;
   name: string;
-  intent?: Intent;
-  capabilityId?: string;
+  intent: "train" | "eval";
+  capabilityId?: string | null;
   source: SourceRequest;
 }
 
@@ -298,7 +332,7 @@ export function useCreateDatasetMutation() {
     mutationFn: (input: CreateDatasetInput) =>
       apiClient.datasets.datasetsCreate({
         datasetCreateRequest: {
-          capability: input.capabilityId || null,
+          capability: input.capabilityId,
           intent: input.intent,
           name: input.name,
           project: input.projectId,
@@ -314,10 +348,13 @@ export type SplitPosition = PositionEnum;
 export interface CreateDatasetSplitInput {
   projectId: string;
   name: string;
-  capabilityId?: string;
+  capabilityId?: string | null;
   source: SourceRequest;
   evalPercent: number;
   position: SplitPosition;
+  groupBy?: string[];
+  stratifyBy?: string;
+  deduplicate?: boolean;
 }
 
 /** One source landed as `<name> train` and `<name> eval`. */
@@ -327,12 +364,15 @@ export function useCreateDatasetSplitMutation() {
     mutationFn: (input) =>
       apiClient.datasets.datasetsSplitCreate({
         datasetSplitCreateRequest: {
-          capability: input.capabilityId || null,
+          capability: input.capabilityId,
+          deduplicate: input.deduplicate,
           evalPercent: input.evalPercent,
+          groupBy: input.groupBy,
           name: input.name,
           position: input.position,
           project: input.projectId,
           source: input.source,
+          stratifyBy: input.stratifyBy,
         },
       }),
     onSuccess: () => invalidateDataset(qc),

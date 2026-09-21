@@ -11,6 +11,7 @@ from rest_framework_simplejwt.tokens import RefreshToken
 from overbae.models import (
     Capability,
     DeployedModel,
+    FinetuningJob,
     Project,
     ProjectMembership,
     Span,
@@ -19,6 +20,70 @@ from overbae.models import (
 from overbae.services.capabilities import identity
 
 pytestmark = pytest.mark.django_db
+
+
+def _trained_model(project, capability, *, status="ready"):
+    dataset = frozen_dataset(project, EVAL_ROWS, capability=capability)
+    job = FinetuningJob.objects.create(
+        project=project, capability=capability, dataset=dataset, base_model="Qwen/Qwen3-8B"
+    )
+    return DeployedModel.objects.create(
+        project=project, finetuning_job=job, model_id=f"ft-{job.id}", status=status
+    )
+
+
+def test_benchmark_selection_does_not_change_live_model_and_can_reset_to_codebase():
+    project = _project()
+    capability = _capability(project, "Support", model="anthropic/claude-opus-4-7")
+    live = _trained_model(project, capability)
+    benchmark = _trained_model(project, capability)
+    capability.active_model = live
+    capability.save(update_fields=["active_model"])
+    client = _client(project)
+    url = f"/api/capabilities/{capability.id}/"
+
+    response = client.patch(url, {"benchmark_model": str(benchmark.id)}, format="json")
+    assert response.status_code == 200, response.content
+    assert response.json()["benchmark_model"] == str(benchmark.id)
+    capability.refresh_from_db()
+    assert capability.active_model_id == live.id
+    listed = client.get("/api/capabilities/", {"project": project.id}).json()["results"]
+    assert listed[0]["benchmark_model"] == str(benchmark.id)
+
+    response = client.patch(url, {"benchmark_model": None}, format="json")
+    assert response.status_code == 200, response.content
+    capability.refresh_from_db()
+    assert capability.benchmark_model_id is None
+    assert capability.active_model_id == live.id
+
+
+@pytest.mark.parametrize("status", ["queued", "deploying", "failed", "deleted", "deleting"])
+def test_benchmark_must_be_ready(status):
+    project = _project()
+    capability = _capability(project, "Support")
+    model = _trained_model(project, capability, status=status)
+    response = _client(project).patch(
+        f"/api/capabilities/{capability.id}/", {"benchmark_model": str(model.id)}, format="json"
+    )
+    assert response.status_code == 400
+    assert "benchmark_model" in response.json()
+
+
+def test_benchmark_rejects_other_projects_and_evaluation_infrastructure():
+    project = _project()
+    capability = _capability(project, "Support")
+    other = _project()
+    foreign = _trained_model(other, _capability(other, "Other"))
+    infrastructure = DeployedModel.objects.create(
+        project=project, model_id="base--qwen", status="ready"
+    )
+    client = _client(project)
+    for model in (foreign, infrastructure):
+        response = client.patch(
+            f"/api/capabilities/{capability.id}/", {"benchmark_model": str(model.id)}, format="json"
+        )
+        assert response.status_code == 400
+        assert "benchmark_model" in response.json()
 
 
 def _project() -> Project:

@@ -50,12 +50,16 @@ def _training_setup(context: MCPContext):
         slug=f"support-{uuid.uuid4().hex[:6]}",
         model="openai/gpt-5.6-sol",
     )
-    train = frozen_dataset(context.project, TRAIN_ROWS, name="Train", contract="train")
-    train.capability = capability
-    train.save(update_fields=["capability"])
-    evaluation = frozen_dataset(context.project, EVAL_ROWS, name="Eval", contract="eval")
-    evaluation.capability = capability
-    evaluation.save(update_fields=["capability"])
+    train = frozen_dataset(
+        context.project, TRAIN_ROWS, name="Train", contract="train", capability=capability
+    )
+    evaluation = frozen_dataset(
+        context.project,
+        [{**row, "input": "held-out-" + row["input"]} for row in EVAL_ROWS],
+        name="Eval",
+        contract="eval",
+        capability=capability,
+    )
     eval_set = EvalSet.objects.create(
         project=context.project,
         capability=capability,
@@ -132,6 +136,7 @@ def test_retry_deployment_returns_named_deployment_job_receipt(monkeypatch):
         dataset=train,
         base_model="Qwen/Qwen2.5-7B-Instruct",
         status=FinetuningJob.Status.SUCCEEDED,
+        remote_job_id="remote",
     )
     deployment = DeployedModel.objects.create(
         project=context.project,

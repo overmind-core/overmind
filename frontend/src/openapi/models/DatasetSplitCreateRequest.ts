@@ -48,7 +48,7 @@ export interface DatasetSplitCreateRequest {
      */
     project: string;
     /**
-     *
+     * Omit to infer from the rows; null means none.
      * @type {string}
      * @memberof DatasetSplitCreateRequest
      */
@@ -71,6 +71,24 @@ export interface DatasetSplitCreateRequest {
      * @memberof DatasetSplitCreateRequest
      */
     position: PositionEnum;
+    /**
+     *
+     * @type {Array<string>}
+     * @memberof DatasetSplitCreateRequest
+     */
+    groupBy?: Array<string>;
+    /**
+     *
+     * @type {string}
+     * @memberof DatasetSplitCreateRequest
+     */
+    stratifyBy?: string | null;
+    /**
+     *
+     * @type {boolean}
+     * @memberof DatasetSplitCreateRequest
+     */
+    deduplicate?: boolean;
 }
 
 
@@ -103,6 +121,9 @@ export function DatasetSplitCreateRequestFromJSONTyped(json: any, ignoreDiscrimi
         'source': SourceRequestFromJSON(json['source']),
         'evalPercent': json['eval_percent'],
         'position': PositionEnumFromJSON(json['position']),
+        'groupBy': json['group_by'] == null ? undefined : json['group_by'],
+        'stratifyBy': json['stratify_by'] == null ? undefined : json['stratify_by'],
+        'deduplicate': json['deduplicate'] == null ? undefined : json['deduplicate'],
     };
 }
 
@@ -123,5 +144,8 @@ export function DatasetSplitCreateRequestToJSONTyped(value?: DatasetSplitCreateR
         'source': SourceRequestToJSON(value['source']),
         'eval_percent': value['evalPercent'],
         'position': PositionEnumToJSON(value['position']),
+        'group_by': value['groupBy'],
+        'stratify_by': value['stratifyBy'],
+        'deduplicate': value['deduplicate'],
     };
 }

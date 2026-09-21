@@ -166,13 +166,15 @@ export const CreateEvaluatorDialog = ({
     .filter(
       (s) =>
         s.project === resolvedProjectId &&
-        (!capabilitiesLoaded || capabilityNameById.has(s.capability)) &&
-        (!capabilityId || s.capability === capabilityId)
+        (!s.capability || !capabilitiesLoaded || capabilityNameById.has(s.capability)) &&
+        (!capabilityId || !s.capability || s.capability === capabilityId)
     )
     .sort((a, b) => {
-      const capCmp = (capabilityNameById.get(a.capability) ?? a.capability).localeCompare(
-        capabilityNameById.get(b.capability) ?? b.capability
-      );
+      const capCmp = (
+        capabilityNameById.get(a.capability ?? "") ??
+        a.capability ??
+        ""
+      ).localeCompare(capabilityNameById.get(b.capability ?? "") ?? b.capability ?? "");
       return capCmp || a.name.localeCompare(b.name);
     });
 
@@ -191,7 +193,7 @@ export const CreateEvaluatorDialog = ({
   const evalSetOptions: Option[] = [
     { label: "Add to eval set", value: NO_EVAL_SET },
     ...evalSets.map((s) => {
-      const capabilityName = capabilityNameById.get(s.capability);
+      const capabilityName = capabilityNameById.get(s.capability ?? "");
       return {
         label: capabilityId || !capabilityName ? s.name : `${s.name} · ${capabilityName}`,
         value: s.id,
@@ -203,7 +205,7 @@ export const CreateEvaluatorDialog = ({
     setCapabilityId(next);
     if (!evalSetId) return;
     const match = evalSetsQuery.data?.results?.find((s) => s.id === evalSetId);
-    if (match && next && match.capability !== next) setEvalSetId("");
+    if (match?.capability && next && match.capability !== next) setEvalSetId("");
   };
 
   const resetForm = () => {

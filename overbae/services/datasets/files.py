@@ -204,6 +204,32 @@ def read_file_rows(path: Path, *, filename: str) -> list[dict[str, Any]]:
         raise FileError("The file is not readable gzip.") from exc
 
 
+def inspect_upload(upload_id: str, *, size: int) -> dict[str, Any]:
+    filename = upload_filename(upload_id)
+    if not filename or upload_received(upload_id) != size:
+        raise FileError("The upload is incomplete or has expired.")
+    if size == 0:
+        raise FileError("The file has no rows.")
+    path = upload_data_path(upload_id)
+    bare = filename.lower().removesuffix(".gz")
+    try:
+        if bare.endswith(".parquet"):
+            rows = pq.ParquetFile(path).metadata.num_rows
+        else:
+            if bare.endswith(".json") and size > JSON_ARRAY_MAX_BYTES:
+                raise FileError(
+                    f"JSON files are capped at {JSON_ARRAY_MAX_BYTES // 1024**2} MB. "
+                    "Use JSONL for larger files."
+                )
+            with _open_text(path, filename.lower()) as fh:
+                rows = sum(1 for _ in iter_stream_rows(fh, filename=bare))
+    except (OSError, EOFError, ValueError, csv.Error) as exc:
+        raise FileError(str(exc)) from exc
+    if not rows:
+        raise FileError("The file has no rows.")
+    return {"filename": filename, "bytes": size, "rows": rows}
+
+
 def parse_text(text: str, *, filename: str = "") -> list[dict[str, Any]]:
     """Pasted rows: JSON or JSON Lines when the text opens with a bracket, else CSV."""
     body = text.strip()

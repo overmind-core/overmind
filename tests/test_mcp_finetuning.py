@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import uuid
 from types import SimpleNamespace
 
+import pandas as pd
 import pytest
 from conftest import EVAL_ROWS, TRAIN_ROWS, frozen_dataset
 
@@ -21,6 +23,7 @@ from overbae.models import (
     ProjectMembership,
     User,
 )
+from overbae.services.datasets import paths, review, store
 from overbae.services.finetuning_validator import ValidationResult
 from overbae.services.mcp import tools_finetuning
 from overbae.services.mcp.catalog import CATALOG
@@ -62,6 +65,40 @@ def _ok_cell(dataset, *, intent, rows=2, title="source", position=0, active=True
     if active:
         dataset.active = cell
         dataset.save(update_fields=["active"])
+    path = paths.cell_path(dataset.id, cell.id)
+    store.write_frame(
+        path,
+        pd.DataFrame(
+            [
+                {
+                    "source_row": i,
+                    "messages": [
+                        {"role": "user", "content": f"q{i}"},
+                        {"role": "assistant", "content": f"a{i}"},
+                    ],
+                }
+                if intent == "train"
+                else {"source_row": i, "input": f"q{i}", "expected_output": f"a{i}"}
+                for i in range(rows)
+            ]
+        ),
+    )
+    cell.fingerprint = store.file_sha256(path)
+    cell.save(update_fields=["fingerprint"])
+    review.record_quality(
+        dataset,
+        cell,
+        [
+            {
+                "name": name,
+                "result": "pass",
+                "rows_checked": rows,
+                "evidence": "Controlled test fixture.",
+            }
+            for name in review.REQUIRED_CHECKS
+        ],
+        script="df = pd.DataFrame({'source_row': df.source_row, **{name: [True] * len(df) for name in ('task_alignment', 'input_evidence', 'answer_support', 'output_schema')}})",
+    )
     return cell
 
 
@@ -72,12 +109,16 @@ def _training_setup(context: MCPContext):
         slug=f"support-{uuid.uuid4().hex[:6]}",
         model="openai/gpt-5.6-sol",
     )
-    train = frozen_dataset(context.project, TRAIN_ROWS, name="Train", contract="train")
-    train.capability = capability
-    train.save(update_fields=["capability"])
-    evaluation = frozen_dataset(context.project, EVAL_ROWS, name="Eval", contract="eval")
-    evaluation.capability = capability
-    evaluation.save(update_fields=["capability"])
+    train = frozen_dataset(
+        context.project, TRAIN_ROWS, name="Train", contract="train", capability=capability
+    )
+    evaluation = frozen_dataset(
+        context.project,
+        [{**row, "input": "held-out-" + row["input"]} for row in EVAL_ROWS],
+        name="Eval",
+        contract="eval",
+        capability=capability,
+    )
     eval_set = EvalSet.objects.create(
         project=context.project,
         capability=capability,
@@ -97,13 +138,15 @@ def _training_setup(context: MCPContext):
     return capability, train, evaluation, eval_set
 
 
-def test_catalog_has_seven_finetuning_tools_and_read_only_keys_hide_writes():
+def test_catalog_has_finetuning_tools_and_read_only_keys_hide_writes():
     names = {
         "check_finetune_readiness",
+        "prepare_training_data",
         "estimate_finetune",
         "start_finetune",
         "retry_deployment",
         "set_active_model",
+        "set_benchmark_model",
         "run_inference",
         "get_model_swap_prompt",
     }
@@ -117,6 +160,35 @@ def test_catalog_has_seven_finetuning_tools_and_read_only_keys_hide_writes():
         "check_finetune_readiness",
         "estimate_finetune",
     }
+
+
+def test_exact_preparation_has_pollable_project_scoped_receipt(settings, monkeypatch):
+    settings.FINETUNING_BACKEND = "modal"
+    context = _context(permission=["read", "write", "train"])
+    dataset = frozen_dataset(context.project, TRAIN_ROWS, contract="train")
+    monkeypatch.setattr(tools_finetuning.inspect_preparation, "delay", lambda *a: None)
+    result = _call(
+        "prepare_training_data",
+        {"dataset": str(dataset.id), "base_model": "Qwen/Qwen3-8B", "context_length": 4096},
+        context,
+    )
+    assert not result.isError, result.structuredContent
+    receipt = result.structuredContent["job"]
+    assert receipt["kind"] == "training_preparation"
+    poll = _call("get_job", {"kind": receipt["kind"], "id": receipt["id"]}, context)
+    assert not poll.isError, poll.structuredContent
+
+    async def resource():
+        with bind_context(context):
+            contents = list(
+                await read_resource(f"overmind://jobs/training_preparation/{receipt['id']}")
+            )
+        return json.loads(contents[0].content)
+
+    assert asyncio.run(resource())["status"] == "queued"
+    other = _context()
+    denied = _call("get_job", {"kind": receipt["kind"], "id": receipt["id"]}, other)
+    assert denied.isError
 
 
 def test_readiness_rejects_wrong_intent():
@@ -157,6 +229,33 @@ def test_readiness_treats_legacy_ft_as_train():
     )
     assert estimate.isError is True
     assert estimate.structuredContent["error"]["code"] == "finetune_not_ready"
+
+
+def test_readiness_classifies_selected_capability_and_defers_to_data_for_none(monkeypatch):
+    context = _context()
+    capability, dataset, _, _ = _training_setup(context)
+    capability.description = "Write Python code."
+    capability.save(update_fields=["description"])
+    monkeypatch.setattr(
+        "overbae.services.codebase.task_type.call_llm",
+        lambda *args, **kwargs: ('{"task_type":"code_generation"}', {}),
+    )
+    selected = _call(
+        "check_finetune_readiness",
+        {"dataset": str(dataset.id), "capability": str(capability.id)},
+        context,
+    )
+    unassigned = _call("check_finetune_readiness", {"dataset": str(dataset.id)}, context)
+
+    assert not selected.isError, selected.structuredContent
+    assert not unassigned.isError, unassigned.structuredContent
+    assert selected.structuredContent["task_type"] == "code_generation"
+    assert selected.structuredContent["task_type_source"] == "capability"
+    assert unassigned.structuredContent["task_type_source"] == "heuristic"
+    definition = next(
+        item for item in CATALOG.definitions() if item.name == "check_finetune_readiness"
+    )
+    assert definition.cost_class == "llm"
 
 
 def test_cross_project_references_are_not_resolved():
@@ -236,9 +335,17 @@ def test_estimate_uses_existing_estimator_without_creating_a_job(monkeypatch):
     assert not FinetuningJob.objects.filter(project=context.project).exists()
 
 
-def test_start_uses_serializer_and_worker_task(monkeypatch):
+@pytest.mark.parametrize("capability_choice", ["selected", "omitted", "none"])
+@pytest.mark.parametrize("unassigned_set", [False, True])
+@pytest.mark.parametrize("disable_evals", [False, True])
+def test_start_uses_serializer_and_worker_task(
+    monkeypatch, capability_choice, unassigned_set, disable_evals
+):
     context = _context(permission=["read", "write"])
     capability, train, _evaluation, _eval_set = _training_setup(context)
+    if unassigned_set:
+        _eval_set.capability = None
+        _eval_set.save(update_fields=["capability"])
     calls = {}
     monkeypatch.setattr(
         tools_finetuning,
@@ -261,13 +368,44 @@ def test_start_uses_serializer_and_worker_task(monkeypatch):
         "start_finetune",
         {
             "dataset": str(train.id),
-            "capability": str(capability.id),
+            **(
+                {"capability": str(capability.id)}
+                if capability_choice == "selected"
+                else {"capability": None}
+                if capability_choice == "none"
+                else {}
+            ),
             "base_model": "Qwen/Qwen2.5-7B-Instruct",
+            **({"baseline_model": capability.model} if capability_choice == "selected" else {}),
+            **(
+                {
+                    "eval_incumbent_before": False,
+                    "eval_incumbent_after": False,
+                    "eval_model_before": False,
+                    "eval_model_after": False,
+                }
+                if disable_evals
+                else {}
+            ),
         },
         context,
     )
     assert result.isError is False, result.structuredContent
     job = FinetuningJob.objects.get(project=context.project)
+    assert job.capability_id == (capability.id if capability_choice == "selected" else None)
+    if capability_choice == "selected":
+        assert job.baseline_model == capability.model
+    assert job.eval_dataset_id == _evaluation.id
+    assert job.eval_set_id == _eval_set.id
+    if disable_evals:
+        assert not any(
+            (
+                job.eval_incumbent_before,
+                job.eval_incumbent_after,
+                job.eval_model_before,
+                job.eval_model_after,
+            )
+        )
     assert calls["kwargs"] == {"kwargs": {"job_id": str(job.id)}}
     assert result.structuredContent["finetune"]["resource"]["uri"] == (
         f"overmind://finetunes/{job.id}"
@@ -312,7 +450,7 @@ def test_retry_returns_resource_and_dispatches_for_recoverable_deployment(
     )
     result = _call("retry_deployment", {"deployment": deployment.model_id}, context)
     assert result.isError is False, result.structuredContent
-    assert calls["kwargs"] == {"job_id": str(job.id)}
+    assert calls == {}  # the database outbox does not depend on a broker acknowledgement
     deployment.refresh_from_db()
     assert deployment.status == DeployedModel.Status.QUEUED
     assert deployment.error_message == ""
@@ -385,7 +523,7 @@ def test_retry_rejects_deployment_without_usable_finetune_job():
     assert result.structuredContent["error"]["code"] == "finetune_not_ready"
 
 
-def test_retry_restores_failed_state_when_dispatch_fails(monkeypatch):
+def test_retry_remains_durable_when_broker_is_unavailable(monkeypatch):
     context = _context(permission=["read", "write"])
     _, train, _, _ = _training_setup(context)
     job = FinetuningJob.objects.create(
@@ -403,6 +541,9 @@ def test_retry_restores_failed_state_when_dispatch_fails(monkeypatch):
     )
     monkeypatch.setattr("overbae.api.credit_gate.require_credits", lambda _user: None)
 
+    job.remote_job_id = "remote"
+    job.save(update_fields=["remote_job_id"])
+
     def fail_dispatch(**_kwargs):
         raise RuntimeError("broker unavailable")
 
@@ -413,11 +554,11 @@ def test_retry_restores_failed_state_when_dispatch_fails(monkeypatch):
 
     result = _call("retry_deployment", {"deployment": str(deployment.id)}, context)
 
-    assert result.isError is True
-    assert result.structuredContent["error"]["code"] == "deployment_dispatch_failed"
+    assert result.isError is False
     deployment.refresh_from_db()
-    assert deployment.status == DeployedModel.Status.FAILED
-    assert deployment.error_message == "previous failure"
+    assert deployment.status == DeployedModel.Status.QUEUED
+    assert deployment.deployment_stage == "base"
+    assert deployment.error_message == ""
 
 
 def test_set_active_model_validates_ready_same_project_and_clear(monkeypatch):
@@ -444,6 +585,65 @@ def test_set_active_model_validates_ready_same_project_and_clear(monkeypatch):
     assert clear_result.isError is False, clear_result.structuredContent
     assert clear_result.structuredContent["cleared"] is True
     assert capability.active_model_id is None
+
+
+def test_benchmark_tool_and_capability_resource_preserve_serving():
+    context = _context(permission=["read", "write", "train"])
+    capability, train, _, _ = _training_setup(context)
+    job = FinetuningJob.objects.create(
+        project=context.project, capability=capability, dataset=train, base_model="Qwen/Qwen3-8B"
+    )
+    benchmark = DeployedModel.objects.create(
+        project=context.project, finetuning_job=job, model_id="ft-benchmark", status="ready"
+    )
+    live = DeployedModel.objects.create(project=context.project, model_id="ft-live", status="ready")
+    capability.active_model = live
+    capability.save(update_fields=["active_model"])
+    result = _call(
+        "set_benchmark_model",
+        {"capability": str(capability.id), "deployment": str(benchmark.id)},
+        context,
+    )
+    assert not result.isError, result.structuredContent
+    assert result.structuredContent["source"] == "trained"
+    assert result.structuredContent["model_id"] == benchmark.model_id
+    capability.refresh_from_db()
+    assert capability.benchmark_model_id == benchmark.id
+    assert capability.active_model_id == live.id
+
+    async def resource():
+        with bind_context(context):
+            contents = list(await read_resource(f"overmind://capabilities/{capability.id}"))
+        return json.loads(contents[0].content)
+
+    state = asyncio.run(resource())
+    assert state["benchmark_model"]["id"] == str(benchmark.id)
+    assert [candidate["id"] for candidate in state["benchmark_candidates"]] == [str(benchmark.id)]
+    result = _call("set_benchmark_model", {"capability": str(capability.id)}, context)
+    assert not result.isError, result.structuredContent
+    assert result.structuredContent["source"] == "codebase"
+    assert result.structuredContent["model_id"] == capability.model
+    capability.refresh_from_db()
+    assert capability.benchmark_model_id is None
+    assert capability.active_model_id == live.id
+
+
+def test_benchmark_tool_rejects_infrastructure_and_foreign_projects():
+    context = _context(permission=["read", "write", "train"])
+    capability, _, _, _ = _training_setup(context)
+    foreign_context = _context()
+    for project in (context.project, foreign_context.project):
+        deployment = DeployedModel.objects.create(
+            project=project, model_id=f"base-{project.id}", status="ready"
+        )
+        result = _call(
+            "set_benchmark_model",
+            {"capability": str(capability.id), "deployment": str(deployment.id)},
+            context,
+        )
+        assert result.isError
+    capability.refresh_from_db()
+    assert capability.benchmark_model_id is None
 
 
 def test_run_inference_redacts_service_errors(monkeypatch):
@@ -666,9 +866,13 @@ def test_start_uses_explicit_cell_not_active(monkeypatch):
             "capability": str(capability.id),
             "base_model": "Qwen/Qwen2.5-7B-Instruct",
             "cell": str(extra.id),
+            "baseline_model": "ft-selected-benchmark",
         },
         context,
     )
     assert result.isError is False, result.structuredContent
     assert called["cell"].id == extra.id
+    assert called["baseline_model"] == "ft-selected-benchmark"
+    extra.refresh_from_db()
+    assert extra.used_at is None  # The mocked launch skips the atomic creation/freeze service.
     assert result.structuredContent["cell"]["id"] == str(extra.id)

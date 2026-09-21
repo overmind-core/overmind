@@ -45,8 +45,10 @@ import type {
 } from "@/openapi";
 
 const CLASSIFIED_FROM: Record<TaskTypeSourceEnum, string> = {
+  capability: "Classified from capability codebase context",
   heuristic: "Classified from dataset structure",
   semantic: "Classified from dataset content",
+  unknown: "Capability task could not be classified from codebase context",
 };
 
 function compactTokens(tokens: number): string {
@@ -102,6 +104,16 @@ function AnalysisHeader({
             >
               {humanizeKey(rec.taskType || "unknown")}
             </span>,
+            rec.taskTypeSource === "capability" || rec.taskTypeSource === "unknown"
+              ? "Capability context"
+              : "Dataset",
+          ]}
+        />
+      </MetaRow>
+
+      <MetaRow label="Training data">
+        <FactLine
+          items={[
             dataset.rows > 0 ? count(dataset.rows, "row") : null,
             format ?? null,
             dataset.totalTokens > 0 ? `~${compactTokens(dataset.totalTokens)} tokens` : null,

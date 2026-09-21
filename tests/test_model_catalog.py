@@ -41,6 +41,7 @@ def _upstream_payload() -> dict:
         "data": [
             {
                 "id": "mistralai/mistral-large",
+                "hugging_face_id": "mistralai/Mistral-Large-Instruct-2411",
                 "name": "Mistral: Mistral Large",
                 "context_length": 128000,
                 "pricing": {"prompt": "0.000002", "completion": "0.000006"},
@@ -251,6 +252,61 @@ class TestCatalogSlugRouting:
 
         with pytest.raises(RuntimeError, match="Unsupported model"):
             llms.call_llm("hi", model="totally-unknown-model")
+
+
+def test_catalog_retains_checkpoint_identity_in_its_cache():
+    with mock.patch.object(
+        model_catalog.requests, "get", return_value=_mock_response(_upstream_payload())
+    ):
+        entries, available = model_catalog.fetch_model_catalog()
+    assert available
+    entry = next(row for row in entries if row["id"] == "mistralai/mistral-large")
+    assert entry["hugging_face_id"] == "mistralai/Mistral-Large-Instruct-2411"
+
+
+@pytest.mark.parametrize(
+    ("model", "expected"),
+    [
+        ("Qwen/Qwen3.5-9B", "qwen/qwen3.5-9b"),
+        ("qwen/qwen3.5-9b", "qwen/qwen3.5-9b"),
+        ("meta-llama/Meta-Llama-3.1-8B-Instruct", "meta-llama/llama-3.1-8b-instruct"),
+        ("meta-llama/Llama-3.1-8B-Instruct", "meta-llama/llama-3.1-8b-instruct"),
+        ("mistralai/Mistral-Large-Instruct-2411", "mistralai/mistral-large"),
+        ("Qwen/Qwen3.5-27B", None),
+        ("Qwen/Qwen3.5-9B-Base", None),
+        ("meta-llama/Meta-Llama-3.1-8B", None),
+        ("another-org/Qwen3.5-9B", None),
+        ("Qwen3.5-9B", None),
+        ("", None),
+    ],
+)
+def test_training_route_requires_an_exact_available_model(model, expected):
+    entries = [
+        {"id": "qwen/qwen3.5-9b:free", "hugging_face_id": "Qwen/Qwen3.5-9B"},
+        {"id": "qwen/qwen3.5-9b", "hugging_face_id": "Qwen/Qwen3.5-9B"},
+        {
+            "id": "meta-llama/llama-3.1-8b-instruct",
+            "hugging_face_id": "meta-llama/Meta-Llama-3.1-8B-Instruct",
+        },
+        {
+            "id": "mistralai/mistral-large",
+            "hugging_face_id": "mistralai/Mistral-Large-Instruct-2411",
+        },
+    ]
+    with mock.patch.object(model_catalog, "fetch_model_catalog", return_value=(entries, True)):
+        assert model_catalog.resolve_training_openrouter_slug(model) == expected
+
+
+def test_training_route_requires_a_configured_key(monkeypatch):
+    monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
+    with mock.patch.object(model_catalog, "fetch_model_catalog") as fetch:
+        assert model_catalog.resolve_training_openrouter_slug("Qwen/Qwen3.5-9B") is None
+    fetch.assert_not_called()
+
+
+def test_training_route_does_not_guess_when_catalog_is_unavailable():
+    with mock.patch.object(model_catalog, "fetch_model_catalog", return_value=([], False)):
+        assert model_catalog.resolve_training_openrouter_slug("Qwen/Qwen3.5-9B") is None
 
 
 class TestCachedTokenPricing:

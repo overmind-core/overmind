@@ -17,7 +17,12 @@ import {
 } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { TablePagination } from "@/components/ui/table-pagination";
-import { type RowFilter, useColumnsQuery, useRowsQuery } from "@/hooks/use-datasets";
+import {
+  isVisibleDatasetColumn,
+  type RowFilter,
+  useColumnsQuery,
+  useRowsQuery,
+} from "@/hooks/use-datasets";
 import { useDebouncedValue } from "@/hooks/use-debounced-value";
 import { errorMessage } from "@/lib/notify";
 import { cn } from "@/lib/utils";
@@ -353,11 +358,10 @@ export function RowsGrid({
   const data = rowsQuery.data;
   // biome-ignore lint/correctness/useExhaustiveDependencies: a new page has new rows
   useEffect(() => setOpenRow(null), [data]);
-  // `source_row` is the row's identity across versions, not a column to read.
   const columns = useMemo(
     () =>
       (data?.columns ?? [])
-        .filter((c) => c.name !== "source_row")
+        .filter(isVisibleDatasetColumn)
         .map((c) => ({ name: c.name, type: c.type })),
     [data?.columns]
   );

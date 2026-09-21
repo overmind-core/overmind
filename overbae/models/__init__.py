@@ -25,6 +25,7 @@ from .finetuning import (
     FinetuningJob,
     FinetuningJobEval,
     FinetuningJobEvent,
+    TrainingPreparation,
 )
 from .iam import (
     APIToken,
@@ -83,6 +84,7 @@ __all__ = [
     "FinetuningJob",
     "FinetuningJobEval",
     "FinetuningJobEvent",
+    "TrainingPreparation",
     "DeployedModel",
     "InferenceCall",
     "IntegrationType",

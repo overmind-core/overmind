@@ -17,7 +17,9 @@ from overbae.services.mcp.contracts.common import (
 
 class CheckFinetuneReadinessInput(MCPModel):
     dataset: str = Field(min_length=1, max_length=255)
-    capability: str | None = Field(default=None, max_length=255)
+    capability: str | None = Field(
+        default=None, max_length=255, description="Optional capability; omit or null for none."
+    )
     cell: str | None = Field(default=None, max_length=255)
     version: str | None = Field(default=None, max_length=32)
 
@@ -46,7 +48,7 @@ class FineTuneCapabilityReadiness(MCPModel):
 class FineTuneEvalSetReadiness(MCPModel):
     id: str
     name: str
-    capability: str
+    capability: str | None
     active: bool
     member_count: int = Field(ge=0)
 
@@ -66,6 +68,7 @@ class CheckFinetuneReadinessOutput(MCPModel):
     summary: str = Field(min_length=1, max_length=240)
     ready: bool
     missing: list[str] = Field(default_factory=list, max_length=20)
+    warnings: list[str] = Field(default_factory=list)
     dataset: FineTuneDatasetReadiness
     capability: FineTuneCapabilityReadiness | None = None
     eval_dataset: FineTuneEvalDatasetReadiness | None = None
@@ -107,10 +110,37 @@ class EstimateFinetuneOutput(MCPModel):
     resource_links: list[ResourceLinkContract] = Field(max_length=1)
 
 
+class PrepareTrainingInput(MCPModel):
+    retry_failed: bool = False
+    training_type: Literal["lora", "full"] = "lora"
+    dataset: str = Field(min_length=1, max_length=255)
+    base_model: str = Field(min_length=1, max_length=255)
+    context_length: int = Field(ge=128, le=2_000_000)
+    validation_dataset: str | None = None
+    cell: str | None = None
+
+
+class PrepareTrainingOutput(MCPModel):
+    job: JobReceipt
+    id: str
+    state: str
+    report: dict[str, Any] = Field(default_factory=dict)
+    error: str = ""
+    config: dict[str, Any]
+
+
 class StartFinetuneInput(MCPModel):
     dataset: str = Field(min_length=1, max_length=255)
     base_model: str = Field(min_length=1, max_length=255)
-    capability: str | None = Field(default=None, max_length=255)
+    baseline_model: str | None = Field(
+        default=None,
+        min_length=1,
+        max_length=255,
+        description="Run-specific benchmark: codebase incumbent or ready trained serving model ID in this project. Omit for capability default.",
+    )
+    capability: str | None = Field(
+        default=None, max_length=255, description="Optional capability; omit or null for none."
+    )
     eval_dataset: str | None = Field(default=None, max_length=255)
     eval_set: str | None = Field(default=None, max_length=255)
     validation_dataset: str | None = Field(default=None, max_length=255)
@@ -121,6 +151,16 @@ class StartFinetuneInput(MCPModel):
     validation_cell: str | None = Field(default=None, max_length=255)
     validation_version: str | None = Field(default=None, max_length=32)
     validation_enabled: bool = True
+    eval_incumbent_before: bool | None = Field(
+        default=None,
+        description=("Evaluate the incumbent separately alongside training; defaults off."),
+    )
+    eval_incumbent_after: bool = False
+    eval_model_before: bool | None = Field(
+        default=None,
+        description="Evaluate the untouched training base model for a matched comparison; defaults on.",
+    )
+    eval_model_after: bool = True
     validation_split_ratio: float = Field(default=0.2, ge=0.05, le=0.5)
     split_method: Literal["random", "ordered"] = "random"
     name: str | None = Field(default=None, max_length=255)
@@ -171,4 +211,18 @@ class SetActiveModelOutput(MCPModel):
     capability: ResourceLinkContract
     active_model: DeploymentReference | None = None
     cleared: bool
+    resource_links: list[ResourceLinkContract] = Field(max_length=2)
+
+
+class SetBenchmarkModelInput(MCPModel):
+    capability: str = Field(min_length=1, max_length=255)
+    deployment: str | None = Field(default=None, max_length=255)
+
+
+class SetBenchmarkModelOutput(MCPModel):
+    summary: str = Field(min_length=1, max_length=240)
+    capability: ResourceLinkContract
+    benchmark_model: DeploymentReference | None = None
+    model_id: str
+    source: Literal["codebase", "trained"]
     resource_links: list[ResourceLinkContract] = Field(max_length=2)

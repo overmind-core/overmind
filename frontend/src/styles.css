@@ -311,24 +311,6 @@ code {
   --instrument-cat-6: #a4988b;
 }
 
-/* Desktop-required gate: vertical scan band across the faux monitor screen. */
-@keyframes desktop-required-scan {
-  0% {
-    transform: translateY(-100%);
-  }
-  100% {
-    transform: translateY(420%);
-  }
-}
-.desktop-required-scan {
-  animation: desktop-required-scan 5s linear infinite;
-}
-@media (prefers-reduced-motion: reduce) {
-  .desktop-required-scan {
-    animation: none;
-  }
-}
-
 @keyframes progress-sweep {
   0% {
     left: -35%;

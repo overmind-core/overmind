@@ -30,7 +30,7 @@ export interface EvalSetRequest {
      * @type {string}
      * @memberof EvalSetRequest
      */
-    capability: string;
+    capability?: string | null;
     /**
      *
      * @type {string}
@@ -49,6 +49,12 @@ export interface EvalSetRequest {
      * @memberof EvalSetRequest
      */
     prompts?: Array<string>;
+    /**
+     * Library evaluators to include on creation, in all applicable roles.
+     * @type {Array<string>}
+     * @memberof EvalSetRequest
+     */
+    evaluatorIds?: Array<string>;
 }
 
 /**
@@ -56,7 +62,6 @@ export interface EvalSetRequest {
  */
 export function instanceOfEvalSetRequest(value: object): value is EvalSetRequest {
     if (!('project' in value) || value['project'] === undefined) return false;
-    if (!('capability' in value) || value['capability'] === undefined) return false;
     if (!('name' in value) || value['name'] === undefined) return false;
     return true;
 }
@@ -72,10 +77,11 @@ export function EvalSetRequestFromJSONTyped(json: any, ignoreDiscriminator: bool
     return {
 
         'project': json['project'],
-        'capability': json['capability'],
+        'capability': json['capability'] == null ? undefined : json['capability'],
         'name': json['name'],
         'description': json['description'] == null ? undefined : json['description'],
         'prompts': json['prompts'] == null ? undefined : json['prompts'],
+        'evaluatorIds': json['evaluator_ids'] == null ? undefined : json['evaluator_ids'],
     };
 }
 
@@ -95,5 +101,6 @@ export function EvalSetRequestToJSONTyped(value?: EvalSetRequest | null, ignoreD
         'name': value['name'],
         'description': value['description'],
         'prompts': value['prompts'],
+        'evaluator_ids': value['evaluatorIds'],
     };
 }

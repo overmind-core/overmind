@@ -189,14 +189,14 @@ Datasets:
 
 Evaluations:
 
-`check_evaluation_readiness`, `upsert_evaluator`, `run_evaluation`,
+`check_evaluation_readiness`, `upsert_evaluator`, `create_eval_set`, `run_evaluation`,
 `compare_evaluations`, `annotate_evaluation_sample`.
 
 Fine-tuning and serving:
 
 `get_model_catalog`,
 `check_finetune_readiness`, `estimate_finetune`, `start_finetune`,
-`retry_deployment`, `set_active_model`, `run_inference`,
+`retry_deployment`, `set_active_model`, `set_benchmark_model`, `run_inference`,
 `get_model_swap_prompt`.
 
 Call `get_model_catalog` before choosing a fine-tuning model. It is
@@ -231,13 +231,17 @@ and every version carries two measured contracts (`list_datasets` shows the
 active version's):
 
 - **`train`** ("Train") — a `messages` column whose every row is a chat
-  transcript with an assistant turn (`tools` optional), and every system
-  turn and tool call is the capability's own.
+  transcript with an assistant turn (`tools` optional).
 - **`eval`** ("Eval") — an `input` on every row plus an `expected_output`
-  column with at least one reference, and every input carries the
-  capability's required keys.
+  column with at least one reference.
 - **`pending`** — the intent is not decided yet; refused by every run.
 - There is no `ft` intent. A leftover stored `ft` is **train**.
+
+Capability prompt/schema mismatches, incomplete quality reviews and train/eval
+overlap are advisory warnings, not technical-format errors. Explain the remaining
+work and offer the workshop for repairs; users can continue without a quality
+approval step. Inspect cell `warnings` and `readiness.quality_reason`. A passing
+format contract is not a claim that the answers are supported by the inputs.
 
 What each workflow accepts:
 
@@ -322,6 +326,7 @@ The implemented resource templates are:
 - `overmind://sessions/{session}`
 - `overmind://datasets/{dataset}`
 - `overmind://eval-runs/{eval_run}`
+- `overmind://eval-sets/{eval_set}`
 - `overmind://finetunes/{job_id}`
 - `overmind://deployments/{deployment}`
 - `overmind://optimizer-runs/{experiment}`

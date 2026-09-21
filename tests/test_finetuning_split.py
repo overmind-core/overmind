@@ -63,3 +63,19 @@ def test_split_min_one_each():
     train_ids, val_ids, _ = split_datapoint_ids(datapoints, 0.2, method="ordered")
     assert len(train_ids) == 2
     assert len(val_ids) == 1
+
+
+def test_training_split_keeps_reviewed_duplicate_rows():
+    rows = [
+        {
+            "id": i,
+            "order": i,
+            "input": "same" if i < 2 else "different",
+            "expected_output": "answer",
+        }
+        for i in range(3)
+    ]
+    train, validation, warnings = split_datapoint_ids(rows, 0.3)
+    assert len(train) + len(validation) == 3
+    assert ({0, 1} <= set(train)) or ({0, 1} <= set(validation))
+    assert not any("duplicates removed" in warning for warning in warnings)
