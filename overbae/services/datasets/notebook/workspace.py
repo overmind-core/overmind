@@ -33,15 +33,17 @@ def prepare(dataset: Dataset, system_prompt: str) -> Path:
     shutil.rmtree(frames_dir, ignore_errors=True)
     cells_dir.mkdir()
     frames_dir.mkdir()
-    versions = dataset.versions()
+    chain = dataset.chain
+    versions = dataset.versions(chain=chain)
+    frozen = max((cell.position for cell in chain if cell.used_at is not None), default=-1)
     lines = ["# Cells", ""]
-    for cell in dataset.chain:
+    for cell in chain:
         version = versions.get(cell.id, "proposed")
         name = f"{cell.position:03d}_{_slug(cell.title)}.py"
         if cell.position > 0:
             header = (
                 f"# {version} · {cell.title} · {cell.state}"
-                + (" · frozen" if cell.frozen else "")
+                + (" · frozen" if cell.position <= frozen else "")
                 + (f"\n# {cell.note}" if cell.note else "")
                 + (f"\n# error: {cell.error}" if cell.error else "")
             )

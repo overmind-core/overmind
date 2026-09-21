@@ -70,7 +70,7 @@ def iter_execute(
         yield _emit(dataset, {"type": "run_failed", "error": dataset.error})
         return
     _set(dataset, state=Dataset.State.RUNNING, error="")
-    versions = dataset.versions()
+    versions = dataset.versions(chain=chain)
     yield _emit(dataset, {"type": "run_started", "cells": [str(c.id) for c in chain[1:]]})
     cache = paths.library_cache(dataset.project_id)
     previous = source
