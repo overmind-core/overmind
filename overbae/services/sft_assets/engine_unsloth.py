@@ -17,6 +17,8 @@ val.jsonl skips the eval loop entirely.
 
 from __future__ import annotations
 
+import hashlib
+import json
 import os
 import sys
 from pathlib import Path
@@ -96,6 +98,8 @@ from common import (  # noqa: E402
 )
 from datasets import Dataset  # noqa: E402
 from pretok import pretok_row  # noqa: E402
+from token_accuracy import TokenAccuracy  # noqa: E402
+from transformers import AutoTokenizer  # noqa: E402
 from trl import SFTConfig, SFTTrainer  # noqa: E402
 from truncation import refuse_truncation  # noqa: E402
 
@@ -118,51 +122,42 @@ def _to_dict_no_push_token(self):
 
 _TrainingArguments.to_dict = _to_dict_no_push_token
 
-# Importing unsloth process-wide strips mean_token_accuracy out of
-# trl.SFTTrainer.compute_loss, because its fused cross-entropy path returns a
-# sentinel EMPTY_LOGITS object instead of real logits. Forcing real logits back
-# on restores token_accuracy on BT_PROGRESS — but a full (batch, seq, vocab)
-# tensor then materializes every step and caps context (~10 GB at 32k for Qwen3).
-# Gate on context length: keep the metric below LOGITS_METRIC_MAX_CTX, drop it
-# above so fused/chunked CE can reclaim VRAM for long-context jobs.
-LOGITS_METRIC_MAX_CTX = int(os.getenv("LOGITS_METRIC_MAX_CTX", "16384"))
-_ENABLE_LOGITS_METRIC = (PER_DEVICE_BATCH * MAX_LENGTH) <= LOGITS_METRIC_MAX_CTX
-if _ENABLE_LOGITS_METRIC:
-    os.environ["UNSLOTH_RETURN_LOGITS"] = "1"
-else:
-    os.environ.pop("UNSLOTH_RETURN_LOGITS", None)
-    print(
-        f"ctx={MAX_LENGTH} > LOGITS_METRIC_MAX_CTX={LOGITS_METRIC_MAX_CTX}: "
-        "UNSLOTH_RETURN_LOGITS off (no token_accuracy; fused/chunked CE free)",
-        flush=True,
-    )
+os.environ["UNSLOTH_RETURN_LOGITS"] = "0"
 
 from transformers import Trainer as _HFTrainer  # noqa: E402
 
 
 class _AccurateSFTTrainer(SFTTrainer):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._token_accuracy = TokenAccuracy(self.model)
+        self._accuracy_totals = {"train": [0, 0], "eval": [0, 0]}
+
     def compute_loss(self, model, inputs, return_outputs=False, num_items_in_batch=None):
+        # Keep fused CE after inference-mode switches too; accuracy has its own
+        # bounded projection and never requires batch × sequence × vocabulary logits.
+        os.environ["UNSLOTH_RETURN_LOGITS"] = "0"
         # Calls _HFTrainer.compute_loss directly, not super(): unsloth mutates
         # SFTTrainer's class attribute in place, so the MRO still resolves to its
         # stripped method.
-        if not _ENABLE_LOGITS_METRIC:
-            return _HFTrainer.compute_loss(
-                self,
-                model,
-                inputs,
-                return_outputs=return_outputs,
-                num_items_in_batch=num_items_in_batch,
-            )
         mode = "train" if self.model.training else "eval"
-        labels = inputs["labels"]
         inputs["use_cache"] = False
-        loss, outputs = _HFTrainer.compute_loss(
-            self, model, inputs, return_outputs=True, num_items_in_batch=num_items_in_batch
-        )
-
-        logits = getattr(outputs, "logits", None)
-        if logits is None or not torch.is_tensor(logits) or logits.numel() == 0:
-            return (loss, outputs) if return_outputs else loss
+        self._token_accuracy.labels = inputs["labels"]
+        self._token_accuracy.counts = None
+        try:
+            loss, outputs = _HFTrainer.compute_loss(
+                self, model, inputs, return_outputs=True, num_items_in_batch=num_items_in_batch
+            )
+        finally:
+            # Checkpoint recomputation during backward must not count a batch twice.
+            self._token_accuracy.labels = None
+        counts = self._token_accuracy.counts
+        self._token_accuracy.counts = None
+        if counts is None:
+            raise RuntimeError("Token accuracy did not capture the model's decoder output.")
+        correct, total = self.accelerator.gather_for_metrics(counts).sum(dim=0).tolist()
+        self._accuracy_totals[mode][0] += correct
+        self._accuracy_totals[mode][1] += total
 
         with torch.no_grad():
             if mode == "train":
@@ -185,19 +180,16 @@ class _AccurateSFTTrainer(SFTTrainer):
                     self._total_train_tokens += num_tokens_in_batch
                     self._metrics[mode]["num_tokens"] = [self._total_train_tokens]
 
-            shift_logits = logits[..., :-1, :].contiguous()
-            shift_labels = labels[..., 1:].contiguous()
-            predictions = shift_logits.argmax(dim=-1)
-            mask = shift_labels != -100
-            correct_tokens = self.accelerator.gather_for_metrics(
-                (predictions == shift_labels) & mask
-            )
-            total_tokens = self.accelerator.gather_for_metrics(mask.sum())
-            total_sum = total_tokens.sum()
-            accuracy = (correct_tokens.sum() / total_sum).item() if total_sum > 0 else 0.0
-            self._metrics[mode]["mean_token_accuracy"].append(accuracy)
-
         return (loss, outputs) if return_outputs else loss
+
+    def log(self, logs, *args, **kwargs):
+        mode = "eval" if any(key.startswith("eval_") for key in logs) else "train"
+        correct, total = self._accuracy_totals[mode]
+        if total:
+            key = "eval_mean_token_accuracy" if mode == "eval" else "mean_token_accuracy"
+            logs[key] = correct / total
+        self._accuracy_totals[mode] = [0, 0]
+        return super().log(logs, *args, **kwargs)
 
 
 SFTTrainer = _AccurateSFTTrainer
@@ -274,33 +266,24 @@ def _pack_rows(rows: list[dict], max_length: int) -> list[dict]:
 
 
 def _build_dataset(tok, rows: list[dict]) -> Dataset | None:
-    """Pretok each row into input_ids/attention_mask/labels; drop unparseable rows."""
     out: list[dict] = []
-    path_counts: dict[str, int] = {}
-    _printed_full_traceback = False
     for i, row in enumerate(rows):
-        messages = row.get("messages")
-        if not messages:
-            continue
-        tools = row.get("tools")
-        try:
-            pretok = pretok_row(tok, MODEL_ID, messages, tools)
-        except Exception as e:  # noqa: BLE001 — best-effort row skip, not fatal
-            print(f"warn: skipping row (pretok failed: {e})", flush=True)
-            if not _printed_full_traceback:
-                import traceback as _tb
-
-                print("warn: full traceback for first failure:\n" + _tb.format_exc(), flush=True)
-                _printed_full_traceback = True
-            continue
-        n = len(pretok["input_ids"])
+        # Baseten receives conversations; Modal receives the CPU-validated artifact.
+        if "messages" in row:
+            row = pretok_row(tok, MODEL_ID, row["messages"], row.get("tools"))
+        ids, labels = row.get("input_ids"), row.get("labels")
+        if (
+            not ids
+            or not labels
+            or len(ids) != len(labels)
+            or not any(label != -100 for label in labels[1:])
+        ):
+            raise ValueError(f"Row {i} is not a validated training artifact.")
+        n = len(ids)
         refuse_truncation(n, MAX_LENGTH, row_index=i)
-        path = str(pretok.get("path") or "unknown")
-        path_counts[path] = path_counts.get(path, 0) + 1
-        out.append({k: pretok[k] for k in ("input_ids", "labels")})
+        out.append({"input_ids": ids, "labels": labels})
     if not out:
         return None
-    print(f"pretok paths: {path_counts}", flush=True)
     if PACK_ROWS:
         packed = _pack_rows(out, MAX_LENGTH)
         print(
@@ -444,6 +427,22 @@ def main() -> None:
             random_state=SEED,
         )
     _hooks.post_load(model, tokenizer, use_lora=USE_LORA)
+    if Path("preparation.json").exists():
+        prepared = json.loads(Path("preparation.json").read_text())
+        prepared_tokenizer = AutoTokenizer.from_pretrained("tokenizer", local_files_only=True)
+        vocab = prepared_tokenizer.get_vocab()
+        loaded_vocab = _inner_tok.get_vocab()
+        fingerprint = hashlib.sha256(json.dumps(vocab, sort_keys=True).encode()).hexdigest()
+        if (
+            fingerprint != prepared["vocab_fingerprint"]
+            or any(loaded_vocab.get(token) != index for token, index in vocab.items())
+            or prepared["context_length"] != MAX_LENGTH
+        ):
+            raise ValueError(
+                "The training tokenizer or context differs from the validated artifact."
+            )
+        tokenizer = _inner_tok = prepared_tokenizer
+        _serve_chat_template = prepared_tokenizer.chat_template
 
     # gpt-oss QLoRA loads the catalog unsloth-bnb-4bit id (families/gpt_oss.py).
 

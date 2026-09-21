@@ -16,7 +16,7 @@ from pathlib import Path
 
 import pandas as pd
 
-from overbae.services.datasets import store
+from overbae.services.datasets import examples, store
 from overbae.services.datasets.notebook import libraries
 
 _FORBIDDEN_CALLS = frozenset(
@@ -94,7 +94,7 @@ def _limits():  # pragma: no cover — runs in the child
 
 
 _RUNNER = """\
-import json, math, sys, traceback
+import json, math, sys, traceback, runpy
 extra = sys.argv[6] if len(sys.argv) > 6 else ""
 if extra:
     sys.path.insert(0, extra)
@@ -108,6 +108,7 @@ for col, kind in kinds.items():
     if kind == "json" and col in src.columns:
         src[col] = src[col].map(lambda v: json.loads(v) if isinstance(v, str) else v)
 ns = {"pd": pd, "pandas": pd, "np": np, "numpy": np, "source": src, "df": src.copy()}
+ns["prepare_examples"] = runpy.run_path(sys.argv[7])["prepare_examples"]
 with open(script_path, encoding="utf-8") as fh:
     code = fh.read()
 # The frames are the only files a cell touches: pandas and numpy IO is off.
@@ -176,7 +177,9 @@ def _as_json(v):
 out_kinds = {}
 for col in df.columns:
     s = df[col]
-    if s.dtype == object and s.map(lambda v: isinstance(v, (dict, list, tuple))).any():
+    if s.dtype == object and not s.dropna().empty and s.dropna().map(lambda v: isinstance(v, (bool, np.bool_))).all():
+        df[col] = s.astype("boolean")
+    elif s.dtype == object and s.map(lambda v: isinstance(v, (dict, list, tuple))).any():
         df[col] = s.map(lambda v: _as_json(v) if isinstance(v, (dict, list, tuple)) else (None if v is None or (isinstance(v, float) and v != v) else _as_json(v)))
         out_kinds[col] = "json"
     elif s.dtype == object:
@@ -228,6 +231,7 @@ def run(
                     str(kinds_path),
                     mode,
                     str(library_cache) if library_cache.exists() else "",
+                    str(Path(examples.__file__).resolve()),
                 ],
                 cwd=tmp,
                 env=env,

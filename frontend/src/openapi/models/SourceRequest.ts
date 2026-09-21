@@ -14,7 +14,7 @@
 
 import { mapValues } from '../runtime';
 /**
- * Exactly one of ``upload_id``, ``text``, ``rows`` or ``traces``.
+ * Exactly one of ``uploads``, ``upload_id``, ``text``, ``rows`` or ``traces``.
  * ``traces`` is a traces-list selection or ``{"trace_ids": [...]}``.
  * @export
  * @interface SourceRequest
@@ -26,6 +26,12 @@ export interface SourceRequest {
      * @memberof SourceRequest
      */
     uploadId?: string | null;
+    /**
+     *
+     * @type {Array<string>}
+     * @memberof SourceRequest
+     */
+    uploads?: Array<string>;
     /**
      *
      * @type {string}
@@ -70,6 +76,7 @@ export function SourceRequestFromJSONTyped(json: any, ignoreDiscriminator: boole
     return {
 
         'uploadId': json['upload_id'] == null ? undefined : json['upload_id'],
+        'uploads': json['uploads'] == null ? undefined : json['uploads'],
         'filename': json['filename'] == null ? undefined : json['filename'],
         'text': json['text'] == null ? undefined : json['text'],
         'rows': json['rows'] == null ? undefined : json['rows'],
@@ -89,6 +96,7 @@ export function SourceRequestToJSONTyped(value?: SourceRequest | null, ignoreDis
     return {
 
         'upload_id': value['uploadId'],
+        'uploads': value['uploads'],
         'filename': value['filename'],
         'text': value['text'],
         'rows': value['rows'],

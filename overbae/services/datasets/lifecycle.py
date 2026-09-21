@@ -10,7 +10,8 @@ from django.db.models import F
 from django.utils import timezone
 
 from overbae.models import Cell, Dataset
-from overbae.services.datasets import measure, paths
+from overbae.services.datasets import measure, paths, store
+from overbae.services.datasets.context import context_fingerprint
 
 
 class DatasetError(ValueError):
@@ -110,6 +111,10 @@ def edit_cell(
     note: str | None = None,
 ) -> Cell:
     _refuse_while_busy(dataset)
+    if cell.review.get("kind") == "synthetic" and script is not None:
+        raise DatasetError(
+            "Synthetic examples are a recorded batch. Add a transformation cell after it."
+        )
     fields: dict[str, Any] = {}
     if title is not None:
         fields["title"] = title.strip()[:255] or cell.title
@@ -118,6 +123,8 @@ def edit_cell(
     if script is not None and script != cell.script:
         _refuse_frozen(dataset, cell)
         fields["script"] = script
+        fields["review"] = {}
+        fields["quality_report"] = {}
         if cell.state != Cell.State.PROPOSED:
             fields["state"] = Cell.State.QUEUED
             fields["error"] = ""
@@ -139,7 +146,7 @@ def remove_cell(dataset: Dataset, cell: Cell) -> None:
     if dataset.active_id == cell.id:
         _touch(dataset, active=None)
     cell.delete()
-    path.unlink(missing_ok=True)
+    transaction.on_commit(lambda: path.unlink(missing_ok=True))
     for later in dataset.cells.filter(position__gt=position).order_by("position"):
         Cell.objects.filter(pk=later.pk).update(position=F("position") - 1)
     if not proposed:
@@ -149,16 +156,49 @@ def remove_cell(dataset: Dataset, cell: Cell) -> None:
 
 
 @transaction.atomic
+def discard_proposal(dataset: Dataset, cell_id: Any) -> None:
+    dataset = Dataset.objects.select_for_update().get(pk=dataset.pk)
+    cell = dataset.cells.filter(pk=cell_id).first()
+    if cell is None or cell.state != Cell.State.PROPOSED:
+        raise DatasetError(
+            "Only a pending proposal can be discarded. Applied versions are preserved.",
+            code="not_proposal",
+        )
+    remove_cell(dataset, cell)
+
+
+@transaction.atomic
 def accept_proposal(dataset: Dataset, cell: Cell) -> Cell:
     """Move a proposal to the end of the real chain and queue it."""
     _refuse_while_busy(dataset)
     if cell.state != Cell.State.PROPOSED:
         return cell
     chain = dataset.chain
+    if cell.review:
+        previous = next((c for c in reversed(chain) if c.state != Cell.State.PROPOSED), None)
+        report = cell.review
+        path = paths.cell_path(dataset.id, cell.id)
+        if (
+            previous is None
+            or not previous.ran
+            or previous.fingerprint != report.get("input_fingerprint")
+            or dataset.intent != report.get("intent")
+            or context_fingerprint(dataset.capability) != report.get("context_fingerprint")
+            or not path.exists()
+            or store.file_sha256(path) != report.get("output_fingerprint")
+        ):
+            raise DatasetError(
+                "The proposal is stale. Ask for a new preview against the current data.",
+                code="stale_proposal",
+            )
+        Cell.objects.filter(pk=cell.pk).update(
+            review={**report, "status": "accepted", "accepted_at": timezone.now().isoformat()}
+        )
     target = next((c.position for c in chain if c.state == Cell.State.PROPOSED), cell.position)
     if target != cell.position:
-        Cell.objects.filter(pk=cell.pk).update(position=-1)
-        for other in [c for c in chain if target <= c.position < cell.position]:
+        # Positions have both a non-negative check and a dataset-local unique constraint.
+        Cell.objects.filter(pk=cell.pk).update(position=chain[-1].position + 1)
+        for other in reversed([c for c in chain if target <= c.position < cell.position]):
             Cell.objects.filter(pk=other.pk).update(position=F("position") + 1)
         Cell.objects.filter(pk=cell.pk).update(position=target)
     Cell.objects.filter(pk=cell.pk).update(state=Cell.State.QUEUED, updated_at=timezone.now())
@@ -218,25 +258,38 @@ def usage(cell: Cell) -> dict[str, list[dict[str, Any]]]:
         {"id": str(r.id), "name": r.name, "status": r.status, "created_at": r.created_at}
         for r in cell.eval_runs.order_by("-created_at")[:50]
     ]
-    jobs = [
-        {
-            "id": str(j.id),
-            "name": j.name,
-            "status": j.status,
-            "role": "train",
-            "created_at": j.created_at,
-        }
-        for j in cell.finetuning_jobs.order_by("-created_at")[:50]
-    ] + [
-        {
-            "id": str(j.id),
-            "name": j.name,
-            "status": j.status,
-            "role": "validation",
-            "created_at": j.created_at,
-        }
-        for j in cell.validation_finetuning_jobs.order_by("-created_at")[:50]
-    ]
+    jobs = (
+        [
+            {
+                "id": str(j.id),
+                "name": j.name,
+                "status": j.status,
+                "role": "train",
+                "created_at": j.created_at,
+            }
+            for j in cell.finetuning_jobs.order_by("-created_at")[:50]
+        ]
+        + [
+            {
+                "id": str(j.id),
+                "name": j.name,
+                "status": j.status,
+                "role": "validation",
+                "created_at": j.created_at,
+            }
+            for j in cell.validation_finetuning_jobs.order_by("-created_at")[:50]
+        ]
+        + [
+            {
+                "id": str(j.id),
+                "name": j.name,
+                "status": j.status,
+                "role": "eval",
+                "created_at": j.created_at,
+            }
+            for j in cell.evaluation_finetuning_jobs.order_by("-created_at")[:50]
+        ]
+    )
     experiments = [
         {"id": str(e.id), "name": e.name, "status": e.status, "created_at": e.created_at}
         for e in cell.optimizer_experiments.order_by("-created_at")[:50]

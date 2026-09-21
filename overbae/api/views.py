@@ -95,6 +95,8 @@ from overbae.models import (
     TaskExecution,
     User,
 )
+from overbae.services.deployment import ensure_training_deployment, retry_deployment
+from overbae.services.training_preparation import retry_for_job as retry_training_preparation
 
 logger = logging.getLogger(__name__)
 
@@ -691,7 +693,15 @@ class FinetuningJobViewSet(viewsets.ModelViewSet):
             return FinetuningJob.objects.none()
         return FinetuningJob.objects.filter(
             project_id__in=_user_project_ids(self.request.user)
-        ).select_related("project", "capability", "dataset", "triggered_by", "deployed_model")
+        ).select_related(
+            "project",
+            "capability",
+            "dataset",
+            "cell__dataset",
+            "validation_cell__dataset",
+            "triggered_by",
+            "deployed_model",
+        )
 
     def perform_create(self, serializer):
         from overbae.api.credit_gate import require_credits
@@ -932,6 +942,7 @@ class FinetuningJobViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=["post"], url_path="retry")
     def retry(self, request, id=None):
         from overbae.api.credit_gate import require_credits
+        from overbae.services.finetuning_eval import reset_before_evals_for_retry
         from overbae.tasks.finetuning import run_finetuning
 
         job = self.get_object()
@@ -941,6 +952,11 @@ class FinetuningJobViewSet(viewsets.ModelViewSet):
         }:
             raise drf_serializers.ValidationError("Only failed/cancelled jobs can be retried.")
         require_credits(request.user)
+        try:
+            retry_training_preparation(job)
+            reset_before_evals_for_retry(job)
+        except (ValueError, RuntimeError) as exc:
+            raise drf_serializers.ValidationError(str(exc)) from exc
         FinetuningJob.objects.filter(pk=job.pk).update(
             status=FinetuningJob.Status.QUEUED,
             error_message="",
@@ -1268,7 +1284,8 @@ class FinetuningJobViewSet(viewsets.ModelViewSet):
             except (Capability.DoesNotExist, ValidationError, ValueError):
                 return Response({"detail": "Capability not found."}, status=404)
 
-        return Response(get_recommendation(str(dataset.id), capability_id=capability_id))
+        analysis = get_recommendation(str(dataset.id), capability_id=capability_id)
+        return Response(FinetuningRecommendationResponseSerializer(analysis).data)
 
     @extend_schema(
         summary="Re-estimate fine-tuning cost and duration",
@@ -1381,9 +1398,8 @@ class FinetuningJobViewSet(viewsets.ModelViewSet):
                     "basis": "trace_id",
                 }
             )
-        overlap = row_store.trace_ids(train_v) & row_store.trace_ids(eval_v)
         return Response(
-            {"overlap_count": len(overlap), "train_total": train_v.rows, "basis": "trace_id"}
+            DatasetOverlapResponseSerializer(row_store.contamination(train_v, eval_v)).data
         )
 
 
@@ -1872,9 +1888,11 @@ class DeployedModelViewSet(
         from django.utils import timezone
 
         month_start = timezone.now().replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+        queryset = DeployedModel.objects.filter(project_id__in=_user_project_ids(self.request.user))
+        if self.action == "list":
+            queryset = queryset.filter(finetuning_job__isnull=False)
         return (
-            DeployedModel.objects.filter(project_id__in=_user_project_ids(self.request.user))
-            .select_related("finetuning_job", "finetuning_job__capability")
+            queryset.select_related("finetuning_job", "finetuning_job__capability")
             .annotate(
                 request_count=Count("inference_calls"),
                 last_active_at=Max("inference_calls__created_at"),
@@ -1940,7 +1958,6 @@ class DeployedModelViewSet(
     def deploy(self, request, id=None):
         """Trigger (re-)registration of a fine-tuned model via the vLLM pipeline."""
         from overbae.api.credit_gate import require_credits
-        from overbae.tasks.model_deployment import register_finetuned_model
 
         instance = self.get_object()
         if instance.finetuning_job_id is None:
@@ -1949,7 +1966,13 @@ class DeployedModelViewSet(
                 status=status.HTTP_400_BAD_REQUEST,
             )
         require_credits(request.user)
-        register_finetuned_model.delay(job_id=str(instance.finetuning_job_id))
+        try:
+            if instance.status in ("failed", "deleted"):
+                retry_deployment(instance.pk)
+            else:
+                ensure_training_deployment(str(instance.finetuning_job_id))
+        except ValueError as exc:
+            return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
         instance.refresh_from_db()
         return Response(DeployedModelSerializer(instance).data)
 
@@ -1962,7 +1985,6 @@ class DeployedModelViewSet(
     def retry(self, request, id=None):
         """Reset a FAILED model and re-queue registration."""
         from overbae.api.credit_gate import require_credits
-        from overbae.tasks.model_deployment import register_finetuned_model
 
         instance = self.get_object()
         if instance.status not in (
@@ -1989,11 +2011,10 @@ class DeployedModelViewSet(
                 status=status.HTTP_400_BAD_REQUEST,
             )
         require_credits(request.user)
-        DeployedModel.objects.filter(pk=instance.pk).update(
-            status=DeployedModel.Status.QUEUED,
-            error_message="",
-        )
-        register_finetuned_model.delay(job_id=str(instance.finetuning_job_id))
+        try:
+            retry_deployment(instance.pk)
+        except ValueError as exc:
+            return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
         instance.refresh_from_db()
         return Response(DeployedModelSerializer(instance).data)
 

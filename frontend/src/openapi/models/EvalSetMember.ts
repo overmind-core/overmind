@@ -67,6 +67,12 @@ export interface EvalSetMember {
     readonly evaluatorKind: string;
     /**
      *
+     * @type {string}
+     * @memberof EvalSetMember
+     */
+    readonly evaluatorCapabilityName: string;
+    /**
+     *
      * @type {EvalSetMemberRoleEnum}
      * @memberof EvalSetMember
      */
@@ -133,6 +139,7 @@ export function instanceOfEvalSetMember(value: object): value is EvalSetMember {
     if (!('evaluatorName' in value) || value['evaluatorName'] === undefined) return false;
     if (!('evaluatorDisplayName' in value) || value['evaluatorDisplayName'] === undefined) return false;
     if (!('evaluatorKind' in value) || value['evaluatorKind'] === undefined) return false;
+    if (!('evaluatorCapabilityName' in value) || value['evaluatorCapabilityName'] === undefined) return false;
     if (!('createdAt' in value) || value['createdAt'] === undefined) return false;
     if (!('latestScore' in value) || value['latestScore'] === undefined) return false;
     if (!('previousScore' in value) || value['previousScore'] === undefined) return false;
@@ -156,6 +163,7 @@ export function EvalSetMemberFromJSONTyped(json: any, ignoreDiscriminator: boole
         'evaluatorName': json['evaluator_name'],
         'evaluatorDisplayName': json['evaluator_display_name'],
         'evaluatorKind': json['evaluator_kind'],
+        'evaluatorCapabilityName': json['evaluator_capability_name'],
         'role': json['role'] == null ? undefined : EvalSetMemberRoleEnumFromJSON(json['role']),
         'enabled': json['enabled'] == null ? undefined : json['enabled'],
         'samplingRate': json['sampling_rate'] == null ? undefined : json['sampling_rate'],
@@ -172,7 +180,7 @@ export function EvalSetMemberToJSON(json: any): EvalSetMember {
     return EvalSetMemberToJSONTyped(json, false);
 }
 
-export function EvalSetMemberToJSONTyped(value?: Omit<EvalSetMember, 'id'|'eval_set'|'evaluator_name'|'evaluator_display_name'|'evaluator_kind'|'created_at'|'latest_score'|'previous_score'|'delta'> | null, ignoreDiscriminator: boolean = false): any {
+export function EvalSetMemberToJSONTyped(value?: Omit<EvalSetMember, 'id'|'eval_set'|'evaluator_name'|'evaluator_display_name'|'evaluator_kind'|'evaluator_capability_name'|'created_at'|'latest_score'|'previous_score'|'delta'> | null, ignoreDiscriminator: boolean = false): any {
     if (value == null) {
         return value;
     }

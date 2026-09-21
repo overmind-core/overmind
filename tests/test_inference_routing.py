@@ -320,32 +320,32 @@ def test_inference_client_sends_muse_serve_image_header():
     ],
 )
 def test_lora_routing_uses_verified_expert_support(base_model, expected):
-    from overbae.tasks.model_deployment import _serves_as_adapter
+    from overbae.services.deployment import serves_as_adapter
 
     job = MagicMock()
     job.provider = "modal"
     job.base_model = base_model
     job.hyperparameters = {"training_type": {"type": "Lora"}}
-    assert _serves_as_adapter(job) is expected
+    assert serves_as_adapter(job) is expected
 
 
 def test_full_finetune_takes_the_merge_path():
-    from overbae.tasks.model_deployment import _serves_as_adapter
+    from overbae.services.deployment import serves_as_adapter
 
     job = MagicMock()
     job.provider = "modal"
     job.base_model = "Qwen/Qwen3-1.7B"
     job.hyperparameters = {"training_type": {"type": "Full"}}
-    assert _serves_as_adapter(job) is False
+    assert serves_as_adapter(job) is False
 
 
 def test_non_modal_provider_takes_the_merge_path():
     """Baseten and Nebius checkpoints come back through S3, not the sft Volume that
     publish_adapter reads from."""
-    from overbae.tasks.model_deployment import _serves_as_adapter
+    from overbae.services.deployment import serves_as_adapter
 
     job = MagicMock()
     job.provider = "baseten"
     job.base_model = "Qwen/Qwen3-1.7B"
     job.hyperparameters = {"training_type": {"type": "Lora"}}
-    assert _serves_as_adapter(job) is False
+    assert serves_as_adapter(job) is False

@@ -190,11 +190,11 @@ def test_inference_client_stream_chat_yields_lines():
 
 
 def test_make_model_id_slug_format():
-    from overbae.tasks.model_deployment import _make_model_id
+    from overbae.services.deployment import model_slug
 
     p = _project()
     job = _job(p)
-    slug = _make_model_id(job)
+    slug = model_slug(job)
     assert slug.startswith("ft-")
     assert " " not in slug
     assert slug == slug.lower()
@@ -231,109 +231,18 @@ def test_deploy_task_skips_non_succeeded_job():
     assert not DeployedModel.objects.filter(finetuning_job=job).exists()
 
 
-def _mock_modal():
-    mock_register_cls = MagicMock()
-    mock_register_inst = MagicMock()
-    mock_register_cls.return_value = mock_register_inst
-    mock_register_inst.register.remote.return_value = {
-        "weights_path": "/vol/ft-abc",
-        "is_lora": False,
-        "quantization": "fp8",
-        "num_parameters": 1000,
-        "base_model": "meta-llama/Meta-Llama-3.1-8B-Instruct-Reference",
-        "ready": True,
-    }
-
-    mock_api_cls = MagicMock()
-    mock_api_inst = MagicMock()
-    mock_api_cls.return_value = mock_api_inst
-    mock_api_inst.register_model.remote.return_value = "https://worker.example.com"
-
-    mock_fn = MagicMock()
-    mock_fn.remote.return_value = None
-
-    def _from_name(app, cls_name, **_kw):
-        if app == "overmind-register":
-            return mock_register_cls
-        return mock_api_cls
-
-    import contextlib
-
-    @contextlib.contextmanager
-    def _ctx():
-        with (
-            patch("modal.Cls.from_name", side_effect=_from_name),
-            patch("modal.Function.from_name", return_value=mock_fn),
-        ):
-            yield mock_register_inst, mock_api_inst
-
-    return _ctx()
-
-
-@pytest.mark.django_db
-def test_deploy_task_creates_deployed_model_and_triggers_modal():
+def test_deploy_task_only_initializes_durable_state():
     from overbae.tasks.model_deployment import register_finetuned_model
 
-    p = _project()
-    job = _job(p, status="succeeded")
-
-    with _mock_modal():
+    job = _job(_project(), status="succeeded")
+    with patch("modal.Function.from_name") as remote:
         register_finetuned_model(job_id=str(job.id))
-
-    deployed = DeployedModel.objects.get(finetuning_job=job)
-    assert deployed.status == DeployedModel.Status.READY
-    assert deployed.deployed_at is not None
-    assert deployed.quantization == DeployedModel.Quantization.FP8
-    assert deployed.is_lora is False
-    assert deployed.weights_path == "/vol/ft-abc"
-
-
-@pytest.mark.django_db
-def test_deploy_task_marks_failed_on_trigger_error():
-    from overbae.tasks.model_deployment import register_finetuned_model
-
-    p = _project()
-    job = _job(p, status="succeeded")
-
-    mock_register_cls = MagicMock()
-    mock_register_inst = MagicMock()
-    mock_register_cls.return_value = mock_register_inst
-    mock_register_inst.register.remote.side_effect = RuntimeError("Modal is down")
-
-    from celery.exceptions import Retry
-
-    # called_directly=True would make self.retry() re-raise instead of signalling Retry.
-    register_finetuned_model.push_request(is_eager=True, called_directly=False)
-    try:
-        with (
-            patch("modal.Cls.from_name", return_value=mock_register_cls),
-            pytest.raises(Retry),
-        ):
-            register_finetuned_model.run(job_id=str(job.id))
-    finally:
-        register_finetuned_model.pop_request()
-
-    deployed = DeployedModel.objects.get(finetuning_job=job)
-    assert deployed.status == DeployedModel.Status.FAILED
-    # Persist a console-safe summary — never the provider exception text.
-    assert deployed.error_message == "Download failed"
-    assert "Modal" not in (deployed.error_message or "")
-
-
-@pytest.mark.django_db
-def test_deploy_task_idempotent_skips_already_ready():
-    from overbae.tasks.model_deployment import register_finetuned_model
-
-    p = _project()
-    job = _job(p, status="succeeded")
-    existing = _deployed_model(p, job)
-
-    with _mock_modal() as (mock_register, _):
         register_finetuned_model(job_id=str(job.id))
-
-    mock_register.register.remote.assert_not_called()
-    existing.refresh_from_db()
-    assert existing.status == DeployedModel.Status.READY
+    deployed = DeployedModel.objects.get(finetuning_job=job)
+    assert deployed.status == "queued"
+    assert deployed.deployment_stage == "base"
+    assert deployed.deployment_attempts == 1
+    remote.assert_not_called()
 
 
 def test_deployed_models_list_requires_auth():
@@ -345,7 +254,7 @@ def test_deployed_models_list_returns_200():
     u = _user()
     p = _project()
     _membership(u, p)
-    _deployed_model(p)
+    _deployed_model(p, _job(p))
 
     r = _auth_client(u).get(reverse("deployedmodel-list"))
     assert r.status_code == status.HTTP_200_OK
@@ -356,10 +265,10 @@ def test_deployed_models_list_scoped_to_user_projects():
     u_a = _user()
     p_a = _project()
     _membership(u_a, p_a)
-    _deployed_model(p_a)
+    _deployed_model(p_a, _job(p_a))
 
     p_b = _project()
-    _deployed_model(p_b)
+    _deployed_model(p_b, _job(p_b))
 
     r = _auth_client(u_a).get(reverse("deployedmodel-list"))
     assert r.status_code == status.HTTP_200_OK
@@ -373,9 +282,9 @@ def test_deployed_models_list_filters_by_project_server_side():
     wanted, noisy = _project(), _project()
     _membership(u, wanted)
     _membership(u, noisy)
-    mine = _deployed_model(wanted)
+    mine = _deployed_model(wanted, _job(wanted))
     for _ in range(30):
-        _deployed_model(noisy)
+        _deployed_model(noisy, _job(noisy))
 
     r = _auth_client(u).get(reverse("deployedmodel-list"), {"project": str(wanted.id)})
     assert r.status_code == status.HTTP_200_OK
@@ -405,8 +314,6 @@ def test_deployed_models_list_filters_by_capability_and_status():
 
 
 def test_deployed_models_list_filters_to_the_no_capability_bucket():
-    """Both unassigned shapes — a job carrying no capability and no job at all — share one bucket;
-    the nullable join must stay a LEFT OUTER or the jobless row drops."""
     u = _user()
     p = _project()
     _membership(u, p)
@@ -416,7 +323,7 @@ def test_deployed_models_list_filters_to_the_no_capability_bucket():
 
     attributed = _deployed_model(p, attributed_job)
     job_without_capability = _deployed_model(p, _job(p))
-    without_job = _deployed_model(p)
+    _deployed_model(p)
 
     client = _auth_client(u)
     bucket = client.get(
@@ -425,16 +332,42 @@ def test_deployed_models_list_filters_to_the_no_capability_bucket():
     assert bucket.status_code == status.HTTP_200_OK
     assert {str(row["id"]) for row in bucket.data["results"]} == {
         str(job_without_capability.id),
-        str(without_job.id),
     }
     assert {row["capability_id"] for row in bucket.data["results"]} == {None}
 
-    # The two buckets partition the project: nothing unreachable, nothing double-counted.
     named = client.get(
         reverse("deployedmodel-list"), {"capability": str(capability.id), "project": str(p.id)}
     )
     assert [str(row["id"]) for row in named.data["results"]] == [str(attributed.id)]
-    assert bucket.data["count"] + named.data["count"] == 3
+    assert bucket.data["count"] + named.data["count"] == 2
+
+
+@pytest.mark.parametrize("deployment_status", ["deploying", "warming", "ready", "failed"])
+def test_deployed_models_list_excludes_eval_infrastructure_before_pagination(deployment_status):
+    user = _user()
+    project = _project()
+    _membership(user, project)
+    trained = _deployed_model(project, _job(project))
+    DeployedModel.objects.filter(pk=trained.pk).update(status=deployment_status)
+    for index in range(26):
+        baseline = DeployedModel.objects.create(
+            project=project,
+            model_id=f"base--eval-{index}",
+            status=deployment_status,
+        )
+
+    client = _auth_client(user)
+    response = client.get(reverse("deployedmodel-list"), {"page_size": 1})
+    assert response.status_code == status.HTTP_200_OK
+    assert response.data["count"] == 1
+    assert response.data["next"] is None
+    assert [str(row["id"]) for row in response.data["results"]] == [str(trained.id)]
+
+    search = client.get(reverse("deployedmodel-list"), {"search": "base--eval"})
+    assert search.data["count"] == 0
+    detail = client.get(reverse("deployedmodel-detail", args=[baseline.id]))
+    assert detail.status_code == status.HTTP_200_OK
+    assert DeployedModel.objects.filter(project=project, finetuning_job__isnull=True).count() == 26
 
 
 def test_deployed_models_list_rejects_a_malformed_capability_id():
@@ -453,8 +386,8 @@ def test_deployed_models_list_honours_search_and_ordering():
     u = _user()
     p = _project()
     _membership(u, p)
-    first = _deployed_model(p)
-    second = _deployed_model(p)
+    first = _deployed_model(p, _job(p))
+    second = _deployed_model(p, _job(p))
 
     client = _auth_client(u)
     found = client.get(reverse("deployedmodel-list"), {"search": first.model_id})
@@ -519,7 +452,7 @@ def test_deployed_models_list_still_overlays_median_latency_when_filtered():
     u = _user()
     p = _project()
     _membership(u, p)
-    m = _deployed_model(p)
+    m = _deployed_model(p, _job(p))
     for latency in (10, 20, 3000):
         InferenceCall.objects.create(
             deployed_model=m,
@@ -583,7 +516,7 @@ def test_deployed_models_deploy_action_dispatches_task():
         r = _auth_client(u).post(reverse("deployedmodel-deploy", args=[str(m.id)]))
 
     assert r.status_code == status.HTTP_200_OK
-    mock_task.delay.assert_called_once_with(job_id=str(job.id))
+    mock_task.delay.assert_not_called()
 
 
 def test_deployed_models_retry_action_dispatches_task():
@@ -601,7 +534,7 @@ def test_deployed_models_retry_action_dispatches_task():
         r = _auth_client(u).post(reverse("deployedmodel-retry", args=[str(m.id)]))
 
     assert r.status_code == status.HTTP_200_OK
-    mock_task.delay.assert_called_once_with(job_id=str(job.id))
+    mock_task.delay.assert_not_called()
     m.refresh_from_db()
     assert m.status == DeployedModel.Status.QUEUED
     assert m.error_message == ""

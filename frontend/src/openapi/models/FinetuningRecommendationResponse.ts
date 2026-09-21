@@ -69,6 +69,12 @@ export interface FinetuningRecommendationResponse {
     taskTypeSource: TaskTypeSourceEnum;
     /**
      *
+     * @type {{ [key: string]: any; }}
+     * @memberof FinetuningRecommendationResponse
+     */
+    capabilityContext: { [key: string]: any; } | null;
+    /**
+     *
      * @type {{ [key: string]: number; }}
      * @memberof FinetuningRecommendationResponse
      */
@@ -113,6 +119,7 @@ export interface FinetuningRecommendationResponse {
 export function instanceOfFinetuningRecommendationResponse(value: object): value is FinetuningRecommendationResponse {
     if (!('taskType' in value) || value['taskType'] === undefined) return false;
     if (!('taskTypeSource' in value) || value['taskTypeSource'] === undefined) return false;
+    if (!('capabilityContext' in value) || value['capabilityContext'] === undefined) return false;
     if (!('skillWeights' in value) || value['skillWeights'] === undefined) return false;
     if (!('dataset' in value) || value['dataset'] === undefined) return false;
     if (!('candidates' in value) || value['candidates'] === undefined) return false;
@@ -134,6 +141,7 @@ export function FinetuningRecommendationResponseFromJSONTyped(json: any, ignoreD
 
         'taskType': json['task_type'],
         'taskTypeSource': TaskTypeSourceEnumFromJSON(json['task_type_source']),
+        'capabilityContext': json['capability_context'],
         'skillWeights': json['skill_weights'],
         'dataset': FinetuningRecommendationDatasetFromJSON(json['dataset']),
         'candidates': ((json['candidates'] as Array<any>).map(FinetuningExperimentFromJSON)),
@@ -156,6 +164,7 @@ export function FinetuningRecommendationResponseToJSONTyped(value?: FinetuningRe
 
         'task_type': value['taskType'],
         'task_type_source': TaskTypeSourceEnumToJSON(value['taskTypeSource']),
+        'capability_context': value['capabilityContext'],
         'skill_weights': value['skillWeights'],
         'dataset': FinetuningRecommendationDatasetToJSON(value['dataset']),
         'candidates': ((value['candidates'] as Array<any>).map(FinetuningExperimentToJSON)),

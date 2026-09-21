@@ -138,7 +138,7 @@ class _Attempt:
             self.thoughts.clear()
         if self.buffer:
             self.flushed = True
-            self.tools.emit({"type": "chat_delta", "text": "".join(self.buffer)})
+            self.tools.respond("".join(self.buffer))
             self.buffer.clear()
         while self.pending:
             yield self.pending.pop(0)
@@ -199,7 +199,12 @@ class NativeEngine:
         for attempt in range(1, STREAM_ATTEMPTS + 1):
             current = _Attempt(self, tools, pending)
             try:
-                return (yield from current.run(system, messages, schemas))
+                result = yield from current.run(system, messages, schemas)
+                if result.text and not current.flushed:
+                    tools.respond(result.text)
+                    while pending:
+                        yield pending.pop(0)
+                return result
             except Exception as exc:
                 yield from current.flush()
                 carried_reasoning = any("reasoning_details" in m for m in messages)
@@ -222,15 +227,12 @@ class NativeEngine:
         messages = [*history, {"role": "user", "content": message}]
         keep_from = len(history)
         outcome = Outcome()
-        text_parts: list[str] = []
 
         for _ in range(MAX_ROUNDS):
             tools.think()
             messages[:] = fit(messages, keep_from=keep_from, budget=CONTEXT_CHARS)
             result = yield from self._round(system, messages, schemas, tools, pending)
             _add_stats(outcome.stats, result.stats)
-            if result.text:
-                text_parts.append(result.text)
             messages.append(result.assistant_message())
             if not result.tool_calls:
                 break
@@ -257,15 +259,13 @@ class NativeEngine:
             try:
                 result = yield from self._round(system, messages, [], tools, pending)
                 _add_stats(outcome.stats, result.stats)
-                if result.text:
-                    text_parts.append(result.text)
                 messages.append(result.assistant_message())
             except Exception:  # noqa: BLE001
                 logger.warning("dataset %s: wrap-up failed", dataset.id, exc_info=True)
             outcome.error = "The agent used its whole tool budget for this turn."
 
         Dataset.objects.filter(pk=dataset.pk).update(agent_messages=storable(messages))
-        outcome.text = "\n\n".join(part for part in text_parts if part)
+        outcome.text = tools.text
         return outcome
 
     def describe_error(self, exc: Exception) -> str:

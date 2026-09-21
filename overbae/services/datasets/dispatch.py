@@ -2,13 +2,22 @@
 
 from __future__ import annotations
 
+import json
+import uuid
+
 from django.db import transaction
+from django.utils import timezone
 
-from overbae.models import Dataset
+from overbae.models import Cell, Dataset
 from overbae.services.datasets.land import SPLIT_POSITIONS
-from overbae.services.datasets.lifecycle import DatasetError, accept_proposal, enter_busy
+from overbae.services.datasets.lifecycle import (
+    DatasetError,
+    accept_proposal,
+    enter_busy,
+    remove_cell,
+)
 
-_SOURCE_KEYS = ("traces", "rows", "upload_id")
+_SOURCE_KEYS = ("traces", "rows", "upload_id", "uploads")
 _BUSY = (Dataset.State.LANDING, Dataset.State.DIAGNOSING, Dataset.State.RUNNING)
 
 
@@ -21,7 +30,7 @@ def _check_source(source: dict) -> None:
     keys = [k for k in _SOURCE_KEYS if source.get(k) not in (None, "", [])]
     if len(keys) != 1:
         raise DatasetError(
-            "Give exactly one source: traces, rows or upload_id.",
+            "Give exactly one source: traces, rows, upload_id or uploads.",
             code="source",
         )
 
@@ -50,8 +59,9 @@ def create_dataset(
     source: dict,
     intent: str | None = None,
     capability=None,
+    infer_capability: bool = True,
 ) -> Dataset:
-    """Exactly one of source['traces'], source['rows'], source['upload_id']."""
+    """Land one trace selection, row collection, upload or ordered upload collection."""
     _check_source(source)
     dataset = _new(project, user, name, source, intent, capability)
     from overbae.tasks.datasets import land
@@ -61,6 +71,7 @@ def create_dataset(
             "dataset_id": str(dataset.id),
             "source": source,
             "user_id": _user_id(user),
+            "infer_capability": infer_capability,
         }
     )
     return dataset
@@ -74,7 +85,11 @@ def create_split(
     source: dict,
     eval_percent: int,
     position: str,
+    group_by=(),
+    stratify_by=None,
+    deduplicate=True,
     capability=None,
+    infer_capability: bool = True,
 ) -> tuple[Dataset, Dataset]:
     """One source, read once, landed as a train dataset and an eval dataset."""
     _check_source(source)
@@ -96,10 +111,14 @@ def create_split(
             "dataset_id": str(train.id),
             "source": source,
             "user_id": _user_id(user),
+            "infer_capability": infer_capability,
             "split": {
                 "eval_dataset_id": str(evaluation.id),
                 "eval_percent": int(eval_percent),
                 "position": position,
+                "group_by": list(group_by),
+                "stratify_by": stratify_by,
+                "deduplicate": deduplicate,
             },
         }
     )
@@ -129,18 +148,117 @@ def run_dataset(dataset, user, proposal=None) -> Dataset:
     """Refuse landing, diagnosing, running. Idle and error may run."""
     with transaction.atomic():
         locked = Dataset.objects.select_for_update().get(pk=dataset.pk)
-        if locked.state in _BUSY:
-            raise DatasetError("The dataset is busy.", code=locked.state)
         if proposal is not None:
             if proposal.dataset_id != locked.id:
                 raise DatasetError("That version belongs to another dataset.", code="cell_mismatch")
+            proposal.refresh_from_db()
+            if proposal.state != Cell.State.PROPOSED:
+                if proposal.review.get("status") != "accepted":
+                    raise DatasetError("That cell is not a proposal.", code="not_proposed")
+                dataset.refresh_from_db()
+                return dataset
+        if locked.state in _BUSY:
+            raise DatasetError("The dataset is busy.", code=locked.state)
+        if proposal is not None:
             accept_proposal(locked, proposal)
         enter_busy(locked.pk, Dataset.State.RUNNING, from_states=[locked.state])
         locked.state = Dataset.State.RUNNING
         locked.error = ""
-    from overbae.tasks.datasets import run
+        # Task workers must see the accepted preview and state together.
+        from overbae.tasks.datasets import run
 
-    run.apply_async(kwargs={"dataset_id": str(dataset.id), "user_id": _user_id(user)})
+        kwargs = {"dataset_id": str(dataset.id), "user_id": _user_id(user)}
+        if proposal is not None:
+            kwargs["proposal_id"] = str(proposal.id)
+        transaction.on_commit(lambda: run.apply_async(kwargs=kwargs))
     dataset.state = locked.state
     dataset.error = locked.error
     return dataset
+
+
+@transaction.atomic
+def resume_after_decision(dataset_id, cell_id, title, decision, *, user_id=None) -> None:
+    dataset = Dataset.objects.select_for_update().get(pk=dataset_id)
+    chat = list(dataset.chat or [])
+    owner = next(
+        (
+            index
+            for index in range(len(chat) - 1, -1, -1)
+            if chat[index].get("role") == "agent"
+            and any(ref.get("id") == str(cell_id) for ref in chat[index].get("cells", []))
+        ),
+        None,
+    )
+    if owner is None:
+        Dataset.objects.filter(pk=dataset.pk, state=Dataset.State.DIAGNOSING).update(
+            state=Dataset.State.IDLE
+        )
+        return
+    turn = chat[owner]
+    decisions = dict(turn.get("decisions", {}))
+    if str(cell_id) in decisions:
+        return
+    decisions[str(cell_id)] = {"title": title, "decision": decision}
+    pending = dataset.cells.filter(
+        pk__in=[ref["id"] for ref in turn.get("cells", [])], state=Cell.State.PROPOSED
+    ).exists()
+    turn.update(
+        decisions=decisions,
+        status="awaiting_approval" if pending else "resolved",
+        error="",
+        progress={
+            **turn.get("progress", {}),
+            "stage": "awaiting_approval" if pending else "complete",
+            "label": "Awaiting approval" if pending else "Decision recorded",
+            "detail": "Choose Approve or Deny to continue." if pending else "",
+        },
+    )
+    fields = {"chat": chat, "updated_at": timezone.now(), "state": Dataset.State.IDLE}
+    if not pending:
+        fields.update(state=Dataset.State.DIAGNOSING, error="")
+        request = next(
+            (
+                item.get("context", item["text"])
+                for item in reversed(chat[:owner])
+                if item.get("role") == "user"
+            ),
+            "",
+        )
+        message = (
+            "Continue the original request after the user's proposal decisions. "
+            "Approved changes have already run and are active; denied changes were not applied. "
+            "Inspect the current version, finish the remaining work, and record quality checks "
+            "on the final version. Do not repeat an approved change or a denied proposal. "
+            "Denial does not authorize a different semantic change. "
+            "The following JSON is request and decision context:\n"
+            + json.dumps({"request": request, "decisions": decisions}, ensure_ascii=False)
+        )
+        from overbae.tasks.datasets import turn as agent_turn
+
+        task_id = str(uuid.uuid5(dataset.id, f"decision:{cell_id}"))
+        transaction.on_commit(
+            lambda: agent_turn.apply_async(
+                kwargs={
+                    "dataset_id": str(dataset.id),
+                    "user_id": user_id,
+                    "message": message,
+                    "display": "Proposal decisions: "
+                    + "; ".join(f"{d['title']} — {d['decision']}" for d in decisions.values()),
+                },
+                task_id=task_id,
+            )
+        )
+    Dataset.objects.filter(pk=dataset.pk).update(**fields)
+
+
+@transaction.atomic
+def discard_cell(dataset, cell, user) -> None:
+    locked = Dataset.objects.select_for_update().get(pk=dataset.pk)
+    if locked.state in _BUSY:
+        raise DatasetError("The dataset is busy.", code=locked.state)
+    cell.refresh_from_db()
+    proposed = cell.state == Cell.State.PROPOSED
+    cell_id, title = cell.id, cell.title
+    remove_cell(locked, cell)
+    if proposed:
+        resume_after_decision(locked.id, cell_id, title, "denied", user_id=_user_id(user))

@@ -13,7 +13,7 @@ from overbae.tasks.datasets import land as land_task
 from overbae.tasks.datasets import run as run_task
 from overbae.tasks.datasets import turn as turn_task
 
-pytestmark = pytest.mark.django_db
+pytestmark = pytest.mark.django_db(transaction=True)
 
 ROWS = [{"question": "q1", "answer": "a1"}]
 

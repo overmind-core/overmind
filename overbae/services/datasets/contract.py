@@ -16,7 +16,9 @@ from typing import Any
 
 import pandas as pd
 
+from overbae.services.datasets.examples import identifier_only, normalize_record
 from overbae.services.datasets.text import approx_tokens
+from overbae.services.finetuning_tool_validation import tool_schema_errors
 
 TRAIN = "train"
 EVAL = "eval"
@@ -98,7 +100,8 @@ def training_line(record: dict[str, Any]) -> dict[str, Any]:
     """The ``{messages, tools?}`` line a record trains as. The train contract
     and the training export both build it here, so neither accepts a row the
     other refuses."""
-    messages = _as_obj(record.get("messages"))
+    record = normalize_record(record)
+    messages = record.get("messages")
     if _missing(messages):
         raise ValueError("messages is empty")
     if not isinstance(messages, list):
@@ -108,13 +111,17 @@ def training_line(record: dict[str, Any]) -> dict[str, Any]:
     if cut_at_landing(messages):
         raise ValueError("a value was cut at landing")
     line: dict[str, Any] = {"messages": messages}
-    tools = _as_obj(record.get("tools"))
-    if isinstance(tools, list) and tools:
+    tools = record.get("tools")
+    errors = tool_schema_errors(tools)
+    if errors:
+        raise ValueError("; ".join(errors[:3]))
+    if tools:
         line["tools"] = tools
     return line
 
 
 def _train_check(df: pd.DataFrame) -> dict[str, Any]:
+    # The validator also imports training_line for the shared export contract.
     from overbae.services.finetuning_validator import validate_rows
 
     if "messages" not in df.columns:
@@ -170,6 +177,21 @@ def _eval_check(df: pd.DataFrame) -> dict[str, Any]:
             "input_type": input_type,
             "has_reference": False,
         }
+    failures = []
+    for index, value in enumerate(inputs):
+        payload = normalize_record({"input": value})["input"]
+        if isinstance(payload, dict) and "messages" in payload:
+            failures.extend(
+                {"row": index, "reason": reason}
+                for reason in tool_schema_errors(payload.get("tools"))
+            )
+    if failures:
+        return {
+            "ok": False,
+            "reason": failures[0]["reason"],
+            "failures": failures[:_FAILURE_SAMPLES],
+            "has_reference": True,
+        }
     return {
         "ok": True,
         "reason": "",
@@ -178,6 +200,11 @@ def _eval_check(df: pd.DataFrame) -> dict[str, Any]:
         "has_reference": True,
         "reference_rows": reference_rows,
         "model_expected": "model_expected_output" in df.columns,
+        "warnings": [
+            f"{sum(identifier_only(value) for value in inputs)} eval inputs contain identifiers without evidence; model evaluation cannot retrieve those records."
+        ]
+        if any(identifier_only(value) for value in inputs)
+        else [],
     }
 
 

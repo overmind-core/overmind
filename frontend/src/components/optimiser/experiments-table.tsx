@@ -37,7 +37,7 @@ import { clearUnseenCompletion, useUnseenCompletionKeys } from "@/lib/unseen-job
 import type { OptimizerExperiment } from "@/openapi";
 import { OptimizerExperimentStatusEnum } from "@/openapi";
 
-type SortKey = "capability" | "status" | "dataset" | "iterations" | "score" | "created";
+type SortKey = "capability" | "status" | "dataset" | "score" | "created";
 
 function ScoreCell({
   baseline,
@@ -141,7 +141,15 @@ export function ExperimentsTable({
     });
 
     const sort = parseDrfOrdering(ordering || undefined);
-    const key = (sort?.field ?? "created") as SortKey;
+    const requestedKey = sort?.field;
+    const key: SortKey =
+      requestedKey === "capability" ||
+      requestedKey === "status" ||
+      requestedKey === "dataset" ||
+      requestedKey === "score" ||
+      requestedKey === "created"
+        ? requestedKey
+        : "created";
     const dir = sort?.dir === "asc" ? 1 : -1;
     return [...filtered].sort((a, b) => {
       let cmp = 0;
@@ -154,9 +162,6 @@ export function ExperimentsTable({
           break;
         case "dataset":
           cmp = (a.datasetName || "").localeCompare(b.datasetName || "");
-          break;
-        case "iterations":
-          cmp = a.currentIteration - b.currentIteration;
           break;
         case "score": {
           const aBest = experimentScores(a).best ?? -Infinity;
@@ -214,7 +219,14 @@ export function ExperimentsTable({
     },
     {
       accessorKey: "status",
-      cell: ({ row }) => <ExperimentStatusChip status={row.original.status} />,
+      cell: ({ row }) => {
+        const experiment = row.original;
+        const progress =
+          experiment.status === "iterating" && experiment.numIterations > 0
+            ? (experiment.currentIteration / experiment.numIterations) * 100
+            : null;
+        return <ExperimentStatusChip progress={progress} status={experiment.status} />;
+      },
       header: "Status",
       meta: { noTruncate: true, orderingField: "status" },
       minSize: 120,
@@ -234,18 +246,6 @@ export function ExperimentsTable({
       meta: { noTruncate: true, orderingField: "dataset" },
       minSize: 120,
       size: 144,
-    },
-    {
-      accessorKey: "currentIteration",
-      cell: ({ row }) => (
-        <span className="tabular-nums text-muted-foreground">
-          {row.original.currentIteration}/{row.original.numIterations}
-        </span>
-      ),
-      header: "Iterations",
-      meta: { orderingField: "iterations" },
-      minSize: 90,
-      size: 112,
     },
     {
       cell: ({ row }) => {

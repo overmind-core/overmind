@@ -27,6 +27,13 @@ import {
     QuantizationEnumToJSON,
     QuantizationEnumToJSONTyped,
 } from './QuantizationEnum';
+import type { DeploymentProgress } from './DeploymentProgress';
+import {
+    DeploymentProgressFromJSON,
+    DeploymentProgressFromJSONTyped,
+    DeploymentProgressToJSON,
+    DeploymentProgressToJSONTyped,
+} from './DeploymentProgress';
 
 /**
  *
@@ -52,6 +59,12 @@ export interface DeployedModel {
      * @memberof DeployedModel
      */
     readonly modelId: string;
+    /**
+     *
+     * @type {DeploymentProgress}
+     * @memberof DeployedModel
+     */
+    readonly deploymentProgress: DeploymentProgress;
     /**
      *
      * @type {DeployedModelStatusEnum}
@@ -219,6 +232,7 @@ export function instanceOfDeployedModel(value: object): value is DeployedModel {
     if (!('id' in value) || value['id'] === undefined) return false;
     if (!('project' in value) || value['project'] === undefined) return false;
     if (!('modelId' in value) || value['modelId'] === undefined) return false;
+    if (!('deploymentProgress' in value) || value['deploymentProgress'] === undefined) return false;
     if (!('status' in value) || value['status'] === undefined) return false;
     if (!('quantization' in value) || value['quantization'] === undefined) return false;
     if (!('baseModelId' in value) || value['baseModelId'] === undefined) return false;
@@ -261,6 +275,7 @@ export function DeployedModelFromJSONTyped(json: any, ignoreDiscriminator: boole
         'id': json['id'],
         'project': json['project'],
         'modelId': json['model_id'],
+        'deploymentProgress': DeploymentProgressFromJSON(json['deployment_progress']),
         'status': DeployedModelStatusEnumFromJSON(json['status']),
         'quantization': QuantizationEnumFromJSON(json['quantization']),
         'baseModelId': json['base_model_id'],
@@ -294,7 +309,7 @@ export function DeployedModelToJSON(json: any): DeployedModel {
     return DeployedModelToJSONTyped(json, false);
 }
 
-export function DeployedModelToJSONTyped(value?: Omit<DeployedModel, 'id'|'project'|'model_id'|'status'|'quantization'|'base_model_id'|'gpu_type'|'is_lora'|'lora_rank'|'weights_path'|'checkpoint_hash'|'max_model_len'|'num_parameters'|'sla_tier'|'inference_url'|'error_message'|'created_at'|'deployed_at'|'finetuning_job_id'|'finetuning_job_name'|'capability_id'|'capability_name'|'request_count'|'last_active_at'|'total_tokens'|'avg_tokens_per_second'|'avg_latency_ms'|'cost_total'|'cost_this_month'> | null, ignoreDiscriminator: boolean = false): any {
+export function DeployedModelToJSONTyped(value?: Omit<DeployedModel, 'id'|'project'|'model_id'|'deployment_progress'|'status'|'quantization'|'base_model_id'|'gpu_type'|'is_lora'|'lora_rank'|'weights_path'|'checkpoint_hash'|'max_model_len'|'num_parameters'|'sla_tier'|'inference_url'|'error_message'|'created_at'|'deployed_at'|'finetuning_job_id'|'finetuning_job_name'|'capability_id'|'capability_name'|'request_count'|'last_active_at'|'total_tokens'|'avg_tokens_per_second'|'avg_latency_ms'|'cost_total'|'cost_this_month'> | null, ignoreDiscriminator: boolean = false): any {
     if (value == null) {
         return value;
     }

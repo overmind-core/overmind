@@ -112,9 +112,22 @@ class DeployedModel(models.Model):
         help_text="Modal web endpoint URL for the model's vLLM container pool.",
     )
     error_message = models.TextField(blank=True)
-    # When the row last entered its current status. The janitor needs this rather than
-    # created_at: a redeploy reuses the existing row, so age since creation says nothing
-    # about whether this attempt is stuck.
+    deployment_stage = models.CharField(max_length=32, blank=True)
+    deployment_call_id = models.CharField(max_length=100, blank=True)
+    deployment_generation = models.UUIDField(default=uuid.uuid4)
+    deployment_attempts = models.PositiveIntegerField(default=0)
+    deployment_deadline = models.DateTimeField(null=True, blank=True)
+    deployment_next_poll_at = models.DateTimeField(null=True, blank=True, db_index=True)
+    deployment_claim = models.UUIDField(null=True, blank=True)
+    deployment_claim_until = models.DateTimeField(null=True, blank=True)
+    # Persisted before submission: a lost acknowledgement must never launch a second call.
+    deployment_dispatching = models.BooleanField(default=False)
+    deployment_cancel_pending = models.BooleanField(default=False)
+    deployment_notify = models.BooleanField(default=False)
+    deployment_waiters = models.ManyToManyField(
+        FinetuningJob, related_name="evaluation_deployments", blank=True
+    )
+    # A redeploy reuses the row, so created_at does not describe the current attempt.
     status_changed_at = models.DateTimeField(null=True, blank=True, db_index=True)
     # Stamped by the gateway when a request hits a cold model, and read within a
     # short window to show "Warming up". Never cleared: recent-traffic liveness

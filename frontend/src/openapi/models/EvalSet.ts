@@ -44,7 +44,7 @@ export interface EvalSet {
      * @type {string}
      * @memberof EvalSet
      */
-    capability: string;
+    capability?: string | null;
     /**
      *
      * @type {string}
@@ -113,7 +113,6 @@ export interface EvalSet {
 export function instanceOfEvalSet(value: object): value is EvalSet {
     if (!('id' in value) || value['id'] === undefined) return false;
     if (!('project' in value) || value['project'] === undefined) return false;
-    if (!('capability' in value) || value['capability'] === undefined) return false;
     if (!('name' in value) || value['name'] === undefined) return false;
     if (!('isActive' in value) || value['isActive'] === undefined) return false;
     if (!('generativeCount' in value) || value['generativeCount'] === undefined) return false;
@@ -137,7 +136,7 @@ export function EvalSetFromJSONTyped(json: any, ignoreDiscriminator: boolean): E
 
         'id': json['id'],
         'project': json['project'],
-        'capability': json['capability'],
+        'capability': json['capability'] == null ? undefined : json['capability'],
         'name': json['name'],
         'description': json['description'] == null ? undefined : json['description'],
         'prompts': json['prompts'] == null ? undefined : json['prompts'],

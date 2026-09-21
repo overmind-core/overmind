@@ -130,7 +130,11 @@ def test_normalize_datapoint_propagates_row_extra():
     # Rows without extras still expose a row_extra dict carrying no user columns.
     bare = _row(dataset, 1)
     extra = eval_tasks.normalize_datapoint(bare)["metadata"]["row_extra"]
-    assert not {k: v for k, v in extra.items() if v not in (None, "") and k != "source_row"}
+    assert not {
+        k: v
+        for k, v in extra.items()
+        if v not in (None, "") and k not in {"source_row", "_overmind_provenance"}
+    }
 
 
 def test_bind_eval_reference_strips_gold_from_object_input():

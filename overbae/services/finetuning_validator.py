@@ -16,6 +16,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from overbae.services.datasets.contract import training_line
+from overbae.services.datasets.examples import normalize_record
 from overbae.services.datasets.text import approx_tokens
 
 logger = logging.getLogger(__name__)
@@ -55,6 +56,7 @@ class ValidationResult:
 
 def validate_rows(rows: list[dict]) -> ValidationResult:
     """Validate already-materialised JSONL rows (no DB or file I/O)."""
+    rows = [normalize_record(row) if isinstance(row, dict) else row for row in rows]
     return _apply_tool_calling_checks(_openai_format_check(rows), rows)
 
 
@@ -99,6 +101,7 @@ def validate_dataset(
         )
 
     val_datapoints: list | None = None
+    split_warnings: list[str] = []
     if validation_enabled and validation_dataset_id:
         val_dataset = Dataset.objects.filter(pk=validation_dataset_id).first()
         if val_dataset is None:
@@ -121,6 +124,11 @@ def validate_dataset(
                 errors=["The validation dataset has no version that ran."],
             )
         val_datapoints = list(row_store.iter_rows(val_checkpoint))
+        overlap = row_store.contamination(checkpoint, val_checkpoint)["overlap_count"]
+        if overlap:
+            split_warnings.append(
+                f"{overlap} training rows overlap the validation dataset. Validation scores may be inflated."
+            )
         if not val_datapoints:
             return ValidationResult(
                 valid=False,
@@ -134,24 +142,25 @@ def validate_dataset(
         val_rows, val_row_errors = _materialise_rows(val_datapoints, label_prefix="Validation row")
         row_errors.extend(val_row_errors)
         rows.extend(val_rows)
-    split_stats = _split_preview_stats(
-        datapoints,
-        val_datapoints,
-        validation_enabled=validation_enabled,
-        validation_split_ratio=validation_split_ratio,
-        validation_dataset_id=validation_dataset_id,
-        split_method=split_method,
-    )
-    split_stats["checkpoint"] = str(checkpoint.id)
-    if row_errors:
-        return ValidationResult(
-            valid=False,
-            format="conversational",
-            num_examples=len(datapoints),
-            errors=row_errors,
-            stats=split_stats,
+    try:
+        split_stats = _split_preview_stats(
+            datapoints,
+            val_datapoints,
+            validation_enabled=validation_enabled,
+            validation_split_ratio=validation_split_ratio,
+            validation_dataset_id=validation_dataset_id,
+            split_method=split_method,
+            split_config=dataset.source_spec.get("split", {}),
         )
+    except ValueError as exc:
+        split_stats = {}
+        row_errors.append(str(exc))
+    split_stats["checkpoint"] = str(checkpoint.id)
     result = validate_rows(rows[: len(datapoints)])
+    result.warnings.extend(split_warnings)
+    if row_errors:
+        result.valid = False
+        result.errors.extend(row_errors)
     if validation_enabled and val_datapoints is not None:
         val_result = validate_rows(rows[len(datapoints) :])
         if not val_result.valid:
@@ -184,6 +193,7 @@ def _split_preview_stats(
     validation_split_ratio: float,
     validation_dataset_id: str | None,
     split_method: str,
+    split_config: dict,
 ) -> dict[str, Any]:
     """Return wizard preview fields merged into ``ValidationResult.stats``."""
     from overbae.services.finetuning_split import split_datapoint_ids
@@ -213,6 +223,8 @@ def _split_preview_stats(
         datapoints,
         validation_split_ratio,
         method=split_method,
+        group_by=split_config.get("group_by", []),
+        stratify_by=split_config.get("stratify_by"),
     )
     stats.update(
         {

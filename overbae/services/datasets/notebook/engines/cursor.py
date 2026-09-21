@@ -49,8 +49,11 @@ class CursorEngine:
             api_key=self.choice.provider.key(),
             model=self.choice.model,
             name=f"dataset-{dataset.id}",
+            tools=["mcp"],
+            disallowed_tools=["shell", "task"],
             local=LocalAgentOptions(
                 cwd=str(root),
+                setting_sources=["project"],
                 store=LocalAgentStoreConfig(type="sqlite", root_dir=str(store_dir)),
                 custom_tools=custom_tools,
             ),
@@ -71,31 +74,36 @@ class CursorEngine:
         self, dataset: Dataset, message: str, tools: Any, pending: list[dict[str, Any]]
     ) -> Generator[dict[str, Any], None, Outcome]:
         outcome = Outcome()
-        text_parts: list[str] = []
         options = self._options(dataset, tools)
         with self._open(dataset, options) as agent:
             if agent.agent_id != dataset.agent_id:
                 Dataset.objects.filter(pk=dataset.pk).update(agent_id=agent.agent_id)
             # The bridge rejects an idempotency_key on a local agent's Send.
-            run = agent.send(message)
+            run = agent.send(system_prompt_for_turn(dataset, message))
             for item in run.stream():
                 while pending:
                     yield pending.pop(0)
+                if getattr(item, "type", "") == "thinking":
+                    if item.text:
+                        tools.thought(item.text)
+                    if item.thinking_duration_ms is not None:
+                        tools.stop_thinking(duration_ms=item.thinking_duration_ms)
+                    while pending:
+                        yield pending.pop(0)
+                    continue
                 if getattr(item, "type", "") != "assistant":
                     continue
                 for block in getattr(getattr(item, "message", None), "content", ()) or ():
                     text = getattr(block, "text", "")
                     if text:
-                        tools.stop_thinking()
-                        text_parts.append(text)
-                        tools.emit({"type": "chat_delta", "text": text})
+                        tools.respond(text)
                         while pending:
                             yield pending.pop(0)
             result = run.wait()
             if str(getattr(result, "status", "")).lower() == "error":
                 outcome.error = "The agent stopped with an error."
             outcome.stats = _stats(getattr(run, "usage", None), self.choice.model)
-        outcome.text = "".join(text_parts)
+        outcome.text = tools.text
         return outcome
 
     def describe_error(self, exc: Exception) -> str:
@@ -117,3 +125,10 @@ class CursorEngine:
             logger.error("cursor engine: credentials rejected", exc_info=exc)
             return "The model provider rejected this server's CURSOR_API_KEY."
         return f"The agent could not finish: {exc}"[:400]
+
+
+def system_prompt_for_turn(dataset: Dataset, message: str) -> str:
+    from overbae.services.datasets.notebook.agent import system_prompt
+
+    # Custom-tools-only sessions cannot read the workspace instructions themselves.
+    return f"{system_prompt(dataset)}\n\n## Current request\n\n{message}"

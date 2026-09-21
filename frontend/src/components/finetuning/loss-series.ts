@@ -39,7 +39,7 @@ export function buildJudgeScorePoints(rows: FinetuningJudgeEvalRow[]) {
           ? 0
           : typeof r.checkpoint_step === "number"
             ? r.checkpoint_step
-            : r.kind === "final"
+            : r.kind === "final" || r.kind === "incumbent_after"
               ? maxStep + 1
               : 0,
       value: r.aggregate_score as number,

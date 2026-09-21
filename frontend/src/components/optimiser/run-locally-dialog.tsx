@@ -2,7 +2,7 @@ import { type ReactNode, useEffect, useMemo, useState } from "react";
 
 import type { ProviderId } from "@/components/model-provider";
 import { getModelProviderInfo, getProviderInfoById } from "@/components/model-provider";
-import { getProviderIcon, ProviderLogo } from "@/components/model-provider-chip";
+import { getProviderIcon, ModelProviderChip, ProviderLogo } from "@/components/model-provider-chip";
 import { Badge } from "@/components/ui/badge";
 import { useCopy } from "@/components/ui/block-actions";
 import { Button } from "@/components/ui/button";
@@ -17,6 +17,7 @@ import {
 } from "@/components/ui/dialog";
 import { Icon } from "@/components/ui/icons";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { QueryError } from "@/components/ui/query-error";
 import {
   Select,
@@ -33,7 +34,7 @@ import {
   useProjectDatasetsForEvalQuery,
 } from "@/hooks/use-evaluations";
 import { useDeployedModelsQuery } from "@/hooks/use-inference";
-import { LABEL, PROSE } from "@/lib/typography";
+import { PROSE } from "@/lib/typography";
 import { cn } from "@/lib/utils";
 import { type CatalogModel, DeployedModelsListStatusEnum } from "@/openapi";
 
@@ -87,14 +88,7 @@ function filterModelsByProvider(models: CatalogModel[], providers: ProviderId[])
   return models.filter((model) => wanted.has(getModelProviderInfo(model.id).id));
 }
 
-export const DATASET_REF_PLACEHOLDER = "<dataset-id-or-path>";
-
-export function resolveDatasetRef(localPath: string, datasetId: string): string {
-  const path = localPath.trim();
-  if (path) return path;
-  const id = datasetId.trim();
-  return id || DATASET_REF_PLACEHOLDER;
-}
+export const DATASET_REF_PLACEHOLDER = "<dataset-id>";
 
 export function buildOptimisePrompt(capabilitySlug: string, datasetRef: string): string {
   return `/overmind optimise
@@ -154,7 +148,6 @@ function RunLocallyBody({
   const [chosenModelIds, setChosenModelIds] = useState<string[] | null>(null);
   const [selectedCapabilityId, setSelectedCapabilityId] = useState(capabilityId ?? "");
   const [selectedDatasetId, setSelectedDatasetId] = useState(datasetId ?? "");
-  const [localDatasetPath, setLocalDatasetPath] = useState("");
   const [selectedTab, setSelectedTab] = useState("harness");
   const defaultModelIds = useModelCatalogQuery().data?.defaults.backtestModels ?? [];
   const modelIds = chosenModelIds ?? defaultModelIds;
@@ -177,15 +170,14 @@ function RunLocallyBody({
   const datasets = datasetsQuery.data?.results ?? [];
   useEffect(() => {
     if (selectedDatasetId) return;
-    if (localDatasetPath.trim()) return;
     if (datasetId && datasets.some((row) => row.id === datasetId)) {
       setSelectedDatasetId(datasetId);
       return;
     }
     if (datasets.length === 1) setSelectedDatasetId(datasets[0].id);
-  }, [datasetId, datasets, localDatasetPath, selectedDatasetId]);
+  }, [datasetId, datasets, selectedDatasetId]);
 
-  const datasetRef = resolveDatasetRef(localDatasetPath, selectedDatasetId);
+  const datasetRef = selectedDatasetId.trim() || DATASET_REF_PLACEHOLDER;
   const optimisePrompt = buildOptimisePrompt(capabilitySlug, datasetRef);
   const backtestPrompt = buildBacktestPrompt(capabilitySlug, datasetRef, modelIds);
 
@@ -200,7 +192,7 @@ function RunLocallyBody({
       <DialogBody className="min-w-0 space-y-5">
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <div className="min-w-0 space-y-1.5">
-            <p className={cn(LABEL.pixel, "text-muted-foreground")}>Capability</p>
+            <Label className="text-xs text-muted-foreground">Capability</Label>
             <EntitySelect
               ariaLabel="Capability"
               empty="No capabilities."
@@ -217,7 +209,7 @@ function RunLocallyBody({
           </div>
 
           <div className="min-w-0 space-y-1.5">
-            <p className={cn(LABEL.pixel, "text-muted-foreground")}>Dataset</p>
+            <Label className="text-xs text-muted-foreground">Dataset</Label>
             <EntitySelect
               ariaLabel="Dataset"
               empty="No eval datasets."
@@ -231,16 +223,6 @@ function RunLocallyBody({
               placeholder="Select a dataset"
               value={selectedDatasetId}
             />
-            <Input
-              aria-label="Local file"
-              className="font-mono"
-              onChange={(event) => setLocalDatasetPath(event.target.value)}
-              placeholder=".overmind/datasets/evals.jsonl"
-              value={localDatasetPath}
-            />
-            <p className={cn(PROSE, "text-xs text-muted-foreground")}>
-              Dataset or a JSONL path on disk.
-            </p>
           </div>
         </div>
 
@@ -310,6 +292,7 @@ function BacktestModelPicker({
   const deployedPicks = useMemo(
     () =>
       (deployedQuery.data?.results ?? []).map((deployed) => ({
+        baseModelId: deployed.baseModelId,
         id: deployed.modelId,
         label: deployed.capabilityName
           ? `${deployed.capabilityName} · ${deployed.baseModelId.split("/").pop() ?? deployed.modelId}`
@@ -404,6 +387,7 @@ function BacktestModelPicker({
             {deployedPicks.map((pick) => {
               const checked = selected.has(pick.id);
               const disabled = isComparisonOptionDisabled(modelIds, pick.id);
+              const info = getModelProviderInfo(pick.baseModelId);
               return (
                 <button
                   aria-label={`Select ${pick.id}`}
@@ -420,6 +404,11 @@ function BacktestModelPicker({
                   onClick={() => onModelIdsChange(toggleComparisonModel(modelIds, pick.id))}
                   type="button"
                 >
+                  <ProviderLogo
+                    Icon={getProviderIcon(info.id)}
+                    providerLabel={info.providerLabel}
+                    providerSlug={info.providerSlug}
+                  />
                   <span className="truncate">{pick.label}</span>
                   {checked && <Icon.success className="size-3 shrink-0 text-success" />}
                 </button>
@@ -443,8 +432,7 @@ function BacktestModelPicker({
       {modelIds.length > 0 && (
         <div aria-label="Selected OpenRouter models" className="flex flex-wrap gap-1.5">
           {modelIds.map((modelId) => (
-            <Badge className="max-w-full gap-1 font-mono" key={modelId} variant="secondary">
-              <span className="truncate">{modelId}</span>
+            <ModelProviderChip className="pr-1" compact key={modelId} model={modelId}>
               {isBatchModel(modelId) && (
                 <span className="font-normal text-muted-foreground">· batch</span>
               )}
@@ -459,7 +447,7 @@ function BacktestModelPicker({
               >
                 <Icon.close className="size-3" />
               </button>
-            </Badge>
+            </ModelProviderChip>
           ))}
         </div>
       )}
@@ -484,6 +472,7 @@ function BacktestModelPicker({
             const checked = selected.has(model.id);
             const disabled = isComparisonOptionDisabled(modelIds, model.id);
             const batch = isBatchModel(model.id);
+            const info = getModelProviderInfo(model.id);
             return (
               <label
                 className={cn(
@@ -499,6 +488,11 @@ function BacktestModelPicker({
                   onCheckedChange={() =>
                     onModelIdsChange(toggleComparisonModel(modelIds, model.id))
                   }
+                />
+                <ProviderLogo
+                  Icon={getProviderIcon(info.id)}
+                  providerLabel={info.providerLabel}
+                  providerSlug={info.providerSlug}
                 />
                 <span className="min-w-0 flex-1">
                   <span className="flex items-center gap-1.5">
@@ -588,15 +582,17 @@ function CommandBlock({ commands, children }: { commands: string; children?: Rea
   return (
     <div className="space-y-2">
       {children}
-      <div className="flex justify-end">
-        <Button onClick={copy} size="sm" type="button" variant="secondary">
-          {copied ? <Icon.success /> : <Icon.copy />}
-          {copied ? "Copied" : "Copy"}
-        </Button>
+      <div className="overflow-hidden rounded-md border border-border/70 bg-wash-subtle">
+        <div className="flex justify-end border-b border-border/70 bg-wash-raised px-2 py-1.5">
+          <Button onClick={copy} size="xs" type="button" variant="secondary">
+            {copied ? <Icon.success /> : <Icon.copy />}
+            {copied ? "Copied" : "Copy command"}
+          </Button>
+        </div>
+        <pre className="overflow-x-auto whitespace-pre p-3 font-mono text-xs leading-relaxed text-foreground">
+          {commands}
+        </pre>
       </div>
-      <pre className="overflow-x-auto whitespace-pre rounded-md border border-border/70 bg-wash-subtle p-3 font-mono text-xs leading-relaxed text-foreground">
-        {commands}
-      </pre>
     </div>
   );
 }

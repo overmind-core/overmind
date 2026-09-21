@@ -16,12 +16,18 @@
 import * as runtime from '../runtime';
 import type {
   BeginUploadRequest,
+  InspectUploadRequest,
+  UploadInspection,
   UploadReserved,
   UploadState,
 } from '../models/index';
 import {
     BeginUploadRequestFromJSON,
     BeginUploadRequestToJSON,
+    InspectUploadRequestFromJSON,
+    InspectUploadRequestToJSON,
+    UploadInspectionFromJSON,
+    UploadInspectionToJSON,
     UploadReservedFromJSON,
     UploadReservedToJSON,
     UploadStateFromJSON,
@@ -36,6 +42,11 @@ export interface UploadsChunkUpdateRequest {
 
 export interface UploadsCreateRequest {
     beginUploadRequest: BeginUploadRequest;
+}
+
+export interface UploadsInspectCreateRequest {
+    id: string;
+    inspectUploadRequest: InspectUploadRequest;
 }
 
 export interface UploadsRetrieveRequest {
@@ -171,6 +182,75 @@ export class UploadsApi extends runtime.BaseAPI {
      */
     async uploadsCreate(requestParameters: UploadsCreateRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<UploadReserved> {
         const response = await this.uploadsCreateRaw(requestParameters, initOverrides);
+        return await response.value();
+    }
+
+    /**
+     * Parsers must stay declared on the class: ``@action`` initkwargs only apply through the router, so an action-level parser silently reverts elsewhere.
+     * Validate an uploaded file and count its rows
+     */
+    async uploadsInspectCreateRaw(requestParameters: UploadsInspectCreateRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<UploadInspection>> {
+        if (requestParameters['id'] == null) {
+            throw new runtime.RequiredError(
+                'id',
+                'Required parameter "id" was null or undefined when calling uploadsInspectCreate().'
+            );
+        }
+
+        if (requestParameters['inspectUploadRequest'] == null) {
+            throw new runtime.RequiredError(
+                'inspectUploadRequest',
+                'Required parameter "inspectUploadRequest" was null or undefined when calling uploadsInspectCreate().'
+            );
+        }
+
+        const queryParameters: any = {};
+
+        const headerParameters: runtime.HTTPHeaders = {};
+
+        headerParameters['Content-Type'] = 'application/json';
+
+        if (this.configuration && this.configuration.accessToken) {
+            const token = this.configuration.accessToken;
+            const tokenString = await token("ClerkBearerAuth", []);
+
+            if (tokenString) {
+                headerParameters["Authorization"] = `Bearer ${tokenString}`;
+            }
+        }
+        if (this.configuration && this.configuration.apiKey) {
+            headerParameters["X-Api-Key"] = await this.configuration.apiKey("X-Api-Key"); // ApiKeyAuth authentication
+        }
+
+        if (this.configuration && this.configuration.accessToken) {
+            const token = this.configuration.accessToken;
+            const tokenString = await token("BearerAuth", []);
+
+            if (tokenString) {
+                headerParameters["Authorization"] = `Bearer ${tokenString}`;
+            }
+        }
+
+        let urlPath = `/api/uploads/{id}/inspect/`;
+        urlPath = urlPath.replace(`{${"id"}}`, encodeURIComponent(String(requestParameters['id'])));
+
+        const response = await this.request({
+            path: urlPath,
+            method: 'POST',
+            headers: headerParameters,
+            query: queryParameters,
+            body: InspectUploadRequestToJSON(requestParameters['inspectUploadRequest']),
+        }, initOverrides);
+
+        return new runtime.JSONApiResponse(response, (jsonValue) => UploadInspectionFromJSON(jsonValue));
+    }
+
+    /**
+     * Parsers must stay declared on the class: ``@action`` initkwargs only apply through the router, so an action-level parser silently reverts elsewhere.
+     * Validate an uploaded file and count its rows
+     */
+    async uploadsInspectCreate(requestParameters: UploadsInspectCreateRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<UploadInspection> {
+        const response = await this.uploadsInspectCreateRaw(requestParameters, initOverrides);
         return await response.value();
     }
 

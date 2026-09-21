@@ -4,9 +4,14 @@ from __future__ import annotations
 
 from typing import Any
 
+from django.db.models import Q
+
 from overbae.modal.model_registry import TIER_ORDER
 from overbae.models import Capability, Dataset, EvalSet
+from overbae.services.datasets import review
 from overbae.services.datasets import rows as row_store
+from overbae.services.datasets import use as dataset_use
+from overbae.services.datasets.lifecycle import DatasetError
 from overbae.services.finetuning_validator import validate_dataset
 from overbae.services.recommendation import (
     get_recommendation,
@@ -35,16 +40,15 @@ def default_eval_dataset(project, capability: Capability | None) -> Dataset | No
 
 
 def default_eval_set(project, capability: Capability | None) -> EvalSet | None:
-    """Wizard seeding: capability's active eval set, else first set for the capability."""
-    if capability is None:
-        return None
-    if capability.active_eval_set_id is not None:
+    if capability is not None and capability.active_eval_set_id is not None:
         return capability.active_eval_set
-    return (
-        EvalSet.objects.filter(project=project, capability=capability)
-        .order_by("-created_at")
-        .first()
+    sets = EvalSet.objects.filter(
+        Q(capability__status=Capability.Status.CURRENT) | Q(capability__isnull=True),
+        project=project,
     )
+    if capability is not None:
+        sets = sets.filter(Q(capability=capability) | Q(capability__isnull=True))
+    return sets.select_related("capability").order_by("-created_at").first()
 
 
 def slim_recommendation_row(row: dict[str, Any]) -> dict[str, Any]:
@@ -116,14 +120,12 @@ def finetune_prerequisite_report(
     capability: Capability | None = None,
 ) -> dict[str, Any]:
     """Readiness checklist before create_finetune_job (wizard-equivalent gates)."""
-    if capability is None:
-        capability = dataset.capability
-
     validation = validate_dataset(str(dataset.id))
     eval_dataset = default_eval_dataset(project, capability)
     eval_set = default_eval_set(project, capability)
 
     missing: list[str] = []
+    warnings: list[str] = []
     product = dataset.active_cell
     if product is None:
         missing.append("training dataset — no version has run yet")
@@ -133,22 +135,35 @@ def finetune_prerequisite_report(
         missing.append(
             "training dataset — fix the rows the validator lists, then run the notebook again"
         )
-    if capability is None:
-        missing.append("capability — pass capability_name_or_slug or bind one on the dataset")
     if eval_dataset is None:
         missing.append(
             "eval dataset — create an eval dataset whose version fits the eval contract "
             "(wizard needs it for in-training judge evals)"
         )
     if eval_set is None:
-        missing.append(
-            "eval set — create or activate an eval set for the capability (use list_eval_sets)"
-        )
+        missing.append("eval set — create an eval set with generative evaluators in this project")
 
     overlap_count = None
     eval_product = eval_dataset.active_cell if eval_dataset is not None else None
+    for ds, cell, intent, label in (
+        (dataset, product, "train", "training dataset"),
+        (eval_dataset, eval_product, "eval", "eval dataset"),
+    ):
+        if ds is not None and cell is not None:
+            try:
+                dataset_use.check(ds, intent, cell=cell)
+            except DatasetError as exc:
+                missing.append(f"{label} — {exc.detail}")
+            warnings.extend(
+                f"{label}: {finding}"
+                for finding in review.warnings(ds, cell, capability=capability)
+            )
     if product is not None and eval_product is not None:
-        overlap_count = len(row_store.trace_ids(product) & row_store.trace_ids(eval_product))
+        overlap_count = row_store.contamination(product, eval_product)["overlap_count"]
+        if overlap_count:
+            warnings.append(
+                f"train/eval split — {overlap_count} overlapping training rows; review the split before training"
+            )
 
     analysis: dict[str, Any] = {}
     recommendation_error = None
@@ -171,6 +186,7 @@ def finetune_prerequisite_report(
     return {
         "ready": not missing,
         "missing": missing,
+        "warnings": warnings,
         "hint": hint,
         "dataset": dataset.name or str(dataset.id)[:8],
         "capability": capability.slug if capability is not None else None,

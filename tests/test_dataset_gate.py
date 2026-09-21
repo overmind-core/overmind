@@ -12,7 +12,17 @@ from django.utils import timezone
 
 from overbae.api.serializers import FinetuningJobSerializer
 from overbae.modal.model_registry import baseten_finetuning_catalog
-from overbae.models import Capability, Cell, Dataset, Project, ProjectMembership, User
+from overbae.models import (
+    Capability,
+    Cell,
+    Dataset,
+    EvalSet,
+    EvalSetMember,
+    Evaluator,
+    Project,
+    ProjectMembership,
+    User,
+)
 from overbae.models.optimizer import optimizer_dataset_error
 from overbae.services.datasets import dispatch, lifecycle, use
 from overbae.services.datasets.notebook import run as run_svc
@@ -32,12 +42,27 @@ def _setup():
 
 
 def _job(project, capability, user, train, evaluation, **fields):
+    eval_set = EvalSet.objects.create(
+        project=project, capability=capability, name="Test evaluations"
+    )
+    evaluator = Evaluator.objects.create(
+        project=project,
+        capability=capability,
+        name="Exact match",
+        kind=Evaluator.Kind.DETERMINISTIC,
+        scope=Evaluator.Scope.FINAL_OUTPUT,
+        config={"check": "exact_match"},
+    )
+    EvalSetMember.objects.create(
+        eval_set=eval_set, evaluator=evaluator, role=EvalSetMember.Role.GENERATIVE
+    )
     return FinetuningJobSerializer(
         data={
             "project": str(project.id),
             "capability": str(capability.id),
             "dataset": str(train.id),
             "eval_dataset": str(evaluation.id),
+            "eval_set": str(eval_set.id),
             "base_model": next(
                 m["id"] for tier in baseten_finetuning_catalog().values() for m in tier
             ),

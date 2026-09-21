@@ -82,6 +82,14 @@ class Capability(models.Model):
         blank=True,
         related_name="+",
     )
+    # Null selects the codebase model; serving changes must not retarget benchmarks.
+    benchmark_model = models.ForeignKey(
+        "overbae.DeployedModel",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="+",
+    )
 
     # Scan payload (capability card, modes, eval matrix, repo stamp) plus keys
     # other subsystems write; scans merge into it, never replace it.

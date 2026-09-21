@@ -16,6 +16,7 @@ export type ElbowItem = {
   failed?: boolean;
   heading?: boolean;
   detail?: ReactNode;
+  defaultOpen?: boolean;
   trailing?: ReactNode;
 };
 
@@ -41,14 +42,15 @@ function ElbowRow({
   elbowRef: (el: HTMLDivElement | null) => void;
   onExpandToggle: () => void;
 }) {
-  const [open, setOpen] = useState(false);
+  const [userOpen, setUserOpen] = useState<boolean | null>(null);
+  const open = userOpen ?? item.defaultOpen ?? false;
   const expandable = Boolean(item.detail);
   const showDetail = expandable && open;
   const Glyph = Icon[item.icon];
   const Chevron = open ? Icon.chevronUp : Icon.chevronDown;
 
   const handleToggle = () => {
-    setOpen((prev) => !prev);
+    setUserOpen(!open);
     onExpandToggle();
   };
 

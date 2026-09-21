@@ -79,7 +79,6 @@ from overbae.services.datasets import land as dataset_land
 from overbae.services.datasets import lifecycle as dataset_lifecycle
 from overbae.services.datasets import paths as dataset_paths
 from overbae.services.datasets import rows as row_store
-from overbae.services.datasets import use as dataset_use
 from overbae.services.datasets.notebook import run as notebook_run
 from overbae.services.eval import composition
 from overbae.services.eval import dispatch as eval_dispatch
@@ -3506,7 +3505,8 @@ class Command(BaseCommand):
             """variants: [(label, model_name, model_ref, mode, is_baseline, quality)]."""
             version = dataset.active_cell
             if use:
-                dataset_use.use(dataset, "eval", cell=version)
+                # Historical demo consumption is not a fabricated semantic validation pass.
+                Cell.objects.filter(pk=version.pk).update(used_at=born)
                 version.refresh_from_db()
             run = EvalRun.objects.create(
                 project=project,
@@ -3996,7 +3996,7 @@ class Command(BaseCommand):
         triage_opt_subset = _from_traces(
             triage_capability, "Triage Optimiser Subset", want=12, intent="eval", born=days_ago(12)
         )
-        dataset_use.use(triage_opt_subset, "eval", cell=triage_opt_subset.active_cell)
+        Cell.objects.filter(pk=triage_opt_subset.active_cell.pk).update(used_at=days_ago(12))
         triage_exp, triage_winner = build_experiment(
             cap=triage_capability,
             dataset=triage_opt_subset,
@@ -4166,7 +4166,6 @@ class Command(BaseCommand):
                     "lora_dropout": 0.05,
                     "lora_trainable_modules": "all-linear",
                 },
-                "eval_max_items": 100,
             }
 
         def make_ft_job(
@@ -4279,6 +4278,7 @@ class Command(BaseCommand):
                 split_method="random",
                 triggered_by=jonas,
                 eval_dataset=eval_dataset,
+                eval_cell=eval_dataset.active_cell,
                 eval_set=eval_set,
                 name=name,
                 use_case=use_case,
@@ -4368,8 +4368,9 @@ class Command(BaseCommand):
             backdate(FinetuningJobEvent, ev_pairs)
             return job
 
-        dataset_use.use(triage_train, "train", cell=triage_train.active_cell)
-        dataset_use.use(dispute_train, "train", cell=dispute_train.active_cell)
+        Cell.objects.filter(
+            pk__in=[triage_train.active_cell.pk, dispute_train.active_cell.pk]
+        ).update(used_at=days_ago(10))
 
         ft_triage = make_ft_job(
             job_id=FT_TRIAGE_JOB_ID,

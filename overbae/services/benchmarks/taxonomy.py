@@ -1,4 +1,4 @@
-"""Dataset-shaped task types and the skill blend each one grades against.
+"""Task types and the skill blend each one grades against.
 
 ``Skill`` and ``Domain`` values are the labels the upstream leaderboards tag their
 benchmarks with — the committed artifact is keyed by those strings, so they cannot be

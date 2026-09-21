@@ -12,6 +12,9 @@ from typing import Any
 from celery import shared_task
 from django.utils import timezone
 
+from overbae.services.training_preparation import for_job
+from overbae.tasks.training_preparation import inspect_preparation
+
 logger = logging.getLogger(__name__)
 
 # DEPLOYING is projected too — it is the status that carries output_model_name.
@@ -95,7 +98,11 @@ def _resolve_train_val_paths(job, supports_validation: bool) -> tuple[str, str |
     row_store.verify(version)
     rows = list(row_store.iter_rows(version))
     train_ids, val_ids, warnings = split_datapoint_ids(
-        rows, job.validation_split_ratio, method=job.split_method
+        rows,
+        job.validation_split_ratio,
+        method=job.split_method,
+        group_by=version.dataset.source_spec.get("split", {}).get("group_by", []),
+        stratify_by=version.dataset.source_spec.get("split", {}).get("stratify_by"),
     )
     by_id = {r.id: r for r in rows}
     training_path, num_train = _write_rows((by_id[i] for i in train_ids), prefix="ft-train-")
@@ -298,7 +305,7 @@ def _persist_snapshot_progress(
         try:
             from overbae.services.finetuning_eval import tick_job_evals
 
-            tick_job_evals(job, checkpoints=list(snap.checkpoints or []))
+            tick_job_evals(job)
             job.refresh_from_db(fields=["progress"])
             progress = job.progress if isinstance(job.progress, dict) else progress
         except Exception:  # noqa: BLE001 — never abort training on eval errors
@@ -376,7 +383,7 @@ def _finalize_success(job, runner, snap, remote: str) -> dict[str, Any]:
     try:
         from overbae.services.finetuning_eval import tick_job_evals
 
-        tick_job_evals(job, checkpoints=list(progress.get("checkpoints") or []))
+        tick_job_evals(job)
     except Exception:  # noqa: BLE001
         logger.exception("Final in-training eval tick failed for job %s", job.pk)
     try:
@@ -406,13 +413,15 @@ def run_finetuning(*, job_id: str) -> dict[str, Any]:
     except FinetuningJob.DoesNotExist:
         return {"error": f"FinetuningJob {job_id} not found"}
 
-    if job.status == FinetuningJob.Status.CANCELLED:
-        return {"status": "cancelled"}
+    if job.status in (FinetuningJob.Status.CANCELLED, FinetuningJob.Status.FAILED):
+        return {"status": job.status}
 
     # Pin the capability's production model at submit time, or a later prod model change
     # would retroactively skew the before/after delta.
     if not job.baseline_model and job.capability_id:
-        incumbent = (getattr(job.capability, "model", "") or "").strip()
+        from overbae.services.finetuning_eval import resolve_baseline_model
+
+        incumbent = resolve_baseline_model(job)
         if incumbent:
             FinetuningJob.objects.filter(pk=job.pk).update(baseline_model=incumbent)
             job.baseline_model = incumbent
@@ -428,8 +437,56 @@ def run_finetuning(*, job_id: str) -> dict[str, Any]:
 
     if not existing_remote_id:
         try:
+            from overbae.services.finetuning_eval import start_before_evals
+
+            provider = {
+                "together": FinetuningJob.Provider.TOGETHER_AI,
+                "baseten": FinetuningJob.Provider.BASETEN,
+                "modal": FinetuningJob.Provider.MODAL,
+            }.get(backend, FinetuningJob.Provider.BASETEN)
+            FinetuningJob.objects.filter(pk=job.pk).update(provider=provider)
+            job.provider = provider
+            if backend == "modal":
+                preparation = for_job(job)
+                if preparation.state in {"failed", "incompatible"}:
+                    raise ValueError(
+                        preparation.error
+                        or f"{preparation.report.get('incompatible_rows', 0)} rows are incompatible with this training configuration. Repair them in the data workshop or change the model settings."
+                    )
+                if preparation.state != "ready":
+                    _transition(
+                        job,
+                        FinetuningJob.Status.PREPARING,
+                        message="Preprocessing dataset for the training model",
+                    )
+                    if preparation.state == "queued":
+                        inspect_preparation.delay(str(preparation.id))
+                    result = run_finetuning.apply_async(
+                        kwargs={"job_id": str(job.id)}, countdown=15
+                    )
+                    FinetuningJob.objects.filter(pk=job.pk).update(celery_task_id=result.id)
+                    return {"status": "preparing", "job_id": str(job.id)}
+                job.hyperparameters = {
+                    **job.hyperparameters,
+                    "context_length": preparation.config["context_length"],
+                }
+                FinetuningJob.objects.filter(pk=job.pk).update(hyperparameters=job.hyperparameters)
             FinetuningJob.objects.filter(pk=job.pk).update(error_message="")
             _transition(job, FinetuningJob.Status.PREPARING, message="Preparing dataset")
+
+            if job.eval_dataset_id and job.cell_id:
+                from overbae.services.datasets import rows as row_store
+
+                eval_version = job.eval_cell
+                if eval_version is not None:
+                    overlap = row_store.contamination(job.cell, eval_version)["overlap_count"]
+                    if overlap:
+                        _record_event(
+                            job,
+                            "log",
+                            message=f"Warning: {overlap} training rows overlap the pinned eval dataset. Scores are not held-out estimates.",
+                            data={"overlap_count": overlap, "eval_cell": str(eval_version.id)},
+                        )
 
             training_path, validation_path, num_examples, split_meta = _resolve_train_val_paths(
                 job, supports_validation
@@ -438,15 +495,10 @@ def run_finetuning(*, job_id: str) -> dict[str, Any]:
             if validation_path:
                 _validate_jsonl_or_fail(validation_path)
 
-            # Stamp the provider BEFORE submit: the monitor and cancel view route
-            # by job.provider, so a submit-time failure must still record a target.
-            provider = {
-                "together": FinetuningJob.Provider.TOGETHER_AI,
-                "baseten": FinetuningJob.Provider.BASETEN,
-                "modal": FinetuningJob.Provider.MODAL,
-            }.get(backend, FinetuningJob.Provider.BASETEN)
-            FinetuningJob.objects.filter(pk=job.pk).update(provider=provider)
-            job.provider = provider
+            try:
+                start_before_evals(job)
+            except Exception:  # noqa: BLE001 — evaluator launch is independent of training
+                logger.exception("Baseline eval launch failed for job %s", job_id)
 
             try:
                 result = runner.submit(
@@ -486,27 +538,6 @@ def run_finetuning(*, job_id: str) -> dict[str, Any]:
                 FinetuningJob.Status.RUNNING,
                 message=f"Submitted (remote_id={result.remote_id})",
             )
-            # Baseline half of the before/after loop: deploy the untouched base model
-            # alongside training. Non-blocking — a Celery task drives deploy → eval.
-            try:
-                from overbae.services.finetuning_eval import job_wants_evals
-
-                job.refresh_from_db()
-                if job_wants_evals(job):
-                    from overbae.tasks.model_deployment import deploy_base_model_for_eval
-
-                    deploy_base_model_for_eval.delay(job_id=str(job.id))
-                    logger.info("Queued base-model deploy for baseline eval (job %s)", job.id)
-            except Exception:  # noqa: BLE001
-                logger.exception("Baseline deploy enqueue failed for job %s", job_id)
-            # Together baselines launch immediately; Baseten's waits for the base
-            # deployment to turn READY.
-            try:
-                from overbae.services.finetuning_eval import tick_job_evals
-
-                tick_job_evals(job, checkpoints=[])
-            except Exception:  # noqa: BLE001
-                logger.exception("Baseline eval launch failed for job %s", job_id)
         except Exception as exc:  # noqa: BLE001
             logger.exception("Fine-tuning submission failed for job %s", job_id)
             _handle_failure(job, str(exc))

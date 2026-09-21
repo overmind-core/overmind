@@ -87,6 +87,12 @@ vi.mock("@/hooks/use-inference", () => ({
 
 vi.mock("@/components/model-provider-chip", () => ({
   getProviderIcon: () => undefined,
+  ModelProviderChip: ({ children, model }: { children?: React.ReactNode; model: string }) => (
+    <span>
+      {model}
+      {children}
+    </span>
+  ),
   ProviderLogo: () => null,
 }));
 
@@ -134,12 +140,10 @@ vi.mock("@/components/ui/select", () => ({
 import {
   buildBacktestPrompt,
   buildOptimisePrompt,
-  DATASET_REF_PLACEHOLDER,
   isBatchModel,
   isComparisonOptionDisabled,
   MAX_COMPARISON_MODELS,
   RunLocallyDialog,
-  resolveDatasetRef,
   toggleComparisonModel,
 } from "./run-locally-dialog";
 
@@ -190,14 +194,6 @@ describe("isComparisonOptionDisabled", () => {
     );
     expect(isComparisonOptionDisabled([], "openai/gpt-5-mini:batch")).toBe(false);
     expect(isComparisonOptionDisabled(["a", "b", "c", "d", "e"], "f")).toBe(true);
-  });
-});
-
-describe("resolveDatasetRef", () => {
-  it("prefers a local path over a dataset id", () => {
-    expect(resolveDatasetRef("./evals.jsonl", "ds-1")).toBe("./evals.jsonl");
-    expect(resolveDatasetRef("  ", "ds-1")).toBe("ds-1");
-    expect(resolveDatasetRef("", "")).toBe(DATASET_REF_PLACEHOLDER);
   });
 });
 
@@ -263,6 +259,7 @@ describe("RunLocallyDialog", () => {
     expect(screen.getByText("New Optimiser Job")).toBeTruthy();
     expect(screen.getByRole("tab", { name: "Harness" })).toBeTruthy();
     expect(screen.getByRole("tab", { name: "Backtesting" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Copy command" })).toBeTruthy();
     expect(screen.getByText(/capability: invoice-extract/)).toBeTruthy();
     expect(screen.getByText(/dataset: ds-99/)).toBeTruthy();
     expect(screen.queryByText(/models: openai\/gpt-5-mini, anthropic\/claude-sonnet-4/)).toBeNull();
@@ -331,8 +328,8 @@ describe("RunLocallyDialog", () => {
     expect(screen.getByText("No capabilities.")).toBeTruthy();
     expect(screen.getByText("No eval datasets.")).toBeTruthy();
     expect(screen.getByText(/capability: <slug>/)).toBeTruthy();
-    expect(screen.getByText(/dataset: <dataset-id-or-path>/)).toBeTruthy();
-    expect(screen.getByLabelText("Local file")).toBeTruthy();
+    expect(screen.getByText(/dataset: <dataset-id>/)).toBeTruthy();
+    expect(screen.queryByLabelText("Local file")).toBeNull();
   });
 
   it("updates commands when a capability is picked", () => {
@@ -353,7 +350,7 @@ describe("RunLocallyDialog", () => {
     expect(screen.getByText(/capability: receipt-parse/)).toBeTruthy();
   });
 
-  it("uses a picked eval dataset or a local path in the prompt", () => {
+  it("uses a picked eval dataset in the prompt", () => {
     mocks.capabilities.mockReturnValue({
       data: {
         results: [{ activeModel: null, id: "cap-1", name: "Invoice", slug: "invoice-extract" }],
@@ -372,13 +369,8 @@ describe("RunLocallyDialog", () => {
     });
     render(<RunLocallyDialog onOpenChange={vi.fn()} open projectId="proj-1" />);
     expect(screen.getByRole("button", { name: "Dataset" })).toBeTruthy();
-    expect(screen.getByText(/dataset: <dataset-id-or-path>/)).toBeTruthy();
+    expect(screen.getByText(/dataset: <dataset-id>/)).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "Eval receipts" }));
     expect(screen.getByText(/dataset: ds-2/)).toBeTruthy();
-    fireEvent.change(screen.getByLabelText("Local file"), {
-      target: { value: "./evals.jsonl" },
-    });
-    expect(screen.getByText(/dataset: \.\/evals\.jsonl/)).toBeTruthy();
-    expect(screen.queryByText(/dataset: ds-2/)).toBeNull();
   });
 });

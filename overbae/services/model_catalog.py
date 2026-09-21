@@ -10,12 +10,17 @@ import os
 import requests
 from django.core.cache import cache
 
-from overbae.core.model_registry import OPENROUTER_MODEL_SLUGS, normalize_model_name, pricing_slug
+from overbae.core.model_registry import (
+    OPENROUTER_MODEL_SLUGS,
+    normalize_model_name,
+    openrouter_configured,
+    pricing_slug,
+)
 
 logger = logging.getLogger(__name__)
 
 OPENROUTER_MODELS_URL = "https://openrouter.ai/api/v1/models"
-_CACHE_KEY = "openrouter_model_catalog_v1"
+_CACHE_KEY = "openrouter_model_catalog"
 _CACHE_TTL_S = 3600
 _REQUEST_TIMEOUT_S = 15
 
@@ -61,6 +66,7 @@ def _trim_entry(entry: dict) -> dict | None:
     pricing = entry.get("pricing") or {}
     return {
         "id": slug,
+        "hugging_face_id": entry.get("hugging_face_id") or "",
         "name": entry.get("name") or slug,
         "provider": slug.split("/", 1)[0],
         "context_length": entry.get("context_length"),
@@ -103,6 +109,23 @@ def fetch_model_catalog() -> tuple[list[dict], bool]:
     )
     cache.set(_CACHE_KEY, models, _CACHE_TTL_S)
     return models, True
+
+
+def resolve_training_openrouter_slug(model_id: str) -> str | None:
+    if not openrouter_configured() or "/" not in model_id:
+        return None
+    models, available = fetch_model_catalog()
+    if not available:
+        return None
+    identity = model_id.strip().casefold()
+    # Match the published checkpoint or the exact provider slug, never a similar name.
+    matches = [
+        entry["id"]
+        for entry in models
+        if entry["id"].casefold() == identity
+        or str(entry.get("hugging_face_id") or "").casefold() == identity
+    ]
+    return min(matches, key=lambda slug: (":" in slug, slug)) if matches else None
 
 
 def resolve_bare_openrouter_slug(model_name: str) -> str | None:

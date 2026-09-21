@@ -4,7 +4,18 @@ from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
 
 from overbae.models import Cell, Dataset
+from overbae.services.datasets import review
+from overbae.services.datasets.context import context_fingerprint
 from overbae.services.datasets.land import SPLIT_POSITIONS
+
+
+class DatasetReadinessSerializer(serializers.Serializer):
+    format_valid = serializers.BooleanField()
+    format_reason = serializers.CharField(allow_blank=True)
+    quality_reviewed = serializers.BooleanField()
+    quality_passed = serializers.BooleanField()
+    quality_reason = serializers.CharField(allow_blank=True)
+    training_configuration = serializers.CharField()
 
 
 class CellSerializer(serializers.ModelSerializer):
@@ -14,6 +25,7 @@ class CellSerializer(serializers.ModelSerializer):
     version = serializers.SerializerMethodField()
     frozen = serializers.SerializerMethodField()
     fits = serializers.SerializerMethodField()
+    readiness = serializers.SerializerMethodField()
 
     class Meta:
         model = Cell
@@ -34,6 +46,9 @@ class CellSerializer(serializers.ModelSerializer):
             "capability_report",
             "fits",
             "stats",
+            "review",
+            "quality_report",
+            "readiness",
             "seconds",
             "used_at",
             "created_at",
@@ -58,6 +73,14 @@ class CellSerializer(serializers.ModelSerializer):
         ok, reason = obj.fits(intent)
         return {"ok": ok, "reason": reason}
 
+    @extend_schema_field(DatasetReadinessSerializer)
+    def get_readiness(self, obj):
+        return review.readiness(
+            self.context.get("dataset") or obj.dataset,
+            obj,
+            context=self.context.get("preparation_context"),
+        )
+
 
 class ChatTurnSerializer(serializers.Serializer):
     role = serializers.ChoiceField(choices=["user", "agent"])
@@ -73,6 +96,7 @@ class DatasetSerializer(serializers.ModelSerializer):
     chat = ChatTurnSerializer(many=True, read_only=True)
     active_version = serializers.SerializerMethodField()
     rows = serializers.SerializerMethodField()
+    readiness = serializers.SerializerMethodField()
 
     class Meta:
         model = Dataset
@@ -89,6 +113,7 @@ class DatasetSerializer(serializers.ModelSerializer):
             "active",
             "active_version",
             "rows",
+            "readiness",
             "state",
             "error",
             "cells",
@@ -105,17 +130,38 @@ class DatasetSerializer(serializers.ModelSerializer):
         cached = getattr(obj, "_prefetched_objects_cache", {}).get("cells")
         return sorted(cached, key=lambda c: c.position) if cached is not None else obj.chain
 
+    def _context_fingerprint(self, obj):
+        fingerprints = self.context.setdefault("capability_fingerprints", {})
+        if obj.capability_id not in fingerprints:
+            fingerprints[obj.capability_id] = context_fingerprint(obj.capability)
+        return fingerprints[obj.capability_id]
+
+    @extend_schema_field(DatasetReadinessSerializer(allow_null=True))
+    def get_readiness(self, obj):
+        active = self._active(obj)
+        return (
+            review.readiness(obj, active, context=self._context_fingerprint(obj))
+            if active
+            else None
+        )
+
     @extend_schema_field(CellSerializer(many=True))
     def get_cells(self, obj) -> list[dict]:
         if self.context.get("summary"):
             return []
         chain = self._chain(obj)
-        versions = _versions(chain)
+        versions = obj.versions(chain=chain)
         frozen = max((c.position for c in chain if c.used_at is not None), default=-1)
         return CellSerializer(
             chain,
             many=True,
-            context={"versions": versions, "frozen_before": frozen, "intent": obj.intent},
+            context={
+                "versions": versions,
+                "frozen_before": frozen,
+                "intent": obj.intent,
+                "dataset": obj,
+                "preparation_context": self._context_fingerprint(obj),
+            },
         ).data
 
     def _active(self, obj) -> Cell | None:
@@ -129,7 +175,7 @@ class DatasetSerializer(serializers.ModelSerializer):
 
     def get_active_version(self, obj) -> str:
         cell = self._active(obj)
-        return _versions(self._chain(obj)).get(cell.id, "") if cell else ""
+        return obj.versions(chain=self._chain(obj)).get(cell.id, "") if cell else ""
 
     def get_rows(self, obj) -> int:
         cell = self._active(obj)
@@ -146,48 +192,40 @@ class DatasetSerializer(serializers.ModelSerializer):
         return value
 
 
-def _versions(chain: list[Cell]) -> dict:
-    out: dict = {}
-    major, minor = 1, 0
-    for cell in chain:
-        if cell.state == Cell.State.PROPOSED:
-            continue
-        if cell.position == 0:
-            out[cell.id] = "1.0"
-            continue
-        if cell.used_at is not None:
-            major, minor = major + 1, 0
-        else:
-            minor += 1
-        out[cell.id] = f"{major}.{minor}"
-    return out
-
-
 class SourceSerializer(serializers.Serializer):
-    """Exactly one of ``upload_id``, ``text``, ``rows`` or ``traces``.
+    """Exactly one of ``uploads``, ``upload_id``, ``text``, ``rows`` or ``traces``.
     ``traces`` is a traces-list selection or ``{"trace_ids": [...]}``."""
 
     upload_id = serializers.UUIDField(required=False, allow_null=True)
+    uploads = serializers.ListField(
+        child=serializers.UUIDField(), required=False, allow_empty=False, max_length=100
+    )
     filename = serializers.CharField(required=False, allow_blank=True)
     text = serializers.CharField(required=False, allow_blank=True)
     rows = serializers.ListField(child=serializers.JSONField(), required=False)
     traces = serializers.JSONField(required=False)
 
     def validate(self, attrs):
-        keys = [k for k in ("upload_id", "text", "rows", "traces") if attrs.get(k)]
+        keys = [k for k in ("uploads", "upload_id", "text", "rows", "traces") if attrs.get(k)]
         if len(keys) != 1:
             raise serializers.ValidationError(
-                "Give exactly one source: upload_id, text, rows or traces."
+                "Give exactly one source: uploads, upload_id, text, rows or traces."
             )
         if attrs.get("upload_id"):
             attrs["upload_id"] = str(attrs["upload_id"])
+        if "uploads" in attrs:
+            attrs["uploads"] = [str(upload_id) for upload_id in attrs["uploads"]]
+            if len(set(attrs["uploads"])) != len(attrs["uploads"]):
+                raise serializers.ValidationError("Each upload may only be included once.")
         return attrs
 
 
 class DatasetCreateSerializer(serializers.Serializer):
     name = serializers.CharField(max_length=255)
     project = serializers.UUIDField()
-    capability = serializers.UUIDField(required=False, allow_null=True)
+    capability = serializers.UUIDField(
+        required=False, allow_null=True, help_text="Omit to infer from the rows; null means none."
+    )
     intent = serializers.ChoiceField(choices=Dataset.Intent.choices, required=False)
     source = SourceSerializer()
 
@@ -198,10 +236,19 @@ class DatasetSplitCreateSerializer(serializers.Serializer):
 
     name = serializers.CharField(max_length=249)
     project = serializers.UUIDField()
-    capability = serializers.UUIDField(required=False, allow_null=True)
+    capability = serializers.UUIDField(
+        required=False, allow_null=True, help_text="Omit to infer from the rows; null means none."
+    )
     source = SourceSerializer()
     eval_percent = serializers.IntegerField(min_value=1, max_value=99)
     position = serializers.ChoiceField(choices=SPLIT_POSITIONS)
+    group_by = serializers.ListField(
+        child=serializers.CharField(max_length=255), max_length=10, required=False, default=list
+    )
+    stratify_by = serializers.CharField(
+        max_length=255, required=False, allow_null=True, default=None
+    )
+    deduplicate = serializers.BooleanField(default=True)
 
 
 class DatasetPairSerializer(serializers.Serializer):

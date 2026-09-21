@@ -5,7 +5,7 @@ import json
 import uuid
 
 import pytest
-from conftest import EVAL_ROWS, frozen_dataset
+from conftest import EVAL_ROWS, frozen_dataset, review_fixture
 
 from overbae.models import (
     APIToken,
@@ -20,6 +20,7 @@ from overbae.models import (
     ProjectMembership,
     User,
 )
+from overbae.services.datasets import paths, store
 from overbae.services.mcp import tools_optimizer
 from overbae.services.mcp.catalog import CATALOG
 from overbae.services.mcp.context import MCPContext, bind_context
@@ -275,6 +276,17 @@ def test_readiness_and_start_use_explicit_eval_cell(monkeypatch):
         intent_report={"eval": {"ok": True, "reason": ""}},
         capability_report={"ok": True, "reason": ""},
     )
+    path = paths.cell_path(dataset.id, extra.id)
+    store.write_rows(
+        path,
+        [
+            {"source_row": i, "input": f"q{i}", "expected_output": f"a{i}"}
+            for i in range(extra.rows)
+        ],
+    )
+    extra.fingerprint = store.file_sha256(path)
+    extra.save(update_fields=["fingerprint"])
+    review_fixture(dataset, extra)
     called = {}
 
     def fake_create(**kwargs):

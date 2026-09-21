@@ -7,6 +7,7 @@ import { Link, useNavigate } from "@tanstack/react-router";
 import { NotebookCell, type UsePurpose } from "@/components/datasets/notebook/cell";
 import { DatasetChat, type LiveTurn } from "@/components/datasets/notebook/chat";
 import { NotebookOutline } from "@/components/datasets/notebook/outline";
+import { ContaminationReport } from "@/components/datasets/notebook/preparation";
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
 import {
@@ -38,10 +39,12 @@ export function DatasetNotebook({
   datasetId,
   projectId,
   cellParam,
+  initialRequest,
 }: {
   datasetId: string;
   projectId: string;
   cellParam?: string;
+  initialRequest?: string;
 }) {
   const qc = useQueryClient();
   const navigate = useNavigate();
@@ -82,37 +85,66 @@ export function DatasetNotebook({
         refresh();
         break;
       case "chat_delta":
-        setLive((prev) => ({
-          cells: prev?.cells ?? [],
-          steps: prev?.steps ?? [],
-          text: (prev?.text ?? "") + event.text,
-        }));
+        // After a reload, keep the saved turn until a complete progress snapshot arrives.
+        setLive(
+          (prev) =>
+            prev && {
+              ...prev,
+              cells: prev?.cells ?? [],
+              steps: prev?.steps ?? [],
+              text: (prev?.text ?? "") + event.text,
+            }
+        );
         break;
       case "chat_thinking":
-        setLive((prev) => ({
-          cells: prev?.cells ?? [],
-          steps: [
-            ...(prev?.steps ?? []),
-            { id: event.id, phase: "thinking", text: event.text, type: "activity" },
-          ],
-          text: prev?.text ?? "",
-        }));
+        setLive(
+          (prev) =>
+            prev && {
+              ...prev,
+              cells: prev?.cells ?? [],
+              steps: [
+                ...(prev?.steps ?? []),
+                { id: event.id, phase: "thinking", text: event.text, type: "activity" },
+              ],
+              text: prev?.text ?? "",
+            }
+        );
         break;
       case "chat_step": {
         const { type: _type, ...part } = event;
-        setLive((prev) => ({
-          cells: prev?.cells ?? [],
-          steps: [...(prev?.steps ?? []), { ...part, type: "activity" }],
-          text: prev?.text ?? "",
-        }));
+        setLive(
+          (prev) =>
+            prev && {
+              ...prev,
+              cells: prev?.cells ?? [],
+              steps: [...(prev?.steps ?? []), { ...part, type: "activity" }],
+              text: prev?.text ?? "",
+            }
+        );
         break;
       }
       case "chat_cell":
-        setLive((prev) => ({
-          cells: [...(prev?.cells ?? []), { action: event.action, id: event.cell_id }],
-          steps: prev?.steps ?? [],
-          text: prev?.text ?? "",
-        }));
+        setLive(
+          (prev) =>
+            prev && {
+              ...prev,
+              cells: [
+                ...(prev?.cells ?? []),
+                { action: event.action, id: event.cell_id, text_offset: event.text_offset },
+              ],
+              steps: prev?.steps ?? [],
+              text: prev?.text ?? "",
+            }
+        );
+        refresh();
+        break;
+      case "chat_progress":
+        setLive({
+          cells: event.cells,
+          progress: event.progress,
+          steps: event.steps,
+          text: event.text,
+        });
         refresh();
         break;
       case "chat_failed":
@@ -136,11 +168,15 @@ export function DatasetNotebook({
   const turns = useMemo(() => chatOf(dataset), [dataset]);
   useEffect(() => {
     if (!landedAt) return;
-    if (turns.at(-1)?.role === "agent") {
+    if (turns.at(-1)?.role === "agent" && turns.at(-1)?.status !== "running") {
       setLive(null);
       setLandedAt(0);
     }
   }, [turns, landedAt]);
+
+  useEffect(() => {
+    if (dataset && !isBusy(dataset)) setLive(null);
+  }, [dataset]);
 
   const all = useMemo(() => cellsOf(dataset), [dataset]);
   // Proposals wait in the chat; the notebook shows only cells that are in the chain.
@@ -231,6 +267,7 @@ export function DatasetNotebook({
               selectedId={selectedId}
             />
             <div className="min-h-0 min-w-0 flex-1 overflow-y-auto pt-2 pb-6 pl-10" ref={cellsRef}>
+              <ContaminationReport spec={dataset.sourceSpec} />
               {cells.length === 0 ? (
                 <p className="p-3 text-xs text-muted-foreground">
                   {dataset.state !== "landing"
@@ -300,9 +337,10 @@ export function DatasetNotebook({
         <PanelResizeHandle className="relative w-px bg-border/60 transition-colors hover:bg-foreground/40 data-[resize-handle-state='drag']:bg-foreground/60" />
         <Panel defaultSize={34} id="chat" minSize={22} order={2}>
           <DatasetChat
-            busy={busy}
+            busy={busy || acceptCell.isPending || removeCell.isPending}
             cells={all}
             error={dataset.state === "error" ? dataset.error || undefined : undefined}
+            initialRequest={initialRequest}
             live={live}
             onAccept={guard((id: string) => acceptCell.mutate(id))}
             onDiscard={guard((id: string) => removeCell.mutate(id))}

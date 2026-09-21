@@ -32,6 +32,7 @@ class DatasetCellContract(MCPModel):
     fingerprint: str = Field(default="", max_length=64)
     fits: bool = False
     reason: str = Field(default="", max_length=500)
+    warnings: list[str] = Field(default_factory=list)
 
 
 class PageContract(MCPModel):

@@ -13,9 +13,13 @@ from rest_framework.exceptions import ValidationError as DRFValidationError
 from overbae.api.serializers import CapabilitySerializer
 from overbae.models import Capability, Dataset, DeployedModel, EvalSet, EvalSetMember, FinetuningJob
 from overbae.services.capabilities import identity
+from overbae.services.datasets import review
+from overbae.services.datasets import use as dataset_use
 from overbae.services.datasets.contract import public_intent
+from overbae.services.datasets.lifecycle import DatasetError
 from overbae.services.datasets.rows import RowStoreError
 from overbae.services.deployed_chat import chat_with_deployed_model
+from overbae.services.deployment import retry_deployment
 from overbae.services.eval.eval_set import active_members
 from overbae.services.finetuning_mcp import FineTuneDispatchError, launch_finetune
 from overbae.services.finetuning_prereqs import (
@@ -42,10 +46,14 @@ from overbae.services.mcp.contracts.finetuning import (
     FineTuneEvaluatorReadiness,
     FineTuneJobReference,
     FineTuneTimeEstimate,
+    PrepareTrainingInput,
+    PrepareTrainingOutput,
     RetryDeploymentInput,
     RetryDeploymentOutput,
     SetActiveModelInput,
     SetActiveModelOutput,
+    SetBenchmarkModelInput,
+    SetBenchmarkModelOutput,
     StartFinetuneInput,
     StartFinetuneOutput,
 )
@@ -65,6 +73,8 @@ from overbae.services.mcp.errors import (
 )
 from overbae.services.mcp.resources import resource_link, safe_json
 from overbae.services.recommendation import estimate_for_hyperparams, find_catalog_model
+from overbae.services.training_preparation import request_preparation, retry_preparation
+from overbae.tasks.training_preparation import inspect_preparation
 
 _SENSITIVE_KEYS = frozenset(
     {
@@ -97,7 +107,7 @@ def _resolve_dataset(context: MCPContext, reference: str) -> Dataset:
 def _resolve_capability(context: MCPContext, reference: str) -> Capability:
     query = Capability.objects.filter(
         project=context.project, status=Capability.Status.CURRENT
-    ).select_related("active_model", "active_eval_set")
+    ).select_related("active_model", "benchmark_model", "active_eval_set")
     normalized = _uuid_ref(reference)
     capability = query.filter(id=normalized).first() if normalized else None
     if capability is None and reference:
@@ -111,10 +121,15 @@ def _resolve_capability(context: MCPContext, reference: str) -> Capability:
     return capability
 
 
-def _resolve_eval_set(context: MCPContext, reference: str, *, capability: Capability) -> EvalSet:
-    query = EvalSet.objects.filter(project=context.project, capability=capability).select_related(
-        "capability"
-    )
+def _resolve_eval_set(
+    context: MCPContext, reference: str, *, capability: Capability | None
+) -> EvalSet:
+    query = EvalSet.objects.filter(
+        Q(capability__status=Capability.Status.CURRENT) | Q(capability__isnull=True),
+        project=context.project,
+    ).select_related("capability")
+    if capability is not None:
+        query = query.filter(Q(capability=capability) | Q(capability__isnull=True))
     normalized = _uuid_ref(reference)
     eval_set = query.filter(id=normalized).first() if normalized else None
     if eval_set is None and reference:
@@ -123,7 +138,7 @@ def _resolve_eval_set(context: MCPContext, reference: str, *, capability: Capabi
             raise MCPError("eval_set_not_found", "Multiple eval sets match; use the eval set id.")
         eval_set = matches[0] if matches else None
     if eval_set is None:
-        raise MCPError("eval_set_not_found", "The eval set was not found for this capability.")
+        raise MCPError("eval_set_not_found", "The eval set was not found in this selection.")
     return eval_set
 
 
@@ -263,7 +278,7 @@ def _evaluator_readiness(
     eval_set_data = FineTuneEvalSetReadiness(
         id=str(eval_set.id),
         name=eval_set.name,
-        capability=eval_set.capability.slug,
+        capability=eval_set.capability.slug if eval_set.capability_id else None,
         active=capability is not None and capability.active_eval_set_id == eval_set.id,
         member_count=len(evaluators),
     )
@@ -285,13 +300,7 @@ def _readiness_sync(
             fields={"dataset": "Expected intent=train."},
         )
     cell = mcp_cell(dataset, _cell_ref(payload.cell, payload.version)) or dataset.active_cell
-    capability = (
-        _resolve_capability(context, payload.capability)
-        if payload.capability
-        else _resolve_capability(context, str(dataset.capability_id))
-        if dataset.capability_id
-        else None
-    )
+    capability = _resolve_capability(context, payload.capability) if payload.capability else None
     try:
         report = finetune_prerequisite_report(context.project, dataset, capability=capability)
     except RowStoreError:
@@ -313,6 +322,11 @@ def _readiness_sync(
         if not str(item).startswith("training dataset")
     ]
     fits, reason = (False, "no version that ran") if cell is None else cell.fits("train")
+    if cell is not None and fits:
+        try:
+            dataset_use.check(dataset, "train", cell=cell)
+        except DatasetError as exc:
+            fits, reason = False, exc.detail
     if cell is None or not fits:
         missing.insert(0, f"training dataset — {reason}")
         validation = ValidationResult(False, "unknown", 0, errors=[reason])
@@ -357,6 +371,19 @@ def _readiness_sync(
         summary="Fine-tuning is ready." if ready else "Fine-tuning is not ready.",
         ready=ready,
         missing=missing,
+        warnings=[
+            finding
+            for finding in (report.get("warnings") or [])
+            if not finding.startswith("training dataset:")
+        ]
+        + (
+            [
+                f"training dataset: {finding}"
+                for finding in review.warnings(dataset, cell, capability=capability)
+            ]
+            if cell
+            else []
+        ),
         dataset=dataset_data,
         capability=(
             FineTuneCapabilityReadiness(
@@ -427,19 +454,7 @@ def _start_sync(payload: StartFinetuneInput, context: MCPContext) -> StartFinetu
         raise MCPError("invalid_input", "Provider credentials are not accepted in tool input.")
     dataset = _resolve_dataset(context, payload.dataset)
     cell = mcp_check(dataset, "train", _cell_ref(payload.cell, payload.version))
-    capability = (
-        _resolve_capability(context, payload.capability)
-        if payload.capability
-        else _resolve_capability(context, str(dataset.capability_id))
-        if dataset.capability_id
-        else None
-    )
-    if capability is None:
-        raise MCPError(
-            "finetune_not_ready",
-            "A capability is required to start fine-tuning.",
-            fields={"capability": "Provide a capability reference."},
-        )
+    capability = _resolve_capability(context, payload.capability) if payload.capability else None
     if find_catalog_model(payload.base_model) is None:
         raise MCPError("model_not_found", "The base model is not in the trainable model catalog.")
 
@@ -502,7 +517,7 @@ def _start_sync(payload: StartFinetuneInput, context: MCPContext) -> StartFinetu
     name = payload.name or default_finetune_name(
         display_name=str(catalog_entry.get("display") or payload.base_model),
         dataset_name=dataset.name or str(dataset.id)[:8],
-        capability_name=capability.name,
+        capability_name=capability.name if capability else "",
     )
     group_id = str(payload.group_id or uuid.uuid4())
     _require_credits(context)
@@ -527,6 +542,11 @@ def _start_sync(payload: StartFinetuneInput, context: MCPContext) -> StartFinetu
             cell=cell,
             validation_cell=validation_cell,
             eval_cell=eval_cell,
+            eval_incumbent_before=payload.eval_incumbent_before,
+            eval_incumbent_after=payload.eval_incumbent_after,
+            eval_model_before=payload.eval_model_before,
+            eval_model_after=payload.eval_model_after,
+            baseline_model=payload.baseline_model,
         )
     except DRFValidationError as error:
         raise _serializer_error(error) from error
@@ -565,27 +585,10 @@ def _retry_deployment_sync(
             "Training job has no usable checkpoint — retry the training job first.",
         )
     _require_credits(context)
-    from overbae.tasks.model_deployment import register_finetuned_model
-
-    updated = DeployedModel.objects.filter(
-        pk=deployment.pk,
-        status__in=(DeployedModel.Status.FAILED, DeployedModel.Status.DELETED),
-    ).update(status=DeployedModel.Status.QUEUED, error_message="")
-    if not updated:
-        raise MCPError("deployment_not_ready", "Only failed or deleted deployments can be retried.")
     try:
-        register_finetuned_model.delay(job_id=str(job.id))
-    except Exception as error:  # noqa: BLE001 — provider details never cross MCP
-        DeployedModel.objects.filter(
-            pk=deployment.pk,
-            status=DeployedModel.Status.QUEUED,
-        ).update(
-            status=deployment.status,
-            error_message=deployment.error_message,
-        )
-        raise MCPError(
-            "deployment_dispatch_failed", "The deployment could not be queued.", retryable=True
-        ) from error
+        deployment = retry_deployment(deployment.pk)
+    except ValueError as error:
+        raise MCPError("deployment_not_ready", str(error)) from error
     deployment.refresh_from_db()
     link = resource_link("deployments", str(deployment.id), deployment.model_id)
     retry_link = resource_link(
@@ -634,6 +637,36 @@ def _set_active_sync(payload: SetActiveModelInput, context: MCPContext) -> SetAc
         active_model=active_model,
         cleared=deployment is None,
         resource_links=links,
+    )
+
+
+def _set_benchmark_sync(
+    payload: SetBenchmarkModelInput, context: MCPContext
+) -> SetBenchmarkModelOutput:
+    capability = _resolve_capability(context, payload.capability)
+    deployment = _resolve_deployment(context, payload.deployment) if payload.deployment else None
+    serializer = CapabilitySerializer(
+        capability,
+        data={"benchmark_model": str(deployment.id) if deployment else None},
+        partial=True,
+        context={"request": SimpleNamespace(user=context.user)},
+    )
+    try:
+        serializer.is_valid(raise_exception=True)
+    except DRFValidationError as error:
+        raise MCPError(
+            "benchmark_model_invalid", "Select a ready trained model in this project."
+        ) from error
+    serializer.save()
+    link = resource_link("capabilities", str(capability.id), capability.name)
+    reference = _deployment_reference(deployment) if deployment else None
+    return SetBenchmarkModelOutput(
+        summary="Benchmark model updated.",
+        capability=link,
+        benchmark_model=reference,
+        model_id=deployment.model_id if deployment else capability.model,
+        source="trained" if deployment else "codebase",
+        resource_links=[link, reference.resource] if reference else [link],
     )
 
 
@@ -705,6 +738,47 @@ def _model_swap_prompt_sync(
     )
 
 
+def _prepare_training_sync(payload, context):
+    dataset = _resolve_dataset(context, payload.dataset)
+    cell = mcp_cell(dataset, payload.cell) or dataset.active_cell
+    validation = (
+        _resolve_dataset(context, payload.validation_dataset)
+        if payload.validation_dataset
+        else None
+    )
+    if cell is None or (validation is not None and validation.active_cell is None):
+        raise MCPError("dataset_not_ready", "Select completed dataset versions.")
+    try:
+        prep = request_preparation(
+            cell,
+            payload.base_model,
+            payload.context_length,
+            validation_cell=validation.active_cell if validation else None,
+            training_type=payload.training_type,
+        )
+        if payload.retry_failed and prep.state == "failed":
+            prep = retry_preparation(prep)
+    except (ValueError, RuntimeError) as exc:
+        raise MCPError("preparation_invalid", str(exc)) from exc
+    if prep.state == "queued":
+        inspect_preparation.delay(str(prep.id))
+    return PrepareTrainingOutput(
+        id=str(prep.id),
+        state=prep.state,
+        report=prep.report,
+        error=prep.error,
+        config=prep.config,
+        job=JobReceipt(
+            kind="training_preparation",
+            id=str(prep.id),
+            status=prep.state,
+            resource=resource_link(
+                "jobs", f"training_preparation/{prep.id}", "Training preparation"
+            ),
+        ),
+    )
+
+
 def _async_handler(function):
     async def handler(payload, context):
         return await sync_to_async(function, thread_sensitive=True)(payload, context)
@@ -717,15 +791,28 @@ def register_finetuning_tools(catalog) -> None:
 
     definitions = [
         (
+            "prepare_training_data",
+            "Prepare training data",
+            "Run exact CPU tokenization for a model and context length. Returns a cached preparation report; call again with the same inputs to observe completion. Inspect incompatible rows and supervised content before starting training. Does not start GPU training.",
+            PrepareTrainingInput,
+            PrepareTrainingOutput,
+            _prepare_training_sync,
+            False,
+            True,
+            "compute",
+            "job",
+            {"overmind:train"},
+        ),
+        (
             "check_finetune_readiness",
             "Check fine-tuning readiness",
-            "Inspect fine-tuning prerequisites, train/eval dataset shape, recommended catalog models, evaluators, and credit availability.",
+            "Inspect fine-tuning prerequisites, train/eval dataset shape, recommended catalog models, evaluators, and credit availability. Model ranking uses the selected capability's codebase task, or the dataset task when no capability is selected. Uncached capability classification may call an LLM.",
             CheckFinetuneReadinessInput,
             CheckFinetuneReadinessOutput,
             _readiness_sync,
             True,
             True,
-            "free",
+            "llm",
             "sync",
             {"overmind:read"},
         ),
@@ -780,6 +867,19 @@ def register_finetuning_tools(catalog) -> None:
             "free",
             "sync",
             {"overmind:deploy"},
+        ),
+        (
+            "set_benchmark_model",
+            "Set benchmark model",
+            "Choose a ready trained deployment for future capability benchmarks; omit deployment to use the codebase incumbent. Does not change serving or existing jobs. Discover choices in the capability resource.",
+            SetBenchmarkModelInput,
+            SetBenchmarkModelOutput,
+            _set_benchmark_sync,
+            False,
+            True,
+            "free",
+            "sync",
+            {"overmind:train"},
         ),
         (
             "run_inference",

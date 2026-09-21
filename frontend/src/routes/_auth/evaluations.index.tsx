@@ -1,8 +1,10 @@
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 
 import { createFileRoute, redirect } from "@tanstack/react-router";
 import { toast } from "sonner";
 
+import { CreateEvalSetDialog } from "@/components/evaluations/create-eval-set-dialog";
+import { EvalSetDetailDialog } from "@/components/evaluations/eval-set-detail-dialog";
 import { RunsTable } from "@/components/evaluations/runs-table";
 import { TaskEvalLibrary } from "@/components/evaluations/task-eval-library";
 import { ProjectRequiredEmptyState } from "@/components/project-required-empty-state";
@@ -123,7 +125,14 @@ function EvaluationsPage() {
       variant="full"
     >
       <div className="flex min-h-0 flex-1 flex-col">
-        {activeView === "sets" && <EvalSetsTab projectId={projectId} />}
+        {activeView === "sets" && (
+          <div className="flex flex-col gap-3">
+            <div>
+              <CreateEvalSetDialog key={projectId} projectId={projectId} />
+            </div>
+            <EvalSetsTab projectId={projectId} />
+          </div>
+        )}
         {activeView === "runs" && (
           <RunsTable
             filters={search}
@@ -169,13 +178,14 @@ function EvalSetsTab({ projectId }: { projectId: string }) {
   const groups = useMemo(() => {
     const sets = (setsQuery.data?.results ?? []).filter(
       (s) =>
-        s.project === projectId && (!capabilitiesLoaded || capabilityNameById.has(s.capability))
+        s.project === projectId &&
+        (!s.capability || !capabilitiesLoaded || capabilityNameById.has(s.capability))
     );
     const byCapability = new Map<string, EvalSet[]>();
     for (const set of sets) {
-      const list = byCapability.get(set.capability) ?? [];
+      const list = byCapability.get(set.capability ?? "") ?? [];
       list.push(set);
-      byCapability.set(set.capability, list);
+      byCapability.set(set.capability ?? "", list);
     }
     return [...byCapability.entries()].sort((a, b) =>
       (capabilityNameById.get(a[0]) ?? a[0]).localeCompare(capabilityNameById.get(b[0]) ?? b[0])
@@ -205,7 +215,7 @@ function EvalSetsTab({ projectId }: { projectId: string }) {
       <Card>
         <CardContent className="py-4">
           <EmptyState
-            description="Open a capability's Evaluations tab to author a set of evaluators. The active set drives the optimiser, backtest and run wizard."
+            description="Create an eval set from the evaluator library."
             icon={Icon.evaluations}
             iconClassName="dark:invert [image-rendering:pixelated]"
             size="section"
@@ -221,7 +231,11 @@ function EvalSetsTab({ projectId }: { projectId: string }) {
       {groups.map(([capabilityId, sets]) => (
         <CapabilitySetsGroup
           capabilityId={capabilityId}
-          capabilityName={capabilityNameById.get(capabilityId) ?? "Unknown capability"}
+          capabilityName={
+            capabilityId
+              ? (capabilityNameById.get(capabilityId) ?? "Unknown capability")
+              : "No capability"
+          }
           key={capabilityId}
           projectId={projectId}
           sets={sets}
@@ -243,6 +257,7 @@ function CapabilitySetsGroup({
   projectId: string;
 }) {
   const navigate = Route.useNavigate();
+  const [selectedSet, setSelectedSet] = useState<EvalSet | null>(null);
   const { data: scoreHistory } = useEvaluatorScoreHistoryQuery(capabilityId);
   const deleteSet = useDeleteEvalSetMutation(projectId, capabilityId);
 
@@ -279,10 +294,12 @@ function CapabilitySetsGroup({
           <span className="text-sm font-medium">{capabilityName}</span>
           <CountChip count={sets.length} />
         </div>
-        <Button onClick={openCapabilityEvaluations} size="sm" variant="secondary">
-          <Icon.externalLink />
-          Manage sets
-        </Button>
+        {capabilityId && (
+          <Button onClick={openCapabilityEvaluations} size="sm" variant="secondary">
+            <Icon.externalLink />
+            Manage sets
+          </Button>
+        )}
       </div>
       <Table>
         <TableHeader>
@@ -303,11 +320,11 @@ function CapabilitySetsGroup({
                 aria-label={`Open ${set.name} for ${capabilityName}`}
                 className="cursor-pointer"
                 key={set.id}
-                onClick={openCapabilityEvaluations}
+                onClick={() => setSelectedSet(set)}
                 onKeyDown={(e) => {
                   if (e.key === "Enter" || e.key === " ") {
                     e.preventDefault();
-                    openCapabilityEvaluations();
+                    setSelectedSet(set);
                   }
                 }}
                 role="button"
@@ -373,6 +390,7 @@ function CapabilitySetsGroup({
           })}
         </TableBody>
       </Table>
+      <EvalSetDetailDialog onClose={() => setSelectedSet(null)} set={selectedSet} />
     </Card>
   );
 }

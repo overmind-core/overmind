@@ -13,6 +13,8 @@ from pathlib import Path
 from typing import Any
 
 from overbae.services.datasets import paths, store
+from overbae.services.datasets.examples import missing, normalize_record
+from overbae.services.datasets.partition import contamination_keys
 
 
 class RowStoreError(RuntimeError):
@@ -40,11 +42,12 @@ class DatasetRow:
 def row_from_record(index: int, record: dict[str, Any]) -> DatasetRow:
     """Canonical columns become fields; everything else rides in ``extra``,
     which is where ``behaviour_key`` and ``model_expected_output`` live."""
+    record = normalize_record(record)
     extra = {k: v for k, v in record.items() if k not in ("input", "expected_output")}
     inp = record.get("input")
     if inp is None and isinstance(record.get("messages"), list):
         inp = {"messages": record["messages"]}
-        if record.get("tools"):
+        if not missing(record.get("tools")):
             inp["tools"] = record["tools"]
     trace_id = record.get("source_trace_id") or record.get("trace_id") or ""
     return DatasetRow(
@@ -117,6 +120,34 @@ def trace_ids(cell: Any) -> set[str]:
         f'SELECT DISTINCT "{column}" AS t FROM t WHERE "{column}" IS NOT NULL', limit=None, t=path
     )
     return {str(r["t"]) for r in result["rows"] if r["t"]}
+
+
+def contamination(train, evaluation) -> dict:
+    group_by = set(train.dataset.source_spec.get("split", {}).get("group_by", []))
+    group_by.update(evaluation.dataset.source_spec.get("split", {}).get("group_by", []))
+    keys = set()
+    for record in store.iter_rows(frame_path(evaluation)):
+        keys.update(contamination_keys(record, group_by))
+    count = 0
+    examples = []
+    for index, record in enumerate(store.iter_rows(frame_path(train))):
+        shared = contamination_keys(record, group_by) & keys
+        if shared:
+            count += 1
+            if len(examples) < 20:
+                examples.append(
+                    {
+                        "row": record.get(store.SOURCE_ROW, index),
+                        "matches": sorted({key[0] for key in shared}),
+                    }
+                )
+    return {
+        "overlap_count": count,
+        "train_total": train.rows,
+        "basis": "exact input content, trace/conversation/group identity and synthetic seed lineage",
+        "examples": examples,
+        "near_duplicate_check": "not_checked",
+    }
 
 
 def sample_records(dataset: Any, limit: int) -> list[dict[str, Any]]:

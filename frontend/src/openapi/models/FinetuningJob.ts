@@ -77,7 +77,7 @@ export interface FinetuningJob {
      * @type {string}
      * @memberof FinetuningJob
      */
-    evalDataset?: string | null;
+    evalDataset: string;
     /**
      *
      * @type {string}
@@ -89,7 +89,31 @@ export interface FinetuningJob {
      * @type {string}
      * @memberof FinetuningJob
      */
-    evalSet?: string | null;
+    evalSet: string;
+    /**
+     *
+     * @type {boolean}
+     * @memberof FinetuningJob
+     */
+    evalIncumbentBefore?: boolean;
+    /**
+     *
+     * @type {boolean}
+     * @memberof FinetuningJob
+     */
+    evalIncumbentAfter?: boolean;
+    /**
+     *
+     * @type {boolean}
+     * @memberof FinetuningJob
+     */
+    evalModelBefore?: boolean;
+    /**
+     *
+     * @type {boolean}
+     * @memberof FinetuningJob
+     */
+    evalModelAfter?: boolean;
     /**
      *
      * @type {boolean}
@@ -156,6 +180,12 @@ export interface FinetuningJob {
      * @memberof FinetuningJob
      */
     baseModel: string;
+    /**
+     *
+     * @type {string}
+     * @memberof FinetuningJob
+     */
+    baselineModel?: string;
     /**
      *
      * @type {any}
@@ -311,6 +341,8 @@ export function instanceOfFinetuningJob(value: object): value is FinetuningJob {
     if (!('id' in value) || value['id'] === undefined) return false;
     if (!('project' in value) || value['project'] === undefined) return false;
     if (!('dataset' in value) || value['dataset'] === undefined) return false;
+    if (!('evalDataset' in value) || value['evalDataset'] === undefined) return false;
+    if (!('evalSet' in value) || value['evalSet'] === undefined) return false;
     if (!('cellInfo' in value) || value['cellInfo'] === undefined) return false;
     if (!('triggeredBy' in value) || value['triggeredBy'] === undefined) return false;
     if (!('baseModel' in value) || value['baseModel'] === undefined) return false;
@@ -349,9 +381,13 @@ export function FinetuningJobFromJSONTyped(json: any, ignoreDiscriminator: boole
         'project': json['project'],
         'capability': json['capability'] == null ? undefined : json['capability'],
         'dataset': json['dataset'],
-        'evalDataset': json['eval_dataset'] == null ? undefined : json['eval_dataset'],
+        'evalDataset': json['eval_dataset'],
         'evalCell': json['eval_cell'] == null ? undefined : json['eval_cell'],
-        'evalSet': json['eval_set'] == null ? undefined : json['eval_set'],
+        'evalSet': json['eval_set'],
+        'evalIncumbentBefore': json['eval_incumbent_before'] == null ? undefined : json['eval_incumbent_before'],
+        'evalIncumbentAfter': json['eval_incumbent_after'] == null ? undefined : json['eval_incumbent_after'],
+        'evalModelBefore': json['eval_model_before'] == null ? undefined : json['eval_model_before'],
+        'evalModelAfter': json['eval_model_after'] == null ? undefined : json['eval_model_after'],
         'validationEnabled': json['validation_enabled'] == null ? undefined : json['validation_enabled'],
         'validationSplitRatio': json['validation_split_ratio'] == null ? undefined : json['validation_split_ratio'],
         'validationDataset': json['validation_dataset'] == null ? undefined : json['validation_dataset'],
@@ -363,6 +399,7 @@ export function FinetuningJobFromJSONTyped(json: any, ignoreDiscriminator: boole
         'name': json['name'] == null ? undefined : json['name'],
         'useCase': json['use_case'] == null ? undefined : json['use_case'],
         'baseModel': json['base_model'],
+        'baselineModel': json['baseline_model'] == null ? undefined : json['baseline_model'],
         'hyperparameters': json['hyperparameters'] == null ? undefined : json['hyperparameters'],
         'status': FinetuningJobStatusEnumFromJSON(json['status']),
         'groupId': json['group_id'] == null ? undefined : json['group_id'],
@@ -405,6 +442,10 @@ export function FinetuningJobToJSONTyped(value?: Omit<FinetuningJob, 'id'|'cell_
         'eval_dataset': value['evalDataset'],
         'eval_cell': value['evalCell'],
         'eval_set': value['evalSet'],
+        'eval_incumbent_before': value['evalIncumbentBefore'],
+        'eval_incumbent_after': value['evalIncumbentAfter'],
+        'eval_model_before': value['evalModelBefore'],
+        'eval_model_after': value['evalModelAfter'],
         'validation_enabled': value['validationEnabled'],
         'validation_split_ratio': value['validationSplitRatio'],
         'validation_dataset': value['validationDataset'],
@@ -414,6 +455,7 @@ export function FinetuningJobToJSONTyped(value?: Omit<FinetuningJob, 'id'|'cell_
         'name': value['name'],
         'use_case': value['useCase'],
         'base_model': value['baseModel'],
+        'baseline_model': value['baselineModel'],
         'hyperparameters': value['hyperparameters'],
         'group_id': value['groupId'],
         'model_tier': value['modelTier'],

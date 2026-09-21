@@ -10,20 +10,9 @@ import pytest
 from conftest import TRAIN_ROWS, frozen_dataset
 
 from overbae.models.finetuning import FinetuningJob
-from overbae.tasks.finetuning_reconciler import (
-    _REGISTER_TASK,
-    _RUN_TASK,
-    _reconcile,
-    rescue_task_for,
-)
+from overbae.tasks.finetuning_reconciler import _reconcile
 
 pytestmark = pytest.mark.django_db
-
-
-def test_rescue_task_routing():
-    assert rescue_task_for("deploying") == _REGISTER_TASK
-    assert rescue_task_for("queued") == _RUN_TASK
-    assert rescue_task_for("running") == _RUN_TASK
 
 
 def _job(status: str) -> FinetuningJob:
@@ -64,13 +53,17 @@ def test_deploying_job_rescued_with_register_task():
     job = _job("deploying")
     _, sent = _run_reconcile(active_tasks=[])
     mine = [(n, k) for n, k in sent if k.get("job_id") == str(job.id)]
-    assert mine == [(_REGISTER_TASK, {"job_id": str(job.id)})]
+    assert mine == []
 
 
 def test_deploying_job_with_inflight_register_not_kicked():
     job = _job("deploying")
     inflight = [
-        {"id": str(uuid.uuid4()), "name": _REGISTER_TASK, "kwargs": {"job_id": str(job.id)}}
+        {
+            "id": str(uuid.uuid4()),
+            "name": "overbae.tasks.model_deployment.register_finetuned_model",
+            "kwargs": {"job_id": str(job.id)},
+        }
     ]
     _, sent = _run_reconcile(active_tasks=inflight)
     assert all(k.get("job_id") != str(job.id) for _, k in sent)

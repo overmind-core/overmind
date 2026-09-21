@@ -1,4 +1,4 @@
-"""Baseline = the capability's production incumbent model, not the base model of the family."""
+"""Routing for the selected incumbent benchmark, separately from matched-base evaluations."""
 
 from __future__ import annotations
 
@@ -48,6 +48,8 @@ def _job(*, incumbent: str = "") -> FinetuningJob:
         status=FinetuningJob.Status.RUNNING,
         provider=FinetuningJob.Provider.BASETEN,
         baseline_model=incumbent,
+        eval_incumbent_before=True,
+        eval_model_before=False,
     )
 
 
@@ -81,23 +83,33 @@ def test_provider_less_incumbent_routes_via_openrouter():
     assert baseline_needs_base_deploy(job) is False
 
 
-@override_settings(INFERENCE_API_URL=GATEWAY)
-def test_self_hosted_incumbent_routes_via_gateway():
+@pytest.mark.parametrize(
+    "status, url, gateway, ready",
+    [
+        (DeployedModel.Status.READY, "https://worker.modal.run", GATEWAY, True),
+        (DeployedModel.Status.DEPLOYING, "https://worker.modal.run", GATEWAY, False),
+        (DeployedModel.Status.READY, "", GATEWAY, False),
+        (DeployedModel.Status.READY, "https://worker.modal.run", "", False),
+    ],
+)
+def test_self_hosted_incumbent_routes_via_gateway(status, url, gateway, ready, settings):
+    settings.INFERENCE_API_URL = gateway
     job = _job(incumbent="ft-prev-qwen3-8b")
     DeployedModel.objects.create(
         project=job.project,
         model_id="ft-prev-qwen3-8b",
         base_model_id="Qwen/Qwen3-8B",
-        status=DeployedModel.Status.READY,
-        inference_url="https://worker.modal.run?model_path=x",
+        status=status,
+        inference_url=url,
     )
     target = _baseline_target(job)
 
     assert target.kind == "gateway"
     assert target.provider == ModelRef.Provider.CUSTOM
-    assert target.base_url == f"{GATEWAY}/v1"  # gateway, NOT the worker url
+    assert target.base_url == f"{gateway}/v1"
     assert target.api_key_ref == "INFERENCE_API_KEY"
     assert target.model_id == "ft-prev-qwen3-8b"
+    assert target.ready is ready
     assert baseline_needs_base_deploy(job) is False
 
 

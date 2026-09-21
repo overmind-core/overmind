@@ -57,7 +57,7 @@ def build_candidate(
     """
     backend = active_backend()
     num_examples = int(stats.get("num_examples") or 0)
-    max_tokens = int(stats.get("max_token_length") or 0)
+    max_tokens = 0 if backend == "modal" else int(stats.get("max_token_length") or 0)
 
     from overbae.modal.model_registry import context_headroom
 

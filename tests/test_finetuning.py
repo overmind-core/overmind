@@ -6,7 +6,7 @@ import uuid
 from unittest.mock import patch
 
 import pytest
-from conftest import frozen_dataset
+from conftest import EVAL_ROWS, frozen_dataset
 from django.urls import reverse
 from rest_framework.test import APIClient
 from rest_framework_simplejwt.tokens import RefreshToken
@@ -14,6 +14,9 @@ from rest_framework_simplejwt.tokens import RefreshToken
 from overbae.models import (
     Capability,
     Dataset,
+    EvalSet,
+    EvalSetMember,
+    Evaluator,
     FinetuningJob,
     FinetuningJobEvent,
     Project,
@@ -67,9 +70,24 @@ def _dataset(capability: Capability, *, n_points: int = 2) -> Dataset:
 
 
 def _job_payload(*, project_id: str, dataset_id: str, **overrides) -> dict:
+    project = Project.objects.get(pk=project_id)
+    evaluation = frozen_dataset(project, EVAL_ROWS, contract="eval")
+    eval_set = EvalSet.objects.create(project=project, name="Test evaluations")
+    evaluator = Evaluator.objects.create(
+        project=project,
+        name="Exact match",
+        kind=Evaluator.Kind.DETERMINISTIC,
+        scope=Evaluator.Scope.FINAL_OUTPUT,
+        config={"check": "exact_match"},
+    )
+    EvalSetMember.objects.create(
+        eval_set=eval_set, evaluator=evaluator, role=EvalSetMember.Role.GENERATIVE
+    )
     payload = {
         "project": project_id,
         "dataset": dataset_id,
+        "eval_dataset": str(evaluation.id),
+        "eval_set": str(eval_set.id),
         "name": "ft-test",
         "use_case": "test run",
         "base_model": "meta-llama/Llama-3.2-3B-Instruct",
@@ -245,6 +263,7 @@ def test_retry_dispatches_celery_for_failed_job():
         base_model="m",
         status=FinetuningJob.Status.FAILED,
         error_message="boom",
+        remote_job_id="failed-provider-job",
     )
 
     with patch(CELERY_PATH, return_value=_FakeAsyncResult("retry-task")) as mock_apply:

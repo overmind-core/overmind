@@ -2,13 +2,13 @@ from __future__ import annotations
 
 import json
 from datetime import timedelta
-from types import SimpleNamespace
 
 import pytest
 from celery.exceptions import SoftTimeLimitExceeded
 from django.utils import timezone
 
 from overbae.models import EvalRun, EvalSample, EvalVariant, Project
+from overbae.services.datasets.rows import DatasetRow
 from overbae.services.eval import runner
 from overbae.tasks import eval as eval_tasks
 
@@ -60,8 +60,8 @@ def _messages(turns):
 def test_per_turn_makes_one_decision_without_replaying_tools(monkeypatch, turns):
     sample = _sample()
     original = _messages(turns)
-    row = SimpleNamespace(
-        input={"messages": original, "tools": [{"name": "search", "parameters": {}}]}
+    row = DatasetRow(
+        index=0, input={"messages": original, "tools": [{"name": "search", "parameters": {}}]}
     )
     monkeypatch.setattr(eval_tasks, "_sample_row", lambda sample: row)
     monkeypatch.setattr(eval_tasks, "_variant_model", lambda variant: ("test-model", None))
@@ -108,7 +108,7 @@ def test_generation_does_not_swallow_worker_soft_timeout(monkeypatch, method):
 @pytest.mark.django_db
 def test_worker_timeout_stops_remaining_recorded_turns(monkeypatch):
     sample = _sample()
-    row = SimpleNamespace(input={"messages": _messages(2), "tools": [{"name": "search"}]})
+    row = DatasetRow(index=0, input={"messages": _messages(2), "tools": [{"name": "search"}]})
     monkeypatch.setattr(eval_tasks, "_sample_row", lambda sample: row)
     monkeypatch.setattr(eval_tasks, "_variant_model", lambda variant: ("test-model", None))
     calls = []
@@ -162,7 +162,7 @@ def test_each_generated_decision_refreshes_activity_before_next_call(monkeypatch
     sample = _sample()
     old = timezone.now() - timedelta(minutes=35)
     EvalRun.objects.filter(pk=sample.run_id).update(updated_at=old)
-    row = SimpleNamespace(input={"messages": _messages(2), "tools": [{"name": "search"}]})
+    row = DatasetRow(index=0, input={"messages": _messages(2), "tools": [{"name": "search"}]})
     monkeypatch.setattr(eval_tasks, "_sample_row", lambda sample: row)
     monkeypatch.setattr(eval_tasks, "_variant_model", lambda variant: ("test-model", None))
     seen = []

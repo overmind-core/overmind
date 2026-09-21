@@ -8,6 +8,9 @@ from typing import Any, Literal
 from mcp import types
 from pydantic import Field
 
+from overbae.services.datasets import review
+from overbae.services.datasets import use as dataset_use
+from overbae.services.datasets.lifecycle import DatasetError
 from overbae.services.mcp.contracts.common import MCPModel
 from overbae.services.mcp.result_compat import tool_result
 
@@ -201,6 +204,11 @@ def mcp_cell_contract(dataset, cell, intent: str):
     if cell is None:
         return None
     fits, reason = cell.fits(intent)
+    if fits:
+        try:
+            dataset_use.check(dataset, intent, cell=cell)
+        except DatasetError as exc:
+            fits, reason = False, exc.detail
     return DatasetCellContract(
         id=str(cell.id),
         version=dataset.versions().get(cell.id, ""),
@@ -209,4 +217,5 @@ def mcp_cell_contract(dataset, cell, intent: str):
         fingerprint=cell.fingerprint or "",
         fits=fits,
         reason="" if fits else str(reason)[:500],
+        warnings=review.warnings(dataset, cell),
     )

@@ -24,6 +24,7 @@ export * from './PublicApi';
 export * from './SessionsApi';
 export * from './TaskExecutionsApi';
 export * from './TracesApi';
+export * from './TrainingPreparationsApi';
 export * from './UploadsApi';
 export * from './V1Api';
 export * from './VerdictsApi';

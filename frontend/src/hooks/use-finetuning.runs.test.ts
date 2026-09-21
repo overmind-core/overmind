@@ -2,6 +2,7 @@ import type { UseQueryOptions } from "@tanstack/react-query";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
+  deployments: vi.fn(),
   list: vi.fn(),
   retrieve: vi.fn(),
   runsList: vi.fn(),
@@ -20,6 +21,7 @@ vi.mock("@tanstack/react-query", () => ({
 
 vi.mock("@/client", () => ({
   default: {
+    deployedModels: { deployedModelsList: mocks.deployments },
     finetuningJobs: {
       finetuningJobsList: mocks.list,
       finetuningJobsRetrieve: mocks.retrieve,
@@ -28,7 +30,11 @@ vi.mock("@/client", () => ({
   },
 }));
 
-import { useFinetuningRunJobsQuery, useFinetuningRunsQuery } from "./use-finetuning";
+import {
+  useFinetuningRunJobsQuery,
+  useFinetuningRunsQuery,
+  useTrainingBenchmarksQuery,
+} from "./use-finetuning";
 
 const optionsOf = (call: () => unknown): UseQueryOptions => {
   captured = undefined;
@@ -45,9 +51,42 @@ const fetchWith = (options: UseQueryOptions) => {
 };
 
 beforeEach(() => {
+  mocks.deployments.mockReset();
   mocks.list.mockReset();
   mocks.retrieve.mockReset();
   mocks.runsList.mockReset();
+});
+
+describe("useTrainingBenchmarksQuery", () => {
+  it("loads every page of ready trained project models and excludes eval infrastructure", async () => {
+    const first = { finetuningJobId: "job-first", modelId: "ft-first", status: "ready" };
+    const last = { finetuningJobId: "job-last", modelId: "ft-last", status: "ready" };
+    mocks.deployments
+      .mockResolvedValueOnce({
+        next: "/api/deployed-models/?page=2",
+        results: [
+          first,
+          { finetuningJobId: null, modelId: "base", status: "ready" },
+          { finetuningJobId: "job-failed", modelId: "failed", status: "failed" },
+        ],
+      })
+      .mockResolvedValueOnce({ next: null, results: [last] });
+    const options = optionsOf(() => useTrainingBenchmarksQuery("project"));
+    expect(await fetchWith(options)).toEqual([first, last]);
+    expect(options.queryKey).toEqual(["training-benchmarks", "project"]);
+    expect(mocks.deployments).toHaveBeenNthCalledWith(1, {
+      page: 1,
+      pageSize: 100,
+      project: "project",
+      status: "ready",
+    });
+    expect(mocks.deployments).toHaveBeenNthCalledWith(2, {
+      page: 2,
+      pageSize: 100,
+      project: "project",
+      status: "ready",
+    });
+  });
 });
 
 describe("useFinetuningRunsQuery", () => {

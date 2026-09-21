@@ -47,7 +47,7 @@ export interface DatasetCreateRequest {
      */
     project: string;
     /**
-     *
+     * Omit to infer from the rows; null means none.
      * @type {string}
      * @memberof DatasetCreateRequest
      */

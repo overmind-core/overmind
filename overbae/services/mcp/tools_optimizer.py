@@ -7,7 +7,7 @@ from collections.abc import Callable
 
 from asgiref.sync import sync_to_async
 from django.conf import settings
-from django.db.models import Prefetch
+from django.db.models import Prefetch, Q
 from rest_framework.exceptions import ValidationError as DRFValidationError
 
 from overbae.api.credit_gate import PaymentRequired
@@ -89,9 +89,9 @@ def _resolve_dataset(context: MCPContext, reference: str) -> Dataset:
 
 
 def _resolve_eval_set(context: MCPContext, reference: str, *, capability: Capability) -> EvalSet:
-    query = EvalSet.objects.filter(project=context.project, capability=capability).select_related(
-        "capability"
-    )
+    query = EvalSet.objects.filter(
+        Q(capability=capability) | Q(capability__isnull=True), project=context.project
+    ).select_related("capability")
     normalized = _uuid(reference)
     eval_set = query.filter(id=normalized).first() if normalized else None
     if eval_set is None:

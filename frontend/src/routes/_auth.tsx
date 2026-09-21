@@ -6,7 +6,6 @@ import { createFileRoute, Link, Navigate, Outlet, useRouterState } from "@tansta
 import apiClient from "@/client";
 import { OutOfCreditsDialog } from "@/components/billing/out-of-credits-dialog";
 import { BreadcrumbSwitcher } from "@/components/breadcrumb-switcher";
-import { DesktopRequired } from "@/components/desktop-required";
 import { CreateAccountDialog } from "@/components/guest/create-account-dialog";
 import { HeaderCredits } from "@/components/header-credits";
 import { ProjectSelector } from "@/components/project-selector";
@@ -16,7 +15,6 @@ import { Spinner } from "@/components/ui/spinner";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { useAuthContext } from "@/contexts/auth-context";
 import { useFinetuningRunJobsQuery } from "@/hooks/use-finetuning";
-import { useIsMobile } from "@/hooks/use-mobile";
 import { useOnboardingStatus } from "@/hooks/use-query";
 import { emitGuestUpgrade, getGuestProjectId, isGuestAllowedPath } from "@/lib/guest";
 import { sentenceCase } from "@/lib/label-case";
@@ -44,6 +42,8 @@ const DYNAMIC_PARENTS = new Set([
   "datasets",
   "optimiser",
 ]);
+
+const HIDDEN_BREADCRUMB_PATHS = new Set(["/evaluations/runs"]);
 
 // Not a CSS `capitalize` class: that title-cases every word and cannot keep
 // acronyms and product names canonical (Trace ID, Langfuse).
@@ -147,6 +147,7 @@ function useBreadcrumbs(): BreadcrumbInfo {
   for (let i = 0; i < segments.length; i++) {
     const seg = segments[i];
     builtPath += `/${seg}`;
+    if (HIDDEN_BREADCRUMB_PATHS.has(builtPath)) continue;
 
     const isDynamicSlug = dynamic && i === dynamic.slugIdx;
     const label = isDynamicSlug && cachedName ? cachedName : prettifySegment(seg);
@@ -337,7 +338,6 @@ function RootLayout() {
 
 function RouteComponent() {
   const { isSignedIn, isLoaded, isGuest } = useAuthContext();
-  const isMobile = useIsMobile();
   const onboardingQuery = useOnboardingStatus(isSignedIn && isLoaded && !isGuest);
   const projectId = useRouterState({
     select: (s) => (s.location.search as { projectId?: string }).projectId,
@@ -387,8 +387,6 @@ function RouteComponent() {
   if (onboardingQuery.data !== undefined && !onboardingQuery.data.hasCompletedOnboarding) {
     return <Navigate to="/onboarding" />;
   }
-
-  if (isMobile) return <DesktopRequired />;
 
   return (
     <>

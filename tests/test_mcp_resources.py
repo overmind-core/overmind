@@ -63,6 +63,7 @@ def test_resource_templates_cover_the_public_resource_surface():
         "overmind://sessions/{session}",
         "overmind://datasets/{dataset}",
         "overmind://eval-runs/{eval_run}",
+        "overmind://eval-sets/{eval_set}",
         "overmind://finetunes/{job_id}",
         "overmind://deployments/{deployment}",
         "overmind://optimizer-runs/{experiment}",
@@ -90,6 +91,8 @@ def test_dataset_upload_resource_describes_cli_flow_and_server_limits():
     assert "capped at 2 GiB" in resource["limits"]
     assert "capped at 256 MiB" in resource["limits"]
     assert resource["command"] == "overmind dataset upload FILE --json"
+    assert "/inspect/" in resource["multiple_files"]
+    assert "source.uploads" in resource["multiple_files"]
     assert "OVERMIND_API_KEY" in resource["auth"]
     assert "get_job" in resource["next_mcp_calls"][0]
 

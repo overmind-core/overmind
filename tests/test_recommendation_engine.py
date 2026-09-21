@@ -12,7 +12,7 @@ from django.test import override_settings
 from django.utils import timezone
 
 from overbae.api.serializers import FinetuningRecommendationResponseSerializer
-from overbae.models import Dataset, DatasetContext, Project
+from overbae.models import Capability, Dataset, DatasetContext, Project
 from overbae.services.benchmarks.taxonomy import TaskType, weights_for
 from overbae.services.recommendation import get_recommendation
 from overbae.services.recommendation.constraints import eligible_models
@@ -80,6 +80,15 @@ def test_every_constraint_passing_model_is_returned_in_rank_order(dataset):
     ]
     assert any(self_reported)
     assert self_reported == sorted(self_reported)
+
+
+def test_modal_candidates_wait_for_exact_preprocessing_instead_of_character_estimates(dataset):
+    _set_stats(dataset, max_token_length=2_000_000)
+    with override_settings(FINETUNING_BACKEND="modal"):
+        analysis = get_recommendation(str(dataset.id))
+    assert analysis["candidates"]
+    assert all("context" not in row["reason"].lower() for row in analysis["excluded"])
+    assert all(row["hyperparams"]["context_length"] for row in analysis["candidates"])
 
 
 def test_excluded_names_every_dropped_model_and_the_reason(dataset):
@@ -247,7 +256,91 @@ def test_a_dataset_with_no_context_is_classified_from_its_rows(dataset):
     assert analysis["task_type_source"] == "heuristic"
 
 
-def test_recommending_never_calls_an_llm(dataset):
+def test_dataset_fallback_does_not_classify_a_capability(dataset):
+    capability = Capability.objects.create(project=dataset.project, name="Writer", slug="writer")
+    dataset.capability = capability
+    dataset.save(update_fields=["capability"])
+    with mock.patch("overbae.services.codebase.task_type.classify_capability_task") as classify:
+        analysis = _recommend(dataset)
+
+    classify.assert_not_called()
+    assert analysis["capability_context"] is None
+    assert analysis["task_type"] == TaskType.EXTRACTION
+    assert analysis["task_type_source"] == "heuristic"
+
+
+def test_selected_capability_overrides_dataset_context_and_mapping(dataset):
+    mapped = Capability.objects.create(project=dataset.project, name="Extractor", slug="extractor")
+    selected = Capability.objects.create(
+        project=dataset.project,
+        name="Writer",
+        slug="writer",
+        description="Write original fiction.",
+    )
+    dataset.capability = mapped
+    dataset.save(update_fields=["capability"])
+    DatasetContext.objects.create(
+        dataset=dataset,
+        project=dataset.project,
+        task_type=TaskType.EXTRACTION,
+        task_type_source="semantic",
+        extracted_at=timezone.now(),
+    )
+    with (
+        mock.patch(
+            "overbae.services.codebase.task_type.call_llm",
+            return_value=('{"task_type":"creative_writing"}', {}),
+        ),
+        mock.patch("overbae.services.recommendation._resolve_task_type") as from_dataset,
+        mock.patch("overbae.services.eval.context_extractor.enqueue_refresh") as refresh,
+    ):
+        analysis = get_recommendation(str(dataset.id), str(selected.id))
+
+    from_dataset.assert_not_called()
+    refresh.assert_not_called()
+    assert analysis["task_type"] == TaskType.CREATIVE_WRITING
+    assert analysis["task_type_source"] == "capability"
+    assert analysis["capability_context"]["capability_id"] == str(selected.id)
+    assert analysis["skill_weights"] == weights_for(TaskType.CREATIVE_WRITING)
+    assert analysis["dataset"]["rows"] == _STATS["num_examples"]
+    serializer = FinetuningRecommendationResponseSerializer(data=analysis)
+    assert serializer.is_valid(), serializer.errors
+
+
+def test_capability_task_keeps_dataset_tool_and_context_constraints(dataset):
+    capability = Capability.objects.create(project=dataset.project, name="QA", slug="qa")
+    _set_stats(dataset, has_tool_calling=True, max_token_length=4_000)
+    with mock.patch(
+        "overbae.services.codebase.task_type.classify_capability_task",
+        return_value=TaskType.QUESTION_ANSWERING,
+    ):
+        analysis = get_recommendation(str(dataset.id), str(capability.id))
+
+    assert analysis["skill_weights"] == weights_for(TaskType.QUESTION_ANSWERING)
+    assert analysis["dataset"]["has_tool_calling"] is True
+    assert analysis["dataset"]["max_token_length"] == 4_000
+    assert analysis["excluded"]
+
+
+def test_selected_capability_without_context_does_not_fall_back_to_rows(dataset):
+    capability = Capability.objects.create(project=dataset.project, name="Unknown", slug="unknown")
+    analysis = get_recommendation(str(dataset.id), str(capability.id))
+
+    assert analysis["task_type"] == "unknown"
+    assert analysis["task_type_source"] == "unknown"
+    assert analysis["skill_weights"] == {}
+    assert analysis["candidates"]
+    assert all(row["grade"] is None for row in analysis["candidates"])
+
+
+def test_capability_must_belong_to_the_dataset_project(dataset):
+    project = Project.objects.create(name="Other", slug="other")
+    capability = Capability.objects.create(project=project, name="Other", slug="other")
+    with pytest.raises(Capability.DoesNotExist):
+        get_recommendation(str(dataset.id), str(capability.id))
+
+
+def test_dataset_recommendation_never_calls_an_llm_inline(dataset):
     with mock.patch("overbae.core.llms.call_llm", side_effect=AssertionError("LLM call")):
         analysis = _recommend(dataset)
 
