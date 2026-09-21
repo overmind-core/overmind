@@ -78,13 +78,20 @@ def resolve_cell(dataset: Dataset, ref: str | None, *, ran_only: bool = False) -
     return cell
 
 
-def _cell_line(dataset: Dataset, cell: Cell, versions: dict[Any, str]) -> dict[str, Any]:
+def _cell_line(
+    dataset: Dataset,
+    cell: Cell,
+    versions: dict[Any, str],
+    *,
+    frozen_before: int | None = None,
+    context: str | None = None,
+) -> dict[str, Any]:
     return {
         "version": versions.get(cell.id, "proposed"),
         "id": str(cell.id),
         "title": cell.title,
         "state": cell.state,
-        "frozen": cell.frozen,
+        "frozen": cell.frozen if frozen_before is None else cell.position <= frozen_before,
         "rows": cell.rows,
         "columns": _visible_columns([c["name"] for c in (cell.columns or [])]),
         "note": cell.note,
@@ -97,14 +104,18 @@ def _cell_line(dataset: Dataset, cell: Cell, versions: dict[Any, str]) -> dict[s
         },
         "capability_report": cell.capability_report,
         "review": review.summary(cell.review),
-        "readiness": review.readiness(dataset, cell) if cell.ran else None,
+        "readiness": review.readiness(dataset, cell, context=context) if cell.ran else None,
         "quality_report": cell.quality_report,
     }
 
 
 def status(dataset: Dataset) -> dict[str, Any]:
-    versions = dataset.versions()
-    active = dataset.active_cell
+    chain = dataset.chain
+    versions = dataset.versions(chain=chain)
+    ran = [cell for cell in chain if cell.state == Cell.State.OK]
+    active = next((cell for cell in ran if cell.id == dataset.active_id), ran[-1] if ran else None)
+    frozen = max((cell.position for cell in chain if cell.used_at is not None), default=-1)
+    context = context_fingerprint(dataset.capability)
     return {
         "dataset": dataset.name,
         "intent": dataset.intent,
@@ -117,7 +128,9 @@ def status(dataset: Dataset) -> dict[str, Any]:
         "fits": dict(zip(("ok", "reason"), active.fits(dataset.intent), strict=True))
         if active
         else None,
-        "cells": [_cell_line(dataset, c, versions) for c in dataset.chain],
+        "cells": [
+            _cell_line(dataset, c, versions, frozen_before=frozen, context=context) for c in chain
+        ],
     }
 
 

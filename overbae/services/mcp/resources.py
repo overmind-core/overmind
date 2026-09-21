@@ -18,6 +18,7 @@ from pydantic import AnyUrl
 from overbae.api.eval_serializers import compute_run_progress
 from overbae.models import (
     Capability,
+    Cell,
     Dataset,
     DeployedModel,
     EvalSet,
@@ -565,28 +566,6 @@ def _dataset_human_action(dataset) -> dict:
     }
 
 
-def _dataset_next_actions(dataset) -> list[dict]:
-    return [
-        action.model_dump(mode="json")
-        for action in next_actions(dataset, dataset.chain, dataset.active_cell)
-    ]
-
-
-def _active_summary(dataset, versions: dict) -> dict | None:
-    active = dataset.active_cell
-    if active is None:
-        return None
-    ok, reason = active.fits(dataset.intent)
-    return {
-        "id": str(active.id),
-        "version": versions.get(active.id, ""),
-        "title": active.title,
-        "rows": active.rows,
-        "fingerprint": active.fingerprint,
-        "fits": {"ok": ok, "reason": reason},
-    }
-
-
 def _chat_turn(raw) -> dict | None:
     if not isinstance(raw, dict):
         return None
@@ -611,12 +590,6 @@ def _latest_turn(dataset) -> dict | None:
     return _chat_turn(chat[-1])
 
 
-def _cell_counts(dataset) -> dict:
-    chain = dataset.chain
-    counts = Counter(cell.state for cell in chain)
-    return {"n": len(chain), "states": dict(counts)}
-
-
 def _dataset_detail_payload(dataset, *, uri: str, chat_limit: int = _CHAT_DEFAULT) -> dict:
     detail = serialize_dataset_detail(dataset, chat_limit=chat_limit)
     payload = detail.model_dump(mode="json", by_alias=True)
@@ -628,10 +601,12 @@ def _dataset_detail_payload(dataset, *, uri: str, chat_limit: int = _CHAT_DEFAUL
 
 
 def dataset_run_job_payload(dataset, uri: str) -> dict:
-    versions = dataset.versions()
-    active = _active_summary(dataset, versions)
-    next_actions = _dataset_next_actions(dataset)
-    cells = _cell_counts(dataset)
+    chain = dataset.chain
+    versions = dataset.versions(chain=chain)
+    ran = [cell for cell in chain if cell.state == Cell.State.OK]
+    active = next((cell for cell in ran if cell.id == dataset.active_id), ran[-1] if ran else None)
+    actions = [action.model_dump(mode="json") for action in next_actions(dataset, chain, active)]
+    cells = {"n": len(chain), "states": dict(Counter(cell.state for cell in chain))}
     dataset_link = _dataset_link(dataset)
     job_link = resource_link(
         "jobs", f"dataset_run/{dataset.id}", (dataset.name or "Dataset run")[:160]
@@ -649,23 +624,23 @@ def dataset_run_job_payload(dataset, uri: str) -> dict:
         "error": error,
         "active": (
             {
-                "id": active["id"],
-                "version": active["version"],
-                "title": active["title"],
-                "rows": active["rows"],
+                "id": str(active.id),
+                "version": versions.get(active.id, ""),
+                "title": active.title,
+                "rows": active.rows,
             }
             if active
             else None
         ),
         "latest_turn": latest_turn,
         "cells": cells,
-        "next_action": next_actions[0] if next_actions else None,
-        "next_actions": next_actions,
+        "next_action": actions[0] if actions else None,
+        "next_actions": actions,
         "dataset": dataset_link,
         "progress": {
             **((latest_turn or {}).get("progress") or {}),
             "cells": cells["states"],
-            "rows": active["rows"] if active else 0,
+            "rows": active.rows if active else 0,
         },
         "resource_links": [job_link, dataset_link],
         "created_at": dataset.created_at,
