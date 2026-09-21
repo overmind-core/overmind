@@ -23,7 +23,6 @@ import uuid
 from pathlib import Path
 
 import modal
-from starlette.responses import StreamingResponse
 
 from modal_shared.serving.args import lora_load_request
 from modal_shared.serving.artifacts import read_base_manifest
@@ -901,6 +900,7 @@ class InferenceAPIServer:
         from fastapi import Depends, FastAPI, HTTPException, Request
         from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
         from pydantic import BaseModel
+        from starlette.responses import StreamingResponse
 
         api_key = os.environ.get("INFERENCE_API_KEY", "")
 
