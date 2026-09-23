@@ -47,6 +47,11 @@ required, oversized context and provider failures use the generative fallback.
 Independent checks retain accepted answers and recheck only unresolved questions;
 failed behaviour steps still receive a full causal review. Generated resolutions
 are distinguished from Jev choices and confidence in the score provenance.
+Label-only categorical evaluators with 2–254 distinct declared labels can use Jev
+on both dataset and trace evaluations. Checklists, behaviour contracts, panels
+and cascade routes retain generative review. Jev supplies the label and decision
+provenance without generating an explanation; use generative judging when an
+explanation is required. Label-to-score mappings stay unchanged.
 Snapshots preserve the policy; score `_decision` metadata records actual model,
 answers, confidence and fallback reason. Confidence is not measured accuracy.
 Use human-labelled examples to calibrate a policy before relying on its threshold.

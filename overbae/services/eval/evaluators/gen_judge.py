@@ -312,9 +312,15 @@ def _invoke_judge(
             },
         }
         return outcome
+    if schema is ChecklistResult and evaluator and evaluator.score_type == "categorical":
+        return decisions.categorical(
+            variables or {"evidence": prompt},
+            evaluator=evaluator,
+            convert=lambda label: ChecklistResult(label=label),
+            fallback=fallback,
+            project_id=kwargs.get("project_id"),
+        )
     if schema is not ChecklistResult or not evaluator or not evaluator.checklist:
-        return fallback()
-    if evaluator.score_type == "categorical":
         return fallback()
     questions = {
         str(item["id"]): decisions.decision_question(
@@ -360,6 +366,13 @@ def _invoke_judge(
 def _invoke_generative(prompt, *, schema, evaluator, reference, **kwargs):
     outcome = judging.invoke_judge(prompt, response_format=schema, **kwargs)
     if schema is not ChecklistResult:
+        return outcome
+    if (
+        evaluator
+        and evaluator.score_type == "categorical"
+        and not evaluator.checklist
+        and map_choice(getattr(outcome.parsed, "label", ""), evaluator)[0] is not None
+    ):
         return outcome
     if not _checklist_items_empty(outcome) and not _spurious_reference_na(
         outcome, evaluator, reference
