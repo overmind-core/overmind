@@ -235,11 +235,11 @@ models: google/gemini-2.5-pro, xai/grok-4`
 });
 
 describe("RunLocallyDialog", () => {
-  function openBacktesting() {
-    fireEvent.mouseDown(screen.getByRole("tab", { name: "Backtesting" }));
+  function openModelComparison() {
+    fireEvent.mouseDown(screen.getByRole("tab", { name: "Compare models" }));
   }
 
-  it("defaults to harness and switches to the backtesting prompt", () => {
+  it("explains both run types and switches to the model comparison prompt", () => {
     mocks.capabilities.mockReturnValue({
       data: {
         results: [{ activeModel: null, id: "cap-1", name: "Invoice", slug: "invoice-extract" }],
@@ -256,16 +256,30 @@ describe("RunLocallyDialog", () => {
       />
     );
 
-    expect(screen.getByText("New Optimiser Job")).toBeTruthy();
-    expect(screen.getByRole("tab", { name: "Harness" })).toBeTruthy();
-    expect(screen.getByRole("tab", { name: "Backtesting" })).toBeTruthy();
-    expect(screen.getByRole("button", { name: "Copy command" })).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "New optimisation run" })).toBeTruthy();
+    const improve = screen.getByRole("tab", { name: "Improve prompts & code" });
+    expect(improve.getAttribute("aria-selected")).toBe("true");
+    expect(
+      document.getElementById(improve.getAttribute("aria-describedby")!)?.textContent
+    ).toContain("prompts, tool definitions and application logic");
+    const compare = screen.getByRole("tab", { name: "Compare models" });
+    expect(
+      document.getElementById(compare.getAttribute("aria-describedby")!)?.textContent
+    ).toContain("Keep prompts and logic fixed");
+    expect(screen.getByText(/records the winning diff for review/)).toBeTruthy();
+    expect(
+      screen.getByText(/Execution runs locally; scores and progress appear in Overmind/)
+    ).toBeTruthy();
+    expect(screen.getByText(/Copying does not start a run/)).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Copy prompt" })).toBeTruthy();
     expect(screen.getByText(/capability: invoice-extract/)).toBeTruthy();
     expect(screen.getByText(/dataset: ds-99/)).toBeTruthy();
     expect(screen.queryByText(/models: openai\/gpt-5-mini, anthropic\/claude-sonnet-4/)).toBeNull();
 
-    openBacktesting();
-    expect(screen.getByText("New Backtesting Job")).toBeTruthy();
+    openModelComparison();
+    expect(compare.getAttribute("aria-selected")).toBe("true");
+    expect(screen.getByText(/without fine-tuning or changing prompts/)).toBeTruthy();
+    expect(screen.queryByText(/records the winning diff for review/)).toBeNull();
     expect(screen.getByText(/capability: invoice-extract/)).toBeTruthy();
     expect(screen.getByText(/dataset: ds-99/)).toBeTruthy();
     expect(screen.getByText(/models: openai\/gpt-5-mini, anthropic\/claude-sonnet-4/)).toBeTruthy();
@@ -309,7 +323,7 @@ describe("RunLocallyDialog", () => {
       />
     );
 
-    openBacktesting();
+    openModelComparison();
     fireEvent.click(screen.getByRole("checkbox", { name: "Select openai/gpt-5-mini" }));
     fireEvent.click(screen.getByRole("checkbox", { name: "Select anthropic/claude-sonnet-4" }));
     expect(screen.getByText(/models: <model>/)).toBeTruthy();
@@ -346,7 +360,7 @@ describe("RunLocallyDialog", () => {
     expect(screen.getByText(/capability: <slug>/)).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "Receipt" }));
     expect(screen.getByText(/capability: receipt-parse/)).toBeTruthy();
-    openBacktesting();
+    openModelComparison();
     expect(screen.getByText(/capability: receipt-parse/)).toBeTruthy();
   });
 
@@ -368,7 +382,7 @@ describe("RunLocallyDialog", () => {
       refetch: vi.fn(),
     });
     render(<RunLocallyDialog onOpenChange={vi.fn()} open projectId="proj-1" />);
-    expect(screen.getByRole("button", { name: "Dataset" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Eval dataset" })).toBeTruthy();
     expect(screen.getByText(/dataset: <dataset-id>/)).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "Eval receipts" }));
     expect(screen.getByText(/dataset: ds-2/)).toBeTruthy();

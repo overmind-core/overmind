@@ -60,6 +60,7 @@ const PAIRS = [
   ["accent-foreground", "accent", TEXT, "text on hover wash"],
   ["primary-foreground", "primary", TEXT, "primary button label"],
   ["destructive-foreground", "destructive", TEXT, "destructive button label"],
+  ["warning-foreground", "warning", TEXT, "warning button label"],
   ["primary", "background", UI, "primary fill vs canvas"],
   ["border", "background", DECOR, "divider vs canvas"],
   ["border", "card", DECOR, "card outline vs card"],

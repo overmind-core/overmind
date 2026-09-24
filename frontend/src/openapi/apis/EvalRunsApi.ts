@@ -18,6 +18,8 @@ import type {
   EvalRun,
   EvalRunRequest,
   EvalRunsDatasetsRetrieve200ResponseInner,
+  EvaluationContextReport,
+  EvaluationContextRequestRequest,
   PaginatedEvalRunListList,
   PatchedEvalRunRequest,
 } from '../models/index';
@@ -28,6 +30,10 @@ import {
     EvalRunRequestToJSON,
     EvalRunsDatasetsRetrieve200ResponseInnerFromJSON,
     EvalRunsDatasetsRetrieve200ResponseInnerToJSON,
+    EvaluationContextReportFromJSON,
+    EvaluationContextReportToJSON,
+    EvaluationContextRequestRequestFromJSON,
+    EvaluationContextRequestRequestToJSON,
     PaginatedEvalRunListListFromJSON,
     PaginatedEvalRunListListToJSON,
     PatchedEvalRunRequestFromJSON,
@@ -40,6 +46,10 @@ export interface EvalRunsCancelCreateRequest {
 
 export interface EvalRunsComparisonRetrieveRequest {
     id: string;
+}
+
+export interface EvalRunsContextCheckCreateRequest {
+    evaluationContextRequestRequest: EvaluationContextRequestRequest;
 }
 
 export interface EvalRunsCreateRequest {
@@ -201,6 +211,65 @@ export class EvalRunsApi extends runtime.BaseAPI {
      */
     async evalRunsComparisonRetrieve(requestParameters: EvalRunsComparisonRetrieveRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<EvalRun> {
         const response = await this.evalRunsComparisonRetrieveRaw(requestParameters, initOverrides);
+        return await response.value();
+    }
+
+    /**
+     * Estimate evaluation context requirements without launching
+     */
+    async evalRunsContextCheckCreateRaw(requestParameters: EvalRunsContextCheckCreateRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<EvaluationContextReport>> {
+        if (requestParameters['evaluationContextRequestRequest'] == null) {
+            throw new runtime.RequiredError(
+                'evaluationContextRequestRequest',
+                'Required parameter "evaluationContextRequestRequest" was null or undefined when calling evalRunsContextCheckCreate().'
+            );
+        }
+
+        const queryParameters: any = {};
+
+        const headerParameters: runtime.HTTPHeaders = {};
+
+        headerParameters['Content-Type'] = 'application/json';
+
+        if (this.configuration && this.configuration.accessToken) {
+            const token = this.configuration.accessToken;
+            const tokenString = await token("ClerkBearerAuth", []);
+
+            if (tokenString) {
+                headerParameters["Authorization"] = `Bearer ${tokenString}`;
+            }
+        }
+        if (this.configuration && this.configuration.apiKey) {
+            headerParameters["X-Api-Key"] = await this.configuration.apiKey("X-Api-Key"); // ApiKeyAuth authentication
+        }
+
+        if (this.configuration && this.configuration.accessToken) {
+            const token = this.configuration.accessToken;
+            const tokenString = await token("BearerAuth", []);
+
+            if (tokenString) {
+                headerParameters["Authorization"] = `Bearer ${tokenString}`;
+            }
+        }
+
+        let urlPath = `/api/eval-runs/context-check/`;
+
+        const response = await this.request({
+            path: urlPath,
+            method: 'POST',
+            headers: headerParameters,
+            query: queryParameters,
+            body: EvaluationContextRequestRequestToJSON(requestParameters['evaluationContextRequestRequest']),
+        }, initOverrides);
+
+        return new runtime.JSONApiResponse(response, (jsonValue) => EvaluationContextReportFromJSON(jsonValue));
+    }
+
+    /**
+     * Estimate evaluation context requirements without launching
+     */
+    async evalRunsContextCheckCreate(requestParameters: EvalRunsContextCheckCreateRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<EvaluationContextReport> {
+        const response = await this.evalRunsContextCheckCreateRaw(requestParameters, initOverrides);
         return await response.value();
     }
 

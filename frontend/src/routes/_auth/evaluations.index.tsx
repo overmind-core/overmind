@@ -4,6 +4,7 @@ import { createFileRoute, redirect } from "@tanstack/react-router";
 import { toast } from "sonner";
 
 import { CreateEvalSetDialog } from "@/components/evaluations/create-eval-set-dialog";
+import { CreateRunDialog } from "@/components/evaluations/create-run-dialog";
 import { EvalSetDetailDialog } from "@/components/evaluations/eval-set-detail-dialog";
 import { RunsTable } from "@/components/evaluations/runs-table";
 import { TaskEvalLibrary } from "@/components/evaluations/task-eval-library";
@@ -104,13 +105,16 @@ function EvaluationsPage() {
       header={
         <PageHeader
           actions={
-            <Tabs className="w-auto shrink-0" onValueChange={setView} value={activeView}>
-              <TabsList>
-                <TabsTrigger value="runs">Runs</TabsTrigger>
-                <TabsTrigger value="sets">Eval sets</TabsTrigger>
-                <TabsTrigger value="library">Eval library</TabsTrigger>
-              </TabsList>
-            </Tabs>
+            <div className="flex flex-wrap items-center gap-3">
+              {activeView === "runs" && <CreateRunDialog key={projectId} projectId={projectId} />}
+              <Tabs className="w-auto shrink-0" onValueChange={setView} value={activeView}>
+                <TabsList>
+                  <TabsTrigger value="runs">Runs</TabsTrigger>
+                  <TabsTrigger value="sets">Eval sets</TabsTrigger>
+                  <TabsTrigger value="library">Eval library</TabsTrigger>
+                </TabsList>
+              </Tabs>
+            </div>
           }
           description="Score capabilities against datasets and graders."
           icon={

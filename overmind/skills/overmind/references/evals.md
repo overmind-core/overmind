@@ -25,9 +25,25 @@ does not activate the set or launch an evaluation. Inspect the returned
 mapping. Only capability-mapped sets can be activated for live trace scoring.
 
 1. Call `check_evaluation_readiness` with the dataset UUID, chosen cell UUID,
-   optional eval set, and `mode="existing"` or `mode="generate"`.
+   optional eval set, proposed `variants`, and `mode="existing"` or `mode="generate"`.
 1. Read `ready`, evaluator applicability, variable binding status, eval-set
-   state, and credit availability.
+   state, credit availability, and advisory `context_checks` for candidate models
+   and generative judges. Context warnings and unknown limits never change
+   `ready` or require approval; report them without blocking launch. Estimates
+   reserve output tokens; judge preflight uses reference size, not a known future answer.
+   Present `suggestions`, `estimated_cost_usd`, `cost_delta_usd` and `cost_basis`
+   during setup. These are full-reserved-output budgets for one dataset pass,
+   not total-run quotes or quality predictions. Missing prices remain unknown.
+   Never switch models automatically; a new judge requires a consistent judge
+   on both sides of a comparison.
+   Preview a run-specific `judge_model`; `judge_models` lists fit
+   and aggregate budget across the set's judges per evaluated model/dataset pass.
+   Pass the approved choice as `judge_model` to `run_evaluation`, or as
+   `eval_judge_model` to `start_finetune`. Omit it or pass blank to preserve each
+   evaluator's saved judge, including mixed sets. Overrides affect only the new
+   run's generative judge/fallback snapshots, never the saved set or Jev policy.
+   The choice is frozen: create a new run to change it. The run resource exposes
+   `judge_model` and each `run_evaluators[].judge_model` for inspection.
 1. If an evaluator is missing or needs revision, collect the human rubric and
    call `upsert_evaluator`. It supports `llm_judge`, `trajectory`,
    `deterministic`, `statistical`, and `agentic` kinds, with the schema and

@@ -462,6 +462,7 @@ class EvalRun(models.Model):
     )
     name = models.CharField(max_length=255)
     description = models.TextField(blank=True, default="")
+    judge_model = models.CharField(max_length=255, blank=True, default="")
 
     data_source = models.CharField(
         max_length=20, choices=DataSource.choices, default=DataSource.DATASET

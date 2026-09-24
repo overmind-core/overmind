@@ -6,6 +6,7 @@ import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react"
 import { useQuery } from "@tanstack/react-query";
 
 import apiClient from "@/client";
+import { ModelOptionLabel, modelOptionName } from "@/components/model-option-label";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -616,8 +617,12 @@ function FilterRow({
           <SelectContent>
             <SelectItem value={ANY_VALUE}>{`Any ${def.label.toLowerCase()}`}</SelectItem>
             {options.map((o) => (
-              <SelectItem key={o.value} value={o.value}>
-                {o.label}
+              <SelectItem
+                key={o.value}
+                textValue={def.valueType === "model" ? modelOptionName(o.value) : o.label}
+                value={o.value}
+              >
+                {def.valueType === "model" ? <ModelOptionLabel model={o.value} /> : o.label}
               </SelectItem>
             ))}
           </SelectContent>

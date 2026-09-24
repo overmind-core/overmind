@@ -231,11 +231,15 @@ def invoke(
     combined = merge_stats([decision_stats, outcome.stats])
     combined["response_ms"] = round((time.monotonic() - started) * 1000)
     metadata["total_cost"] = combined.get("response_cost")
-    outcome.stats = {**combined, "decision": metadata}
+    outcome.stats = {
+        **combined,
+        "decision": metadata,
+        **{key: outcome.stats[key] for key in ("judge", "error_kind") if key in outcome.stats},
+    }
     outcome.cached = bool(getattr(outcome, "cached", False) and decision_stats.get("cached"))
     return outcome
 
 
 def provenance(outcome: JudgeOutcome) -> list[dict[str, Any]]:
     metadata = outcome.stats.get("decision")
-    return [{"_decision": metadata}] if metadata else []
+    return ([{"_decision": metadata}] if metadata else []) + funnel.diagnostics(outcome)

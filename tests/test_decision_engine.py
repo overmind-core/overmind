@@ -670,6 +670,37 @@ def test_per_turn_fallback_keeps_explicit_judge(provider, monkeypatch):
     assert generate.call_args.kwargs["judge"] is chosen
 
 
+def test_per_turn_output_limit_is_a_technical_error_with_one_cost_attribution(
+    provider, monkeypatch
+):
+    provider.side_effect = transport.DecisionError("provider_timeout")
+    diagnostic = {"error_kind": "output_limit", "attempts": [{"finish_reason": "length"}]}
+    monkeypatch.setattr(
+        funnel,
+        "invoke_judge",
+        Mock(
+            return_value=funnel.JudgeOutcome(
+                parsed=None,
+                raw="partial",
+                stats={"error_kind": "output_limit", "judge": diagnostic, "response_cost": 0.02},
+                judge_trace_id="output-limit",
+            )
+        ),
+    )
+    drafts = per_turn_judge.evaluate(
+        EvalUnit(
+            expected={"trajectory": []},
+            structured={"_reference_final": "yes", "_candidate_final": "yes"},
+        ),
+        evaluator(judge_model="gpt-4.1"),
+        {"project_id": "p"},
+    )
+    assert all(draft.value is None and draft.outcome == "error" for draft in drafts)
+    assert all("output token limit" in draft.reasoning for draft in drafts)
+    assert drafts[0].sub_scores[-1] == {"_judge": diagnostic}
+    assert all(not draft.sub_scores for draft in drafts[1:])
+
+
 def test_error_latency_includes_provider_wait_and_fallback(provider, monkeypatch):
     clock = [100.0]
     monkeypatch.setattr(transport.time, "monotonic", lambda: clock[0])

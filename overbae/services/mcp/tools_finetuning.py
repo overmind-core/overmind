@@ -548,6 +548,7 @@ def _start_sync(payload: StartFinetuneInput, context: MCPContext) -> StartFinetu
             eval_model_before=payload.eval_model_before,
             eval_model_after=payload.eval_model_after,
             baseline_model=payload.baseline_model,
+            eval_judge_model=payload.eval_judge_model,
         )
     except DRFValidationError as error:
         raise _serializer_error(error) from error

@@ -38,6 +38,7 @@ const buttonVariants = cva(
         outline: "border-border bg-transparent hover:bg-accent/50",
         // The neutral control face — a fill, not an outline.
         secondary: "bg-control text-foreground hover:bg-control-hover",
+        warning: "bg-warning text-warning-foreground hover:bg-warning/90",
       },
     },
   }

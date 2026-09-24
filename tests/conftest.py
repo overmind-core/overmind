@@ -40,6 +40,10 @@ def _offline_model_resolution(monkeypatch):
     same inert key; tests of the no-key path delete it themselves.
     """
     monkeypatch.setenv("OPENROUTER_API_KEY", "offline-test-key")
+    monkeypatch.setattr("overbae.services.llm_context.fetch_model_catalog", lambda: ([], False))
+    monkeypatch.setattr(
+        "overbae.services.eval.context_suggestions.fetch_model_catalog", lambda: ([], False)
+    )
     from overbae.core.decisions import DecisionError
 
     def no_decision_network(*args, **kwargs):
