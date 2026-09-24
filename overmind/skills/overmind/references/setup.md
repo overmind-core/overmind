@@ -4,18 +4,20 @@ Use this fallback for the local work behind the native
 `instrument-repository` and `investigate-capability` prompts. The MCP server
 cannot scan or edit a repository.
 
-**Prerequisite:** phase 1 of [onboard.md](onboard.md) finished (`overmind init` then `overmind sync`). Do not start this scan before the Console project exists.
+**Prerequisite:** project connection in [onboard.md](onboard.md) finished (`overmind init` then `overmind sync`, followed by the coding-agent reload). Do not start this scan before the Console project exists.
 
 ## Workflow
 
-```
-- [ ] 1. Read existing overmind.toml (if any) — keep base-url / project-id / capability ids
-- [ ] 2. Run `overmind chassis` at the repo root; keep the printed digest as the GROUND-TRUTH CHASSIS
-- [ ] 3. Run the system prompt below end-to-end (discovery → capability cards → provenance → eval matrix)
-- [ ] 4. Write overmind_capabilities.json incrementally (valid JSON after every edit)
-- [ ] 5. Persist: convert_json_to_toml → overmind.toml; delete overmind_capabilities.json after a successful toml conversion (do not hand-author the toml)
-- [ ] 6. Ensure project-id (see below), then overmind sync
-```
+Read [onboarding-progress.md](onboarding-progress.md) from the installed skill's
+`references/` directory before scanning. Show its
+full roadmap and data disclosure, then follow stages 3–10 with its numbered
+conversation updates. Keep installation and connection marked complete only
+when verified. Do not invent an MCP scan-status tool or resource.
+
+Use the project environment for every command below: `uv run overmind` and
+`uv run python` for uv, `poetry run overmind` and `poetry run python` for Poetry,
+or the project's virtual-environment executables. A bare global `overmind` can
+load a different SDK and install stale skills even after an editable install.
 
 Run `overmind chassis` **before** the prompt. Follow the **system prompt below in full**. When the JSON is complete and valid, convert it to `overmind.toml` (see **Persist**), delete `overmind_capabilities.json` after a successful toml conversion, then run `overmind sync`. Do not hand-author the toml. `convert_json_to_toml` fills prompt spans, drops fabricated anchors and unverifiable provenance, and stamps `trajectory_map[].verified`.
 
@@ -38,22 +40,15 @@ A *capability* is ONE PURPOSE: the smallest cluster of LLM work the customer wou
 
 Existing capabilities in overmind.toml are bind targets: reuse exact `name` / `slug` / `id` when the purpose matches. Do not re-emit unmatched archived leftovers.
 
-Your working directory is the repository root. Work in explicit stages and print a single progress line at the START of each stage (exactly, on its own line):
+Your working directory is the repository root. Follow the stages and conversation progress rules above:
 
-- `__STAGE__:discovery` — identify the capabilities: the purposes the product serves, judged from product entries and harnesses over the evidence above. For each capability, note its modes/tasks (stages or roles inside the same purpose) and any single-shot LLM utilities it calls internally — fold those into `modes` / `llm_utilities`; never promote a task, role, or utility to a capability.
-- `__STAGE__:capability_card` — for each distinct capability, reconstruct what it actually DOES and the shape of its inputs/outputs.
-- `__STAGE__:provenance` — for each claim in the card, record the real source location it came from as `relative/path.py#Lstart-Lend`.
-- `__STAGE__:eval_matrix` — for each distinct capability, design a small, high-signal starter **eval matrix**: the handful of evaluators a reviewer would actually run to know whether this capability is doing its job. Use the capability's `capability_card` (task, expected_output, success_criteria, failure_modes, output contract, tool surface) as the source of truth. Obey the strict limits below (at most 5 metrics, exactly one bespoke LLM judge, all other slots filled from the platform's existing managed-metric library).
-- `__STAGE__:writing` — write the JSON file INCREMENTALLY, then stop. First write the file with `repo_summary`, `llm_utilities` and an empty `capabilities` array. Then add capabilities ONE AT A TIME, each with its own separate edit of the file, keeping the JSON valid after every edit. Before each capability's edit, print `__NOTE__:Writing card <N> of <M>: <capability name>` on its own line. Never emit the whole file in a single write when there is more than one capability.
+- **Discover capabilities** — identify the capabilities: the purposes the product serves, judged from product entries and harnesses over the evidence above. For each capability, note its modes/tasks (stages or roles inside the same purpose) and any single-shot LLM utilities it calls internally — fold those into `modes` / `llm_utilities`; never promote a task, role, or utility to a capability.
+- **Describe capabilities** — for each distinct capability, reconstruct what it actually DOES and the shape of its inputs/outputs.
+- **Verify source references** — for each claim in the card, record the real source location it came from as `relative/path.py#Lstart-Lend`.
+- **Prepare evaluations** — for each distinct capability, design a small, high-signal starter **eval matrix**: the handful of evaluators a reviewer would actually run to know whether this capability is doing its job. Use the capability's `capability_card` (task, expected_output, success_criteria, failure_modes, output contract, tool surface) as the source of truth. Obey the strict limits below (at most 5 metrics, exactly one bespoke LLM judge, all other slots filled from the platform's existing managed-metric library).
+- **Write snapshot** — write the JSON file INCREMENTALLY. First write the file with `repo_summary`, `llm_utilities` and an empty `capabilities` array. Then add capabilities ONE AT A TIME, each with its own separate edit of the file, keeping the JSON valid after every edit. Report the number of cards successfully written and the next capability being written. Never emit the whole file in a single write when there is more than one capability. Continue with conversion and sync under **Persist**; writing the JSON does not finish setup.
 
-Two more progress sentinels, each on its own line, for the live scan display only:
-
-- The moment you identify a distinct capability during discovery, print `__FOUND__:{"name": "Capability name", "file": "relative/path/to/its/main/file.py"}` — flat single-line JSON, one line per capability, when you first become confident it qualifies under the Definition rules. Do not print it for tasks, modes, or LLM utilities you fold into a parent.
-- Occasionally (at most once every several tool calls), print `__NOTE__:<fact>` — one short factual observation about the codebase, at most 60 characters, plain statement of fact, no opinions or filler (example: `__NOTE__:LangGraph state machine in orchestrator.py`).
-
-Sentinel lines (`__STAGE__`, `__FOUND__`, `__NOTE__`) are progress output only: never write them into `overmind_capabilities.json` or any other file.
-
-The output is a single JSON file named `overmind_capabilities.json` in the repository root, built incrementally as described under `__STAGE__:writing`, with this exact schema:
+The intermediate output is a single JSON file named `overmind_capabilities.json` in the repository root, built incrementally as described under **Write snapshot**, with this exact schema:
 
 ```json
 {
@@ -197,7 +192,7 @@ Rules:
 - If the repository has no LLM-driven capability, return `"capabilities": []` with a clear `repo_summary` (you may still populate `llm_utilities`).
 - Do NOT print the full JSON to chat — only write the file `overmind_capabilities.json`.
 - Verify the file contains a valid `capabilities` array (each with a `capability_card`) before finishing.
-- After writing the file, reply with a short plain-text summary (2-4 sentences) of what you found.
+- After writing the file, continue through **Persist** before giving the final summary.
 
 **GROUND-TRUTH CHASSIS (deterministic AST facts — pre-extracted, verified).** You already ran `overmind chassis`. The printed digest is GROUND TRUTH: transform it, together with your own reading of the source, into the capability cards and trajectory map — do not re-derive or contradict it. Copy every `anchors` qualname VERBATIM from this inventory (same spelling, same dotted path). After you write the JSON, `convert_json_to_toml` deterministically re-checks every trajectory entry against this chassis: an entry whose anchors are not call-graph reachable from its entry anchor is stamped unverified, and anchor names absent from the inventory are dropped. Symbols elided from the digest still exist in the source — read the file to recover their exact qualnames.
 
@@ -221,9 +216,10 @@ overmind sync
 
 Never upload the repository. Never invent project or capability UUIDs.
 
-## What stays local
+## Local execution and data transfer
 
-Repository scanning, capability-card extraction, provenance, TOML conversion,
-file edits, local Git, and pull-request commands stay on this machine. Do not
-upload the repository through MCP. Use MCP only after the local snapshot exists
-and the client is authenticated to the intended project.
+Repository commands and file edits execute on this machine. Source read by the
+coding agent enters its model context; local execution is not a data-residency
+guarantee. Follow the disclosure and pre-sync handoff in
+[onboarding-progress.md](onboarding-progress.md). Do not upload a repository
+archive through MCP. Use MCP only with the intended project's authentication.

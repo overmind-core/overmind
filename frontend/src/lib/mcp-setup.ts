@@ -186,12 +186,14 @@ export function onboardWithAiBootstrapPrompt(
   const initCmd = `overmind init ${initCliFlags(client, url)}`;
   return [
     projectDependencyInstallGuidance(url),
+    "Run all Overmind and Python commands in this project's environment: use uv run for uv, poetry run for Poetry, or the project's virtual-environment executables. Do not use a globally installed overmind.",
     "The account-scoped API key below is a temporary bootstrap credential. Export it only in this shell session; do not write it into project files.",
     `export OVERMIND_API_URL=${url}`,
     `export OVERMIND_API_KEY=${apiKey}`,
     initCmd,
+    `Before the first sync, open ${OVERMIND_SKILL_ONBOARD} and references/onboarding-progress.md from the installed overmind skill. Show the full onboarding roadmap and data disclosure, then use its numbered progress updates throughout.`,
     "Run `overmind sync`. It creates the project, stores the final project-scoped credential locally, and updates this IDE's MCP configuration. Reload the IDE once after sync; do not re-export the key or run init again.",
-    `Then open ${OVERMIND_SKILL_ONBOARD} from the installed overmind skill and follow it through phase 3.`,
+    `After reload, reopen ${OVERMIND_SKILL_ONBOARD} from the installed overmind skill and continue the remaining workflow without repeating bootstrap sync.`,
   ].join("\n\n");
 }
 
