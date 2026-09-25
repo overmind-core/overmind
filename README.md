@@ -1,12 +1,12 @@
 <img width="6000" height="2000" alt="X Company Banner Stone (1)" src="https://github.com/user-attachments/assets/8ba6a64f-0819-47bd-9d58-af89ee3e7bad" />
 
-# The Training Platform for Specialized Model
+# The Training Platform for Specialized Agents
 
 <p align="center">
   <a href="https://console.overmindlab.ai/">Console</a> | <a href="https://www.overmindlab.ai/">Site</a> | <a href="#run-it-yourself">Self-host</a>
 </p>
 <p align="center">
-  <a href="https://docs.overmindlab.ai"><img src="https://img.shields.io/badge/Docs-docs.overmindlab.ai-ed670f?style=for-the-badge" alt="Documentation"></a>
+  <a href="https://docs.overmindlab.ai"><img src="https://img.shields.io/badge/Docs-ed670f?style=for-the-badge" alt="Documentation"></a>
   <a href="https://discord.gg/TPF722ZKuj"><img src="https://img.shields.io/badge/Discord-5865F2?style=for-the-badge&logo=discord&logoColor=white" alt="Discord"></a>
   <a href="https://pypi.org/project/overmind/"><img src="https://img.shields.io/pypi/v/overmind?style=for-the-badge&label=PyPI&color=3b1b06" alt="PyPI"></a>
   <a href="https://github.com/overmind-core/overmind/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/overmind-core/overmind/ci.yml?style=for-the-badge&label=CI" alt="CI"></a>
@@ -14,7 +14,8 @@
   <a href="overmind/LICENSE"><img src="https://img.shields.io/badge/SDK-MIT-3b1b06?style=for-the-badge" alt="SDK MIT"></a>
 </p>
 
-**Overmind continuously trains & improves models you own, on data from your production traces**
+**Overmind continuously trains & improves your agents, with data from your production traces**
+
 Point it at your agent's codebase and it turns production traces (or any dataset) into a fine-tuned model, benchmarked against the eval metrics you define and served via 1 unified API, with no ML infrastructure to build.
 
 > The weights are yours to download, retrain or roll back.
@@ -187,42 +188,6 @@ Prompts such as `investigate-capability`, `finetune-capability` and `ship-model`
 </details>
 
 For a self-hosted instance, replace the host with your API URL (`http://localhost:8000` locally). Keys are written to git-ignored files only; `overmind sync` will not write a key into a tracked file.
-
-## Documentation
-
-All documentation lives at **[docs.overmindlab.ai](https://docs.overmindlab.ai)**:
-
-| Section                                                                                    | What's covered                                                              |
-| ------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------- |
-| [Quickstart](https://docs.overmindlab.ai/latest/quickstart.md)                             | Sign up, paste one prompt into your coding agent, run `/overmind` commands  |
-| [Agent & Capabilities](https://docs.overmindlab.ai/latest/core/capabilities.md)            | The context graph: repo scans, capabilities, tasks, telemetry attribution   |
-| [Observability](https://docs.overmindlab.ai/latest/core/observability.md)                  | OTLP ingest, span model, attribute mapping, the trace explorer              |
-| [Python SDK](https://docs.overmindlab.ai/latest/tracing/sdk-python.md)                     | `init()`, auto-instrumentation, `run()`, decorators, tasks and capabilities |
-| [Trace scoring](https://docs.overmindlab.ai/latest/agent-testing/trace-scoring.md)         | How a production trace becomes scored task executions and session scores    |
-| [Datasets](https://docs.overmindlab.ai/latest/core/datasets.md)                            | Source, cells, versions, the data agent, trace-to-dataset                   |
-| [Eval](https://docs.overmindlab.ai/latest/agent-testing/eval.md)                           | Evaluator kinds, eval sets, live scoring, eval runs                         |
-| [Optimisers](https://docs.overmindlab.ai/latest/agent-testing/optimisers.md)               | The optimisation loop, the local executioner, the winning diff              |
-| [Training](https://docs.overmindlab.ai/latest/models/training.md)                          | Dataset validation, model recommendations, loss curves, the benchmark       |
-| [Inference](https://docs.overmindlab.ai/latest/models/inference.md)                        | Serving lifecycle and `/api/v1/chat/completions`                            |
-| [REST API](https://docs.overmindlab.ai/latest/platform/api.md)                             | Auth, endpoint map, conventions, Swagger                                    |
-| [Projects & Administration](https://docs.overmindlab.ai/latest/platform/administration.md) | Projects, API keys, connectors, jobs, billing                               |
-| [Glossary](https://docs.overmindlab.ai/latest/platform/glossary.md)                        | Terms as they appear in the Console and the API                             |
-| [Licensing](https://docs.overmindlab.ai/latest/platform/licensing.md)                      | AGPL-3.0 for the platform, MIT for the SDK, commercial terms                |
-
-______________________________________________________________________
-
-## Repository
-
-```
-overbae/      Django 6 API — api/ (DRF, OTLP, OpenAI-compatible), models/, services/ (eval, datasets, mcp, sft_assets), tasks/ (Celery), modal/ (GPU workers)
-frontend/     React 19 Console — src/openapi/ is generated by `make generate_api_client`, never hand-edited
-overmind/     Python SDK + CLI, published to PyPI as `overmind`; MIT; skills/overmind/ is the /overmind skill
-tests/        pytest — `make test`
-LICENSE       AGPL-3.0 for the platform; overmind/LICENSE is MIT
-AGENTS.md     how we work, for humans and coding agents; .claude/skills/ documents each subsystem
-```
-
-Backend is **uv** (`make test`, `make lint-backend`, `make check-migrations`); frontend is **Bun** (`bun run typecheck`, `bun run lint`, `bun run test`); SDK is `make -C overmind test`. Training and serving run on Modal or Baseten (`FINETUNING_BACKEND`); inference is vLLM behind `/api/v1/chat/completions`.
 
 ______________________________________________________________________
 
