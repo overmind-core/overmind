@@ -21,6 +21,81 @@ TURN_HARD_LIMIT = 42 * 60
 REAP_GRACE = 5 * 60
 
 
+def _landed(targets: list) -> dict[str, Any]:
+    rows = 0
+    for target in targets:
+        target.refresh_from_db()
+        source_cell = target.source
+        landed = source_cell.rows if source_cell else 0
+        rows += landed
+        _emit(target.id, {"type": "land_done", "rows": landed})
+    return {"status": "ok", "rows": rows}
+
+
+def _ensure_contract(dataset) -> bool:
+    dataset.refresh_from_db()
+    cell = dataset.active_cell
+    if cell is None or not cell.fits(dataset.intent)[0]:
+        reason = ""
+        if cell is not None:
+            reason = cell.fits(dataset.intent)[1]
+        _fail(dataset.id, reason or "The table does not fit its intent.")
+        return False
+    return True
+
+
+def _land_llm_calls(targets, read, *, user, split, infer_capability: bool) -> bool:
+    from overbae.models import Dataset
+    from overbae.services.datasets import land as landing
+    from overbae.services.datasets import llm_calls
+
+    if split:
+        train_records, eval_records = llm_calls.hash_split(read.rows, int(split["eval_percent"]))
+        parts = (
+            (targets[0], train_records, "train", targets[1]),
+            (targets[1], eval_records, "eval", targets[0]),
+        )
+        with transaction.atomic():
+            for target, records, role, sibling in parts:
+                shaped = llm_calls.shape(records, target.intent)
+                spec = {
+                    **read.spec,
+                    "split": {
+                        "eval_percent": int(split["eval_percent"]),
+                        "position": llm_calls.HASH_POSITION,
+                        "role": role,
+                        "sibling": str(sibling.id),
+                    },
+                }
+                landing.commit(
+                    target,
+                    landing.Landing(
+                        shaped,
+                        kind=Dataset.SourceKind.LLM_CALLS,
+                        spec=spec,
+                        manifest=llm_calls.manifest_for(target.intent),
+                    ),
+                    user=user,
+                    state=Dataset.State.IDLE,
+                    infer_capability=infer_capability,
+                )
+    else:
+        target = targets[0]
+        landing.commit(
+            target,
+            landing.Landing(
+                llm_calls.shape(read.rows, target.intent),
+                kind=Dataset.SourceKind.LLM_CALLS,
+                spec=read.spec,
+                manifest=llm_calls.manifest_for(target.intent),
+            ),
+            user=user,
+            state=Dataset.State.IDLE,
+            infer_capability=infer_capability,
+        )
+    return all(_ensure_contract(target) for target in targets)
+
+
 def _emit(dataset_id: Any, event: dict[str, Any]) -> None:
     from overbae.services.datasets.notebook import events
 
@@ -51,10 +126,11 @@ def land(
     split: dict[str, Any] | None = None,
     infer_capability: bool = True,
 ) -> dict[str, Any]:
-    """``source`` is ``{"uploads": [...]}``, ``{"upload_id", "filename"}``, ``{"rows": [...]}`` or
-    ``{"traces": {trace_ids | filters}}``. With ``split`` (``eval_dataset_id``,
-    ``eval_percent``, ``position``) the source is read once and cut in two.
-    The diagnosis follows for every dataset that landed."""
+    """``source`` is ``{"uploads": [...]}``, ``{"upload_id", "filename"}``, ``{"rows": [...]}``,
+    ``{"traces": {trace_ids | filters}}`` or ``{"llm_calls": {...}}``. With ``split``
+    (``eval_dataset_id``, ``eval_percent``, ``position``) the source is read once and cut
+    in two. Trace, file and row sources then start diagnosis. An LLM-call source already
+    matches its contract, so it settles to idle instead."""
     from overbae.models import Dataset, User
     from overbae.services.datasets import files
     from overbae.services.datasets import land as landing
@@ -95,8 +171,19 @@ def land(
             read = landing.read_traces(
                 dataset.project_id, dict(source["traces"]), on_progress=progress
             )
+        elif source.get("llm_calls") is not None:
+            from overbae.services.datasets import llm_calls
+
+            intents = ("train", "eval") if split else (dataset.intent,)
+            read = llm_calls.read(dataset.project_id, dict(source["llm_calls"]), intents=intents)
         else:
             raise landing.LandError("No source given.")
+        if source.get("llm_calls") is not None:
+            if not _land_llm_calls(
+                targets, read, user=user, split=split, infer_capability=infer_capability
+            ):
+                return {"status": "failed"}
+            return _landed(targets)
         if split:
             cut = {
                 "eval_percent": int(split["eval_percent"]),

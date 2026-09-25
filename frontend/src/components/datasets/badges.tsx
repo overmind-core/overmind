@@ -9,6 +9,7 @@ import type { Dataset } from "@/openapi";
 
 export const SOURCE_KIND_LABEL: Record<string, string> = {
   file: "File",
+  llm_calls: "LLM calls",
   traces: "Traces",
 };
 

@@ -10,6 +10,8 @@ Commands:
     model download-checkpoint DEPLOYMENT
                               Download a deployed model checkpoint locally.
     optimise                  Client-driven optimiser loop (skill generates diffs; server scores).
+    backtest                  Score models on stored LLM calls.
+    finetune                  Start fine-tunes from stored LLM calls.
     skills                    Manage Overmind agent skills.
 
 Use --help with any command or subcommand for details.
@@ -27,6 +29,8 @@ try:
     from overmind.connector_cmd import connector_app
     from overmind.dataset_cmd import dataset_app
     from overmind.init_cmd import init as init_cmd
+    from overmind.layer_cmd import backtest as backtest_cmd
+    from overmind.layer_cmd import finetune as finetune_cmd
     from overmind.model_cmd import model_app
     from overmind.optimizer_cmd import OPTIMISE_HELP, optimise_app
     from overmind.skills import skills_app
@@ -90,6 +94,8 @@ app.add_typer(model_app, name="model")
 app.command("init")(init_cmd)
 app.command("sync")(sync_cmd)
 app.command("chassis")(chassis_cmd)
+app.command("backtest")(backtest_cmd)
+app.command("finetune")(finetune_cmd)
 
 
 if __name__ == "__main__":

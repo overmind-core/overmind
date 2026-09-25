@@ -14,8 +14,9 @@
 
 import { mapValues } from '../runtime';
 /**
- * Exactly one of ``uploads``, ``upload_id``, ``text``, ``rows`` or ``traces``.
+ * Exactly one of ``uploads``, ``upload_id``, ``text``, ``rows``, ``traces`` or ``llm_calls``.
  * ``traces`` is a traces-list selection or ``{"trace_ids": [...]}``.
+ * ``llm_calls`` is ``{capability_id, since, until?, model?, limit?}``.
  * @export
  * @interface SourceRequest
  */
@@ -56,6 +57,12 @@ export interface SourceRequest {
      * @memberof SourceRequest
      */
     traces?: any | null;
+    /**
+     *
+     * @type {any}
+     * @memberof SourceRequest
+     */
+    llmCalls?: any | null;
 }
 
 /**
@@ -81,6 +88,7 @@ export function SourceRequestFromJSONTyped(json: any, ignoreDiscriminator: boole
         'text': json['text'] == null ? undefined : json['text'],
         'rows': json['rows'] == null ? undefined : json['rows'],
         'traces': json['traces'] == null ? undefined : json['traces'],
+        'llmCalls': json['llm_calls'] == null ? undefined : json['llm_calls'],
     };
 }
 
@@ -101,5 +109,6 @@ export function SourceRequestToJSONTyped(value?: SourceRequest | null, ignoreDis
         'text': value['text'],
         'rows': value['rows'],
         'traces': value['traces'],
+        'llm_calls': value['llmCalls'],
     };
 }

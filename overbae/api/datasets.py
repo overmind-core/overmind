@@ -177,11 +177,35 @@ class DatasetViewSet(viewsets.ModelViewSet):
             if data.get("capability")
             else None
         )
-        return project, capability, self._source_payload(data["source"], project)
+        source = self._source_payload(data["source"], project)
+        if capability is None and source.get("llm_calls"):
+            capability = get_object_or_404(
+                Capability, pk=source["llm_calls"]["capability_id"], project=project
+            )
+        if (
+            capability is not None
+            and source.get("llm_calls")
+            and str(capability.id) != source["llm_calls"]["capability_id"]
+        ):
+            raise ValidationError(
+                {"capability": "The capability does not match the LLM call selection."}
+            )
+        return project, capability, source
 
     @staticmethod
     def _source_payload(source: dict, project: Project) -> dict:
         payload = {k: v for k, v in source.items() if v not in (None, "", [])}
+        if payload.get("llm_calls") is not None:
+            from overbae.services.datasets.llm_calls import Selection, SelectionError
+
+            try:
+                picked = Selection.parse(payload["llm_calls"])
+                matched = picked.count(project.id)
+            except SelectionError as exc:
+                raise ValidationError({"source": str(exc)}) from exc
+            if matched == 0:
+                raise ValidationError({"source": "No LLM calls match the selection."})
+            payload["llm_calls"] = picked.spec()
         if payload.get("traces") is not None:
             try:
                 traces = selection.TraceSource.parse(payload["traces"])

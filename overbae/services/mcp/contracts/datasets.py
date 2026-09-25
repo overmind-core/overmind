@@ -232,6 +232,8 @@ class DatasetMutationOutput(MCPModel):
     eval_dataset: DatasetMutationRef | None = None
     # Set by create_dataset_from_traces: the traces the selection resolved to.
     traces: int | None = Field(default=None, ge=0)
+    # Set by create_dataset_from_llm_calls: spans matching the selection.
+    calls: int | None = Field(default=None, ge=0)
     resource_links: list[ResourceLinkContract] = Field(max_length=4)
 
 
@@ -369,6 +371,25 @@ class CreateDatasetFromTracesInput(MCPModel):
         return value
 
 
+class CreateDatasetFromLlmCallsInput(MCPModel):
+    name: str = Field(min_length=1, max_length=255)
+    capability: str = Field(min_length=1, max_length=255)
+    since: str = Field(min_length=1, max_length=64)
+    until: str | None = Field(default=None, max_length=64)
+    model: str | None = Field(default=None, max_length=255)
+    limit: int = Field(default=200, ge=1, le=10_000)
+    intent: Literal["train", "eval"] = "eval"
+    split: bool = False
+    eval_percent: int = Field(default=20, ge=1, le=99)
+
+    @model_validator(mode="after")
+    def split_name_fits(self):
+        # create_split appends " train" / " eval", and Dataset.name is 255.
+        if self.split and len(self.name) > 249:
+            raise ValueError("name must be at most 249 characters when split is set")
+        return self
+
+
 class MessageDatasetAgentInput(MCPModel):
     dataset: str = Field(
         min_length=1,
@@ -397,7 +418,12 @@ def _mutation_ref(dataset) -> DatasetMutationRef:
 
 
 def mutation_output(
-    dataset, *, summary: str, traces: int | None = None, eval_dataset=None
+    dataset,
+    *,
+    summary: str,
+    traces: int | None = None,
+    calls: int | None = None,
+    eval_dataset=None,
 ) -> DatasetMutationOutput:
     links = [dataset_resource_link(dataset), dataset_run_job_link(dataset)]
     if eval_dataset is not None:
@@ -413,6 +439,7 @@ def mutation_output(
         ),
         eval_dataset=_mutation_ref(eval_dataset) if eval_dataset is not None else None,
         traces=traces,
+        calls=calls,
         resource_links=links,
     )
 

@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import json
 import uuid
+from datetime import timedelta
 
 import pytest
 
@@ -535,3 +536,71 @@ def test_list_and_inspect_map_legacy_ft_intent():
     inspected = _call("inspect_dataset", {"dataset": str(dataset.id)}, context)
     assert inspected.isError is False
     assert inspected.structuredContent["intent"] == "train"
+
+
+def _llm_span(project, capability, text="hello"):
+    return Span.objects.create(
+        span_id=uuid.uuid4().hex[:16],
+        trace_id=uuid.uuid4().hex,
+        project=project,
+        capability=capability,
+        span_type="llm_call",
+        name="llm_call",
+        start_time_ns=1,
+        end_time_ns=2,
+        duration_ns=1,
+        status_code=0,
+        attributes={
+            "overmind.input.data": json.dumps([{"role": "user", "content": "question"}]),
+            "overmind.output.data": json.dumps([{"role": "assistant", "content": text}]),
+            "genai.model": "openai/gpt-5-mini",
+        },
+        usage={"genai.model": "openai/gpt-5-mini"},
+    )
+
+
+def test_llm_call_creation_refuses_an_empty_selection():
+    context = _context()
+    capability = Capability.objects.create(project=context.project, name="Support", slug="support")
+    result = _call(
+        "create_dataset_from_llm_calls",
+        {
+            "name": "Calls",
+            "capability": str(capability.id),
+            "since": "2099-01-01T00:00:00+00:00",
+        },
+        context,
+    )
+    assert result.isError is True
+    assert result.structuredContent["error"]["code"] == "no_calls"
+    assert Dataset.objects.filter(project=context.project).count() == 0
+
+
+def test_llm_call_creation_lands_one_row_per_call():
+    from django.utils import timezone
+
+    context = _context()
+    capability = Capability.objects.create(project=context.project, name="Support", slug="support")
+    _llm_span(context.project, capability, text="recorded")
+    result = _call(
+        "create_dataset_from_llm_calls",
+        {
+            "name": "Calls",
+            "capability": capability.slug,
+            "since": (timezone.now() - timedelta(hours=1)).isoformat(),
+            "intent": "eval",
+        },
+        context,
+    )
+    assert result.isError is False, result.structuredContent
+    assert result.structuredContent["calls"] == 1
+    dataset = Dataset.objects.get(pk=result.structuredContent["dataset"]["id"])
+    assert dataset.state == Dataset.State.IDLE, dataset.error
+    assert dataset.intent == Dataset.Intent.EVAL
+    assert dataset.source_kind == Dataset.SourceKind.LLM_CALLS
+    frame = store.read_frame(paths.cell_path(dataset.id, dataset.source.id))
+    assert "trace_id" not in set(frame.columns)
+    assert "span_id" in set(frame.columns)
+    row = frame.iloc[0].to_dict()
+    assert row["expected_output"]["content"] == "recorded"
+    assert "trace_id" not in row

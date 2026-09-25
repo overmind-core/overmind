@@ -797,10 +797,9 @@ def register_connector_tools(catalog) -> None:
         (
             "inspect_connectors",
             "Inspect connectors",
-            "List or inspect project connectors with safe configuration, parent-only mapping "
-            "suggestions, alternatives, and bounded sync status. Stage mapping without "
-            "confirm_mapping. Present suggested_boundaries, alternatives, unmapped_roots, and "
-            "mapping_options, then stop until the human replies.",
+            "List project connectors and parent-only mapping suggestions. Present "
+            "suggested_boundaries, alternatives, unmapped_roots, and mapping_options, then stop "
+            "until the human replies.",
             InspectConnectorsInput,
             InspectConnectorsOutput,
             _inspect_connectors_sync,
@@ -810,11 +809,8 @@ def register_connector_tools(catalog) -> None:
         (
             "configure_connector",
             "Configure connector",
-            "Save an existing project connector's source-project, lookback, and polling settings. "
-            "mapping.names are observation-name boundaries (trace roots). Nested children are "
-            "dropped when their ancestor is also listed. Default proposal is suggested parents; "
-            "alternatives match the same capability and the human may pick one as the boundary. "
-            "Do not set confirm_mapping until the human replies.",
+            "Save source project, lookback, and polling. mapping.names are trace-root boundaries; "
+            "a listed ancestor drops its children. Do not set confirm_mapping until the human replies.",
             ConfigureConnectorInput,
             ConfigureConnectorOutput,
             _configure_connector_sync,

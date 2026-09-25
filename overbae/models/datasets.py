@@ -12,6 +12,7 @@ class Dataset(models.Model):
     class SourceKind(models.TextChoices):
         FILE = "file"
         TRACES = "traces"
+        LLM_CALLS = "llm_calls"
 
     class Intent(models.TextChoices):
         TRAIN = "train"

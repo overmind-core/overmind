@@ -17,12 +17,14 @@
  * * `head` - head
  * * `tail` - tail
  * * `random` - random
+ * * `hash` - hash
  * @export
  */
 export const PositionEnum = {
     head: 'head',
     tail: 'tail',
-    random: 'random'
+    random: 'random',
+    hash: 'hash'
 } as const;
 export type PositionEnum = typeof PositionEnum[keyof typeof PositionEnum];
 

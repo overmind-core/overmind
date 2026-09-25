@@ -790,7 +790,7 @@ def register_evaluation_tools(catalog) -> None:
         (
             "upsert_evaluator",
             "Upsert evaluator",
-            "Create/update a project evaluator. judge_model selects its generative judge. config.decision opts into Jev with confidence fallback after workload validation. Authoring and holistic judgments stay generative.",
+            "Create or update a project evaluator. judge_model picks the generative judge. config.decision opts into Jev after workload validation. Authoring and holistic judgments stay generative.",
             EvaluatorUpsertInput,
             EvaluatorUpsertOutput,
             _upsert_sync,
