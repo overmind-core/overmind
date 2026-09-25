@@ -294,7 +294,7 @@ class EvaluatorUpsertInput(MCPModel):
     config: dict[str, Any] = Field(
         default_factory=dict,
         max_length=100,
-        description="config.decision selects backend generative (default) or jev (opt-in bounded decisions with generative fallback), min_confidence 0..1, and version 1. Qualify Jev against labelled examples for the rubric; confidence is not accuracy. The decision model must be a registered Jev release. judge_model remains the generative judge/fallback.",
+        description="config.decision selects backend generative (default) or jev (opt-in bounded decisions with generative fallback), min_confidence 0..1, and version 1. Qualify Jev against labelled examples for the rubric; confidence is not accuracy. The decision model must be a registered Jev release. judge_model remains the generative judge/fallback. Label-only categorical evaluators support Jev; categorical checklists and behaviour contracts retain generative review. Jev returns decision provenance without a generated explanation.",
     )
     applicable_roles: list[EvaluationRole] = Field(default_factory=list, max_length=2)
     surface: Literal["model", "harness", "any"] = "any"

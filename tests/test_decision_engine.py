@@ -319,6 +319,107 @@ def test_checklist_keeps_weights_and_provenance(provider):
     )
 
 
+@pytest.mark.parametrize("engine", [judge, gen_judge])
+@pytest.mark.parametrize("label", ["billing", "insufficient"])
+def test_categorical_decision_preserves_declared_label_and_value(
+    provider, monkeypatch, engine, label
+):
+    provider.side_effect = lambda body, **kwargs: response(body, {"category": "label_1"})
+    fallback = Mock(side_effect=AssertionError("Confident categories should not generate."))
+    monkeypatch.setattr(funnel, "invoke_judge", fallback)
+    ev = evaluator()
+    ev.score_type = "categorical"
+    ev.checklist = []
+    ev.choices = [{"label": "technical", "value": 0.2}, {"label": label, "value": 0.8}]
+    draft = engine.evaluate(
+        EvalUnit(trajectory={"final_output": "Invoice question"}), ev, {"project_id": "p"}
+    )[0]
+    assert (draft.string_value, draft.value, draft.passed) == (label, 0.8, None)
+    assert draft.reasoning == ""
+    metadata = next(item["_decision"] for item in draft.sub_scores if "_decision" in item)
+    assert metadata["source"] == "jev"
+    assert metadata["answers"]["category"]["choice"] == "label_1"
+    fallback.assert_not_called()
+
+
+@pytest.mark.parametrize("engine", [judge, gen_judge])
+@pytest.mark.parametrize("reason", ["confidence", "insufficient", "transport"])
+def test_categorical_uncertainty_preserves_generative_fallback(
+    provider, monkeypatch, engine, reason
+):
+    if reason == "transport":
+        provider.side_effect = transport.DecisionError("provider_timeout")
+    else:
+        provider.side_effect = lambda body, **kwargs: response(
+            body,
+            {"category": "insufficient" if reason == "insufficient" else "label_0"},
+            confidence=0.5 if reason == "confidence" else 0.99,
+        )
+    result = (
+        judge.JudgeResult(label="billing", score=0.8, reasoning="The question concerns an invoice.")
+        if engine is judge
+        else gen_judge.ChecklistResult(
+            label="billing", reasoning="The question concerns an invoice."
+        )
+    )
+    fallback = Mock(
+        return_value=funnel.JudgeOutcome(
+            parsed=result,
+            raw=result.model_dump_json(),
+            stats={"response_cost": 0.01},
+            judge_trace_id="f",
+        )
+    )
+    monkeypatch.setattr(funnel, "invoke_judge", fallback)
+    ev = evaluator()
+    ev.score_type = "categorical"
+    ev.checklist = []
+    ev.choices = [{"label": "technical", "value": 0.2}, {"label": "billing", "value": 0.8}]
+    draft = engine.evaluate(
+        EvalUnit(trajectory={"final_output": "Invoice question"}), ev, {"project_id": "p"}
+    )[0]
+    assert (draft.string_value, draft.value) == ("billing", 0.8)
+    assert draft.reasoning == "The question concerns an invoice."
+    assert (
+        next(item["_decision"] for item in draft.sub_scores if "_decision" in item)["source"]
+        == "generative_fallback"
+    )
+    fallback.assert_called_once()
+
+
+@pytest.mark.parametrize(
+    "reason", ["default", "checklist", "behaviour", "duplicate", "empty", "too_many"]
+)
+def test_categorical_ineligible_contract_does_not_call_jev(provider, reason):
+    ev = evaluator()
+    ev.score_type = "categorical"
+    ev.checklist = []
+    ev.choices = [{"label": "yes", "value": 1}, {"label": "no", "value": 0}]
+    if reason == "default":
+        ev.config = {}
+    elif reason == "checklist":
+        ev.checklist = [{"id": "required", "q": "Matches reference?"}]
+    elif reason == "behaviour":
+        ev.config["behaviour"] = {"role": "outcome"}
+    elif reason == "duplicate":
+        ev.choices[1]["label"] = "YES"
+    elif reason == "empty":
+        ev.choices = []
+    else:
+        ev.choices = [{"label": str(index)} for index in range(255)]
+    fallback = Mock(
+        return_value=funnel.JudgeOutcome(parsed=None, raw="{}", stats={}, judge_trace_id="f")
+    )
+    assert (
+        decisions.categorical(
+            {"output": "yes"}, evaluator=ev, convert=Mock(), fallback=fallback, project_id="p"
+        )
+        is fallback.return_value
+    )
+    provider.assert_not_called()
+    fallback.assert_called_once()
+
+
 def test_insufficient_checklist_evidence_falls_back_not_na(provider, monkeypatch):
     provider.side_effect = lambda body, **kwargs: response(body, {"a": "insufficient", "b": "pass"})
     fallback = Mock(
