@@ -17,7 +17,7 @@ from overbae.services.datasets.lifecycle import (
     remove_cell,
 )
 
-_SOURCE_KEYS = ("traces", "rows", "upload_id", "uploads")
+_SOURCE_KEYS = ("traces", "rows", "upload_id", "uploads", "llm_calls")
 _BUSY = (Dataset.State.LANDING, Dataset.State.DIAGNOSING, Dataset.State.RUNNING)
 
 
@@ -30,7 +30,7 @@ def _check_source(source: dict) -> None:
     keys = [k for k in _SOURCE_KEYS if source.get(k) not in (None, "", [])]
     if len(keys) != 1:
         raise DatasetError(
-            "Give exactly one source: traces, rows, upload_id or uploads.",
+            "Give exactly one source: traces, rows, upload_id, uploads or llm_calls.",
             code="source",
         )
 
@@ -41,9 +41,13 @@ def _new(project, user, name: str, source: dict, intent: str | None, capability)
         capability=capability,
         name=(name or "").strip(),
         intent=intent or Dataset.Intent.PENDING,
-        source_kind=Dataset.SourceKind.TRACES
-        if source.get("traces") is not None
-        else Dataset.SourceKind.FILE,
+        source_kind=(
+            Dataset.SourceKind.LLM_CALLS
+            if source.get("llm_calls") is not None
+            else Dataset.SourceKind.TRACES
+            if source.get("traces") is not None
+            else Dataset.SourceKind.FILE
+        ),
         state=Dataset.State.LANDING,
         created_by=user if getattr(user, "pk", None) else None,
     )
@@ -61,8 +65,13 @@ def create_dataset(
     capability=None,
     infer_capability: bool = True,
 ) -> Dataset:
-    """Land one trace selection, row collection, upload or ordered upload collection."""
+    """Land one trace selection, LLM-call selection, row collection, upload or ordered upload collection."""
     _check_source(source)
+    if source.get("llm_calls") is not None and intent not in (
+        Dataset.Intent.TRAIN,
+        Dataset.Intent.EVAL,
+    ):
+        raise DatasetError("Choose train or eval.", code="intent")
     dataset = _new(project, user, name, source, intent, capability)
     from overbae.tasks.datasets import land
 
@@ -95,7 +104,18 @@ def create_split(
     _check_source(source)
     if not 1 <= int(eval_percent) <= 99:
         raise DatasetError("eval_percent must be between 1 and 99.", code="split")
-    if position not in SPLIT_POSITIONS:
+    from overbae.services.datasets.llm_calls import HASH_POSITION, Selection, SelectionError
+
+    if source.get("llm_calls") is not None:
+        if position != HASH_POSITION:
+            raise DatasetError("LLM call splits use position hash.", code="split")
+        try:
+            matched = Selection.parse(source["llm_calls"]).count(project.id)
+        except SelectionError as exc:
+            raise DatasetError(str(exc), code="source") from exc
+        if matched < 2:
+            raise DatasetError("Two LLM calls are needed to split.", code="split")
+    elif position not in SPLIT_POSITIONS:
         raise DatasetError(f"position must be one of {', '.join(SPLIT_POSITIONS)}.", code="split")
     known = source.get("rows") or (source.get("traces") or {}).get("trace_ids")
     if known is not None and len(known) < 2:

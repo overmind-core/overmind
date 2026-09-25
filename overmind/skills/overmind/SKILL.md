@@ -186,7 +186,8 @@ Observability:
 Datasets:
 
 `list_datasets`, `inspect_dataset`, `query_dataset`,
-`create_dataset_from_traces`, `message_dataset_agent`, `run_dataset`.
+`create_dataset_from_traces`, `create_dataset_from_llm_calls`,
+`message_dataset_agent`, `run_dataset`.
 
 Evaluations:
 

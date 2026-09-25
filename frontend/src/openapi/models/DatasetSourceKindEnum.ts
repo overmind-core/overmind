@@ -16,11 +16,13 @@
 /**
  * * `file` - File
  * * `traces` - Traces
+ * * `llm_calls` - Llm Calls
  * @export
  */
 export const DatasetSourceKindEnum = {
     file: 'file',
-    traces: 'traces'
+    traces: 'traces',
+    llm_calls: 'llm_calls'
 } as const;
 export type DatasetSourceKindEnum = typeof DatasetSourceKindEnum[keyof typeof DatasetSourceKindEnum];
 

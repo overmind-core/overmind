@@ -38,6 +38,11 @@ For REST creation and `create_dataset_from_traces`, omit `capability` to infer
 it from the rows, pass its UUID to bind it, or pass `null` to leave the dataset
 unbound. The choice applies to both datasets when splitting.
 
+- `create_dataset_from_llm_calls` lands one row per `llm_call` span for a
+  capability and a `since` timestamp. The row is that call's request and its
+  recorded completion. The application is not run. `split` lands a train
+  dataset and an eval dataset by a stable hash of `span_id`. Rows do not carry
+  `trace_id`. The landing settles idle and does not start a workshop turn.
 - `create_dataset_from_traces` lands traces, one row per trace: identity,
   runtime, `input`, `output`, the wire `messages` and `tools`, and the trace's
   score. Give `trace_ids`, or `filters` and/or `search` (never both). The

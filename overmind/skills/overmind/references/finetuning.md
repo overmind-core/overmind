@@ -19,6 +19,20 @@ Use the native `finetune-capability` prompt to prepare and start training.
 Fine-tuning is a project-scoped write flow with GPU cost; ask before starting
 spend.
 
+## From stored LLM calls
+
+`overmind finetune` builds a train dataset and an eval dataset from `llm_call`
+spans (one row per call, hash split) and starts one job per model. It prints
+the job ids and does not wait for training. The application is not run.
+
+```bash
+overmind finetune --models Qwen/Qwen2.5-7B-Instruct,meta-llama/Llama-3.1-8B-Instruct --since 7d
+```
+
+Pass 1–4 catalog ids. The jobs share one `group_id`, the capability's active
+eval set, and the same train and eval cells. A model that is not in
+`GET /api/finetuning-jobs/models/` is refused before any dataset is created.
+
 ## Prepare and start
 
 1. Call `get_model_catalog` first to browse dataset-independent candidates and

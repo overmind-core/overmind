@@ -800,7 +800,7 @@ def register_finetuning_tools(catalog) -> None:
         (
             "prepare_training_data",
             "Prepare training data",
-            "Run exact CPU tokenization for a model and context length. Returns a cached preparation report; call again with the same inputs to observe completion. Inspect incompatible rows and supervised content before starting training. Does not start GPU training.",
+            "Tokenize for a model and context length. Repeat the same call to observe completion. Does not start GPU training.",
             PrepareTrainingInput,
             PrepareTrainingOutput,
             _prepare_training_sync,
@@ -813,7 +813,7 @@ def register_finetuning_tools(catalog) -> None:
         (
             "check_finetune_readiness",
             "Check fine-tuning readiness",
-            "Inspect fine-tuning prerequisites, train/eval dataset shape, recommended catalog models, evaluators, and credit availability. Model ranking uses the selected capability's codebase task, or the dataset task when no capability is selected. Uncached capability classification may call an LLM.",
+            "Inspect fine-tuning prerequisites, dataset shape, catalog models, evaluators, and credits. Ranking uses the capability task, or the dataset task when no capability is selected.",
             CheckFinetuneReadinessInput,
             CheckFinetuneReadinessOutput,
             _readiness_sync,
@@ -878,7 +878,7 @@ def register_finetuning_tools(catalog) -> None:
         (
             "set_benchmark_model",
             "Set benchmark model",
-            "Choose a ready trained deployment for future capability benchmarks; omit deployment to use the codebase incumbent. Does not change serving or existing jobs. Discover choices in the capability resource.",
+            "Set the capability benchmark to a ready trained deployment, or omit it for the codebase incumbent. Does not change serving.",
             SetBenchmarkModelInput,
             SetBenchmarkModelOutput,
             _set_benchmark_sync,

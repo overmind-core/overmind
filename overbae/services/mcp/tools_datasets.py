@@ -17,6 +17,7 @@ from overbae.services.datasets.selection import TraceSource, TraceSourceError
 from overbae.services.mcp.context import MCPContext
 from overbae.services.mcp.contracts.common import PageContract
 from overbae.services.mcp.contracts.datasets import (
+    CreateDatasetFromLlmCallsInput,
     CreateDatasetFromTracesInput,
     DatasetDetail,
     DatasetMutationOutput,
@@ -200,6 +201,68 @@ def _create_dataset_from_traces_sync(
     )
 
 
+def _create_dataset_from_llm_calls_sync(
+    payload: CreateDatasetFromLlmCallsInput, context: MCPContext
+) -> DatasetMutationOutput:
+    from overbae.services.datasets.llm_calls import HASH_POSITION, Selection, SelectionError
+
+    capability = _resolve_capability(context, payload.capability)
+    raw = {
+        "capability_id": str(capability.id),
+        "since": payload.since,
+        "limit": payload.limit,
+    }
+    if payload.until:
+        raw["until"] = payload.until
+    if payload.model:
+        raw["model"] = payload.model
+    try:
+        selection = Selection.parse(raw)
+        matched = selection.count(context.project.id)
+    except SelectionError as exc:
+        raise MCPError("invalid_input", str(exc)) from exc
+    if matched == 0:
+        raise MCPError(
+            "no_calls",
+            "No LLM calls match the selection. Widen the window or check the capability.",
+        )
+    try:
+        if payload.split:
+            train, evaluation = dispatch.create_split(
+                project=context.project,
+                user=context.user,
+                name=payload.name,
+                source={"llm_calls": selection.spec()},
+                eval_percent=payload.eval_percent,
+                position=HASH_POSITION,
+                capability=capability,
+                infer_capability=False,
+            )
+        else:
+            train = dispatch.create_dataset(
+                project=context.project,
+                user=context.user,
+                name=payload.name,
+                source={"llm_calls": selection.spec()},
+                intent=payload.intent,
+                capability=capability,
+                infer_capability=False,
+            )
+            evaluation = None
+    except DatasetError as exc:
+        raise dataset_mcp_error(exc) from exc
+    return mutation_output(
+        train,
+        summary=(
+            f"Dataset landing started: {matched} LLM calls."
+            if evaluation is None
+            else f"Split landing started: {matched} LLM calls cut into a train and an eval dataset."
+        ),
+        calls=matched,
+        eval_dataset=evaluation,
+    )
+
+
 def _message_dataset_agent_sync(
     payload: MessageDatasetAgentInput, context: MCPContext
 ) -> DatasetMutationOutput:
@@ -265,9 +328,8 @@ def register_dataset_tools(catalog) -> None:
         (
             "query_dataset",
             "Query dataset",
-            "Run one read-only SELECT over the table `t`, one ran cell of a project dataset "
-            "(the active version unless `cell` names an id or a version such as 1.2). "
-            "At most 100 rows return; `truncated` says when more matched.",
+            "Read-only SELECT over table t on one ran cell (active unless cell is an id or version). "
+            "At most 100 rows; truncated when more matched.",
             QueryDatasetInput,
             QueryDatasetOutput,
             _query_dataset_sync,
@@ -277,12 +339,21 @@ def register_dataset_tools(catalog) -> None:
         (
             "create_dataset_from_traces",
             "Create dataset from traces",
-            "Land a project dataset from traces, one row per trace. Give trace_ids, or "
-            "filters and/or search. The selection is counted first and refused when empty. "
-            "With split, the rows land as a train dataset and an eval dataset.",
+            "Land one row per trace. Give trace_ids, or filters and/or search. "
+            "Empty selections are refused. split lands train and eval.",
             CreateDatasetFromTracesInput,
             DatasetMutationOutput,
             _create_dataset_from_traces_sync,
+            False,
+            "task",
+        ),
+        (
+            "create_dataset_from_llm_calls",
+            "Create dataset from LLM calls",
+            "Land one row per llm_call since a timestamp. split hashes span_id into train and eval.",
+            CreateDatasetFromLlmCallsInput,
+            DatasetMutationOutput,
+            _create_dataset_from_llm_calls_sync,
             False,
             "task",
         ),

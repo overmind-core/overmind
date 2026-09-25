@@ -53,3 +53,17 @@ existing configuration; never hardcode a model slug in application code.
 
 Pinning a winner is a local repository/configuration change. A human reviews
 and applies any returned repository change.
+
+## Model layer
+
+`overmind backtest` scores stored `llm_call` spans. It does not run the
+application or its tools. The recorded completion is the baseline.
+
+```bash
+overmind backtest --models openai/gpt-5-mini,anthropic/claude-sonnet-4.5 --since 7d
+```
+
+`--capability` is required when `overmind.toml` lists more than one. `--limit`
+caps the calls (default 200). The command waits and exits 1 when any candidate
+regresses against the recorded outputs, 2 on timeout. `overmind optimise` remains
+the path that reruns the repository.
