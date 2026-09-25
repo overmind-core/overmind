@@ -12,6 +12,7 @@ from rest_framework.validators import UniqueTogetherValidator
 
 from overbae.api.scoping import project_ids_for
 from overbae.core.errors import InputValidationError
+from overbae.core.model_registry import judge_picker_models
 from overbae.models import (
     APIToken,
     BillingTelemetry,
@@ -1102,6 +1103,7 @@ class FinetuningJobRunSerializer(serializers.Serializer):
 
 
 class FinetuningJobSerializer(serializers.ModelSerializer):
+    eval_judge_model = serializers.ChoiceField(choices=["", *judge_picker_models()], required=False)
     events = FinetuningJobEventSerializer(many=True, read_only=True)
     deployed_model_id = serializers.SerializerMethodField()
     cell_info = serializers.SerializerMethodField()
@@ -1119,6 +1121,7 @@ class FinetuningJobSerializer(serializers.ModelSerializer):
             "eval_dataset",
             "eval_cell",
             "eval_set",
+            "eval_judge_model",
             "eval_incumbent_before",
             "eval_incumbent_after",
             "eval_model_before",
@@ -1194,6 +1197,11 @@ class FinetuningJobSerializer(serializers.ModelSerializer):
     def validate_validation_split_ratio(self, value):
         if value < 0.05 or value > 0.5:
             raise serializers.ValidationError("Must be between 0.05 and 0.5.")
+        return value
+
+    def validate_eval_judge_model(self, value):
+        if self.instance is not None and value != self.instance.eval_judge_model:
+            raise serializers.ValidationError("The evaluation judge is fixed when training starts.")
         return value
 
     def _check_cell(self, dataset: Dataset, intent: str, *, field: str, explicit=None):
@@ -1543,6 +1551,7 @@ class ServingContextPlanSerializer(serializers.Serializer):
     max_model_len = serializers.IntegerField()
     model_context_limit = serializers.IntegerField()
     estimated = serializers.BooleanField()
+    warnings = serializers.ListField(child=serializers.CharField(), required=False)
 
 
 class FinetuningExperimentSerializer(serializers.Serializer):

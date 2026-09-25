@@ -136,7 +136,14 @@ EvaluationVariantContract = Annotated[
 ]
 
 
+class EvaluationContextVariantContract(ExistingVariantContract):
+    mode: EvaluationMode = "generate"
+    label: str = Field(default="", max_length=255)
+    output_tokens: int | None = Field(default=None, ge=1, le=1_000_000)
+
+
 class CheckEvaluationReadinessInput(MCPModel):
+    judge_model: str = Field(default="", max_length=255)
     dataset: str = Field(min_length=1, max_length=255)
     eval_set: str | None = Field(
         default=None,
@@ -146,6 +153,53 @@ class CheckEvaluationReadinessInput(MCPModel):
     cell: str | None = Field(default=None, max_length=255)
     version: str | None = Field(default=None, max_length=32)
     mode: EvaluationMode = "existing"
+    variants: list[EvaluationContextVariantContract] = Field(default_factory=list, max_length=20)
+
+
+class EvaluationContextSuggestionContract(MCPModel):
+    model: str
+    name: str
+    context_window: int
+    max_output_tokens: int
+    reserved_output_tokens: int
+    estimated_cost_usd: float | None
+    cost_delta_usd: float | None
+
+
+class EvaluationContextCheckContract(MCPModel):
+    role: str
+    label: str
+    model: str
+    context_window: int | None
+    max_output_tokens: int | None
+    estimated_input_tokens: int
+    total_input_tokens: int = 0
+    configured_model: str = ""
+    reserved_output_tokens: int
+    required_context: int
+    checked_rows: int
+    affected_rows: int
+    row_indices: list[int] = Field(max_length=10)
+    estimated: bool
+    status: Literal["fits", "warning", "unknown"]
+    message: str
+    estimated_cost_usd: float | None = None
+    cost_basis: str = ""
+    suggestions: list[EvaluationContextSuggestionContract] = Field(
+        default_factory=list, max_length=3
+    )
+    suggestion_note: str = ""
+
+
+class EvaluationJudgeOptionContract(MCPModel):
+    model: str
+    name: str
+    status: Literal["fits", "warning", "unknown"]
+    context_window: int | None
+    max_output_tokens: int | None
+    reserved_output_tokens: int
+    estimated_cost_usd: float | None
+    cost_delta_usd: float | None
 
 
 class CreditReadinessContract(MCPModel):
@@ -202,6 +256,8 @@ class CreateEvalSetOutput(MCPModel):
 class CheckEvaluationReadinessOutput(MCPModel):
     summary: str = Field(min_length=1, max_length=240)
     ready: bool
+    context_checks: list[EvaluationContextCheckContract] = Field(default_factory=list)
+    judge_models: list[EvaluationJudgeOptionContract] = Field(default_factory=list, max_length=50)
     dataset: EvaluationDatasetContract
     eval_set: EvalSetReadinessContract | None = None
     evaluators: list[EvaluatorReadinessContract] = Field(max_length=100)
@@ -238,7 +294,7 @@ class EvaluatorUpsertInput(MCPModel):
     config: dict[str, Any] = Field(
         default_factory=dict,
         max_length=100,
-        description="config.decision selects backend generative (default) or jev (opt-in bounded decisions with generative fallback), min_confidence 0..1, and version 1. Qualify Jev against labelled examples for the rubric; confidence is not accuracy. The decision model must be a registered Jev release. judge_model remains the generative judge/fallback.",
+        description="config.decision selects backend generative (default) or jev (opt-in bounded decisions with generative fallback), min_confidence 0..1, and version 1. Qualify Jev against labelled examples for the rubric; confidence is not accuracy. The decision model must be a registered Jev release. judge_model remains the generative judge/fallback. Label-only categorical evaluators support Jev; categorical checklists and behaviour contracts retain generative review. Jev returns decision provenance without a generated explanation.",
     )
     applicable_roles: list[EvaluationRole] = Field(default_factory=list, max_length=2)
     surface: Literal["model", "harness", "any"] = "any"
@@ -278,6 +334,11 @@ class EvaluatorUpsertOutput(MCPModel):
 
 
 class RunEvaluationInput(MCPModel):
+    judge_model: str = Field(
+        default="",
+        max_length=255,
+        description="Run-only generative judge/fallback; blank keeps saved choices. Jev policy unchanged.",
+    )
     name: str = Field(min_length=1, max_length=255)
     dataset: str = Field(min_length=1, max_length=255)
     eval_set: str | None = Field(

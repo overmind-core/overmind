@@ -1,8 +1,9 @@
-import { type ReactNode, useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
+import { ModelOptionLabel } from "@/components/model-option-label";
 import type { ProviderId } from "@/components/model-provider";
 import { getModelProviderInfo, getProviderInfoById } from "@/components/model-provider";
-import { getProviderIcon, ModelProviderChip, ProviderLogo } from "@/components/model-provider-chip";
+import { getProviderIcon, ProviderLogo } from "@/components/model-provider-chip";
 import { Badge } from "@/components/ui/badge";
 import { useCopy } from "@/components/ui/block-actions";
 import { Button } from "@/components/ui/button";
@@ -11,6 +12,7 @@ import {
   Dialog,
   DialogBody,
   DialogContent,
+  DialogDescription,
   DialogFooter,
   DialogHeader,
   DialogTitle,
@@ -148,7 +150,7 @@ function RunLocallyBody({
   const [chosenModelIds, setChosenModelIds] = useState<string[] | null>(null);
   const [selectedCapabilityId, setSelectedCapabilityId] = useState(capabilityId ?? "");
   const [selectedDatasetId, setSelectedDatasetId] = useState(datasetId ?? "");
-  const [selectedTab, setSelectedTab] = useState("harness");
+  const [selectedTab, setSelectedTab] = useState("optimize");
   const defaultModelIds = useModelCatalogQuery().data?.defaults.backtestModels ?? [];
   const modelIds = chosenModelIds ?? defaultModelIds;
 
@@ -184,67 +186,98 @@ function RunLocallyBody({
   return (
     <>
       <DialogHeader>
-        <DialogTitle>
-          {selectedTab === "harness" ? "New Optimiser Job" : "New Backtesting Job"}
-        </DialogTitle>
+        <DialogTitle>New optimisation run</DialogTitle>
+        <DialogDescription>
+          Improve a capability's prompts and code, or compare the models running it.
+        </DialogDescription>
       </DialogHeader>
 
       <DialogBody className="min-w-0 space-y-5">
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-          <div className="min-w-0 space-y-1.5">
-            <Label className="text-xs text-muted-foreground">Capability</Label>
-            <EntitySelect
-              ariaLabel="Capability"
-              empty="No capabilities."
-              error={capabilitiesQuery.error}
-              errorFallback="Couldn't load capabilities."
-              isLoading={capabilitiesQuery.isLoading}
-              loadingLabel="Loading capabilities…"
-              onRetry={capabilitiesQuery.refetch}
-              onValueChange={setSelectedCapabilityId}
-              options={capabilities.map((row) => ({ id: row.id, name: row.name }))}
-              placeholder="Select a capability"
-              value={selectedCapabilityId}
-            />
-          </div>
-
-          <div className="min-w-0 space-y-1.5">
-            <Label className="text-xs text-muted-foreground">Dataset</Label>
-            <EntitySelect
-              ariaLabel="Dataset"
-              empty="No eval datasets."
-              error={datasetsQuery.error}
-              errorFallback="Couldn't load datasets."
-              isLoading={datasetsQuery.isLoading}
-              loadingLabel="Loading datasets…"
-              onRetry={datasetsQuery.refetch}
-              onValueChange={setSelectedDatasetId}
-              options={datasets.map((row) => ({ id: row.id, name: row.name || row.id }))}
-              placeholder="Select a dataset"
-              value={selectedDatasetId}
-            />
-          </div>
-        </div>
-
-        <Tabs defaultValue="harness" onValueChange={setSelectedTab} value={selectedTab}>
-          <TabsList aria-label="Run type">
-            <TabsTrigger value="harness">Harness</TabsTrigger>
-            <TabsTrigger value="backtesting">Backtesting</TabsTrigger>
+        <Tabs onValueChange={setSelectedTab} value={selectedTab}>
+          <TabsList
+            aria-label="Run type"
+            className="grid h-auto grid-cols-1 items-stretch gap-3 bg-transparent p-0 sm:grid-cols-2"
+          >
+            <TabsTrigger
+              aria-describedby="optimise-mode-description"
+              aria-labelledby="optimise-mode-label"
+              className="items-start flex-col gap-1.5 whitespace-normal border border-border bg-card p-3 text-left data-[state=active]:border-primary data-[state=active]:bg-accent data-[state=active]:text-foreground data-[state=active]:hover:text-foreground"
+              value="optimize"
+            >
+              <span id="optimise-mode-label">Improve prompts &amp; code</span>
+              <span className="text-xs text-muted-foreground" id="optimise-mode-description">
+                Test changes to prompts, tool definitions and application logic.
+              </span>
+            </TabsTrigger>
+            <TabsTrigger
+              aria-describedby="compare-mode-description"
+              aria-labelledby="compare-mode-label"
+              className="items-start flex-col gap-1.5 whitespace-normal border border-border bg-card p-3 text-left data-[state=active]:border-primary data-[state=active]:bg-accent data-[state=active]:text-foreground data-[state=active]:hover:text-foreground"
+              value="model_comparison"
+            >
+              <span id="compare-mode-label">Compare models</span>
+              <span className="text-xs text-muted-foreground" id="compare-mode-description">
+                Keep prompts and logic fixed; evaluate different models on the same tasks.
+              </span>
+            </TabsTrigger>
           </TabsList>
-          <TabsContent className="mt-4 space-y-3" value="harness">
-            <CommandBlock commands={optimisePrompt}>
-              <p className={cn(PROSE, "text-sm text-muted-foreground")}>In your coding agent:</p>
-            </CommandBlock>
-          </TabsContent>
-          <TabsContent className="mt-4 space-y-3" value="backtesting">
-            <CommandBlock commands={backtestPrompt}>
-              <BacktestModelPicker
-                incumbentModel={incumbentModel}
-                modelIds={modelIds}
-                onModelIdsChange={setChosenModelIds}
-                projectId={projectId}
+
+          <div className="mt-5 grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <div className="min-w-0 space-y-1.5">
+              <Label className="text-xs text-muted-foreground">Capability</Label>
+              <EntitySelect
+                ariaLabel="Capability"
+                empty="No capabilities."
+                error={capabilitiesQuery.error}
+                errorFallback="Couldn't load capabilities."
+                isLoading={capabilitiesQuery.isLoading}
+                loadingLabel="Loading capabilities…"
+                onRetry={capabilitiesQuery.refetch}
+                onValueChange={setSelectedCapabilityId}
+                options={capabilities.map((row) => ({ id: row.id, name: row.name }))}
+                placeholder="Select a capability"
+                value={selectedCapabilityId}
               />
-            </CommandBlock>
+            </div>
+
+            <div className="min-w-0 space-y-1.5">
+              <Label className="text-xs text-muted-foreground">Eval dataset</Label>
+              <EntitySelect
+                ariaLabel="Eval dataset"
+                empty="No eval datasets."
+                error={datasetsQuery.error}
+                errorFallback="Couldn't load datasets."
+                isLoading={datasetsQuery.isLoading}
+                loadingLabel="Loading datasets…"
+                onRetry={datasetsQuery.refetch}
+                onValueChange={setSelectedDatasetId}
+                options={datasets.map((row) => ({ id: row.id, name: row.name || row.id }))}
+                placeholder="Select a dataset"
+                value={selectedDatasetId}
+              />
+            </div>
+          </div>
+
+          <TabsContent className="mt-4 space-y-4" value="optimize">
+            <p className={cn(PROSE, "text-sm text-muted-foreground")}>
+              Your coding agent proposes code changes and tests each against the current version
+              using this dataset. Overmind scores the results and records the winning diff for
+              review.
+            </p>
+            <CommandBlock commands={optimisePrompt} />
+          </TabsContent>
+          <TabsContent className="mt-4 space-y-4" value="model_comparison">
+            <p className={cn(PROSE, "text-sm text-muted-foreground")}>
+              Run up to {MAX_COMPARISON_MODELS} models on the same examples. Compare evaluation
+              scores with the current model, without fine-tuning or changing prompts.
+            </p>
+            <BacktestModelPicker
+              incumbentModel={incumbentModel}
+              modelIds={modelIds}
+              onModelIdsChange={setChosenModelIds}
+              projectId={projectId}
+            />
+            <CommandBlock commands={backtestPrompt} />
           </TabsContent>
         </Tabs>
       </DialogBody>
@@ -387,13 +420,12 @@ function BacktestModelPicker({
             {deployedPicks.map((pick) => {
               const checked = selected.has(pick.id);
               const disabled = isComparisonOptionDisabled(modelIds, pick.id);
-              const info = getModelProviderInfo(pick.baseModelId);
               return (
                 <button
                   aria-label={`Select ${pick.id}`}
                   aria-pressed={checked}
                   className={cn(
-                    "inline-flex max-w-full items-center gap-1.5 rounded-md border px-2 py-1 font-mono text-xs font-medium transition-colors",
+                    "inline-flex max-w-full items-center gap-2 rounded-sm border px-2 py-1.5 text-sm transition-colors",
                     checked
                       ? "border-success/40 bg-success/10 text-foreground"
                       : "border-border/70 bg-wash-raised text-muted-foreground hover:border-border hover:text-foreground",
@@ -404,12 +436,7 @@ function BacktestModelPicker({
                   onClick={() => onModelIdsChange(toggleComparisonModel(modelIds, pick.id))}
                   type="button"
                 >
-                  <ProviderLogo
-                    Icon={getProviderIcon(info.id)}
-                    providerLabel={info.providerLabel}
-                    providerSlug={info.providerSlug}
-                  />
-                  <span className="truncate">{pick.label}</span>
+                  <ModelOptionLabel model={pick.baseModelId} name={pick.label} />
                   {checked && <Icon.success className="size-3 shrink-0 text-success" />}
                 </button>
               );
@@ -432,7 +459,8 @@ function BacktestModelPicker({
       {modelIds.length > 0 && (
         <div aria-label="Selected OpenRouter models" className="flex flex-wrap gap-1.5">
           {modelIds.map((modelId) => (
-            <ModelProviderChip className="pr-1" compact key={modelId} model={modelId}>
+            <Badge className="max-w-full gap-2" key={modelId} variant="outline">
+              <ModelOptionLabel model={modelId} />
               {isBatchModel(modelId) && (
                 <span className="font-normal text-muted-foreground">· batch</span>
               )}
@@ -447,7 +475,7 @@ function BacktestModelPicker({
               >
                 <Icon.close className="size-3" />
               </button>
-            </ModelProviderChip>
+            </Badge>
           ))}
         </div>
       )}
@@ -472,7 +500,6 @@ function BacktestModelPicker({
             const checked = selected.has(model.id);
             const disabled = isComparisonOptionDisabled(modelIds, model.id);
             const batch = isBatchModel(model.id);
-            const info = getModelProviderInfo(model.id);
             return (
               <label
                 className={cn(
@@ -489,21 +516,15 @@ function BacktestModelPicker({
                     onModelIdsChange(toggleComparisonModel(modelIds, model.id))
                   }
                 />
-                <ProviderLogo
-                  Icon={getProviderIcon(info.id)}
-                  providerLabel={info.providerLabel}
-                  providerSlug={info.providerSlug}
-                />
                 <span className="min-w-0 flex-1">
-                  <span className="flex items-center gap-1.5">
-                    <span className="block min-w-0 truncate text-sm font-medium">{model.name}</span>
+                  <ModelOptionLabel className="text-sm" model={model.id} name={model.name}>
                     {batch && (
                       <Badge className="shrink-0" size="chip" variant="neutral">
                         Batch
                       </Badge>
                     )}
-                  </span>
-                  <span className="block truncate font-mono text-xs text-muted-foreground">
+                  </ModelOptionLabel>
+                  <span className="block truncate pl-5.5 font-mono text-xs text-muted-foreground">
                     {model.id}
                   </span>
                 </span>
@@ -576,17 +597,21 @@ function EntitySelect({
   );
 }
 
-function CommandBlock({ commands, children }: { commands: string; children?: ReactNode }) {
+function CommandBlock({ commands }: { commands: string }) {
   const { copied, copy } = useCopy(commands);
 
   return (
     <div className="space-y-2">
-      {children}
+      <p className={cn(PROSE, "text-xs text-muted-foreground")}>
+        Paste this prompt into your coding agent in the capability's repository. Execution runs
+        locally; scores and progress appear in Overmind. Copying does not start a run.
+      </p>
       <div className="overflow-hidden rounded-md border border-border/70 bg-wash-subtle">
-        <div className="flex justify-end border-b border-border/70 bg-wash-raised px-2 py-1.5">
+        <div className="flex items-center justify-between gap-3 border-b border-border/70 bg-wash-raised px-3 py-1.5">
+          <span className="text-xs text-muted-foreground">Coding agent prompt</span>
           <Button onClick={copy} size="xs" type="button" variant="secondary">
             {copied ? <Icon.success /> : <Icon.copy />}
-            {copied ? "Copied" : "Copy command"}
+            {copied ? "Copied" : "Copy prompt"}
           </Button>
         </div>
         <pre className="overflow-x-auto whitespace-pre p-3 font-mono text-xs leading-relaxed text-foreground">

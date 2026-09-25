@@ -15,6 +15,7 @@ import {
   isTerminalStatus,
   jobElapsedSeconds,
 } from "@/components/finetuning/job-snapshot";
+import { ModelOptionLabel } from "@/components/model-option-label";
 import { getModelProviderInfo, ModelProviderChip } from "@/components/model-provider-chip";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -176,7 +177,10 @@ export function JobsHistory({
       model: m,
     }));
     if (modelFilter !== "all" && !rows.some((m) => m.model === modelFilter))
-      rows.push({ label: "Unknown model", model: modelFilter });
+      rows.push({
+        label: getModelProviderInfo(modelFilter).modelLabel || modelFilter,
+        model: modelFilter,
+      });
     return rows.sort((a, b) => a.label.localeCompare(b.label));
   }, [modelFacet, modelFilter]);
 
@@ -408,8 +412,8 @@ export function JobsHistory({
             <SelectContent>
               <SelectItem value="all">All models</SelectItem>
               {modelOptions.map((m) => (
-                <SelectItem key={m.model} value={m.model}>
-                  {m.label}
+                <SelectItem key={m.model} textValue={m.label} value={m.model}>
+                  <ModelOptionLabel model={m.model} />
                 </SelectItem>
               ))}
             </SelectContent>

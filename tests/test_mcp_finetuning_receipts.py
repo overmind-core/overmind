@@ -39,7 +39,8 @@ def _call(name: str, arguments: dict, context: MCPContext):
     return asyncio.run(CATALOG.call(name, arguments, context))
 
 
-def test_start_finetune_job_receipt_has_kind_and_preserves_reference(monkeypatch):
+@pytest.mark.parametrize("judge_model", ["", "gpt-5.6-luna"])
+def test_start_finetune_job_receipt_has_kind_and_preserves_reference(monkeypatch, judge_model):
     from overbae.services.mcp import tools_finetuning
 
     context = _context()
@@ -67,12 +68,14 @@ def test_start_finetune_job_receipt_has_kind_and_preserves_reference(monkeypatch
             "dataset": str(train.id),
             "capability": str(capability.id),
             "base_model": "Qwen/Qwen2.5-7B-Instruct",
+            "eval_judge_model": judge_model,
         },
         context,
     )
 
     assert result.isError is False, result.structuredContent
     job = FinetuningJob.objects.get(project=context.project)
+    assert job.eval_judge_model == judge_model
     receipt = result.structuredContent["job"]
     assert receipt["kind"] == "finetune_job"
     assert receipt["id"] == str(job.id)

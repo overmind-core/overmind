@@ -136,7 +136,7 @@ def runnable_capability_evaluators(capability: Capability) -> list[Evaluator]:
 
 
 def expand_to_run_evaluators(
-    run, eval_set: EvalSet, *, role: str = EvalSetMember.Role.GENERATIVE
+    run, eval_set: EvalSet, *, role: str = EvalSetMember.Role.GENERATIVE, judge_model: str = ""
 ) -> list[RunEvaluator]:
     """Must mirror the ``evaluator_ids`` snapshotting in ``EvalRunSerializer.create()``."""
     members = active_members(eval_set, role)
@@ -154,7 +154,7 @@ def expand_to_run_evaluators(
             prompt_ids = set_prompt_ids
         else:
             prompt_ids = [None]
-        snapshot = snapshots.build_snapshot(member.evaluator)
+        snapshot = snapshots.build_snapshot(member.evaluator, judge_model=judge_model)
         for prompt_id in prompt_ids:
             created.append(
                 RunEvaluator.objects.create(

@@ -8,6 +8,7 @@ from typing import Any
 
 from overbae.services.eval.decisions import freeze_config
 from overbae.services.eval.evidence import infer_evidence_requirement
+from overbae.services.eval.judge_selection import uses_generative_judge
 
 # ``description`` is display-only; frozen so the run view never re-fetches the library row.
 SNAPSHOT_FIELDS = (
@@ -37,7 +38,7 @@ class UngradableEvaluatorError(ValueError):
     produce a meaningful score."""
 
 
-def build_snapshot(evaluator) -> dict[str, Any]:
+def build_snapshot(evaluator, *, judge_model: str = "") -> dict[str, Any]:
     """Every generative attach path funnels through here, so this is where an
     evaluator that cannot produce a meaningful score is refused. Failing at
     attach is deliberate: a run whose judge grades invented items, or answers
@@ -60,6 +61,8 @@ def build_snapshot(evaluator) -> dict[str, Any]:
     if evaluator.kind in {"llm_judge", "agentic", "trajectory"}:
         snap["config"] = freeze_config(snap.get("config"))
     snap["evaluator_id"] = str(getattr(evaluator, "id", "") or "")
+    if judge_model and uses_generative_judge(evaluator):
+        snap["judge_model"] = judge_model
     return snap
 
 

@@ -409,16 +409,24 @@ def test_job_create_rejects_non_eval_intent_eval_dataset():
     mock_apply.assert_not_called()
 
 
-def test_job_create_rejects_evaluation_that_cannot_fit_serving_context():
+def test_job_create_allows_evaluation_that_may_exceed_serving_context():
     u, project, capability = _setup()
     train = _dataset(project, capability, intent="ft", trace_ids=["train"])
     eval_set = EvalSet.objects.create(project=project, capability=capability, name="Evaluation")
+    evaluator = Evaluator.objects.create(
+        project=project,
+        name="Reference match",
+        kind="deterministic",
+        config={"check": "exact_match"},
+    )
+    EvalSetMember.objects.create(eval_set=eval_set, evaluator=evaluator, role="generative")
     evaluation = frozen_dataset(
         project,
         [{"input": "x" * 120000, "expected_output": "answer"}],
         capability=capability,
     )
     with patch(CELERY_PATH) as submit:
+        submit.return_value.id = "context-warning-task"
         response = _auth_client(u).post(
             reverse("finetuningjob-list"),
             {
@@ -432,13 +440,12 @@ def test_job_create_rejects_evaluation_that_cannot_fit_serving_context():
             },
             format="json",
         )
-    assert response.status_code == 400
-    assert "reserved output" in str(response.data.get("base_model")), response.data
-    assert not FinetuningJob.objects.filter(project=project).exists()
-    submit.assert_not_called()
+    assert response.status_code == 201, response.data
+    assert FinetuningJob.objects.filter(project=project).exists()
+    submit.assert_called_once()
 
 
-def test_recommendation_excludes_models_that_cannot_serve_evaluation():
+def test_recommendation_warns_without_excluding_models_for_evaluation_context():
     u, project, capability = _setup()
     train = _dataset(project, capability, intent="ft", trace_ids=["train"])
     evaluation = frozen_dataset(
@@ -453,11 +460,13 @@ def test_recommendation_excludes_models_that_cannot_serve_evaluation():
     )
     assert response.status_code == 200, response.data
     exclusions = {row["model"]: row["reason"] for row in response.data["excluded"]}
-    assert "reserved output" in exclusions["Qwen/Qwen3.5-27B"]
+    assert "Qwen/Qwen3.5-27B" not in exclusions
+    qwen = next(c for c in response.data["candidates"] if c["model"] == "Qwen/Qwen3.5-27B")
+    assert "reserved output" in qwen["serving_context"]["warnings"][0]
     for candidate in response.data["candidates"]:
         plan = candidate["serving_context"]
         assert plan["rows"] == 1
-        assert plan["max_model_len"] >= plan["required_context"]
+        assert plan["max_model_len"] >= plan["required_context"] or plan["warnings"]
         assert plan["max_model_len"] <= plan["model_context_limit"]
 
 

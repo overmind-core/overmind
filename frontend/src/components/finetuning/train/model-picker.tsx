@@ -1,9 +1,5 @@
 import { formatScore, TIER_ORDER } from "@/components/finetuning/train/model-config";
-import {
-  getModelProviderInfo,
-  getProviderIcon,
-  ProviderLogo,
-} from "@/components/model-provider-chip";
+import { ModelOptionLabel } from "@/components/model-option-label";
 import { SelectItem } from "@/components/ui/select";
 import type { ModelCatalog, ModelEntry } from "@/hooks/use-finetuning";
 import type { FinetuningExperiment } from "@/openapi";
@@ -55,15 +51,8 @@ export function rankedModels(
 }
 
 function ModelOptionRow({ entry }: { entry: RankedModel }) {
-  const info = getModelProviderInfo(entry.model.id);
   return (
-    <div className="flex min-w-0 flex-1 items-center gap-2">
-      <ProviderLogo
-        Icon={getProviderIcon(info.id)}
-        providerLabel={info.providerLabel}
-        providerSlug={info.providerSlug}
-      />
-      <span className="truncate">{entry.model.display}</span>
+    <ModelOptionLabel model={entry.model.id} name={entry.model.display}>
       <span className="ml-auto shrink-0 text-xs text-muted-foreground">{entry.model.params}</span>
       <span
         className="w-6 shrink-0 text-right text-xs tabular-nums text-foreground"
@@ -71,7 +60,7 @@ function ModelOptionRow({ entry }: { entry: RankedModel }) {
       >
         {formatScore(entry.match)}
       </span>
-    </div>
+    </ModelOptionLabel>
   );
 }
 

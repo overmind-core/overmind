@@ -311,6 +311,11 @@ export const getProviderInfoById = (id: ProviderId): ProviderBundle =>
 
 export const getModelProviderInfo = (model: string): ModelProviderInfo => {
   const trimmed = model.trim();
+  const fineTuned = /^ft-[0-9a-f]{8}-(.+)$/i.exec(trimmed);
+  if (fineTuned) {
+    const base = getModelProviderInfo(fineTuned[1]);
+    return { ...base, modelLabel: `${base.modelLabel} · FT` };
+  }
   // "provider/model" (router style) and "provider:model" (litellm style) both
   // carry an explicit provider segment.
   const separatorIdx = [trimmed.indexOf("/"), trimmed.indexOf(":")]

@@ -36,6 +36,7 @@ from overbae.services.entity_resolution import (
     resolve_eval_run,
     resolve_session,
 )
+from overbae.services.eval.context_check import run_context_checks
 from overbae.services.eval.sample_io import sample_io
 from overbae.services.mcp.context import get_context
 from overbae.services.mcp.contracts.datasets import next_actions, serialize_dataset_detail
@@ -727,6 +728,18 @@ def _eval_run_resource(project, value: str, uri: str) -> dict:
         "sampling": run.sampling,
         "error": run.error[:1_000],
         "summary": safe_json(run.summary or {}),
+        "context_checks": safe_json(run_context_checks(run)),
+        "judge_model": run.judge_model,
+        "run_evaluators": [
+            {
+                "id": str(row.id),
+                "name": (row.snapshot or {}).get("name", ""),
+                "kind": (row.snapshot or {}).get("kind", ""),
+                "judge_model": (row.snapshot or {}).get("judge_model", ""),
+                "enabled": row.enabled,
+            }
+            for row in run.run_evaluators.order_by("order", "id")[:_MAX_LIST]
+        ],
         "progress": safe_json(compute_run_progress(run)),
         "sample_count": sample_count,
         "samples": [
@@ -791,6 +804,7 @@ def _finetune_resource(project, value: str, uri: str) -> dict:
         "provider": job.provider,
         "base_model": job.base_model,
         "evaluation_plan": {
+            "eval_judge_model": job.eval_judge_model,
             "eval_incumbent_before": job.eval_incumbent_before,
             "eval_incumbent_after": job.eval_incumbent_after,
             "eval_model_before": job.eval_model_before,

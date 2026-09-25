@@ -73,8 +73,9 @@ def test_serving_plan_uses_native_window_without_rope_scaling(monkeypatch):
     plan = serving_context.serving_plan("model", serving_context.InferenceBudget(5000, 10000))
     assert plan["max_model_len"] == 16384
     assert plan["model_context_limit"] == 32768
-    with pytest.raises(ValueError, match="reserved output need"):
-        serving_context.serving_plan("model", serving_context.InferenceBudget(30000, 10000))
+    oversized = serving_context.serving_plan("model", serving_context.InferenceBudget(30000, 10000))
+    assert oversized["max_model_len"] == 32768
+    assert "reserved output need" in oversized["warnings"][0]
 
 
 @pytest.mark.parametrize("text", [None, '{"answer":'])

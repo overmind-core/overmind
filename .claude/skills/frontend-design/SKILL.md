@@ -36,6 +36,7 @@ Anything below `/60` is invisible. Never lower a border opacity without running 
 - A titled card is `<SectionCard title …>`; plain `<Card>` otherwise. Don't hand-roll `rounded-lg border` surfaces.
 - A destructive confirm is `<ConfirmDialog destructive onConfirm/>`. Never `window.confirm`. Dialog Cancel is always `variant="secondary"` (what `AlertDialogCancel` renders).
 - Feedback: `sonner` toast = transient async result; `Alert` = persistent inline notice; `DismissibleAlert` = in-dialog mutation error.
+- Model choices use `ModelOptionLabel`: provider logo, model name, then separate metadata. Use it in both dropdown rows and selected values, including judge, benchmark, comparison and filter selectors. Keep fit/cost/size annotations and selection rules; model IDs remain the stored values. `ModelProviderChip` is for read-only badges, not dropdown rows.
 
 ## Geometry, type, icons
 

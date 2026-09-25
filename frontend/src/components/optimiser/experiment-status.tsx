@@ -31,18 +31,18 @@ const OPTIMIZER_RUN_TYPE_META: Record<
   }
 > = {
   hybrid: {
-    description: "Varies the harness and tests each selected model.",
-    label: "Harness + model optimisation",
+    description: "Tests prompt and code changes with each selected model.",
+    label: "Code + model optimisation",
     variant: "info",
   },
   model_comparison: {
-    description: "Scores the incumbent against selected OpenRouter models.",
+    description: "Compares the current model with selected models on the same dataset.",
     label: "Model comparison",
     variant: "info",
   },
   optimize: {
     description: "Varies prompts, tools, and code across iterations.",
-    label: "Harness optimisation",
+    label: "Prompt & code optimisation",
     variant: "secondary",
   },
 };

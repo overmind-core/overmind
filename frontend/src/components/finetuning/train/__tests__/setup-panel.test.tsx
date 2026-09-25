@@ -12,6 +12,9 @@ import type { Dataset, DatasetValidationResponse } from "@/openapi";
 
 afterEach(cleanup);
 
+// Radix scrolls the selected option; jsdom has no layout or scrolling.
+HTMLElement.prototype.scrollIntoView = vi.fn();
+
 vi.mock("@tanstack/react-router", () => ({
   Link: ({ children, params }: { children: ReactNode; params: { datasetId: string } }) => (
     <a href={`/datasets/${params.datasetId}`}>{children}</a>
@@ -19,7 +22,9 @@ vi.mock("@tanstack/react-router", () => ({
 }));
 
 vi.mock("@/components/model-provider-chip", () => ({
+  getProviderIcon: () => undefined,
   ModelProviderChip: ({ model }: { model: string }) => <span title={model}>{model}</span>,
+  ProviderLogo: () => null,
 }));
 
 const TRAIN_SET = {
@@ -101,11 +106,169 @@ function setup(over: Partial<TrainWizard> = {}) {
 }
 
 describe("SetupPanel", () => {
+  it("aligns evaluation controls on shared grid rows", () => {
+    setup();
+    const field = (control: HTMLElement) => control.parentElement?.parentElement;
+    const evalSet = field(screen.getByRole("combobox", { name: /^Eval set/ }));
+    const judge = field(screen.getByRole("combobox", { name: /^Judge model/ }));
+    const benchmark = field(screen.getByRole("combobox", { name: /^Benchmark model/ }));
+    const baseline = field(screen.getByRole("group", { name: "Incumbent evaluations" }));
+    const training = field(screen.getByRole("group", { name: "Training model evaluations" }));
+    expect(evalSet?.parentElement).toBe(judge?.parentElement);
+    expect(benchmark?.parentElement).toBe(judge?.parentElement);
+    expect(baseline?.parentElement).toBe(judge?.parentElement);
+    expect(training?.parentElement).toBe(judge?.parentElement);
+    expect(evalSet?.className).toContain("sm:row-start-1");
+    expect(benchmark?.className).toContain("sm:row-start-1");
+    expect(judge?.className).toContain("sm:row-start-2");
+    expect(baseline?.className).toContain("sm:row-start-2");
+    expect(training?.className).toContain("lg:row-start-2");
+    expect(screen.getByText("Benchmark evals")).toBeTruthy();
+  });
+
+  it("shows the checked row count and reserved-context estimate for a fitting benchmark", () => {
+    setup({
+      benchmarkModel: "ft-benchmark",
+      contextQuery: {
+        data: {
+          checks: [
+            {
+              checkedRows: 500,
+              contextWindow: 16384,
+              model: "ft-benchmark",
+              requiredContext: 9316,
+              role: "generation",
+              status: "fits",
+            },
+          ],
+        },
+      } as unknown as TrainWizard["contextQuery"],
+      evaluationPlan: {
+        evalIncumbentAfter: false,
+        evalIncumbentBefore: true,
+        evalModelAfter: true,
+        evalModelBefore: false,
+      },
+    });
+    expect(screen.getByRole("status").textContent).toBe(
+      "500 rows · 9,316 / 16,384 tokens estimated"
+    );
+    expect(screen.getByRole("combobox", { name: /^Benchmark model/ }).className).not.toContain(
+      "bg-warning/10"
+    );
+  });
+
+  it("tints the affected benchmark selector and keeps muted alternatives selectable", () => {
+    const setBenchmarkModel = vi.fn();
+    setup({
+      benchmarkModel: "small",
+      benchmarkOptions: [
+        { kind: "Trained model", label: "Small benchmark", value: "small" },
+        { kind: "Trained model", label: "Large benchmark", value: "large" },
+        { kind: "Codebase incumbent", label: "Unknown benchmark", value: "unknown" },
+      ],
+      benchmarksQuery: {
+        data: [{ maxModelLen: 32000, modelId: "large", status: "ready" }],
+      } as unknown as TrainWizard["benchmarksQuery"],
+      contextQuery: {
+        data: {
+          checks: [
+            {
+              checkedRows: 30,
+              model: "small",
+              requiredContext: 16000,
+              role: "generation",
+              status: "warning",
+            },
+          ],
+        },
+      } as unknown as TrainWizard["contextQuery"],
+      evaluationPlan: {
+        evalIncumbentAfter: false,
+        evalIncumbentBefore: true,
+        evalModelAfter: true,
+        evalModelBefore: true,
+      },
+      selectedBenchmark: { kind: "Trained model", label: "Small benchmark", value: "small" },
+      setBenchmarkModel,
+    });
+    const selector = screen.getByRole("combobox", { name: /Benchmark model/ });
+    expect(selector.className).toContain("bg-warning/10");
+    expect(screen.getByRole("combobox", { name: /Judge model/ }).className).not.toContain(
+      "bg-warning/10"
+    );
+    fireEvent.keyDown(selector, { key: "ArrowDown" });
+    const small = screen.getByRole("option", { name: /Small benchmark/ });
+    expect(small.className).toContain("text-muted-foreground");
+    expect(small.getAttribute("aria-disabled")).not.toBe("true");
+    expect(screen.getByRole("option", { name: /Large benchmark/ }).textContent).toContain(
+      "Fits estimated context"
+    );
+    const unknown = screen.getByRole("option", { name: /Unknown/ });
+    expect(unknown.textContent).toContain("Context unverified");
+    expect(unknown.classList.contains("text-muted-foreground")).toBe(false);
+    fireEvent.click(unknown);
+    expect(setBenchmarkModel).toHaveBeenCalledWith("unknown");
+  });
+  it("keeps an unverified benchmark selector neutral", () => {
+    setup({
+      benchmarkModel: "unknown",
+      contextQuery: {
+        data: {
+          checks: [{ model: "unknown", role: "generation", status: "unknown" }],
+        },
+      } as unknown as TrainWizard["contextQuery"],
+      evaluationPlan: {
+        evalIncumbentAfter: false,
+        evalIncumbentBefore: true,
+        evalModelAfter: true,
+        evalModelBefore: false,
+      },
+    });
+    expect(screen.getByRole("combobox", { name: /^Benchmark model/ }).className).not.toContain(
+      "bg-warning/10"
+    );
+    expect(screen.getByRole("status").textContent).toBe("Context unverified");
+  });
+  it("puts the eval-set judge in a selector below the set without a warning card", () => {
+    setup({
+      contextQuery: {
+        data: {
+          checks: [
+            {
+              checkedRows: 30,
+              estimatedCostUsd: 1,
+              message: "Judge context is too small.",
+              model: "small",
+              role: "judge",
+              status: "warning",
+              suggestions: [
+                {
+                  contextWindow: 128000,
+                  costDeltaUsd: 1,
+                  estimatedCostUsd: 2,
+                  model: "larger",
+                  name: "Fitting judge",
+                  reservedOutputTokens: 17000,
+                },
+              ],
+            },
+          ],
+        },
+        isError: false,
+      } as unknown as TrainWizard["contextQuery"],
+    });
+    const selector = screen.getByRole("combobox", { name: /Judge model/ });
+    expect(selector.textContent).toContain("Small");
+    expect(screen.queryByRole("alert")).toBeNull();
+    expect(screen.queryByText("Judge context is too small.")).toBeNull();
+  });
   it("puts benchmark selection in the training setup grid", () => {
     const benchmark = {
+      baseModelId: "Qwen/Qwen3.5-27B",
       kind: "Trained model",
       label: "Support · Qwen",
-      value: "ft-12345678-qwen3-8b",
+      value: "ft-12345678-qwen3-5-27b",
     };
     setup({
       benchmarkModel: benchmark.value,
@@ -113,8 +276,10 @@ describe("SetupPanel", () => {
       selectedBenchmark: benchmark,
     });
     const selector = screen.getByRole("combobox", { name: "Benchmark model" });
-    expect(within(selector).getByTitle(benchmark.value).getAttribute("data-slot")).toBe("badge");
-    expect(selector.textContent).toContain("FT");
+    expect(within(selector).getByTitle(benchmark.value).getAttribute("data-slot")).not.toBe(
+      "badge"
+    );
+    expect(selector.textContent).toContain("Qwen3.5 27B · FT");
     expect(selector.getAttribute("title")).toBe("Support · Qwen");
     expect(
       selector.compareDocumentPosition(

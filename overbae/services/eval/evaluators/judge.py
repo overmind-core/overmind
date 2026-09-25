@@ -276,7 +276,22 @@ def evaluate(unit: EvalUnit, evaluator, ctx: dict[str, Any]) -> list[ScoreDraft]
                 system_prompt=JUDGE_SYSTEM_PROMPT,
             )
 
-        if (
+        if evaluator.score_type == "categorical":
+            outcome = decisions.categorical(
+                {
+                    "bound_evidence": variables,
+                    "runtime": prompt_runtime,
+                    "grounding": ctx.get("grounding"),
+                    "span_tree": render_span_tree((unit.trajectory or {}).get("span_tree")),
+                },
+                evaluator=evaluator,
+                convert=lambda label: JudgeResult(
+                    label=label, score=map_choice(label, evaluator)[0]
+                ),
+                fallback=fallback,
+                project_id=project_id,
+            )
+        elif (
             behaviour_role == "step"
             and evaluator.score_type == "numeric"
             and evaluator.score_min == 0
@@ -394,7 +409,7 @@ def _draft_from_outcome(
             data_type=evaluator.score_type,
             value=None,
             outcome=OUTCOME_ERROR,
-            reasoning="Judge output failed to parse.",
+            reasoning=judging.failure_reason(outcome),
             scope=evaluator.scope,
             judge_trace_id=outcome.judge_trace_id,
             cost=cost,

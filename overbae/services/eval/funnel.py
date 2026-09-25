@@ -21,7 +21,13 @@ from django.conf import settings
 from django.db import close_old_connections, connection
 from pydantic import BaseModel
 
-from overbae.core.llms import IncompleteCompletionError, ModelSpec, call_llm, try_json_parsing
+from overbae.core.llms import (
+    IncompleteCompletionError,
+    ModelSpec,
+    call_llm,
+    effective_max_tokens,
+    try_json_parsing,
+)
 from overbae.core.model_registry import (
     LLM_PROVIDER_BY_MODEL,
     TaskType,
@@ -29,6 +35,7 @@ from overbae.core.model_registry import (
     openrouter_configured,
     resolve_model,
 )
+from overbae.services.llm_context import assess_context, estimate_input_tokens, model_limits
 
 logger = logging.getLogger(__name__)
 
@@ -199,18 +206,16 @@ def _cache_key(
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()
 
 
-# ~100k tokens at 4 chars/token: inside every panel judge's context window.
-_PROMPT_CHAR_BUDGET = 400_000
-_TRUNCATION_MARKER = "\n…[evidence truncated to fit the judge context]…\n"
+def failure_reason(outcome: JudgeOutcome) -> str:
+    return {
+        "output_limit": "Judge reached its output token limit before completing the grade.",
+        "context_limit": "Judge input and reserved output exceed the provider's context limit.",
+    }.get(outcome.stats.get("error_kind"), "Judge output failed to parse.")
 
 
-def fit_prompt(prompt: str, budget: int = _PROMPT_CHAR_BUDGET) -> str:
-    """Rubric leads and closing instructions trail; the middle evidence drops."""
-    if len(prompt) <= budget:
-        return prompt
-    head = int(budget * 0.7)
-    tail = budget - head - len(_TRUNCATION_MARKER)
-    return prompt[:head] + _TRUNCATION_MARKER + prompt[-tail:]
+def diagnostics(outcome: JudgeOutcome) -> list[dict]:
+    metadata = outcome.stats.get("judge")
+    return [{"_judge": metadata}] if metadata else []
 
 
 def invoke_judge(
@@ -226,7 +231,6 @@ def invoke_judge(
 ) -> JudgeOutcome:
     """Never raises on parse; cache hits report ``response_cost = 0``."""
     judge = judge or resolve_judge(judge_model, project_id)
-    prompt = fit_prompt(prompt)
     trace_id = uuid.uuid4().hex
 
     cache_on = use_cache and _cache_enabled()
@@ -244,17 +248,89 @@ def invoke_judge(
                 cached=True,
             )
 
-    try:
-        raw, stats = call_llm(
-            prompt,
-            system_prompt=system_prompt,
-            model=judge.model_name,
-            model_spec=judge.model_spec,
-            response_format=response_format,
-            request_kwargs=request_kwargs,
+    model = resolved_model_name(judge)
+    limits = model_limits(
+        model,
+        project_id=project_id,
+        custom=bool(judge.model_spec and judge.model_spec.provider == "custom"),
+    )
+    input_tokens = estimate_input_tokens(
+        [system_prompt or "", prompt, response_format.model_json_schema()]
+    )
+    params = {**(judge.model_spec.params if judge.model_spec else {}), **(request_kwargs or {})}
+    output_tokens = params.pop("max_tokens", None) or effective_max_tokens(model)
+    context = assess_context(
+        model=model,
+        inputs=[input_tokens],
+        output_tokens=output_tokens,
+        limits=limits,
+        role="judge",
+        label=model,
+    )
+    attempts = []
+    started = time.monotonic()
+    for attempt in range(2):
+        error_kind = ""
+        try:
+            # max_tokens is an absolute wire budget, including reasoning tokens.
+            raw, stats = call_llm(
+                prompt,
+                system_prompt=system_prompt,
+                model=judge.model_name,
+                model_spec=judge.model_spec,
+                response_format=response_format,
+                request_kwargs={**params, "max_tokens": output_tokens},
+            )
+        except IncompleteCompletionError as exc:
+            raw, stats, error_kind = exc.content, exc.stats, "output_limit"
+        except RuntimeError as exc:
+            if not is_permanent_error(exc):
+                raise
+            raw, stats, error_kind = "", {}, "context_limit"
+        attempts.append(
+            {
+                **{
+                    k: stats.get(k)
+                    for k in (
+                        "finish_reason",
+                        "prompt_tokens",
+                        "completion_tokens",
+                        "reasoning_tokens",
+                        "provider_request_id",
+                        "served_model",
+                        "response_cost",
+                        "response_ms",
+                    )
+                },
+                "output_budget": output_tokens,
+                "error_kind": error_kind,
+            }
         )
-    except IncompleteCompletionError as exc:
-        return JudgeOutcome(parsed=None, raw=exc.content, stats=exc.stats, judge_trace_id=trace_id)
+        if error_kind != "output_limit" or attempt:
+            break
+        # Without published limits a larger retry is unverified. Keep the original failure.
+        ceiling = min(
+            limits.max_output_tokens or output_tokens,
+            (limits.context_window or 0) - input_tokens,
+            64000,
+        )
+        increased = min(output_tokens * 2, ceiling)
+        if increased <= output_tokens or time.monotonic() - started > 180:
+            break
+        output_tokens = increased
+    stats = {
+        **stats,
+        "context": context,
+        "attempts": attempts,
+        "error_kind": error_kind,
+        "judge": {"context": context, "attempts": attempts, "error_kind": error_kind},
+        "response_ms": round((time.monotonic() - started) * 1000),
+        "response_cost": sum(a["response_cost"] or 0 for a in attempts)
+        if all(a["response_cost"] is not None for a in attempts)
+        else None,
+    }
+    if error_kind:
+        return JudgeOutcome(parsed=None, raw=raw, stats=stats, judge_trace_id=trace_id)
     parsed = parse_structured(raw, response_format)
     # A cached parse failure would be sticky.
     if cache_on and parsed is not None:

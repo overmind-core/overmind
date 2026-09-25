@@ -5,11 +5,7 @@ import { toast } from "sonner";
 import { PromptTemplateEditor } from "@/components/evaluations/prompt-template-editor";
 import { type Option, SearchableSelect } from "@/components/evaluations/searchable-select";
 import { TaskScopePicker, type TaskScopeValue } from "@/components/evaluations/task-scope-picker";
-import {
-  getModelProviderInfo,
-  getProviderIcon,
-  ProviderLogo,
-} from "@/components/model-provider-chip";
+import { ModelOptionLabel, modelOptionName } from "@/components/model-option-label";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
@@ -65,23 +61,6 @@ const roleFromEvaluator = (evaluator: Evaluator): Role => {
   if (raw.includes("trace_scoring") && !raw.includes("generative")) return "trace_scoring";
   return DEFAULT_ROLE;
 };
-
-function JudgeModelRow({ modelId, isDefault }: { modelId: string; isDefault: boolean }) {
-  const info = getModelProviderInfo(modelId);
-  return (
-    <div className="flex min-w-0 flex-1 items-center gap-2">
-      <ProviderLogo
-        Icon={getProviderIcon(info.id)}
-        providerLabel={info.providerLabel}
-        providerSlug={info.providerSlug}
-      />
-      <span className="truncate">{info.modelLabel}</span>
-      {isDefault ? (
-        <span className="ml-auto shrink-0 text-xs text-muted-foreground">default</span>
-      ) : null}
-    </div>
-  );
-}
 
 const SCORE_TYPE_OPTIONS: Option[] = [
   { label: "Categorical", value: "categorical" },
@@ -522,12 +501,20 @@ export const CreateEvaluatorDialog = ({
                     id="judge-model"
                     size="default"
                   >
-                    <SelectValue />
+                    <SelectValue>
+                      <ModelOptionLabel model={judgeModel || defaultJudgeModel} />
+                    </SelectValue>
                   </SelectTrigger>
                   <SelectContent>
                     {judgeModels.map((id) => (
-                      <SelectItem key={id} textValue={id} value={id}>
-                        <JudgeModelRow isDefault={id === defaultJudgeModel} modelId={id} />
+                      <SelectItem key={id} textValue={modelOptionName(id)} value={id}>
+                        <ModelOptionLabel model={id}>
+                          {id === defaultJudgeModel && (
+                            <span className="ml-auto shrink-0 text-xs text-muted-foreground">
+                              default
+                            </span>
+                          )}
+                        </ModelOptionLabel>
                       </SelectItem>
                     ))}
                   </SelectContent>
