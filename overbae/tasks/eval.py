@@ -22,6 +22,7 @@ from overbae.core.llms import ModelSpec
 from overbae.models import EvalRun, FinetuningJob
 from overbae.services.datasets.examples import matches_reference
 from overbae.services.eval import chatml, evidence, normalizer, ranking, runner
+from overbae.services.eval.comparison import compare_variant_to_baseline
 from overbae.services.eval.context import snapshot_context
 from overbae.services.eval.evaluators import base as eval_base
 from overbae.services.eval.evaluators import statistical
@@ -647,14 +648,24 @@ def normalize_datapoint(dp) -> dict[str, Any]:
     has_assistant = any(m.get("role") == "assistant" for m in (normalized.get("messages") or []))
     output_synthesized_from_reference = False
     if not has_assistant and expected not in (None, "", []):
-        exp_str = (
-            expected
-            if isinstance(expected, str)
-            else _json.dumps(expected, default=str, ensure_ascii=False)
-        )
-        normalized.setdefault("messages", []).append({"role": "assistant", "content": exp_str})
-        normalized["final_output"] = exp_str
-        normalized["modality"] = "single_turn"
+        if isinstance(expected, dict) and expected.get("role") == "assistant":
+            # A recorded tool call must stay a tool call. Stringifying it would
+            # grade the JSON text instead of the call.
+            messages = [*(normalized.get("messages") or []), expected]
+            normalized = normalizer.normalize_messages(
+                messages,
+                normalized.get("tool_definitions") or [],
+                normalized.get("metadata"),
+            )
+        else:
+            exp_str = (
+                expected
+                if isinstance(expected, str)
+                else _json.dumps(expected, default=str, ensure_ascii=False)
+            )
+            normalized.setdefault("messages", []).append({"role": "assistant", "content": exp_str})
+            normalized["final_output"] = exp_str
+            normalized["modality"] = "single_turn"
         # The "output" IS the reference here, so a judge can skip self-comparison.
         # ``has_expected`` is too loose for that — it is true for real outputs too.
         output_synthesized_from_reference = True
@@ -934,10 +945,66 @@ def _generate_per_turn(
     )
 
 
+def _generate_single_completion(sample) -> dict[str, Any]:
+    """One model call on the recorded request. Tool schemas are advertised.
+    The completion, including a tool call, is the output. Tools are not executed.
+    """
+    from overbae.services.eval.runner import ReplayToolProvider, generate_decision
+
+    variant = sample.variant
+    model_name, model_spec = _variant_model(variant)
+    datapoint = _sample_row(sample)
+    if datapoint is None:
+        raise RuntimeError("generation failed: the row has no request")
+    seed_messages, tool_defs, _replay = _seed_from_datapoint(datapoint)
+    if not seed_messages:
+        raise RuntimeError("generation failed: the row has no request")
+    system_prompt = (variant.params or {}).get("system_prompt")
+    if system_prompt is None and variant.prompt_id:
+        system_prompt = variant.prompt.system_prompt
+    result = generate_decision(
+        input_messages=seed_messages,
+        tool_provider=ReplayToolProvider(tool_defs=tool_defs),
+        model=model_name,
+        model_spec=model_spec,
+        system_prompt=system_prompt,
+        reasoning_effort=(variant.params or {}).get("reasoning_effort"),
+        project_id=str(sample.run.project_id),
+    )
+    if result.error and not result.output_messages:
+        raise RuntimeError(f"generation failed: {result.error}")
+    total_tokens = result.prompt_tokens + result.completion_tokens
+    metadata = {
+        "model": variant.resolved_model,
+        "generation_strategy": "single_completion",
+        "cost": result.cost,
+        "latency_ms": result.latency_ms or None,
+        "prompt_tokens": result.prompt_tokens or None,
+        "completion_tokens": result.completion_tokens or None,
+        "total_tokens": total_tokens or None,
+        "steps": result.steps,
+        "finish_reasons": result.finish_reasons,
+        "output_truncated": result.truncated,
+        "context_checks": result.context_checks,
+        "truncated": result.truncated,
+    }
+    if result.error:
+        metadata["generation_error"] = result.error
+    return normalizer.normalize_generation(
+        input_value=seed_messages,
+        output_messages=result.output_messages,
+        tool_definitions=tool_defs,
+        metadata=metadata,
+        request=result.request,
+    )
+
+
 def _generate_sample(sample) -> dict[str, Any]:
     from overbae.services.eval.runner import ReplayToolProvider, resolve_max_steps, run_capability
 
     variant = sample.variant
+    if (variant.params or {}).get("generation_strategy") == "single_completion":
+        return _generate_single_completion(sample)
     model_name, model_spec = _variant_model(variant)
 
     # Prefer the already-reconstructed datapoint transcript; the source trace enriches
@@ -1681,6 +1748,7 @@ def _build_summary(run) -> dict[str, Any]:
     behaviours = _behaviour_rollup(run)
     if behaviours:
         summary["behaviours"] = behaviours
+    summary["baseline_comparison"] = compare_variant_to_baseline(summary)
     return summary
 
 

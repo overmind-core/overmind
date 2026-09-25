@@ -172,16 +172,16 @@ http_headers = { "X-Api-Key" = "ovr_…" }
 <details>
 <summary><b>What the tools cover</b></summary>
 
-| Domain          | Tools                                                                                                                                               |
-| --------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Observability   | `inspect_capability_health`, `query_failures`, `query_traces`, `query_task_executions`, `get_job`                                                   |
-| Datasets        | `list_datasets`, `inspect_dataset`, `query_dataset`, `create_dataset_from_traces`, `message_dataset_agent`, `run_dataset`                           |
-| Evaluations     | `check_evaluation_readiness`, `upsert_evaluator`, `run_evaluation`, `compare_evaluations`, `annotate_evaluation_sample`                             |
-| Training        | `check_finetune_readiness`, `estimate_finetune`, `start_finetune`, `retry_deployment`, `set_active_model`, `run_inference`, `get_model_swap_prompt` |
-| Optimiser       | `check_optimizer_readiness`, `start_optimizer`, `inspect_optimizer_result`                                                                          |
-| Connectors      | `inspect_connectors`, `configure_connector`, `sync_connector`                                                                                       |
-| Instrumentation | `get_instrumentation_plan`, `verify_instrumentation`                                                                                                |
-| Catalog         | `get_model_catalog`                                                                                                                                 |
+| Domain          | Tools                                                                                                                                                      |
+| --------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Observability   | `inspect_capability_health`, `query_failures`, `query_traces`, `query_task_executions`, `get_job`                                                          |
+| Datasets        | `list_datasets`, `inspect_dataset`, `query_dataset`, `create_dataset_from_traces`, `create_dataset_from_llm_calls`, `message_dataset_agent`, `run_dataset` |
+| Evaluations     | `check_evaluation_readiness`, `upsert_evaluator`, `run_evaluation`, `compare_evaluations`, `annotate_evaluation_sample`                                    |
+| Training        | `check_finetune_readiness`, `estimate_finetune`, `start_finetune`, `retry_deployment`, `set_active_model`, `run_inference`, `get_model_swap_prompt`        |
+| Optimiser       | `check_optimizer_readiness`, `start_optimizer`, `inspect_optimizer_result`                                                                                 |
+| Connectors      | `inspect_connectors`, `configure_connector`, `sync_connector`                                                                                              |
+| Instrumentation | `get_instrumentation_plan`, `verify_instrumentation`                                                                                                       |
+| Catalog         | `get_model_catalog`                                                                                                                                        |
 
 Prompts such as `investigate-capability`, `finetune-capability` and `ship-model` chain the tools into complete workflows.
 

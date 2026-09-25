@@ -206,6 +206,11 @@ def _check_tool_runs(label: str, messages: list[dict[str, Any]]) -> list[str]:
             j += 1
 
         if n_tools == 0:
+            # The last assistant turn is the supervised target. It may be a tool
+            # call that has no result yet. An earlier unanswered call is not.
+            if j == len(messages):
+                i = j
+                continue
             issues.append(
                 f"{label}, assistant message {i + 1}: "
                 f"issued {n_calls} tool call(s) but no tool response messages follow."
@@ -277,7 +282,7 @@ def _check_message_sequence(label: str, messages: list[dict[str, Any]]) -> list[
             )
         pending = pending[1:]
 
-    if pending:
+    if pending and pending[0][1] != len(messages) - 1:
         asst_idx = pending[0][1]
         issues.append(
             f"{label}, assistant message {asst_idx + 1}: "

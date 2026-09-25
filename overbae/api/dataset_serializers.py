@@ -200,8 +200,9 @@ class DatasetSerializer(serializers.ModelSerializer):
 
 
 class SourceSerializer(serializers.Serializer):
-    """Exactly one of ``uploads``, ``upload_id``, ``text``, ``rows`` or ``traces``.
-    ``traces`` is a traces-list selection or ``{"trace_ids": [...]}``."""
+    """Exactly one of ``uploads``, ``upload_id``, ``text``, ``rows``, ``traces`` or ``llm_calls``.
+    ``traces`` is a traces-list selection or ``{"trace_ids": [...]}``.
+    ``llm_calls`` is ``{capability_id, since, until?, model?, limit?}``."""
 
     upload_id = serializers.UUIDField(required=False, allow_null=True)
     uploads = serializers.ListField(
@@ -211,12 +212,17 @@ class SourceSerializer(serializers.Serializer):
     text = serializers.CharField(required=False, allow_blank=True)
     rows = serializers.ListField(child=serializers.JSONField(), required=False)
     traces = serializers.JSONField(required=False)
+    llm_calls = serializers.JSONField(required=False)
 
     def validate(self, attrs):
-        keys = [k for k in ("uploads", "upload_id", "text", "rows", "traces") if attrs.get(k)]
+        keys = [
+            k
+            for k in ("uploads", "upload_id", "text", "rows", "traces", "llm_calls")
+            if attrs.get(k)
+        ]
         if len(keys) != 1:
             raise serializers.ValidationError(
-                "Give exactly one source: uploads, upload_id, text, rows or traces."
+                "Give exactly one source: uploads, upload_id, text, rows, traces or llm_calls."
             )
         if attrs.get("upload_id"):
             attrs["upload_id"] = str(attrs["upload_id"])
@@ -236,6 +242,14 @@ class DatasetCreateSerializer(serializers.Serializer):
     intent = serializers.ChoiceField(choices=Dataset.Intent.choices, required=False)
     source = SourceSerializer()
 
+    def validate(self, attrs):
+        if (attrs.get("source") or {}).get("llm_calls") and attrs.get("intent") not in (
+            Dataset.Intent.TRAIN,
+            Dataset.Intent.EVAL,
+        ):
+            raise serializers.ValidationError({"intent": "Choose train or eval."})
+        return attrs
+
 
 class DatasetSplitCreateSerializer(serializers.Serializer):
     """One source landed as ``<name> train`` and ``<name> eval``. The eval slice is
@@ -248,7 +262,7 @@ class DatasetSplitCreateSerializer(serializers.Serializer):
     )
     source = SourceSerializer()
     eval_percent = serializers.IntegerField(min_value=1, max_value=99)
-    position = serializers.ChoiceField(choices=SPLIT_POSITIONS)
+    position = serializers.ChoiceField(choices=[*SPLIT_POSITIONS, "hash"])
     group_by = serializers.ListField(
         child=serializers.CharField(max_length=255), max_length=10, required=False, default=list
     )

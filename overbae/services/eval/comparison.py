@@ -195,6 +195,41 @@ def build_comparison_rows(current: dict[str, Any], baseline: dict[str, Any]) -> 
     return rows
 
 
+def _one_variant(summary: dict[str, Any], variant_id: str) -> dict[str, Any]:
+    variant = (summary.get("variants") or {}).get(variant_id) or {}
+    return {
+        "metrics": list((variant.get("metrics") or {}).keys()),
+        "variants": {variant_id: variant},
+        "gate_metrics": summary.get("gate_metrics") or [],
+    }
+
+
+def compare_variant_to_baseline(summary: dict[str, Any]) -> dict[str, Any]:
+    """Each variant against the baseline variant.
+
+    ``compare_runs`` averages every variant in a summary into one number, so a
+    multi-model run cannot use it as a gate.
+    """
+    baseline_id = summary.get("baseline_variant_id")
+    variants = summary.get("variants") or {}
+    if not baseline_id or baseline_id not in variants:
+        return {"baseline_variant_id": baseline_id, "variants": []}
+    baseline = _one_variant(summary, baseline_id)
+    rows = []
+    for variant_id, variant in variants.items():
+        if variant_id == baseline_id:
+            continue
+        compared = compare_runs(_one_variant(summary, variant_id), baseline)
+        rows.append(
+            {
+                "variant_id": variant_id,
+                "label": variant.get("label") or variant_id,
+                "overall": compared["overall"],
+            }
+        )
+    return {"baseline_variant_id": baseline_id, "variants": rows}
+
+
 def compare_runs(current: dict[str, Any], baseline: dict[str, Any]) -> dict[str, Any]:
     cur_overall = overall_aggregate(current)
     base_overall = overall_aggregate(baseline)
