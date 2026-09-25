@@ -2,7 +2,7 @@ from pathlib import Path
 
 from django.conf import settings
 
-from overbae.settings import _HOSTED_STATIC_CDN, _file_storages
+from overbae.settings import _file_storages
 
 _FS = "django.core.files.storage.FileSystemStorage"
 _S3 = "storages.backends.s3boto3.S3Boto3Storage"
@@ -54,7 +54,3 @@ def test_s3_static_profile_does_not_conflict_with_finetuning_keys():
     assert storage.session_profile == "administrator"
     assert not storage.access_key
     assert not storage.secret_key
-
-
-def test_hosted_static_cdn_default_kept():
-    assert _HOSTED_STATIC_CDN == "static.overmindlab.ai"

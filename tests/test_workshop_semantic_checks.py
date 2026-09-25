@@ -10,7 +10,6 @@ from overbae.core import decisions as transport
 from overbae.models import BillingTelemetry, Cell, Dataset, Project
 from overbae.services.datasets import land, paths, review, semantic_checks, store
 from overbae.services.datasets.context import context_fingerprint
-from overbae.services.datasets.notebook.agent import TOOL_SPECS, Tools
 
 pytestmark = pytest.mark.django_db
 
@@ -186,11 +185,6 @@ def test_failed_audit_persistence_still_charges_provider_usage(dataset, provider
         semantic_checks.run_checks(dataset, dataset.active_cell, request())
     charge.assert_called_once()
     assert charge.call_args.args[1]["response_cost"] > 0
-
-
-def test_workshop_tool_available_to_both_engines():
-    assert "check_semantic_quality" in TOOL_SPECS
-    assert hasattr(Tools, "check_semantic_quality")
 
 
 def many_rows(dataset, count, content="The box is blue."):

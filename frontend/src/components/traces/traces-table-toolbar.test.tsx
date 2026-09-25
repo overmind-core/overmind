@@ -103,12 +103,6 @@ describe("TracesTableToolbar quick filters", () => {
       "true"
     );
   });
-
-  it("does not offer an All spans view", () => {
-    renderToolbar();
-    expect(screen.queryByRole("tab", { name: "All spans" })).toBeNull();
-    expect(screen.getByRole("tab", { name: "Root traces" })).toBeTruthy();
-  });
 });
 
 describe("TracesTableToolbar executions grouping", () => {

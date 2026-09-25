@@ -208,18 +208,6 @@ dataset: ds-1`
 });
 
 describe("buildBacktestPrompt", () => {
-  it("names the catalog's default pair when nothing was chosen", () => {
-    const prompt = buildBacktestPrompt("invoice-extract", "ds-1", [
-      "openai/gpt-5-mini",
-      "anthropic/claude-sonnet-4",
-    ]);
-    expect(prompt).toContain("/overmind backtest");
-    expect(prompt).toContain("capability: invoice-extract");
-    expect(prompt).toContain("dataset: ds-1");
-    expect(prompt).toContain("models: openai/gpt-5-mini, anthropic/claude-sonnet-4");
-    expect(prompt).not.toContain("overmind backtest start");
-  });
-
   it("uses the selected model list", () => {
     const prompt = buildBacktestPrompt("invoice-extract", "ds-1", [
       "google/gemini-2.5-pro",

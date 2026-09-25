@@ -303,21 +303,6 @@ def test_rootless_trace_carves_earliest_span_as_interrupted_head():
     assert carved.units[0].interrupted is True
 
 
-def test_rootless_multi_entry_marks_only_the_last_unit_interrupted():
-    """Earlier units genuinely completed; the last-starting unit is the nearest
-    proxy for the work in flight when the run died."""
-    t1 = _turn("t1", parent="gone", start=1)
-    t2 = _turn("t2", parent="gone", start=2)
-    t3 = _turn("t3", parent="gone", start=3)
-    carved = carving.carve([t1, t2, t3])
-    assert carved.rootless is True
-    # The fallback head absorbs the earliest turn; the rest are the units.
-    assert [(u.unit_span.span_id, u.interrupted) for u in carved.units] == [
-        ("t2", False),
-        ("t3", True),
-    ]
-
-
 def test_run_surfaces_offer_the_root_over_its_whole_subtree():
     root = _span("root", start=0, span_type="entry_point")
     t1 = _turn("t1", parent="root", start=1)

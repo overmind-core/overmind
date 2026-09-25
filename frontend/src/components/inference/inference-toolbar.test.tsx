@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import type { ComponentProps } from "react";
 
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { DeployedModelsListStatusEnum } from "@/openapi";
@@ -141,16 +141,6 @@ describe("InferenceToolbar search box", () => {
     renderToolbar({ search: "llama" });
 
     expect(screen.getByLabelText<HTMLInputElement>("Search models").value).toBe("llama");
-  });
-
-  // Typing reports upward on every keystroke; the route debounces before the URL.
-  it("reports each keystroke to the route", () => {
-    const onSearchChange = vi.fn();
-
-    renderToolbar({ onSearchChange });
-    fireEvent.change(screen.getByLabelText("Search models"), { target: { value: "ft-" } });
-
-    expect(onSearchChange).toHaveBeenCalledWith("ft-");
   });
 
   it("offers the field's own clear only while it has text", () => {

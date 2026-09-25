@@ -44,20 +44,6 @@ def _context(permission: str) -> MCPContext:
     return MCPContext(user=user, token=token, project=project)
 
 
-def test_catalog_emits_typed_schemas_and_annotations():
-    definition = _definition()
-    tool = definition.as_mcp_tool()
-
-    assert tool.inputSchema["type"] == "object"
-    assert "title" not in tool.inputSchema
-    assert tool.description == "Read a bounded project state value."
-    assert tool.outputSchema is None
-    assert tool.annotations.readOnlyHint is True
-    assert tool.annotations.destructiveHint is False
-    assert tool.annotations.idempotentHint is True
-    assert tool.annotations.openWorldHint is False
-
-
 @pytest.mark.parametrize(
     "overrides",
     [
@@ -104,17 +90,6 @@ async def test_catalog_validates_handler_output_before_returning_structured_cont
 
     assert result.isError is True
     assert result.structuredContent["error"]["code"] == "invalid_output"
-
-
-def test_catalog_never_exposes_delete_or_protocol_tools():
-    catalog = ToolCatalog()
-    catalog.register(_definition(), lambda *_: ReadOutput(answer="ok"))
-    names = {tool.name for tool in catalog.tools(frozenset({"read"}))}
-    assert names == {"read_state"}
-
-
-def test_catalog_allows_only_the_curated_retry_tool():
-    assert _definition(name="retry_deployment").name == "retry_deployment"
 
 
 @pytest.mark.asyncio

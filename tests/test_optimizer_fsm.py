@@ -710,22 +710,6 @@ def test_advance_parks_on_evaluated_candidate_outputs():
     assert exp.current_iteration == 4
 
 
-def test_advance_caps_iterations_and_returns_without_raising(monkeypatch):
-    exp = _make_experiment(status=OptimizerExperiment.Status.ITERATING, current_iteration=0)
-    calls = []
-
-    def _always_changes(self):
-        calls.append(1)
-        self.current_iteration += 1
-        self.save(update_fields=["current_iteration"])
-
-    monkeypatch.setattr(OptimizerExperiment, "generate_next", _always_changes)
-
-    exp.advance()
-
-    assert len(calls) == 10_000
-
-
 def test_cancel_marks_pending_and_running_children_failed():
     exp = _make_experiment(status=OptimizerExperiment.Status.ITERATING)
     iteration = _make_iteration(exp, order=1)

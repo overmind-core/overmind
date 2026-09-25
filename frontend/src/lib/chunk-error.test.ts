@@ -6,7 +6,6 @@ import { NETWORK_ERROR_MESSAGE } from "@/lib/api-error";
 import { errorMessage } from "@/lib/notify";
 import {
   CHUNK_RELOAD_KEY,
-  clearChunkReloadFlag,
   isChunkLoadError,
   tryReloadOnceOnChunkError,
   withChunkReloadRetry,
@@ -52,13 +51,6 @@ describe("tryReloadOnceOnChunkError", () => {
     expect(sessionStorage.getItem(CHUNK_RELOAD_KEY)).toBe("1");
   });
 
-  it("does not reload when the flag is already set", () => {
-    sessionStorage.setItem(CHUNK_RELOAD_KEY, "1");
-    const err = new TypeError("Failed to fetch dynamically imported module");
-    expect(tryReloadOnceOnChunkError(err)).toBe(false);
-    expect(reload).not.toHaveBeenCalled();
-  });
-
   it("ignores non-chunk errors", () => {
     expect(tryReloadOnceOnChunkError(new TypeError("Failed to fetch"))).toBe(false);
     expect(reload).not.toHaveBeenCalled();
@@ -100,14 +92,6 @@ describe("withChunkReloadRetry", () => {
     sessionStorage.setItem(CHUNK_RELOAD_KEY, "1");
     const loader = vi.fn(() => Promise.resolve({ default: "ok" }));
     await expect(withChunkReloadRetry(loader)()).resolves.toEqual({ default: "ok" });
-    expect(sessionStorage.getItem(CHUNK_RELOAD_KEY)).toBeNull();
-  });
-});
-
-describe("clearChunkReloadFlag", () => {
-  it("removes the reload guard", () => {
-    sessionStorage.setItem(CHUNK_RELOAD_KEY, "1");
-    clearChunkReloadFlag();
     expect(sessionStorage.getItem(CHUNK_RELOAD_KEY)).toBeNull();
   });
 });

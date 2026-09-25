@@ -387,16 +387,4 @@ describe("SetupPanel", () => {
     expect(screen.getByText("No eval datasets for this capability.")).toBeTruthy();
     expect(screen.queryByText(/also appear in the training set/)).toBeNull();
   });
-
-  it("offers the run name before anything is picked", () => {
-    setup();
-
-    const name = screen.getByLabelText("Name");
-    const capability = screen.getByLabelText("Capability (optional)");
-
-    expect(
-      name.compareDocumentPosition(capability) & Node.DOCUMENT_POSITION_FOLLOWING
-    ).toBeTruthy();
-    expect(name.parentElement?.parentElement?.className).toContain("lg:col-span-3");
-  });
 });

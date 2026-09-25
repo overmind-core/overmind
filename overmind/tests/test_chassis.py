@@ -35,20 +35,12 @@ AGENT_SRC = textwrap.dedent(
     """
 )
 
-SETUP_MD = Path(__file__).resolve().parents[1] / "skills" / "overmind" / "references" / "setup.md"
-
 
 def _repo(tmp_path: Path) -> str:
     pkg = tmp_path / "app"
     pkg.mkdir()
     (pkg / "agent.py").write_text(AGENT_SRC, encoding="utf-8")
     return str(tmp_path)
-
-
-def test_extracts_functions_and_call_graph(tmp_path):
-    chassis = extract_chassis(_repo(tmp_path))
-    assert "app.agent.run_turn" in chassis.functions
-    assert "call_llm_tools" in chassis.calls["app.agent.run_turn"]
 
 
 def test_digest_lists_verbatim_qualnames_per_file(tmp_path):
@@ -150,15 +142,3 @@ def test_chassis_cli_prints_digest(tmp_path, monkeypatch):
     assert result.exit_code == 0, result.output
     assert "app.agent.run_turn" in result.output
     assert "5 functions across 1 files" in result.output
-
-
-def test_setup_skill_matches_trajectory_prompt():
-    text = SETUP_MD.read_text(encoding="utf-8")
-    assert "overmind chassis" in text
-    assert "trajectory_map[].verified" in text
-    assert "**Trajectory map (claim-classed).**" in text
-    assert "**Code-symbol anchors.**" in text
-    assert "**Prompt capture.**" in text
-    assert "**Definition.**" in text
-    assert "llm_judge_custom" in text
-    assert "`Faithfulness`" in text

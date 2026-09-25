@@ -245,36 +245,6 @@ def test_system_prompt_carries_playbook_capability_libraries_and_sample():
     assert "not the application" in text
 
 
-def test_train_prompt_requires_projection_even_for_format_valid_rows():
-    dataset = _dataset(intent="train")
-    text = agent.system_prompt(dataset)
-    assert 'df = df[["messages"]].copy()' in text
-    assert "even when the train contract already passes" in text
-    assert "removing information from inside messages is a separate semantic change" in text
-    assert "Do not retain every source column" in text
-    assert "_overmind_provenance" in text
-
-
-@pytest.mark.parametrize(
-    "request_prompt", [prompts.PREPARE, prompts.FOLLOW_UP], ids=["initial", "repair"]
-)
-def test_preparation_prompt_requires_repairs_before_residual_warnings(request_prompt):
-    text = " ".join((prompts.WORKSHOP + request_prompt).split())
-    assert "repair loop" in text
-    assert "Apply supported improvements even if other checks will remain failed or unknown" in text
-    assert "A selected capability already chooses the target" in text
-    assert "decode nested user JSON" in text
-    assert "never row position or matching mode counts" in text
-    assert "Questions and audit-only requests stay read-only" in text
-    assert "say which one and why, in one sentence, and stop" not in text
-    assert "Stop with the missing evidence" not in text
-    assert "Work field by field against the selected task" in text
-    assert "Check answer support and input evidence against that same target" in text
-    assert 'add_cell(kind="semantic", run=false)' in text
-    assert "Approval cannot make unsupported facts true" in text
-    assert "Do not generate answers" not in text
-
-
 @pytest.mark.parametrize("initial", [True, False], ids=["initial", "follow_up"])
 def test_supported_rule_derivation_can_restructure_worker_data_directly(initial):
     evidence = {

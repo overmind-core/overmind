@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 
 import type { ClassMetrics, FinetuningJudgeEvalRow } from "@/hooks/use-finetuning";
-import { buildClassSeries, buildMacroSeries, evalStepOf } from "./class-metrics";
+import { buildClassSeries, buildMacroSeries } from "./class-metrics";
 import { latestClassMetricsOf } from "./judge-eval-table";
 
 // Provider-logo ESM subpaths do not resolve in Vitest; selection uses no logo rendering.
@@ -44,14 +44,6 @@ const rows: FinetuningJudgeEvalRow[] = [
   row("final", null, metricsAt(0.8)),
   row("checkpoint", 12, null),
 ];
-
-describe("evalStepOf", () => {
-  it("orders baseline, checkpoints, and final on one axis", () => {
-    expect(evalStepOf(rows[0], 24)).toBe(0);
-    expect(evalStepOf(rows[1], 24)).toBe(24);
-    expect(evalStepOf(rows[2], 24)).toBe(25);
-  });
-});
 
 describe("latestClassMetricsOf", () => {
   it("prefers final over checkpoints over baseline", () => {

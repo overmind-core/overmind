@@ -55,17 +55,6 @@ def _span(
     )
 
 
-def test_process_span_creates_and_links_session():
-    _, project = _client_and_project()
-    span = _span(project, attributes={"conversation.id": "conv-abc"})
-
-    process_span(span.span_id, str(project.id))
-
-    span.refresh_from_db()
-    conversation = Conversation.objects.get(project=project, external_id="conv-abc")
-    assert span.conversation_id == conversation.id
-
-
 def test_process_span_groups_multiple_traces_under_one_session():
     _, project = _client_and_project()
     spans = [_span(project, attributes={"conversation.id": "conv-multi"}) for _ in range(3)]

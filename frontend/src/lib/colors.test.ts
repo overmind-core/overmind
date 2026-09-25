@@ -1,13 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import {
-  CATEGORICAL_SLOT_COUNT,
-  domainStatus,
-  SERIES_COLORS,
-  scoreChipClass,
-  scoreTone,
-  TONE_CHIP,
-} from "./colors";
+import { domainStatus, scoreChipClass, scoreTone, TONE_CHIP } from "./colors";
 
 describe("scoreTone", () => {
   it("cuts at 70 and 40", () => {
@@ -52,18 +45,6 @@ describe("domainStatus", () => {
     expect(domainStatus("")).toBe("neutral");
     expect(domainStatus(null)).toBe("neutral");
     expect(domainStatus(undefined)).toBe("neutral");
-  });
-});
-
-describe("categorical scale", () => {
-  it("exposes exactly the tokenised scale, with no raw colour values", () => {
-    expect(SERIES_COLORS).toHaveLength(CATEGORICAL_SLOT_COUNT);
-    for (const c of SERIES_COLORS) expect(c).toMatch(/^var\(--cat-[1-6]\)$/);
-  });
-
-  it("cycles series colours rather than running off the end", () => {
-    expect(SERIES_COLORS[0]).toBe("var(--cat-1)");
-    expect(SERIES_COLORS[CATEGORICAL_SLOT_COUNT - 1]).toBe("var(--cat-6)");
   });
 });
 

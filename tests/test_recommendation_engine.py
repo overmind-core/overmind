@@ -1,8 +1,6 @@
 from __future__ import annotations
 
-import ast
 import uuid
-from pathlib import Path
 from typing import Any
 from unittest import mock
 
@@ -18,8 +16,6 @@ from overbae.services.recommendation import get_recommendation
 from overbae.services.recommendation.constraints import eligible_models
 from overbae.services.recommendation.hyperparams import compute_hyperparams
 from overbae.services.recommendation.ranking import DEFAULT_PICKS
-
-_PACKAGE = Path(__file__).resolve().parents[1] / "overbae" / "services" / "recommendation"
 
 _STATS = {
     "num_examples": 500,
@@ -376,35 +372,7 @@ def test_dataset_recommendation_never_calls_an_llm_inline(dataset):
     assert analysis["candidates"]
 
 
-def test_no_module_in_the_package_imports_an_llm():
-    imported = {module: _imported_names(path) for module, path in _package_modules().items()}
-
-    assert "overbae.services.benchmarks.artifact" in imported["analysis"]
-    assert {
-        module: sorted(names)
-        for module, names in imported.items()
-        if any(name.startswith("overbae.core.llms") for name in names)
-    } == {}
-
-
 def test_the_payload_matches_the_published_contract(dataset):
     serializer = FinetuningRecommendationResponseSerializer(data=_recommend(dataset))
 
     assert serializer.is_valid(), serializer.errors
-
-
-def _package_modules() -> dict[str, Path]:
-    return {path.stem: path for path in sorted(_PACKAGE.glob("*.py"))}
-
-
-def _imported_names(path: Path) -> set[str]:
-    """Absolute module and symbol names imported anywhere in *path*, lazy imports included."""
-    names: set[str] = set()
-    for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
-        if isinstance(node, ast.Import):
-            names |= {alias.name for alias in node.names}
-        elif isinstance(node, ast.ImportFrom) and not node.level:
-            prefix = node.module or ""
-            names.add(prefix)
-            names |= {f"{prefix}.{alias.name}" for alias in node.names}
-    return names

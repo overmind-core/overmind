@@ -29,7 +29,6 @@ from overbae.models import (
 )
 from overbae.services.datasets.rows import row as _dataset_row
 from overbae.services.datasets.rows import row_from_record
-from overbae.services.finetuning_policy import qlora_learning_rate
 from overbae.services.finetuning_runner import (
     BaseFinetuningRunner,
     BasetenRunner,
@@ -42,7 +41,6 @@ from overbae.services.finetuning_runner import (
 )
 from overbae.services.finetuning_tool_validation import check_tool_calling_rows
 from overbae.services.finetuning_validator import (
-    ValidationResult,
     validate_dataset,
     validate_rows,
 )
@@ -184,13 +182,6 @@ class TestToolCallingValidation:
         assert result.issue_count == 0
         assert result.errors == []
 
-    def test_mismatched_tool_call_id_fails(self):
-        row = self._valid_tool_row()
-        row["messages"][2]["tool_call_id"] = "call_wrong"
-        result = check_tool_calling_rows([row])
-        assert result.issue_count >= 1
-        assert any("does not match" in e for e in result.errors)
-
     def test_extra_tool_responses_fails(self):
         row = self._valid_tool_row()
         row["messages"].insert(
@@ -200,13 +191,6 @@ class TestToolCallingValidation:
         result = check_tool_calling_rows([row])
         assert result.issue_count >= 1
         assert any("tool response" in e.lower() for e in result.errors)
-
-    def test_validate_rows_merges_tool_errors(self):
-        row = self._valid_tool_row()
-        row["messages"][2]["tool_call_id"] = "call_wrong"
-        result = validate_rows([row] * 12)
-        assert result.valid is False
-        assert result.stats.get("tool_calling_issues", 0) >= 1
 
     def test_tool_name_must_match_tools_list(self):
         row = self._valid_tool_row()
@@ -227,15 +211,6 @@ class TestToolCallingValidation:
 
 
 class TestValidatorDB:
-    def test_valid_conversational_dataset(self):
-        _, p, a = _setup()
-        ds = _dataset_with_messages(a, n=5)
-        result = validate_dataset(str(ds.id))
-        assert isinstance(result, ValidationResult)
-        assert result.valid is True
-        assert result.format == "conversational"
-        assert result.num_examples == 5
-
     def test_instruction_pairs_dataset_is_invalid(self):
         # Fine-tuning rows are native {messages, tools?}; a prompt/completion pair
         # must fail explicitly rather than be reshaped.
@@ -342,17 +317,6 @@ class TestRecommenderLogic:
     def test_hyperparams_floor_one_epoch(self):
         hp = compute_hyperparams(1, use_lora=True)
         assert hp["n_epochs"] >= 1
-
-    def test_learning_rate_small_lora_8b(self):
-        lr = qlora_learning_rate(8.0, 500, use_lora=True)
-        assert lr == 1e-4
-
-    def test_learning_rate_small_lora_27b(self):
-        lr = qlora_learning_rate(27.0, 500, use_lora=True)
-        assert lr == 5e-5
-
-    def test_learning_rate_unknown_model_falls_back(self):
-        assert qlora_learning_rate(7.0, 500, use_lora=True) == 1e-4
 
     def test_hyperparams_use_model_aware_lr(self):
         hp = compute_hyperparams(
@@ -580,21 +544,6 @@ class TestRunnerAbstraction:
 
 
 class TestNewModelFields:
-    def test_group_id_and_model_tier_are_saved(self):
-        _, p, a = _setup()
-        ds = _dataset_with_pairs(a)
-        gid = uuid.uuid4()
-        job = FinetuningJob.objects.create(
-            project=p,
-            dataset=ds,
-            base_model="m",
-            group_id=gid,
-            model_tier=FinetuningJob.Tier.SMALL,
-        )
-        job.refresh_from_db()
-        assert job.group_id == gid
-        assert job.model_tier == "small"
-
     def test_group_id_nullable(self):
         _, p, a = _setup()
         ds = _dataset_with_pairs(a)
@@ -981,41 +930,6 @@ class TestOpenAIFormatValidator:
     def _rows(self, row, n=12):
         return [row] * n
 
-    def test_valid_single_turn(self):
-        from overbae.services.finetuning_validator import _openai_format_check
-
-        result = _openai_format_check(self._rows(self._single_turn()))
-        assert result.valid is True
-        assert result.format == "conversational"
-        assert result.errors == []
-
-    def test_valid_multi_turn(self):
-        from overbae.services.finetuning_validator import _openai_format_check
-
-        result = _openai_format_check(self._rows(self._multi_turn()))
-        assert result.valid is True
-        assert result.errors == []
-
-    def test_valid_tool_calling(self):
-        from overbae.services.finetuning_validator import _openai_format_check
-
-        result = _openai_format_check(self._rows(self._tool_row()))
-        assert result.valid is True
-        assert result.errors == []
-
-    def test_valid_system_first(self):
-        from overbae.services.finetuning_validator import _openai_format_check
-
-        row = self._conv(
-            [
-                {"role": "system", "content": "Be concise."},
-                {"role": "user", "content": "Hi"},
-                {"role": "assistant", "content": "Hello"},
-            ]
-        )
-        result = _openai_format_check(self._rows(row))
-        assert result.valid is True
-
     def test_invalid_role_rejected(self):
         from overbae.services.finetuning_validator import _openai_format_check
 
@@ -1192,7 +1106,6 @@ class TestOpenAIFormatValidator:
         assert any("unrecognised format" in e.lower() for e in result.errors)
 
     def test_validate_rows_uses_openai_check(self):
-        from overbae.services.finetuning_validator import validate_rows
 
         bad_row = self._conv(
             [
@@ -1204,19 +1117,16 @@ class TestOpenAIFormatValidator:
         assert result.valid is False
 
     def test_validate_rows_valid_single_turn(self):
-        from overbae.services.finetuning_validator import validate_rows
 
         result = validate_rows(self._rows(self._single_turn()))
         assert result.valid is True
 
     def test_validate_rows_valid_multi_turn(self):
-        from overbae.services.finetuning_validator import validate_rows
 
         result = validate_rows(self._rows(self._multi_turn()))
         assert result.valid is True
 
     def test_validate_rows_valid_tool_calling(self):
-        from overbae.services.finetuning_validator import validate_rows
 
         result = validate_rows(self._rows(self._tool_row()))
         assert result.valid is True

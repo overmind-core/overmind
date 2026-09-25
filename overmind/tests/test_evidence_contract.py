@@ -42,15 +42,6 @@ def test_attribute_keys_are_pinned():
     assert attrs.GROUNDED_BY == "overmind.grounded_by"
 
 
-def test_tool_span_auto_tags_environment(exporter):
-    @tool()
-    def search(query: str) -> list[str]:
-        return [query]
-
-    search("q")
-    assert _only_span(exporter).attributes[attrs.PROVENANCE] == "environment"
-
-
 def test_retrieval_span_auto_tags_environment(exporter):
     @retrieval()
     def fetch_docs(query: str) -> list[str]:

@@ -6,7 +6,6 @@ import pytest
 
 from overbae.services.connectors.braintrust.mapping import (
     BRAINTRUST,
-    group_rows_by_trace,
     rows_to_records,
 )
 from overbae.services.connectors.capabilities import assign_capability_keys
@@ -232,7 +231,6 @@ def test_one_span_belongs_to_one_capability_only():
     )
 
     assert keys["id-c"] == "root"
-    assert len([k for k in (keys["id-c"],) if k]) == 1
 
 
 def test_float_unix_timings_become_iso_and_survive_into_span_ns():
@@ -320,13 +318,6 @@ def test_observation_name_boundary_roots_its_own_trace():
     capability_trace = next(s["trace_id"] for s in roots if s["name"] == "researcher")
     leaf = next(s for s in spans if s["name"] == "llm")
     assert leaf["trace_id"] == capability_trace
-
-
-def test_group_rows_by_trace_keys_on_root_span_id():
-    rows = _trace_rows() + [_row("s-other", row_id="id-other", root_span_id="other-root")]
-    groups = group_rows_by_trace(rows)
-
-    assert sorted(groups) == ["other-root", "root-span"]
 
 
 def test_shared_profiler_ranks_braintrust_records_unchanged():

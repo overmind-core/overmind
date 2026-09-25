@@ -60,7 +60,6 @@ def test_page_sorts_filters_and_indexes(table):
     )
     assert page["total"] == 2
     assert [(r["_index"], r["score"]) for r in page["rows"]] == [(2, 3.0), (0, 0.9)]
-    assert page["rows"][0]["when"] == "2026-01-02T00:00:00+00:00" if False else True
     assert store.page(table, search="bye")["total"] == 1
     with pytest.raises(store.StoreError):
         store.page(table, sort="nope")

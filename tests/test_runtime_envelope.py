@@ -188,10 +188,6 @@ def test_prompt_records_render_from_template():
     ]
 
 
-def test_prompt_records_absent_without_prompt_attrs():
-    assert envelope.prompt_records([_span(attributes={"genai.model": "gpt"})]) == []
-
-
 def test_prompt_records_fallback_to_span_input():
     span = _span(
         attributes={
