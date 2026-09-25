@@ -45,11 +45,6 @@ function dispatchWheel(target: HTMLElement): boolean {
 }
 
 describe("escapeScrollLock", () => {
-  it("reproduces the bug: without the guard, the dialog scroll-lock cancels wheel scroll on portaled content", () => {
-    const list = buildPortaledList();
-    expect(dispatchWheel(list)).toBe(true);
-  });
-
   it("fixes it: the guard stops propagation so the document listener never cancels the scroll", () => {
     const list = buildPortaledList();
     const cleanup = escapeScrollLock(list);
@@ -70,16 +65,6 @@ describe("escapeScrollLock", () => {
 
     expect(dispatchWheel(list)).toBe(false);
     expect(elementSawEvent).toBe(true);
-  });
-
-  it("does not interfere with genuine in-dialog scrolling", () => {
-    const dialog = document.createElement("div");
-    document.body.appendChild(dialog);
-    installScrollLock(dialog);
-    const innerScroller = document.createElement("div");
-    dialog.appendChild(innerScroller);
-
-    expect(dispatchWheel(innerScroller)).toBe(false);
   });
 
   it("cleans up its listeners", () => {

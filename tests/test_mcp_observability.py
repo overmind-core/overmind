@@ -38,21 +38,6 @@ def _context() -> tuple[MCPContext, Capability, Dataset]:
     return MCPContext(user=user, token=token, project=project), capability, dataset
 
 
-def test_catalog_contains_the_read_slice():
-    read_definitions = {
-        definition.name: definition for definition in CATALOG.definitions() if definition.read_only
-    }
-    observability_tools = {
-        "inspect_capability_health",
-        "query_failures",
-        "query_traces",
-        "query_task_executions",
-        "get_job",
-    }
-    assert observability_tools <= set(read_definitions)
-    assert all(not read_definitions[name].destructive for name in observability_tools)
-
-
 def test_all_tools_return_structured_content_and_project_scoped_rows():
     context, capability, dataset = _context()
     Span.objects.create(

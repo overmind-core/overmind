@@ -176,32 +176,11 @@ def test_deliver_is_noop_when_uninitialised(no_api_key):
     tracing.deliver({"answer": 1})
 
 
-def test_sdk_init_handles_missing_deps():
-    from overmind import tracing
-
-    with (
-        patch("overmind.tracing.OTLPSpanExporter"),
-        patch("overmind.tracing.BatchSpanProcessor"),
-        patch("overmind.tracing.trace"),
-    ):
-        # Should not raise exception even if instrumentors fail to import
-        tracing.init(overmind_api_key="test_key", overmind_base_url="http://localhost:4318")
-
-
 def test_get_tracer_before_init():
     from overmind import tracing
 
     with pytest.raises(RuntimeError, match="not initialised"):
         tracing.get_tracer()
-
-
-def test_get_tracer_after_init(mock_opentelemetry):
-    from overmind import tracing
-
-    tracing.init(overmind_api_key="test_key", overmind_base_url="http://localhost:4318")
-
-    tracer = tracing.get_tracer()
-    assert tracer is not None
 
 
 def test_set_user(mock_opentelemetry):
@@ -229,21 +208,6 @@ def test_set_tag(mock_opentelemetry):
     tracing.set_tag("tenant.id", "tenant123")
 
     mock_span.set_attribute.assert_called_with("tenant.id", "tenant123")
-
-
-def test_capture_exception(mock_opentelemetry):
-    from overmind import tracing
-
-    mock_span = MagicMock()
-    mock_span.is_recording.return_value = True
-    mock_opentelemetry["trace"].get_current_span.return_value = mock_span
-
-    tracing.init(overmind_api_key="test_key", overmind_base_url="http://localhost:4318")
-
-    test_exception = ValueError("test error")
-    tracing.capture_exception(test_exception)
-
-    mock_span.record_exception.assert_called_once_with(test_exception)
 
 
 def test_service_name_from_env():

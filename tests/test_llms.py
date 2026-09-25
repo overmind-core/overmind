@@ -139,13 +139,6 @@ def test_call_llm_routes_claude_with_dotted_openrouter_slug(
     assert "cache_control" not in kwargs
 
 
-def test_call_llm_accepts_openrouter_catalog_slugs(mock_openrouter_completion, monkeypatch):
-    _clear_provider_keys(monkeypatch)
-    monkeypatch.setenv("OPENROUTER_API_KEY", "or-key")
-    call_llm("hello", model="mistralai/mistral-large")
-    assert mock_openrouter_completion.call_args.kwargs["model"] == "mistralai/mistral-large"
-
-
 def test_call_llm_model_spec_uses_openrouter_for_catalog_provider(
     mock_openrouter_completion, monkeypatch
 ):

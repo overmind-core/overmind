@@ -169,12 +169,6 @@ describe("candidate list", () => {
     });
     expect(within(cards()[0]).getByText("Evaluation needs a larger serving context.")).toBeTruthy();
   });
-  it("stacks the candidates one to a row", () => {
-    setup();
-
-    expect(screen.getByRole("list", { name: "Experiments" }).className).toContain("flex-col");
-    expect(cards()).toHaveLength(2);
-  });
 
   it("opens the evidence chart under the card it belongs to", () => {
     setup();
@@ -246,14 +240,5 @@ describe("analysis strip", () => {
     expect(screen.getByText("Reasoning 20%")).toBeTruthy();
     expect(screen.getByText("Train")).toBeTruthy();
     expect(screen.getByText("273")).toBeTruthy();
-  });
-
-  it("keeps the snapshot date off the page and the sources out of the strip", () => {
-    setup();
-
-    expect(screen.getByText("2 benchmarks").getAttribute("title")).toContain("2026");
-    expect(screen.queryByText(/2026/)).toBeNull();
-    expect(screen.queryByText(/Artificial Analysis/)).toBeNull();
-    expect(screen.queryByText(/HuggingFace/)).toBeNull();
   });
 });

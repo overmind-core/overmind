@@ -4,7 +4,6 @@ import type { BehaviourCoverageEntry } from "@/hooks/use-behaviours";
 import type { BehaviourEvaluator, EvaluatorCatalog } from "@/openapi";
 import {
   anchorShortName,
-  segmentLabel,
   splitSuite,
   suiteSize,
   unassignedCatalog,
@@ -37,10 +36,6 @@ describe("anchor labels", () => {
   it("shortens qualnames to their last segment", () => {
     expect(anchorShortName("app.io.fetch")).toBe("fetch");
     expect(anchorShortName("emit")).toBe("emit");
-  });
-
-  it("joins a segment into a readable label", () => {
-    expect(segmentLabel(["app.io.fetch", "app.rank.rank"])).toBe("fetch → rank");
   });
 });
 

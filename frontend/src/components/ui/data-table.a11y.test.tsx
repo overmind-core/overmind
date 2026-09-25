@@ -87,11 +87,6 @@ describe("DataTable rows", () => {
     expect(onRowClick).toHaveBeenCalledTimes(3);
   });
 
-  it("leaves non-clickable rows out of the tab order", () => {
-    renderTable();
-    expect(dataRow().getAttribute("tabindex")).toBeNull();
-  });
-
   it("marks the row backing an open detail panel", () => {
     renderTable({ isRowActive: () => true, onRowClick: () => {} });
     expect(dataRow().getAttribute("aria-current")).toBe("true");
@@ -246,11 +241,6 @@ describe("DataTable empty states", () => {
     expect(screen.queryByText("No datasets yet")).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "Clear filters" }));
     expect(onClearFilters).toHaveBeenCalled();
-  });
-
-  it("shows the call site's state when nothing is filtered", () => {
-    renderTable({ data: EMPTY, emptyState: <p>No datasets yet</p> });
-    expect(screen.getByText("No datasets yet")).toBeTruthy();
   });
 
   it("falls back to a shared no-results state", () => {

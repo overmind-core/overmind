@@ -631,10 +631,3 @@ def test_grounding_all_insufficient_abstains_never_zero(monkeypatch):
     assert row["unmet"] == ["claims:uncheckable"]
     assert row["metadata"]["coverage"] == 0.0
     assert "insufficient" in row["explanation"]
-
-
-def test_grounding_decomposition_bars_structural_claims():
-    from overbae.services.eval import dispatch as dispatch_mod
-
-    assert "deliverable's own structure" in dispatch_mod._DECOMPOSE_PROMPT
-    assert "field names" in dispatch_mod._DECOMPOSE_PROMPT

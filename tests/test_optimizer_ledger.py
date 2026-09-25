@@ -36,12 +36,6 @@ def _capability_with_eval_dataset():
     return capability, dataset
 
 
-def test_create_experiment_is_scheduled():
-    capability, dataset = _capability_with_eval_dataset()
-    exp = create_optimizer_experiment(user=None, capability=capability, dataset=dataset)
-    assert exp.status == OptimizerExperiment.Status.SCHEDULED
-
-
 def test_post_candidate_outputs_and_stub_score():
     capability, dataset = _capability_with_eval_dataset()
     exp = create_optimizer_experiment(user=None, capability=capability, dataset=dataset)

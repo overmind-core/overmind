@@ -74,6 +74,9 @@ Never put plan-phase labels (P0/P1, "Phase N") in code, comments, or test names 
 
 ## Workflow
 
+- Never write unit tests after you write code.
+- Strongly prefer E2E tests as the sole testing mechanism. Use them to verify complex features work. At the end of each E2E run, produce a verifiable, repeatable artifact containing the command, inputs or fixtures, environment requirements, and observed results.
+- If a system must be tested in isolation, first write down all the ways it could fail, then write the code. Keep an isolated test only when it catches a concrete failure that existing E2E coverage misses; do not add assertions that merely mirror the implementation, pin incidental source text, or assert tautologies.
 - Stay in the asked scope. Fix the stated thing plus genuine prerequisites; report adjacent findings as a short "found but did not change" list. If the task is much bigger than framed, say so before editing.
 - Simple, self-evident fixes: typecheck + lint is the bar — skip the test suite and say so plainly. When a suite run is warranted: run once, tee to a log, grep the log (run-tests skill).
 - A change is finished when every surface reflecting it is updated, not when its own vertical compiles. CI cannot catch this, so walk the list in the pr-etiquette skill before opening a PR: **MCP** (the first-class agent surface: `services/mcp/` — impact classification, catalog, contracts, tools, prompts, resources; mcp skill), **cross-vertical blast radius** (celery routing, the `seed_demo` command, the generated client, this file and the skills), and **docs** (the sibling `overmind-core/docs` repo at `../docs` — open that PR alongside and link the two).

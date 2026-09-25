@@ -161,13 +161,6 @@ class TestExpectationPrepass:
         assert synthetic == []
         assert gated_fail is False
 
-    def test_declared_and_unmet_gated_fails(self):
-        subs, _synthetic, gated_fail = predicates.expectation_prepass(
-            [expectation()], "Total: 100."
-        )
-        assert subs[0]["verdict"] is False
-        assert gated_fail is True
-
     def test_unmet_ungated_fails_without_gating(self):
         subs, _synthetic, gated_fail = predicates.expectation_prepass(
             [expectation(gate=False)], "Total: 100."

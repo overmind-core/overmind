@@ -196,7 +196,7 @@ state transitions deserve distinct mutation tools.
 
 ## Required tests
 
-For every MCP change, add focused tests at the appropriate layer:
+Follow the testing policy in AGENTS.md. For every MCP change, verify the applicable outcomes below through existing E2E coverage first. The listed files locate existing focused coverage; they are not a requirement to add unit tests after implementation. If isolation is necessary, document failure modes before writing code.
 
 | Change                            | Minimum proof                                                                                                                                      |
 | --------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |

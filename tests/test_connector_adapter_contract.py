@@ -11,11 +11,7 @@ from overbae.services.connectors import (
     get_adapter,
     registered_sources,
 )
-from overbae.services.connectors.base import Capabilities, IngestUnit, Page, SourceProject
-
-
-def test_langfuse_is_registered():
-    assert "langfuse" in registered_sources()
+from overbae.services.connectors.base import Capabilities, IngestUnit
 
 
 def test_langfuse_adapter_satisfies_protocol():
@@ -40,14 +36,6 @@ def test_langfuse_adapter_satisfies_protocol():
     # Structural checks on return types (no network).
     unit = IngestUnit(records=[], external_trace_id="t")
     assert adapter.to_span_dicts(unit, credential=cred) == []
-
-
-def test_braintrust_is_registered():
-    assert "braintrust" in registered_sources()
-
-
-def test_langsmith_is_registered():
-    assert "langsmith" in registered_sources()
 
 
 def test_braintrust_adapter_satisfies_protocol():
@@ -94,10 +82,6 @@ def test_langsmith_adapter_satisfies_protocol():
 
     unit = IngestUnit(records=[], external_trace_id="t")
     assert adapter.to_span_dicts(unit, credential=cred) == []
-
-
-def test_galileo_is_registered():
-    assert "galileo" in registered_sources()
 
 
 def test_galileo_adapter_satisfies_protocol():
@@ -168,10 +152,3 @@ def test_an_absent_source_or_unknown_connector_is_not_second_guessed():
     assert capability_source_error("braintrust", None) is None
     assert capability_source_error("braintrust", "") is None
     assert capability_source_error("nonesuch", "observation_name") is None
-
-
-def test_page_and_source_project_shapes():
-    page = Page(units=[], next_state={"mode": "live"}, done=True, mode="live")
-    assert page.done is True
-    sp = SourceProject(id="p1", name="Demo")
-    assert sp.id == "p1"

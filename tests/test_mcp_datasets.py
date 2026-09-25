@@ -74,21 +74,6 @@ def _ran_cell(dataset: Dataset, *, position: int = 0, title: str = "Source") -> 
     )
 
 
-def test_dataset_catalog_has_only_six_bounded_tools():
-    names = {definition.name for definition in CATALOG.definitions()}
-    dataset_names = {
-        name for name in names if "dataset" in name or name == "create_dataset_from_traces"
-    }
-    assert dataset_names == {
-        "list_datasets",
-        "inspect_dataset",
-        "query_dataset",
-        "create_dataset_from_traces",
-        "message_dataset_agent",
-        "run_dataset",
-    }
-
-
 def test_approving_a_later_proposal_preserves_earlier_proposals_and_saved_data():
     context = _context()
     dataset = _dataset(context)

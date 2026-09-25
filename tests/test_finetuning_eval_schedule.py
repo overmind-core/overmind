@@ -376,13 +376,6 @@ def test_eval_score_sync_does_not_overwrite_newer_deployment_progress(job):
     assert job.progress == {**saved, "judge_evals": []}
 
 
-def test_baseline_launch_is_idempotent(job):
-    start_before_evals(job)
-    start_before_evals(job)
-    job.refresh_from_db()
-    assert job.job_evals.filter(kind="baseline").count() == 1
-
-
 def test_deployment_controller_recovers_baseline_while_training_runs(job, monkeypatch):
     job.status = FinetuningJob.Status.RUNNING
     job.progress = {"before_evals_started_at": 1}

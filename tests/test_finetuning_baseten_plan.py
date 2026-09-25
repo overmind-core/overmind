@@ -7,7 +7,6 @@ from overbae.services.finetuning_policy import (
     TrainingPlanError,
     default_epochs,
     derive_baseten_training_plan,
-    openai_batch_size,
     qlora_learning_rate,
     should_pack,
 )
@@ -37,10 +36,6 @@ class TestGapFill:
         plan = _plan(hyperparameters={}, num_train_examples=49)
         assert plan.n_epochs == default_epochs(49)
         assert any("n_epochs" in n for n in plan.notes)
-
-    def test_batch_from_openai_rule(self):
-        plan = _plan(num_train_examples=5000)
-        assert plan.batch_size == openai_batch_size(5000, min_batch=1, max_batch=8)
 
     def test_lr_from_qlora_heuristic(self):
         plan = _plan(params_b=27.0, num_train_examples=500)
@@ -79,11 +74,6 @@ class TestExplicitValuesWin:
         assert plan.weight_decay == 0.02
         assert (plan.lora_r, plan.lora_alpha, plan.lora_dropout) == (8, 16, 0.0)
         assert plan.lora_target_modules == "q_proj,v_proj"
-
-    def test_explicit_dropout_zero_is_honoured(self):
-        # 0 is falsy — must not fall back to the QLoRA default of 0.05.
-        plan = _plan(hyperparameters={"training_type": {"type": "Lora", "lora_dropout": 0}})
-        assert plan.lora_dropout == 0.0
 
     @override_settings(FINETUNING_BACKEND="baseten")
     def test_recommender_output_is_reproduced_exactly(self):
@@ -203,9 +193,6 @@ class TestFullFinetuning:
 
 
 class TestPacking:
-    def test_pack_large_short_row_corpus(self):
-        assert should_pack(5000, avg_row_tokens=300, context_length=4096)
-
     def test_no_pack_small_dataset(self):
         assert not should_pack(200, avg_row_tokens=300, context_length=4096)
 

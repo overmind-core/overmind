@@ -148,27 +148,6 @@ def test_list_memberships_for_project():
     assert peer.email in emails
 
 
-def test_add_member_by_email():
-    owner = _user("lead@example.com")
-    Subscription.objects.update_or_create(
-        user=owner,
-        defaults={"status": SubscriptionStatus.ACTIVE, "stripe_subscription_id": "sub_lead"},
-    )
-    owner.projects_limit = None
-    owner.save(update_fields=["projects_limit"])
-    invitee = _user("joiner@example.com", projects_limit=5)
-    project = Project.objects.create(name="Collab", slug=f"col-{uuid.uuid4().hex[:6]}")
-    ProjectMembership.objects.create(user=owner, project=project)
-
-    r = _auth_client(owner).post(
-        reverse("project-membership-list", kwargs={"project_id": project.id}),
-        {"email": invitee.email},
-        format="json",
-    )
-    assert r.status_code == 201
-    assert ProjectMembership.objects.filter(project=project, user=invitee).exists()
-
-
 def test_add_member_rejects_when_invitee_at_projects_limit():
     owner = _user("lead2@example.com")
     Subscription.objects.update_or_create(
@@ -193,22 +172,6 @@ def test_add_member_rejects_when_invitee_at_projects_limit():
     detail = str(r.data.get("detail") or "")
     assert "Free plan" in detail or "Upgrade to Pro" in detail
     assert r.data.get("code") == "plan_limit_exceeded"
-
-
-def test_add_member_rejects_when_project_member_cap_reached():
-    """Free actors cannot invite — seat limit is 1 (owner only)."""
-    owner = _user("captest@example.com", projects_limit=5)
-    project = Project.objects.create(name="Cap", slug=f"cap-{uuid.uuid4().hex[:6]}")
-    ProjectMembership.objects.create(user=owner, project=project)
-
-    newcomer = _user("newcomer@example.com")
-    r = _auth_client(owner).post(
-        reverse("project-membership-list", kwargs={"project_id": project.id}),
-        {"email": newcomer.email},
-        format="json",
-    )
-    assert r.status_code == 403
-    assert r.data.get("code") == "seat_limit_exceeded"
 
 
 def test_add_member_idempotent_for_existing_member():

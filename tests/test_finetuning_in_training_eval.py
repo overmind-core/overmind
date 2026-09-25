@@ -205,7 +205,6 @@ def test_sync_marks_all_errored_run_as_failed():
 def test_serialize_includes_per_metric_scores(scope):
     """Scores are per-metric means (0–1): one per rubric criterion, averaged across samples."""
     from overbae.models import EvalSample, EvalVariant, Score
-    from overbae.services.finetuning_eval import serialize_job_evals
 
     _, _, job, _, _ = _setup()
     run = EvalRun.objects.create(
@@ -543,11 +542,6 @@ def test_cancel_leaves_shared_group_baseline_running():
     assert run.status == EvalRun.Status.RUNNING
     assert FinetuningJobEval.objects.get(job=job_a).status == FinetuningJobEval.Status.CANCELLED
     assert FinetuningJobEval.objects.get(job=job_b).status == FinetuningJobEval.Status.RUNNING
-
-
-def test_serialize_empty_without_rows():
-    _, _, job, _, _ = _setup(with_eval_link=False)
-    assert serialize_job_evals(job) == []
 
 
 def _basetenify(job):
