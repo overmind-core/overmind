@@ -461,6 +461,11 @@ function ModelRow({
             </p>
           )}
           {incompatibility && <p className="mt-1.5 text-xs text-destructive">{incompatibility}</p>}
+          {servingContext?.warnings?.map((warning) => (
+            <p className="mt-1.5 text-xs text-warning" key={warning}>
+              {warning}
+            </p>
+          ))}
         </div>
       </div>
 

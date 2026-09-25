@@ -3,9 +3,9 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { CreditsRequiredAlert } from "@/components/billing/credits-required";
 import { ModelsPanel } from "@/components/finetuning/train/models-panel";
 import { SetupPanel } from "@/components/finetuning/train/setup-panel";
+import { TrainingStartButton } from "@/components/finetuning/train/start-button";
 import { useTrainWizard } from "@/components/finetuning/train/use-train-wizard";
 import { Alert } from "@/components/ui/alert";
-import { Button } from "@/components/ui/button";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { CreditsAmount } from "@/components/ui/credits";
 import {
@@ -18,9 +18,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Icon } from "@/components/ui/icons";
-import { Spinner } from "@/components/ui/spinner";
 import { TooltipProvider } from "@/components/ui/tooltip";
-import { count } from "@/lib/formatters";
 
 interface CloseGuard {
   dirty: boolean;
@@ -147,19 +145,7 @@ function TrainWizardForm({
             </>
           )}
         </p>
-        <Button
-          disabled={!wizard.canLaunch || wizard.launching}
-          onClick={() => void wizard.launch()}
-          title={wizard.launchBlocker ?? undefined}
-          type="button"
-        >
-          {wizard.launching ? <Spinner className="text-current" size="sm" /> : <Icon.play />}
-          {wizard.launching
-            ? "Starting"
-            : selectedDrafts.length > 1
-              ? `Start ${count(selectedDrafts.length, "experiment")}`
-              : "Start training"}
-        </Button>
+        <TrainingStartButton wizard={wizard} />
       </DialogFooter>
     </>
   );

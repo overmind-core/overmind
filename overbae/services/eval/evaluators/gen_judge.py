@@ -304,6 +304,7 @@ def _invoke_judge(
         combined = merge_stats([extracted.stats, outcome.stats])
         outcome.stats = {
             **combined,
+            **{key: outcome.stats[key] for key in ("judge", "error_kind") if key in outcome.stats},
             "decision": {
                 **outcome.stats.get("decision", {}),
                 "extraction_usage": extracted.stats,
@@ -359,6 +360,8 @@ def _invoke_judge(
 
 def _invoke_generative(prompt, *, schema, evaluator, reference, **kwargs):
     outcome = judging.invoke_judge(prompt, response_format=schema, **kwargs)
+    if outcome.stats.get("error_kind"):
+        return outcome
     if schema is not ChecklistResult:
         return outcome
     if not _checklist_items_empty(outcome) and not _spurious_reference_na(
@@ -618,7 +621,7 @@ def _draft_from_claims(outcome: judging.JudgeOutcome, evaluator) -> ScoreDraft:
     cost = float(outcome.stats.get("response_cost", 0) or 0)
     latency = float(outcome.stats.get("response_ms", 0) or 0)
     if result is None:
-        return _error_draft(evaluator, outcome, "Judge output failed to parse.", cost, latency)
+        return _error_draft(evaluator, outcome, judging.failure_reason(outcome), cost, latency)
 
     judged = [c for c in result.claims if c.supported is not None]
     sub_scores: list[dict[str, Any]] = [
@@ -773,7 +776,7 @@ def _draft_from_outcome(
     cost = float(outcome.stats.get("response_cost", 0) or 0)
     latency = float(outcome.stats.get("response_ms", 0) or 0)
     if result is None:
-        return _error_draft(evaluator, outcome, "Judge output failed to parse.", cost, latency)
+        return _error_draft(evaluator, outcome, judging.failure_reason(outcome), cost, latency)
 
     align_checklist_items(result, evaluator)
     _refuse_bound_reference_na(result, evaluator, reference)

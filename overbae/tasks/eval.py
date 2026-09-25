@@ -251,7 +251,7 @@ def _attach_per_turn_judge(run, variants) -> None:
         return
     from overbae.models import RunEvaluator
 
-    snapshot = snapshots.build_snapshot(evaluator)
+    snapshot = snapshots.build_snapshot(evaluator, judge_model=run.judge_model)
     if selected:
         snapshot = {
             **snapshot,
@@ -857,6 +857,7 @@ def _generate_per_turn(
             model_spec=model_spec,
             system_prompt=system_prompt,
             reasoning_effort=(variant.params or {}).get("reasoning_effort"),
+            project_id=str(sample.run.project_id),
         )
         if depth == 0:
             first_request = result.request
@@ -872,6 +873,7 @@ def _generate_per_turn(
         turn_meta: dict[str, Any] = {"turn_index": depth, "turn_depth": depth}
         turn_meta["finish_reasons"] = result.finish_reasons
         turn_meta["truncated"] = result.truncated
+        turn_meta["context_checks"] = result.context_checks
         gen_nodes: list[dict[str, Any]] = []
         gen_final = ""
         if result.error and not result.output_messages:
@@ -981,6 +983,7 @@ def _generate_sample(sample) -> dict[str, Any]:
         system_prompt=system_prompt,
         max_steps=max_steps,
         reasoning_effort=(variant.params or {}).get("reasoning_effort"),
+        project_id=str(sample.run.project_id),
     )
     # Raise on total failure so prepare_sample records sample.error: evaluators then
     # skip the sample instead of scoring empty output as a genuine result.
@@ -1001,6 +1004,7 @@ def _generate_sample(sample) -> dict[str, Any]:
         "replay_misses": result.tool_misses,
         "finish_reasons": result.finish_reasons,
         "output_truncated": result.truncated,
+        "context_checks": result.context_checks,
         "truncated": result.truncated,
     }
     if result.error:

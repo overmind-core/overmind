@@ -12,17 +12,20 @@ from rest_framework import serializers
 from rest_framework.exceptions import PermissionDenied
 
 from overbae.api.serializers import _user_project_ids
+from overbae.core.model_registry import judge_picker_models
 from overbae.models import (
     Annotation,
     Behaviour,
     Capability,
     Cell,
+    Dataset,
     EvalRun,
     EvalSample,
     EvalSet,
     EvalSetMember,
     Evaluator,
     EvalVariant,
+    ModelRef,
     Project,
     RunEvaluator,
     Score,
@@ -32,7 +35,9 @@ from overbae.services.datasets import use
 from overbae.services.datasets.lifecycle import DatasetError
 from overbae.services.eval import decisions, evidence
 from overbae.services.eval.context import snapshot_context
-from overbae.services.eval.eval_set import create_with_evaluators
+from overbae.services.eval.context_check import check_context, run_context_checks
+from overbae.services.eval.context_suggestions import judge_model_options
+from overbae.services.eval.eval_set import active_members, create_with_evaluators
 from overbae.services.eval.sample_io import sample_io
 from overbae.services.model_catalog import is_model_available
 
@@ -967,6 +972,123 @@ def _dataset_reference_available(dataset) -> bool:
         return False
 
 
+class EvaluationContextSuggestionSerializer(serializers.Serializer):
+    model = serializers.CharField()
+    name = serializers.CharField()
+    context_window = serializers.IntegerField()
+    max_output_tokens = serializers.IntegerField()
+    reserved_output_tokens = serializers.IntegerField()
+    estimated_cost_usd = serializers.FloatField(allow_null=True)
+    cost_delta_usd = serializers.FloatField(allow_null=True)
+
+
+class EvaluationContextCheckSerializer(serializers.Serializer):
+    role = serializers.CharField()
+    label = serializers.CharField()
+    model = serializers.CharField(allow_blank=True)
+    context_window = serializers.IntegerField(allow_null=True)
+    max_output_tokens = serializers.IntegerField(allow_null=True)
+    estimated_input_tokens = serializers.IntegerField()
+    total_input_tokens = serializers.IntegerField(default=0)
+    configured_model = serializers.CharField(default="", allow_blank=True)
+    reserved_output_tokens = serializers.IntegerField()
+    required_context = serializers.IntegerField()
+    checked_rows = serializers.IntegerField()
+    affected_rows = serializers.IntegerField()
+    row_indices = serializers.ListField(child=serializers.IntegerField())
+    estimated = serializers.BooleanField()
+    status = serializers.CharField()
+    message = serializers.CharField(allow_blank=True)
+    estimated_cost_usd = serializers.FloatField(allow_null=True, default=None)
+    cost_basis = serializers.CharField(allow_blank=True, default="")
+    suggestions = EvaluationContextSuggestionSerializer(many=True, default=list)
+    suggestion_note = serializers.CharField(allow_blank=True, default="")
+
+
+class EvaluationJudgeOptionSerializer(EvaluationContextSuggestionSerializer):
+    status = serializers.CharField()
+    context_window = serializers.IntegerField(allow_null=True)
+    max_output_tokens = serializers.IntegerField(allow_null=True)
+
+
+class EvaluationContextReportSerializer(serializers.Serializer):
+    checks = EvaluationContextCheckSerializer(many=True)
+    judge_models = EvaluationJudgeOptionSerializer(many=True)
+
+
+class EvaluationContextVariantSerializer(serializers.Serializer):
+    model_name = serializers.CharField(required=False, allow_blank=True, max_length=512)
+    model_ref = serializers.PrimaryKeyRelatedField(
+        queryset=ModelRef.objects.all(), required=False, allow_null=True
+    )
+    label = serializers.CharField(required=False, allow_blank=True, max_length=255)
+    params = serializers.JSONField(required=False)
+    output_tokens = serializers.IntegerField(required=False, min_value=1, max_value=1_000_000)
+
+
+class EvaluationContextRequestSerializer(serializers.Serializer):
+    judge_model = serializers.ChoiceField(choices=["", *judge_picker_models()], required=False)
+    project = serializers.PrimaryKeyRelatedField(queryset=Project.objects.all())
+    dataset = serializers.PrimaryKeyRelatedField(
+        queryset=Dataset.objects.select_related("capability")
+    )
+    cell = serializers.PrimaryKeyRelatedField(
+        queryset=Cell.objects.all(), required=False, allow_null=True
+    )
+    eval_set = serializers.PrimaryKeyRelatedField(
+        queryset=EvalSet.objects.all(), required=False, allow_null=True
+    )
+    capability = serializers.PrimaryKeyRelatedField(
+        queryset=Capability.objects.all(), required=False, allow_null=True
+    )
+    variants = EvaluationContextVariantSerializer(many=True, max_length=20, required=False)
+
+    def validate_project(self, value):
+        return _require_membership(self, value)
+
+    def validate(self, attrs):
+        project = attrs["project"]
+        for field in ("dataset", "eval_set", "capability"):
+            obj = attrs.get(field)
+            if obj is not None and obj.project_id != project.pk:
+                raise serializers.ValidationError(
+                    {field: "This resource belongs to a different project."}
+                )
+        cell = attrs.get("cell")
+        if cell is not None and cell.dataset_id != attrs["dataset"].pk:
+            raise serializers.ValidationError(
+                {"cell": "This version belongs to a different dataset."}
+            )
+        for variant in attrs.get("variants", []):
+            ref = variant.get("model_ref")
+            if ref is not None and ref.project_id != project.pk:
+                raise serializers.ValidationError(
+                    {"variants": "This model belongs to a different project."}
+                )
+            if not isinstance(variant.get("params", {}), dict):
+                raise serializers.ValidationError(
+                    {"variants": "Model parameters must be an object."}
+                )
+        return attrs
+
+    def report(self):
+        data = self.validated_data
+        evaluators = (
+            [row.evaluator for row in active_members(data["eval_set"], "generative")]
+            if data.get("eval_set")
+            else []
+        )
+        checks = check_context(
+            dataset=data["dataset"],
+            cell=data.get("cell") or data["dataset"].active_cell,
+            capability=data.get("capability"),
+            variants=data.get("variants", []),
+            evaluators=evaluators,
+            judge_model=data.get("judge_model", ""),
+        )
+        return {"checks": checks, "judge_models": judge_model_options(checks)}
+
+
 class EvalRunWarningSerializer(serializers.Serializer):
     """Advisory only — a warning never blocks a run."""
 
@@ -979,6 +1101,11 @@ class EvalRunWarningSerializer(serializers.Serializer):
 
 
 class EvalRunSerializer(serializers.ModelSerializer):
+    judge_model = serializers.ChoiceField(
+        choices=["", *judge_picker_models()],
+        required=False,
+        help_text="Run-only generative judge override. Blank preserves each saved evaluator's judge.",
+    )
     variants = EvalVariantSerializer(many=True, read_only=True)
     run_evaluators = RunEvaluatorSerializer(many=True, read_only=True)
     trace_filter = serializers.JSONField(required=False)
@@ -986,6 +1113,7 @@ class EvalRunSerializer(serializers.ModelSerializer):
     progress = serializers.SerializerMethodField()
     operational = serializers.SerializerMethodField()
     warnings = serializers.SerializerMethodField()
+    context_checks = serializers.SerializerMethodField()
     # Denormalised through the dataset so the comparison view can match an
     # capability-mode cohort even when the run itself is datasetless.
     capability_id = serializers.CharField(
@@ -1045,6 +1173,8 @@ class EvalRunSerializer(serializers.ModelSerializer):
             "progress",
             "operational",
             "warnings",
+            "context_checks",
+            "judge_model",
             "variants",
             "run_evaluators",
             "evaluator_ids",
@@ -1085,6 +1215,10 @@ class EvalRunSerializer(serializers.ModelSerializer):
     def get_cell_info(self, obj) -> dict | None:
         return use.describe(obj.cell if obj.cell_id else None)
 
+    @extend_schema_field(EvaluationContextCheckSerializer(many=True))
+    def get_context_checks(self, obj):
+        return run_context_checks(obj)
+
     @extend_schema_field(EvalRunProgressSerializer(allow_null=True))
     def get_progress(self, obj):
         if obj.is_terminal:
@@ -1121,6 +1255,10 @@ class EvalRunSerializer(serializers.ModelSerializer):
         )
 
     def validate(self, attrs):
+        if self.instance is not None and "judge_model" in attrs:
+            raise serializers.ValidationError(
+                {"judge_model": "Judge selection is frozen. Create a new run to change it."}
+            )
         data_source = attrs.get("data_source", EvalRun.DataSource.DATASET)
         dataset = attrs.get("dataset")
         if data_source == EvalRun.DataSource.DATASET and not dataset:
@@ -1200,6 +1338,7 @@ class EvalRunSerializer(serializers.ModelSerializer):
         evaluators = validated_data.pop("evaluator_ids", [])
         bindings = validated_data.pop("evaluator_bindings", [])
         variants_input = validated_data.pop("variants_input", [])
+        judge_model = validated_data.get("judge_model", "")
         run = EvalRun.objects.create(**validated_data)
         use.freeze(run.cell)
 
@@ -1209,7 +1348,7 @@ class EvalRunSerializer(serializers.ModelSerializer):
             RunEvaluator.objects.create(
                 run=run,
                 evaluator=evaluator,
-                snapshot=snapshots.build_snapshot(evaluator),
+                snapshot=snapshots.build_snapshot(evaluator, judge_model=judge_model),
                 order=order,
             )
             order += 1
@@ -1225,7 +1364,7 @@ class EvalRunSerializer(serializers.ModelSerializer):
                 RunEvaluator.objects.create(
                     run=run,
                     evaluator=evaluator,
-                    snapshot=snapshots.build_snapshot(evaluator),
+                    snapshot=snapshots.build_snapshot(evaluator, judge_model=judge_model),
                     prompt_id=binding.get("prompt") or None,
                     order=order,
                 )
@@ -1245,7 +1384,7 @@ class EvalRunSerializer(serializers.ModelSerializer):
                 if modes and modes <= {EvalVariant.Mode.EXISTING}
                 else EvalSetMember.Role.GENERATIVE
             )
-            expand_to_run_evaluators(run, run.eval_set, role=role)
+            expand_to_run_evaluators(run, run.eval_set, role=role, judge_model=judge_model)
         for i, v in enumerate(variants_input):
             EvalVariant.objects.create(
                 run=run,

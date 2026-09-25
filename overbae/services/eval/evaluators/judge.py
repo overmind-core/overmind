@@ -394,7 +394,7 @@ def _draft_from_outcome(
             data_type=evaluator.score_type,
             value=None,
             outcome=OUTCOME_ERROR,
-            reasoning="Judge output failed to parse.",
+            reasoning=judging.failure_reason(outcome),
             scope=evaluator.scope,
             judge_trace_id=outcome.judge_trace_id,
             cost=cost,

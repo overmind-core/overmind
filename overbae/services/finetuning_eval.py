@@ -597,6 +597,7 @@ def _sibling_baseline_eval(job, *, model_id: str):
             job__group_id=gid,
             job__eval_dataset_id=job.eval_dataset_id,
             job__eval_set_id=job.eval_set_id,
+            job__eval_judge_model=job.eval_judge_model,
             kind=FinetuningJobEval.Kind.BASELINE,
             model_id=model_id,
             eval_run_id__isnull=False,
@@ -882,12 +883,13 @@ def _launch_eval(
             dataset_id=job.eval_dataset_id,
             cell=cell,
             eval_set_id=job.eval_set_id,
+            judge_model=job.eval_judge_model,
             max_items=0,
             sampling=1.0,
             triggered_by=job.triggered_by,
             status=EvalRun.Status.PENDING,
         )
-        expand_to_run_evaluators(run, job.eval_set)
+        expand_to_run_evaluators(run, job.eval_set, judge_model=job.eval_judge_model)
         _copy_baseline_snapshots(job, run)
         if not run.run_evaluators.exists():
             run.delete()

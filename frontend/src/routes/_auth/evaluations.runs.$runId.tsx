@@ -14,6 +14,7 @@ import {
 import { EvalWinnerCallout, PerModelOps } from "@/components/evaluations/eval-results-overview";
 import { renderPayload, type ViewMode } from "@/components/evaluations/payload-format";
 import { RunComparison } from "@/components/evaluations/run-comparison";
+import { RunJudges } from "@/components/evaluations/run-judges";
 import { StatusBadge } from "@/components/evaluations/runs-table";
 import { type DatapointRow, indexSamples } from "@/components/evaluations/sample-index";
 import { SampleInput } from "@/components/evaluations/sample-input";
@@ -382,6 +383,7 @@ function EvalRunDetailPage() {
                       ))}
                   </div>
                 </div>
+                <RunJudges evaluators={run.runEvaluators} />
                 <dl className="flex shrink-0 flex-col items-end gap-1 text-xs">
                   <div className="flex items-baseline gap-2">
                     <dt className="text-muted-foreground">Credits used</dt>

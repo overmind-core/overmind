@@ -287,11 +287,14 @@ def evaluate(unit: EvalUnit, evaluator, ctx: dict[str, Any]) -> list[ScoreDraft]
                 data_type="numeric",
                 value=None,
                 outcome=OUTCOME_ERROR,
-                reasoning="Per-turn judge output failed to parse.",
+                reasoning=judging.failure_reason(outcome),
                 scope="turn",
                 judge_trace_id=outcome.judge_trace_id,
+                sub_scores=decisions.provenance(outcome) if index == 0 else [],
+                cost=float(outcome.stats.get("response_cost", 0) or 0) if index == 0 else 0,
+                latency_ms=float(outcome.stats.get("response_ms", 0) or 0) if index == 0 else 0,
             )
-            for d in dimensions
+            for index, d in enumerate(dimensions)
         ]
 
     cost = float(outcome.stats.get("response_cost", 0) or 0)
@@ -327,6 +330,10 @@ def evaluate(unit: EvalUnit, evaluator, ctx: dict[str, Any]) -> list[ScoreDraft]
         drafts[0].latency_ms = float(outcome.stats.get("response_ms", 0) or 0)
         for index, draft in enumerate(drafts):
             for item in decisions.provenance(outcome):
+                if "_decision" not in item:
+                    if not index:
+                        draft.sub_scores.append(item)
+                    continue
                 metadata = dict(item["_decision"])
                 if index:
                     metadata["total_cost"] = 0.0
