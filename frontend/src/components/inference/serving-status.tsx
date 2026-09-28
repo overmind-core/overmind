@@ -3,14 +3,15 @@ import { Badge } from "@/components/ui/badge";
 import { domainStatus, type StatusTone, TONE_BADGE_VARIANT } from "@/lib/colors";
 import type { InferenceLiveStats } from "@/openapi";
 
-export type LiveState = "live" | "warming" | "dormant";
+export type LiveState = "live" | "warming" | "dormant" | "unknown";
 
 /** `recentlyActive` outranks the runner counts: for web_server workers HTTP
     traffic bypasses the input queue, so the counts read zero mid-inference. */
 function deriveLiveState(live: InferenceLiveStats | undefined): LiveState {
-  if (!live) return "dormant";
+  if (!live) return "unknown";
   if (live.recentlyActive) return "live";
   if (live.warming) return "warming";
+  if (!live.available || live.numTotalRunners == null) return "unknown";
   if ((live.numTotalRunners ?? 0) > 0) return "live";
   return "dormant";
 }
@@ -18,11 +19,13 @@ function deriveLiveState(live: InferenceLiveStats | undefined): LiveState {
 const LIVE_TONE: Record<LiveState, StatusTone> = {
   dormant: domainStatus("dormant"),
   live: domainStatus("live"),
+  unknown: "neutral",
   warming: domainStatus("warming"),
 };
 const LIVE_LABEL: Record<LiveState, string> = {
-  dormant: "Dormant",
-  live: "Live",
+  dormant: "Asleep",
+  live: "Warm",
+  unknown: "Unknown",
   warming: "Warming",
 };
 
@@ -38,6 +41,7 @@ export function ServingStatusBadge({
   return (
     <Badge
       className="w-24 justify-center whitespace-nowrap text-xs font-medium tracking-normal"
+      title={`Deployment ready. Worker ${LIVE_LABEL[state].toLowerCase()}.`}
       variant={TONE_BADGE_VARIANT[LIVE_TONE[state]]}
     >
       {LIVE_LABEL[state]}

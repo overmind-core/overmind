@@ -301,8 +301,7 @@ function InferencePage() {
   );
 }
 
-/** Only ready rows call Modal for live serving state. */
 function ModelStatusCell({ id, status }: { id: string; status: string }) {
-  const { data: live } = useModelLiveQuery(id, status === "ready", 0);
+  const { data: live } = useModelLiveQuery(id, status === "ready");
   return <ServingStatusBadge live={live} status={status} />;
 }

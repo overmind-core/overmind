@@ -4,7 +4,7 @@ from collections import defaultdict
 from django.core.exceptions import ValidationError
 from django.db.models import Avg, Count, Max, Min, OuterRef, Q, Subquery, Sum
 from django.db.models.expressions import RawSQL
-from django.db.models.functions import Coalesce, Trunc
+from django.db.models.functions import Coalesce
 from django.shortcuts import get_object_or_404
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import (
@@ -52,9 +52,11 @@ from overbae.api.serializers import (
     FinetuningModelCatalogResponseSerializer,
     FinetuningModelDefaultsRequestSerializer,
     FinetuningRecommendationResponseSerializer,
+    InferenceActivityQuerySerializer,
     InferenceActivitySerializer,
     InferenceLiveStatsSerializer,
     InferenceMetricsSerializer,
+    InferenceMonitoringQuerySerializer,
     ModelCheckpointsSerializer,
     ModelSwapPromptRequestSerializer,
     ModelSwapPromptSerializer,
@@ -97,6 +99,8 @@ from overbae.models import (
     User,
 )
 from overbae.services.deployment import ensure_training_deployment, retry_deployment
+from overbae.services.inference_live import live_worker_stats
+from overbae.services.inference_metrics import model_activity, model_metrics, percentile
 from overbae.services.training_preparation import retry_for_job as retry_training_preparation
 
 logger = logging.getLogger(__name__)
@@ -1003,7 +1007,9 @@ class FinetuningJobViewSet(viewsets.ModelViewSet):
         query = ModelSwapPromptRequestSerializer(data=request.query_params)
         query.is_valid(raise_exception=True)
         payload, error = model_swap_prompt_for_job(
-            self.get_object(), pin=query.validated_data["pin"]
+            self.get_object(),
+            pin=query.validated_data["pin"],
+            base_url=request.build_absolute_uri("/api/v1"),
         )
         if error:
             return Response({"detail": error}, status=status.HTTP_400_BAD_REQUEST)
@@ -1925,7 +1931,7 @@ class DeployedModelViewSet(
                 # Warm calls only, to match the detail page's headline latency.
                 avg_latency_ms=Avg(
                     "inference_calls__latency_ms",
-                    filter=Q(inference_calls__is_cold=False),
+                    filter=Q(inference_calls__is_cold=False, inference_calls__outcome="succeeded"),
                 ),
                 cost_total=Sum("inference_calls__cost"),
                 cost_this_month=Sum(
@@ -1952,7 +1958,9 @@ class DeployedModelViewSet(
         tps: dict = defaultdict(list)
         ids = [it["id"] for it in items]
         for mid, latency, t in (
-            InferenceCall.objects.filter(deployed_model_id__in=ids, is_cold=False)
+            InferenceCall.objects.filter(
+                deployed_model_id__in=ids, is_cold=False, outcome="succeeded"
+            )
             .order_by("-created_at")
             .values_list("deployed_model_id", "latency_ms", "tokens_per_second")
         ):
@@ -1962,8 +1970,8 @@ class DeployedModelViewSet(
                 tps[str(mid)].append(t)
         for it in items:
             mid = str(it["id"])
-            it["avg_latency_ms"] = _percentile(sorted(lat[mid]), 0.5)
-            it["avg_tokens_per_second"] = _percentile(sorted(tps[mid]), 0.5)
+            it["avg_latency_ms"] = percentile(sorted(lat[mid]), 0.5)
+            it["avg_tokens_per_second"] = percentile(sorted(tps[mid]), 0.5)
         return response
 
     def perform_destroy(self, instance):
@@ -2072,120 +2080,31 @@ class DeployedModelViewSet(
 
     @extend_schema(
         summary="Aggregate inference metrics (tokens, latency, TPS, crude cost)",
+        parameters=[InferenceMonitoringQuerySerializer],
         responses={200: InferenceMetricsSerializer},
     )
     @action(detail=True, methods=["get"], url_path="metrics")
     def metrics(self, request, id=None):
         instance = self.get_object()
-        # A call is cold when it arrived with no recent traffic (see
-        # completions.is_cold_start), so it paid a container boot. Warm averages
-        # exclude those; cold_start_ms is the average boot-inclusive latency of
-        # the cold ones (surfaced separately, never mixed into avg_latency_ms).
-        from django.utils import timezone
-
-        month_start = timezone.now().replace(day=1, hour=0, minute=0, second=0, microsecond=0)
-        cold = Q(is_cold=True)
-        agg = instance.inference_calls.aggregate(
-            request_count=Count("id"),
-            prompt_tokens=Sum("prompt_tokens"),
-            completion_tokens=Sum("completion_tokens"),
-            cost_total=Sum("cost"),
-            cost_this_month=Sum("cost", filter=Q(created_at__gte=month_start)),
-            cold_start_ms=Avg("latency_ms", filter=cold),
+        query = InferenceMonitoringQuerySerializer(data=request.query_params)
+        query.is_valid(raise_exception=True)
+        return Response(
+            InferenceMetricsSerializer(model_metrics(instance, **query.validated_data)).data
         )
-        # Headline latency/throughput use the median (+ p95 tail), not the mean:
-        # wall-clock latency bundles slow-client stream draining and very long
-        # generations, so a few 100s+ outliers wreck an average. The median is
-        # outlier-proof and adapts to each model's own baseline automatically.
-        (p50_latency, p95_latency) = _warm_percentiles(
-            instance.inference_calls, "latency_ms", (0.5, 0.95)
-        )
-        (p50_tps,) = _warm_percentiles(instance.inference_calls, "tokens_per_second", (0.5,))
-        prompt = agg["prompt_tokens"] or 0
-        completion = agg["completion_tokens"] or 0
-        our_cost = agg["cost_total"]
-        # Savings vs the capability's original (frontier) model — price the same
-        # tokens at that model's OpenRouter rate and subtract our GPU-time cost.
-        from overbae.services.model_catalog import estimate_cost
-
-        job = instance.finetuning_job if instance.finetuning_job_id else None
-        capability = getattr(job, "capability", None) if job else None
-        baseline_model = (getattr(capability, "model", "") or "").strip()
-        baseline_cost = (
-            estimate_cost(baseline_model, prompt, completion) if baseline_model else None
-        )
-        savings = (
-            baseline_cost - our_cost if baseline_cost is not None and our_cost is not None else None
-        )
-        data = {
-            "request_count": agg["request_count"] or 0,
-            "prompt_tokens": prompt,
-            "completion_tokens": completion,
-            "total_tokens": prompt + completion,
-            "cost": our_cost,
-            "cost_this_month": agg["cost_this_month"],
-            "cost_is_estimate": our_cost is not None,
-            "avg_tokens_per_second": p50_tps,
-            "avg_latency_ms": p50_latency,
-            "latency_p95_ms": p95_latency,
-            "cold_start_ms": agg["cold_start_ms"],
-            "baseline_model": baseline_model or None,
-            "baseline_cost": baseline_cost,
-            "savings": savings,
-        }
-        return Response(InferenceMetricsSerializer(data).data)
 
     @extend_schema(
         summary="Time-bucketed inference activity (requests + tokens over time)",
-        parameters=[
-            OpenApiParameter("granularity", str, description="minute (default), hour, or day"),
-        ],
+        parameters=[InferenceActivityQuerySerializer],
         responses={200: InferenceActivitySerializer},
     )
     @action(detail=True, methods=["get"], url_path="activity")
     def activity(self, request, id=None):
         instance = self.get_object()
-        granularity = request.query_params.get("granularity", "minute")
-        if granularity not in ("minute", "hour", "day"):
-            granularity = "minute"
-        # Per-bucket median (not mean) for latency/throughput so a single slow
-        # request doesn't spike the trend line — mirrors the headline metric.
-        # Counts/tokens stay as plain sums (outliers don't distort a total).
-        from collections import defaultdict
-
-        buckets: dict = defaultdict(
-            lambda: {"request_count": 0, "total_tokens": 0, "lat": [], "tps": []}
+        query = InferenceActivityQuerySerializer(data=request.query_params)
+        query.is_valid(raise_exception=True)
+        return Response(
+            InferenceActivitySerializer(model_activity(instance, **query.validated_data)).data
         )
-        rows = instance.inference_calls.annotate(
-            bucket=Trunc("created_at", granularity)
-        ).values_list(
-            "bucket",
-            "prompt_tokens",
-            "completion_tokens",
-            "latency_ms",
-            "tokens_per_second",
-            "is_cold",
-        )
-        for bucket, prompt_t, completion_t, latency, tps, is_cold in rows:
-            b = buckets[bucket]
-            b["request_count"] += 1
-            b["total_tokens"] += (prompt_t or 0) + (completion_t or 0)
-            if not is_cold:
-                if latency is not None:
-                    b["lat"].append(latency)
-                if tps is not None:
-                    b["tps"].append(tps)
-        points = [
-            {
-                "bucket": bucket,
-                "request_count": b["request_count"],
-                "total_tokens": b["total_tokens"],
-                "avg_latency_ms": _percentile(sorted(b["lat"]), 0.5),
-                "avg_tokens_per_second": _percentile(sorted(b["tps"]), 0.5),
-            }
-            for bucket, b in sorted(buckets.items())
-        ]
-        return Response(InferenceActivitySerializer({"points": points}).data)
 
     @extend_schema(
         summary="List downloadable weight/checkpoint files for this model",
@@ -2217,111 +2136,5 @@ class DeployedModelViewSet(
     @action(detail=True, methods=["get"], url_path="live")
     def live(self, request, id=None):
         instance = self.get_object()
-        data = _live_worker_stats(instance)
+        data = live_worker_stats(instance)
         return Response(InferenceLiveStatsSerializer(data).data)
-
-
-_MODAL_APP_NAME = "overmind-inference"
-
-
-# A model that served a completion within this window is unambiguously live,
-# regardless of what Modal's (flaky, for web_server workers) stats report.
-_RECENT_ACTIVITY_WINDOW_S = 90
-
-
-def _recently_active(instance: DeployedModel) -> bool:
-    """True when this model served an InferenceCall inside the recency window."""
-    from datetime import timedelta
-
-    from django.utils import timezone
-
-    cutoff = timezone.now() - timedelta(seconds=_RECENT_ACTIVITY_WINDOW_S)
-    return instance.inference_calls.filter(created_at__gte=cutoff).exists()
-
-
-# Snapshots are off; a genuine cold boot is 2–7 min. record_inference_call
-# clears the stamp so a finished boot cannot keep the badge on warming.
-_WARMING_WINDOW_S = 600
-
-
-def _is_warming(instance: DeployedModel) -> bool:
-    """True while a gateway-stamped cold boot is still in its expected window."""
-    from datetime import timedelta
-
-    from django.utils import timezone
-
-    started = instance.warming_started_at
-    if not started:
-        return False
-    return timezone.now() - started < timedelta(seconds=_WARMING_WINDOW_S)
-
-
-# Cap the per-model sample pulled into Python for percentile math. Bounds memory
-# for very chatty models while staying statistically ample.
-_ROBUST_SAMPLE_CAP = 5000
-
-
-def _percentile(sorted_xs: list[float], q: float) -> float | None:
-    """Linear-interpolated percentile of a pre-sorted list (q in [0, 1])."""
-    if not sorted_xs:
-        return None
-    if len(sorted_xs) == 1:
-        return sorted_xs[0]
-    import math
-
-    idx = q * (len(sorted_xs) - 1)
-    lo = math.floor(idx)
-    hi = math.ceil(idx)
-    if lo == hi:
-        return sorted_xs[lo]
-    return sorted_xs[lo] + (sorted_xs[hi] - sorted_xs[lo]) * (idx - lo)
-
-
-def _warm_percentiles(calls, field: str, qs: tuple[float, ...]) -> tuple[float | None, ...]:
-    """Percentiles of a warm-call field, robust to long-tail outliers (slow
-    clients, very long generations) that a mean would let skew the headline."""
-    xs = sorted(
-        calls.filter(is_cold=False, **{f"{field}__isnull": False})
-        .order_by("-created_at")
-        .values_list(field, flat=True)[:_ROBUST_SAMPLE_CAP]
-    )
-    return tuple(_percentile(xs, q) for q in qs)
-
-
-def _live_worker_stats(instance: DeployedModel) -> dict:
-    """Live serving signal: recent traffic (authoritative) + best-effort Modal counts."""
-    recent = _recently_active(instance)
-    stats_data = {
-        "backlog": None,
-        "num_running_inputs": None,
-        "num_total_runners": None,
-        "recently_active": recent,
-        "warming": _is_warming(instance),
-        "available": False,
-    }
-    if not instance.gpu_type:
-        return stats_data
-    from modal_shared.modelfam import serve_image_key
-    from modal_shared.shared import GPU_CLASS_MAP, SERVE_CLASS_MAP, worker_cls_name
-
-    image = serve_image_key(instance.base_model_id, instance.model_id)
-    if image != "vllm":
-        if (instance.gpu_type, image) not in SERVE_CLASS_MAP:
-            return stats_data
-    elif instance.gpu_type not in GPU_CLASS_MAP:
-        return stats_data
-    cls_name = worker_cls_name(instance.gpu_type, image, enable_lora=bool(instance.adapter_path))
-    try:
-        import modal
-
-        worker_cls = modal.Cls.from_name(_MODAL_APP_NAME, cls_name)
-        stats = worker_cls.get_current_stats()
-        stats_data.update(
-            backlog=getattr(stats, "backlog", None),
-            num_running_inputs=getattr(stats, "num_running_inputs", None),
-            num_total_runners=getattr(stats, "num_total_runners", None),
-            available=True,
-        )
-    except Exception:
-        logger.warning("Modal live stats unavailable for %s", instance.model_id, exc_info=True)
-    return stats_data

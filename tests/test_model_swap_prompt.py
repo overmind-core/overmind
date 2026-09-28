@@ -83,7 +83,7 @@ def test_model_swap_prompt_returns_alias_payload():
     job = _make_job(project, dataset, capability=capability)
     deployed = _deploy(project, job, model_id="ft-abc12345-qwen2-5-14b")
 
-    payload, error = model_swap_prompt_for_job(job)
+    payload, error = model_swap_prompt_for_job(job, base_url="http://testserver/api/v1")
     assert error is None
     alias = f"overmind/{capability.id}"
     assert payload["new_model"] == alias
@@ -106,7 +106,7 @@ def test_model_swap_prompt_pin_writes_concrete_id():
     job = _make_job(project, dataset, capability=capability)
     _deploy(project, job, model_id="ft-abc12345-qwen2-5-14b")
 
-    payload, error = model_swap_prompt_for_job(job, pin=True)
+    payload, error = model_swap_prompt_for_job(job, pin=True, base_url="http://testserver/api/v1")
     assert error is None
     assert payload["new_model"] == "ft-abc12345-qwen2-5-14b"
     assert payload["pin"] is True
@@ -186,3 +186,15 @@ def test_model_swap_prompt_falls_back_to_sole_capability():
     assert resp.status_code == 200
     assert resp.json()["capability_id"] == str(capability.id)
     assert resp.json()["new_model"] == f"overmind/{capability.id}"
+
+
+def test_self_hosted_prompt_uses_the_request_origin():
+    project, user, dataset, capability = _setup()
+    job = _make_job(project, dataset, capability=capability)
+    _deploy(project, job)
+    response = _auth_client(user).get(
+        f"/api/finetuning-jobs/{job.id}/model-swap-prompt/", HTTP_HOST="localhost:8000"
+    )
+    assert response.status_code == 200
+    assert "http://localhost:8000/api/v1" in response.data["prompt"]
+    assert "api.overmindlab.ai" not in response.data["prompt"]

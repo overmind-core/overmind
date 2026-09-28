@@ -319,17 +319,28 @@ def _remote_operation(deployed: DeployedModel):
             "tokenizer_name": base,
         }
     if stage == "warm":
-        return modal.Function.from_name("overmind-inference", "pre_warm", environment_name=env), {
-            "model_id": deployed.model_id,
-            "weights_path": deployed.weights_path,
-            "gpu_type": deployed.gpu_type,
-            "max_model_len": deployed.max_model_len,
-            "adapter": (deployed.model_id, deployed.adapter_path.removeprefix("/weights/"))
-            if deployed.adapter_path
-            else None,
-            "lora_rank": deployed.lora_rank if deployed.adapter_path else 0,
-        }
+        return verification_operation(deployed)
     raise ValueError("Unknown deployment stage")
+
+
+def verification_operation(deployed: DeployedModel):
+    return modal.Function.from_name(
+        "overmind-inference", "pre_warm", environment_name=modal_environment()
+    ), {
+        "model_id": deployed.model_id,
+        "weights_path": deployed.weights_path,
+        "gpu_type": deployed.gpu_type,
+        "max_model_len": deployed.max_model_len,
+        "adapter": (deployed.model_id, deployed.adapter_path.removeprefix("/weights/"))
+        if deployed.adapter_path
+        else None,
+        "lora_rank": deployed.lora_rank if deployed.adapter_path else 0,
+    }
+
+
+def spawn_verification(deployed: DeployedModel) -> str:
+    fn, kwargs = verification_operation(deployed)
+    return _bounded(fn.spawn.aio, **kwargs).object_id
 
 
 def spawn_operation(deployed: DeployedModel) -> str:

@@ -20,6 +20,13 @@ import {
     CapabilityStatusEnumToJSON,
     CapabilityStatusEnumToJSONTyped,
 } from './CapabilityStatusEnum';
+import type { ModelActivation } from './ModelActivation';
+import {
+    ModelActivationFromJSON,
+    ModelActivationFromJSONTyped,
+    ModelActivationToJSON,
+    ModelActivationToJSONTyped,
+} from './ModelActivation';
 import type { CapabilityFlow } from './CapabilityFlow';
 import {
     CapabilityFlowFromJSON,
@@ -40,6 +47,12 @@ export interface Capability {
      * @memberof Capability
      */
     readonly id: string;
+    /**
+     *
+     * @type {ModelActivation}
+     * @memberof Capability
+     */
+    readonly activation: ModelActivation | null;
     /**
      *
      * @type {any}
@@ -198,6 +211,24 @@ export interface Capability {
     decisionLogic?: string;
     /**
      *
+     * @type {Date}
+     * @memberof Capability
+     */
+    readonly activeModelActivatedAt: Date | null;
+    /**
+     *
+     * @type {Date}
+     * @memberof Capability
+     */
+    readonly firstApplicationRequestAt: Date | null;
+    /**
+     *
+     * @type {Date}
+     * @memberof Capability
+     */
+    readonly lastApplicationRequestAt: Date | null;
+    /**
+     *
      * @type {any}
      * @memberof Capability
      */
@@ -249,6 +280,12 @@ export interface Capability {
      * @type {string}
      * @memberof Capability
      */
+    readonly previousActiveModel: string | null;
+    /**
+     *
+     * @type {string}
+     * @memberof Capability
+     */
     benchmarkModel?: string | null;
 }
 
@@ -259,13 +296,18 @@ export interface Capability {
  */
 export function instanceOfCapability(value: object): value is Capability {
     if (!('id' in value) || value['id'] === undefined) return false;
+    if (!('activation' in value) || value['activation'] === undefined) return false;
     if (!('datasetSize' in value) || value['datasetSize'] === undefined) return false;
     if (!('flow' in value) || value['flow'] === undefined) return false;
     if (!('name' in value) || value['name'] === undefined) return false;
     if (!('slug' in value) || value['slug'] === undefined) return false;
+    if (!('activeModelActivatedAt' in value) || value['activeModelActivatedAt'] === undefined) return false;
+    if (!('firstApplicationRequestAt' in value) || value['firstApplicationRequestAt'] === undefined) return false;
+    if (!('lastApplicationRequestAt' in value) || value['lastApplicationRequestAt'] === undefined) return false;
     if (!('createdAt' in value) || value['createdAt'] === undefined) return false;
     if (!('updatedAt' in value) || value['updatedAt'] === undefined) return false;
     if (!('project' in value) || value['project'] === undefined) return false;
+    if (!('previousActiveModel' in value) || value['previousActiveModel'] === undefined) return false;
     return true;
 }
 
@@ -280,6 +322,7 @@ export function CapabilityFromJSONTyped(json: any, ignoreDiscriminator: boolean)
     return {
 
         'id': json['id'],
+        'activation': ModelActivationFromJSON(json['activation']),
         'toolConfig': json['tool_config'] == null ? undefined : json['tool_config'],
         'consistencyRules': json['consistency_rules'] == null ? undefined : json['consistency_rules'],
         'optimizableElements': json['optimizable_elements'] == null ? undefined : json['optimizable_elements'],
@@ -306,6 +349,9 @@ export function CapabilityFromJSONTyped(json: any, ignoreDiscriminator: boolean)
         'policyMarkdown': json['policy_markdown'] == null ? undefined : json['policy_markdown'],
         'toolsSummary': json['tools_summary'] == null ? undefined : json['tools_summary'],
         'decisionLogic': json['decision_logic'] == null ? undefined : json['decision_logic'],
+        'activeModelActivatedAt': (json['active_model_activated_at'] == null ? null : new Date(json['active_model_activated_at'])),
+        'firstApplicationRequestAt': (json['first_application_request_at'] == null ? null : new Date(json['first_application_request_at'])),
+        'lastApplicationRequestAt': (json['last_application_request_at'] == null ? null : new Date(json['last_application_request_at'])),
         'improvementMetadata': json['improvement_metadata'] == null ? undefined : json['improvement_metadata'],
         'usageStats': json['usage_stats'] == null ? undefined : json['usage_stats'],
         'lastActivityAt': json['last_activity_at'] == null ? undefined : (new Date(json['last_activity_at'])),
@@ -314,6 +360,7 @@ export function CapabilityFromJSONTyped(json: any, ignoreDiscriminator: boolean)
         'project': json['project'],
         'activeEvalSet': json['active_eval_set'] == null ? undefined : json['active_eval_set'],
         'activeModel': json['active_model'] == null ? undefined : json['active_model'],
+        'previousActiveModel': json['previous_active_model'],
         'benchmarkModel': json['benchmark_model'] == null ? undefined : json['benchmark_model'],
     };
 }
@@ -322,7 +369,7 @@ export function CapabilityToJSON(json: any): Capability {
     return CapabilityToJSONTyped(json, false);
 }
 
-export function CapabilityToJSONTyped(value?: Omit<Capability, 'id'|'dataset_size'|'flow'|'slug'|'created_at'|'updated_at'> | null, ignoreDiscriminator: boolean = false): any {
+export function CapabilityToJSONTyped(value?: Omit<Capability, 'id'|'activation'|'dataset_size'|'flow'|'slug'|'active_model_activated_at'|'first_application_request_at'|'last_application_request_at'|'created_at'|'updated_at'|'previous_active_model'> | null, ignoreDiscriminator: boolean = false): any {
     if (value == null) {
         return value;
     }

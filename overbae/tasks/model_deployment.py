@@ -5,6 +5,7 @@ from overbae.services.deployment import (
     ensure_baseline_deployment,
     ensure_training_deployment,
 )
+from overbae.services.model_activation import advance_activation
 
 
 @shared_task
@@ -20,3 +21,8 @@ def deploy_base_model_for_eval(*, job_id: str) -> None:
 @shared_task
 def advance_model_deployment(*, deployment_id: str) -> None:
     advance_deployment(deployment_id)
+
+
+@shared_task
+def advance_model_activation(*, activation_id: str) -> None:
+    advance_activation(activation_id)

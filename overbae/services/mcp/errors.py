@@ -72,6 +72,7 @@ ErrorCode = Literal[
     "instrumentation_plan_not_found",
     "active_model_invalid",
     "inference_failed",
+    "context_length_exceeded",
     "model_swap_prompt_not_ready",
     "insight_not_found",
     "insight_not_open",

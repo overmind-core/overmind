@@ -38,7 +38,7 @@ from .iam import (
     UserManager,
     UserOnboarding,
 )
-from .inference import DeployedModel, InferenceCall
+from .inference import DeployedModel, InferenceCall, ModelActivation
 from .optimizer import (
     OptimizerCandidate,
     OptimizerCommand,
@@ -87,6 +87,7 @@ __all__ = [
     "TrainingPreparation",
     "DeployedModel",
     "InferenceCall",
+    "ModelActivation",
     "IntegrationType",
     "ModelRef",
     "Evaluator",

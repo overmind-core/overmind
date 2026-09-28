@@ -10,6 +10,8 @@ def drain_stream(response) -> bytes:
     SSE views hand `StreamingHttpResponse` an async iterable so ASGI writes chunks as they
     are produced, which leaves `streaming_content` un-joinable from sync code.
     """
+    if not response.streaming:
+        return response.content
     content = response.streaming_content
     if not hasattr(content, "__aiter__"):
         return b"".join(content)

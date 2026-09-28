@@ -17,6 +17,7 @@ class MCPContext:
     token: APIToken
     project: Project
     client_ip: str | None = None
+    inference_base_url: str = ""
 
     def has_permission(self, permission: str) -> bool:
         scope = self.token.scope if isinstance(self.token.scope, dict) else {}

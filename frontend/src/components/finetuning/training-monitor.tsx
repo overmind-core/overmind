@@ -760,12 +760,11 @@ function RunActivity({ snapshot, projectId }: { snapshot: ExperimentSnapshot; pr
         >
           {statusLine}
         </p>
-        <div className="flex shrink-0 items-center gap-2">
-          <ModelLiveAction
-            capabilityId={snapshot.job.capability}
-            jobs={[snapshot.job]}
-            projectId={projectId}
-          />
+        <ModelLiveAction
+          capabilityId={snapshot.job.capability}
+          jobs={[snapshot.job]}
+          projectId={projectId}
+        >
           {status === "succeeded" && deployedModelId && (
             <Button asChild size="sm">
               <Link
@@ -817,7 +816,7 @@ function RunActivity({ snapshot, projectId }: { snapshot: ExperimentSnapshot; pr
               <Icon.chevronDown className={cn("transition-transform", expanded && "rotate-180")} />
             </Button>
           )}
-        </div>
+        </ModelLiveAction>
       </div>
       {/* column-reverse pins the newest line to the bottom as lines stream in. */}
       {expanded && activity.length > 0 && (

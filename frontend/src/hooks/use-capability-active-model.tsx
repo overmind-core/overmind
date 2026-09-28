@@ -6,7 +6,7 @@ import apiClient from "@/client";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { count, formatNumber } from "@/lib/formatters";
 import { notify } from "@/lib/notify";
-import type { Capability, DeployedModel } from "@/openapi";
+import type { DeployedModel } from "@/openapi";
 import { ResponseError } from "@/openapi";
 
 export function blockedReason(status: string): string | null {
@@ -46,15 +46,9 @@ export const useSetActiveModel = (capabilityId: string) => {
           throw error;
         }),
     onError: (e) => notify.error(e, "Couldn't switch the live model"),
-    onSuccess: (_data, model) => {
-      notify.success("Live model switched", `The alias now answers with ${model.modelId}.`);
-      // Seed before invalidating: `isPending` goes false when the PATCH
-      // resolves, before the refetch lands, so a control reading `activeModel`
-      // off the cache would jump back to the old row for one round trip.
-      queryClient.setQueryData(
-        ["capability-detail", capabilityId],
-        (prev: Capability | undefined) => (prev ? { ...prev, activeModel: model.id } : prev)
-      );
+    onSuccess: (data) => {
+      notify.success("Activation requested");
+      queryClient.setQueryData(["capability-detail", capabilityId], data);
       queryClient.invalidateQueries({ queryKey: ["capability-detail", capabilityId] });
       queryClient.invalidateQueries({ queryKey: ["capabilities"] });
     },

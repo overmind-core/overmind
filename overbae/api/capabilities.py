@@ -108,7 +108,7 @@ class CapabilityViewSet(
         qs = _capabilities_for(self.request)
         if self.action == "list" and "status" not in self.request.query_params:
             qs = qs.filter(status=Capability.Status.CURRENT)
-        return _annotated(qs).order_by("-created_at")
+        return _annotated(qs.select_related("activation")).order_by("-created_at")
 
     def perform_create(self, serializer):
         # A hand-made capability is runtime-observed: no scan can see it, so no

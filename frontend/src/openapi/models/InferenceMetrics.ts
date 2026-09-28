@@ -13,12 +13,62 @@
  */
 
 import { mapValues } from '../runtime';
+import type { InferenceFailure } from './InferenceFailure';
+import {
+    InferenceFailureFromJSON,
+    InferenceFailureFromJSONTyped,
+    InferenceFailureToJSON,
+    InferenceFailureToJSONTyped,
+} from './InferenceFailure';
+
 /**
  * Aggregate usage/latency/cost for a deployed model (from InferenceCall).
  * @export
  * @interface InferenceMetrics
  */
 export interface InferenceMetrics {
+    /**
+     *
+     * @type {Date}
+     * @memberof InferenceMetrics
+     */
+    lastRequestAt: Date | null;
+    /**
+     *
+     * @type {number}
+     * @memberof InferenceMetrics
+     */
+    costRecordedRequestCount: number;
+    /**
+     *
+     * @type {number}
+     * @memberof InferenceMetrics
+     */
+    failedRequestCount: number;
+    /**
+     *
+     * @type {number}
+     * @memberof InferenceMetrics
+     */
+    coldRequestCount: number;
+    /**
+     *
+     * @type {number}
+     * @memberof InferenceMetrics
+     */
+    endToEndP50Ms: number | null;
+    /**
+     *
+     * @type {number}
+     * @memberof InferenceMetrics
+     */
+    endToEndP95Ms: number | null;
+    /**
+     *
+     * @type {InferenceFailure}
+     * @memberof InferenceMetrics
+     */
+    latestFailure: InferenceFailure | null;
     /**
      *
      * @type {number}
@@ -109,6 +159,13 @@ export interface InferenceMetrics {
  * Check if a given object implements the InferenceMetrics interface.
  */
 export function instanceOfInferenceMetrics(value: object): value is InferenceMetrics {
+    if (!('lastRequestAt' in value) || value['lastRequestAt'] === undefined) return false;
+    if (!('costRecordedRequestCount' in value) || value['costRecordedRequestCount'] === undefined) return false;
+    if (!('failedRequestCount' in value) || value['failedRequestCount'] === undefined) return false;
+    if (!('coldRequestCount' in value) || value['coldRequestCount'] === undefined) return false;
+    if (!('endToEndP50Ms' in value) || value['endToEndP50Ms'] === undefined) return false;
+    if (!('endToEndP95Ms' in value) || value['endToEndP95Ms'] === undefined) return false;
+    if (!('latestFailure' in value) || value['latestFailure'] === undefined) return false;
     if (!('requestCount' in value) || value['requestCount'] === undefined) return false;
     if (!('promptTokens' in value) || value['promptTokens'] === undefined) return false;
     if (!('completionTokens' in value) || value['completionTokens'] === undefined) return false;
@@ -136,6 +193,13 @@ export function InferenceMetricsFromJSONTyped(json: any, ignoreDiscriminator: bo
     }
     return {
 
+        'lastRequestAt': (json['last_request_at'] == null ? null : new Date(json['last_request_at'])),
+        'costRecordedRequestCount': json['cost_recorded_request_count'],
+        'failedRequestCount': json['failed_request_count'],
+        'coldRequestCount': json['cold_request_count'],
+        'endToEndP50Ms': json['end_to_end_p50_ms'],
+        'endToEndP95Ms': json['end_to_end_p95_ms'],
+        'latestFailure': InferenceFailureFromJSON(json['latest_failure']),
         'requestCount': json['request_count'],
         'promptTokens': json['prompt_tokens'],
         'completionTokens': json['completion_tokens'],
@@ -164,6 +228,13 @@ export function InferenceMetricsToJSONTyped(value?: InferenceMetrics | null, ign
 
     return {
 
+        'last_request_at': value['lastRequestAt'] == null ? value['lastRequestAt'] : value['lastRequestAt'].toISOString(),
+        'cost_recorded_request_count': value['costRecordedRequestCount'],
+        'failed_request_count': value['failedRequestCount'],
+        'cold_request_count': value['coldRequestCount'],
+        'end_to_end_p50_ms': value['endToEndP50Ms'],
+        'end_to_end_p95_ms': value['endToEndP95Ms'],
+        'latest_failure': InferenceFailureToJSON(value['latestFailure']),
         'request_count': value['requestCount'],
         'prompt_tokens': value['promptTokens'],
         'completion_tokens': value['completionTokens'],

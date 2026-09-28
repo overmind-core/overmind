@@ -57,6 +57,7 @@ from overbae.models import (
     FinetuningJobEval,
     FinetuningJobEvent,
     InferenceCall,
+    ModelActivation,
     ModelRef,
     OptimizerCandidate,
     OptimizerCommand,
@@ -4724,8 +4725,20 @@ class Command(BaseCommand):
             status_changed_at=days_ago(14, h=-2.6),
         )
         DeployedModel.objects.filter(pk=dm_dispute.pk).update(created_at=days_ago(14, h=-2.5))
-        # The dispute model went live behind the capability alias on day 12.
-        Capability.objects.filter(pk=dispute_capability.pk).update(active_model=dm_dispute)
+        activated_at = days_ago(12)
+        dispute_alias = f"overmind/{dispute_capability.pk}"
+        Capability.objects.filter(pk=dispute_capability.pk).update(
+            active_model=dm_dispute, active_model_activated_at=activated_at
+        )
+        ModelActivation.objects.create(
+            capability=dispute_capability,
+            target=dm_dispute,
+            stage="complete",
+            started_at=activated_at - timedelta(minutes=3),
+            completed_at=activated_at,
+            next_poll_at=activated_at,
+            deadline=activated_at + timedelta(minutes=47),
+        )
 
         call_rows, call_times, ledger_rows, ledger_times = [], [], [], []
 
@@ -4746,6 +4759,11 @@ class Command(BaseCommand):
                     cost=cost,
                     tokens_per_second=None if cold else round(ct / (latency / 1000), 1),
                     latency_ms=latency,
+                    end_to_end_ms=latency,
+                    source="application",
+                    requested_model=(
+                        dispute_alias if dm == dm_dispute and t >= activated_at else dm.model_id
+                    ),
                     is_cold=cold,
                 )
                 call_rows.append(call)
@@ -4786,6 +4804,9 @@ class Command(BaseCommand):
                     cost=cost,
                     tokens_per_second=round(ct / (latency / 1000), 1),
                     latency_ms=latency,
+                    end_to_end_ms=latency,
+                    source="application",
+                    requested_model=dm_triage.model_id,
                     is_cold=False,
                 )
             )
@@ -4793,6 +4814,15 @@ class Command(BaseCommand):
 
         InferenceCall.objects.bulk_create(call_rows, batch_size=1000)
         backdate(InferenceCall, list(zip((c.pk for c in call_rows), call_times, strict=True)))
+        alias_times = [
+            time
+            for call, time in zip(call_rows, call_times, strict=True)
+            if call.requested_model == dispute_alias
+        ]
+        Capability.objects.filter(pk=dispute_capability.pk).update(
+            first_application_request_at=min(alias_times),
+            last_application_request_at=max(alias_times),
+        )
         BillingTelemetry.objects.bulk_create(ledger_rows, batch_size=1000)
         backdate(
             BillingTelemetry,

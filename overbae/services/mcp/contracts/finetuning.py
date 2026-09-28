@@ -208,11 +208,12 @@ class SetActiveModelInput(MCPModel):
 
 
 class SetActiveModelOutput(MCPModel):
-    summary: str = Field(min_length=1, max_length=240)
+    activation: JobReceipt | None = None
+    summary: str = Field(min_length=1, max_length=340)
     capability: ResourceLinkContract
     active_model: DeploymentReference | None = None
     cleared: bool
-    resource_links: list[ResourceLinkContract] = Field(max_length=2)
+    resource_links: list[ResourceLinkContract] = Field(max_length=3)
 
 
 class SetBenchmarkModelInput(MCPModel):

@@ -20,6 +20,7 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock("@/hooks/use-query", () => ({ useCapabilityDetailQuery: mocks.useCapabilityDetailQuery }));
 vi.mock("@/hooks/use-inference", () => ({
+  useDeployedModelQuery: () => ({ data: undefined }),
   useDeployedModelsQuery: mocks.useDeployedModelsQuery,
 }));
 vi.mock("@/client", () => ({
@@ -83,7 +84,6 @@ const renderAction = ({
   deployedPending?: boolean;
   models?: DeployedModel[];
   capabilityId?: string | null;
-  allowPin?: boolean;
   model?: DeployedModel;
   promote?: boolean;
 }) => {
@@ -256,5 +256,49 @@ describe("ModelLiveAction — the live state", () => {
     });
     expect(screen.getByText("Live model")).toBeTruthy();
     expect(screen.getByText("Copy prompt")).toBeTruthy();
+  });
+});
+
+describe("ModelLiveAction — activation progress", () => {
+  it("restores server progress without marking the candidate live", () => {
+    renderAction({
+      capability: capabilityState({
+        activation: { stage: "verifying", target: "dm-1" } as Capability["activation"],
+        activeModel: "dm-old",
+      }),
+    });
+    expect(screen.getByLabelText("Model activation")).toBeTruthy();
+    expect(screen.getByText("Stage 2/3: Wake & verify")).toBeTruthy();
+    expect(screen.queryByText("Live model")).toBeNull();
+    fireEvent.click(screen.getByLabelText("Make live — ft:dm-1"));
+    expect(mocks.capabilitiesPartialUpdate).not.toHaveBeenCalled();
+  });
+
+  it("shows the failed stage and retries the same model", async () => {
+    mocks.capabilitiesPartialUpdate.mockResolvedValue({});
+    renderAction({
+      capability: capabilityState({
+        activation: {
+          error: "GPU ran out of memory.",
+          failedStage: "verifying",
+          stage: "failed",
+          target: "dm-1",
+        } as Capability["activation"],
+      }),
+    });
+    expect(screen.getByText("Stage 2/3: Wake & verify · Failed")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Retry activation" }));
+    await waitFor(() =>
+      expect(mocks.capabilitiesPartialUpdate).toHaveBeenCalledWith({
+        id: CAPABILITY_ID,
+        patchedCapabilityRequest: { activeModel: "dm-1" },
+      })
+    );
+  });
+
+  it("distinguishes live routing from application traffic", () => {
+    renderAction({ capability: capabilityState({ activeModel: "dm-1" }) });
+    expect(screen.getByText("Live model")).toBeTruthy();
+    expect(screen.getByText("Waiting for first application request")).toBeTruthy();
   });
 });

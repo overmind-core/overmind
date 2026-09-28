@@ -82,6 +82,12 @@ class Capability(models.Model):
         blank=True,
         related_name="+",
     )
+    previous_active_model = models.ForeignKey(
+        "overbae.DeployedModel", on_delete=models.SET_NULL, null=True, blank=True, related_name="+"
+    )
+    active_model_activated_at = models.DateTimeField(null=True, blank=True)
+    first_application_request_at = models.DateTimeField(null=True, blank=True)
+    last_application_request_at = models.DateTimeField(null=True, blank=True)
     # Null selects the codebase model; serving changes must not retarget benchmarks.
     benchmark_model = models.ForeignKey(
         "overbae.DeployedModel",

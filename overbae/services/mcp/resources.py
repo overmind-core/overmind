@@ -6,16 +6,17 @@ import json
 import uuid
 from collections import Counter
 from collections.abc import Iterable
-from urllib.parse import quote, unquote, urlparse
+from urllib.parse import parse_qs, quote, unquote, urlparse
 
 from asgiref.sync import sync_to_async
-from django.db.models import Count, Prefetch, Sum
+from django.db.models import Prefetch
 from mcp import types
 from mcp.server.lowlevel.helper_types import ReadResourceContents
 from mcp.shared.exceptions import McpError
 from pydantic import AnyUrl
 
 from overbae.api.eval_serializers import compute_run_progress
+from overbae.core.errors import InputValidationError
 from overbae.models import (
     Capability,
     Cell,
@@ -23,6 +24,7 @@ from overbae.models import (
     DeployedModel,
     EvalSet,
     FinetuningJob,
+    ModelActivation,
     OptimizerCandidate,
     OptimizerExperiment,
     Span,
@@ -38,10 +40,13 @@ from overbae.services.entity_resolution import (
 )
 from overbae.services.eval.context_check import run_context_checks
 from overbae.services.eval.sample_io import sample_io
+from overbae.services.inference_live import worker_status
+from overbae.services.inference_metrics import model_activity, model_metrics, monitoring_options
 from overbae.services.mcp.context import get_context
 from overbae.services.mcp.contracts.datasets import next_actions, serialize_dataset_detail
 from overbae.services.mcp.contracts.instrumentation import MAX_INSTRUMENTATION_SPANS
 from overbae.services.mcp.errors import MCPError, error_payload, internal_error
+from overbae.services.model_activation import activation_progress
 
 JSON_MIME = "application/json"
 _MAX_EVENTS = 20
@@ -439,9 +444,9 @@ def _capability_resource(project, value: str, uri: str) -> dict:
     capability, _ = resolve_capability(project, value)
     if capability is None:
         raise _not_found("capability", value)
-    capability = Capability.objects.select_related("active_model", "benchmark_model").get(
-        pk=capability.pk
-    )
+    capability = Capability.objects.select_related(
+        "active_model", "benchmark_model", "activation"
+    ).get(pk=capability.pk)
     active_model = capability.active_model
     benchmark = capability.benchmark_model
     from overbae.services.datasets.rows import capability_dataset_rows
@@ -469,6 +474,12 @@ def _capability_resource(project, value: str, uri: str) -> dict:
             if active_model is not None
             else None
         ),
+        "activation": activation_progress(getattr(capability, "activation", None)),
+        "previous_active_model": str(capability.previous_active_model_id)
+        if capability.previous_active_model_id
+        else None,
+        "first_application_request_at": capability.first_application_request_at,
+        "last_application_request_at": capability.last_application_request_at,
         "benchmark_model": {
             "id": str(benchmark.id) if benchmark else None,
             "model_id": benchmark.model_id if benchmark else capability.model,
@@ -833,21 +844,25 @@ def _finetune_resource(project, value: str, uri: str) -> dict:
 
 
 def _deployment_resource(project, value: str, uri: str) -> dict:
-    query = DeployedModel.objects.filter(project=project).select_related("finetuning_job")
+    query = DeployedModel.objects.filter(project=project).select_related(
+        "finetuning_job__capability"
+    )
     normalized_id = _uuid_ref(value)
     deployment = query.filter(id=normalized_id).first() if normalized_id else None
     if deployment is None:
         deployment = query.filter(model_id=value).first()
     if deployment is None:
         raise _not_found("deployment", value)
-    usage = deployment.inference_calls.aggregate(
-        request_count=Count("id"),
-        prompt_tokens=Sum("prompt_tokens"),
-        completion_tokens=Sum("completion_tokens"),
-        cost=Sum("cost"),
-    )
-    prompt_tokens = usage["prompt_tokens"] or 0
-    completion_tokens = usage["completion_tokens"] or 0
+    params = parse_qs(urlparse(uri).query, keep_blank_values=True)
+    try:
+        options = monitoring_options(
+            params.get("period", ["all"])[0], params.get("source", ["all"])[0]
+        )
+    except InputValidationError as exc:
+        raise MCPError("invalid_input", exc.detail) from exc
+    granularity = {"1h": "minute", "24h": "hour", "7d": "hour", "30d": "day", "all": "day"}[
+        options["period"]
+    ]
     return {
         "uri": uri,
         "kind": "deployment",
@@ -855,19 +870,16 @@ def _deployment_resource(project, value: str, uri: str) -> dict:
         "model_id": deployment.model_id,
         "status": deployment.status,
         "progress": deployment_progress(deployment),
+        "worker": worker_status(deployment),
         "base_model_id": deployment.base_model_id,
         "quantization": deployment.quantization,
         "gpu_type": deployment.gpu_type,
         "is_lora": deployment.is_lora,
         "sla_tier": deployment.sla_tier,
         "inference_url": deployment.inference_url or None,
-        "metrics": {
-            "request_count": usage["request_count"] or 0,
-            "prompt_tokens": prompt_tokens,
-            "completion_tokens": completion_tokens,
-            "total_tokens": prompt_tokens + completion_tokens,
-            "cost": float(usage["cost"]) if usage["cost"] is not None else None,
-        },
+        "monitoring": {**options, "granularity": granularity},
+        "metrics": model_metrics(deployment, **options),
+        "activity": model_activity(deployment, granularity=granularity, **options),
         "finetuning_job": str(deployment.finetuning_job_id)
         if deployment.finetuning_job_id
         else None,
@@ -1051,6 +1063,18 @@ def _optimizer_resource(project, value: str, uri: str) -> dict:
 
 
 def _job_resource(project, kind: str, value: str, uri: str) -> dict:
+    if kind == "model_activation":
+        activation = ModelActivation.objects.filter(
+            pk=_uuid_ref(value), capability__project=project
+        ).first()
+        if activation is None:
+            raise _not_found("model activation", value)
+        return {
+            "uri": uri,
+            "kind": kind,
+            "status": activation.stage,
+            **activation_progress(activation),
+        }
     if kind == "training_preparation":
         prep = TrainingPreparation.objects.filter(
             pk=_uuid_ref(value), cell__dataset__project=project
@@ -1199,7 +1223,11 @@ def resource_templates() -> list[types.ResourceTemplate]:
             name=name,
             title=title,
             uriTemplate=template,
-            description=title,
+            description=(
+                f"{title}. Current worker state and measurements, inference metrics and activity; optional period=1h|24h|7d|30d|all and source=application|all query parameters (defaults: all)."
+                if name == "deployment"
+                else title
+            ),
             mimeType=JSON_MIME,
         )
         for name, template, title in templates

@@ -68,24 +68,39 @@ export const useDeployedModelQuery = (id: string | undefined, { poll = true } = 
     staleTime: poll ? undefined : 30_000,
   });
 
-export const useModelMetricsQuery = (id: string | undefined) =>
+export type InferencePeriod = "1h" | "24h" | "7d" | "30d" | "all";
+export type InferenceTrafficSource = "all" | "application";
+
+export const useModelMetricsQuery = (
+  id: string | undefined,
+  period: InferencePeriod = "all",
+  source: InferenceTrafficSource = "all"
+) =>
   useQuery({
     enabled: !!id,
-    queryFn: () => apiClient.deployedModels.deployedModelsMetricsRetrieve({ id: id! }),
-    queryKey: ["model-metrics", id],
+    queryFn: () =>
+      apiClient.deployedModels.deployedModelsMetricsRetrieve({ id: id!, period, source }),
+    queryKey: ["model-metrics", id, period, source],
     refetchInterval: (q) => backoffPolling(q, 15_000),
   });
 
 export const useModelActivityQuery = (
   id: string | undefined,
-  granularity: "minute" | "hour" | "day" = "minute"
+  granularity: "minute" | "hour" | "day" = "minute",
+  period: InferencePeriod = "all",
+  source: InferenceTrafficSource = "all"
 ) =>
   useQuery({
     enabled: !!id,
     queryFn: () =>
-      apiClient.deployedModels.deployedModelsActivityRetrieve({ granularity, id: id! }),
-    queryKey: ["model-activity", id, granularity],
-    refetchInterval: (q) => backoffPolling(q, 30_000),
+      apiClient.deployedModels.deployedModelsActivityRetrieve({
+        granularity,
+        id: id!,
+        period,
+        source,
+      }),
+    queryKey: ["model-activity", id, granularity, period, source],
+    refetchInterval: (q) => backoffPolling(q, 15_000),
   });
 
 /** Checkpoint archive lives in S3 — only fetch when the tab is opened. */
@@ -140,7 +155,7 @@ export const useRetryModelMutation = () => {
   });
 };
 
-/** Live Modal stats. `pollMs` = 0 → one-shot fetch; > 0 → poll. */
+/** Live serving signals. `pollMs` = 0 → one-shot fetch; > 0 → poll. */
 export const useModelLiveQuery = (id: string | undefined, enabled = false, pollMs = 5_000) =>
   useQuery({
     enabled: !!id && enabled,

@@ -150,6 +150,36 @@ class DeployedModel(models.Model):
         return self.status in (self.Status.READY, self.Status.FAILED, self.Status.DELETED)
 
 
+class ModelActivation(models.Model):
+    class Stage(models.TextChoices):
+        CHECKING = "checking", "Checking deployment"
+        VERIFYING = "verifying", "Waking and verifying inference"
+        SWITCHING = "switching", "Switching routing"
+        COMPLETE = "complete", "Live"
+        FAILED = "failed", "Failed"
+        CANCELLED = "cancelled", "Cancelled"
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    capability = models.OneToOneField(
+        "overbae.Capability", on_delete=models.CASCADE, related_name="activation"
+    )
+    target = models.ForeignKey(
+        DeployedModel, on_delete=models.SET_NULL, null=True, related_name="activations"
+    )
+    generation = models.UUIDField(default=uuid.uuid4)
+    stage = models.CharField(max_length=16, choices=Stage.choices, default=Stage.CHECKING)
+    failed_stage = models.CharField(max_length=16, blank=True)
+    error = models.TextField(blank=True)
+    call_id = models.CharField(max_length=100, blank=True)
+    dispatching = models.BooleanField(default=False)
+    claim = models.UUIDField(null=True)
+    claim_until = models.DateTimeField(null=True)
+    next_poll_at = models.DateTimeField(db_index=True)
+    started_at = models.DateTimeField()
+    deadline = models.DateTimeField()
+    completed_at = models.DateTimeField(null=True)
+
+
 class InferenceCall(models.Model):
     """One row per served-model completion, written at the api/v1 gateway — the
     sole source for the inference page's totals and activity chart. Metrics come
@@ -183,6 +213,11 @@ class InferenceCall(models.Model):
     # almost certainly paid a container cold start. Cold calls stay out of the
     # warm latency and throughput averages.
     is_cold = models.BooleanField(default=False)
+    end_to_end_ms = models.FloatField(null=True, blank=True)
+    outcome = models.CharField(max_length=16, default="succeeded")
+    error_code = models.CharField(max_length=64, blank=True)
+    source = models.CharField(max_length=16, default="unknown")
+    requested_model = models.CharField(max_length=200, blank=True)
     created_at = models.DateTimeField(auto_now_add=True, db_index=True)
 
     class Meta:

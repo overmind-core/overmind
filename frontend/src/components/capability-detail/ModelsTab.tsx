@@ -3,6 +3,10 @@ import type { ReactNode } from "react";
 import { useNavigate } from "@tanstack/react-router";
 
 import {
+  activationPending,
+  ModelActivationStatus,
+} from "@/components/finetuning/model-activation-status";
+import {
   BaseModelCell,
   CopyableModelRef,
   FineTunedModelIdentity,
@@ -314,16 +318,19 @@ export function ModelsTab({ capability, capabilityId, projectId }: ModelsTabProp
 
   const cellCls = "align-middle text-center";
   const rowCount = (deployed?.count ?? 0) + (capability.model ? 1 : 0);
-  // Shows the pick as taken while the PATCH is in flight; a rejection settles the
-  // mutation and the row snaps back to what the server holds.
-  const pending = isPending ? (variables ?? null) : null;
-  const liveId = pending?.id ?? capability.activeModel ?? null;
+  const pendingId = activationPending(capability)
+    ? capability.activation?.target
+    : isPending
+      ? variables?.id
+      : null;
+  const liveId = capability.activeModel ?? null;
   const live = models.find((m) => m.id === liveId) ?? null;
 
   return (
     <TooltipProvider>
       <div className="space-y-4">
         <LiveModelCard alias={`overmind/${capabilityId}`} live={live} liveId={liveId} />
+        <ModelActivationStatus capability={capability} models={models} />
 
         <SectionCard
           contentClassName="p-0"
@@ -361,10 +368,12 @@ export function ModelsTab({ capability, capabilityId, projectId }: ModelsTabProp
               {models.map((m) => (
                 <FineTunedRow
                   isLive={m.id === liveId}
-                  isPending={pending?.id === m.id}
+                  isPending={!!pendingId && pendingId === m.id}
                   key={m.id}
                   model={m}
-                  onSetLive={guard((model: DeployedModel) => setLive(model, live))}
+                  onSetLive={guard((model: DeployedModel) => {
+                    if (!pendingId) setLive(model, live);
+                  })}
                   projectId={projectId}
                 />
               ))}

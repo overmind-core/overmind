@@ -624,17 +624,31 @@ def _set_active_sync(payload: SetActiveModelInput, context: MCPContext) -> SetAc
         serializer.is_valid(raise_exception=True)
     except DRFValidationError as error:
         raise MCPError("active_model_invalid", "The active model failed validation.") from error
-    updated = serializer.save()
+    try:
+        updated = serializer.save()
+    except DRFValidationError as error:
+        raise MCPError("active_model_invalid", str(error.detail)) from error
 
-    updated = Capability.objects.select_related("active_model").get(pk=updated.pk)
+    updated = Capability.objects.select_related("active_model", "activation").get(pk=updated.pk)
     capability_link = resource_link("capabilities", str(updated.id), updated.name)
     links = [capability_link]
     active_model = None
     if updated.active_model is not None:
         active_model = _deployment_reference(updated.active_model)
         links.append(active_model.resource)
+    activation = getattr(updated, "activation", None) if deployment is not None else None
+    receipt = None
+    if activation is not None:
+        link = resource_link("jobs", f"model_activation/{activation.pk}", "Model activation")
+        links.append(link)
+        receipt = JobReceipt(
+            kind="model_activation", id=str(activation.pk), status=activation.stage, resource=link
+        )
     return SetActiveModelOutput(
-        summary="Active model cleared." if deployment is None else "Active model updated.",
+        summary="Active model cleared."
+        if deployment is None
+        else "Activation requested. Routing changes after verification succeeds.",
+        activation=receipt,
         capability=capability_link,
         active_model=active_model,
         cleared=deployment is None,
@@ -689,6 +703,13 @@ def _inference_sync(payload: RunInferenceInput, context: MCPContext) -> RunInfer
         max_tokens=payload.max_tokens,
     )
     if result.get("error"):
+        if result.get("error_code") == "context_length_exceeded":
+            raise MCPError(
+                "context_length_exceeded",
+                "The input and reserved output exceed the deployed context. "
+                "Reduce the request or redeploy with a larger serving context.",
+                fields={"max_model_len": str(deployment.max_model_len)},
+            )
         raise MCPError("inference_failed", "Inference could not be completed.", retryable=True)
     usage = result.get("usage") if isinstance(result.get("usage"), dict) else None
     usage_contract = (
@@ -725,7 +746,9 @@ def _model_swap_prompt_sync(
     from overbae.services.model_swap_prompt import model_swap_prompt_for_job
 
     job = _resolve_finetune(context, payload.finetune)
-    result, error = model_swap_prompt_for_job(job, pin=payload.pin)
+    result, error = model_swap_prompt_for_job(
+        job, pin=payload.pin, base_url=context.inference_base_url
+    )
     if result is None:
         raise MCPError("model_swap_prompt_not_ready", error or "The swap prompt is unavailable.")
     links = [
@@ -865,14 +888,14 @@ def register_finetuning_tools(catalog) -> None:
         (
             "set_active_model",
             "Set active model",
-            "Set or clear a capability's active model; the deployment must be ready.",
+            "Verify a ready deployment and switch the alias. Poll model_activation. Omit deployment to clear routing.",
             SetActiveModelInput,
             SetActiveModelOutput,
             _set_active_sync,
             False,
             True,
-            "free",
-            "sync",
+            "gpu",
+            "job",
             {"overmind:deploy"},
         ),
         (
@@ -891,7 +914,7 @@ def register_finetuning_tools(catalog) -> None:
         (
             "run_inference",
             "Run inference",
-            "Run a bounded chat completion against a ready project deployment. Returns usage, latency, finish_reason and truncated; a truncated answer is incomplete.",
+            "Run inference on a ready deployment. Omitted max_tokens uses the production default. Returns usage, latency and truncation flags.",
             RunInferenceInput,
             RunInferenceOutput,
             _inference_sync,
@@ -942,6 +965,7 @@ def register_finetuning_tools(catalog) -> None:
                 in {
                     "start_finetune",
                     "retry_deployment",
+                    "set_active_model",
                     "run_inference",
                 },
                 required_scopes=frozenset(scopes),

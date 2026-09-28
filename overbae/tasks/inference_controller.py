@@ -7,7 +7,8 @@ from overbae.services.deployment import (
     ensure_baseline_deployment,
     ensure_training_deployment,
 )
-from overbae.tasks.model_deployment import advance_model_deployment
+from overbae.services.model_activation import due_activations
+from overbae.tasks.model_deployment import advance_model_activation, advance_model_deployment
 
 
 @shared_task
@@ -34,4 +35,7 @@ def reconcile_deployments() -> int:
     ids = list(due_deployments().values_list("id", flat=True))
     for deployment_id in ids:
         advance_model_deployment.delay(deployment_id=str(deployment_id))
-    return len(ids)
+    activations = list(due_activations().values_list("id", flat=True))
+    for activation_id in activations:
+        advance_model_activation.delay(activation_id=str(activation_id))
+    return len(ids) + len(activations)

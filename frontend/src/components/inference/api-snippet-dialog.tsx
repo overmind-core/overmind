@@ -1,3 +1,8 @@
+import { useState } from "react";
+
+import { Link } from "@tanstack/react-router";
+
+import { CreateApiKeyDialog } from "@/components/create-api-key-dialog";
 import { useCopy } from "@/components/ui/block-actions";
 import { Button } from "@/components/ui/button";
 import {
@@ -9,56 +14,8 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Icon } from "@/components/ui/icons";
-import { config } from "@/config";
-
-export function inferenceBaseUrl(apiUrl = config.apiUrl): string {
-  return `${apiUrl.replace(/\/$/, "")}/api/v1`;
-}
-
-export function buildCurlSnippet({
-  baseUrl,
-  modelId,
-  apiKey,
-}: {
-  baseUrl: string;
-  modelId: string;
-  apiKey: string;
-}): string {
-  return [
-    `curl ${baseUrl}/chat/completions \\`,
-    `  -H "Authorization: Bearer ${apiKey}" \\`,
-    `  -H "Content-Type: application/json" \\`,
-    `  -d '{`,
-    `    "model": "${modelId}",`,
-    `    "messages": [{"role": "user", "content": "Hello"}]`,
-    `  }'`,
-  ].join("\n");
-}
-
-export function buildPythonSnippet({
-  baseUrl,
-  modelId,
-  apiKey,
-}: {
-  baseUrl: string;
-  modelId: string;
-  apiKey: string;
-}): string {
-  return [
-    `from openai import OpenAI`,
-    ``,
-    `client = OpenAI(`,
-    `    base_url="${baseUrl}",`,
-    `    api_key="${apiKey}",`,
-    `)`,
-    ``,
-    `resp = client.chat.completions.create(`,
-    `    model="${modelId}",`,
-    `    messages=[{"role": "user", "content": "Hello"}],`,
-    `)`,
-    `print(resp.choices[0].message.content)`,
-  ].join("\n");
-}
+import { useCapabilityDetailQuery } from "@/hooks/use-query";
+import { buildCurlSnippet, buildPythonSnippet, inferenceBaseUrl } from "@/lib/inference-snippets";
 
 function SnippetBlock({ label, text }: { label: string; text: string }) {
   const { copied, copy } = useCopy(text);
@@ -70,7 +27,7 @@ function SnippetBlock({ label, text }: { label: string; text: string }) {
           aria-label={copied ? "Copied" : `Copy ${label}`}
           onClick={copy}
           size="sm"
-          variant="ghost"
+          variant="secondary"
         >
           {copied ? (
             <Icon.success className="size-3.5 text-success" />
@@ -91,30 +48,76 @@ export function ApiSnippetDialog({
   open,
   onOpenChange,
   modelId,
+  capabilityId,
+  projectId,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   modelId: string;
+  capabilityId?: string | null;
+  projectId?: string;
 }) {
+  const [pin, setPin] = useState(false);
+  const [keyOpen, setKeyOpen] = useState(false);
+  const capability = useCapabilityDetailQuery(open ? (capabilityId ?? "") : "").data;
+  const routedModelId = capabilityId && !pin ? `overmind/${capabilityId}` : modelId;
   const baseUrl = inferenceBaseUrl();
-  const apiKey = "<project_api_key>";
-  const curl = buildCurlSnippet({ apiKey, baseUrl, modelId });
-  const python = buildPythonSnippet({ apiKey, baseUrl, modelId });
+  const curl = buildCurlSnippet({ baseUrl, modelId: routedModelId });
+  const python = buildPythonSnippet({ baseUrl, modelId: routedModelId });
 
   return (
-    <Dialog onOpenChange={onOpenChange} open={open}>
-      <DialogContent size="md">
-        <DialogHeader>
-          <DialogTitle>Call this model</DialogTitle>
-          <DialogDescription>
-            OpenAI-compatible chat completions at the project API base URL.
-          </DialogDescription>
-        </DialogHeader>
-        <DialogBody className="space-y-4">
-          <SnippetBlock label="cURL" text={curl} />
-          <SnippetBlock label="Python (OpenAI SDK)" text={python} />
-        </DialogBody>
-      </DialogContent>
-    </Dialog>
+    <>
+      <Dialog
+        onOpenChange={(next) => {
+          if (!next) setPin(false);
+          onOpenChange(next);
+        }}
+        open={open}
+      >
+        <DialogContent size="md">
+          <DialogHeader>
+            <DialogTitle>Call this model</DialogTitle>
+            <DialogDescription>
+              OpenAI-compatible chat completions at the project API base URL.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogBody className="space-y-4">
+            {capabilityId ? (
+              <div className="flex items-center justify-between gap-3 text-xs">
+                <p className="text-muted-foreground">
+                  {pin ? "Pinned to this version." : "Follows the capability’s live model."}
+                </p>
+                <Button onClick={() => setPin(!pin)} size="sm" variant="secondary">
+                  {pin ? "Use live alias" : "Pin this version"}
+                </Button>
+              </div>
+            ) : null}
+            {capabilityId && !pin && capability && !capability.activeModel ? (
+              <p className="text-xs text-warning">Make a model live before calling this alias.</p>
+            ) : null}
+            <p className="text-xs text-muted-foreground">
+              Set OVERMIND_API_KEY to an existing project key.
+            </p>
+            {projectId ? (
+              <div className="flex items-center gap-2">
+                <Button asChild size="sm" variant="secondary">
+                  <Link params={{ projectId }} to="/projects/$projectId">
+                    Project API keys
+                  </Link>
+                </Button>
+                <Button onClick={() => setKeyOpen(true)} size="sm" variant="secondary">
+                  New API key
+                </Button>
+              </div>
+            ) : null}
+            <SnippetBlock label="cURL" text={curl} />
+            <SnippetBlock label="Python (OpenAI SDK)" text={python} />
+          </DialogBody>
+        </DialogContent>
+      </Dialog>
+      {projectId ? (
+        <CreateApiKeyDialog onOpenChange={setKeyOpen} open={keyOpen} projectId={projectId} />
+      ) : null}
+    </>
   );
 }

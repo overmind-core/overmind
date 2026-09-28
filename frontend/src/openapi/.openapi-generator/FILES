@@ -217,6 +217,7 @@ models/GuestClaimResult.ts
 models/GuestSession.ts
 models/InferenceActivity.ts
 models/InferenceActivityPoint.ts
+models/InferenceFailure.ts
 models/InferenceLiveStats.ts
 models/InferenceMetrics.ts
 models/InputSourceEnum.ts
@@ -226,6 +227,7 @@ models/IntentEnum.ts
 models/JudgeModelEnum.ts
 models/LocalSessionRequest.ts
 models/ModeCd6Enum.ts
+models/ModelActivation.ts
 models/ModelCatalogResponse.ts
 models/ModelCheckpoints.ts
 models/ModelDefaults.ts
@@ -327,6 +329,7 @@ models/SetCommandTemplateRequest.ts
 models/SourceRequest.ts
 models/Span.ts
 models/SplitMethodEnum.ts
+models/StageEnum.ts
 models/Status1b7Enum.ts
 models/StatusFbaEnum.ts
 models/Subscription.ts

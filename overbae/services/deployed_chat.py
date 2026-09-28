@@ -9,13 +9,19 @@ from __future__ import annotations
 
 import logging
 import time
+import uuid
+from datetime import datetime
 from decimal import Decimal
 from typing import Any
 
+from django.db.models import Q
+from django.utils import timezone
+
 from modal_shared.context_budget import INCOMPLETE_FINISH_REASONS
-from overbae.models import BillingService, DeployedModel, InferenceCall, User
+from overbae.models import BillingService, Capability, DeployedModel, InferenceCall, User
 from overbae.services.billing_ledger import charge_credits
 from overbae.services.inference_client import (
+    ContextBudgetError,
     InferenceClientError,
     get_inference_client,
 )
@@ -28,6 +34,15 @@ logger = logging.getLogger(__name__)
 _WARM_WINDOW_S = 120
 
 
+def has_recent_inference(deployed: DeployedModel, seconds: int) -> bool:
+    cutoff = timezone.now() - timezone.timedelta(seconds=seconds)
+    return (
+        bool(deployed.deployed_at and deployed.deployed_at >= cutoff)
+        or deployed.inference_calls.filter(created_at__gte=cutoff, outcome="succeeded").exists()
+        or deployed.activations.filter(stage="complete", completed_at__gte=cutoff).exists()
+    )
+
+
 def is_cold_start(deployed: DeployedModel) -> bool:
     """True when the model had no traffic inside the warm window. Never raises — a
     failed check conservatively counts the call as warm.
@@ -35,11 +50,8 @@ def is_cold_start(deployed: DeployedModel) -> bool:
     Side effect: on a cold hit, stamps ``warming_started_at`` so the live-status
     endpoint can surface "Warming up" while the container boots.
     """
-    from django.utils import timezone
-
     try:
-        cutoff = timezone.now() - timezone.timedelta(seconds=_WARM_WINDOW_S)
-        cold = not deployed.inference_calls.filter(created_at__gte=cutoff).exists()
+        cold = not has_recent_inference(deployed, _WARM_WINDOW_S)
         if cold:
             DeployedModel.objects.filter(pk=deployed.pk).update(warming_started_at=timezone.now())
         return cold
@@ -62,6 +74,13 @@ def record_inference_call(
     is_cold: bool = False,
     user: User | None = None,
     metrics: dict | None = None,
+    *,
+    request_id: uuid.UUID | None = None,
+    outcome: str = "succeeded",
+    error_code: str = "",
+    source: str = "internal",
+    requested_model: str = "",
+    started_at: datetime | None = None,
 ) -> None:
     """Persist one InferenceCall. Never raises.
 
@@ -90,7 +109,11 @@ def record_inference_call(
         stored_latency_ms = latency_ms
 
     try:
-        cost = estimate_call_cost(deployed.gpu_type, latency_ms)
+        cost = (
+            estimate_call_cost(deployed.gpu_type, latency_ms)
+            if outcome == "succeeded" or usage
+            else None
+        )
         call = InferenceCall.objects.create(
             deployed_model=deployed,
             project_id=deployed.project_id,
@@ -100,8 +123,32 @@ def record_inference_call(
             tokens_per_second=tps,
             latency_ms=stored_latency_ms,
             is_cold=is_cold,
+            id=request_id or uuid.uuid4(),
+            end_to_end_ms=latency_ms,
+            outcome=outcome,
+            error_code=error_code,
+            source=source,
+            requested_model=requested_model,
         )
         DeployedModel.objects.filter(pk=deployed.pk).update(warming_started_at=None)
+        if (
+            source == "application"
+            and outcome == "succeeded"
+            and requested_model.startswith("overmind/")
+        ):
+            capability_id = uuid.UUID(requested_model.removeprefix("overmind/"))
+            active = Capability.objects.filter(
+                pk=capability_id,
+                project_id=deployed.project_id,
+                active_model=deployed,
+            ).filter(
+                Q(active_model_activated_at__isnull=True)
+                | Q(active_model_activated_at__lte=started_at or call.created_at)
+            )
+            active.filter(first_application_request_at__isnull=True).update(
+                first_application_request_at=call.created_at
+            )
+            active.update(last_application_request_at=call.created_at)
         if user is not None and cost:
             charge_credits(
                 user,
@@ -148,7 +195,19 @@ def chat_with_deployed_model(
         )
     except InferenceClientError as exc:
         logger.error("Inference error for model %s: %s", deployed.model_id, exc)
-        return {"error": f"Inference backend error: {exc}"}
+        error_code = (
+            "context_length_exceeded" if isinstance(exc, ContextBudgetError) else "server_error"
+        )
+        record_inference_call(
+            deployed,
+            None,
+            round((time.monotonic() - t_start) * 1000, 1),
+            cold,
+            user=user,
+            outcome="failed",
+            error_code=error_code,
+        )
+        return {"error": f"Inference backend error: {exc}", "error_code": error_code}
 
     latency_ms = round((time.monotonic() - t_start) * 1000, 1)
     usage = result.get("usage") if isinstance(result, dict) else None

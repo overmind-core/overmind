@@ -9,7 +9,7 @@ from typing import Any
 from asgiref.sync import sync_to_async
 from django.db import close_old_connections, connections
 from rest_framework import exceptions
-from starlette.datastructures import Headers
+from starlette.datastructures import URL, Headers
 from starlette.responses import JSONResponse
 from starlette.types import Receive, Scope, Send
 
@@ -128,7 +128,13 @@ def _authenticate_sync(scope: Scope) -> MCPContext:
     if project is None:
         raise MCPError("project_required", "The MCP API key is not valid for a project.")
 
-    return MCPContext(user=user, token=token, project=project, client_ip=client_ip)
+    return MCPContext(
+        user=user,
+        token=token,
+        project=project,
+        client_ip=client_ip,
+        inference_base_url=str(URL(scope=scope).replace(path="/api/v1", query="")),
+    )
 
 
 authenticate_scope = sync_to_async(_authenticate_sync, thread_sensitive=True)

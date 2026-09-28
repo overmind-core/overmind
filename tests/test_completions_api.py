@@ -12,8 +12,9 @@ from rest_framework import status
 from rest_framework.test import APIClient
 from rest_framework_simplejwt.tokens import RefreshToken
 
-from overbae.models import Project, ProjectMembership, User
+from overbae.models import InferenceCall, Project, ProjectMembership, User
 from overbae.models.inference import DeployedModel
+from overbae.services.inference_client import InferenceClientError
 
 pytestmark = pytest.mark.django_db
 
@@ -648,12 +649,12 @@ class TestChatCompletionsEndpoint:
             )
         assert r.status_code == status.HTTP_200_OK
         raw = drain_stream(r)
-        assert raw.startswith(b"\n")
+        assert not r.streaming
         body = json.loads(raw)
         assert body["id"] == "cmpl-ft-1"
         assert mock_client.chat_completions.call_args.kwargs["deployed"] == m
 
-    def test_finetuned_non_stream_error_after_ping_is_json_error_body(self):
+    def test_finetuned_non_stream_error_returns_error_status(self):
         from overbae.services.inference_client import InferenceClientError
 
         u, p = _user(), _project()
@@ -667,11 +668,11 @@ class TestChatCompletionsEndpoint:
                 {"model": m.model_id, "messages": self.MESSAGES},
                 format="json",
             )
-        assert r.status_code == status.HTTP_200_OK
+        assert r.status_code == status.HTTP_502_BAD_GATEWAY
         body = json.loads(drain_stream(r))
         assert body["error"]["type"] == "server_error"
 
-    def test_finetuned_non_stream_unexpected_error_after_ping_is_json_error_body(self):
+    def test_finetuned_non_stream_unexpected_error_returns_error_status(self):
         u, p = _user(), _project()
         _membership(u, p)
         m = _deployed_model(p)
@@ -683,7 +684,7 @@ class TestChatCompletionsEndpoint:
                 {"model": m.model_id, "messages": self.MESSAGES},
                 format="json",
             )
-        assert r.status_code == status.HTTP_200_OK
+        assert r.status_code == status.HTTP_502_BAD_GATEWAY
         body = json.loads(drain_stream(r))
         assert body["error"]["type"] == "server_error"
 
@@ -857,7 +858,7 @@ class TestChatCompletionsEndpoint:
         assert all(c["choices"] for c in payloads)
         assert billed == _BILLED_USAGE
 
-    def test_stream_with_no_upstream_chunks_does_not_record(self):
+    def test_stream_with_no_upstream_chunks_records_failure(self):
         u, p = _user(), _project()
         _membership(u, p)
         m = _deployed_model(p)
@@ -877,7 +878,9 @@ class TestChatCompletionsEndpoint:
                 format="json",
             )
             drain_stream(r)
-        record.assert_not_called()
+        record.assert_called_once()
+        assert record.call_args.kwargs["outcome"] == "failed"
+        assert record.call_args.kwargs["error_code"] == "incomplete_stream"
 
     def test_api_key_auth_accepted(self):
         u, p = _user(), _project()
@@ -1129,7 +1132,9 @@ class TestActiveModelValidation:
         r = _jwt_client(u).patch(self._url(capability), {"active_model": str(m.id)}, format="json")
         assert r.status_code == status.HTTP_200_OK
         capability.refresh_from_db()
-        assert capability.active_model_id == m.id
+        assert capability.active_model_id is None
+        assert capability.activation.target_id == m.id
+        assert capability.activation.stage == "checking"
 
 
 class TestBenchmarkSelection:
@@ -1174,3 +1179,65 @@ class TestBenchmarkSelection:
         assert target.kind == "gateway"
         assert target.ready is False
         assert target.model_id == "ft-warming-qwen3-8b"
+
+
+def test_late_nonstream_failure_aborts_response_and_records_request_id():
+    user, project = _user(), _project()
+    _membership(user, project)
+    model = _deployed_model(project)
+    backend = MagicMock()
+    backend.chat_completions.side_effect = InferenceClientError("private provider detail")
+
+    def delayed_body(source, **kwargs):
+        yield "\n"
+        yield from source
+
+    with (
+        patch("overbae.api.completions._get_client", return_value=backend),
+        patch("overbae.api.completions.iter_keeping_idle_alive", side_effect=delayed_body),
+    ):
+        response = _api_key_client(user, project).post(
+            "/api/v1/chat/completions",
+            {"model": model.model_id, "messages": [{"role": "user", "content": "hello"}]},
+            format="json",
+        )
+        assert response.streaming
+        with pytest.raises(InferenceClientError, match="Inference request"):
+            drain_stream(response)
+    call = InferenceCall.objects.get(pk=response["X-Request-ID"])
+    assert call.outcome == "failed"
+    assert call.error_code == "server_error"
+    assert call.end_to_end_ms is not None
+
+
+def test_application_alias_success_confirms_connection_but_failed_request_does_not():
+    user, project = _user(), _project()
+    _membership(user, project)
+    model = _deployed_model(project)
+    capability = _capability(project, active_model=model)
+    alias = f"overmind/{capability.pk}"
+    backend = MagicMock()
+    backend.chat_completions.side_effect = InferenceClientError("private provider detail")
+    client = _api_key_client(user, project)
+    body = {"model": alias, "messages": [{"role": "user", "content": "hello"}]}
+    with patch("overbae.api.completions._get_client", return_value=backend):
+        failed = client.post("/api/v1/chat/completions", body, format="json")
+    assert failed.status_code == 502
+    assert failed.data["error"]["request_id"] == failed["X-Request-ID"]
+    assert "private provider detail" not in str(failed.data)
+    capability.refresh_from_db()
+    assert capability.first_application_request_at is None
+    backend.chat_completions.side_effect = None
+    backend.chat_completions.return_value = {
+        "choices": [{"message": {"content": "answer"}}],
+        "usage": {"completion_tokens": 1},
+    }
+    with patch("overbae.api.completions._get_client", return_value=backend):
+        succeeded = client.post("/api/v1/chat/completions", body, format="json")
+    assert succeeded.status_code == 200
+    capability.refresh_from_db()
+    assert capability.first_application_request_at is not None
+    call = InferenceCall.objects.get(pk=succeeded["X-Request-ID"])
+    assert call.source == "application"
+    assert call.requested_model == alias
+    assert call.outcome == "succeeded"

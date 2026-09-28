@@ -8,7 +8,7 @@ import { PROSE } from "@/lib/typography";
 import { cn } from "@/lib/utils";
 import type { DeployedModel } from "@/openapi";
 
-const NO_PR_EXPLAINER = "Takes effect on the next request to this capability's alias.";
+const NO_PR_EXPLAINER = "Verifies inference before switching the capability alias.";
 
 const UNROUTED_EXPLAINER = "This capability's alias has no model behind it, so calls to it fail.";
 
@@ -22,6 +22,7 @@ export function SetActiveModelButton({
   candidate,
   incumbent,
   promote = false,
+  activating = false,
 }: {
   capabilityId: string;
   /** Absent when the deployment was deleted or sits outside the page of models
@@ -30,10 +31,11 @@ export function SetActiveModelButton({
   /** What the alias answers with today; null when it answers nothing. */
   incumbent: DeployedModel | null;
   promote?: boolean;
+  activating?: boolean;
 }) {
   const { isPending, narrowingConfirm, setLive } = useSetActiveModel(capabilityId);
   const reason = candidate ? blockedReason(candidate.status) : NO_DEPLOYMENT_EXPLAINER;
-  const inert = !!reason || isPending;
+  const inert = !!reason || isPending || activating;
 
   const handleClick = () => {
     if (inert || !candidate) return;
@@ -42,7 +44,7 @@ export function SetActiveModelButton({
 
   const button = (
     <Button
-      aria-busy={isPending || undefined}
+      aria-busy={isPending || activating || undefined}
       aria-disabled={inert || undefined}
       // Names the action and candidate; a blocked reason belongs in the tooltip.
       aria-label={`Make live — ${candidate?.modelId ?? "deployment unavailable"}`}
@@ -54,8 +56,8 @@ export function SetActiveModelButton({
       // opacity lands ~3.2:1 against its own label.
       variant={promote && !reason ? "default" : "secondary"}
     >
-      {isPending ? <Spinner className="text-current" /> : <Icon.server />}
-      {isPending ? "Switching…" : "Make live"}
+      {isPending || activating ? <Spinner className="text-current" /> : <Icon.server />}
+      {isPending || activating ? "Activating…" : "Make live"}
     </Button>
   );
 
@@ -77,10 +79,6 @@ export function SetActiveModelButton({
   );
 }
 
-/** A badge, not a disabled button: `disabled:opacity-50` puts the label under
- *  the contrast floor. `h-7` holds the 28px ramp beside `size="sm"` neighbours.
- *  "Live model", not "Live" — the row's `ServingStatusBadge` says "Live" for a
- *  GPU answering now, and the two legitimately disagree when scaled to zero. */
 export function LiveModelBadge() {
   return (
     <Tooltip>

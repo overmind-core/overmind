@@ -31,9 +31,7 @@ Never invent a capability id or ask the MCP server to analyze a Git provider.
 
 ## Active model
 
-`set_active_model` changes or clears a capability's active deployment. It
-accepts a ready deployment reference; omitting the deployment clears the
-active model. Verify the result from the capability and deployment resources.
+`set_active_model` checks a ready deployment, wakes it and verifies inference before switching the capability alias. Poll the returned `model_activation` job with `get_job`; the old selection remains active until the job is `complete`. Read the capability resource for activation progress, previous selection and successful application traffic timestamps. Repeat the selection to retry a failed activation. Omitting deployment clears routing and cancels a pending switch.
 
 Fine-tune rollout uses `get_model_swap_prompt` only after a successful deployed
 fine-tune is ready. Applying the prompt stays a human action.

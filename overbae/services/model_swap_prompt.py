@@ -11,7 +11,6 @@ from overbae.models import Capability, DeployedModel, FinetuningJob, Span
 
 CAPABILITY_ALIAS_PREFIX = "overmind/"
 OBSERVED_MODEL_WINDOW = 500
-OVERMIND_INFERENCE_BASE_URL = "https://api.overmindlab.ai/api/v1"
 OVERMIND_API_KEY_ENV = "OVERMIND_API_KEY"
 
 
@@ -78,6 +77,7 @@ def alias_target_deployment(
 
 def build_model_swap_prompt(
     *,
+    base_url: str,
     capability_name: str,
     source_path: str,
     old_model: str,
@@ -128,7 +128,7 @@ def build_model_swap_prompt(
         f"Capability source location hint: {source_path or '(unknown — search the repo)'}\n"
         f'Model identifier currently in the code: "{old_model}"\n'
         f"{identifier_note}"
-        f"Overmind inference base URL: {OVERMIND_INFERENCE_BASE_URL}\n"
+        f"Overmind inference base URL: {base_url}\n"
         f"Overmind API key env var: {OVERMIND_API_KEY_ENV} (an 'ovr_...' key, sent as "
         f"'Authorization: Bearer')\n\n"
         "Task — make the capability's LLM calls run through Overmind:\n"
@@ -140,9 +140,9 @@ def build_model_swap_prompt(
         f"actually find at that call site is the one to replace — do not stop because "
         f'"{old_model}" is not present verbatim.\n'
         f"4. Point the OpenAI(-compatible) client at Overmind: in Python, "
-        f'OpenAI(base_url="{OVERMIND_INFERENCE_BASE_URL}", '
+        f'OpenAI(base_url="{base_url}", '
         f'api_key=os.environ["{OVERMIND_API_KEY_ENV}"]); in TypeScript, '
-        f'new OpenAI({{ baseURL: "{OVERMIND_INFERENCE_BASE_URL}", '
+        f'new OpenAI({{ baseURL: "{base_url}", '
         f"apiKey: process.env.{OVERMIND_API_KEY_ENV} }}); or the equivalent for the "
         f"client this codebase uses.\n"
         f"5. Authenticate with the Overmind API key read from the "
@@ -170,7 +170,7 @@ def build_model_swap_prompt(
 
 
 def model_swap_prompt_for_job(
-    job: FinetuningJob, *, pin: bool = False
+    job: FinetuningJob, *, base_url: str, pin: bool = False
 ) -> tuple[dict | None, str | None]:
     """Build the copy-paste prompt for a succeeded finetune. ``(payload, error)``."""
     if job.status != job.Status.SUCCEEDED:
@@ -188,6 +188,7 @@ def model_swap_prompt_for_job(
 
     old_model = current_capability_model(job, capability)
     prompt = build_model_swap_prompt(
+        base_url=base_url,
         capability_name=capability.name,
         source_path=capability.source_path or "",
         old_model=old_model,

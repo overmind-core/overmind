@@ -83,7 +83,7 @@ Follow these for ALL Overmind work:
    eval, and optimizer tools also accept a unique dataset name.
    Capability tools accept name, slug, or id. Stamp the capability resource
    `id` into the SDK. Pass a READY deployed-model UUID to `set_active_model`
-   (omit to clear). See [references/capabilities.md](references/capabilities.md).
+   (omit to clear), then poll the returned `model_activation` job until verification and routing complete. See [references/capabilities.md](references/capabilities.md).
 1. **Behaviours have no resource.** There is no
    `overmind://behaviours/...`; read them from `query_task_executions`.
 1. **Contracts gate every dataset workflow.** Intent is **`train`**,
@@ -170,7 +170,7 @@ Follow these for ALL Overmind work:
   `active_model`.
 - **Async jobs.** Poll returned job references with `get_job(kind, id)`.
   Dataset work uses `kind=dataset_run`; other supported kinds include
-  `eval_run`, `finetune_job`, `deployment`, and `optimizer_experiment`.
+  `eval_run`, `finetune_job`, `deployment`, `model_activation`, and `optimizer_experiment`.
 - Chat-UI-only helpers (`propose_plan`, `suggest_navigation`) are not exposed
   on MCP.
 
@@ -337,7 +337,7 @@ The implemented resource templates are:
 Use a capability, dataset, run, deployment, connector, or experiment name/id
 only where the tool schema accepts it. Resource reads are project-scoped and
 return JSON. Job references use the kind values accepted by `get_job`, such as
-`eval_run`, `finetune_job`, `deployment`, or `optimizer_experiment`.
+`eval_run`, `finetune_job`, `deployment`, `model_activation`, or `optimizer_experiment`.
 
 ## Fallback routing
 

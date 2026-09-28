@@ -13,12 +13,14 @@ import logging
 import time
 import uuid
 from decimal import Decimal
+from itertools import chain
 from typing import Any
 
 import requests as _requests
 from django.conf import settings
 from django.db.models import F
 from django.http import StreamingHttpResponse
+from django.utils import timezone
 from rest_framework import status
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
@@ -340,6 +342,7 @@ def _resolve_alias(request: Request, model_id: str) -> tuple[DeployedModel | Non
 @api_view(["POST"])
 @permission_classes([IsAuthenticated])
 def chat_completions(request: Request) -> Response | StreamingHttpResponse:
+    started_at = timezone.now()
     data = request.data
     if not isinstance(data, dict):
         return Response(
@@ -353,6 +356,7 @@ def chat_completions(request: Request) -> Response | StreamingHttpResponse:
         )
 
     model_id = data.get("model", "")
+    requested_model = model_id
     messages = data.get("messages", [])
     stream = bool(data.get("stream", False))
     try:
@@ -549,6 +553,15 @@ def chat_completions(request: Request) -> Response | StreamingHttpResponse:
     client = _get_client()
 
     billing_user = request.user
+    request_id = uuid.uuid4()
+    call_context = {
+        "request_id": request_id,
+        "source": "application"
+        if isinstance(request.auth, APIToken) and not is_optimiser_run
+        else "internal",
+        "requested_model": requested_model,
+        "started_at": started_at,
+    }
 
     if stream:
         include_usage = bool((data.get("stream_options") or {}).get("include_usage"))
@@ -557,6 +570,8 @@ def chat_completions(request: Request) -> Response | StreamingHttpResponse:
 
         def event_stream():
             captured: dict[str, Any] = {"usage": None, "metrics": None}
+            outcome, error_code = "failed", "incomplete_stream"
+            upstream_ended = False
             try:
                 chunks = iter_keeping_idle_alive(
                     client.stream_chat_completions(
@@ -574,13 +589,32 @@ def chat_completions(request: Request) -> Response | StreamingHttpResponse:
                     ping=SSE_IDLE_PING,
                 )
                 for chunk in chunks:
+                    if chunk.strip() == "data: [DONE]":
+                        outcome, error_code = "succeeded", ""
+                    elif chunk.startswith("data:"):
+                        payload = json.loads(chunk.removeprefix("data:").strip())
+                        if payload.get("error"):
+                            raise InferenceClientError("Upstream stream failed")
                     forwarded = _process_stream_chunk(chunk, captured, include_usage)
                     if forwarded is not None:
                         yield forwarded
+                upstream_ended = True
+                if outcome != "succeeded":
+                    raise InferenceClientError("Incomplete upstream stream")
             except Exception as exc:
                 # Broad on purpose: a chunk-parse bug would otherwise kill the
                 # generator mid-stream with no error frame.
-                logger.exception("Inference streaming error for model %s: %s", model_id, exc)
+                logger.exception(
+                    "Inference request %s failed for model %s: %s", request_id, model_id, exc
+                )
+                outcome = "failed"
+                error_code = (
+                    "context_length_exceeded"
+                    if isinstance(exc, ContextBudgetError)
+                    else "incomplete_stream"
+                    if upstream_ended
+                    else "server_error"
+                )
                 message = (
                     str(exc) if isinstance(exc, ContextBudgetError) else "Inference backend error."
                 )
@@ -590,9 +624,8 @@ def chat_completions(request: Request) -> Response | StreamingHttpResponse:
                         {
                             "error": {
                                 "message": message,
-                                "type": "context_length_exceeded"
-                                if isinstance(exc, ContextBudgetError)
-                                else "server_error",
+                                "request_id": str(request_id),
+                                "type": error_code,
                             }
                         }
                     )
@@ -600,79 +633,108 @@ def chat_completions(request: Request) -> Response | StreamingHttpResponse:
                 )
                 yield "data: [DONE]\n\n"
             finally:
-                if captured["usage"] is not None:
-                    latency_ms = round((time.monotonic() - t_start) * 1000, 1)
-                    record_inference_call(
-                        deployed,
-                        captured["usage"],
-                        latency_ms,
-                        cold,
-                        user=billing_user,
-                        metrics=captured.get("metrics"),
-                    )
+                latency_ms = round((time.monotonic() - t_start) * 1000, 1)
+                record_inference_call(
+                    deployed,
+                    captured["usage"],
+                    latency_ms,
+                    cold,
+                    user=billing_user,
+                    metrics=captured.get("metrics"),
+                    outcome=outcome,
+                    error_code=error_code,
+                    **call_context,
+                )
 
         return StreamingHttpResponse(
             AsyncStream(event_stream()),
             content_type="text/event-stream",
-            headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+            headers={
+                "Cache-Control": "no-cache",
+                "X-Accel-Buffering": "no",
+                "X-Request-ID": str(request_id),
+            },
         )
 
     cold = is_cold_start(deployed)
     t_start = time.monotonic()
 
-    def json_stream():
-        held: dict[str, Any] = {}
+    held: dict[str, Any] = {"outcome": "failed", "error_code": "incomplete_response"}
 
-        def _body():
-            try:
-                result = client.chat_completions(
-                    model_id=model_id,
-                    messages=messages,
-                    stream=False,
-                    temperature=temperature,
-                    max_tokens=max_tokens,
-                    deployed=deployed,
-                    include_metrics=True,  # vLLM per-request timing (stripped before return)
-                    **extra,
-                )
-            except Exception as exc:
-                logger.exception("Inference error for model %s: %s", model_id, exc)
-                yield json.dumps(
-                    {
-                        "error": {
-                            "message": str(exc)
-                            if isinstance(exc, ContextBudgetError)
-                            else "Inference backend error.",
-                            "type": "context_length_exceeded"
-                            if isinstance(exc, ContextBudgetError)
-                            else "server_error",
-                        }
-                    }
-                )
-                return
-            held["result"] = result
-            held["usage"] = result.get("usage") if isinstance(result, dict) else None
-            held["metrics"] = result.pop("metrics", None) if isinstance(result, dict) else None
-            yield json.dumps(result)
-
+    def body():
         try:
-            yield from iter_keeping_idle_alive(_body(), ping=JSON_IDLE_PING)
+            result = client.chat_completions(
+                model_id=model_id,
+                messages=messages,
+                stream=False,
+                temperature=temperature,
+                max_tokens=max_tokens,
+                deployed=deployed,
+                include_metrics=True,
+                **extra,
+            )
+            held.update(
+                result=result,
+                usage=result.get("usage"),
+                metrics=result.pop("metrics", None),
+                outcome="succeeded",
+                error_code="",
+            )
+        except Exception as exc:
+            logger.exception("Inference request %s failed for %s", request_id, model_id)
+            context_error = isinstance(exc, ContextBudgetError)
+            held.update(
+                error_code="context_length_exceeded" if context_error else "server_error",
+                status=400 if context_error else 502,
+            )
+            held["result"] = {
+                "error": {
+                    "message": str(exc) if context_error else "Inference backend error.",
+                    "type": held["error_code"],
+                    "request_id": str(request_id),
+                }
+            }
+        yield json.dumps(held["result"])
+
+    def record():
+        record_inference_call(
+            deployed,
+            held.get("usage"),
+            round((time.monotonic() - t_start) * 1000, 1),
+            cold,
+            user=billing_user,
+            metrics=held.get("metrics"),
+            outcome=held["outcome"],
+            error_code=held["error_code"],
+            **call_context,
+        )
+
+    chunks = iter_keeping_idle_alive(body(), ping=JSON_IDLE_PING, initial_ping=False)
+    first = next(chunks)
+    headers = {
+        "Cache-Control": "no-cache",
+        "X-Accel-Buffering": "no",
+        "X-Request-ID": str(request_id),
+    }
+    if first != JSON_IDLE_PING:
+        chunks.close()
+        record()
+        return Response(held["result"], status=held.get("status", 200), headers=headers)
+
+    def json_stream():
+        try:
+            for chunk in chain((first,), chunks):
+                if held.get("status"):
+                    # Headers are committed after a keepalive. Abort the incomplete JSON
+                    # response so OpenAI clients raise a transport error instead of success.
+                    raise InferenceClientError(f"Inference request {request_id} failed")
+                yield chunk
         finally:
-            if "result" in held:
-                latency_ms = round((time.monotonic() - t_start) * 1000, 1)
-                record_inference_call(
-                    deployed,
-                    held["usage"],
-                    latency_ms,
-                    cold,
-                    user=billing_user,
-                    metrics=held.get("metrics"),
-                )
+            chunks.close()
+            record()
 
     return StreamingHttpResponse(
-        AsyncStream(json_stream()),
-        content_type="application/json",
-        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+        AsyncStream(json_stream()), content_type="application/json", headers=headers
     )
 
 

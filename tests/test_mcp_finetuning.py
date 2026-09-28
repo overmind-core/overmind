@@ -44,7 +44,9 @@ def _context(*, permission: str | list[str] = "read") -> MCPContext:
     ProjectMembership.objects.create(user=user, project=project)
     permissions = [permission] if isinstance(permission, str) else permission
     token = APIToken(scope={"scope": "project", "permission": permissions})
-    return MCPContext(user=user, token=token, project=project)
+    return MCPContext(
+        user=user, token=token, project=project, inference_base_url="http://testserver/api/v1"
+    )
 
 
 def _call(name: str, arguments: dict, context: MCPContext):
@@ -585,7 +587,9 @@ def test_set_active_model_validates_ready_same_project_and_clear(monkeypatch):
     )
     capability.refresh_from_db()
     assert set_result.isError is False, set_result.structuredContent
-    assert capability.active_model_id == deployment.id
+    assert capability.active_model_id is None
+    assert capability.activation.target_id == deployment.id
+    assert set_result.structuredContent["activation"]["kind"] == "model_activation"
 
     clear_result = _call(
         "set_active_model", {"capability": str(capability.id), "deployment": None}, context
@@ -717,7 +721,7 @@ def test_model_swap_prompt_returns_prompt_and_capability_refs(monkeypatch):
     )
     monkeypatch.setattr(
         "overbae.services.model_swap_prompt.model_swap_prompt_for_job",
-        lambda _job, pin=False: (
+        lambda _job, pin=False, base_url="": (
             {
                 "prompt": "Point the client at the new model.",
                 "pin": pin,
@@ -750,7 +754,10 @@ def test_model_swap_prompt_reports_why_it_is_unavailable(monkeypatch):
     )
     monkeypatch.setattr(
         "overbae.services.model_swap_prompt.model_swap_prompt_for_job",
-        lambda _job, pin=False: (None, "Only successfully trained models can be shipped."),
+        lambda _job, pin=False, base_url="": (
+            None,
+            "Only successfully trained models can be shipped.",
+        ),
     )
     result = _call("get_model_swap_prompt", {"finetune": str(job.id)}, context)
     assert result.isError is True
@@ -885,3 +892,24 @@ def test_start_uses_explicit_cell_not_active(monkeypatch):
     extra.refresh_from_db()
     assert extra.used_at is None  # The mocked launch skips the atomic creation/freeze service.
     assert result.structuredContent["cell"]["id"] == str(extra.id)
+
+
+def test_activation_receipt_can_be_polled_and_is_project_scoped():
+    context = _context(permission=["read", "write"])
+    capability, _, _, _ = training_setup(context)
+    deployment = DeployedModel.objects.create(
+        project=context.project, model_id="ft-receipt", status="ready"
+    )
+    result = _call(
+        "set_active_model",
+        {"capability": str(capability.pk), "deployment": str(deployment.pk)},
+        context,
+    )
+    receipt = result.structuredContent["activation"]
+    result = _call("get_job", {"kind": "model_activation", "id": receipt["id"]}, context)
+    assert not result.isError, result.structuredContent
+    assert result.structuredContent["status"] == "checking"
+    other = _context(permission=["read", "write"])
+    result = _call("get_job", {"kind": "model_activation", "id": receipt["id"]}, other)
+    assert result.isError
+    assert result.structuredContent["error"]["code"] == "resource_not_found"

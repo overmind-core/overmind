@@ -18,7 +18,7 @@ class RunInferenceInput(MCPModel):
     deployment: str = Field(min_length=1, max_length=255)
     messages: list[InferenceMessage] = Field(min_length=1, max_length=50)
     temperature: float = Field(default=1.0, ge=0.0, le=2.0)
-    max_tokens: int = Field(default=512, ge=1, le=2048)
+    max_tokens: int | None = Field(default=None, ge=1, strict=True)
 
 
 class InferenceUsage(MCPModel):

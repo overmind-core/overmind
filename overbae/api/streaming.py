@@ -43,6 +43,7 @@ def iter_keeping_idle_alive[T](
     *,
     ping: T,
     interval_s: float = IDLE_PING_INTERVAL_S,
+    initial_ping: bool = True,
 ) -> Iterator[T]:
     """Yield `ping` immediately and whenever `source` is silent for `interval_s`.
 
@@ -73,7 +74,8 @@ def iter_keeping_idle_alive[T](
 
     threading.Thread(target=_produce, daemon=True).start()
     try:
-        yield ping
+        if initial_ping:
+            yield ping
         while True:
             try:
                 item = q.get(timeout=interval_s)

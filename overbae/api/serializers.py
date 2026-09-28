@@ -10,6 +10,7 @@ from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
 from rest_framework.validators import UniqueTogetherValidator
 
+from overbae.api.model_activation import ModelActivationSerializer
 from overbae.api.scoping import project_ids_for
 from overbae.core.errors import InputValidationError
 from overbae.core.model_registry import judge_picker_models
@@ -46,6 +47,7 @@ from overbae.services.datasets import use as dataset_use
 from overbae.services.datasets.lifecycle import DatasetError
 from overbae.services.deployment import deployment_progress
 from overbae.services.eval.trace_scoring import STATUS_ERROR
+from overbae.services.model_activation import start_activation
 from overbae.services.serving_context import evaluation_budget, serving_plan
 
 logger = logging.getLogger(__name__)
@@ -639,6 +641,7 @@ class CapabilityFlowSerializer(serializers.Serializer):
 
 
 class CapabilitySerializer(serializers.ModelSerializer):
+    activation = ModelActivationSerializer(read_only=True, allow_null=True)
     tool_config = serializers.JSONField(required=False, allow_null=True)
     consistency_rules = serializers.JSONField(required=False, allow_null=True)
     optimizable_elements = serializers.JSONField(required=False, allow_null=True)
@@ -656,7 +659,34 @@ class CapabilitySerializer(serializers.ModelSerializer):
             "slug",
             "created_at",
             "updated_at",
+            "previous_active_model",
+            "active_model_activated_at",
+            "first_application_request_at",
+            "last_application_request_at",
         ]
+
+    @transaction.atomic
+    def create(self, validated_data):
+        target = validated_data.pop("active_model", None)
+        instance = super().create(validated_data)
+        if target:
+            try:
+                start_activation(instance.pk, target.pk)
+            except InputValidationError as exc:
+                raise serializers.ValidationError({"active_model": exc.detail}) from exc
+        return instance
+
+    @transaction.atomic
+    def update(self, instance, validated_data):
+        instance = Capability.objects.select_for_update().get(pk=instance.pk)
+        if "active_model" in validated_data:
+            target = validated_data.pop("active_model")
+            try:
+                start_activation(instance.pk, target.pk if target else None)
+            except InputValidationError as exc:
+                raise serializers.ValidationError({"active_model": exc.detail}) from exc
+            instance.refresh_from_db()
+        return super().update(instance, validated_data)
 
     def get_dataset_size(self, obj) -> int:
         return _capability_live_dataset_size(obj)
@@ -2312,9 +2342,31 @@ class DeployedModelSerializer(serializers.ModelSerializer):
         return getattr(capability, "name", None)
 
 
+class InferenceFailureSerializer(serializers.Serializer):
+    id = serializers.UUIDField()
+    created_at = serializers.DateTimeField()
+    error_code = serializers.CharField()
+
+
+class InferenceMonitoringQuerySerializer(serializers.Serializer):
+    period = serializers.ChoiceField(choices=["1h", "24h", "7d", "30d", "all"], default="all")
+    source = serializers.ChoiceField(choices=["all", "application"], default="all")
+
+
+class InferenceActivityQuerySerializer(InferenceMonitoringQuerySerializer):
+    granularity = serializers.ChoiceField(choices=["minute", "hour", "day"], default="minute")
+
+
 class InferenceMetricsSerializer(serializers.Serializer):
     """Aggregate usage/latency/cost for a deployed model (from InferenceCall)."""
 
+    last_request_at = serializers.DateTimeField(allow_null=True)
+    cost_recorded_request_count = serializers.IntegerField()
+    failed_request_count = serializers.IntegerField()
+    cold_request_count = serializers.IntegerField()
+    end_to_end_p50_ms = serializers.FloatField(allow_null=True)
+    end_to_end_p95_ms = serializers.FloatField(allow_null=True)
+    latest_failure = InferenceFailureSerializer(allow_null=True)
     request_count = serializers.IntegerField()
     prompt_tokens = serializers.IntegerField()
     completion_tokens = serializers.IntegerField()
@@ -2344,6 +2396,9 @@ class InferenceMetricsSerializer(serializers.Serializer):
 class InferenceActivityPointSerializer(serializers.Serializer):
     """One time-bucket in the activity chart."""
 
+    failed_request_count = serializers.IntegerField()
+    end_to_end_p50_ms = serializers.FloatField(allow_null=True)
+    end_to_end_p95_ms = serializers.FloatField(allow_null=True)
     bucket = serializers.DateTimeField()
     request_count = serializers.IntegerField()
     total_tokens = serializers.IntegerField()

@@ -656,3 +656,31 @@ def test_deployed_model_serializer_fields():
     assert str(data["finetuning_job_id"]) == str(job.id)
     assert str(data["project"]) == str(p.id)
     assert "created_at" in data
+
+
+def test_metrics_separate_failures_end_to_end_and_warm_engine_latency():
+    user, project = _user(), _project()
+    _membership(user, project)
+    model = _deployed_model(project, _job(project))
+    InferenceCall.objects.create(
+        deployed_model=model, project=project, latency_ms=10, end_to_end_ms=100, is_cold=False
+    )
+    InferenceCall.objects.create(
+        deployed_model=model, project=project, latency_ms=500, end_to_end_ms=500, is_cold=True
+    )
+    failed = InferenceCall.objects.create(
+        deployed_model=model,
+        project=project,
+        latency_ms=9999,
+        end_to_end_ms=9999,
+        outcome="failed",
+        error_code="server_error",
+    )
+    response = _auth_client(user).get(reverse("deployedmodel-metrics", args=[model.id]))
+    assert response.status_code == 200
+    assert response.data["request_count"] == 3
+    assert response.data["failed_request_count"] == 1
+    assert response.data["cold_request_count"] == 1
+    assert response.data["avg_latency_ms"] == 10
+    assert response.data["end_to_end_p50_ms"] == 300
+    assert response.data["latest_failure"]["id"] == str(failed.pk)

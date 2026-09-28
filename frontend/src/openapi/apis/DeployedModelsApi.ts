@@ -39,7 +39,9 @@ import {
 
 export interface DeployedModelsActivityRetrieveRequest {
     id: string;
-    granularity?: string;
+    granularity?: DeployedModelsActivityRetrieveGranularityEnum;
+    period?: DeployedModelsActivityRetrievePeriodEnum;
+    source?: DeployedModelsActivityRetrieveSourceEnum;
 }
 
 export interface DeployedModelsCheckpointsRetrieveRequest {
@@ -70,6 +72,8 @@ export interface DeployedModelsLiveRetrieveRequest {
 
 export interface DeployedModelsMetricsRetrieveRequest {
     id: string;
+    period?: DeployedModelsMetricsRetrievePeriodEnum;
+    source?: DeployedModelsMetricsRetrieveSourceEnum;
 }
 
 export interface DeployedModelsRetrieveRequest {
@@ -104,6 +108,14 @@ export class DeployedModelsApi extends runtime.BaseAPI {
 
         if (requestParameters['granularity'] != null) {
             queryParameters['granularity'] = requestParameters['granularity'];
+        }
+
+        if (requestParameters['period'] != null) {
+            queryParameters['period'] = requestParameters['period'];
+        }
+
+        if (requestParameters['source'] != null) {
+            queryParameters['source'] = requestParameters['source'];
         }
 
         const headerParameters: runtime.HTTPHeaders = {};
@@ -471,6 +483,14 @@ export class DeployedModelsApi extends runtime.BaseAPI {
 
         const queryParameters: any = {};
 
+        if (requestParameters['period'] != null) {
+            queryParameters['period'] = requestParameters['period'];
+        }
+
+        if (requestParameters['source'] != null) {
+            queryParameters['source'] = requestParameters['source'];
+        }
+
         const headerParameters: runtime.HTTPHeaders = {};
 
         if (this.configuration && this.configuration.accessToken) {
@@ -695,6 +715,34 @@ export class DeployedModelsApi extends runtime.BaseAPI {
 /**
  * @export
  */
+export const DeployedModelsActivityRetrieveGranularityEnum = {
+    minute: 'minute',
+    hour: 'hour',
+    day: 'day'
+} as const;
+export type DeployedModelsActivityRetrieveGranularityEnum = typeof DeployedModelsActivityRetrieveGranularityEnum[keyof typeof DeployedModelsActivityRetrieveGranularityEnum];
+/**
+ * @export
+ */
+export const DeployedModelsActivityRetrievePeriodEnum = {
+    _1h: '1h',
+    _24h: '24h',
+    _7d: '7d',
+    _30d: '30d',
+    all: 'all'
+} as const;
+export type DeployedModelsActivityRetrievePeriodEnum = typeof DeployedModelsActivityRetrievePeriodEnum[keyof typeof DeployedModelsActivityRetrievePeriodEnum];
+/**
+ * @export
+ */
+export const DeployedModelsActivityRetrieveSourceEnum = {
+    all: 'all',
+    application: 'application'
+} as const;
+export type DeployedModelsActivityRetrieveSourceEnum = typeof DeployedModelsActivityRetrieveSourceEnum[keyof typeof DeployedModelsActivityRetrieveSourceEnum];
+/**
+ * @export
+ */
 export const DeployedModelsListStatusEnum = {
     deleted: 'deleted',
     deleting: 'deleting',
@@ -706,3 +754,22 @@ export const DeployedModelsListStatusEnum = {
     warming: 'warming'
 } as const;
 export type DeployedModelsListStatusEnum = typeof DeployedModelsListStatusEnum[keyof typeof DeployedModelsListStatusEnum];
+/**
+ * @export
+ */
+export const DeployedModelsMetricsRetrievePeriodEnum = {
+    _1h: '1h',
+    _24h: '24h',
+    _7d: '7d',
+    _30d: '30d',
+    all: 'all'
+} as const;
+export type DeployedModelsMetricsRetrievePeriodEnum = typeof DeployedModelsMetricsRetrievePeriodEnum[keyof typeof DeployedModelsMetricsRetrievePeriodEnum];
+/**
+ * @export
+ */
+export const DeployedModelsMetricsRetrieveSourceEnum = {
+    all: 'all',
+    application: 'application'
+} as const;
+export type DeployedModelsMetricsRetrieveSourceEnum = typeof DeployedModelsMetricsRetrieveSourceEnum[keyof typeof DeployedModelsMetricsRetrieveSourceEnum];

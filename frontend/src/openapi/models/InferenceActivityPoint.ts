@@ -21,6 +21,24 @@ import { mapValues } from '../runtime';
 export interface InferenceActivityPoint {
     /**
      *
+     * @type {number}
+     * @memberof InferenceActivityPoint
+     */
+    failedRequestCount: number;
+    /**
+     *
+     * @type {number}
+     * @memberof InferenceActivityPoint
+     */
+    endToEndP50Ms: number | null;
+    /**
+     *
+     * @type {number}
+     * @memberof InferenceActivityPoint
+     */
+    endToEndP95Ms: number | null;
+    /**
+     *
      * @type {Date}
      * @memberof InferenceActivityPoint
      */
@@ -55,6 +73,9 @@ export interface InferenceActivityPoint {
  * Check if a given object implements the InferenceActivityPoint interface.
  */
 export function instanceOfInferenceActivityPoint(value: object): value is InferenceActivityPoint {
+    if (!('failedRequestCount' in value) || value['failedRequestCount'] === undefined) return false;
+    if (!('endToEndP50Ms' in value) || value['endToEndP50Ms'] === undefined) return false;
+    if (!('endToEndP95Ms' in value) || value['endToEndP95Ms'] === undefined) return false;
     if (!('bucket' in value) || value['bucket'] === undefined) return false;
     if (!('requestCount' in value) || value['requestCount'] === undefined) return false;
     if (!('totalTokens' in value) || value['totalTokens'] === undefined) return false;
@@ -73,6 +94,9 @@ export function InferenceActivityPointFromJSONTyped(json: any, ignoreDiscriminat
     }
     return {
 
+        'failedRequestCount': json['failed_request_count'],
+        'endToEndP50Ms': json['end_to_end_p50_ms'],
+        'endToEndP95Ms': json['end_to_end_p95_ms'],
         'bucket': (new Date(json['bucket'])),
         'requestCount': json['request_count'],
         'totalTokens': json['total_tokens'],
@@ -92,6 +116,9 @@ export function InferenceActivityPointToJSONTyped(value?: InferenceActivityPoint
 
     return {
 
+        'failed_request_count': value['failedRequestCount'],
+        'end_to_end_p50_ms': value['endToEndP50Ms'],
+        'end_to_end_p95_ms': value['endToEndP95Ms'],
         'bucket': value['bucket'].toISOString(),
         'request_count': value['requestCount'],
         'total_tokens': value['totalTokens'],

@@ -127,10 +127,11 @@ dependent evaluation failed. Retrying deployment does not retrain the model.
 
 Call `run_inference` only against a `ready` deployment and treat `is_cold` as
 normal first-request information. Then use `set_active_model` to activate a
-ready deployment or clear the active model. Verify the final state from the
-deployment and capability resources.
+ready deployment or clear the active model. Activation verifies inference before changing routing; poll the returned `model_activation` job until complete. A failed activation preserves the current model and can be retried with the same selection. Verify the final state from the deployment and capability resources.
 
 Inspect `finish_reason` and `truncated` before using an inference answer. `truncated` means the model stopped at its token limit; `content_clipped` separately indicates the MCP response size bound. Neither is a complete response.
+
+`run_inference` uses the production serving output reservation when `max_tokens` is omitted or null (currently 8,192 tokens). Explicit positive integer budgets have no MCP-specific ceiling. The server validates the templated input plus reserved output against the deployment's context; it never silently reduces the budget. A `context_length_exceeded` error is not retryable without changing the request or serving context. The returned `content` remains bounded to 32,000 characters, independently of generation length; `content_clipped` reports that response limit.
 
 ## Download an archived checkpoint
 
@@ -159,3 +160,9 @@ the code at the capability alias, so later swaps need no further code change.
 MCP does not edit the repository.
 
 There are no public cancel or undeploy tools. Do not suggest them.
+
+### Live inference performance
+
+Read `overmind://deployments/{deployment}?period=24h&source=application` for application request counts, failures, end-to-end response percentiles, warm generation speed, estimated cost and matching activity. Supported periods are `1h`, `24h`, `7d`, `30d` and `all`; source is `application` or `all`. Both default to `all`. Internal evaluations and historical calls with unknown source are included only in `all`.
+
+The resource's `worker` section reports current `state` (`warm`, `warming`, `asleep`, or `unknown`), measurement `available`, runner/input/backlog counts, and recent-activity/warming signals. It uses the Console's cached worker measurements without running inference. `status` remains deployment readiness; capability `active_model` remains the routing selection. Metrics filters do not filter current worker state. Missing measurements remain null rather than zero; recent successful traffic can still establish warmth when provider measurements are unavailable.

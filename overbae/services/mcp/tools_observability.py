@@ -25,6 +25,7 @@ from overbae.models import (
     Dataset,
     DeployedModel,
     FinetuningJob,
+    ModelActivation,
     OptimizerExperiment,
     Score,
     Span,
@@ -68,6 +69,7 @@ from overbae.services.mcp.resources import (
     resource_link,
     safe_json,
 )
+from overbae.services.model_activation import activation_progress
 
 _HEALTH_EVALUATOR_CAP = 50
 _NS_PER_SECOND = 1_000_000_000
@@ -652,6 +654,20 @@ def _get_job_sync(payload: GetJobInput, context: MCPContext) -> GetJobOutput:
             "scores": safe_json(job.scores or {}),
         }
         primary = _link("optimizer-runs", str(job.id), label)
+    elif kind == "model_activation":
+        job = (
+            ModelActivation.objects.filter(
+                pk=normalized_id, capability__project=context.project
+            ).first()
+            if normalized_id
+            else None
+        )
+        if job is None:
+            raise MCPError("resource_not_found", "The model activation was not found.")
+        created_at, completed_at = job.started_at, job.completed_at
+        label, status, job_error = "Model activation", job.stage, job.error or None
+        progress = activation_progress(job)
+        primary = _link("jobs", f"model_activation/{job.id}", label)
     elif kind == "deployment":
         query = DeployedModel.objects.filter(project=context.project).select_related(
             "finetuning_job"

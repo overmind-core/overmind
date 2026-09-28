@@ -15,7 +15,10 @@ export const useCapabilityDetailQuery = (capabilityId: string) => {
     enabled: !!capabilityId,
     queryFn: () => apiClient.capabilities.capabilitiesRetrieve({ id: capabilityId }),
     queryKey: ["capability-detail", capabilityId],
-    refetchInterval: 15_000,
+    refetchInterval: (q) =>
+      ["checking", "verifying", "switching"].includes(q.state.data?.activation?.stage ?? "")
+        ? 2_000
+        : 15_000,
   });
 };
 
