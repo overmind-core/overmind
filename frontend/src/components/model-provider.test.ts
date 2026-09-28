@@ -57,12 +57,6 @@ describe("getModelProviderInfo", () => {
     expect(getModelProviderInfo("~anthropic/claude-sonnet-4-5").id).toBe("anthropic");
   });
 
-  it("keeps the model label readable for prefixed ids", () => {
-    const info = getModelProviderInfo("Qwen/Qwen3.5-0.8B");
-    expect(info.providerLabel).toBe("Qwen");
-    expect(info.modelLabel).toContain("Qwen3.5");
-  });
-
   it("renders model labels in vendor casing, not all caps", () => {
     const label = (model: string) => getModelProviderInfo(model).modelLabel;
     expect(label("gpt-4o")).toBe("GPT 4o");

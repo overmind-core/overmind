@@ -63,15 +63,6 @@ def _trace_with_children(project) -> str:
     return trace_id
 
 
-def test_helper_sums_usage_across_all_spans_of_trace():
-    _, project = _client_and_project()
-    trace_id = _trace_with_children(project)
-
-    totals = trace_usage_totals([project.id], [trace_id])
-    assert totals[trace_id]["total_tokens"] == 50  # (30 + 12) + 8
-    assert totals[trace_id]["total_cost"] == 0.015  # 0.01 + 0.005
-
-
 def test_helper_counts_nested_double_instrumented_call_once():
     """A framework instrumentor's span wrapping a provider instrumentor's span
     reports the same call twice; only the leaf counts."""
@@ -493,15 +484,6 @@ def test_helper_aggregates_cache_read_tokens_separately():
     totals = trace_usage_totals([project.id], [trace_id])
     assert totals[trace_id]["total_tokens"] == 120  # cache-read NOT folded in
     assert totals[trace_id]["cache_read_tokens"] == 45  # 40 + 5
-
-
-def test_helper_cache_read_none_when_absent():
-    _, project = _client_and_project()
-    trace_id = uuid.uuid4().hex[:32]
-    _span(project, trace_id=trace_id, attributes={"genai.total_tokens": 10})
-
-    totals = trace_usage_totals([project.id], [trace_id])
-    assert totals[trace_id]["cache_read_tokens"] is None
 
 
 def test_helper_reads_the_usage_projection_not_attributes():

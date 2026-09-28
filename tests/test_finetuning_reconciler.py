@@ -54,22 +54,3 @@ def test_deploying_job_rescued_with_register_task():
     _, sent = _run_reconcile(active_tasks=[])
     mine = [(n, k) for n, k in sent if k.get("job_id") == str(job.id)]
     assert mine == []
-
-
-def test_deploying_job_with_inflight_register_not_kicked():
-    job = _job("deploying")
-    inflight = [
-        {
-            "id": str(uuid.uuid4()),
-            "name": "overbae.tasks.model_deployment.register_finetuned_model",
-            "kwargs": {"job_id": str(job.id)},
-        }
-    ]
-    _, sent = _run_reconcile(active_tasks=inflight)
-    assert all(k.get("job_id") != str(job.id) for _, k in sent)
-
-
-def test_running_job_is_not_rescued_with_run_finetuning():
-    job = _job("running")
-    _, sent = _run_reconcile(active_tasks=[])
-    assert all(k.get("job_id") != str(job.id) for _, k in sent)

@@ -61,6 +61,12 @@ export interface ServingContextPlan {
      * @memberof ServingContextPlan
      */
     estimated: boolean;
+    /**
+     *
+     * @type {Array<string>}
+     * @memberof ServingContextPlan
+     */
+    warnings?: Array<string>;
 }
 
 /**
@@ -94,6 +100,7 @@ export function ServingContextPlanFromJSONTyped(json: any, ignoreDiscriminator: 
         'maxModelLen': json['max_model_len'],
         'modelContextLimit': json['model_context_limit'],
         'estimated': json['estimated'],
+        'warnings': json['warnings'] == null ? undefined : json['warnings'],
     };
 }
 
@@ -115,5 +122,6 @@ export function ServingContextPlanToJSONTyped(value?: ServingContextPlan | null,
         'max_model_len': value['maxModelLen'],
         'model_context_limit': value['modelContextLimit'],
         'estimated': value['estimated'],
+        'warnings': value['warnings'],
     };
 }

@@ -14,14 +14,14 @@ const config = defineConfig({
     // invalidates the ?v=<hash> URLs the browser already holds: "504 Outdated
     // Optimize Dep" → "Failed to fetch dynamically imported module".
     include: [
-      "@lobehub/icons/es/Anthropic",
-      "@lobehub/icons/es/Cohere",
-      "@lobehub/icons/es/Gemini",
-      "@lobehub/icons/es/Meta",
-      "@lobehub/icons/es/Mistral",
-      "@lobehub/icons/es/OpenAI",
-      "@lobehub/icons/es/Qwen",
-      "@lobehub/icons/es/XAI",
+      "@lobehub/icons/es/Anthropic/components/Mono",
+      "@lobehub/icons/es/Cohere/components/Mono",
+      "@lobehub/icons/es/Gemini/components/Mono",
+      "@lobehub/icons/es/Meta/components/Mono",
+      "@lobehub/icons/es/Mistral/components/Mono",
+      "@lobehub/icons/es/OpenAI/components/Mono",
+      "@lobehub/icons/es/Qwen/components/Mono",
+      "@lobehub/icons/es/XAI/components/Mono",
     ],
   },
   plugins: [

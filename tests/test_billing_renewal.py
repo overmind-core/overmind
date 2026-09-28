@@ -530,4 +530,3 @@ def test_ledger_lists_own_entries_newest_first():
     assert results[0]["amount"] == "-1.2500000"
     assert results[1]["service"] == BillingService.FREE_CREDITS
     assert results[1]["amount"] == "50.0000000"
-    assert all(row.get("project_id") is None or True for row in results)

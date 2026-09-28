@@ -6,7 +6,6 @@ import {
   EvidencePanel,
   EvidenceTable,
   ExcludedSummary,
-  fieldSize,
   MatchScore,
   SkillChart,
   skillBars,
@@ -155,22 +154,6 @@ describe("skillBars", () => {
   });
 });
 
-describe("fieldSize", () => {
-  it("names the field when every skill was read against the same one", () => {
-    expect(fieldSize(skillBars(SKILL_SCORES, WEIGHTS))).toBe(30);
-  });
-
-  it("names no field when the skills were scored against different pools", () => {
-    const scores = [SKILL_SCORES[0], skillScore({ fieldN: 12 })];
-
-    expect(fieldSize(skillBars(scores, WEIGHTS))).toBeNull();
-  });
-
-  it("names no field without a single graded skill", () => {
-    expect(fieldSize(skillBars([], WEIGHTS))).toBeNull();
-  });
-});
-
 describe("SkillChart", () => {
   const bars = () => skillBars(SKILL_SCORES, WEIGHTS);
 
@@ -280,12 +263,6 @@ describe("EvidencePanel", () => {
 });
 
 describe("EvidenceTable", () => {
-  it("names the population its percentiles stand in", () => {
-    render(<EvidenceTable rows={GRADED} />);
-
-    expect(screen.getByText(/Standing among every model the benchmark tracks/)).toBeTruthy();
-  });
-
   it("shows standing as a percentile, never a raw score", () => {
     render(<EvidenceTable rows={GRADED} />);
 

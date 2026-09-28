@@ -124,11 +124,11 @@ def test_executor_does_not_retry_permanent_errors():
     assert attempts["n"] == 1
 
 
-def test_fit_prompt_drops_the_middle_keeps_head_and_tail():
-    prompt = "RUBRIC " + ("evidence " * 200) + " RETURN JSON"
-    fitted = funnel.fit_prompt(prompt, budget=200)
-    assert len(fitted) <= 200
-    assert fitted.startswith("RUBRIC")
-    assert fitted.endswith("RETURN JSON")
-    assert "truncated" in fitted
-    assert funnel.fit_prompt("short", budget=200) == "short"
+def test_judge_preserves_oversized_evidence(monkeypatch):
+    from unittest.mock import Mock
+
+    prompt = "RUBRIC " + ("evidence " * 50000) + " RETURN JSON"
+    completion = Mock(return_value=('{"explanation":"ok","score":7}', {}))
+    monkeypatch.setattr(funnel, "call_llm", completion)
+    funnel.invoke_judge(prompt, response_format=_Verdict, judge=_judge(), use_cache=False)
+    assert completion.call_args.args[0] == prompt

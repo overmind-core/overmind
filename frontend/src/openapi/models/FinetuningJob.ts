@@ -92,6 +92,12 @@ export interface FinetuningJob {
     evalSet: string;
     /**
      *
+     * @type {string}
+     * @memberof FinetuningJob
+     */
+    evalJudgeModel?: FinetuningJobEvalJudgeModelEnum;
+    /**
+     *
      * @type {boolean}
      * @memberof FinetuningJob
      */
@@ -324,6 +330,21 @@ export interface FinetuningJob {
 /**
  * @export
  */
+export const FinetuningJobEvalJudgeModelEnum = {
+    gpt_5_6_luna: 'gpt-5.6-luna',
+    gpt_5_6_terra: 'gpt-5.6-terra',
+    claude_sonnet_5: 'claude-sonnet-5',
+    claude_haiku_4_5: 'claude-haiku-4-5',
+    gemini_3_1_pro_preview: 'gemini-3.1-pro-preview',
+    gemini_3_8_flash: 'gemini-3.8-flash',
+    deepseek_v3_2: 'deepseek-v3.2',
+    empty: ''
+} as const;
+export type FinetuningJobEvalJudgeModelEnum = typeof FinetuningJobEvalJudgeModelEnum[keyof typeof FinetuningJobEvalJudgeModelEnum];
+
+/**
+ * @export
+ */
 export const FinetuningJobModelTierEnum = {
     compact: 'compact',
     small: 'small',
@@ -384,6 +405,7 @@ export function FinetuningJobFromJSONTyped(json: any, ignoreDiscriminator: boole
         'evalDataset': json['eval_dataset'],
         'evalCell': json['eval_cell'] == null ? undefined : json['eval_cell'],
         'evalSet': json['eval_set'],
+        'evalJudgeModel': json['eval_judge_model'] == null ? undefined : json['eval_judge_model'],
         'evalIncumbentBefore': json['eval_incumbent_before'] == null ? undefined : json['eval_incumbent_before'],
         'evalIncumbentAfter': json['eval_incumbent_after'] == null ? undefined : json['eval_incumbent_after'],
         'evalModelBefore': json['eval_model_before'] == null ? undefined : json['eval_model_before'],
@@ -442,6 +464,7 @@ export function FinetuningJobToJSONTyped(value?: Omit<FinetuningJob, 'id'|'cell_
         'eval_dataset': value['evalDataset'],
         'eval_cell': value['evalCell'],
         'eval_set': value['evalSet'],
+        'eval_judge_model': value['evalJudgeModel'],
         'eval_incumbent_before': value['evalIncumbentBefore'],
         'eval_incumbent_after': value['evalIncumbentAfter'],
         'eval_model_before': value['evalModelBefore'],

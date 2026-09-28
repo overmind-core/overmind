@@ -144,16 +144,6 @@ def test_matching_ids_are_never_a_handoff_even_when_names_differ(exporter):
     assert attrs.UNIT_KIND not in _by_name(exporter, "step").attributes
 
 
-def test_scope_without_active_trace_stamps_no_turn(exporter):
-    def _run():
-        _seed_identity_context(None, "Outer", None)
-        with capability("Inner"), start_span("root"):
-            pass
-
-    _in_fresh_context(_run)
-    assert attrs.UNIT_KIND not in _by_name(exporter, "root").attributes
-
-
 def test_mixed_identity_grains_are_not_a_handoff(exporter):
     def _run():
         _seed_identity_context(None, "Outer", None)
@@ -179,15 +169,6 @@ def test_entry_point_handoff_boundary_keeps_turn(exporter):
 
     _in_fresh_context(_run)
     assert _by_name(exporter, "sub-run").attributes[attrs.UNIT_KIND] == "turn"
-
-
-def test_entry_point_outside_handoff_still_marks_run(exporter):
-    @entry_point("run")
-    def run() -> int:
-        return 1
-
-    _in_fresh_context(run)
-    assert _by_name(exporter, "run").attributes[attrs.UNIT_KIND] == "run"
 
 
 def test_capability_as_decorator_composes_with_tool(exporter):

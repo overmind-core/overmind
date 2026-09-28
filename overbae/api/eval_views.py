@@ -33,6 +33,8 @@ from overbae.api.eval_serializers import (
     EvalSetAddMembersRequestSerializer,
     EvalSetMemberUpdateSerializer,
     EvalSetSerializer,
+    EvaluationContextReportSerializer,
+    EvaluationContextRequestSerializer,
     EvaluatorCatalogSerializer,
     EvaluatorListSerializer,
     EvaluatorScoreHistorySerializer,
@@ -664,6 +666,19 @@ class EvalRunViewSet(viewsets.ModelViewSet):
     search_fields = ["name", "description"]
     ordering_fields = ["created_at", "completed_at", "name", "status"]
     lookup_field = "id"
+
+    @extend_schema(
+        summary="Estimate evaluation context requirements without launching",
+        request=EvaluationContextRequestSerializer,
+        responses=EvaluationContextReportSerializer,
+    )
+    @action(detail=False, methods=["post"], url_path="context-check")
+    def context_check(self, request):
+        serializer = EvaluationContextRequestSerializer(
+            data=request.data, context={"request": request}
+        )
+        serializer.is_valid(raise_exception=True)
+        return Response(EvaluationContextReportSerializer(serializer.report()).data)
 
     def get_serializer_class(self):
         if self.action == "list":

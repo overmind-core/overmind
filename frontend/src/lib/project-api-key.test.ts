@@ -2,7 +2,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
-  clearAccountApiKey,
   isCachedApiKeyValid,
   readAccountApiKey,
   resolveAccountApiKey,
@@ -48,11 +47,5 @@ describe("project-api-key cache", () => {
     expect(fetchMock).toHaveBeenCalledWith("http://localhost:8000/api/auth/api-keys/current/", {
       headers: { "X-Api-Key": KEY },
     });
-  });
-
-  it("clear removes the cached entry", () => {
-    writeAccountApiKey(KEY, API_URL);
-    clearAccountApiKey(API_URL);
-    expect(readAccountApiKey(API_URL)).toBeNull();
   });
 });

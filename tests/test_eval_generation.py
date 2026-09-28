@@ -11,8 +11,6 @@ from pydantic import ValidationError
 from overbae.services.eval import card_compiler
 from overbae.services.eval.grounding import EvalGroundingContext, render_grounding_pack
 from overbae.services.eval.specs import (
-    DETERMINISTIC_CHECKS,
-    STATISTICAL_METRICS,
     EvaluatorSpec,
     validate_spec_payloads,
 )
@@ -160,11 +158,6 @@ class TestEvaluatorSpec:
         spec = EvaluatorSpec.model_validate(_spec_payload())
         assert spec.kind == "deterministic"
         assert spec.provenance_key() == ("dataset_card.failure_modes[0]", DATA_VERSION)
-
-    def test_whitelists_track_runner_code(self):
-        assert "regex" in DETERMINISTIC_CHECKS
-        assert "tool_selection" in DETERMINISTIC_CHECKS
-        assert "rouge_l" in STATISTICAL_METRICS
 
     def test_rejects_unknown_kind(self):
         with pytest.raises(ValidationError, match="unknown kind"):
@@ -1551,48 +1544,6 @@ class TestExampleUnitRendering:
 
 
 class TestTier1PromptContract:
-    def test_template_requires_explicit_compare_formulas(self):
-        from overbae.services.eval import semantic_recommender
-
-        template = semantic_recommender._TIER1_TEMPLATE
-        assert "REFERENCE-GROUNDED CHECKS" in template
-        assert "{{output.<observed_output_leaf>}}" in template
-        assert "{{reference.<observed_reference_leaf>}}" in template
-        assert "case-insensitive" in template
-        assert "null/absent" in template
-        # Bindings must target observed leaves — no capability-specific field examples.
-        assert "Never invent a flat reference path from card prose" in template
-        assert "amount.value" not in template
-        assert "output_amount" not in template
-        assert "money" not in template.lower()
-
-    def test_template_requires_named_checks_per_surface(self):
-        from overbae.services.eval import semantic_recommender
-
-        template = semantic_recommender._TIER1_TEMPLATE
-        assert "ONE clear part of the capability surface" in template
-        assert "NUMBERED list" in template
-
-    def test_template_indexes_suite_coverage_and_human_names(self):
-        from overbae.services.eval import semantic_recommender
-
-        template = semantic_recommender._TIER1_TEMPLATE
-        system = semantic_recommender._TIER1_SYSTEM
-        assert "COVERAGE CONTRACT" in template
-        assert "failure_modes" in template
-        assert "success_criteria" in template
-        assert "quality_signals" in template
-        assert "INPUT, OUTPUT, and REFERENCE" in template
-        assert "mega-judge" in template or "mega-judge" in system
-        assert "Title Case" in template
-        assert "kebab-case" in template
-        assert "human-readable" in template or "human-readable" in system
-        name_desc = semantic_recommender._AuthoredJudge.model_fields["name"].description or ""
-        assert "Title Case" in name_desc or "sentence-style" in name_desc
-        assert "kebab-case" in name_desc
-        assert "snake_case" in name_desc
-        assert "human-readable" in name_desc
-
     def test_to_spec_preserves_authored_name(self):
         from overbae.services.eval import semantic_recommender
 
@@ -1643,13 +1594,6 @@ class TestTier1PromptContract:
             checklist=[{"id": "amount_ok", "q": "Does amount match?", "weight": 1.0}],
         )
         assert semantic_recommender._to_spec(judge, _grounding(codebase_card=card)) is None
-
-    def test_template_cites_real_expected_output_signal_path(self):
-        from overbae.services.eval import semantic_recommender
-
-        template = semantic_recommender._TIER1_TEMPLATE
-        assert "codebase_card.expected_output.quality_signals[1]" in template
-        assert "codebase_card.failure_modes[0]" in template
 
     def test_coverage_block_names_fields_already_checked_exactly(self):
         from overbae.services.eval.semantic_recommender import _coverage_block
@@ -1761,11 +1705,6 @@ class TestTier1GenerativeAuthoring:
             semantic_recommender.author_grounded_judges(_grounding(), [], time_budget_s=0.05) == []
         )
 
-    def test_tier1_default_budget_is_480s(self):
-        from overbae.services.eval import semantic_recommender
-
-        assert semantic_recommender._TIER1_BUDGET_S == 480.0
-
     def test_authoring_schemas_have_no_freeform_objects(self):
         # Strict structured output 400s on any object node without explicit properties.
         from overbae.services.eval import semantic_recommender
@@ -1782,14 +1721,6 @@ class TestTier1GenerativeAuthoring:
 
         walk(semantic_recommender._AuthoredJudgeSuite.model_json_schema())
         walk(_Checklist.model_json_schema())
-
-    def test_authoring_prompts_instruct_applies_when(self):
-        from overbae.services.eval import semantic_recommender
-
-        system = semantic_recommender._TIER1_SYSTEM + semantic_recommender._TIER1_TEMPLATE
-        assert "applies_when" in system
-        assert "context_equals" in system
-        assert "checkpoint_reached" in system
 
     def test_authored_checklist_carries_applies_when(self, monkeypatch):
         from overbae.services.eval import semantic_recommender
@@ -2562,24 +2493,6 @@ def _cluster_spec(name: str, questions: list[str]):
 
 
 class TestChecklistCluster:
-    def test_failure_mode_and_quality_signals_overlap(self):
-        from overbae.services.eval.sanitation import (
-            CHECKLIST_CLUSTER_JACCARD,
-            checklist_jaccard,
-        )
-
-        score = checklist_jaccard(_FMA_ITEMS, _QS_ITEMS)
-        assert score >= CHECKLIST_CLUSTER_JACCARD
-
-    def test_task_success_summary_does_not_overlap_failure_modes(self):
-        from overbae.services.eval.sanitation import (
-            CHECKLIST_CLUSTER_JACCARD,
-            checklist_jaccard,
-        )
-
-        score = checklist_jaccard([_SUMMARY_ITEM], _FMA_ITEMS)
-        assert score < CHECKLIST_CLUSTER_JACCARD
-
     def test_later_cluster_duplicate_is_dropped(self):
         from overbae.services.eval.semantic_recommender import overlapping_prior
 

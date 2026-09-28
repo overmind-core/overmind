@@ -346,7 +346,7 @@ function CandidateRow({
   const label = candidate.isBaseline
     ? "Baseline"
     : hybrid
-      ? `Harness ${harnessIndex}`
+      ? `Code version ${harnessIndex}`
       : targetModel || `Candidate ${candidate.candidateIndex + 1}`;
   const patchLabel = candidate.isBaseline ? "base" : `c${candidate.candidateIndex + 1}`;
   const running = LIVE_CANDIDATE_STATUSES.has(candidate.status);
@@ -990,8 +990,8 @@ function OptimiserRunPage() {
                   model={highestCandidate?.modelName || highestCandidate?.targetModel || "—"}
                 />
               </HeaderStat>
-              <HeaderStat label="Best tested harness">
-                {winningHarness != null ? `Harness ${winningHarness}` : "—"}
+              <HeaderStat label="Best tested code version">
+                {winningHarness != null ? `Code version ${winningHarness}` : "—"}
               </HeaderStat>
               <HeaderStat label="Overall winner">
                 {hybridWinner === "incumbent"
@@ -1056,14 +1056,14 @@ function OptimiserRunPage() {
               {comparison
                 ? "Comparison scores"
                 : hybrid
-                  ? "Harness + model scores"
+                  ? "Code + model scores"
                   : "Score over iterations"}
             </h3>
             <span className="truncate text-xs leading-none text-muted-foreground">
               {comparison
                 ? "incumbent and best selected model · 0–100"
                 : hybrid
-                  ? "best harness + model combination · 0–100"
+                  ? "best code + model combination · 0–100"
                   : "best candidate per iteration · 0–100"}
             </span>
           </div>
@@ -1137,7 +1137,7 @@ function OptimiserRunPage() {
 
       <section className="flex flex-col gap-3">
         <h3 className={cn(TITLE.section, "inline-flex items-center gap-1.5")}>
-          {comparison ? "Model candidates" : hybrid ? "Harness + model candidates" : "Iterations"}
+          {comparison ? "Model candidates" : hybrid ? "Code + model candidates" : "Iterations"}
           <CountChip count={iterations.length} />
         </h3>
         {iterationsQuery.isError ? (

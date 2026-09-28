@@ -17,11 +17,14 @@ from overbae.models import (
     EvalSet,
     EvalSetMember,
     Evaluator,
+    EvalVariant,
     Project,
     ProjectMembership,
     Score,
     User,
 )
+from overbae.services.eval.per_turn_judge import JUDGE_NAME
+from overbae.tasks import eval as eval_tasks
 
 pytestmark = pytest.mark.django_db
 
@@ -47,6 +50,76 @@ def _setup():
     project = Project.objects.create(name="P", slug=f"p-{uuid.uuid4().hex[:8]}")
     ProjectMembership.objects.create(user=user, project=project)
     return user, _auth_client(user), project
+
+
+def test_context_preview_warns_without_creating_or_blocking_a_run(monkeypatch):
+    from overbae.services.eval import context_check
+    from overbae.services.llm_context import ModelLimits
+
+    user, client, project = _setup()
+    dataset = frozen_dataset(project, [{"input": "long" * 2000, "expected_output": "a"}])
+    monkeypatch.setattr(
+        context_check, "model_limits", lambda *args, **kwargs: ModelLimits(1000, 5000)
+    )
+    before = EvalRun.objects.count()
+    response = client.post(
+        "/api/eval-runs/context-check/",
+        {
+            "project": str(project.pk),
+            "dataset": str(dataset.pk),
+            "variants": [{"model_name": "gpt-4.1", "output_tokens": 8192}],
+        },
+        format="json",
+    )
+    assert response.status_code == 200, response.data
+    assert response.data["checks"][0]["status"] == "warning"
+    assert response.data["checks"][0]["affected_rows"] == 1
+    assert response.data["checks"][0]["reserved_output_tokens"] == 8192
+    assert EvalRun.objects.count() == before
+
+
+def test_context_preview_cannot_read_another_projects_dataset():
+    user, client, project = _setup()
+    other = Project.objects.create(name="Other")
+    dataset = frozen_dataset(other, EVAL_ROWS)
+    response = client.post(
+        "/api/eval-runs/context-check/",
+        {"project": str(project.pk), "dataset": str(dataset.pk)},
+        format="json",
+    )
+    assert response.status_code == 400
+    assert "different project" in str(response.data)
+
+
+def test_context_preview_uses_run_judge_and_returns_dropdown_without_mutation():
+    _, client, project = _setup()
+    dataset = frozen_dataset(project, EVAL_ROWS)
+    evaluator = Evaluator.objects.create(
+        project=project,
+        name="Quality",
+        kind="llm_judge",
+        judge_model="gpt-4.1",
+        checklist=[{"id": "correct", "q": "Correct?"}],
+    )
+    eval_set = EvalSet.objects.create(project=project, name="Judge preview")
+    EvalSetMember.objects.create(eval_set=eval_set, evaluator=evaluator, role="generative")
+    response = client.post(
+        "/api/eval-runs/context-check/",
+        {
+            "project": str(project.pk),
+            "dataset": str(dataset.pk),
+            "eval_set": str(eval_set.pk),
+            "judge_model": "gpt-5.6-luna",
+        },
+        format="json",
+    )
+    assert response.status_code == 200
+    assert response.data["checks"][0]["model"] == "gpt-5.6-luna"
+    assert response.data["checks"][0]["configured_model"] == "gpt-4.1"
+    assert response.data["judge_models"]
+    evaluator.refresh_from_db()
+    assert evaluator.judge_model == "gpt-4.1"
+    assert not EvalRun.objects.exists()
 
 
 # LangExtract-shaped card: a nested output schema generation must surface and bind.
@@ -920,6 +993,131 @@ class TestGenerateEvaluatorPrompt:
 
 
 class TestEvalRunApi:
+    @pytest.mark.parametrize("mode", ["generate", "existing"])
+    @pytest.mark.parametrize("attachment", ["ids", "bindings", "set"])
+    @pytest.mark.parametrize("selection", [None, "", "gpt-5.6-luna"])
+    def test_run_judge_override_freezes_snapshots_without_editing_library(
+        self, attachment, selection, mode, monkeypatch
+    ):
+        monkeypatch.setattr("overbae.api.eval_serializers.is_model_available", lambda model: True)
+        _, client, project = _setup()
+        dataset = frozen_dataset(project, EVAL_ROWS)
+        judge = Evaluator.objects.create(
+            project=project,
+            name="Quality",
+            kind="llm_judge",
+            judge_model="gpt-4.1",
+            checklist=[{"id": "correct", "q": "Is the answer correct?"}],
+            config={"decision": {"backend": "jev"}},
+        )
+        other = Evaluator.objects.create(
+            project=project,
+            name="Tone",
+            kind="llm_judge",
+            judge_model="claude-sonnet-5",
+            checklist=[{"id": "tone", "q": "Is the answer polite?"}],
+        )
+        deterministic = Evaluator.objects.create(
+            project=project, name="Match", kind="deterministic"
+        )
+        evaluators = [judge, other, deterministic]
+        eval_set = EvalSet.objects.create(project=project, name="Quality")
+        for evaluator in evaluators:
+            EvalSetMember.objects.create(
+                eval_set=eval_set,
+                evaluator=evaluator,
+                role="generative" if mode == "generate" else "trace_scoring",
+            )
+        payload = {
+            "project": str(project.pk),
+            "name": "Judge override",
+            "dataset": str(dataset.pk),
+            "variants_input": [{"mode": mode, "label": "Candidate", "model_name": "gpt-4.1"}],
+        }
+        if selection is not None:
+            payload["judge_model"] = selection
+        if attachment == "ids":
+            payload["evaluator_ids"] = [str(row.pk) for row in evaluators]
+        elif attachment == "bindings":
+            payload["evaluator_bindings"] = [{"evaluator": str(row.pk)} for row in evaluators]
+        else:
+            payload["eval_set"] = str(eval_set.pk)
+        with mock.patch(
+            "overbae.tasks.eval.run_eval_run.apply_async", return_value=mock.Mock(id="test")
+        ):
+            response = client.post("/api/eval-runs/", payload, format="json")
+        assert response.status_code == 201, response.data
+        run = EvalRun.objects.get(pk=response.data["id"])
+        assert run.judge_model == (selection or "")
+        for evaluator in evaluators:
+            snapshot = run.run_evaluators.get(evaluator=evaluator).snapshot
+            assert snapshot["judge_model"] == (
+                selection if selection and evaluator.kind == "llm_judge" else evaluator.judge_model
+            )
+            evaluator.refresh_from_db()
+        assert judge.judge_model == "gpt-4.1"
+        assert other.judge_model == "claude-sonnet-5"
+        assert (
+            run.run_evaluators.get(evaluator=judge).snapshot["config"]["decision"]["backend"]
+            == "jev"
+        )
+        detail = client.get(f"/api/eval-runs/{run.pk}/").json()
+        assert detail["judge_model"] == (selection or "")
+        assert len(detail["run_evaluators"]) == 3
+        rejected = client.patch(
+            f"/api/eval-runs/{run.pk}/", {**payload, "judge_model": "gpt-4.1"}, format="json"
+        )
+        assert rejected.status_code == 400
+        assert "judge_model" in rejected.data
+        run.refresh_from_db()
+        assert run.judge_model == (selection or "")
+
+    def test_run_rejects_invalid_judge_before_creating_or_dispatching(self):
+        _, client, project = _setup()
+        dataset = frozen_dataset(project, EVAL_ROWS)
+        with mock.patch("overbae.tasks.eval.run_eval_run.apply_async") as dispatch:
+            response = client.post(
+                "/api/eval-runs/",
+                {
+                    "project": str(project.pk),
+                    "name": "Invalid",
+                    "dataset": str(dataset.pk),
+                    "judge_model": "not-a-judge",
+                },
+                format="json",
+            )
+        assert response.status_code == 400
+        assert "judge_model" in response.data
+        assert not EvalRun.objects.exists()
+        dispatch.assert_not_called()
+
+    def test_late_replay_judge_uses_frozen_run_selection(self, monkeypatch):
+        _, _, project = _setup()
+        dataset = frozen_dataset(project, EVAL_ROWS)
+        evaluator = Evaluator.objects.create(
+            project=project,
+            name=JUDGE_NAME,
+            kind="llm_judge",
+            judge_model="gpt-4.1",
+            config={"per_turn_judge": True},
+            checklist=[{"id": "correct", "q": "Is the decision correct?"}],
+        )
+        run = EvalRun.objects.create(
+            project=project, dataset=dataset, name="Replay", judge_model="gpt-5.6-luna"
+        )
+        variant = EvalVariant.objects.create(
+            run=run, mode="generate", params={"generation_strategy": "per_assistant_turn"}
+        )
+        monkeypatch.setattr(
+            "overbae.services.eval.per_turn_judge.author_per_turn_judge", lambda dataset: evaluator
+        )
+        eval_tasks._attach_per_turn_judge(run, [variant])
+        eval_tasks._attach_per_turn_judge(run, [variant])
+        assert run.run_evaluators.count() == 1
+        assert run.run_evaluators.get().snapshot["judge_model"] == "gpt-5.6-luna"
+        evaluator.refresh_from_db()
+        assert evaluator.judge_model == "gpt-4.1"
+
     def test_create_dispatches_task(self):
         _user_, client, project = _setup()
         capability = Capability.objects.create(project=project, name="A", slug="a")

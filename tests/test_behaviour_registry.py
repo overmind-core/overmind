@@ -214,19 +214,6 @@ def test_empty_registry_parks_unbound():
     assert binder.FLAG_UNANALYZED_SHA in execution.route_flags
 
 
-def test_unanalyzed_sha_does_not_queue_server_scan():
-    """Server Cursor scan is gone — an unknown SHA only parks the binding."""
-    project = _project()
-    capability = _capability(project)
-    _behaviour(capability, "happy", "app.agent.run", ["app.agent.run"], sha="b" * 40)
-    execution = _bind(project, capability, ["app.agent.run"], sha=SHA)
-    # Unknown SHA parks unbound; no server scan is queued.
-    assert (
-        binder.FLAG_SHA_DRIFT in execution.route_flags
-        or binder.FLAG_UNANALYZED_SHA in execution.route_flags
-    )
-
-
 def test_binding_is_idempotent_one_row():
     project = _project()
     capability = _capability(project)
@@ -395,18 +382,6 @@ def test_most_specific_inclusion_beats_parent_overlap():
     )
     assert run_unit.behaviour_id == parent.id
     assert "app.agent.assemble" in run_unit.observed_route["matched_anchors"]
-
-
-def test_missing_sha_still_binds_after_identity():
-    project = _project()
-    capability = _capability(project)
-    behaviour = _behaviour(
-        capability, "happy", "app.agent.run", ["app.agent.run", "app.agent.emit"]
-    )
-    execution = _bind(project, capability, ["app.agent.run", "app.agent.emit"], sha="")
-    assert execution.behaviour_id == behaviour.id
-    assert binder.FLAG_NO_SHA in execution.route_flags
-    assert execution.observed_route["contract_sha"] == SHA
 
 
 def test_declared_key_wins_over_structural():
@@ -1027,17 +1002,6 @@ def test_route_metadata_never_gates_score():
     align_a = conforming.observed_route["alignment"]
     align_b = deviating.observed_route["alignment"]
     assert align_a["completion"] == 1.0 and align_b["completion"] < 1.0
-
-
-def test_step_quality_averages_into_composite():
-    project = _project()
-    capability = _capability(project)
-    behaviour = _behaviour(capability, "happy", "m.run", ["m.run", "m.mid", "m.emit"])
-    _suite(capability, "happy")
-    execution = _execution(project, capability, behaviour, ["m.run", "m.mid", "m.emit"])
-    scoring.score_execution(execution, _scored(1.0, step1=0.5, step2=0.6))
-    execution.refresh_from_db()
-    assert execution.success_score == pytest.approx((1.0 + 0.5 + 0.6) / 3, abs=1e-4)
 
 
 def test_failed_step_drags_but_does_not_zero():

@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { type ReactNode, useMemo, useState } from "react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -18,6 +18,7 @@ export function SearchableSelect({
   searchPlaceholder = "Search…",
   ariaLabel,
   triggerClassName,
+  renderOption,
 }: {
   options: Option[];
   value: string;
@@ -26,6 +27,7 @@ export function SearchableSelect({
   searchPlaceholder?: string;
   ariaLabel: string;
   triggerClassName?: string;
+  renderOption?: (option: Option) => ReactNode;
 }) {
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState("");
@@ -57,7 +59,11 @@ export function SearchableSelect({
           variant="secondary"
         >
           <span className="flex min-w-0 items-center gap-1.5 truncate">
-            <span className="truncate">{selected?.label ?? placeholder}</span>
+            {selected && renderOption ? (
+              renderOption(selected)
+            ) : (
+              <span className="truncate">{selected?.label ?? placeholder}</span>
+            )}
             {selected?.tag ? (
               <Badge className="shrink-0 tracking-normal" size="chip" variant="secondary">
                 {selected.tag}
@@ -69,7 +75,7 @@ export function SearchableSelect({
       </PopoverTrigger>
       <PopoverContent
         align="start"
-        className="w-[--radix-popover-trigger-width] min-w-56 overflow-hidden p-0"
+        className="w-(--radix-popover-trigger-width) min-w-56 max-w-[calc(100vw-2rem)] overflow-hidden p-0"
       >
         <div className="border-b p-1.5">
           <div className="relative">
@@ -94,6 +100,7 @@ export function SearchableSelect({
                 <SelectableCard
                   className={cn(
                     "flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-xs",
+                    renderOption && "text-sm",
                     !isSelected && "border-transparent bg-transparent hover:bg-muted"
                   )}
                   key={o.value}
@@ -102,9 +109,17 @@ export function SearchableSelect({
                   selected={isSelected}
                 >
                   <Icon.success
-                    className={cn("size-4 shrink-0", isSelected ? "opacity-100" : "opacity-0")}
+                    className={cn(
+                      "size-4 shrink-0",
+                      renderOption && "order-last ml-auto",
+                      isSelected ? "opacity-100" : "opacity-0"
+                    )}
                   />
-                  <span className="truncate font-medium">{o.label}</span>
+                  {renderOption ? (
+                    renderOption(o)
+                  ) : (
+                    <span className="truncate font-medium">{o.label}</span>
+                  )}
                   {o.tag ? (
                     <Badge
                       className="ml-auto shrink-0 tracking-normal"

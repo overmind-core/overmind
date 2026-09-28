@@ -76,6 +76,21 @@ export interface PatchedEvalRunRequest {
      */
     sampling?: number;
     /**
+     * Run-only generative judge override. Blank preserves each saved evaluator's judge.
+     *
+     * * `` -
+     * * `gpt-5.6-luna` - gpt-5.6-luna
+     * * `gpt-5.6-terra` - gpt-5.6-terra
+     * * `claude-sonnet-5` - claude-sonnet-5
+     * * `claude-haiku-4-5` - claude-haiku-4-5
+     * * `gemini-3.1-pro-preview` - gemini-3.1-pro-preview
+     * * `gemini-3.8-flash` - gemini-3.8-flash
+     * * `deepseek-v3.2` - deepseek-v3.2
+     * @type {string}
+     * @memberof PatchedEvalRunRequest
+     */
+    judgeModel?: PatchedEvalRunRequestJudgeModelEnum;
+    /**
      *
      * @type {Array<string>}
      * @memberof PatchedEvalRunRequest
@@ -108,6 +123,21 @@ export interface PatchedEvalRunRequest {
 }
 
 
+/**
+ * @export
+ */
+export const PatchedEvalRunRequestJudgeModelEnum = {
+    gpt_5_6_luna: 'gpt-5.6-luna',
+    gpt_5_6_terra: 'gpt-5.6-terra',
+    claude_sonnet_5: 'claude-sonnet-5',
+    claude_haiku_4_5: 'claude-haiku-4-5',
+    gemini_3_1_pro_preview: 'gemini-3.1-pro-preview',
+    gemini_3_8_flash: 'gemini-3.8-flash',
+    deepseek_v3_2: 'deepseek-v3.2',
+    empty: ''
+} as const;
+export type PatchedEvalRunRequestJudgeModelEnum = typeof PatchedEvalRunRequestJudgeModelEnum[keyof typeof PatchedEvalRunRequestJudgeModelEnum];
+
 
 /**
  * Check if a given object implements the PatchedEvalRunRequest interface.
@@ -134,6 +164,7 @@ export function PatchedEvalRunRequestFromJSONTyped(json: any, ignoreDiscriminato
         'traceFilter': json['trace_filter'] == null ? undefined : json['trace_filter'],
         'maxItems': json['max_items'] == null ? undefined : json['max_items'],
         'sampling': json['sampling'] == null ? undefined : json['sampling'],
+        'judgeModel': json['judge_model'] == null ? undefined : json['judge_model'],
         'evaluatorIds': json['evaluator_ids'] == null ? undefined : json['evaluator_ids'],
         'evaluatorBindings': json['evaluator_bindings'] == null ? undefined : json['evaluator_bindings'],
         'evalSet': json['eval_set'] == null ? undefined : json['eval_set'],
@@ -161,6 +192,7 @@ export function PatchedEvalRunRequestToJSONTyped(value?: PatchedEvalRunRequest |
         'trace_filter': value['traceFilter'],
         'max_items': value['maxItems'],
         'sampling': value['sampling'],
+        'judge_model': value['judgeModel'],
         'evaluator_ids': value['evaluatorIds'],
         'evaluator_bindings': value['evaluatorBindings'],
         'eval_set': value['evalSet'],

@@ -1,7 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 
 import {
-  initCliFlags,
   MCP_CLIENTS,
   manualSetupCommand,
   mcpInitCommand,
@@ -9,7 +8,6 @@ import {
   onboardWithAiBootstrapPrompt,
   projectDependencyInstallGuidance,
   projectInitShellBlock,
-  sdkInstallChannel,
   sdkPipInstall,
   telemetrySetupPrompt,
 } from "./mcp-setup";
@@ -21,12 +19,6 @@ const STAGING = "https://api-staging.overmindlab.ai";
 const LOCAL = "http://localhost:8000";
 
 describe("mcp setup snippets", () => {
-  it("resolves install channel from the Console API host", () => {
-    expect(sdkInstallChannel(PROD)).toBe("pypi");
-    expect(sdkInstallChannel(STAGING)).toBe("pypi");
-    expect(sdkInstallChannel(LOCAL)).toBe("pypi");
-  });
-
   it("installs from PyPI on all hosts", () => {
     expect(sdkPipInstall(STAGING)).toBe("pip install overmind");
     expect(sdkPipInstall(LOCAL)).toBe("pip install overmind");
@@ -40,12 +32,6 @@ describe("mcp setup snippets", () => {
     expect(mcpInitEnvFlag(`${PROD}/`)).toBe("");
     expect(mcpInitEnvFlag(LOCAL)).toBe(" --env local");
     expect(mcpInitEnvFlag("https://staging.overmindlab.ai")).toBe(" --env staging");
-  });
-
-  it("puts --ide and --env on the copied init command", () => {
-    expect(initCliFlags("cursor", PROD)).toBe("--ide cursor");
-    expect(initCliFlags("claude", LOCAL)).toBe("--ide claude --env local");
-    expect(initCliFlags("codex", LOCAL)).toBe("--ide codex --env local");
   });
 
   it("builds overmind init for cursor, claude, opencode, and codex", () => {

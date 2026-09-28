@@ -49,9 +49,26 @@ Then in your coding harness:
 /overmind setup              # scan → capabilities → evals → overmind.toml → sync
 ```
 
-```bash
-overmind sync                # push overmind.toml, then pull reconciled ids
-```
+The installed skill opens with the detected repository, package manager, and
+verified connection state, then previews the full onboarding roadmap: installation,
+connection, and eight scan stages. Each conversation update names the current
+stage, its number out of ten, how many stages are complete, and how many follow
+it. Discovery explains how the identified capabilities fit together; subsequent
+updates report repository-specific findings. Longer stages include per-capability counts. It reports the coding-agent
+model when available, the Overmind destination, and the data included in sync.
+Before sync it summarizes the destination, payload, credential checks, and
+configuration to review. Setup finishes after `overmind sync` succeeds with
+the mapped capabilities, outstanding verification, and one recommended next
+action. Instrumentation, application runs, and server-side evaluator preparation
+remain separate work.
+
+Use the project's runner for these commands (`uv run overmind` or
+`poetry run overmind`) so an older global installation cannot supply the
+skills. An editable SDK install does not refresh skill copies already installed
+in a repository. Refresh them with
+`uv run overmind skills sync overmind --ide <cursor|claude|opencode|codex>`
+(or the equivalent project runner), then start a new conversation so the agent
+reads the updated instructions.
 
 ## Tracing
 

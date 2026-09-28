@@ -245,10 +245,3 @@ def test_download_checkpoint_command_uses_config_and_emits_safe_json(tmp_path: P
 
     assert result.exit_code == 0, result.output
     assert json.loads(result.output) == result_data
-
-
-def test_download_checkpoint_command_is_registered():
-    result = CliRunner().invoke(app, ["model", "--help"])
-
-    assert result.exit_code == 0, result.output
-    assert "download-checkpoint" in result.output

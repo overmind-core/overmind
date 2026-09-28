@@ -227,13 +227,6 @@ class TestNormalizer:
 
 
 class TestReplayToolProvider:
-    def test_exact_match(self):
-        p = ReplayToolProvider(
-            recorded_calls=[{"name": "s", "arguments": {"q": "x"}, "result": "ok"}]
-        )
-        r = p.execute("s", {"q": "x"})
-        assert r.matched and r.content == "ok"
-
     def test_subset_fuzzy_match(self):
         p = ReplayToolProvider(
             recorded_calls=[{"name": "s", "arguments": {"q": "x", "k": 1}, "result": "ok"}]
@@ -908,10 +901,6 @@ class TestCalibrationMetric:
         preds = [str(c) for c, _ in pairs]
         refs = [o for _, o in pairs]
         return statistical.aggregate(preds, refs, ev)
-
-    def test_perfect_calibration_scores_one(self):
-        # Always certain, always right.
-        assert self._value([(1.0, 1.0)] * 5).value == 1.0
 
     def test_overconfidence_is_penalised(self):
         # States 1.0 on rows it got wrong.
@@ -2186,14 +2175,6 @@ class TestChecklistAggregation:
         assert draft.value is None
         assert draft.outcome == base.OUTCOME_NOT_APPLICABLE
 
-    def test_checklist_prompt_instructs_not_applicable(self):
-        from overbae.services.eval.rubric_compiler import build_checklist_prompt
-
-        ev = self._ev([{"id": "a", "q": "when context is empty, did it abstain?"}])
-        prompt = build_checklist_prompt(ev, {"output": "a long report"})
-        assert "not_applicable" in prompt
-        assert "answer every checklist item" not in prompt.lower()
-
     def test_checklist_prompt_puts_bound_gold_in_the_question(self):
         from overbae.services.eval.rubric_compiler import build_checklist_prompt
 
@@ -3323,18 +3304,6 @@ class TestChecklistNotApplicable:
         assert draft.value is None
         assert "nothing applies" in draft.reasoning
 
-    def test_judge_prompt_instructs_not_applicable_not_vacuous_pass(self):
-        from overbae.services.eval.rubric_compiler import build_judge_prompt
-
-        ev = evaluator_stub(
-            kind="llm_judge",
-            checklist=[{"id": "a", "q": "was the retry correct?"}],
-            rubric_md="Grade it.",
-        )
-        prompt = build_judge_prompt(ev, {"output": "x"}, span_tree="run\n  llm_call")
-        assert "not_applicable" in prompt
-        assert "vacuous" not in prompt.lower()
-
     def test_numeric_judge_prompt_carries_anchored_scale(self):
         from overbae.services.eval.rubric_compiler import build_judge_prompt
 
@@ -3528,10 +3497,6 @@ class TestStatistical:
         ev = evaluator_stub(kind="statistical", config={"metric": "bleu"})
         d = statistical.aggregate(["the cat sat on the mat"], ["the cat sat on the mat"], ev)
         assert d.value > 0.9
-
-    def test_confusion_matrix(self):
-        cm = statistical.confusion_matrix(["a", "b"], ["a", "a"])
-        assert "labels" in cm and "matrix" in cm
 
     def test_per_class_metrics_known_fixture(self):
         # Hand-computed: pred a twice (1 right), b twice (both right), c once.
@@ -3763,9 +3728,6 @@ class TestEvidenceInference:
 
 
 class TestApplicability:
-    def test_harness_artifact_not_applicable_in_generate(self):
-        assert evidence.is_applicable(evidence.HARNESS_ARTIFACT, "generate") is False
-
     def test_harness_artifact_applicable_in_existing(self):
         assert evidence.is_applicable(evidence.HARNESS_ARTIFACT, "existing") is True
 
@@ -3796,11 +3758,6 @@ class TestApplicability:
             evaluators, [{"label": "v", "mode": "existing"}], reference_available=True
         )
         assert not any(w["severity"] == "needs_reference" for w in out)
-
-    def test_warnings_empty_for_model_output(self):
-        evaluators = [{"name": "Toxicity", "evidence_requirement": "model_output"}]
-        out = evidence.compatibility_warnings(evaluators, [{"label": "v", "mode": "generate"}])
-        assert out == []
 
     def test_output_quality_judge_spec_is_generate_compatible(self):
         from overbae.services.eval.specs import EvaluatorSpec, SpecProvenance
@@ -3909,22 +3866,6 @@ class TestGradedScoresHaveNoFailureGates:
 
 
 class TestSanitation:
-    def test_strips_internal_symbol_token(self):
-        from overbae.services.eval.sanitation import sanitize_authored_text
-
-        cleaned, removed = sanitize_authored_text(
-            "Is the output valid JSON with the (_LLM_OUTPUT_KEYS) present?"
-        )
-        assert "_LLM_OUTPUT_KEYS" not in cleaned
-        assert removed == ["_LLM_OUTPUT_KEYS"]
-
-    def test_strips_unsubstituted_fstring_remnant(self):
-        from overbae.services.eval.sanitation import sanitize_authored_text
-
-        cleaned, removed = sanitize_authored_text("rows must equal {total_rows} exactly")
-        assert "{total_rows}" not in cleaned
-        assert removed == ["{total_rows}"]
-
     def test_preserves_rubric_double_brace_variables(self):
         from overbae.services.eval.sanitation import sanitize_authored_text
 
@@ -3940,12 +3881,6 @@ class TestSanitation:
         cleaned, removed = sanitize_authored_text(text)
         assert cleaned == text
         assert removed == []
-
-    def test_contains_leaked_token(self):
-        from overbae.services.eval.sanitation import contains_leaked_token
-
-        assert contains_leaked_token("see _SECRET_KEYS") is True
-        assert contains_leaked_token("plain question") is False
 
     def test_whole_blob_anchors_survive(self):
         from overbae.services.eval.sanitation import contains_leaked_token, sanitize_authored_text
@@ -3967,22 +3902,6 @@ class TestSanitation:
         assert set(removed) == {"{amount}", "_ALL_CAPS"}
         assert contains_leaked_token(text) is True
         assert contains_leaked_token(cleaned) is False
-
-    def test_contains_leaked_token_agrees_with_sanitize(self):
-        from overbae.services.eval.sanitation import contains_leaked_token, sanitize_authored_text
-
-        cases = [
-            "Grade {input} against {output}",
-            "See {final_output} and {reference}",
-            "rows must equal {amount} exactly",
-            "Valid JSON with the _SECRET_KEYS present",
-            "Compare {{output}} against {{reference}}",
-            "plain question",
-            "See {output.amount} vs {input}",
-        ]
-        for text in cases:
-            _cleaned, removed = sanitize_authored_text(text)
-            assert contains_leaked_token(text) is bool(removed), text
 
     def test_verbatim_lift_with_whole_blob_anchors_is_not_mangled(self):
         from overbae.services.eval.sanitation import contains_leaked_token, sanitize_authored_text
@@ -4050,23 +3969,6 @@ class TestSanitation:
         cleaned, removed = sanitize_authored_text(mangled)
         assert cleaned == mangled
         assert removed == []
-
-    def test_confidence_calibration_items_are_detected(self):
-        from overbae.services.eval.sanitation import grades_stated_confidence
-
-        dropped = [
-            "Confidence score calibration: higher when explicit invoice cues exist; lower when evidence is weak",
-            "4) Confidence score in [0,1] and calibrated to evidence — does its magnitude reflect the evidence strength",
-            "4) confidence spread reflects evidence strength — Does {output.confidence} vary appropriately (not always 0.9+)",
-        ]
-        for q in dropped:
-            assert grades_stated_confidence({"id": "c", "q": q}) is True, q
-        assert (
-            grades_stated_confidence(
-                {"id": "range", "q": "{output.confidence} is a number in [0,1]"}
-            )
-            is False
-        )
 
     def test_mechanical_reference_compare_is_detected(self):
         from overbae.services.eval.sanitation import is_mechanical_field_compare

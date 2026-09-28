@@ -79,22 +79,6 @@ def _experiment(context: MCPContext, *, status: str | None = None) -> OptimizerE
     )
 
 
-def test_catalog_adds_exactly_three_public_optimizer_tools_without_ledger_tools():
-    names = {definition.name for definition in CATALOG.definitions()}
-    assert {
-        "check_optimizer_readiness",
-        "start_optimizer",
-        "inspect_optimizer_result",
-    } <= names
-    assert "create_optimizer_pr" not in names
-    assert not names & {
-        "add_optimizer_iteration",
-        "post_optimizer_results",
-        "evaluate_optimizer_iteration",
-        "complete_optimizer_experiment",
-    }
-
-
 def test_read_only_key_hides_and_denies_optimizer_writes():
     context = _context()
     visible = {tool.name for tool in CATALOG.tools(frozenset({"read"}))}

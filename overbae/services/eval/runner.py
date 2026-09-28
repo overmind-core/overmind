@@ -21,6 +21,7 @@ from celery.exceptions import SoftTimeLimitExceeded
 from modal_shared.context_budget import INCOMPLETE_FINISH_REASONS
 from overbae.core.llms import IncompleteCompletionError, ModelSpec, call_llm
 from overbae.services.eval import chatml, normalizer
+from overbae.services.llm_context import request_context
 
 logger = logging.getLogger(__name__)
 
@@ -258,6 +259,7 @@ class RunResult:
     request: dict[str, Any] = field(default_factory=dict)
     finish_reasons: list[str] = field(default_factory=list)
     truncated: bool = False
+    context_checks: list[dict] = field(default_factory=list)
 
 
 def generate_decision(
@@ -268,12 +270,22 @@ def generate_decision(
     model_spec: ModelSpec | None = None,
     system_prompt: str | None = None,
     reasoning_effort: str | None = None,
+    project_id: str | None = None,
 ) -> RunResult:
     messages = list(input_messages)
     if system_prompt and not any(m.get("role") == "system" for m in messages):
         messages = [{"role": "system", "content": system_prompt}, *messages]
     tool_defs = tool_provider.tool_definitions()
     request = deepcopy({"messages": messages, "tools": tool_defs})
+    checks = [
+        request_context(
+            model=model,
+            model_spec=model_spec,
+            messages=messages,
+            tools=tool_defs,
+            project_id=project_id,
+        )
+    ]
     try:
         raw, stats = call_llm(
             input_text="",
@@ -288,7 +300,7 @@ def generate_decision(
     except IncompleteCompletionError as exc:
         raw, stats = exc.content, exc.stats
     except Exception as exc:  # noqa: BLE001
-        return RunResult([], 0, 0.0, 0, 0, error=str(exc), request=request)
+        return RunResult([], 0, 0.0, 0, 0, error=str(exc), request=request, context_checks=checks)
 
     truncated = stats.get("finish_reason") in INCOMPLETE_FINISH_REASONS
     assistant = {"role": "assistant", "content": raw} if truncated else _parse_assistant(raw)[0]
@@ -306,6 +318,7 @@ def generate_decision(
         request=request,
         finish_reasons=[stats["finish_reason"]] if stats.get("finish_reason") else [],
         truncated=truncated,
+        context_checks=checks,
     )
 
 
@@ -318,6 +331,7 @@ def run_capability(
     system_prompt: str | None = None,
     max_steps: int = _DEFAULT_MAX_STEPS,
     reasoning_effort: str | None = None,
+    project_id: str | None = None,
 ) -> RunResult:
     """``input_messages`` seeds the conversation; ``output_messages`` carries
     only the NEW assistant/tool messages produced."""
@@ -336,6 +350,7 @@ def run_capability(
     misses = 0
     finish_reasons = []
     truncated = False
+    checks = []
 
     for step in range(max_steps):
         # Force a final-answer turn at the budget edge: a divergent replay that
@@ -354,6 +369,15 @@ def run_capability(
                     ),
                 }
             )
+        checks.append(
+            request_context(
+                model=model,
+                model_spec=model_spec,
+                messages=working,
+                tools=None if is_final_turn else tool_defs,
+                project_id=project_id,
+            )
+        )
         try:
             raw, stats = call_llm(
                 input_text="",
@@ -382,6 +406,7 @@ def run_capability(
                 request=request,
                 finish_reasons=finish_reasons,
                 truncated=truncated,
+                context_checks=checks,
             )
 
         total_cost += float(stats.get("response_cost", 0) or 0)
@@ -431,6 +456,7 @@ def run_capability(
         request=request,
         finish_reasons=finish_reasons,
         truncated=truncated,
+        context_checks=checks,
     )
 
 

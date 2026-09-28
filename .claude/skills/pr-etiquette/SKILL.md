@@ -18,6 +18,16 @@ description: How to open a complete pull request on overmind-core/platform — t
 
 `pre-commit run --files <changed files>` before committing substantial work. Note that `mdformat` reflows markdown, so commit its output rather than fighting it.
 
+### SDK changes: bump the bundled release
+
+Any change under `overmind/`, including bundled skills or documentation, triggers
+the SDK version gate. Bump `overmind/pyproject.toml` above the version on the PR's
+base branch, match `overmind/overmind/__init__.py`, and regenerate `overmind/uv.lock`
+with `uv lock --project overmind`. Verify the versions agree before pushing.
+The root `uv.lock` pins the platform's installed SDK dependency; do not change it
+to an unpublished local release. A version bump does not publish to PyPI: that
+still requires the explicit `overmind-v*` tag workflow.
+
 ### Migrations: rebase before you push
 
 `make test` runs `--nomigrations`, so a stale branch passes locally and forks the migration

@@ -143,6 +143,7 @@ class StartFinetuneInput(MCPModel):
     )
     eval_dataset: str | None = Field(default=None, max_length=255)
     eval_set: str | None = Field(default=None, max_length=255)
+    eval_judge_model: str = Field(default="", max_length=255)
     validation_dataset: str | None = Field(default=None, max_length=255)
     cell: str | None = Field(default=None, max_length=255)
     version: str | None = Field(default=None, max_length=32)

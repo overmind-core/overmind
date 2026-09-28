@@ -177,17 +177,6 @@ class TestRecommenderIncludesContext:
             hp = compute_hyperparams(500, model_entry=self._ENTRY, max_row_tokens=11051)
         assert "context_length" not in hp
 
-    def test_batch_size_respects_model_bounds(self):
-        with override_settings(FINETUNING_BACKEND="baseten"):
-            hp = compute_hyperparams(500, model_entry=self._ENTRY, max_row_tokens=100)
-        assert 1 <= hp["batch_size"] <= 8
-
-    def test_lora_lr_matches_qlora_heuristic(self):
-        with override_settings(FINETUNING_BACKEND="baseten"):
-            hp = compute_hyperparams(500, model_entry=self._ENTRY, max_row_tokens=100)
-        # ≤13B + small dataset → 1e-4 (QLoRA table 9).
-        assert hp["learning_rate"] == pytest.approx(1e-4)
-
 
 @pytest.mark.django_db
 class TestJobSerializerContextValidation:

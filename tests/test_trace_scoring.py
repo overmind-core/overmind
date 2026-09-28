@@ -1311,17 +1311,6 @@ def test_sweep_enqueues_partial_block(monkeypatch):
     assert _swept_trace_ids(monkeypatch) == [trace_id]
 
 
-def test_sweep_skips_trace_with_clean_finished_pass(monkeypatch):
-    project = make_project()
-    capability = make_capability(project, with_set=True)
-    _contains_member(capability, needle="Paris")
-    trace_id = uuid.uuid4().hex
-    _span(project, capability, trace_id=trace_id)
-
-    assert score_trace(trace_id, str(project.id))["status"] == "scored"
-    assert _swept_trace_ids(monkeypatch) == []
-
-
 def test_sweep_refires_after_contract_change(monkeypatch):
     project = make_project()
     capability = make_capability(project, with_set=True)

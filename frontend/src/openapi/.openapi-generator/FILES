@@ -132,6 +132,7 @@ models/DeployedModel.ts
 models/DeployedModelStatusEnum.ts
 models/DeploymentProgress.ts
 models/Detail.ts
+models/EvalJudgeModelEnum.ts
 models/EvalRun.ts
 models/EvalRunDataSourceEnum.ts
 models/EvalRunEvaluatorStat.ts
@@ -157,6 +158,12 @@ models/EvalVariant.ts
 models/EvalVariantModeEnum.ts
 models/EvalVariantRequest.ts
 models/EvaluateIterationRequest.ts
+models/EvaluationContextCheck.ts
+models/EvaluationContextReport.ts
+models/EvaluationContextRequestRequest.ts
+models/EvaluationContextSuggestion.ts
+models/EvaluationContextVariantRequest.ts
+models/EvaluationJudgeOption.ts
 models/Evaluator.ts
 models/EvaluatorCatalog.ts
 models/EvaluatorKindEnum.ts
@@ -216,6 +223,7 @@ models/InputSourceEnum.ts
 models/InspectUploadRequest.ts
 models/IntegrationTypeEnum.ts
 models/IntentEnum.ts
+models/JudgeModelEnum.ts
 models/LocalSessionRequest.ts
 models/ModeCd6Enum.ts
 models/ModelCatalogResponse.ts

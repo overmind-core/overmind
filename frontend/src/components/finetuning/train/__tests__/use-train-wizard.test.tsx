@@ -7,6 +7,10 @@ import { useTrainWizard } from "../use-train-wizard";
 const mocks = vi.hoisted(() => ({
   benchmarks: [{ baseModelId: "Qwen", finetuningJobName: "Support", modelId: "ft-trained" }],
   catalog: { backend: "baseten", models: {}, tiers: [] },
+  context: {
+    data: { checks: [{ message: "Context may be too small.", status: "warning" }] },
+    isError: false,
+  },
   create: vi.fn(),
   evals: { results: [{ capability: null, id: "eval", name: "Evaluation", project: "project" }] },
   overlapCount: 0,
@@ -41,6 +45,7 @@ vi.mock("@tanstack/react-query", () => ({
     mocks.queries(options);
     return options.queries.map(() => ({ data: undefined }));
   },
+  useQuery: () => mocks.context,
 }));
 vi.mock("@/components/finetuning/train/model-picker", () => ({ findCatalogModel: () => null }));
 vi.mock("@/hooks/use-capability-eval-preload", () => ({ useCapabilityEvalPreload: () => ({}) }));
@@ -84,15 +89,35 @@ const args = {
   projectId: "project",
 };
 
-it("blocks an already selected model after the evaluation context becomes incompatible", async () => {
+it("keeps context warnings advisory", async () => {
+  const { result } = renderHook(() => useTrainWizard(args));
+  await waitFor(() => expect(result.current.canLaunch).toBe(true));
+  expect(result.current.contextQuery.data?.checks[0].status).toBe("warning");
+});
+
+it("sends the explicit judge only for this setup and restores defaults on set changes", async () => {
+  const { result } = renderHook(() => useTrainWizard(args));
+  await waitFor(() => expect(result.current.canLaunch).toBe(true));
+  expect(result.current.judgeModel).toBe("");
+  act(() => result.current.setJudgeModel("gpt-5.6-luna"));
+  expect(result.current.canLaunch).toBe(true);
+  await act(() => result.current.launch());
+  expect(mocks.create).toHaveBeenCalledWith([
+    expect.objectContaining({ evalJudgeModel: "gpt-5.6-luna" }),
+  ]);
+  act(() => result.current.setEvalSetId("different-set"));
+  expect(result.current.judgeModel).toBe("");
+});
+
+it("blocks an already selected model for a non-context compatibility failure", async () => {
   const { result, rerender } = renderHook(() => useTrainWizard(args));
   await waitFor(() => expect(result.current.canLaunch).toBe(true));
   mocks.recommendation = {
     ...mocks.recommendation,
-    excluded: [{ model: "model", reason: "Evaluation exceeds serving capacity." }],
+    excluded: [{ model: "model", reason: "Model has no supported training method." }],
   };
   rerender();
-  expect(result.current.launchBlocker).toBe("Evaluation exceeds serving capacity.");
+  expect(result.current.launchBlocker).toBe("Model has no supported training method.");
   expect(result.current.canLaunch).toBe(false);
 });
 

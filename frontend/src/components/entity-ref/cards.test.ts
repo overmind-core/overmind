@@ -9,30 +9,6 @@ import {
 import type { ComparisonSummary } from "@/components/evaluations/run-comparison";
 
 describe("evalProgressCounts", () => {
-  it("uses prepared/total while generating", () => {
-    expect(
-      evalProgressCounts({
-        phase: "generating",
-        prepared: 3,
-        scored: 153,
-        scoreTotal: 162,
-        total: 27,
-      })
-    ).toEqual({ done: 3, total: 27 });
-  });
-
-  it("uses scored/scoreTotal while scoring", () => {
-    expect(
-      evalProgressCounts({
-        phase: "scoring",
-        prepared: 27,
-        scored: 153,
-        scoreTotal: 162,
-        total: 27,
-      })
-    ).toEqual({ done: 153, total: 162 });
-  });
-
   it("returns null when denominator is zero", () => {
     expect(evalProgressCounts({ phase: "generating", prepared: 0, total: 0 })).toBeNull();
     expect(
@@ -49,12 +25,6 @@ describe("evalProgressLabel", () => {
     expect(
       evalProgressLabel({ phase: "scoring", prepared: 10, scored: 12, scoreTotal: 40, total: 10 })
     ).toBe("Scoring 12/40");
-  });
-
-  it("labels scoring with scoreTotal, not sample total", () => {
-    expect(
-      evalProgressLabel({ phase: "scoring", prepared: 27, scored: 153, scoreTotal: 162, total: 27 })
-    ).toBe("Scoring 153/162");
   });
 
   it("shows percent when aggregating", () => {

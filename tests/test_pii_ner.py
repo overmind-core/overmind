@@ -76,34 +76,6 @@ def _scanned(fake_modal) -> int:
     return sum(len(c) for c in fake_modal["calls"])
 
 
-def test_no_validator_api_remains():
-    for removed in (
-        "validator_categories",
-        "_validator_spans",
-        "_phone_spans",
-        "_luhn_ok",
-        "_iban_mod97_ok",
-        "_ssn_structure_ok",
-    ):
-        assert not hasattr(ner, removed), f"{removed} should be removed"
-
-
-def test_no_spacy_fallback_api_remains():
-    for removed in (
-        "_load_model",
-        "_spacy_available",
-        "_spacy_fallback_allowed",
-        "_doc_to_spans",
-        "_NLP",
-        "_AVAILABLE",
-        "_MODEL",
-        "_DISABLE",
-        "_PIPE_BATCH_SIZE",
-        "_NER_LABEL_MAP",
-    ):
-        assert not hasattr(ner, removed), f"{removed} should be removed"
-
-
 def test_available_is_modal_only(monkeypatch):
     monkeypatch.setattr(ner, "_modal_ner_available", lambda: False)
     assert ner.available() is False

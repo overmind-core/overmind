@@ -52,14 +52,6 @@ def _property_names(value):
             yield from _property_names(child)
 
 
-def test_manifest_keeps_the_curated_catalog():
-    definitions = CATALOG.definitions()
-    names = {definition.name for definition in definitions}
-
-    assert len(definitions) == len(EXPECTED_TOOL_NAMES)
-    assert names == EXPECTED_TOOL_NAMES
-
-
 def test_read_only_and_read_write_manifests_are_filtered():
     read_names = {tool.name for tool in CATALOG.tools(frozenset({"read"}))}
     full_names = {tool.name for tool in CATALOG.tools(frozenset({"read", "write"}))}

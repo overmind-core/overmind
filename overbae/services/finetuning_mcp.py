@@ -38,6 +38,7 @@ def launch_finetune(
     eval_model_before: bool | None = None,
     eval_model_after: bool = True,
     baseline_model: str | None = None,
+    eval_judge_model: str = "",
 ) -> FinetuningJob:
     payload: dict[str, Any] = {
         "project": str(project.id),
@@ -45,6 +46,7 @@ def launch_finetune(
         "capability": str(capability.id) if capability else None,
         "eval_dataset": str(eval_dataset.id),
         "eval_set": str(eval_set.id),
+        "eval_judge_model": eval_judge_model,
         "base_model": base_model,
         "name": name,
         "use_case": use_case,

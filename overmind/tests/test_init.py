@@ -3,12 +3,14 @@ import stat
 import subprocess
 from pathlib import Path
 
+import pytest
 from typer.testing import CliRunner
 
 from overmind.__main__ import app
 from overmind.config import Config, dump
 
 runner = CliRunner()
+SKILL_SOURCE = Path(__file__).resolve().parents[1] / "skills" / "overmind"
 
 
 def _init(tmp_path: Path, ide: str, *extra: str) -> None:
@@ -18,6 +20,49 @@ def _init(tmp_path: Path, ide: str, *extra: str) -> None:
         catch_exceptions=False,
     )
     assert result.exit_code == 0, result.output
+
+
+@pytest.mark.parametrize(
+    ("ide", "skill_dir", "command_dir"),
+    [
+        ("cursor", ".cursor", ".cursor"),
+        ("claude", ".claude", ".claude"),
+        ("opencode", ".opencode", None),
+        ("codex", ".agents", None),
+    ],
+)
+@pytest.mark.parametrize("existing", [False, True], ids=["fresh", "refresh"])
+def test_init_delivers_current_onboarding_workflow(tmp_path, monkeypatch, ide, skill_dir, command_dir, existing):
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.delenv("OVERMIND_API_URL", raising=False)
+    monkeypatch.delenv("OVERMIND_BASE_URL", raising=False)
+    for name in ("setup", "onboard"):
+        installed = tmp_path / skill_dir / "skills" / "overmind" / "references" / f"{name}.md"
+        if existing:
+            installed.parent.mkdir(parents=True, exist_ok=True)
+            installed.write_text("Outdated workflow\n")
+            if command_dir:
+                command = tmp_path / command_dir / "commands" / f"overmind-{name}.md"
+                command.parent.mkdir(parents=True, exist_ok=True)
+                command.write_text("Outdated workflow\n")
+
+    progress = Path("references/onboarding-progress.md")
+    if existing:
+        (tmp_path / skill_dir / "skills" / "overmind" / progress).write_text("Outdated progress\n")
+
+    result = runner.invoke(app, ["init", "--ide", ide, "--env", "production"], catch_exceptions=False)
+    assert result.exit_code == 0, result.output
+
+    for name in ("setup", "onboard"):
+        source = (SKILL_SOURCE / "references" / f"{name}.md").read_text()
+        installed = tmp_path / skill_dir / "skills" / "overmind" / "references" / f"{name}.md"
+        assert installed.read_text() == source
+        if command_dir:
+            command = tmp_path / command_dir / "commands" / f"overmind-{name}.md"
+            assert command.read_text().endswith(source)
+    assert (tmp_path / skill_dir / "skills" / "overmind" / progress).read_text() == (
+        SKILL_SOURCE / progress
+    ).read_text()
 
 
 def test_init_writes_cursor_mcp_json(tmp_path, monkeypatch):

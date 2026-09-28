@@ -64,10 +64,6 @@ describe("rankedModels", () => {
     ]);
   });
 
-  it("never offers a disabled catalog entry", () => {
-    expect(rankedModels(CATALOG, GRADES).map((m) => m.model.id)).not.toContain("vendor/retired-2b");
-  });
-
   it("drops models already in the comparison", () => {
     const shown = rankedModels(CATALOG, GRADES, new Set(["vendor/mid-9b"]));
 

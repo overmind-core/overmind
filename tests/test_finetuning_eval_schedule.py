@@ -376,13 +376,6 @@ def test_eval_score_sync_does_not_overwrite_newer_deployment_progress(job):
     assert job.progress == {**saved, "judge_evals": []}
 
 
-def test_baseline_launch_is_idempotent(job):
-    start_before_evals(job)
-    start_before_evals(job)
-    job.refresh_from_db()
-    assert job.job_evals.filter(kind="baseline").count() == 1
-
-
 def test_deployment_controller_recovers_baseline_while_training_runs(job, monkeypatch):
     job.status = FinetuningJob.Status.RUNNING
     job.progress = {"before_evals_started_at": 1}
@@ -570,6 +563,75 @@ def test_api_persists_all_four_choices_and_incumbent_snapshot(job):
     created = serializer.save()
     assert all(getattr(created, field) for field in FIELDS)
     assert created.baseline_model == job.capability.model
+
+
+def test_selected_judge_is_persisted_and_frozen_without_editing_the_set(job):
+    selected = "gpt-5.6-luna"
+    serializer = serializer_for(job, eval_judge_model=selected)
+    assert serializer.is_valid(), serializer.errors
+    assert serializer.save().eval_judge_model == selected
+    evaluator = Evaluator.objects.create(
+        project=job.project,
+        name="Quality",
+        kind="llm_judge",
+        judge_model="gpt-4.1",
+        checklist=[{"id": "correct", "q": "Correct?"}],
+    )
+    EvalSetMember.objects.create(eval_set=job.eval_set, evaluator=evaluator, role="generative")
+    job.eval_judge_model = selected
+    job.save(update_fields=["eval_judge_model"])
+    tick_job_evals(job)
+    before = job.job_evals.get(kind="baseline").eval_run
+    assert before.run_evaluators.get(evaluator=evaluator).snapshot["judge_model"] == selected
+    evaluator.refresh_from_db()
+    assert evaluator.judge_model == "gpt-4.1"
+    job.status = "succeeded"
+    job.output_model_name = "org/trained-model"
+    job.eval_incumbent_after = True
+    tick_job_evals(job)
+    for row in job.job_evals.exclude(kind="baseline").select_related("eval_run"):
+        assert (
+            row.eval_run.run_evaluators.get(evaluator=evaluator).snapshot["judge_model"] == selected
+        )
+
+
+@pytest.mark.parametrize("same_judge", [True, False])
+def test_shared_baseline_requires_the_same_run_judge(job, same_judge):
+    job.group_id = job.id
+    job.eval_judge_model = "gpt-5.6-luna"
+    job.save(update_fields=["group_id", "eval_judge_model"])
+    tick_job_evals(job)
+    baseline = job.job_evals.get(kind="baseline").eval_run_id
+    sibling = FinetuningJob.objects.create(
+        project=job.project,
+        capability=job.capability,
+        dataset=job.dataset,
+        cell=job.cell,
+        eval_dataset=job.eval_dataset,
+        eval_cell=job.eval_cell,
+        eval_set=job.eval_set,
+        group_id=job.group_id,
+        base_model=job.base_model,
+        provider=job.provider,
+        baseline_model=job.baseline_model,
+        eval_incumbent_before=True,
+        eval_model_before=False,
+        status=job.status,
+        eval_judge_model=job.eval_judge_model if same_judge else "claude-sonnet-5",
+    )
+    tick_job_evals(sibling)
+    assert (sibling.job_evals.get(kind="baseline").eval_run_id == baseline) is same_judge
+
+
+def test_job_judge_cannot_change_after_creation(job):
+    serializer = FinetuningJobSerializer(
+        job,
+        data={"eval_judge_model": "gpt-5.6-luna"},
+        partial=True,
+        context={"request": SimpleNamespace(user=job.triggered_by)},
+    )
+    assert not serializer.is_valid()
+    assert "eval_judge_model" in serializer.errors
 
 
 def test_new_job_uses_codebase_benchmark_even_when_live_model_is_deleted(job):

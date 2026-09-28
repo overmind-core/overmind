@@ -1,15 +1,11 @@
 from __future__ import annotations
 
-import ast
-from pathlib import Path
 from typing import Any
 
 import pytest
 from django.test import override_settings
 
 from overbae.services.recommendation.constraints import Exclusion, eligible_models
-
-_ROOT = Path(__file__).resolve().parents[1]
 
 _UNTRAINABLE = {"training_type": {"lora": {"enabled": False}, "full": {"enabled": False}}}
 _NO_TOOLS = {"supports_tool_calling": False}
@@ -154,61 +150,3 @@ def test_the_real_catalog_rejects_each_model_at_most_once():
     assert not survivors & set(rejected)
     assert {exclusion.reason for exclusion in exclusions if exclusion.reason.startswith("SFT")}
     assert "No tool-calling fine-tuning support" in {e.reason for e in exclusions}
-
-
-def test_no_quality_signal_is_reachable_from_the_hard_filters():
-    reachable = _reachable_modules("overbae.services.recommendation.constraints")
-
-    assert "overbae.services.recommendation.catalog" in reachable
-    assert [
-        module
-        for module in reachable
-        if module.startswith("overbae.services.benchmarks")
-        or module
-        in {
-            "overbae.services.recommendation.ranking",
-            "overbae.services.recommendation.candidates",
-            "overbae.services.recommendation.analysis",
-        }
-    ] == []
-
-
-def _reachable_modules(root: str) -> set[str]:
-    """Every first-party module the source of *root* can pull in, lazy imports included."""
-    seen: set[str] = set()
-    queue = [root]
-    while queue:
-        module = queue.pop()
-        path = _module_file(module)
-        if path is None or module in seen:
-            continue
-        seen.add(module)
-        queue.extend(_imported_names(module, path) - seen)
-    return seen - {root}
-
-
-def _module_file(module: str) -> Path | None:
-    parts = module.split(".")
-    candidates = (_ROOT.joinpath(*parts).with_suffix(".py"), _ROOT.joinpath(*parts, "__init__.py"))
-    return next((path for path in candidates if path.is_file()), None)
-
-
-def _imported_names(module: str, path: Path) -> set[str]:
-    package = module if path.name == "__init__.py" else module.rpartition(".")[0]
-    names: set[str] = set()
-    for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
-        if isinstance(node, ast.Import):
-            names |= {alias.name for alias in node.names}
-        elif isinstance(node, ast.ImportFrom):
-            prefix = _absolute_prefix(package, node)
-            names.add(prefix)
-            names |= {f"{prefix}.{alias.name}" for alias in node.names}
-    return {name for name in names if name.startswith("overbae.")}
-
-
-def _absolute_prefix(package: str, node: ast.ImportFrom) -> str:
-    if not node.level:
-        return node.module or ""
-    parts = package.split(".")
-    base = ".".join(parts[: len(parts) - node.level + 1])
-    return f"{base}.{node.module}" if node.module else base

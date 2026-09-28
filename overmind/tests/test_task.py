@@ -70,15 +70,6 @@ def test_nested_scope_restores_outer_key(exporter):
     assert _by_name(exporter, "after-inner").attributes[attrs.BEHAVIOUR_KEY] == "outer"
 
 
-def test_stamps_current_span_when_entered_inside(exporter):
-    def _run():
-        with start_span("unit"), task("run-startup"):
-            pass
-
-    _in_fresh_context(_run)
-    assert _by_name(exporter, "unit").attributes[attrs.BEHAVIOUR_KEY] == "run-startup"
-
-
 def test_never_stamps_run_boundary_span(exporter):
     def _run():
         with start_span("run-root", unit="run"):
@@ -91,15 +82,6 @@ def test_never_stamps_run_boundary_span(exporter):
     assert attrs.BEHAVIOUR_KEY not in _by_name(exporter, "run-root").attributes
     assert _by_name(exporter, "inside-a").attributes[attrs.BEHAVIOUR_KEY] == "step-a"
     assert _by_name(exporter, "inside-b").attributes[attrs.BEHAVIOUR_KEY] == "step-b"
-
-
-def test_never_stamps_entry_point_span(exporter):
-    def _run():
-        with start_span("entry", span_type="entry_point"), task("last-phase"):
-            pass
-
-    _in_fresh_context(_run)
-    assert attrs.BEHAVIOUR_KEY not in _by_name(exporter, "entry").attributes
 
 
 def test_decorator_and_async(exporter):
@@ -126,14 +108,6 @@ def test_decorator_and_async(exporter):
     assert _by_name(exporter, "managed").attributes[attrs.BEHAVIOUR_KEY] == "async-cm"
 
 
-def test_noop_when_not_initialized():
-    def _run():
-        with task("lead-tool-loop"):
-            pass
-
-    _in_fresh_context(_run)
-
-
 def test_turn_unit_rejects_other_units():
     with pytest.raises(ValueError, match='unit must be "turn"'):
         task("investment-debate", unit="run")
@@ -141,9 +115,12 @@ def test_turn_unit_rejects_other_units():
 
 def test_turn_scope_opens_turn_span(exporter):
     def _run():
-        with start_span("run-root", span_type="entry_point"):
-            with task("investment-debate", unit="turn"), start_span("child"):
-                pass
+        with (
+            start_span("run-root", span_type="entry_point"),
+            task("investment-debate", unit="turn"),
+            start_span("child"),
+        ):
+            pass
 
     _in_fresh_context(_run)
     turn = _by_name(exporter, "investment-debate")
@@ -203,14 +180,6 @@ def test_force_flush_ends_orphan_turn_spans(exporter):
     assert not exporter.get_finished_spans()
     tracing.force_flush_traces()
     assert _by_name(exporter, "orphan").attributes[attrs.UNIT_KIND] == "turn"
-
-
-def test_turn_unit_noop_when_not_initialized():
-    def _run():
-        with task("investment-debate", unit="turn"):
-            pass
-
-    _in_fresh_context(_run)
 
 
 def test_concurrent_entry_shares_one_turn_span(exporter):

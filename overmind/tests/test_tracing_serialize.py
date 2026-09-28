@@ -53,10 +53,6 @@ class TestNormalizeForJson:
         for v in ("s", 1, 1.5, True, False, None):
             assert _normalize_for_json(v) == v
 
-    def test_dataclass_flattens_to_dict(self):
-        result = _normalize_for_json(_Point(x=3, y=4))
-        assert result == {"x": 3, "y": 4}
-
     def test_nested_dataclass_recurses(self):
         result = _normalize_for_json(_Container(name="origin", point=_Point(0, 0)))
         assert result == {"name": "origin", "point": {"x": 0, "y": 0}}
@@ -96,24 +92,6 @@ class TestNormalizeForJson:
     def test_dict_keys_stringified(self):
         assert _normalize_for_json({1: "a"}) == {"1": "a"}
 
-    def test_unknown_object_stringified(self):
-        class _Opaque:
-            pass
-
-        out = _normalize_for_json(_Opaque())
-        # ``_Opaque`` has no __dict__ entries, so we fall back to repr.
-        assert isinstance(out, (str, dict))
-
-    def test_result_is_json_serialisable(self):
-        """Whatever we return must round-trip through :func:`json.dumps`."""
-        normalised = _normalize_for_json({
-            "point": _Point(1, 2),
-            "tags": {"alpha", "beta"},
-            "path": PurePath("/tmp/x"),
-            "raw": b"\x01",
-        })
-        json.dumps(normalised)
-
 
 class TestJsonDumps:
     def test_round_trip_via_json_loads(self):
@@ -121,14 +99,6 @@ class TestJsonDumps:
         loaded = json.loads(raw)
         assert loaded["point"] == {"x": 1, "y": 2}
         assert loaded["tags"] == ["alpha"]
-
-    def test_never_raises(self):
-        class _CycleSafe:
-            def __repr__(self) -> str:
-                return "<safe>"
-
-        # Even objects with no useful representation should not raise.
-        assert isinstance(_json_dumps(_CycleSafe()), str)
 
 
 class TestScrubbing:
@@ -188,9 +158,6 @@ class TestScrubbing:
 
 
 class TestCoerceToOtelAttribute:
-    def test_none_becomes_empty_string(self):
-        assert _coerce_to_otel_attribute(None) == ""
-
     def test_primitives_pass_through(self):
         for v in ("s", 1, 1.5, True, False):
             assert _coerce_to_otel_attribute(v) == v
@@ -202,12 +169,3 @@ class TestCoerceToOtelAttribute:
         out = _coerce_to_otel_attribute([1, "a"])
         assert isinstance(out, str)
         assert json.loads(out) == [1, "a"]
-
-    def test_dict_becomes_json_string(self):
-        out = _coerce_to_otel_attribute({"k": 1})
-        assert isinstance(out, str)
-        assert json.loads(out) == {"k": 1}
-
-    def test_dataclass_becomes_json_string(self):
-        out = _coerce_to_otel_attribute(_Point(1, 2))
-        assert json.loads(out) == {"x": 1, "y": 2}

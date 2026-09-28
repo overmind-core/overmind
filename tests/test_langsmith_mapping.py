@@ -6,7 +6,6 @@ import pytest
 
 from overbae.services.connectors.langsmith.mapping import (
     LANGSMITH,
-    group_runs_by_trace,
     runs_to_records,
 )
 from overbae.services.connectors.mapping import observations_to_span_dicts as _to_span_dicts
@@ -269,13 +268,6 @@ def test_spans_are_stamped_with_the_langsmith_source():
     assert {s["attributes"][CONNECTOR_SOURCE_ATTR] for s in spans} == {"langsmith"}
     assert all(s["scope_name"] == "langsmith" for s in spans)
     assert all("langsmith.trace_id" in s["attributes"] for s in spans)
-
-
-def test_group_runs_by_trace_keys_on_trace_id():
-    runs = _trace_runs() + [_run("other", is_root=True, name="x", trace_id="other-trace")]
-    groups = group_runs_by_trace(runs)
-
-    assert set(groups) == {"other-trace", _TRACE}
 
 
 def test_shared_profiler_ranks_langsmith_records_unchanged():

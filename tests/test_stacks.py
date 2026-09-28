@@ -11,7 +11,6 @@ from modal_shared.stacks import (
     SERVE_CLASS_MAP,
     SERVE_STACKS,
     TRAIN_CANARIES,
-    TRAIN_FUNCTION_NAMES,
     TRAIN_STACKS,
     WORKER_CLS,
     normalize_train_stack,
@@ -37,10 +36,6 @@ def test_every_family_train_image_is_a_known_stack() -> None:
     for fam in (*all_families(), resolve("totally/unknown-model")):
         assert fam.train_image in TRAIN_STACKS, fam.key
         assert fam.serve_image in SERVE_STACKS, fam.key
-
-
-def test_train_function_names_cover_stacks() -> None:
-    assert set(TRAIN_FUNCTION_NAMES) == set(TRAIN_STACKS)
 
 
 def test_canaries_cover_unsloth_stacks() -> None:

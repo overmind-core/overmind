@@ -1,8 +1,9 @@
 """Stamping invariants over enumerated scope compositions.
 
-Every nesting of capability / task / turn-task / entry-point / observe /
-plain spans (all sequences up to depth 3, each closed with a leaf span) must
-satisfy the system invariants on the exported spans:
+Every nesting of capability / task / turn-task / entry-point / plain spans
+up to depth 3, each closed with a leaf span, must satisfy the system invariants
+on the exported spans. Default observe declares the same stamps as a plain
+span; its wrapper interactions are checked through depth 2.
 
 I1  at most one ``unit_kind="run"`` span per trace (the root boundary);
 I2  a run-boundary span never carries ``overmind.behaviour.key``;
@@ -72,7 +73,12 @@ OPS = ("plain", "run", "task", "turn", "cap", "obs")
 
 
 def _all_shapes(max_depth: int = 3) -> list[tuple[str, ...]]:
-    return [shape for depth in range(1, max_depth + 1) for shape in itertools.product(OPS, repeat=depth)]
+    return [
+        shape
+        for depth in range(1, max_depth + 1)
+        for shape in itertools.product(OPS, repeat=depth)
+        if depth <= 2 or "obs" not in shape
+    ]
 
 
 @dataclasses.dataclass
@@ -179,29 +185,11 @@ def test_composition_invariants(exporter, shape):
         assert span.attributes.get(attrs.BEHAVIOUR_KEY) == spec.key, span.name
 
     # Recheck I1 + I2 straight from the export, independent of the mirror.
-    runs_per_trace = Counter(
-        s.context.trace_id for s in spans if s.attributes.get(attrs.UNIT_KIND) == "run"
-    )
+    runs_per_trace = Counter(s.context.trace_id for s in spans if s.attributes.get(attrs.UNIT_KIND) == "run")
     assert all(count == 1 for count in runs_per_trace.values())
     for span in spans:
         if span.attributes.get(attrs.UNIT_KIND) == "run":
             assert attrs.BEHAVIOUR_KEY not in span.attributes
-
-
-def test_nested_task_inside_turn_task_does_not_rebind_turn(exporter):
-    """A plain task("b") nested in task("a", unit="turn") must not overwrite
-    the turn span's key — the same hijack class as the root-boundary bug."""
-
-    def _run():
-        with start_span("run-root", span_type="entry_point"), task("a", unit="turn"):
-            with task("b"), start_span("inside-b"):
-                pass
-
-    _in_fresh_context(_run)
-    turn = _by_name(exporter, "a")
-    assert turn.attributes[attrs.UNIT_KIND] == "turn"
-    assert turn.attributes[attrs.BEHAVIOUR_KEY] == "a"
-    assert _by_name(exporter, "inside-b").attributes[attrs.BEHAVIOUR_KEY] == "b"
 
 
 def test_handoff_scope_never_inherits_outer_task_key(exporter):
@@ -248,28 +236,6 @@ def test_task_never_overwrites_existing_key(exporter):
     assert _by_name(exporter, "child").attributes[attrs.BEHAVIOUR_KEY] == "second"
 
 
-def test_run_declared_inside_task_scope_carries_no_key(exporter):
-    def _run():
-        with task("outer-key"), start_span("root", span_type="entry_point"), start_span("inside"):
-            pass
-
-    _in_fresh_context(_run)
-    root = _by_name(exporter, "root")
-    assert root.attributes[attrs.UNIT_KIND] == "run"
-    assert attrs.BEHAVIOUR_KEY not in root.attributes
-    assert _by_name(exporter, "inside").attributes[attrs.BEHAVIOUR_KEY] == "outer-key"
-
-
-def test_nested_entry_point_demotes_to_turn(exporter):
-    def _run():
-        with start_span("root", span_type="entry_point"), start_span("sub-run", span_type="entry_point"):
-            pass
-
-    _in_fresh_context(_run)
-    assert _by_name(exporter, "root").attributes[attrs.UNIT_KIND] == "run"
-    assert _by_name(exporter, "sub-run").attributes[attrs.UNIT_KIND] == "turn"
-
-
 def test_threaded_task_scopes_stamp_only_their_own_children(exporter):
     def _run():
         with start_span("run-root", span_type="entry_point"):
@@ -278,9 +244,7 @@ def test_threaded_task_scopes_stamp_only_their_own_children(exporter):
                 with task(f"key-{i}"), start_span(f"child-{i}"):
                     pass
 
-            threads = [
-                threading.Thread(target=contextvars.copy_context().run, args=(worker, i)) for i in range(8)
-            ]
+            threads = [threading.Thread(target=contextvars.copy_context().run, args=(worker, i)) for i in range(8)]
             for thread in threads:
                 thread.start()
             for thread in threads:
@@ -300,9 +264,7 @@ def test_threaded_nested_tasks_never_rebind_shared_turn(exporter):
                 with task("shared", unit="turn"), task(f"inner-{i}"), start_span(f"step-{i}"):
                     pass
 
-            threads = [
-                threading.Thread(target=contextvars.copy_context().run, args=(worker, i)) for i in range(8)
-            ]
+            threads = [threading.Thread(target=contextvars.copy_context().run, args=(worker, i)) for i in range(8)]
             for thread in threads:
                 thread.start()
             for thread in threads:

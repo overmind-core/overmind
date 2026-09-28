@@ -5,7 +5,6 @@ from dataclasses import asdict, dataclass
 from typing import Any
 
 from modal_shared.context_budget import CONTEXT_HEADROOM, DEFAULT_OUTPUT_TOKENS
-from overbae.core.errors import InputValidationError
 from overbae.modal.gpu_selector import select_gpu
 from overbae.modal.model_registry import get_model_config_any_backend
 from overbae.services.datasets.alignment import system_prompt
@@ -63,11 +62,12 @@ def serving_plan(base_model: str, budget: InferenceBudget) -> dict[str, Any]:
     # advertised, extended window than the native context in the training catalog.
     limit = min(limits) if limits else default
     required = budget.required_context
+    warnings = []
     if required > limit:
-        raise InputValidationError(
+        warnings.append(
             f"Estimated evaluation input and reserved output need {required:,} tokens, "
             f"but {base_model} supports {limit:,} in this serving stack. "
-            "Choose a longer-context model or revise the evaluation workload."
+            "Evaluation requests may fail."
         )
     context = min(limit, max(default, 1 << (required - 1).bit_length()))
     select_gpu(config if config.get("moe") else {**config, "fp8_supported": False}, context)
@@ -77,6 +77,7 @@ def serving_plan(base_model: str, budget: InferenceBudget) -> dict[str, Any]:
         "max_model_len": context,
         "model_context_limit": limit,
         "estimated": True,
+        "warnings": warnings,
     }
 
 

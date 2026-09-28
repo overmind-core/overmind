@@ -32,6 +32,8 @@ Route guided work to these exact prompt names:
 Initial Console onboarding and local capability discovery remain local
 workflows: use [references/onboard.md](references/onboard.md) for a new project
 and [references/setup.md](references/setup.md) for repository scanning and sync.
+Both use [references/onboarding-progress.md](references/onboarding-progress.md)
+for the opening roadmap, numbered progress updates, and data disclosures.
 
 Do not reimplement these workflows as a single generic call. The prompt
 supplies the workflow; the skill supplies only missing local actions,

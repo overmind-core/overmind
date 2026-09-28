@@ -906,9 +906,6 @@ class TestUrlResolution:
 
         assert reverse("v1-models") == "/api/v1/models"
 
-    def test_model_detail_url(self):
-        assert "/api/v1/models/ft-abc123" == "/api/v1/models/ft-abc123"
-
 
 class TestAgentAliasRouting:
     URL = "/api/v1/chat/completions"

@@ -32,8 +32,10 @@ def _auth_client() -> APIClient:
 @pytest.fixture(autouse=True)
 def _clear_catalog_cache():
     cache.delete(model_catalog._CACHE_KEY)
+    cache.delete(model_catalog._FAILURE_CACHE_KEY)
     yield
     cache.delete(model_catalog._CACHE_KEY)
+    cache.delete(model_catalog._FAILURE_CACHE_KEY)
 
 
 def _upstream_payload() -> dict:
@@ -44,6 +46,8 @@ def _upstream_payload() -> dict:
                 "hugging_face_id": "mistralai/Mistral-Large-Instruct-2411",
                 "name": "Mistral: Mistral Large",
                 "context_length": 128000,
+                "top_provider": {"max_completion_tokens": 16000},
+                "supported_parameters": ["tools", "response_format"],
                 "pricing": {"prompt": "0.000002", "completion": "0.000006"},
             },
             {
@@ -174,7 +178,19 @@ class TestModelCatalogEndpoint:
         assert get.call_count == 1
         assert first.json() == second.json()
 
-    def test_failure_is_not_cached(self):
+    def test_cached_catalog_retains_output_limits_and_schema_support(self):
+        with mock.patch.object(
+            model_catalog.requests, "get", return_value=_mock_response(_upstream_payload())
+        ) as get:
+            models, available = model_catalog.fetch_model_catalog()
+            assert model_catalog.fetch_model_catalog() == (models, available)
+        assert available
+        assert get.call_count == 1
+        mistral = next(row for row in models if row["id"] == "mistralai/mistral-large")
+        assert mistral["max_completion_tokens"] == 16000
+        assert mistral["supported_parameters"] == ["tools", "response_format"]
+
+    def test_failure_is_cached_briefly_before_recovery(self):
         client = _auth_client()
         with mock.patch.object(
             model_catalog.requests,
@@ -185,6 +201,10 @@ class TestModelCatalogEndpoint:
             ],
         ) as get:
             failed = client.get(CATALOG_URL)
+            unavailable = client.get(CATALOG_URL)
+            assert get.call_count == 1
+            assert unavailable.json()["upstream_available"] is False
+            cache.delete(model_catalog._FAILURE_CACHE_KEY)
             recovered = client.get(CATALOG_URL)
 
         assert get.call_count == 2

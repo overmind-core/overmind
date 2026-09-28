@@ -4,7 +4,6 @@ import { act, cleanup, fireEvent, render, screen, within } from "@testing-librar
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { DatasetChat } from "@/components/datasets/notebook/chat";
-import { Icon } from "@/components/ui/icons";
 import { type ChatTurn, chatOf } from "@/hooks/use-datasets";
 import { type Cell, DatasetFromJSON } from "@/openapi";
 
@@ -483,65 +482,10 @@ describe("Workshop chat", () => {
     expect(screen.queryByRole("button", { name: "Thinking…" })).toBeNull();
   });
 
-  it("omits agent-name labels and composer helper text", () => {
-    const turns: ChatTurn[] = [
-      { at: "empty", role: "agent", text: "" },
-      { at: "reply", role: "agent", text: "Three rows." },
-    ];
-    const { rerender } = render(
-      <DatasetChat busy={false} cells={[source]} live={null} turns={turns} {...callbacks()} />
-    );
-    expect(screen.queryByText("Overmind")).toBeNull();
-    expect(screen.queryByText(/Enter to send/)).toBeNull();
-    rerender(<DatasetChat busy cells={[source]} live={null} turns={turns} {...callbacks()} />);
-    expect(screen.queryByText("Send when this request finishes")).toBeNull();
-    expect(screen.getByRole("button", { name: "Send" })).toBeTruthy();
-  });
-
-  it("omits chat dividers while keeping tables, thinking connectors and the input border", async () => {
-    const { container } = render(
-      <DatasetChat
-        busy={false}
-        cells={[source]}
-        live={null}
-        turns={[
-          {
-            at: "reply",
-            role: "agent",
-            steps: [
-              {
-                duration_ms: 1000,
-                id: "thought",
-                phase: "thinking",
-                status: "done",
-                text: "# Evidence\n\nRead the source.\n\n---\n\nChecked the policy.",
-                type: "activity",
-              },
-            ],
-            text: "# Result\n\n---\n\n| Check | Result |\n| --- | --- |\n| Evidence | Pass |",
-          },
-        ]}
-        {...callbacks()}
-      />
-    );
-    fireEvent.click(screen.getByRole("button", { name: "Thought for 1s" }));
-    await screen.findByRole("table");
-    await screen.findByRole("heading", { name: "Evidence" });
-    expect(container.querySelector("hr")).toBeNull();
-    expect(screen.getByRole("heading", { name: "Result" }).className).not.toContain("border-b");
-    expect(container.querySelector(".sidebar-elbow")).toBeTruthy();
-    expect(screen.getByRole("columnheader", { name: "Check" }).className).toContain("border");
-    const composer = screen.getByRole("textbox", { name: "Message the agent" }).parentElement!;
-    expect(composer.className).toContain("border");
-    expect(composer.parentElement!.className).not.toContain("border-t");
-  });
-
-  it("uses the vendored send icon and sends the prompt", () => {
+  it("sends the prompt", () => {
     const actions = callbacks();
     render(<DatasetChat busy={false} cells={[source]} live={null} turns={[]} {...actions} />);
-    const { container: icon } = render(<Icon.send />);
     const button = screen.getByRole("button", { name: "Send" });
-    expect(button.querySelector("svg")?.innerHTML).toBe(icon.querySelector("svg")?.innerHTML);
     fireEvent.change(screen.getByRole("textbox", { name: "Message the agent" }), {
       target: { value: "Repair the selected task" },
     });

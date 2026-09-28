@@ -56,9 +56,9 @@ that get missed here.
 
 Input validation at trust boundaries. Error handling that prevents data loss. Security. Accessibility. The calibration real hardware needs — the platform is never the spec ideal, a clock drifts, a sensor reads off. Anything explicitly requested.
 
-## Leave one check behind
+## Verify behavior
 
-Non-trivial logic is unfinished without the smallest thing that fails if the logic breaks: an assert-based self-check or one small test file. No frameworks, no fixtures. Trivial one-liners need no test.
+Follow the testing policy in AGENTS.md. Non-trivial logic needs runnable behavior verification; use the existing E2E flow and record its artifact. Do not create a per-function test or self-check merely because code was added.
 
 ## Naming a ceiling
 

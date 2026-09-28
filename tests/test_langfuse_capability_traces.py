@@ -127,18 +127,6 @@ def _by_trace(spans):
     return grouped
 
 
-def test_observation_count_invariant():
-    """A real N=20/M=10 run produced 44 observations: 3 CAPABILITY, 20 SPAN, 21 GENERATION."""
-    obs = scan_inbox_trace(20, invoices=10)
-    assert len(obs) == 2 * 20 + 3 + 1 == 44
-    types = [o.type for o in obs]
-    assert (types.count("CAPABILITY"), types.count("SPAN"), types.count("GENERATION")) == (
-        3,
-        20,
-        21,
-    )
-
-
 def test_one_trace_per_capability_keeping_the_langfuse_subtree():
     cred = _cred()
     spans = observations_to_span_dicts(scan_inbox_trace(20, invoices=10), credential=cred)
@@ -192,21 +180,6 @@ def test_structure_is_preserved_verbatim():
             assert parent == span_id_for(str(cred.id), o.parent_observation_id)
 
 
-def test_nearest_capability_roots_the_trace_not_the_outer_observation():
-    spans = observations_to_span_dicts(scan_inbox_trace(2), credential=_cred())
-    email_root = next(
-        s
-        for s in spans
-        if s["parent_span_id"] is None and s["attributes"]["langfuse.observation_id"] == "triage"
-    )
-    assert email_root["name"] == "triage-invoices"
-    # scan-inbox roots only its own trace, never the triage work.
-    scan_traces = {
-        s["trace_id"] for s in spans if s["attributes"]["langfuse.observation_id"] == "scan"
-    }
-    assert email_root["trace_id"] not in scan_traces
-
-
 def test_childless_capability_still_emits_a_trace():
     """plan-payments with zero generations (plan_source == 'empty') is a real run."""
     spans = observations_to_span_dicts(scan_inbox_trace(1, invoices=0), credential=_cred())
@@ -217,13 +190,6 @@ def test_childless_capability_still_emits_a_trace():
     assert plan[0]["attributes"]["langfuse.metadata.plan_source"] == "empty"
     # Its trace holds only the capability root.
     assert len(_by_trace(spans)[plan[0]["trace_id"]]) == 1
-
-
-def test_orchestrator_with_only_capability_children_gets_its_own_trace():
-    spans = observations_to_span_dicts(scan_inbox_trace(3), credential=_cred())
-    scan = [s for s in spans if s["name"] == "scan-inbox"]
-    assert len(scan) == 1
-    assert len(_by_trace(spans)[scan[0]["trace_id"]]) == 1
 
 
 def test_warning_fallback_is_not_reported_as_success():

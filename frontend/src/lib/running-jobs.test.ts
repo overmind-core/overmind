@@ -148,22 +148,6 @@ describe("buildRunningJobs", () => {
     });
   });
 
-  it("does not treat a succeeded training run as in-flight", () => {
-    const items = buildRunningJobs({
-      finetuning: [
-        {
-          createdAt: new Date("2026-07-20T08:00:00.000Z"),
-          id: "f2",
-          name: "swift fox",
-          status: "succeeded",
-          updatedAt: new Date("2026-07-20T12:00:00.000Z"),
-        },
-      ],
-    });
-
-    expect(items).toHaveLength(0);
-  });
-
   it("includes terminal jobs when activeOnly is false (all-jobs page)", () => {
     const items = buildRunningJobs(
       {

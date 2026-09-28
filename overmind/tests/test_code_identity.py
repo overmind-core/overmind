@@ -119,11 +119,6 @@ def _fake_git_repo(root: Path, sha: str = "a" * 40) -> str:
     return sha
 
 
-def test_sha_from_head_ref_file(tmp_path, no_sha_env):
-    sha = _fake_git_repo(tmp_path)
-    assert _detect_git_sha(tmp_path) == sha
-
-
 def test_sha_walks_up_from_subdirectory(tmp_path, no_sha_env):
     sha = _fake_git_repo(tmp_path)
     nested = tmp_path / "src" / "pkg"
@@ -149,10 +144,6 @@ def test_env_var_override_wins(tmp_path, no_sha_env, monkeypatch):
     _fake_git_repo(tmp_path, sha="d" * 40)
     monkeypatch.setenv("OVERMIND_GIT_SHA", "e" * 40)
     assert _detect_git_sha(tmp_path) == "e" * 40
-
-
-def test_undetectable_returns_none(tmp_path, no_sha_env):
-    assert _detect_git_sha(tmp_path) is None
 
 
 def _init_and_capture_resource(monkeypatch):

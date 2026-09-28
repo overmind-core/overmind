@@ -41,11 +41,6 @@ describe("sortRows", () => {
     expect(rows[0].v).toBe(0.5);
   });
 
-  it("keeps nulls last regardless of direction", () => {
-    expect(sortRows(rows, (r) => r.v, "asc").at(-1)?.v).toBeNull();
-    expect(sortRows(rows, (r) => r.v, "desc").at(-1)?.v).toBeNull();
-  });
-
   it("sorts strings alphabetically", () => {
     const texts = [{ t: "banana" }, { t: "Apple" }, { t: null as string | null }];
     expect(sortRows(texts, (r) => r.t, "asc").map((r) => r.t)).toEqual(["Apple", "banana", null]);

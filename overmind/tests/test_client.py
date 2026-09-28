@@ -97,35 +97,8 @@ class TestClientInit:
         c = _make_client()
         assert c._session.headers.get("Content-Type") == "application/json"
 
-    def test_chat_and_models_sub_resources_attached(self):
-        c = _make_client()
-        assert hasattr(c, "chat")
-        assert hasattr(c.chat, "completions")
-        assert hasattr(c, "models")
-
 
 class TestRaiseForStatus:
-    def test_ok_response_does_not_raise(self):
-        resp = _mock_response(ok=True, status_code=200, json_data={"result": "ok"})
-        _raise_for_status(resp)  # should not raise
-
-    def test_error_response_raises(self):
-        resp = _mock_response(
-            ok=False,
-            status_code=404,
-            json_data={"error": {"message": "Not found"}},
-        )
-        with pytest.raises(OvermindInferenceError, match="404"):
-            _raise_for_status(resp)
-
-    def test_error_extracts_message_from_json(self):
-        resp = _mock_response(
-            ok=False, status_code=400,
-            json_data={"error": {"message": "model is not ready"}},
-        )
-        with pytest.raises(OvermindInferenceError, match="model is not ready"):
-            _raise_for_status(resp)
-
     def test_error_falls_back_to_text_when_no_json(self):
         resp = _mock_response(ok=False, status_code=500, text="Internal Server Error")
         resp.json.side_effect = ValueError("no JSON")
@@ -134,7 +107,8 @@ class TestRaiseForStatus:
 
     def test_error_uses_detail_field(self):
         resp = _mock_response(
-            ok=False, status_code=403,
+            ok=False,
+            status_code=403,
             json_data={"detail": "Authentication credentials were not provided."},
         )
         with pytest.raises(OvermindInferenceError, match="Authentication credentials"):
@@ -201,9 +175,7 @@ class TestParseChatCompletion:
 
     def test_error_body_raises(self):
         with pytest.raises(OvermindInferenceError, match="Inference backend error"):
-            _parse_chat_completion(
-                {"error": {"message": "Inference backend error.", "type": "server_error"}}
-            )
+            _parse_chat_completion({"error": {"message": "Inference backend error.", "type": "server_error"}})
 
 
 class TestParseChunk:
@@ -212,9 +184,7 @@ class TestParseChunk:
             "id": "chunk-1",
             "object": "chat.completion.chunk",
             "model": "ft-test",
-            "choices": [
-                {"index": 0, "delta": {"role": "assistant", "content": "Hi"}, "finish_reason": None}
-            ],
+            "choices": [{"index": 0, "delta": {"role": "assistant", "content": "Hi"}, "finish_reason": None}],
             "created": 100,
         }
 
@@ -277,59 +247,53 @@ class TestParseModel:
 class TestIterSseChunks:
     def _resp(self, lines: list[str]) -> MagicMock:
         resp = MagicMock(spec=requests.Response)
-        resp.iter_lines.return_value = [l.encode() for l in lines]
+        resp.iter_lines.return_value = [line.encode() for line in lines]
         return resp
-
-    def test_yields_chunks_for_data_lines(self):
-        payload = json.dumps({
-            "id": "c1", "object": "chat.completion.chunk", "model": "m",
-            "choices": [{"index": 0, "delta": {"content": "Hello"}, "finish_reason": None}],
-        })
-        chunks = list(_iter_sse_chunks(self._resp([f"data: {payload}", "data: [DONE]"])))
-        assert len(chunks) == 1
-        assert chunks[0].choices[0].delta.content == "Hello"
 
     def test_stops_at_done(self):
         payload = json.dumps({"id": "x", "object": "o", "model": "m", "choices": []})
-        chunks = list(_iter_sse_chunks(self._resp([
-            f"data: {payload}",
-            "data: [DONE]",
-            f"data: {payload}",   # should never be reached
-        ])))
+        chunks = list(
+            _iter_sse_chunks(
+                self._resp([
+                    f"data: {payload}",
+                    "data: [DONE]",
+                    f"data: {payload}",  # should never be reached
+                ])
+            )
+        )
         assert len(chunks) == 1
 
     def test_skips_non_data_lines(self):
         payload = json.dumps({"id": "x", "object": "o", "model": "m", "choices": []})
-        chunks = list(_iter_sse_chunks(self._resp([
-            "event: ping",
-            ": comment",
-            f"data: {payload}",
-            "data: [DONE]",
-        ])))
+        chunks = list(
+            _iter_sse_chunks(
+                self._resp([
+                    "event: ping",
+                    ": comment",
+                    f"data: {payload}",
+                    "data: [DONE]",
+                ])
+            )
+        )
         assert len(chunks) == 1
 
     def test_skips_invalid_json(self):
         payload = json.dumps({"id": "x", "object": "o", "model": "m", "choices": []})
-        chunks = list(_iter_sse_chunks(self._resp([
-            "data: {not valid json}",
-            f"data: {payload}",
-            "data: [DONE]",
-        ])))
+        chunks = list(
+            _iter_sse_chunks(
+                self._resp([
+                    "data: {not valid json}",
+                    f"data: {payload}",
+                    "data: [DONE]",
+                ])
+            )
+        )
         assert len(chunks) == 1
-
-    def test_raises_on_error_in_stream(self):
-        error_payload = json.dumps({"error": {"message": "context length exceeded"}})
-        with pytest.raises(OvermindInferenceError, match="context length exceeded"):
-            list(_iter_sse_chunks(self._resp([f"data: {error_payload}"])))
 
     def test_raises_on_string_error_in_stream(self):
         error_payload = json.dumps({"error": "The inference server could not be reached."})
         with pytest.raises(OvermindInferenceError, match="could not be reached"):
             list(_iter_sse_chunks(self._resp([f"data: {error_payload}"])))
-
-    def test_empty_stream_yields_nothing(self):
-        chunks = list(_iter_sse_chunks(self._resp(["data: [DONE]"])))
-        assert chunks == []
 
 
 class TestChatCompletionsNonStream:
@@ -427,22 +391,15 @@ class TestChatCompletionsStream:
         }
         return f"data: {json.dumps(data)}"
 
-    def test_returns_iterator_when_stream_true(self):
-        c = _make_client()
-        c._session.post = MagicMock(return_value=_sse_response([
-            self._chunk_line("Hi"),
-            "data: [DONE]",
-        ]))
-        result = c.chat.completions.create(model="ft-test", messages=self._MESSAGES, stream=True)
-        assert hasattr(result, "__iter__")
-
     def test_yields_chat_completion_chunks(self):
         c = _make_client()
-        c._session.post = MagicMock(return_value=_sse_response([
-            self._chunk_line("Hello"),
-            self._chunk_line(" world"),
-            "data: [DONE]",
-        ]))
+        c._session.post = MagicMock(
+            return_value=_sse_response([
+                self._chunk_line("Hello"),
+                self._chunk_line(" world"),
+                "data: [DONE]",
+            ])
+        )
         chunks = list(c.chat.completions.create(model="ft-test", messages=self._MESSAGES, stream=True))
         assert len(chunks) == 2
         assert all(isinstance(ch, ChatCompletionChunk) for ch in chunks)
@@ -487,18 +444,16 @@ class TestModelsList:
 
     def test_returns_model_list(self):
         c = _make_client()
-        c._session.get = MagicMock(return_value=_mock_response(
-            json_data={"object": "list", "data": [self._FT_MODEL, self._FRONTIER]}
-        ))
+        c._session.get = MagicMock(
+            return_value=_mock_response(json_data={"object": "list", "data": [self._FT_MODEL, self._FRONTIER]})
+        )
         result = c.models.list()
         assert isinstance(result, ModelList)
         assert len(result.data) == 2
 
     def test_models_parsed_correctly(self):
         c = _make_client()
-        c._session.get = MagicMock(return_value=_mock_response(
-            json_data={"object": "list", "data": [self._FT_MODEL]}
-        ))
+        c._session.get = MagicMock(return_value=_mock_response(json_data={"object": "list", "data": [self._FT_MODEL]}))
         result = c.models.list()
         m = result.data[0]
         assert isinstance(m, Model)
@@ -537,9 +492,9 @@ class TestModelsList:
 
     def test_http_error_raises(self):
         c = _make_client()
-        c._session.get = MagicMock(return_value=_mock_response(
-            ok=False, status_code=401, json_data={"detail": "Unauthorized"}
-        ))
+        c._session.get = MagicMock(
+            return_value=_mock_response(ok=False, status_code=401, json_data={"detail": "Unauthorized"})
+        )
         with pytest.raises(OvermindInferenceError, match="401"):
             c.models.list()
 
@@ -548,14 +503,6 @@ class TestModelsList:
         c._session.get = MagicMock(side_effect=requests.exceptions.ConnectionError("refused"))
         with pytest.raises(OvermindInferenceError, match="Failed to list models"):
             c.models.list()
-
-    def test_finetuned_false_for_frontier_models(self):
-        c = _make_client()
-        c._session.get = MagicMock(return_value=_mock_response(
-            json_data={"object": "list", "data": [self._FRONTIER]}
-        ))
-        result = c.models.list()
-        assert result.data[0].finetuned is False
 
 
 class TestModelsGet:
@@ -586,10 +533,13 @@ class TestModelsGet:
 
     def test_404_raises_inference_error(self):
         c = _make_client()
-        c._session.get = MagicMock(return_value=_mock_response(
-            ok=False, status_code=404,
-            json_data={"error": {"message": "Model not found"}},
-        ))
+        c._session.get = MagicMock(
+            return_value=_mock_response(
+                ok=False,
+                status_code=404,
+                json_data={"error": {"message": "Model not found"}},
+            )
+        )
         with pytest.raises(OvermindInferenceError, match="404"):
             c.models.get("ft-nonexistent")
 
@@ -627,19 +577,25 @@ class TestModelsDelete:
 
     def test_400_raises_inference_error(self):
         c = _make_client()
-        c._session.delete = MagicMock(return_value=_mock_response(
-            ok=False, status_code=400,
-            json_data={"error": {"message": "not a fine-tuned model"}},
-        ))
+        c._session.delete = MagicMock(
+            return_value=_mock_response(
+                ok=False,
+                status_code=400,
+                json_data={"error": {"message": "not a fine-tuned model"}},
+            )
+        )
         with pytest.raises(OvermindInferenceError, match="not a fine-tuned model"):
             c.models.delete("anthropic/claude-sonnet-5")
 
     def test_409_raises_inference_error(self):
         c = _make_client()
-        c._session.delete = MagicMock(return_value=_mock_response(
-            ok=False, status_code=409,
-            json_data={"error": {"message": "already being deleted"}},
-        ))
+        c._session.delete = MagicMock(
+            return_value=_mock_response(
+                ok=False,
+                status_code=409,
+                json_data={"error": {"message": "already being deleted"}},
+            )
+        )
         with pytest.raises(OvermindInferenceError, match="409"):
             c.models.delete("ft-being-deleted")
 

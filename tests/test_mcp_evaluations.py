@@ -18,6 +18,7 @@ from overbae.models import (
     EvalRun,
     EvalSample,
     EvalSet,
+    EvalSetMember,
     Evaluator,
     EvalVariant,
     Project,
@@ -88,6 +89,62 @@ def _dataset(context: MCPContext, name: str = "Eval") -> Dataset:
     )
     _ok_cell(dataset, intent="eval")
     return dataset
+
+
+def test_readiness_exposes_advisory_context_without_a_new_readiness_gate(monkeypatch):
+    from overbae.services.mcp import tools_evaluations
+
+    context = _context()
+    dataset = _dataset(context)
+    eval_set = EvalSet.objects.create(project=context.project, name="Context checks")
+    evaluator = Evaluator.objects.create(
+        project=context.project,
+        name="Match",
+        kind="deterministic",
+        config={"check": "exact_match"},
+        applicable_roles=["generative"],
+    )
+    EvalSetMember.objects.create(eval_set=eval_set, evaluator=evaluator, role="generative")
+    warning = {
+        "role": "generation",
+        "label": "Candidate",
+        "model": "gpt-4.1",
+        "context_window": 1000,
+        "max_output_tokens": 5000,
+        "estimated_input_tokens": 2000,
+        "reserved_output_tokens": 5000,
+        "required_context": 7000,
+        "checked_rows": 2,
+        "affected_rows": 2,
+        "row_indices": [0, 1],
+        "estimated": True,
+        "status": "warning",
+        "message": "Context may be too small.",
+    }
+    monkeypatch.setattr(tools_evaluations, "check_context", lambda **kwargs: [warning])
+    result = _call(
+        "check_evaluation_readiness",
+        {
+            "dataset": str(dataset.pk),
+            "eval_set": str(eval_set.pk),
+            "mode": "generate",
+            "variants": [{"mode": "generate", "label": "Candidate", "model_name": "gpt-4.1"}],
+        },
+        context,
+    )
+    assert not result.isError
+    assert result.structuredContent["context_checks"] == [
+        {
+            **warning,
+            "total_input_tokens": 0,
+            "configured_model": "",
+            "estimated_cost_usd": None,
+            "cost_basis": "",
+            "suggestions": [],
+            "suggestion_note": "",
+        }
+    ]
+    assert result.structuredContent["ready"] is True
 
 
 def test_catalog_exposes_evaluation_tools_and_hides_writes():
@@ -247,6 +304,50 @@ def test_run_uses_existing_serializer_and_task(monkeypatch):
     assert result.structuredContent["job"]["resource"]["uri"].startswith(
         "overmind://jobs/eval_run/"
     )
+
+
+@pytest.mark.parametrize("selection", ["", "gpt-5.6-luna"])
+def test_run_judge_override_is_frozen_readable_and_project_scoped(monkeypatch, selection):
+    context = _context(permission=["read", "write"])
+    dataset = _dataset(context)
+    evaluator = Evaluator.objects.create(
+        project=context.project,
+        name="Quality",
+        kind="llm_judge",
+        judge_model="gpt-4.1",
+        checklist=[{"id": "correct", "q": "Is the answer correct?"}],
+    )
+    monkeypatch.setattr("overbae.api.credit_gate.require_credits", lambda _user: None)
+    monkeypatch.setattr(
+        "overbae.tasks.eval.run_eval_run.apply_async", lambda **kwargs: SimpleNamespace(id="test")
+    )
+    payload = {
+        "name": "Override",
+        "dataset": str(dataset.pk),
+        "evaluator_ids": [str(evaluator.pk)],
+        "variants": [{"mode": "existing"}],
+        "judge_model": selection,
+    }
+    result = _call("run_evaluation", payload, context)
+    assert not result.isError, result.structuredContent
+    assert json.loads(result.content[0].text) == result.structuredContent
+    run = EvalRun.objects.get(pk=result.structuredContent["run_id"])
+    assert run.judge_model == selection
+    assert run.run_evaluators.get().snapshot["judge_model"] == (selection or "gpt-4.1")
+    evaluator.refresh_from_db()
+    assert evaluator.judge_model == "gpt-4.1"
+    uri = result.structuredContent["resource"]["uri"]
+    with bind_context(context):
+        data = json.loads(asyncio.run(read_resource(uri))[0].content)
+    assert data["judge_model"] == selection
+    assert data["run_evaluators"][0]["judge_model"] == (selection or "gpt-4.1")
+    other = _context(permission=["read", "write"])
+    assert _call("run_evaluation", payload, other).isError
+    with bind_context(other), pytest.raises(McpError):
+        asyncio.run(read_resource(uri))
+    assert EvalRun.objects.count() == 1
+    assert _call("run_evaluation", {**payload, "judge_model": "invalid"}, context).isError
+    assert EvalRun.objects.count() == 1
 
 
 def test_compare_is_typed_and_run_resource_has_progress():

@@ -27,6 +27,13 @@ import {
     EvalRunProgressToJSON,
     EvalRunProgressToJSONTyped,
 } from './EvalRunProgress';
+import type { EvaluationContextCheck } from './EvaluationContextCheck';
+import {
+    EvaluationContextCheckFromJSON,
+    EvaluationContextCheckFromJSONTyped,
+    EvaluationContextCheckToJSON,
+    EvaluationContextCheckToJSONTyped,
+} from './EvaluationContextCheck';
 import type { EvalVariant } from './EvalVariant';
 import {
     EvalVariantFromJSON,
@@ -173,6 +180,27 @@ export interface EvalRun {
     readonly warnings: Array<EvalRunWarning>;
     /**
      *
+     * @type {Array<EvaluationContextCheck>}
+     * @memberof EvalRun
+     */
+    readonly contextChecks: Array<EvaluationContextCheck>;
+    /**
+     * Run-only generative judge override. Blank preserves each saved evaluator's judge.
+     *
+     * * `` -
+     * * `gpt-5.6-luna` - gpt-5.6-luna
+     * * `gpt-5.6-terra` - gpt-5.6-terra
+     * * `claude-sonnet-5` - claude-sonnet-5
+     * * `claude-haiku-4-5` - claude-haiku-4-5
+     * * `gemini-3.1-pro-preview` - gemini-3.1-pro-preview
+     * * `gemini-3.8-flash` - gemini-3.8-flash
+     * * `deepseek-v3.2` - deepseek-v3.2
+     * @type {string}
+     * @memberof EvalRun
+     */
+    judgeModel?: EvalRunJudgeModelEnum;
+    /**
+     *
      * @type {Array<EvalVariant>}
      * @memberof EvalRun
      */
@@ -234,6 +262,21 @@ export interface EvalRun {
 }
 
 
+/**
+ * @export
+ */
+export const EvalRunJudgeModelEnum = {
+    gpt_5_6_luna: 'gpt-5.6-luna',
+    gpt_5_6_terra: 'gpt-5.6-terra',
+    claude_sonnet_5: 'claude-sonnet-5',
+    claude_haiku_4_5: 'claude-haiku-4-5',
+    gemini_3_1_pro_preview: 'gemini-3.1-pro-preview',
+    gemini_3_8_flash: 'gemini-3.8-flash',
+    deepseek_v3_2: 'deepseek-v3.2',
+    empty: ''
+} as const;
+export type EvalRunJudgeModelEnum = typeof EvalRunJudgeModelEnum[keyof typeof EvalRunJudgeModelEnum];
+
 
 /**
  * Check if a given object implements the EvalRun interface.
@@ -250,6 +293,7 @@ export function instanceOfEvalRun(value: object): value is EvalRun {
     if (!('progress' in value) || value['progress'] === undefined) return false;
     if (!('operational' in value) || value['operational'] === undefined) return false;
     if (!('warnings' in value) || value['warnings'] === undefined) return false;
+    if (!('contextChecks' in value) || value['contextChecks'] === undefined) return false;
     if (!('variants' in value) || value['variants'] === undefined) return false;
     if (!('runEvaluators' in value) || value['runEvaluators'] === undefined) return false;
     if (!('triggeredBy' in value) || value['triggeredBy'] === undefined) return false;
@@ -288,6 +332,8 @@ export function EvalRunFromJSONTyped(json: any, ignoreDiscriminator: boolean): E
         'progress': EvalRunProgressFromJSON(json['progress']),
         'operational': ((json['operational'] as Array<any>).map(EvalRunOperationalStatFromJSON)),
         'warnings': ((json['warnings'] as Array<any>).map(EvalRunWarningFromJSON)),
+        'contextChecks': ((json['context_checks'] as Array<any>).map(EvaluationContextCheckFromJSON)),
+        'judgeModel': json['judge_model'] == null ? undefined : json['judge_model'],
         'variants': ((json['variants'] as Array<any>).map(EvalVariantFromJSON)),
         'runEvaluators': ((json['run_evaluators'] as Array<any>).map(RunEvaluatorFromJSON)),
         'evalSet': json['eval_set'] == null ? undefined : json['eval_set'],
@@ -305,7 +351,7 @@ export function EvalRunToJSON(json: any): EvalRun {
     return EvalRunToJSONTyped(json, false);
 }
 
-export function EvalRunToJSONTyped(value?: Omit<EvalRun, 'id'|'capability_id'|'capability_name'|'status'|'error'|'summary'|'progress'|'operational'|'warnings'|'variants'|'run_evaluators'|'triggered_by'|'dataset_name'|'cell_info'|'created_at'|'updated_at'|'completed_at'> | null, ignoreDiscriminator: boolean = false): any {
+export function EvalRunToJSONTyped(value?: Omit<EvalRun, 'id'|'capability_id'|'capability_name'|'status'|'error'|'summary'|'progress'|'operational'|'warnings'|'context_checks'|'variants'|'run_evaluators'|'triggered_by'|'dataset_name'|'cell_info'|'created_at'|'updated_at'|'completed_at'> | null, ignoreDiscriminator: boolean = false): any {
     if (value == null) {
         return value;
     }
@@ -320,6 +366,7 @@ export function EvalRunToJSONTyped(value?: Omit<EvalRun, 'id'|'capability_id'|'c
         'trace_filter': value['traceFilter'],
         'max_items': value['maxItems'],
         'sampling': value['sampling'],
+        'judge_model': value['judgeModel'],
         'eval_set': value['evalSet'],
         'cell': value['cell'],
     };

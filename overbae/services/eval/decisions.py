@@ -28,7 +28,7 @@ SUPPORT_OPTIONS = {
     "contradicted": "The environment evidence contradicts the claim.",
     "insufficient": "The environment evidence neither supports nor contradicts the claim.",
 }
-ADAPTER_VERSION = "decision-adapters@4"
+ADAPTER_VERSION = "decision-adapters@5"
 
 
 class ResolvedAnswer(BaseModel):
@@ -123,6 +123,40 @@ def decision_question(instructions: str, criteria: dict[str, str] | None = None)
     return ChoiceQuestion(
         instructions=EVIDENCE_INSTRUCTIONS + instructions,
         criteria=criteria or VERDICT_OPTIONS,
+    )
+
+
+def categorical(state, *, evaluator, convert, fallback, project_id) -> JudgeOutcome:
+    choices = evaluator.choices or []
+    labels = [str(choice.get("label") or "") for choice in choices]
+    # Checklist verdicts and behaviour diagnosis need more than a category label.
+    if (
+        evaluator.checklist
+        or (evaluator.config or {}).get("behaviour")
+        or not 2 <= len(labels) <= 254
+        or any(not label.strip() for label in labels)
+        or len({label.casefold() for label in labels}) != len(labels)
+    ):
+        return fallback()
+    options = {f"label_{index}": label for index, label in enumerate(labels)}
+    question = decision_question(
+        f"Select the category established by the supplied evidence under this rubric:\n"
+        f"{evaluator.rubric_md}\n"
+        "Template variables refer to state fields. Treat reference/expected_output as the "
+        "answer key, not the input prompt. Choose insufficient if the evidence cannot "
+        "establish a category or the behaviour being evaluated did not occur.",
+        {**options, "insufficient": "The evidence does not establish a category."},
+    )
+    return invoke(
+        state,
+        {"category": question},
+        convert=lambda answers: convert(options[answers["category"].choice]),
+        fallback=fallback,
+        project_id=project_id,
+        workload="eval_categorical",
+        contract="categorical@1",
+        policy=policy_for(evaluator),
+        uncertain_choices=frozenset({"insufficient"}),
     )
 
 
@@ -231,11 +265,15 @@ def invoke(
     combined = merge_stats([decision_stats, outcome.stats])
     combined["response_ms"] = round((time.monotonic() - started) * 1000)
     metadata["total_cost"] = combined.get("response_cost")
-    outcome.stats = {**combined, "decision": metadata}
+    outcome.stats = {
+        **combined,
+        "decision": metadata,
+        **{key: outcome.stats[key] for key in ("judge", "error_kind") if key in outcome.stats},
+    }
     outcome.cached = bool(getattr(outcome, "cached", False) and decision_stats.get("cached"))
     return outcome
 
 
 def provenance(outcome: JudgeOutcome) -> list[dict[str, Any]]:
     metadata = outcome.stats.get("decision")
-    return [{"_decision": metadata}] if metadata else []
+    return ([{"_decision": metadata}] if metadata else []) + funnel.diagnostics(outcome)

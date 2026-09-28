@@ -12,6 +12,7 @@ from django.db.models import Q
 from rest_framework.exceptions import ValidationError as DRFValidationError
 
 from overbae.api.eval_serializers import AnnotationSerializer, EvalRunSerializer, EvalSetSerializer
+from overbae.core.model_registry import judge_picker_models
 from overbae.models import (
     Annotation,
     Capability,
@@ -26,6 +27,8 @@ from overbae.models import (
 from overbae.services.datasets.contract import public_intent
 from overbae.services.eval import binding_check, comparison
 from overbae.services.eval.authored import persist_specs
+from overbae.services.eval.context_check import check_context
+from overbae.services.eval.context_suggestions import judge_model_options
 from overbae.services.eval.eval_set import active_members
 from overbae.services.eval.roles import roles_for_evaluator
 from overbae.services.eval.sanitation import sanitize_authored_text
@@ -218,6 +221,8 @@ def _binding_contract(evaluator: Evaluator, units, mode: str) -> BindingReadines
 def _readiness_sync(
     payload: CheckEvaluationReadinessInput, context: MCPContext
 ) -> CheckEvaluationReadinessOutput:
+    if payload.judge_model and payload.judge_model not in judge_picker_models():
+        raise MCPError("invalid_judge_model", "Select a configured generative judge model.")
     dataset = _resolve_dataset(context, payload.dataset)
     if public_intent(dataset.intent) != Dataset.Intent.EVAL:
         if public_intent(dataset.intent) == Dataset.Intent.PENDING:
@@ -290,9 +295,22 @@ def _readiness_sync(
         else None
     )
     links = [resource_link("datasets", str(dataset.id), dataset.name or "Dataset")]
+    variants = [variant.model_dump() for variant in payload.variants]
+    _validate_variant_refs(context, dataset, variants)
+    context_checks = check_context(
+        dataset=dataset,
+        cell=cell,
+        variants=variants,
+        evaluators=[member.evaluator for member in active_members(eval_set, "generative")]
+        if eval_set and payload.mode == "generate"
+        else [],
+        judge_model=payload.judge_model,
+    )
     return CheckEvaluationReadinessOutput(
         summary="Evaluation is ready." if ready else "Evaluation is not ready.",
         ready=ready,
+        context_checks=context_checks,
+        judge_models=judge_model_options(context_checks),
         dataset=dataset_data,
         eval_set=eval_set_data,
         evaluators=readiness,
@@ -548,6 +566,7 @@ def _run_sync(payload: RunEvaluationInput, context: MCPContext) -> RunEvaluation
         "cell": str(cell.id),
         "max_items": payload.max_items,
         "sampling": payload.sampling,
+        "judge_model": payload.judge_model,
         "variants_input": variants,
     }
     if eval_set is not None:
@@ -758,7 +777,7 @@ def register_evaluation_tools(catalog) -> None:
         (
             "check_evaluation_readiness",
             "Check evaluation readiness",
-            "Inspect an eval dataset, active eval set, evaluator applicability, variable bindings, and credit readiness.",
+            "Inspect dataset, bindings, credits and model/judge context estimates. Context warnings are advisory.",
             CheckEvaluationReadinessInput,
             CheckEvaluationReadinessOutput,
             _readiness_sync,
@@ -771,7 +790,7 @@ def register_evaluation_tools(catalog) -> None:
         (
             "upsert_evaluator",
             "Upsert evaluator",
-            "Create or update a project evaluator. Rubric judges default to generative; config.decision can opt into Jev with confidence fallback after workload validation. judge_model selects the generative judge. Rubric authoring and holistic judgments remain generative.",
+            "Create/update a project evaluator. judge_model selects its generative judge. config.decision opts into Jev with confidence fallback after workload validation. Authoring and holistic judgments stay generative.",
             EvaluatorUpsertInput,
             EvaluatorUpsertOutput,
             _upsert_sync,
@@ -784,7 +803,7 @@ def register_evaluation_tools(catalog) -> None:
         (
             "run_evaluation",
             "Run evaluation",
-            "Create and launch an evaluation run over an eval dataset with the selected evaluators and variants.",
+            "Launch an eval run. Preview context and costs with check_evaluation_readiness.",
             RunEvaluationInput,
             RunEvaluationOutput,
             _run_sync,

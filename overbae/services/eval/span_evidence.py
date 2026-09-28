@@ -9,8 +9,7 @@ from typing import Any
 from overbae.models.traces import is_tool_operation
 from overbae.services.eval import chatml
 
-# Tree plus rubric, messages and grounding context must fit every panel
-# judge's window; ``funnel.fit_prompt`` is the last-resort guard.
+# Trace rendering is bounded separately from the judge's advisory context estimate.
 _NODE_OUT_CAP = 20_000
 _TREE_CHAR_CAP = 240_000
 _UNWRAP_DEPTH = 8

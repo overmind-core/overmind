@@ -5,6 +5,7 @@ when configured). Cached for an hour so the UI never rate-limits upstream.
 """
 
 import logging
+import math
 import os
 
 import requests
@@ -21,8 +22,10 @@ from overbae.core.model_registry import (
 logger = logging.getLogger(__name__)
 
 OPENROUTER_MODELS_URL = "https://openrouter.ai/api/v1/models"
-_CACHE_KEY = "openrouter_model_catalog"
+_CACHE_KEY = "openrouter_model_capabilities"
 _CACHE_TTL_S = 3600
+_FAILURE_CACHE_KEY = "openrouter_model_catalog_unavailable"
+_FAILURE_TTL_S = 60
 _REQUEST_TIMEOUT_S = 15
 
 # Slugs that map 1:1 onto our curated BASE_MODELS / SUPPORTED_LLM_MODELS.
@@ -35,7 +38,7 @@ def _per_million(raw: object) -> float | None:
         value = float(raw)  # type: ignore[arg-type]
     except (TypeError, ValueError):
         return None
-    if value < 0:
+    if not math.isfinite(value) or value < 0:
         return None
     return round(value * 1_000_000, 6)
 
@@ -73,6 +76,8 @@ def _trim_entry(entry: dict) -> dict | None:
         "name": entry.get("name") or slug,
         "provider": slug.split("/", 1)[0],
         "context_length": entry.get("context_length"),
+        "max_completion_tokens": (entry.get("top_provider") or {}).get("max_completion_tokens"),
+        "supported_parameters": entry.get("supported_parameters") or [],
         "prompt_price": _per_million(pricing.get("prompt")),
         "completion_price": _per_million(pricing.get("completion")),
         "cache_read_price": _per_million(pricing.get("input_cache_read")),
@@ -82,11 +87,14 @@ def _trim_entry(entry: dict) -> dict | None:
 
 def fetch_model_catalog() -> tuple[list[dict], bool]:
     """Return ``(models, upstream_available)``; never raises. On upstream failure the
-    list is empty, ``upstream_available`` is False and nothing is cached.
+    list is empty and ``upstream_available`` is False. A short failure cache
+    avoids adding a catalog timeout to every evaluation request during an outage.
     """
     cached = cache.get(_CACHE_KEY)
     if cached is not None:
         return cached, True
+    if cache.get(_FAILURE_CACHE_KEY):
+        return [], False
 
     headers = {}
     api_key = os.environ.get("OPENROUTER_API_KEY")
@@ -99,11 +107,13 @@ def fetch_model_catalog() -> tuple[list[dict], bool]:
         payload = response.json()
     except (requests.RequestException, ValueError) as exc:
         logger.warning("OpenRouter model catalog fetch failed: %s", exc)
+        cache.set(_FAILURE_CACHE_KEY, True, _FAILURE_TTL_S)
         return [], False
 
     entries = payload.get("data") if isinstance(payload, dict) else None
     if not isinstance(entries, list):
         logger.warning("OpenRouter model catalog returned unexpected payload shape")
+        cache.set(_FAILURE_CACHE_KEY, True, _FAILURE_TTL_S)
         return [], False
 
     models = sorted(

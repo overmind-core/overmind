@@ -195,7 +195,7 @@ def _model_spec_client_and_name(spec: ModelSpec) -> tuple[OpenAI, str, str]:
     return _openrouter_client(), slug, "openrouter"
 
 
-def _effective_max_tokens(model_name: str, max_tokens: int) -> int:
+def effective_max_tokens(model_name: str, max_tokens: int = 5000) -> int:
     """``max_tokens`` stays the caller's intended visible-output size; reasoning
     models get extra room so hidden reasoning cannot starve the answer.
     """
@@ -359,6 +359,10 @@ def _extract_llm_response(response) -> tuple[str, dict]:
 
     usage = getattr(response, "usage", None)
     stats: dict = {
+        "provider_request_id": getattr(response, "id", None),
+        "reasoning_tokens": getattr(
+            getattr(usage, "completion_tokens_details", None), "reasoning_tokens", None
+        ),
         "finish_reason": getattr(response.choices[0], "finish_reason", None),
         "prompt_tokens": _usage_value(usage, "prompt_tokens"),
         "completion_tokens": _usage_value(usage, "completion_tokens"),
@@ -492,7 +496,7 @@ def call_llm(
             completion_kwargs = {
                 "model": selected_model,
                 "messages": messages,
-                "max_tokens": _effective_max_tokens(selected_model_name, max_tokens),
+                "max_tokens": effective_max_tokens(selected_model_name, max_tokens),
             }
             if "max_tokens" in request_kwargs:
                 cap = request_kwargs.pop("max_tokens")
@@ -529,7 +533,7 @@ def call_llm(
         completion_kwargs: dict = {
             "model": selected_model,
             "messages": messages,
-            "max_tokens": _effective_max_tokens(selected_model_name, max_tokens),
+            "max_tokens": effective_max_tokens(selected_model_name, max_tokens),
             "extra_body": {"usage": {"include": True}},
         }
         formatted_response = _response_format_param(response_format)
@@ -538,6 +542,12 @@ def call_llm(
 
         if tools:
             completion_kwargs["tools"] = tools
+
+        if "max_tokens" in request_kwargs:
+            completion_kwargs["max_tokens"] = request_kwargs["max_tokens"]
+            request_kwargs = {
+                key: value for key, value in request_kwargs.items() if key != "max_tokens"
+            }
 
         reasoning_body = _reasoning_extra_body(
             selected_model_name,
@@ -595,7 +605,7 @@ def _tool_completion_kwargs(
     completion_kwargs: dict = {
         "model": selected,
         "messages": messages if provider.openrouter_extras else _portable_messages(messages),
-        provider.output_cap_param: _effective_max_tokens(selected_model_name, max_tokens),
+        provider.output_cap_param: effective_max_tokens(selected_model_name, max_tokens),
     }
     # An empty tools array is a 400 on some providers.
     if tools:

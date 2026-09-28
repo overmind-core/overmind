@@ -63,7 +63,9 @@ vi.mock("@tanstack/react-router", () => ({ Link: () => null, useNavigate: () => 
 // vitest's node resolver.
 vi.mock("@/components/model-provider-chip", () => ({
   getModelProviderInfo: (id: string) => ({ id, modelLabel: id, providerLabel: id }),
+  getProviderIcon: () => undefined,
   ModelProviderChip: () => null,
+  ProviderLogo: () => null,
 }));
 
 // `useDebouncedValue` is deliberately NOT mocked: the mount guard below holds
@@ -205,7 +207,7 @@ describe("JobsHistory filters", () => {
     renderHistory({ ft_model: "mistral/retired-7b" });
 
     expect(document.querySelector("[data-value='mistral/retired-7b']")?.textContent).toBe(
-      "Unknown model"
+      "Retired 7B"
     );
   });
 });

@@ -7,11 +7,7 @@ import {
   eligibleModelSwapJobs,
   hasInProgressModelSwapJobs,
 } from "@/components/finetuning/eligible-model-swap-jobs";
-import {
-  getModelProviderInfo,
-  getProviderIcon,
-  ProviderLogo,
-} from "@/components/model-provider-chip";
+import { ModelOptionLabel } from "@/components/model-option-label";
 import { Alert } from "@/components/ui/alert";
 import { useCopy } from "@/components/ui/block-actions";
 import { Button } from "@/components/ui/button";
@@ -215,22 +211,11 @@ export function CopyModelSwapPromptButton({
         <DropdownMenuContent align="end">
           <DropdownMenuLabel>Pick a model</DropdownMenuLabel>
           <DropdownMenuSeparator />
-          {eligibleJobs.map((job) => {
-            const info = getModelProviderInfo(job.baseModel);
-            return (
-              <DropdownMenuItem key={job.id} onSelect={() => openPrompt(job.id)}>
-                <ProviderLogo
-                  Icon={getProviderIcon(info.id)}
-                  providerLabel={info.providerLabel}
-                  providerSlug={info.providerSlug}
-                />
-                <span className="shrink-0 text-xs font-medium">{info.providerLabel}</span>
-                <span className="min-w-0 truncate text-xs text-muted-foreground">
-                  {info.modelLabel}
-                </span>
-              </DropdownMenuItem>
-            );
-          })}
+          {eligibleJobs.map((job) => (
+            <DropdownMenuItem key={job.id} onSelect={() => openPrompt(job.id)}>
+              <ModelOptionLabel model={job.baseModel} />
+            </DropdownMenuItem>
+          ))}
         </DropdownMenuContent>
       </DropdownMenu>
       {dialog}

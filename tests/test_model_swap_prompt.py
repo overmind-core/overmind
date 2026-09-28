@@ -127,15 +127,6 @@ def test_model_swap_prompt_rejects_non_succeeded():
     assert "successfully" in resp.json()["detail"].lower()
 
 
-def test_model_swap_prompt_rejects_missing_model():
-    project, user, dataset, capability = _setup()
-    job = _make_job(project, dataset, output_model_name="", capability=capability)
-
-    resp = _get(_auth_client(user), job)
-    assert resp.status_code == 400
-    assert "no deployed model" in resp.json()["detail"]
-
-
 def test_model_swap_prompt_rejects_unready_deployment():
     project, user, dataset, capability = _setup()
     job = _make_job(project, dataset, capability=capability)

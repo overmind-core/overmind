@@ -7,7 +7,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from overmind.optimizer import OptimiseLoop, command_template_prompt
+from overmind.optimizer import OptimiseLoop
 from overmind.optimizer_api import (
     TOKENS,
     _new_traceparent,
@@ -211,12 +211,6 @@ def test_next_action_keeps_iterating_below_plateau(tmp_path):
     )
     action = loop.next_action()
     assert action["action"] == "WRITE_CANDIDATES"
-
-
-def test_command_template_prompt_keeps_tokens():
-    prompt = command_template_prompt(capability_name="picker")
-    assert "__DATAPOINT_INPUT__" in prompt
-    assert "overmind optimise set-template" in prompt
 
 
 def test_add_candidate_diff_queues_locally(tmp_path):

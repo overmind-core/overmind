@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
-import { useQueries } from "@tanstack/react-query";
+import { useQueries, useQuery } from "@tanstack/react-query";
 
 import apiClient from "@/client";
 import {
@@ -38,6 +38,7 @@ import { isPaymentRequired } from "@/lib/credits";
 import { errorMessage } from "@/lib/notify";
 import type {
   DatasetValidationResponse,
+  EvaluationContextRequestRequest,
   FinetuningEstimateResponse,
   FinetuningExperiment,
   FinetuningJobRequest,
@@ -98,6 +99,9 @@ export function useTrainWizard({
   const [validating, setValidating] = useState(false);
   const [evalDatasetId, setEvalDatasetId] = useState(initialEvalDatasetId ?? "");
   const [evalSetId, setEvalSetId] = useState("");
+  const [judgeChoice, setJudgeChoice] = useState<{ setId: string; model: string } | null>(null);
+  const judgeModel = judgeChoice?.setId === evalSetId ? judgeChoice.model : "";
+  const setJudgeModel = (model: string) => setJudgeChoice({ model, setId: evalSetId });
   const [evaluationOverrides, setEvaluationOverrides] = useState<Partial<EvaluationPlan>>({});
   const [benchmarkChoice, setBenchmarkChoice] = useState<string | null>(null);
   const [drafts, setDrafts] = useState<ModelDraft[]>([]);
@@ -117,13 +121,16 @@ export function useTrainWizard({
   );
   const capability = capabilities.find((a) => a.id === capabilityId);
   const benchmarksQuery = useTrainingBenchmarksQuery(projectId);
-  const benchmarkOptions = useMemo(() => {
+  const benchmarkOptions = useMemo<
+    { kind: string; label: string; value: string; baseModelId?: string }[]
+  >(() => {
     const incumbent = capability?.model?.trim();
     return [
       ...(incumbent ? [{ kind: "Codebase incumbent", label: incumbent, value: incumbent }] : []),
       ...(benchmarksQuery.data ?? [])
         .filter((model) => model.modelId !== incumbent)
         .map((model) => ({
+          baseModelId: model.baseModelId || undefined,
           kind: "Trained model",
           label: `${model.finetuningJobName || model.modelId}${model.baseModelId ? ` · ${model.baseModelId}` : ""}`,
           value: model.modelId,
@@ -325,6 +332,52 @@ export function useTrainWizard({
     [drafts, deselected]
   );
 
+  const contextModels = [
+    ...(evaluationPlan.evalModelBefore || evaluationPlan.evalModelAfter
+      ? selectedDrafts.map((draft) => draft.model)
+      : []),
+    ...(evaluationPlan.evalIncumbentBefore || evaluationPlan.evalIncumbentAfter
+      ? [benchmarkModel]
+      : []),
+  ];
+  const contextOutput = candidateByModel.get(selectedDrafts[0]?.model)?.servingContext
+    ?.outputTokens;
+  const contextVariants = contextModels.map((model) => ({
+    label:
+      candidateByModel.get(model)?.displayName ??
+      benchmarkOptions.find((option) => option.value === model)?.label ??
+      model,
+    modelName: model,
+    outputTokens: candidateByModel.get(model)?.servingContext?.outputTokens ?? contextOutput,
+  }));
+  const contextQuery = useQuery({
+    enabled: Boolean(evalDatasetId && evalSetId && Object.values(evaluationPlan).some(Boolean)),
+    queryFn: () =>
+      apiClient.evalRuns.evalRunsContextCheckCreate({
+        evaluationContextRequestRequest: {
+          capability: capabilityId || null,
+          dataset: evalDatasetId,
+          evalSet: evalSetId,
+          judgeModel: judgeModel as EvaluationContextRequestRequest["judgeModel"],
+          project: projectId,
+          variants: contextVariants,
+        },
+      }),
+    queryKey: [
+      "evaluation-context",
+      projectId,
+      evalDatasetId,
+      evalDataset?.updatedAt,
+      evalSetId,
+      evalSet?.updatedAt,
+      judgeModel,
+      capabilityId,
+      contextVariants,
+    ],
+    retry: false,
+    staleTime: 60_000,
+  });
+
   const toggleSelected = useCallback((draftId: string) => {
     setDeselected((prev) => {
       const next = new Set(prev);
@@ -476,6 +529,7 @@ export function useTrainWizard({
           capability: capabilityId || null,
           dataset: datasetId,
           evalDataset: evalDatasetId,
+          evalJudgeModel: judgeModel as FinetuningJobRequest["evalJudgeModel"],
           evalSet: evalSetId,
           ...evaluationPlan,
           groupId,
@@ -512,6 +566,7 @@ export function useTrainWizard({
     evalDatasetId,
     evalSetId,
     evaluationPlan,
+    judgeModel,
     groupId,
     onLaunched,
     projectId,
@@ -520,6 +575,7 @@ export function useTrainWizard({
   ]);
 
   const dirty =
+    Boolean(judgeModel) ||
     benchmarkChoice !== null ||
     Object.keys(evaluationOverrides).length > 0 ||
     datasetId !== (initialDatasetId ?? "") ||
@@ -541,6 +597,7 @@ export function useTrainWizard({
     capabilityId,
     catalog,
     catalogModelById,
+    contextQuery,
     dataReady,
     dataset,
     datasetId,
@@ -561,6 +618,7 @@ export function useTrainWizard({
     evaluationPlan,
     excluded,
     hasIncumbent,
+    judgeModel,
     launch,
     launchBlocker,
     launchError,
@@ -579,6 +637,7 @@ export function useTrainWizard({
     setEvalDatasetId,
     setEvalSetId,
     setEvaluationChoice,
+    setJudgeModel,
     setRunName: (value: string) => {
       setRunNameDirty(true);
       setRunName(value);

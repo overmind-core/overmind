@@ -139,6 +139,7 @@ class FinetuningJob(models.Model):
         related_name="finetuning_jobs",
     )
     eval_incumbent_before = models.BooleanField(default=False)
+    eval_judge_model = models.CharField(max_length=255, blank=True, default="")
     eval_incumbent_after = models.BooleanField(default=False)
     eval_model_before = models.BooleanField(default=True)
     eval_model_after = models.BooleanField(default=True)

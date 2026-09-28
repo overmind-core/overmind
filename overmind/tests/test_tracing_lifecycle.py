@@ -21,7 +21,6 @@ from overmind.tracing import (
     capture_exception,
     force_flush_traces,
     get_api_settings,
-    set_conversation_id,
     set_tag,
     set_user,
     set_workflow_name,
@@ -88,13 +87,6 @@ class TestContextHelpers:
         set_workflow_name("checkout-flow")
         mock_set_value.assert_called_once()
         assert "checkout-flow" in mock_set_value.call_args.args
-        mock_attach.assert_called_once()
-
-    @patch("overmind.tracing.attach")
-    @patch("overmind.tracing.set_value", side_effect=lambda key, value: (key, value))
-    def test_set_conversation_id_attaches(self, mock_set_value, mock_attach):
-        set_conversation_id("conv-123")
-        assert "conv-123" in mock_set_value.call_args.args
         mock_attach.assert_called_once()
 
 
