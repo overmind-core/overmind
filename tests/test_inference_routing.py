@@ -264,29 +264,24 @@ def test_call_llm_attaches_adapter_routing_headers_for_lora_deploy():
     assert header_items[LORA_RANK_HEADER] == "16"
 
 
-def test_worker_cls_name_default_and_muse():
+def test_worker_cls_name_default():
     assert worker_cls_name("A100-80GB") == "A10080GB_vllm"
-    assert worker_cls_name("A100-80GB", "muse_glimmer") == "A10080GB_muse_glimmer"
-    assert worker_cls_name("H200", "muse_glimmer") == "H200_muse_glimmer"
     with pytest.raises(ValueError, match="serve_image"):
-        worker_cls_name("L4", "muse_glimmer")
-    with pytest.raises(ValueError, match="serve_image"):
-        worker_cls_name("B300", "muse_glimmer")
+        worker_cls_name("A100-80GB", "muse_glimmer")
 
 
-def test_resolve_inference_url_muse_class():
+def test_resolve_inference_url_vllm_class():
     url = resolve_inference_url(
         gpu_type="A100-80GB",
         model_path="/weights/ft-muse",
         model_name="ft-muse",
         max_model_len=8192,
         environment="overmind-dev",
-        serve_image="muse_glimmer",
     )
-    assert "a10080gb-muse-glimmer" in url
+    assert "a10080gb-vllm" in url
 
 
-def test_inference_client_sends_muse_serve_image_header():
+def test_inference_client_omits_serve_image_header_for_muse():
     deployed = DeployedModel.objects.create(
         project=_project(),
         model_id=f"ft-muse-{uuid.uuid4().hex[:8]}",
@@ -307,7 +302,7 @@ def test_inference_client_sends_muse_serve_image_header():
             deployed=deployed,
         )
     headers = post.call_args.kwargs["headers"]
-    assert headers[SERVE_IMAGE_HEADER] == "muse_glimmer"
+    assert SERVE_IMAGE_HEADER not in headers
 
 
 @pytest.mark.parametrize(

@@ -19,7 +19,7 @@ class FamilySpec:
     patterns: tuple[str, ...]
     # Modal/Baseten Unsloth image key — frozen stack id in modal_shared.stacks.
     train_image: str = "u2026_8_18"
-    # Serve image key: "vllm" (CUDA+pypi pin) or a docker-backed key (e.g. "muse_glimmer").
+    # Serve image key. Every family uses "vllm" (vllm/vllm-openai:v0.30.0).
     serve_image: str = "vllm"
     trust_remote_code: bool = False
     # Antares/Granite MoE hybrid — skip Unsloth for_inference / use_cache.

@@ -5,7 +5,7 @@ from __future__ import annotations
 import modal
 
 from modal_shared.images import attach_modelfam, attach_serving_args
-from modal_shared.stacks import SERVE_MUSE_GLIMMER, SERVE_VLLM
+from modal_shared.stacks import SERVE_VLLM
 
 _SERVE_ENV = {
     # Container-local. Serving resolves every model by path — a merged checkpoint, or an adapter
@@ -52,34 +52,20 @@ def _from_vllm_openai(tag: str, *extra_pip: str, snapshot: bool = False) -> moda
     )
 
 
-# amd64 digest sha256:c2f3b1b964e47809b722b5e75b61b1e7b39a50f70388cf2bf2418f16a9f31da2
-# transformers<5.15: 5.15+ treats Gemma 4 head_dim as per-layer and vLLM 0.27.1
-# dies in ModelConfig (AmbiguousGlobalPerLayerAttributeError). Upstream fix is
-# vLLM #49797, not in 0.27.1 — new tag = new SERVE_IMAGES key, never retag vllm.
-_VLLM_TAG = "v0.27.1"
-vllm_image = _from_vllm_openai(_VLLM_TAG, "transformers>=5.10.2,<5.15")
-# amd64 digest sha256:8151766297ea77f37d7378ba182aa16870b3f8eb5740a740846dd16d1dc4fa05
-# Nightly pinned to a commit, not the "v0.28.0" release tag: v0.28.0 merges
-# official Muse Glimmer support (vLLM #51655) but its muse_glimmer.py predates
-# the LoRA multimodal-module-mapping fix (vLLM #53513, merged 2026-08-24) —
-# --enable-lora still crashes at startup profiling (AssertionError in
-# lora_shrink_op, vLLM #53254) on that tag despite reporting version "0.28.0".
-# This nightly (built 2026-08-26 off main commit 46638857) has get_mm_mapping()
-# present — verified by importing vllm.model_executor.models.muse_glimmer in
-# the image. Retag to a numbered release once one ships with the fix.
-_MUSE_TAG = "cu129-nightly-46638857fdbb30e0c232c9e8f9cb1ff6d6f545c3"
-vllm_muse_glimmer_image = _from_vllm_openai(_MUSE_TAG)
+# CUDA 13.0. Modal's host driver is 580 / CUDA 13.0. Do not pip-downgrade
+# transformers: 0.30.0 ships 5.16.1, and Gemma 4 head_dim (#49797) plus Muse
+# LoRA get_mm_mapping (#53513) both need this release.
+_VLLM_TAG = "v0.30.0"
+vllm_image = _from_vllm_openai(_VLLM_TAG)
 
 SERVE_IMAGES: dict[str, modal.Image] = {
     SERVE_VLLM: vllm_image,
-    SERVE_MUSE_GLIMMER: vllm_muse_glimmer_image,
 }
 
 # The snapshot reader uses a version-specific pinned-buffer allocation site.
 # Keep these images separate from the unchanged full-checkpoint stacks.
 LORA_SERVE_IMAGES = {
-    SERVE_VLLM: _from_vllm_openai(_VLLM_TAG, "transformers>=5.10.2,<5.15", snapshot=True),
-    SERVE_MUSE_GLIMMER: _from_vllm_openai(_MUSE_TAG, snapshot=True),
+    SERVE_VLLM: _from_vllm_openai(_VLLM_TAG, snapshot=True),
 }
 
 # Needs modal_shared too: modal_vllm_worker.py top-level-imports it regardless

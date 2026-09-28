@@ -60,8 +60,8 @@ def test_catalog_unsloth_image_matches_family() -> None:
 
 def test_worker_cls_table() -> None:
     assert GPU_CLASS_MAP["L4"] == "L4_vllm"
-    assert SERVE_CLASS_MAP[("A100-80GB", "muse_glimmer")] == "A10080GB_muse_glimmer"
-    assert worker_cls_name("H200", "muse_glimmer") == "H200_muse_glimmer"
+    assert SERVE_CLASS_MAP == {}
+    assert worker_cls_name("H200") == "H200_vllm"
     assert set(GPU_TIER) == {gpu for gpu, image in WORKER_CLS if image == "vllm"}
     for gpu, image in WORKER_CLS:
         assert gpu in GPU_TIER

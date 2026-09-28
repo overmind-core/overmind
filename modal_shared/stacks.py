@@ -76,22 +76,15 @@ def train_function_name(stack_or_alias: str | None) -> str:
 
 
 # --- serve stacks (FamilySpec.serve_image / routing headers) ---------------
-# Public keys stay vllm / muse_glimmer — they are on the wire. New vLLM tag
-# = new key (vllm_0_28, …). Never retag `vllm` in place.
+# One image. v0.30.0 has Muse Glimmer (#51655) and the LoRA mapping fix
+# (#53513), so Muse no longer needs its own tag.
 
 SERVE_VLLM = "vllm"
-SERVE_MUSE_GLIMMER = "muse_glimmer"
 
-SERVE_STACKS: tuple[str, ...] = (SERVE_VLLM, SERVE_MUSE_GLIMMER)
+SERVE_STACKS: tuple[str, ...] = (SERVE_VLLM,)
 
 SERVE_STACK_PINS: dict[str, str] = {
-    SERVE_VLLM: (
-        "vllm/vllm-openai:v0.27.1 + transformers>=5.10.2,<5.15 + runai-model-streamer>=0.15.7"
-    ),
-    SERVE_MUSE_GLIMMER: (
-        "vllm/vllm-openai:cu129-nightly-46638857fdbb30e0c232c9e8f9cb1ff6d6f545c3"
-        " + runai-model-streamer>=0.15.7"
-    ),
+    SERVE_VLLM: "vllm/vllm-openai:v0.30.0 + runai-model-streamer>=0.15.7",
 }
 
 # (gpu_type, serve_image) pairs we deploy. Cls name is ``{gpu}_{serve_image}``
@@ -104,9 +97,6 @@ WORKER_ALLOWED: frozenset[tuple[str, str]] = frozenset(
         ("H200", SERVE_VLLM),
         ("B200", SERVE_VLLM),
         ("B300", SERVE_VLLM),
-        ("A100-80GB", SERVE_MUSE_GLIMMER),
-        ("H200", SERVE_MUSE_GLIMMER),
-        ("B200", SERVE_MUSE_GLIMMER),
     }
 )
 

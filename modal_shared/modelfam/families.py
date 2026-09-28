@@ -65,8 +65,6 @@ MUSE_GLIMMER = FamilySpec(
     key="muse_glimmer",
     patterns=("muse-glimmer", "muse_glimmer"),
     train_image=TRAIN_U2026_8_TF515,
-    # Not in vLLM 0.26 wheels — dedicated docker tag, not the default CUDA+pypi image.
-    serve_image="muse_glimmer",
     tool_call_parser="muse_glimmer",
     reasoning_parser="muse_glimmer",
     # Template defaults to "Reasoning strength: high" and cannot be switched
@@ -88,9 +86,8 @@ MUSE_GLIMMER = FamilySpec(
     multimodal_id_tokens=("muse-glimmer", "muse_glimmer"),
     notes=(
         "Meta Muse Glimmer multimodal agentic; FastModel; LoRA-only; dedicated u2026_8_tf515 "
-        "train image + vllm/vllm-openai:cu129-nightly-46638857... serve image — the numbered "
-        "v0.28.0 release predates the LoRA multimodal-mapping fix (vLLM #53513); this pinned "
-        "nightly commit has it. Retag to a numbered release once one ships with the fix."
+        "train image. Serves on the shared vLLM image — v0.30.0 has the LoRA "
+        "multimodal-mapping fix (vLLM #53513)."
     ),
     hooks_module="families.muse_glimmer",
 )
