@@ -46,6 +46,7 @@ from overbae.models import (
 from overbae.services.billing_ledger import InsufficientCredits, charge_credits, ensure_credits
 from overbae.services.deployed_chat import is_cold_start, record_inference_call
 from overbae.services.inference_client import (
+    CONTEXT_BUDGET_MESSAGE,
     ContextBudgetError,
     InferenceClient,
     InferenceClientError,
@@ -616,7 +617,9 @@ def chat_completions(request: Request) -> Response | StreamingHttpResponse:
                     else "server_error"
                 )
                 message = (
-                    str(exc) if isinstance(exc, ContextBudgetError) else "Inference backend error."
+                    CONTEXT_BUDGET_MESSAGE
+                    if isinstance(exc, ContextBudgetError)
+                    else "Inference backend error."
                 )
                 yield (
                     "data: "
@@ -689,7 +692,9 @@ def chat_completions(request: Request) -> Response | StreamingHttpResponse:
             )
             held["result"] = {
                 "error": {
-                    "message": str(exc) if context_error else "Inference backend error.",
+                    "message": CONTEXT_BUDGET_MESSAGE
+                    if context_error
+                    else "Inference backend error.",
                     "type": held["error_code"],
                     "request_id": str(request_id),
                 }

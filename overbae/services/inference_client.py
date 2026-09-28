@@ -25,6 +25,12 @@ class InferenceClientError(Exception):
     pass
 
 
+CONTEXT_BUDGET_MESSAGE = (
+    "The input and reserved output exceed the deployed context. "
+    "Reduce the request or redeploy with a larger serving context."
+)
+
+
 class ContextBudgetError(InferenceClientError):
     pass
 
@@ -151,10 +157,7 @@ class InferenceClient:
                     "max_completion_tokens",
                 )
             ):
-                raise ContextBudgetError(
-                    "The input and reserved output exceed the deployed context. "
-                    "Reduce the request or redeploy with a larger serving context."
-                )
+                raise ContextBudgetError(CONTEXT_BUDGET_MESSAGE)
             raise InferenceClientError(
                 f"InferenceAPIServer returned {resp.status_code}: {resp.text[:400]}"
             )
