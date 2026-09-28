@@ -9,6 +9,7 @@ from typing import Any
 from overmind.chassis import stamp_capability_cards
 from overmind.config import Capability, Config, EvalMetric, dump, ensure_project_name, load
 from overmind.enrich import enrich_analysis
+from overmind.repository_snapshot import finish_repository_scan
 
 
 def _slug_of(raw: dict[str, Any], fallback: str = "") -> str:
@@ -94,6 +95,7 @@ def convert_json_to_toml(
     if toml_path.exists():
         base = load(toml_path)
     config = analysis_json_to_config(data, base=base)
+    config.repository_snapshot = finish_repository_scan(Path(root))
     ensure_project_name(config, toml_path)
     dump(config, toml_path)
     return config

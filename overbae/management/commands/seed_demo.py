@@ -609,6 +609,15 @@ class Command(BaseCommand):
 
         snapshot = {
             "project_id": str(project.id),
+            "repository_snapshot": {
+                "repository": "ledgerline/support-copilot",
+                "directory": ".",
+                "branch": "main",
+                "commit": SHA,
+                "dirty": False,
+                "fingerprint": hashlib.sha256(SHA.encode()).hexdigest(),
+                "scanned_at": days_ago(0.1).isoformat(),
+            },
             "version": SHA[:12],
             "repo_summary": project.settings["repo_summary"],
             "trace_provider": "sdk",
@@ -1249,6 +1258,8 @@ class Command(BaseCommand):
         eval_tasks.sync_card_evaluators_task.delay = lambda **kwargs: None
         eval_tasks.preload_capability_eval_set.delay = lambda **kwargs: None
         sync_service.apply_snapshot(project, snapshot)
+        project.settings["last_synced_at"] = days_ago(0.1).isoformat()
+        project.save(update_fields=["settings"])
 
         triage_capability = Capability.objects.get(pk=TRIAGE_ID)
         kb_capability = Capability.objects.get(pk=KB_ID)

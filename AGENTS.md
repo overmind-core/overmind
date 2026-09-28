@@ -28,6 +28,8 @@ Each line is the invariant; the named skill section carries the mechanics.
 
 - Tracing is **span-only**: no Trace table; a trace = spans sharing `trace_id`; the root span has `parent_span_id IS NULL`. OTLP ingest at `POST /api/v1/traces`.
 
+- Repository provenance belongs to the scan: `overmind chassis` records the checkout, conversion verifies it is unchanged, and sync preserves it with a separate server sync time. The Agent header and MCP project resource identify that snapshot; missing provenance stays unknown. Detail: backend-architecture § Capabilities and sync.
+
 - The agent is the project itself: one graph per project, no table. `Capability` rows are its nodes (UI: "Capability"; the sidebar's "Agent" is the product). Ingest never creates a capability, and wire identity is `overmind.capability.id` alone. A scan never deletes; an absent capability becomes `status=leftover`, and `DELETE` is a soft delete. Capability discovery runs locally: `/overmind setup` builds the `overmind chassis` digest and runs the Cursor scan, writes `overmind.toml`, and `overmind sync` uploads it. Convert fills prompt spans, drops fabricated anchors and unverifiable provenance, then stamps `trajectory_map[].verified` against the AST chassis. Sync enqueues the Default-set preload: the Tier-0 card compiler, Tier-1 generative LLM judges, and the behaviour task/step judges for trace_scoring. Detail: backend-architecture § Capabilities and sync.
 
 - Scoring is behaviour-keyed: the scan mints `Behaviour`/`BehaviourVersion` contracts, trace scoring carves units, binds each as a `TaskExecution` and writes `Verdict` rows. Detail: backend-architecture § Scoring.

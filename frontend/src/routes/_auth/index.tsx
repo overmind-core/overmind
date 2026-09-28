@@ -12,6 +12,7 @@ import {
   ProjectRequiredEmptyState,
 } from "@/components/project-required-empty-state";
 import { QuickstartEmbed } from "@/components/quickstart/quickstart-embed";
+import { RepositorySnapshot } from "@/components/repository-snapshot";
 import { Alert } from "@/components/ui/alert";
 import { PageHeader } from "@/components/ui/page-header";
 import { PageShell } from "@/components/ui/page-shell";
@@ -21,16 +22,18 @@ import { setStoredProjectId } from "@/hooks/use-project-search-sync";
 import { useProjectsList } from "@/hooks/use-projects";
 import { getGuestProjectId } from "@/lib/guest";
 import { errorMessage } from "@/lib/notify";
-import type { CapabilityList } from "@/openapi";
+import type { AgentGraph, CapabilityList } from "@/openapi";
 
 export const Route = createFileRoute("/_auth/")({
   component: AgentPage,
 });
 
-function AgentHeader() {
+function AgentHeader({ graph }: { graph?: AgentGraph }) {
   return (
     <header className="space-y-3">
       <PageHeader
+        actions={graph && <RepositorySnapshot graph={graph} />}
+        className="flex-col sm:flex-row sm:flex-wrap [&>div:last-child]:max-w-full [&>div:last-child]:min-w-0"
         description="Capabilities, prompts, tools and evals."
         icon={
           <img
@@ -46,19 +49,17 @@ function AgentHeader() {
   );
 }
 
-function CapabilitiesSection() {
-  const { projectId } = Route.useSearch();
-
-  const {
-    data: graph,
-    isLoading,
-    error,
-  } = useQuery({
-    enabled: !!projectId,
-    queryFn: () => apiClient.agent.agentRetrieve({ project: projectId! }),
-    queryKey: ["agent-graph", projectId],
-  });
-
+function CapabilitiesSection({
+  graph,
+  isLoading,
+  error,
+  projectId,
+}: {
+  graph?: AgentGraph;
+  isLoading: boolean;
+  error: Error | null;
+  projectId: string;
+}) {
   const capabilities: CapabilityList[] = graph?.capabilities ?? [];
 
   if (isLoading) {
@@ -93,6 +94,12 @@ function CapabilitiesSection() {
 function AgentPage() {
   const navigate = Route.useNavigate();
   const search = Route.useSearch();
+  const graphQuery = useQuery({
+    enabled: !!search.projectId,
+    queryFn: () => apiClient.agent.agentRetrieve({ project: search.projectId! }),
+    queryKey: ["agent-graph", search.projectId],
+    refetchInterval: 30_000,
+  });
   const { isGuest } = useAuthContext();
   const {
     data: projectsData,
@@ -184,8 +191,13 @@ function AgentPage() {
   }
 
   return (
-    <PageShell header={<AgentHeader />} variant="scroll">
-      <CapabilitiesSection />
+    <PageShell header={<AgentHeader graph={graphQuery.data} />} variant="scroll">
+      <CapabilitiesSection
+        error={graphQuery.error}
+        graph={graphQuery.data}
+        isLoading={graphQuery.isLoading}
+        projectId={search.projectId}
+      />
       {createProjectDialog}
     </PageShell>
   );

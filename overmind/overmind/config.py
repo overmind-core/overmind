@@ -75,6 +75,7 @@ class Config:
     repo_summary: str = ""
     trace_provider: str = "overmind"
     version: str = "0.2.1"
+    repository_snapshot: dict[str, Any] | None = None
     capabilities: dict[str, Capability] = field(default_factory=dict)
 
     def to_snapshot(self) -> dict:
@@ -105,6 +106,7 @@ class Config:
             "repo_summary": self.repo_summary,
             "trace_provider": self.trace_provider,
             "version": self.version,
+            "repository_snapshot": self.repository_snapshot,
             "capabilities": capabilities,
         }
 
@@ -114,6 +116,7 @@ class Config:
         self.repo_summary = snapshot.get("repo_summary", self.repo_summary) or ""
         self.trace_provider = snapshot.get("trace_provider", self.trace_provider) or "overmind"
         self.version = snapshot.get("version", self.version) or self.version
+        self.repository_snapshot = snapshot.get("repository_snapshot") or None
         caps: dict[str, Capability] = {}
         for raw in snapshot.get("capabilities") or []:
             slug = raw.get("slug") or ""
@@ -326,6 +329,7 @@ def load(path: Path = DEFAULT_PATH) -> Config:
         repo_summary=str(raw.get("repo_summary") or ""),
         trace_provider=str(raw.get("trace-provider") or raw.get("trace_provider") or "overmind"),
         version=str(raw.get("version") or "0.2.1"),
+        repository_snapshot=raw.get("repository_snapshot") or None,
         capabilities=caps,
     )
 
@@ -382,6 +386,7 @@ def _config_to_toml_dict(config: Config) -> dict[str, Any]:
         "repo_summary": config.repo_summary,
         "trace-provider": config.trace_provider,
         "version": config.version,
+        **({"repository_snapshot": config.repository_snapshot} if config.repository_snapshot else {}),
         "capabilities": capabilities,
     }
 

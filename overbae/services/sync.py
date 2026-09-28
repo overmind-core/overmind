@@ -12,6 +12,7 @@ import uuid
 from typing import Any
 
 from django.db import transaction
+from django.utils import timezone
 
 from overbae.models import Capability, Project
 from overbae.services.behaviour.registry import mint_behaviour_registry
@@ -116,6 +117,15 @@ def _project_settings_update(project: Project, snapshot: dict) -> None:
         settings[_SETTINGS_TRACE_PROVIDER] = snapshot["trace_provider"]
     if snapshot.get("version"):
         settings[_SETTINGS_TOML_VERSION] = snapshot["version"]
+    provenance = snapshot.get("repository_snapshot")
+    if provenance:
+        provenance = dict(provenance)
+        scanned_at = provenance["scanned_at"]
+        if not isinstance(scanned_at, str):
+            provenance["scanned_at"] = scanned_at.isoformat()
+    # An unversioned push replaces the map too; never retain the previous revision.
+    settings["repository_snapshot"] = provenance or None
+    settings["last_synced_at"] = timezone.now().isoformat()
     project.settings = settings
     project.save(update_fields=["settings", "updated_at"])
 
@@ -201,5 +211,7 @@ def snapshot_of(project: Project, *, capabilities: list[Capability] | None = Non
         "repo_summary": settings.get(_SETTINGS_REPO_SUMMARY) or "",
         "trace_provider": settings.get(_SETTINGS_TRACE_PROVIDER) or "overmind",
         "version": settings.get(_SETTINGS_TOML_VERSION) or "",
+        "repository_snapshot": settings.get("repository_snapshot"),
+        "last_synced_at": settings.get("last_synced_at"),
         "capabilities": [_cap_row(cap) for cap in caps],
     }

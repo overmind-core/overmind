@@ -304,6 +304,8 @@ The static project resource is:
 
 `overmind://project/current`
 
+Includes `repository_snapshot` (repository, directory, branch, commit, dirty state, fingerprint and scan time) and `last_synced_at`. A null snapshot means the revision is unknown; sync time is not scan time. Run local `/overmind setup` to refresh the map.
+
 The static local dataset upload guidance resource is:
 
 `overmind://dataset-upload`

@@ -10,6 +10,8 @@ from typing import Annotated, Any
 
 import typer
 
+from overmind.repository_snapshot import begin_repository_scan
+
 logger = logging.getLogger(__name__)
 
 _SKIP_DIRS = {
@@ -184,4 +186,5 @@ def chassis(
     root: Annotated[Path, typer.Option(help="Repository root to parse")] = Path("."),
 ) -> None:
     """Print the deterministic AST chassis digest the local scan treats as ground truth."""
+    begin_repository_scan(root)
     typer.echo(chassis_digest(extract_chassis(str(root.resolve()))))

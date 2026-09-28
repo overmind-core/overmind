@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import uuid
+from datetime import UTC, datetime
 from unittest.mock import patch
 
 import pytest
@@ -58,6 +59,49 @@ def _snapshot(capabilities):
         "version": "0.2.1",
         "capabilities": capabilities,
     }
+
+
+@pytest.mark.django_db
+def test_scan_provenance_roundtrips_and_sync_time_is_server_owned(client, project):
+    source = {
+        "repository": "acme/agent",
+        "directory": ".",
+        "branch": "main",
+        "commit": "a" * 40,
+        "dirty": True,
+        "fingerprint": "b" * 64,
+        "scanned_at": "2026-09-20T12:00:00+00:00",
+    }
+    body = {
+        **_snapshot([_cap()]),
+        "repository_snapshot": source,
+        "last_synced_at": "2000-01-01T00:00:00Z",
+    }
+    now = datetime(2026, 9, 27, 12, tzinfo=UTC)
+    with patch("overbae.services.sync.timezone.now", return_value=now):
+        response = client.post("/api/v1/sync", body, format="json")
+    assert response.status_code == 200, response.data
+    assert response.data["repository_snapshot"] == source
+    assert response.data["last_synced_at"] == "2026-09-27T12:00:00+00:00"
+    pulled = client.get("/api/v1/sync", {"project_id": str(project.id)}).data
+    assert pulled["repository_snapshot"] == source
+    graph = client.get("/api/agent/", {"project": str(project.id)}).data
+    assert graph["repository_snapshot"] == source
+    assert graph["last_synced_at"] == response.data["last_synced_at"]
+    response = client.post("/api/v1/sync", _snapshot([_cap()]), format="json")
+    assert response.data["repository_snapshot"] is None
+
+
+@pytest.mark.django_db
+def test_invalid_provenance_does_not_replace_project_snapshot(client, project):
+    response = client.post(
+        "/api/v1/sync",
+        {**_snapshot([]), "repository_snapshot": {"commit": "not-a-sha"}},
+        format="json",
+    )
+    assert response.status_code == 400
+    project.refresh_from_db()
+    assert not project.settings.get("last_synced_at")
 
 
 @pytest.fixture(autouse=True)

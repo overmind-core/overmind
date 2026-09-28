@@ -13,6 +13,13 @@
  */
 
 import { mapValues } from '../runtime';
+import type { RepositorySnapshot } from './RepositorySnapshot';
+import {
+    RepositorySnapshotFromJSON,
+    RepositorySnapshotFromJSONTyped,
+    RepositorySnapshotToJSON,
+    RepositorySnapshotToJSONTyped,
+} from './RepositorySnapshot';
 import type { TraceProviderEnum } from './TraceProviderEnum';
 import {
     TraceProviderEnumFromJSON,
@@ -60,6 +67,18 @@ export interface SyncSnapshot {
     version: string;
     /**
      *
+     * @type {RepositorySnapshot}
+     * @memberof SyncSnapshot
+     */
+    repositorySnapshot?: RepositorySnapshot | null;
+    /**
+     *
+     * @type {Date}
+     * @memberof SyncSnapshot
+     */
+    readonly lastSyncedAt: Date | null;
+    /**
+     *
      * @type {Array<Capability>}
      * @memberof SyncSnapshot
      */
@@ -74,6 +93,7 @@ export interface SyncSnapshot {
 export function instanceOfSyncSnapshot(value: object): value is SyncSnapshot {
     if (!('projectId' in value) || value['projectId'] === undefined) return false;
     if (!('version' in value) || value['version'] === undefined) return false;
+    if (!('lastSyncedAt' in value) || value['lastSyncedAt'] === undefined) return false;
     if (!('capabilities' in value) || value['capabilities'] === undefined) return false;
     return true;
 }
@@ -92,6 +112,8 @@ export function SyncSnapshotFromJSONTyped(json: any, ignoreDiscriminator: boolea
         'repoSummary': json['repo_summary'] == null ? undefined : json['repo_summary'],
         'traceProvider': json['trace_provider'] == null ? undefined : TraceProviderEnumFromJSON(json['trace_provider']),
         'version': json['version'],
+        'repositorySnapshot': json['repository_snapshot'] == null ? undefined : RepositorySnapshotFromJSON(json['repository_snapshot']),
+        'lastSyncedAt': (json['last_synced_at'] == null ? null : new Date(json['last_synced_at'])),
         'capabilities': ((json['capabilities'] as Array<any>).map(CapabilityFromJSON)),
     };
 }
@@ -100,7 +122,7 @@ export function SyncSnapshotToJSON(json: any): SyncSnapshot {
     return SyncSnapshotToJSONTyped(json, false);
 }
 
-export function SyncSnapshotToJSONTyped(value?: SyncSnapshot | null, ignoreDiscriminator: boolean = false): any {
+export function SyncSnapshotToJSONTyped(value?: Omit<SyncSnapshot, 'last_synced_at'> | null, ignoreDiscriminator: boolean = false): any {
     if (value == null) {
         return value;
     }
@@ -111,6 +133,7 @@ export function SyncSnapshotToJSONTyped(value?: SyncSnapshot | null, ignoreDiscr
         'repo_summary': value['repoSummary'],
         'trace_provider': TraceProviderEnumToJSON(value['traceProvider']),
         'version': value['version'],
+        'repository_snapshot': RepositorySnapshotToJSON(value['repositorySnapshot']),
         'capabilities': ((value['capabilities'] as Array<any>).map(CapabilityToJSON)),
     };
 }
