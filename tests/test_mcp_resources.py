@@ -55,6 +55,29 @@ def _rpc(method: str, params: dict | None = None) -> dict:
     return payload
 
 
+def test_project_resource_exposes_scan_provenance():
+    project, _ = _project()
+    project.settings = {
+        "repository_snapshot": {"repository": "acme/agent", "commit": "a" * 40},
+        "last_synced_at": "2026-09-27T12:00:00Z",
+    }
+    project.save(update_fields=["settings"])
+    context = MCPContext(
+        user=User(email="snapshot@example.com"),
+        token=APIToken(scope={"scope": "project", "permission": ["read"]}),
+        project=project,
+    )
+
+    async def read():
+        with bind_context(context):
+            contents = list(await read_resource("overmind://project/current"))
+        return json.loads(contents[0].content)
+
+    resource = asyncio.run(read())
+    assert resource["repository_snapshot"] == project.settings["repository_snapshot"]
+    assert resource["last_synced_at"] == project.settings["last_synced_at"]
+
+
 def test_resource_templates_cover_the_public_resource_surface():
     templates = {template.uriTemplate for template in resource_templates()}
     assert templates == {

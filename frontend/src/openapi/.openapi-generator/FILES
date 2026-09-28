@@ -302,6 +302,8 @@ models/PublicModelPricing.ts
 models/PublicTokenRefresh.ts
 models/PublicTokenRefreshRequest.ts
 models/QuantizationEnum.ts
+models/RepositorySnapshot.ts
+models/RepositorySnapshotRequest.ts
 models/RoleAbbEnum.ts
 models/RootSpanList.ts
 models/RowsPage.ts

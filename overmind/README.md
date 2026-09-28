@@ -233,7 +233,7 @@ Analytics is also off when `CI` is set in env.
 ```text
 overmind init [OPTIONS]             Skills, slash commands, MCP; seed overmind.toml
 overmind sync [up|down]             Push/pull overmind.toml with the server
-overmind chassis [--root PATH]      Print the AST chassis digest the local scan uses
+overmind chassis [--root PATH]      Record scan provenance and print the AST chassis digest
 overmind dataset upload FILE        Upload a local dataset and start a build
                                     (--split PERCENT lands a train and an eval dataset)
 overmind dataset export DATASET     Download committed rows as JSONL or CSV
@@ -244,6 +244,8 @@ overmind optimise [OPTIONS]         SDK loop the /overmind optimise skill drives
 overmind skills list [--verbose]    List installed/available skills
 overmind skills sync <name>...      Sync one or more skills to the latest version
 ```
+
+The Console Agent header identifies the repository snapshot behind the capability map. `overmind chassis` records the checkout before scanning; conversion verifies that it stayed unchanged and saves its provenance in `overmind.toml`. `overmind sync` preserves the scan revision and time, with a separate server sync timestamp. Run `/overmind setup` to refresh the map. Live traces may come from other revisions.
 
 Run `overmind <command> --help` for full flag documentation.
 

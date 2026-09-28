@@ -45,6 +45,16 @@ class CapabilitySerializer(serializers.Serializer):
     status = serializers.CharField(read_only=True)
 
 
+class RepositorySnapshotSerializer(serializers.Serializer):
+    repository = serializers.CharField(max_length=1024)
+    directory = serializers.CharField(max_length=1024)
+    branch = serializers.CharField(max_length=255, allow_blank=True)
+    commit = serializers.RegexField(r"\A(?:[0-9a-f]{40}|[0-9a-f]{64})?\Z", allow_blank=True)
+    dirty = serializers.BooleanField()
+    fingerprint = serializers.RegexField(r"\A[0-9a-f]{64}\Z")
+    scanned_at = serializers.DateTimeField()
+
+
 class SyncSnapshotSerializer(serializers.Serializer):
     """Wire form of ``overmind.toml`` — the unit of two-way sync."""
 
@@ -52,6 +62,8 @@ class SyncSnapshotSerializer(serializers.Serializer):
     repo_summary = serializers.CharField(required=False, allow_blank=True)
     trace_provider = serializers.ChoiceField(choices=TRACE_PROVIDERS, default="overmind")
     version = serializers.CharField()
+    repository_snapshot = RepositorySnapshotSerializer(required=False, allow_null=True)
+    last_synced_at = serializers.DateTimeField(read_only=True, allow_null=True)
     capabilities = CapabilitySerializer(many=True)
 
 
@@ -91,7 +103,7 @@ class SyncView(APIView):
             )
         if isinstance(project, Response):
             return project
-        return Response(snapshot_of(project))
+        return Response(SyncSnapshotSerializer(snapshot_of(project)).data)
 
     @extend_schema(
         request=SyncSnapshotSerializer,
@@ -105,7 +117,7 @@ class SyncView(APIView):
         if isinstance(project, Response):
             return project
         applied = apply_snapshot(project, data)
-        return Response(snapshot_of(project, capabilities=applied))
+        return Response(SyncSnapshotSerializer(snapshot_of(project, capabilities=applied)).data)
 
 
 def _project_for(request, project_id):

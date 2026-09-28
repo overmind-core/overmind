@@ -274,6 +274,8 @@ export * from './PublicModelPricing';
 export * from './PublicTokenRefresh';
 export * from './PublicTokenRefreshRequest';
 export * from './QuantizationEnum';
+export * from './RepositorySnapshot';
+export * from './RepositorySnapshotRequest';
 export * from './RoleAbbEnum';
 export * from './RootSpanList';
 export * from './RowsPage';

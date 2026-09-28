@@ -20,6 +20,13 @@ import {
     TraceProviderEnumToJSON,
     TraceProviderEnumToJSONTyped,
 } from './TraceProviderEnum';
+import type { RepositorySnapshotRequest } from './RepositorySnapshotRequest';
+import {
+    RepositorySnapshotRequestFromJSON,
+    RepositorySnapshotRequestFromJSONTyped,
+    RepositorySnapshotRequestToJSON,
+    RepositorySnapshotRequestToJSONTyped,
+} from './RepositorySnapshotRequest';
 import type { CapabilityRequest } from './CapabilityRequest';
 import {
     CapabilityRequestFromJSON,
@@ -60,6 +67,12 @@ export interface SyncSnapshotRequest {
     version: string;
     /**
      *
+     * @type {RepositorySnapshotRequest}
+     * @memberof SyncSnapshotRequest
+     */
+    repositorySnapshot?: RepositorySnapshotRequest | null;
+    /**
+     *
      * @type {Array<CapabilityRequest>}
      * @memberof SyncSnapshotRequest
      */
@@ -92,6 +105,7 @@ export function SyncSnapshotRequestFromJSONTyped(json: any, ignoreDiscriminator:
         'repoSummary': json['repo_summary'] == null ? undefined : json['repo_summary'],
         'traceProvider': json['trace_provider'] == null ? undefined : TraceProviderEnumFromJSON(json['trace_provider']),
         'version': json['version'],
+        'repositorySnapshot': json['repository_snapshot'] == null ? undefined : RepositorySnapshotRequestFromJSON(json['repository_snapshot']),
         'capabilities': ((json['capabilities'] as Array<any>).map(CapabilityRequestFromJSON)),
     };
 }
@@ -111,6 +125,7 @@ export function SyncSnapshotRequestToJSONTyped(value?: SyncSnapshotRequest | nul
         'repo_summary': value['repoSummary'],
         'trace_provider': TraceProviderEnumToJSON(value['traceProvider']),
         'version': value['version'],
+        'repository_snapshot': RepositorySnapshotRequestToJSON(value['repositorySnapshot']),
         'capabilities': ((value['capabilities'] as Array<any>).map(CapabilityRequestToJSON)),
     };
 }

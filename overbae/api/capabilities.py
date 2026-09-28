@@ -21,7 +21,8 @@ from overbae.api.serializers import (
     CapabilitySerializer,
     PromptSerializer,
 )
-from overbae.models import Capability
+from overbae.api.sync import RepositorySnapshotSerializer
+from overbae.models import Capability, Project
 from overbae.services.capabilities import graph, identity
 from overbae.services.capability_prompts import sync_capability_prompts
 
@@ -57,6 +58,8 @@ class AgentGraphSerializer(serializers.Serializer):
     project = serializers.CharField()
     capabilities = CapabilityListSerializer(many=True)
     edges = GraphEdgeSerializer(many=True)
+    repository_snapshot = RepositorySnapshotSerializer(allow_null=True)
+    last_synced_at = serializers.DateTimeField(allow_null=True)
 
 
 def _capabilities_for(request):
@@ -195,4 +198,7 @@ class AgentGraphView(APIView):
             "capabilities": current,
             "edges": graph.weighted_edges(project_id, []),
         }
+        settings = Project.objects.get(pk=project_id).settings or {}
+        payload["repository_snapshot"] = settings.get("repository_snapshot")
+        payload["last_synced_at"] = settings.get("last_synced_at")
         return Response(AgentGraphSerializer(payload).data)

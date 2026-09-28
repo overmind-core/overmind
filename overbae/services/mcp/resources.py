@@ -431,6 +431,8 @@ def _project_resource(project, uri: str) -> dict:
         "is_active": project.is_active,
         "created_at": project.created_at,
         "updated_at": project.updated_at,
+        "repository_snapshot": (project.settings or {}).get("repository_snapshot"),
+        "last_synced_at": (project.settings or {}).get("last_synced_at"),
     }
 
 

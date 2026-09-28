@@ -13,6 +13,13 @@
  */
 
 import { mapValues } from '../runtime';
+import type { RepositorySnapshot } from './RepositorySnapshot';
+import {
+    RepositorySnapshotFromJSON,
+    RepositorySnapshotFromJSONTyped,
+    RepositorySnapshotToJSON,
+    RepositorySnapshotToJSONTyped,
+} from './RepositorySnapshot';
 import type { CapabilityList } from './CapabilityList';
 import {
     CapabilityListFromJSON,
@@ -52,6 +59,18 @@ export interface AgentGraph {
      * @memberof AgentGraph
      */
     edges: Array<GraphEdge>;
+    /**
+     *
+     * @type {RepositorySnapshot}
+     * @memberof AgentGraph
+     */
+    repositorySnapshot: RepositorySnapshot | null;
+    /**
+     *
+     * @type {Date}
+     * @memberof AgentGraph
+     */
+    lastSyncedAt: Date | null;
 }
 
 /**
@@ -61,6 +80,8 @@ export function instanceOfAgentGraph(value: object): value is AgentGraph {
     if (!('project' in value) || value['project'] === undefined) return false;
     if (!('capabilities' in value) || value['capabilities'] === undefined) return false;
     if (!('edges' in value) || value['edges'] === undefined) return false;
+    if (!('repositorySnapshot' in value) || value['repositorySnapshot'] === undefined) return false;
+    if (!('lastSyncedAt' in value) || value['lastSyncedAt'] === undefined) return false;
     return true;
 }
 
@@ -77,6 +98,8 @@ export function AgentGraphFromJSONTyped(json: any, ignoreDiscriminator: boolean)
         'project': json['project'],
         'capabilities': ((json['capabilities'] as Array<any>).map(CapabilityListFromJSON)),
         'edges': ((json['edges'] as Array<any>).map(GraphEdgeFromJSON)),
+        'repositorySnapshot': RepositorySnapshotFromJSON(json['repository_snapshot']),
+        'lastSyncedAt': (json['last_synced_at'] == null ? null : new Date(json['last_synced_at'])),
     };
 }
 
@@ -94,5 +117,7 @@ export function AgentGraphToJSONTyped(value?: AgentGraph | null, ignoreDiscrimin
         'project': value['project'],
         'capabilities': ((value['capabilities'] as Array<any>).map(CapabilityListToJSON)),
         'edges': ((value['edges'] as Array<any>).map(GraphEdgeToJSON)),
+        'repository_snapshot': RepositorySnapshotToJSON(value['repositorySnapshot']),
+        'last_synced_at': value['lastSyncedAt'] == null ? value['lastSyncedAt'] : value['lastSyncedAt'].toISOString(),
     };
 }
