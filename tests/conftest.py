@@ -1,8 +1,11 @@
+import os
 from types import SimpleNamespace
 
 import pytest
 from asgiref.sync import SyncToAsync, async_to_sync
 from django.db import connections
+
+collect_ignore = [] if os.environ.get("TEST_REDIS_URL") else ["journeys"]
 
 
 def drain_stream(response) -> bytes:

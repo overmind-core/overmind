@@ -138,6 +138,15 @@ jobs:
           --health-interval 5s
           --health-timeout 3s
           --health-retries 10
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
     steps:
       - uses: actions/checkout@v4
 
@@ -158,3 +167,6 @@ jobs:
       - name: Run tests
         # Match local `make test`: xdist is already in the test dep group.
         run: uv run pytest tests/ -n auto --dist worksteal -q
+
+      - name: Run journeys
+        run: make test-journeys

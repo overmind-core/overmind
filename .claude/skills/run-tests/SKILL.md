@@ -36,8 +36,18 @@ changing code, scoped to the failing files/tests:
 uv run pytest tests/test_foo.py::test_bar 2>&1 | tee "$SCRATCHPAD/pytest-rerun.log"
 ```
 
+## Journeys
+
+`make test-journeys` runs `tests/journeys/` against the live stack. It needs
+the compose `postgres` and `redis` services, and uses Redis DB 15. Each journey
+writes a run record to `tests/journeys/.runs/<timestamp>/`; read it for the
+LLM requests, background task failures and the error. `make test` does not
+collect journeys unless `TEST_REDIS_URL` is set.
+
 ## Gotchas
 
+- Backend tests need the compose `postgres` service on `localhost:5432`
+  (`TEST_POSTGRES_HOST`/`TEST_POSTGRES_PORT` override it).
 - `uv add`/`uv remove` resync the venv WITHOUT dev/test groups — pytest
   vanishes. Restore with `uv sync --group dev --group test`.
 - Celery-dependent behavior needs `docker compose restart` of the worker to

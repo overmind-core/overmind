@@ -185,3 +185,4 @@ trajectory_sdk
 # Claude Code local state
 .claude/settings.local.json
 .impeccable/
+tests/journeys/.runs/

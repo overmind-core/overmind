@@ -13,7 +13,7 @@ This file is the single playbook. Cursor reads it natively; Claude Code reads it
 ## Commands
 
 - Frontend (**Bun**, from `frontend/`): `bun run typecheck`, `bun run lint` (Biome — no ESLint/Prettier), `bun run test` (vitest), `bun run check:all` (design/contrast/controls scripts). Scripts run with `bun`; there is no `node` on this machine.
-- Backend (**uv**): `make test` (parallel pytest), `make test-serial`, `make lint-backend` (ruff), `make check-migrations` (after a model change, rebased on `origin/main`), `uv run <cmd>`.
+- Backend (**uv**): `make test` (parallel pytest on the compose Postgres), `make test-journeys` (end-to-end journeys in `tests/journeys/` on the live ASGI app, a real Celery worker and compose Redis; outside services are faked at the network), `make test-serial`, `make lint-backend` (ruff), `make check-migrations` (after a model change, rebased on `origin/main`), `uv run <cmd>`.
 - SDK (**uv**, from `overmind/`): `make -C overmind test`, `make -C overmind lint-check`.
 - CI (`.github/workflows/ci.yml`) runs on `main` and `oss`: platform lint/frontend/test. SDK CI (`sdk-ci.yml`) runs on `overmind/` changes.
 - A local deployment already runs via `docker compose` with hot reload — do not start dev servers to verify changes. Celery workers auto-restart via watchmedo; `docker compose restart <worker>` if in doubt.
@@ -93,7 +93,7 @@ Instrument voice — state the fact and stop ("9 rows", never "9 rows — small 
 
 ### Naming
 
-Never put plan-phase labels (P0/P1, "Phase N") in code, comments, or test names — name by behavior. Backend tests live flat: `tests/test_<feature>.py`.
+Never put plan-phase labels (P0/P1, "Phase N") in code, comments, or test names — name by behavior. Backend tests live flat: `tests/test_<feature>.py`; journeys live in `tests/journeys/test_<promise>.py`.
 
 ## Workflow
 
