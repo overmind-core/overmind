@@ -22,6 +22,7 @@ import overmind  # noqa: E402
 from overbae.models import APIToken  # noqa: E402
 
 from .fakes.llm import FakeLLM, Network  # noqa: E402
+from .fakes.modal import FakeModal, ServingBackend, SftBackend  # noqa: E402
 from .stack import LiveAPI, celery_worker, drain  # noqa: E402
 from .surfaces import CliSurface, McpSurface, RestSurface, SampleAgent  # noqa: E402
 
@@ -61,6 +62,9 @@ def _clerk_offline(settings):
 
 @pytest.fixture(autouse=True)
 def _journey_db(transactional_db):
+    from django.core.cache import cache
+
+    cache.clear()
     yield
 
 
@@ -95,6 +99,10 @@ def _no_outside_sockets(monkeypatch):
         return connect(sock, address)
 
     monkeypatch.setattr(socket.socket, "connect", guarded)
+    for proxy in ("HTTP_PROXY", "HTTPS_PROXY", "http_proxy", "https_proxy"):
+        monkeypatch.setenv(proxy, "http://127.0.0.1:9")
+    monkeypatch.setenv("NO_PROXY", "127.0.0.1,localhost")
+    monkeypatch.setenv("no_proxy", "127.0.0.1,localhost")
 
 
 @pytest.fixture(autouse=True)
@@ -137,9 +145,15 @@ def sample_agent(tmp_path) -> SampleAgent:
 
 
 @pytest.fixture
-def account_key() -> str:
-    raw, _ = APIToken.create_for_user(make_user())
-    return raw
+def account():
+    user = make_user()
+    raw, _ = APIToken.create_for_user(user)
+    return user, raw
+
+
+@pytest.fixture
+def account_key(account) -> str:
+    return account[1]
 
 
 @pytest.fixture
@@ -163,8 +177,8 @@ def llm_url(fake_llm):
         yield url
 
 
-def _answer_turn(request) -> dict:
-    if any(m.get("role") == "tool" for m in request.messages):
+def answer_turn(request) -> dict:
+    if not request.body.get("tools") or any(m.get("role") == "tool" for m in request.messages):
         if "Quote the order id" in request.system:
             return {"content": GOOD_REPLY}
         return {"content": "Your refund is on its way. The order was delivered."}
@@ -213,7 +227,7 @@ def rubric_judges(fake_llm):
 @pytest.fixture
 def support_desk_llm(fake_llm, llm_url):
     fake_llm.on("You triage customer support tickets.", "refund")
-    fake_llm.on("You are a support agent.", _answer_turn)
+    fake_llm.on("You are a support agent.", answer_turn)
     return llm_url
 
 
@@ -268,3 +282,50 @@ def _digest(path: Path) -> str:
         digest.update(file.relative_to(path).as_posix().encode())
         digest.update(file.read_bytes())
     return digest.hexdigest()[:16]
+
+
+@pytest.fixture
+def workshop(cli, mcp_for, sample_agent, worker, fake_llm, rubric_judges):
+    fake_llm.extra_models.append("fake/candidate")
+    fake_llm.on(lambda r: r.model == "fake/candidate", GOOD_REPLY)
+    cli.scan(sample_agent)
+    cli.sync(sample_agent)
+    return mcp_for(cli.project_key(sample_agent))
+
+
+@pytest.fixture
+def fake_modal(monkeypatch) -> FakeModal:
+    return FakeModal().install(monkeypatch)
+
+
+@pytest.fixture
+def sft(fake_modal) -> SftBackend:
+    return SftBackend(fake_modal).install()
+
+
+@pytest.fixture
+def serving(fake_modal) -> ServingBackend:
+    return ServingBackend(fake_modal, url="http://inference.test").install()
+
+
+@pytest.fixture
+def clock():
+    import time_machine
+
+    traveller = time_machine.travel(datetime.now(UTC), tick=True)
+    frozen = traveller.start()
+    yield frozen
+    traveller.stop()
+
+
+@pytest.fixture
+def beat(worker, clock):
+    from overbae.celery import app
+
+    def tick(*tasks: str) -> None:
+        clock.shift(16)
+        for task in tasks:
+            app.send_task(task)
+        drain(worker)
+
+    return tick

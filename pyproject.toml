@@ -93,6 +93,7 @@ test = [
     "pytest-xdist>=3.8.0,<4",
     "responses>=0.26.3",
     "respx>=0.23.1",
+    "time-machine>=3.5.1",
 ]
 test-e2e = [
     "pytest>=7.4.0",

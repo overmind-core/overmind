@@ -60,17 +60,14 @@ class SampleAgent:
         data["capabilities"] = [c for c in data["capabilities"] if c["slug_hint"] not in without]
         self.analysis.write_text(json.dumps(data))
 
-    def run(self, *tickets: str, api_url: str, llm_url: str) -> list[str]:
+    def run(self, *tickets: str, api_url: str, llm_url: str, llm_key: str = "sk-fake") -> list[str]:
         env = {
             **os.environ,
             "PYTHONPATH": os.pathsep.join([str(SDK), str(self.repo)]),
             "OPENAI_BASE_URL": llm_url,
-            "OPENAI_API_KEY": "sk-fake",
+            "OPENAI_API_KEY": llm_key,
             "OVERMIND_API_URL": api_url,
             "OVERMIND_ANALYTICS_ENABLED": "false",
-            "HTTP_PROXY": "http://127.0.0.1:9",
-            "HTTPS_PROXY": "http://127.0.0.1:9",
-            "NO_PROXY": "127.0.0.1,localhost",
             "LITELLM_LOCAL_MODEL_COST_MAP": "True",
         }
         env.pop("OVERMIND_API_KEY", None)

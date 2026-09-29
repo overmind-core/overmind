@@ -56,7 +56,10 @@ os.environ["CELERY_RESULT_BACKEND"] = CELERY_RESULT_BACKEND
 
 CACHES = {
     "default": (
-        {"BACKEND": "django.core.cache.backends.redis.RedisCache", "LOCATION": JOURNEY_REDIS_URL}
+        {
+            "BACKEND": "django.core.cache.backends.redis.RedisCache",
+            "LOCATION": JOURNEY_REDIS_URL.rsplit("/", 1)[0] + "/14",
+        }
         if JOURNEY_REDIS_URL
         else {"BACKEND": "django.core.cache.backends.locmem.LocMemCache"}
     )

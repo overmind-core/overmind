@@ -95,6 +95,7 @@ class FakeLLM:
     unscripted: list[LLMRequest] = field(default_factory=list)
     tokens_served: int = 0
     _scripts: list[tuple[Callable[[LLMRequest], bool], Reply]] = field(default_factory=list)
+    _failures: list[tuple[Callable[[LLMRequest], bool], int]] = field(default_factory=list)
     _lock: threading.Lock = field(default_factory=threading.Lock)
 
     def on(self, match: str | Callable[[LLMRequest], bool], reply: Reply) -> None:
@@ -113,6 +114,49 @@ class FakeLLM:
 
         self._scripts.append((match, reply))
 
+    extra_models: list[str] = field(default_factory=list)
+
+    def catalog(self) -> list[dict[str, Any]]:
+        from overbae.core.model_registry import OPENROUTER_MODEL_SLUGS
+
+        slugs = sorted(set(OPENROUTER_MODEL_SLUGS.values()) | set(self.extra_models))
+        return [
+            {
+                "id": slug,
+                "name": slug,
+                "context_length": 128_000,
+                "top_provider": {"max_completion_tokens": 16_384},
+                "supported_parameters": ["tools", "response_format", "structured_outputs"],
+                "pricing": {"prompt": "0.000001", "completion": "0.000002"},
+                "architecture": {"modality": "text->text"},
+            }
+            for slug in slugs
+        ]
+
+    decisions: list[dict[str, Any]] = field(default_factory=list)
+    decide: Callable[[str, dict[str, Any]], str] | None = None
+
+    def _decide(self, key: str, question: dict[str, Any]) -> dict[str, Any]:
+        options = list(question.get("criteria") or {})
+        choice = self.decide(key, question) if self.decide else options[0]
+        return {
+            "type": "choice",
+            "choice": choice,
+            "probabilities": {option: 1.0 if option == choice else 0.0 for option in options},
+            "confidence": 0.9,
+        }
+
+    def fail(self, match: Callable[[LLMRequest], bool], status: int = 500) -> None:
+        self._failures.append((match, status))
+
+    def _failure(self, request: LLMRequest) -> int:
+        for predicate, status in self._failures:
+            if predicate(request):
+                with self._lock:
+                    self.requests.append(request)
+                return status
+        return 0
+
     def _message(self, request: LLMRequest) -> dict[str, Any]:
         for predicate, reply in reversed(self._scripts):
             if predicate(request):
@@ -127,6 +171,7 @@ class FakeLLM:
 
     def completion(self, request: LLMRequest) -> dict[str, Any]:
         message = self._message(request)
+        usage = message.pop("usage", {})
         request.reply = message
         prompt_tokens = max(1, len(request.text) // 4)
         completion_tokens = max(1, len(json.dumps(message)) // 4)
@@ -150,6 +195,7 @@ class FakeLLM:
                 "prompt_tokens": prompt_tokens,
                 "completion_tokens": completion_tokens,
                 "total_tokens": prompt_tokens + completion_tokens,
+                **usage,
             },
         }
 
@@ -210,6 +256,13 @@ class FakeLLM:
         if method == "POST" and url.rstrip("/").endswith("/chat/completions"):
             body = json.loads(raw or b"{}")
             request = LLMRequest(url=url, body=body)
+            failure = self._failure(request)
+            if failure:
+                return (
+                    failure,
+                    {"content-type": "application/json"},
+                    b'{"error": {"message": "fake outage"}}',
+                )
             if body.get("stream"):
                 return 200, {"content-type": "text/event-stream"}, self.stream(request)
             return (
@@ -217,8 +270,27 @@ class FakeLLM:
                 {"content-type": "application/json"},
                 json.dumps(self.completion(request)).encode(),
             )
+        if method == "POST" and url.rstrip("/").endswith("/systemone"):
+            body = json.loads(raw or b"{}")
+            with self._lock:
+                self.decisions.append(body)
+            answers = {
+                key: self._decide(key, question)
+                for key, question in (body.get("questions") or {}).items()
+            }
+            payload = {
+                "id": f"fake-decision-{len(self.decisions)}",
+                "model": body.get("model"),
+                "answers": answers,
+                "usage": {"input_tokens": 10, "output_tokens": 1, "cost": 0.0},
+            }
+            return 200, {"content-type": "application/json"}, json.dumps(payload).encode()
         if method == "GET" and url.rstrip("/").endswith("/models"):
-            return 200, {"content-type": "application/json"}, b'{"data": []}'
+            return (
+                200,
+                {"content-type": "application/json"},
+                json.dumps({"data": self.catalog()}).encode(),
+            )
         return (
             599,
             {"content-type": "application/json"},

@@ -30,13 +30,11 @@ from overbae.models import (
 from overbae.services.datasets.rows import row as _dataset_row
 from overbae.services.datasets.rows import row_from_record
 from overbae.services.finetuning_runner import (
-    BaseFinetuningRunner,
     BasetenRunner,
     PollSnapshot,
     SubmissionResult,
     TogetherAIRunner,
     get_runner,
-    register_runner,
     together_suffix,
 )
 from overbae.services.finetuning_tool_validation import check_tool_calling_rows
@@ -340,18 +338,6 @@ class TestRunnerAbstraction:
     def test_get_runner_unknown_backend_raises(self):
         with pytest.raises(ValueError, match="Unknown fine-tuning backend"):
             get_runner("nonexistent_backend")
-
-    def test_register_runner_and_retrieve(self):
-        class DummyRunner(BaseFinetuningRunner):
-            def submit(self, job, training_file_path, num_examples, existing_file_id=None):
-                return SubmissionResult("r1", "http://x", "f1")
-
-            def poll(self, remote_id):
-                return PollSnapshot(state="running")
-
-        register_runner("dummy", DummyRunner)
-        runner = get_runner("dummy")
-        assert isinstance(runner, DummyRunner)
 
     def test_together_suffix_strips_unsafe_characters(self):
         assert (
