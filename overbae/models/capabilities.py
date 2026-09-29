@@ -112,7 +112,13 @@ class Capability(models.Model):
 
     class Meta:
         ordering = ["-created_at"]
-        unique_together = [("project", "slug")]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["project", "slug"],
+                condition=~models.Q(status="deleted"),
+                name="capability_live_slug_unique",
+            )
+        ]
 
     def __str__(self):
         return f"{self.project.slug}/{self.name}"

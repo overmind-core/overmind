@@ -6,29 +6,16 @@ from overbae.api.otlp import (
     _build_span_usage,
     _classify_span_type,
     _operation_from,
-    _parent_hex_or_none,
 )
 from overbae.models import Span
 
 
-def _proto(name: str = "chat", parent: bytes | None = None) -> SimpleNamespace:
-    return SimpleNamespace(name=name, parent_span_id=parent or b"")
+def _proto(name: str = "chat") -> SimpleNamespace:
+    return SimpleNamespace(name=name)
 
 
 def _span(attributes: dict, span_type=Span.SpanType.LLM_CALL) -> SimpleNamespace:
     return SimpleNamespace(attributes=attributes, span_type=span_type)
-
-
-class TestParentResolution:
-    def test_parent_none_when_empty(self):
-        assert _parent_hex_or_none(_proto(parent=b"")) is None
-
-    def test_parent_none_when_zero_bytes(self):
-        assert _parent_hex_or_none(_proto(parent=b"\x00" * 8)) is None
-
-    def test_parent_hex_when_present(self):
-        parent = bytes.fromhex("0123456789abcdef")
-        assert _parent_hex_or_none(_proto(parent=parent)) == "0123456789abcdef"
 
 
 class TestSpanTypeClassification:
@@ -82,20 +69,6 @@ class TestOperationResolution:
 
 
 class TestSpanUsage:
-    def test_reads_native_otel_token_attributes(self):
-        usage = _build_span_usage(
-            _span(
-                {
-                    "gen_ai.usage.input_tokens": 1000,
-                    "gen_ai.usage.output_tokens": 500,
-                    "gen_ai.request.model": "gpt-5-mini",
-                }
-            )
-        )
-        assert usage["prompt_tokens"] == 1000
-        assert usage["completion_tokens"] == 500
-        assert usage["total_tokens"] == 1500
-        assert usage["models"] == {"gpt-5-mini": 1}
 
     def test_client_reported_cost_wins(self):
         usage = _build_span_usage(

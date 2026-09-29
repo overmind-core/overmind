@@ -2,8 +2,11 @@ from __future__ import annotations
 
 import json
 import re
+import threading
 from collections.abc import Callable
+from contextlib import contextmanager
 from dataclasses import dataclass, field
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any
 
 import httpx
@@ -20,6 +23,7 @@ Reply = str | dict[str, Any] | Callable[["LLMRequest"], "str | dict[str, Any]"]
 class LLMRequest:
     url: str
     body: dict[str, Any]
+    total_tokens: int = 0
 
     @property
     def model(self) -> str:
@@ -47,6 +51,7 @@ class FakeLLM:
     unscripted: list[LLMRequest] = field(default_factory=list)
     tokens_served: int = 0
     _scripts: list[tuple[Callable[[LLMRequest], bool], Reply]] = field(default_factory=list)
+    _lock: threading.Lock = field(default_factory=threading.Lock)
 
     def on(self, match: str | Callable[[LLMRequest], bool], reply: Reply) -> None:
         predicate = (
@@ -65,11 +70,13 @@ class FakeLLM:
         return {"role": "assistant", "content": ""}
 
     def completion(self, request: LLMRequest) -> dict[str, Any]:
-        self.requests.append(request)
         message = self._message(request)
         prompt_tokens = max(1, len(request.text) // 4)
         completion_tokens = max(1, len(json.dumps(message)) // 4)
-        self.tokens_served += prompt_tokens + completion_tokens
+        request.total_tokens = prompt_tokens + completion_tokens
+        with self._lock:
+            self.requests.append(request)
+            self.tokens_served += request.total_tokens
         return {
             "id": f"fake-{len(self.requests)}",
             "object": "chat.completion",
@@ -106,6 +113,41 @@ class FakeLLM:
         ]
         lines = [f"data: {json.dumps(chunk)}\n\n" for chunk in chunks]
         return ("".join(lines) + "data: [DONE]\n\n").encode()
+
+    @contextmanager
+    def serve(self):
+        llm = self
+
+        class Handler(BaseHTTPRequestHandler):
+            def _reply(self, method: str) -> None:
+                length = int(self.headers.get("content-length") or 0)
+                status, headers, body = llm.handle(
+                    method, f"http://fake-llm{self.path}", self.rfile.read(length)
+                )
+                self.send_response(status)
+                for key, value in headers.items():
+                    self.send_header(key, value)
+                self.send_header("content-length", str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+
+            def do_POST(self) -> None:
+                self._reply("POST")
+
+            def do_GET(self) -> None:
+                self._reply("GET")
+
+            def log_message(self, *args) -> None:
+                pass
+
+        server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+        thread = threading.Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+        try:
+            yield f"http://127.0.0.1:{server.server_address[1]}/v1"
+        finally:
+            server.shutdown()
+            server.server_close()
 
     def handle(self, method: str, url: str, raw: bytes | str | None) -> tuple[int, dict, bytes]:
         if method == "POST" and url.rstrip("/").endswith("/chat/completions"):

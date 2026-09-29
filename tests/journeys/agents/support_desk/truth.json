@@ -4,13 +4,13 @@
     "triage": {
       "name": "Triage",
       "entrypoint": "support_desk.agent.triage",
-      "location": "support_desk/agent.py:36",
+      "location": "support_desk/agent.py:39",
       "model": "openai/gpt-4.1-mini"
     },
     "answer": {
       "name": "Answer",
       "entrypoint": "support_desk.agent.answer",
-      "location": "support_desk/agent.py:47",
+      "location": "support_desk/agent.py:51",
       "model": "openai/gpt-4.1-mini",
       "tools": ["lookup_order"]
     }

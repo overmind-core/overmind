@@ -23,7 +23,7 @@ from overbae.models import APIToken  # noqa: E402
 
 from .fakes.llm import FakeLLM, Network  # noqa: E402
 from .stack import LiveAPI, celery_worker, drain  # noqa: E402
-from .surfaces import CliSurface, McpSurface, SampleAgent  # noqa: E402
+from .surfaces import CliSurface, McpSurface, RestSurface, SampleAgent  # noqa: E402
 
 RUNS = Path(__file__).parent / ".runs" / datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
 
@@ -141,6 +141,39 @@ def cli(live_api, account_key) -> CliSurface:
 @pytest.fixture
 def mcp_for(live_api):
     return lambda key: McpSurface(live_api.url, key)
+
+
+@pytest.fixture
+def rest_for(live_api):
+    return lambda key: RestSurface(live_api.url, key)
+
+
+@pytest.fixture
+def llm_url(fake_llm):
+    with fake_llm.serve() as url:
+        yield url
+
+
+def _answer_turn(request) -> dict:
+    if any(m.get("role") == "tool" for m in request.messages):
+        return {"content": "Your refund is on its way. The order was delivered."}
+    return {
+        "content": None,
+        "tool_calls": [
+            {
+                "id": f"call_{len(request.messages)}",
+                "type": "function",
+                "function": {"name": "lookup_order", "arguments": '{"order_id": "42"}'},
+            }
+        ],
+    }
+
+
+@pytest.fixture
+def support_desk_llm(fake_llm, llm_url):
+    fake_llm.on("You triage customer support tickets", "refund")
+    fake_llm.on("You are a support agent", _answer_turn)
+    return llm_url
 
 
 @pytest.hookimpl(wrapper=True)
