@@ -24,6 +24,7 @@ class LLMRequest:
     url: str
     body: dict[str, Any]
     total_tokens: int = 0
+    reply: dict[str, Any] = field(default_factory=dict)
 
     @property
     def model(self) -> str:
@@ -44,6 +45,49 @@ class LLMRequest:
                 parts.append(str(content))
         return "\n".join(parts)
 
+    @property
+    def system(self) -> str:
+        first = self.messages[0] if self.messages else {}
+        return str(first.get("content") or "") if first.get("role") == "system" else ""
+
+    @property
+    def schema(self) -> dict[str, Any] | None:
+        response_format = self.body.get("response_format") or {}
+        return (response_format.get("json_schema") or {}).get("schema")
+
+    @property
+    def schema_name(self) -> str:
+        response_format = self.body.get("response_format") or {}
+        return str((response_format.get("json_schema") or {}).get("name") or "")
+
+
+def instance(schema: dict[str, Any], defs: dict[str, Any] | None = None) -> Any:
+    defs = defs if defs is not None else schema.get("$defs", {})
+    if "$ref" in schema:
+        return instance(defs[schema["$ref"].rsplit("/", 1)[-1]], defs)
+    for key in ("anyOf", "oneOf", "allOf"):
+        if key in schema:
+            options = [o for o in schema[key] if o.get("type") != "null"] or schema[key]
+            return instance(options[0], defs)
+    if "enum" in schema:
+        return schema["enum"][0]
+    if "const" in schema:
+        return schema["const"]
+    kind = schema.get("type")
+    if isinstance(kind, list):
+        kind = next((k for k in kind if k != "null"), "null")
+    if kind == "object":
+        return {name: instance(sub, defs) for name, sub in (schema.get("properties") or {}).items()}
+    if kind == "array":
+        return []
+    if kind == "string":
+        return ""
+    if kind in ("integer", "number"):
+        return schema.get("minimum", 0)
+    if kind == "boolean":
+        return False
+    return None
+
 
 @dataclass
 class FakeLLM:
@@ -55,9 +99,19 @@ class FakeLLM:
 
     def on(self, match: str | Callable[[LLMRequest], bool], reply: Reply) -> None:
         predicate = (
-            match if callable(match) else (lambda request, needle=match: needle in request.text)
+            match if callable(match) else (lambda request, needle=match: needle in request.system)
         )
         self._scripts.append((predicate, reply))
+
+    def on_json(
+        self,
+        match: Callable[[LLMRequest], bool],
+        fields: Callable[[LLMRequest], dict[str, Any]],
+    ) -> None:
+        def reply(request: LLMRequest) -> str:
+            return json.dumps({**instance(request.schema or {}), **fields(request)})
+
+        self._scripts.append((match, reply))
 
     def _message(self, request: LLMRequest) -> dict[str, Any]:
         for predicate, reply in reversed(self._scripts):
@@ -67,10 +121,13 @@ class FakeLLM:
                     return {"role": "assistant", "content": value}
                 return {"role": "assistant", **value}
         self.unscripted.append(request)
+        if request.schema is not None:
+            return {"role": "assistant", "content": json.dumps(instance(request.schema))}
         return {"role": "assistant", "content": ""}
 
     def completion(self, request: LLMRequest) -> dict[str, Any]:
         message = self._message(request)
+        request.reply = message
         prompt_tokens = max(1, len(request.text) // 4)
         completion_tokens = max(1, len(json.dumps(message)) // 4)
         request.total_tokens = prompt_tokens + completion_tokens

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import json
 import os
 import shutil
@@ -10,8 +11,9 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+import httpx
 from mcp import ClientSession
-from mcp.client.streamable_http import streamablehttp_client
+from mcp.client.streamable_http import streamable_http_client
 from typer.testing import CliRunner
 
 AGENTS = Path(__file__).parent / "agents"
@@ -90,10 +92,13 @@ class CliSurface:
         self.api_url = api_url
         self.api_key = api_key
 
-    def run(self, *args: str) -> str:
+    def run(self, *args: str, cwd: Path | None = None) -> str:
         from overmind.__main__ import app
 
-        result = CliRunner().invoke(app, list(args), catch_exceptions=False)
+        with contextlib.chdir(cwd or Path.cwd()):
+            result = CliRunner().invoke(
+                app, list(args), catch_exceptions=False, env={"OVERMIND_API_URL": self.api_url}
+            )
         if result.exit_code != 0:
             raise AssertionError(
                 f"overmind {' '.join(args)} exited {result.exit_code}:\n{result.output}"
@@ -132,12 +137,10 @@ class McpSurface:
         self.api_key = api_key
 
     async def _session(self, action):
+        client = httpx.AsyncClient(headers={"X-Api-Key": self.api_key}, timeout=120)
         async with (
-            streamablehttp_client(self.url, headers={"X-Api-Key": self.api_key}) as (
-                read,
-                write,
-                _,
-            ),
+            client,
+            streamable_http_client(self.url, http_client=client) as (read, write, _),
             ClientSession(read, write) as session,
         ):
             await session.initialize()

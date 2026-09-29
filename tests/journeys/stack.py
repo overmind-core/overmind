@@ -20,7 +20,13 @@ class LiveAPI:
         self._socket.bind(("127.0.0.1", 0))
         self.url = f"http://127.0.0.1:{self._socket.getsockname()[1]}"
         self._server = uvicorn.Server(
-            uvicorn.Config(application, lifespan="on", log_level="warning", access_log=False)
+            uvicorn.Config(
+                application,
+                lifespan="on",
+                log_level="warning",
+                access_log=False,
+                timeout_keep_alive=75,
+            )
         )
         self._thread = threading.Thread(
             target=self._server.run, kwargs={"sockets": [self._socket]}, daemon=True

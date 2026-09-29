@@ -64,6 +64,15 @@ def _journey_db(transactional_db):
     yield
 
 
+@pytest.fixture(autouse=True)
+def _only_fake_providers(monkeypatch):
+    from overbae.core.model_registry import WORKSHOP_KEY_ENVS
+
+    for env in WORKSHOP_KEY_ENVS:
+        monkeypatch.delenv(env, raising=False)
+    monkeypatch.setenv("OPENROUTER_API_KEY", "sk-fake")
+
+
 def _loopback(address) -> bool:
     if not isinstance(address, tuple):
         return True
@@ -156,6 +165,8 @@ def llm_url(fake_llm):
 
 def _answer_turn(request) -> dict:
     if any(m.get("role") == "tool" for m in request.messages):
+        if "Quote the order id" in request.system:
+            return {"content": GOOD_REPLY}
         return {"content": "Your refund is on its way. The order was delivered."}
     return {
         "content": None,
@@ -169,10 +180,40 @@ def _answer_turn(request) -> dict:
     }
 
 
+GOOD_REPLY = "Order 42 was delivered. Your refund is on its way."
+
+
+def _judged_output(request) -> str:
+    return request.text.split("\noutput:\n", 1)[-1]
+
+
+@pytest.fixture
+def rubric_judges(fake_llm):
+    fake_llm.on_json(
+        lambda r: r.schema_name == "JudgeResult",
+        lambda r: {"score": 1.0 if GOOD_REPLY in r.text else 0.0, "reasoning": "fake judge"},
+    )
+    fake_llm.on_json(
+        lambda r: r.schema_name == "ChecklistResult",
+        lambda r: {
+            "items": [
+                {
+                    "id": item,
+                    "reasoning": "fake judge",
+                    "not_applicable": False,
+                    "verdict": GOOD_REPLY in _judged_output(r),
+                }
+                for item in re.findall(r"^- \(([^)]+)\)", r.text, re.M)
+            ],
+            "reasoning": "fake judge",
+        },
+    )
+
+
 @pytest.fixture
 def support_desk_llm(fake_llm, llm_url):
-    fake_llm.on("You triage customer support tickets", "refund")
-    fake_llm.on("You are a support agent", _answer_turn)
+    fake_llm.on("You triage customer support tickets.", "refund")
+    fake_llm.on("You are a support agent.", _answer_turn)
     return llm_url
 
 

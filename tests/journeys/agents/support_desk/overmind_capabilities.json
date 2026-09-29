@@ -15,20 +15,31 @@
         "task": "Classify a support ticket as refund, shipping or other.",
         "modality": "text",
         "domain": "customer support",
-        "input_schema": {"ticket": "str, the customer's message"},
-        "output_fields": {"category": "enum: refund|shipping|other"},
+        "input_schema": {
+          "ticket": "str, the customer's message"
+        },
+        "output_fields": {},
         "expected_output": {
           "description": "Exactly one lowercase word from the allowed set.",
           "example": "refund",
-          "quality_signals": ["one word", "matches the ticket's intent"]
+          "quality_signals": [
+            "one word",
+            "matches the ticket's intent"
+          ]
         },
         "tool_spec": [],
-        "success_criteria": ["The category matches the ticket."],
-        "failure_modes": ["Returns a sentence instead of one word."],
+        "success_criteria": [
+          "The category matches the ticket."
+        ],
+        "failure_modes": [
+          "Returns a sentence instead of one word."
+        ],
         "output_schema": {
-          "required_keys": ["category"],
-          "properties": {"category": "enum: refund|shipping|other"},
-          "provenance": ["support_desk/agent.py#L39-L48"]
+          "required_keys": [],
+          "properties": {},
+          "provenance": [
+            "support_desk/agent.py#L39-L48"
+          ]
         },
         "trajectory_map": [
           {
@@ -42,24 +53,41 @@
               {
                 "step": "classify the ticket",
                 "kind": "model_invocation",
-                "anchors": ["support_desk.agent.triage"],
+                "anchors": [
+                  "support_desk.agent.triage"
+                ],
                 "input": "triage prompt and the ticket",
                 "action": "choose one category",
                 "output": "category word -> answer",
                 "may_use": []
               }
             ],
-            "anchors": ["support_desk.agent.triage"],
+            "anchors": [
+              "support_desk.agent.triage"
+            ],
             "tools": [],
-            "terminal": {"kind": "emits_record", "description": "one category word"},
+            "terminal": {
+              "kind": "emits_record",
+              "description": "one category word"
+            },
             "divergences": [],
-            "provenance": ["support_desk/agent.py#L39-L48"]
+            "provenance": [
+              "support_desk/agent.py#L39-L48"
+            ]
           }
         ],
         "anchors": [
-          {"qualname": "support_desk.agent.triage", "kind": "entry_point", "file": "support_desk/agent.py#L39-L48"}
+          {
+            "qualname": "support_desk.agent.triage",
+            "kind": "entry_point",
+            "file": "support_desk/agent.py#L39-L48"
+          }
         ],
-        "provenance": {"paths": ["support_desk/agent.py#L39-L48"]}
+        "provenance": {
+          "paths": [
+            "support_desk/agent.py#L39-L48"
+          ]
+        }
       },
       "eval_matrix": [
         {
@@ -87,12 +115,19 @@
         "task": "Answer a support ticket in two sentences, quoting the order id and status when an order is named.",
         "modality": "text",
         "domain": "customer support",
-        "input_schema": {"ticket": "str, the customer's message", "category": "str, triage result"},
-        "output_fields": {"reply": "str, two sentences to the customer"},
+        "input_schema": {
+          "ticket": "str, the customer's message",
+          "category": "str, triage result"
+        },
+        "output_fields": {},
         "expected_output": {
           "description": "Two sentences that quote the order id and its status when the ticket names an order.",
           "example": "Order 42 was delivered. Your refund of 19.00 USD is on its way.",
-          "quality_signals": ["quotes the order id", "states the order status", "two sentences"]
+          "quality_signals": [
+            "quotes the order id",
+            "states the order status",
+            "two sentences"
+          ]
         },
         "tool_spec": [
           {
@@ -101,18 +136,33 @@
             "args": "order_id",
             "side_effect": "read",
             "returns": "order status and total",
-            "arguments": [{"name": "order_id", "type": "str", "required": true, "description": "the order id"}],
+            "arguments": [
+              {
+                "name": "order_id",
+                "type": "str",
+                "required": true,
+                "description": "the order id"
+              }
+            ],
             "integration": "in-memory order table",
             "cluster": "",
-            "provenance": ["support_desk/agent.py#L34-L36"]
+            "provenance": [
+              "support_desk/agent.py#L34-L36"
+            ]
           }
         ],
-        "success_criteria": ["The reply quotes the order id and status when an order is named."],
-        "failure_modes": ["The reply leaves out the order id."],
+        "success_criteria": [
+          "The reply quotes the order id and status when an order is named."
+        ],
+        "failure_modes": [
+          "The reply leaves out the order id."
+        ],
         "output_schema": {
-          "required_keys": ["reply"],
-          "properties": {"reply": "str, two sentences"},
-          "provenance": ["support_desk/agent.py#L51-L72"]
+          "required_keys": [],
+          "properties": {},
+          "provenance": [
+            "support_desk/agent.py#L51-L72"
+          ]
         },
         "trajectory_map": [
           {
@@ -126,25 +176,46 @@
               {
                 "step": "decide: look up the order or answer",
                 "kind": "model_invocation",
-                "anchors": ["support_desk.agent.answer"],
+                "anchors": [
+                  "support_desk.agent.answer"
+                ],
                 "input": "answer prompt, the ticket and its category, tool schema",
                 "action": "call lookup_order or answer",
                 "output": "tool_calls -> lookup_order, results feed back in; final answer -> reply",
                 "may_use": []
               }
             ],
-            "anchors": ["support_desk.agent.answer"],
+            "anchors": [
+              "support_desk.agent.answer"
+            ],
             "tools": [],
-            "terminal": {"kind": "emits_record", "description": "a two-sentence reply to the customer"},
+            "terminal": {
+              "kind": "emits_record",
+              "description": "a two-sentence reply to the customer"
+            },
             "divergences": [],
-            "provenance": ["support_desk/agent.py#L51-L72"]
+            "provenance": [
+              "support_desk/agent.py#L51-L72"
+            ]
           }
         ],
         "anchors": [
-          {"qualname": "support_desk.agent.answer", "kind": "entry_point", "file": "support_desk/agent.py#L51-L72"},
-          {"qualname": "support_desk.agent.lookup_order", "kind": "tool", "file": "support_desk/agent.py#L34-L36"}
+          {
+            "qualname": "support_desk.agent.answer",
+            "kind": "entry_point",
+            "file": "support_desk/agent.py#L51-L72"
+          },
+          {
+            "qualname": "support_desk.agent.lookup_order",
+            "kind": "tool",
+            "file": "support_desk/agent.py#L34-L36"
+          }
         ],
-        "provenance": {"paths": ["support_desk/agent.py#L51-L72"]}
+        "provenance": {
+          "paths": [
+            "support_desk/agent.py#L51-L72"
+          ]
+        }
       },
       "eval_matrix": [
         {
