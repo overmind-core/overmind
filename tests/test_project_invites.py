@@ -9,8 +9,7 @@ from unittest.mock import patch
 
 import pytest
 from django.urls import reverse
-from rest_framework.test import APIClient
-from rest_framework_simplejwt.tokens import RefreshToken
+from factories import auth_client, make_user
 
 from overbae.models import (
     Project,
@@ -33,15 +32,6 @@ def _clerk_on(settings):
     settings.CLERK_API_SECRET_KEY = "sk_test_clerk"
 
 
-def _user(email: str) -> User:
-    return User.objects.create_user(
-        email=email,
-        password="test-pass-123",
-        clerk_user_id=f"clerk_{uuid.uuid4().hex}",
-        projects_limit=5,
-    )
-
-
 def _pro(user: User) -> User:
     Subscription.objects.update_or_create(
         user=user,
@@ -55,13 +45,6 @@ def _pro(user: User) -> User:
     return user
 
 
-def _auth_client(user: User) -> APIClient:
-    client = APIClient()
-    token = RefreshToken.for_user(user)
-    client.credentials(HTTP_AUTHORIZATION=f"Bearer {token.access_token}")
-    return client
-
-
 def _project_with(owner: User) -> Project:
     project = Project.objects.create(name="Inv", slug=f"inv-{uuid.uuid4().hex[:6]}")
     ProjectMembership.objects.create(user=owner, project=project)
@@ -73,11 +56,11 @@ def _invites_url(project: Project) -> str:
 
 
 def test_invite_unknown_email_creates_row_and_clerk_invitation():
-    owner = _pro(_user("lead@example.com"))
+    owner = _pro(make_user("lead@example.com"))
     project = _project_with(owner)
 
     with patch(CREATE_CLERK, return_value="inv_clerk_1") as mock_create:
-        r = _auth_client(owner).post(
+        r = auth_client(owner).post(
             _invites_url(project), {"email": "New@Person.ai"}, format="json"
         )
 
@@ -92,12 +75,12 @@ def test_invite_unknown_email_creates_row_and_clerk_invitation():
 
 
 def test_invite_existing_user_email_is_rejected():
-    owner = _pro(_user("lead@example.com"))
-    _user("known@example.com")
+    owner = _pro(make_user("lead@example.com"))
+    make_user("known@example.com")
     project = _project_with(owner)
 
     with patch(CREATE_CLERK) as mock_create:
-        r = _auth_client(owner).post(
+        r = auth_client(owner).post(
             _invites_url(project), {"email": "known@example.com"}, format="json"
         )
 
@@ -108,9 +91,9 @@ def test_invite_existing_user_email_is_rejected():
 
 
 def test_repeat_invite_is_idempotent():
-    owner = _pro(_user("lead@example.com"))
+    owner = _pro(make_user("lead@example.com"))
     project = _project_with(owner)
-    client = _auth_client(owner)
+    client = auth_client(owner)
 
     with patch(CREATE_CLERK, return_value="inv_clerk_1") as mock_create:
         first = client.post(_invites_url(project), {"email": "new@person.ai"}, format="json")
@@ -124,28 +107,28 @@ def test_repeat_invite_is_idempotent():
 
 
 def test_invite_list_requires_membership():
-    owner = _pro(_user("lead@example.com"))
-    outsider = _user("outsider@example.com")
+    owner = _pro(make_user("lead@example.com"))
+    outsider = make_user("outsider@example.com")
     project = _project_with(owner)
     ProjectInvite.objects.create(project=project, email="new@person.ai", invited_by=owner)
 
-    r = _auth_client(owner).get(_invites_url(project))
+    r = auth_client(owner).get(_invites_url(project))
     assert r.status_code == 200
     assert [row["email"] for row in r.data["results"]] == ["new@person.ai"]
 
-    r = _auth_client(outsider).get(_invites_url(project))
+    r = auth_client(outsider).get(_invites_url(project))
     assert r.status_code == 404
 
 
 def test_revoke_invite_deletes_row_and_revokes_clerk():
-    owner = _pro(_user("lead@example.com"))
+    owner = _pro(make_user("lead@example.com"))
     project = _project_with(owner)
     invite = ProjectInvite.objects.create(
         project=project, email="new@person.ai", invited_by=owner, clerk_invitation_id="inv_clerk_1"
     )
 
     with patch(REVOKE_CLERK) as mock_revoke:
-        r = _auth_client(owner).delete(
+        r = auth_client(owner).delete(
             reverse("project-invite-detail", kwargs={"project_id": project.id, "id": invite.id})
         )
 
@@ -155,11 +138,11 @@ def test_revoke_invite_deletes_row_and_revokes_clerk():
 
 
 def test_free_actor_cannot_invite_past_seat_limit():
-    owner = _user("free@example.com")
+    owner = make_user("free@example.com")
     project = _project_with(owner)
 
     with patch(CREATE_CLERK) as mock_create:
-        r = _auth_client(owner).post(
+        r = auth_client(owner).post(
             _invites_url(project), {"email": "new@person.ai"}, format="json"
         )
 
@@ -169,12 +152,12 @@ def test_free_actor_cannot_invite_past_seat_limit():
 
 
 def test_pending_invite_fills_a_free_seat():
-    owner = _user("free@example.com")
+    owner = make_user("free@example.com")
     project = _project_with(owner)
     ProjectInvite.objects.create(project=project, email="pending@person.ai", invited_by=owner)
-    known = _user("known@example.com")
+    known = make_user("known@example.com")
 
-    r = _auth_client(owner).post(
+    r = auth_client(owner).post(
         reverse("project-membership-list", kwargs={"project_id": project.id}),
         {"email": known.email},
         format="json",
@@ -183,12 +166,12 @@ def test_pending_invite_fills_a_free_seat():
 
 
 def test_claim_converts_invites_to_memberships():
-    owner = _pro(_user("lead@example.com"))
+    owner = _pro(make_user("lead@example.com"))
     p1 = _project_with(owner)
     p2 = _project_with(owner)
     ProjectInvite.objects.create(project=p1, email="new@person.ai", invited_by=owner)
     ProjectInvite.objects.create(project=p2, email="new@person.ai", invited_by=owner)
-    joiner = _user("New@Person.ai")
+    joiner = make_user("New@Person.ai")
 
     claim_pending_invites(joiner)
 
@@ -198,7 +181,7 @@ def test_claim_converts_invites_to_memberships():
 
 
 def test_claim_never_raises():
-    joiner = _user("lonely@person.ai")
+    joiner = make_user("lonely@person.ai")
     with patch(
         "overbae.services.project_invites.ProjectInvite.objects.filter",
         side_effect=RuntimeError("db down"),

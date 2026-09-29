@@ -1,32 +1,18 @@
 from __future__ import annotations
 
-import uuid
 from unittest import mock
 
 import pytest
 import requests
 from django.core.cache import cache
+from factories import auth_client, make_user
 from rest_framework.test import APIClient
-from rest_framework_simplejwt.tokens import RefreshToken
 
-from overbae.models import User
 from overbae.services import model_catalog
 
 pytestmark = pytest.mark.django_db
 
 CATALOG_URL = "/api/models/catalog/"
-
-
-def _auth_client() -> APIClient:
-    user = User.objects.create_user(
-        email=f"u-{uuid.uuid4().hex[:6]}@example.com",
-        password="test-pass-123",
-        clerk_user_id=f"clerk_{uuid.uuid4().hex}",
-    )
-    client = APIClient()
-    token = RefreshToken.for_user(user)
-    client.credentials(HTTP_AUTHORIZATION=f"Bearer {token.access_token}")
-    return client
 
 
 @pytest.fixture(autouse=True)
@@ -119,7 +105,7 @@ def _mock_response(payload: dict, status: int = 200) -> mock.Mock:
 
 class TestModelCatalogEndpoint:
     def test_returns_trimmed_models(self):
-        client = _auth_client()
+        client = auth_client(make_user())
         with mock.patch.object(
             model_catalog.requests, "get", return_value=_mock_response(_upstream_payload())
         ) as get:
@@ -153,7 +139,7 @@ class TestModelCatalogEndpoint:
         assert gpt["prompt_price"] == pytest.approx(0.25)
 
     def test_upstream_failure_returns_empty_list_not_500(self):
-        client = _auth_client()
+        client = auth_client(make_user())
         with mock.patch.object(
             model_catalog.requests,
             "get",
@@ -167,7 +153,7 @@ class TestModelCatalogEndpoint:
         assert body["defaults"]["judge_model"] == body["defaults"]["judge_models"][0]
 
     def test_catalog_is_cached(self):
-        client = _auth_client()
+        client = auth_client(make_user())
         with mock.patch.object(
             model_catalog.requests, "get", return_value=_mock_response(_upstream_payload())
         ) as get:
@@ -191,7 +177,7 @@ class TestModelCatalogEndpoint:
         assert mistral["supported_parameters"] == ["tools", "response_format"]
 
     def test_failure_is_cached_briefly_before_recovery(self):
-        client = _auth_client()
+        client = auth_client(make_user())
         with mock.patch.object(
             model_catalog.requests,
             "get",
@@ -212,7 +198,7 @@ class TestModelCatalogEndpoint:
         assert recovered.json()["upstream_available"] is True
 
     def test_sends_api_key_header_when_present(self):
-        client = _auth_client()
+        client = auth_client(make_user())
         with (
             mock.patch.dict("os.environ", {"OPENROUTER_API_KEY": "sk-or-test"}),
             mock.patch.object(

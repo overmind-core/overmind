@@ -6,9 +6,9 @@ import uuid
 
 import pytest
 from conftest import EVAL_ROWS, frozen_dataset, review_fixture
+from mcp_fixtures import mcp_context
 
 from overbae.models import (
-    APIToken,
     Capability,
     Cell,
     Dataset,
@@ -16,9 +16,6 @@ from overbae.models import (
     OptimizerCandidate,
     OptimizerExperiment,
     OptimizerIteration,
-    Project,
-    ProjectMembership,
-    User,
 )
 from overbae.services.datasets import paths, store
 from overbae.services.mcp import tools_optimizer
@@ -28,25 +25,6 @@ from overbae.services.mcp.contracts.optimizer import InspectOptimizerResultOutpu
 from overbae.services.mcp.resources import read_resource
 
 pytestmark = pytest.mark.django_db(transaction=True)
-
-
-def _context(*, permission: str | list[str] = "read") -> MCPContext:
-    user = User.objects.create_user(
-        email=f"mcp-optimizer-{uuid.uuid4().hex[:8]}@test.com",
-        password="pw",
-        clerk_user_id=f"clerk_{uuid.uuid4().hex}",
-    )
-    project = Project.objects.create(name="Optimizer", slug=f"optimizer-{uuid.uuid4().hex[:8]}")
-    ProjectMembership.objects.create(user=user, project=project)
-    permissions = [permission] if isinstance(permission, str) else permission
-    token = APIToken(
-        scope={
-            "scope": "project",
-            "resourceIds": [str(project.id)],
-            "permission": permissions,
-        }
-    )
-    return MCPContext(user=user, token=token, project=project)
 
 
 def _call(name: str, arguments: dict, context: MCPContext):
@@ -80,7 +58,7 @@ def _experiment(context: MCPContext, *, status: str | None = None) -> OptimizerE
 
 
 def test_read_only_key_hides_and_denies_optimizer_writes():
-    context = _context()
+    context = mcp_context()
     visible = {tool.name for tool in CATALOG.tools(frozenset({"read"}))}
     assert {"check_optimizer_readiness", "inspect_optimizer_result"} <= visible
     assert "start_optimizer" not in visible
@@ -91,7 +69,7 @@ def test_read_only_key_hides_and_denies_optimizer_writes():
 
 
 def test_readiness_reports_wrong_dataset_intent_and_executioner_state():
-    context = _context(permission=["read", "write"])
+    context = mcp_context(permission=["read", "write"])
     capability = Capability.objects.create(
         project=context.project, name="Support", slug=f"support-{uuid.uuid4().hex[:6]}"
     )
@@ -113,7 +91,7 @@ def test_readiness_reports_wrong_dataset_intent_and_executioner_state():
 
 
 def test_start_calls_shared_create_service_and_returns_cli_next_step(monkeypatch):
-    context = _context(permission=["read", "write"])
+    context = mcp_context(permission=["read", "write"])
     capability, dataset, eval_set = _ready_objects(context)
     called = {}
 
@@ -149,8 +127,8 @@ def test_start_calls_shared_create_service_and_returns_cli_next_step(monkeypatch
 
 
 def test_cross_project_experiment_is_inaccessible():
-    context = _context()
-    other = _context()
+    context = mcp_context()
+    other = mcp_context()
     experiment = _experiment(other)
 
     result = _call("inspect_optimizer_result", {"experiment": str(experiment.id)}, context)
@@ -159,7 +137,7 @@ def test_cross_project_experiment_is_inaccessible():
 
 
 def test_inspect_exposes_candidate_coverage_fields():
-    context = _context()
+    context = mcp_context()
     experiment = _experiment(context, status=OptimizerExperiment.Status.COMPLETED)
     iteration = OptimizerIteration.objects.create(experiment=experiment, order=0)
     OptimizerCandidate.objects.create(
@@ -189,7 +167,7 @@ def test_inspect_exposes_candidate_coverage_fields():
 
 
 def test_inspect_is_bounded_typed_and_exposes_winner_state():
-    context = _context()
+    context = mcp_context()
     experiment = _experiment(context, status=OptimizerExperiment.Status.COMPLETED)
     winner = None
     for order in range(2):
@@ -228,7 +206,7 @@ def test_inspect_is_bounded_typed_and_exposes_winner_state():
 
 
 def test_optimizer_resource_is_bounded_and_does_not_leak_key_values():
-    context = _context()
+    context = mcp_context()
     experiment = _experiment(context)
     experiment.state = {"openrouter_api_key": "secret-value"}
     experiment.save(update_fields=["state"])
@@ -248,7 +226,7 @@ def test_optimizer_resource_is_bounded_and_does_not_leak_key_values():
 
 
 def test_readiness_and_start_use_explicit_eval_cell(monkeypatch):
-    context = _context(permission=["read", "write"])
+    context = mcp_context(permission=["read", "write"])
     capability, dataset, eval_set = _ready_objects(context)
     extra = Cell.objects.create(
         dataset=dataset,

@@ -4,6 +4,7 @@ import uuid
 
 import pytest
 from conftest import EVAL_ROWS, frozen_dataset
+from factories import make_project
 
 from overbae.models import (
     Capability,
@@ -12,7 +13,6 @@ from overbae.models import (
     EvalSample,
     Evaluator,
     EvalVariant,
-    Project,
     RunEvaluator,
     Score,
 )
@@ -216,10 +216,6 @@ def test_trace_judge_guard_does_not_fire_on_genuine_model_output(monkeypatch):
 pytestmark = pytest.mark.django_db
 
 
-def _project() -> Project:
-    return Project.objects.create(name="P", slug=f"p-{uuid.uuid4().hex[:8]}")
-
-
 def _dataset(project) -> Dataset:
     capability = Capability.objects.create(
         project=project, name="A", slug=f"a-{uuid.uuid4().hex[:6]}"
@@ -234,7 +230,7 @@ def _attach(run, evaluator) -> RunEvaluator:
 
 
 def test_aggregate_run_is_idempotent_no_double_write_or_reflip():
-    project = _project()
+    project = make_project()
     dataset = _dataset(project)
     evaluator = Evaluator.objects.create(
         project=project,
@@ -291,7 +287,7 @@ def test_aggregate_run_is_idempotent_no_double_write_or_reflip():
 
 
 def test_execute_evaluator_contains_reconstruct_failure(monkeypatch):
-    project = _project()
+    project = make_project()
     dataset = _dataset(project)
     evaluator = Evaluator.objects.create(
         project=project,
@@ -333,7 +329,7 @@ def test_execute_evaluator_contains_reconstruct_failure(monkeypatch):
 
 
 def test_completed_empty_surfaced_when_nothing_scored():
-    project = _project()
+    project = make_project()
     dataset = _dataset(project)
     evaluator = Evaluator.objects.create(
         project=project,
@@ -374,7 +370,7 @@ def test_completed_empty_surfaced_when_nothing_scored():
 
 
 def test_completed_empty_false_when_a_row_scored():
-    project = _project()
+    project = make_project()
     dataset = _dataset(project)
     evaluator = Evaluator.objects.create(
         project=project,

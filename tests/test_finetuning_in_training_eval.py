@@ -10,8 +10,7 @@ from conftest import EVAL_ROWS, frozen_dataset
 from django.conf import settings
 from django.test import override_settings
 from django.urls import reverse
-from rest_framework.test import APIClient
-from rest_framework_simplejwt.tokens import RefreshToken
+from factories import auth_client
 
 from overbae.models import (
     Capability,
@@ -34,13 +33,6 @@ from overbae.services.finetuning_eval import (
 )
 
 pytestmark = pytest.mark.django_db
-
-
-def _auth_client(user) -> APIClient:
-    c = APIClient()
-    token = RefreshToken.for_user(user)
-    c.credentials(HTTP_AUTHORIZATION=f"Bearer {token.access_token}")
-    return c
 
 
 def _setup(*, with_eval_link=True):
@@ -392,7 +384,7 @@ def test_loss_curves_includes_judge_evals():
         model_id=job.base_model,
         aggregate_score=0.42,
     )
-    r = _auth_client(u).get(reverse("finetuningjob-loss-curves", kwargs={"id": str(job.id)}))
+    r = auth_client(u).get(reverse("finetuningjob-loss-curves", kwargs={"id": str(job.id)}))
     assert r.status_code == 200
     assert len(r.data["judge_evals"]) == 1
     assert r.data["judge_evals"][0]["aggregate_score"] == 0.42
@@ -421,7 +413,7 @@ def test_cancel_revokes_related_eval_runs():
         patch("overbae.celery.app"),
         patch("overbae.tasks.eval.revoke_run_tasks", return_value=1) as revoke,
     ):
-        r = _auth_client(u).post(reverse("finetuningjob-cancel", kwargs={"id": job.id}))
+        r = auth_client(u).post(reverse("finetuningjob-cancel", kwargs={"id": job.id}))
     assert r.status_code == 200
     revoke.assert_called_once()
     run.refresh_from_db()

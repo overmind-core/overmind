@@ -124,6 +124,20 @@ jobs:
   test:
     if: github.event_name == 'push' || github.event.pull_request.draft == false
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_DB: overbae
+          POSTGRES_USER: overbae
+          POSTGRES_PASSWORD: overbae
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U overbae"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
     steps:
       - uses: actions/checkout@v4
 

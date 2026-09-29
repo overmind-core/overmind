@@ -11,11 +11,13 @@ from rest_framework.test import APIClient
 from rest_framework_simplejwt.tokens import RefreshToken
 
 from overbae.models import (
+    APIToken,
     Behaviour,
     BehaviourVersion,
     Capability,
     EvalSet,
     Project,
+    ProjectMembership,
     Span,
     User,
     Verdict,
@@ -24,7 +26,7 @@ from overbae.models import (
 
 def make_user(email: str | None = None, **fields: Any) -> User:
     return User.objects.create_user(
-        email=email or f"u-{uuid.uuid4().hex[:6]}@example.com",
+        email=email or f"u-{uuid.uuid4().hex[:8]}@example.com",
         password="test-pass-123",
         clerk_user_id=f"clerk_{uuid.uuid4().hex}",
         **fields,
@@ -33,23 +35,40 @@ def make_user(email: str | None = None, **fields: Any) -> User:
 
 def auth_client(user: User) -> APIClient:
     client = APIClient()
-    token = RefreshToken.for_user(user)
-    client.credentials(HTTP_AUTHORIZATION=f"Bearer {token.access_token}")
+    client.credentials(HTTP_AUTHORIZATION=f"Bearer {RefreshToken.for_user(user).access_token}")
     return client
 
 
-def make_project(**fields: Any) -> Project:
-    fields.setdefault("name", "P")
+def api_key_client(user: User, project: Project | None = None) -> APIClient:
+    raw_key, _ = APIToken.create_for_user(user, project=project)
+    client = APIClient()
+    client.credentials(HTTP_X_API_KEY=raw_key)
+    return client
+
+
+def make_project(name: str = "P", *, member: User | None = None, **fields: Any) -> Project:
     fields.setdefault("slug", f"p-{uuid.uuid4().hex[:8]}")
-    return Project.objects.create(**fields)
+    project = Project.objects.create(name=name, **fields)
+    if member is not None:
+        make_member(member, project)
+    return project
+
+
+def make_member(user: User, project: Project) -> ProjectMembership:
+    return ProjectMembership.objects.create(user=user, project=project)
+
+
+def member_client(project: Project) -> APIClient:
+    user = make_user()
+    make_member(user, project)
+    return auth_client(user)
 
 
 def make_capability(
-    project: Project, *, name: str = "A", with_set: bool = False, **fields: Any
+    project: Project, name: str = "A", *, with_set: bool = False, **fields: Any
 ) -> Capability:
-    capability = Capability.objects.create(
-        project=project, name=name, slug=f"{name.lower()}-{uuid.uuid4().hex[:6]}", **fields
-    )
+    fields.setdefault("slug", f"{name.lower().replace(' ', '-')}-{uuid.uuid4().hex[:6]}")
+    capability = Capability.objects.create(project=project, name=name, **fields)
     if with_set:
         eval_set = EvalSet.objects.create(project=project, capability=capability, name="Default")
         capability.active_eval_set = eval_set

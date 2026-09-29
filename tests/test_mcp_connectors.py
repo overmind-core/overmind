@@ -6,6 +6,7 @@ import uuid
 
 import pytest
 from django.utils import timezone
+from mcp_fixtures import mcp_context
 from rest_framework.test import APIClient
 
 from overbae.models import (
@@ -15,9 +16,7 @@ from overbae.models import (
     ConnectorSyncConfig,
     ConnectorSyncRun,
     Project,
-    ProjectMembership,
     Span,
-    User,
 )
 from overbae.services.connectors.base import SourceProject, VerifyResult
 from overbae.services.connectors.langfuse.mapping import LANGFUSE
@@ -34,25 +33,6 @@ from overbae.services.mcp.context import MCPContext, bind_context
 from overbae.services.mcp.resources import read_resource, resource_templates
 
 pytestmark = pytest.mark.django_db(transaction=True)
-
-
-def _context(*, permission: str | list[str] = "read") -> MCPContext:
-    user = User.objects.create_user(
-        email=f"mcp-connectors-{uuid.uuid4().hex[:8]}@test.com",
-        password="pw",
-        clerk_user_id=f"clerk_{uuid.uuid4().hex}",
-    )
-    project = Project.objects.create(name="Connectors", slug=f"connectors-{uuid.uuid4().hex[:8]}")
-    ProjectMembership.objects.create(user=user, project=project)
-    permissions = [permission] if isinstance(permission, str) else permission
-    token = APIToken(
-        scope={
-            "scope": "project",
-            "resourceIds": [str(project.id)],
-            "permission": permissions,
-        }
-    )
-    return MCPContext(user=user, token=token, project=project)
 
 
 def _call(name: str, arguments: dict, context: MCPContext):
@@ -164,7 +144,7 @@ class _ShapeAdapter:
 
 
 def test_inspect_without_configured_connectors_returns_cli_action():
-    context = _context()
+    context = mcp_context()
 
     result = _call("inspect_connectors", {}, context)
     action = result.structuredContent["human_action"]
@@ -185,7 +165,7 @@ def test_inspect_without_configured_connectors_returns_cli_action():
 
 
 def test_read_only_key_hides_and_denies_connector_writes():
-    context = _context()
+    context = mcp_context()
     connector = _connector(context)
 
     visible = {tool.name for tool in CATALOG.tools(frozenset({"read"}))}
@@ -198,7 +178,7 @@ def test_read_only_key_hides_and_denies_connector_writes():
 
 
 def test_connector_lookup_is_project_scoped():
-    context = _context(permission=["read", "write"])
+    context = mcp_context(permission=["read", "write"])
     other = Project.objects.create(name="Other", slug=f"other-{uuid.uuid4().hex[:8]}")
     connector = ConnectorCredential.objects.create(
         project=other,
@@ -214,7 +194,7 @@ def test_connector_lookup_is_project_scoped():
 
 
 def test_configure_uses_existing_capabilities_and_rejects_unknown_targets():
-    context = _context(permission=["read", "write"])
+    context = mcp_context(permission=["read", "write"])
     connector = _connector(context)
     capability = Capability.objects.create(
         project=context.project,
@@ -297,7 +277,7 @@ def test_configure_uses_existing_capabilities_and_rejects_unknown_targets():
 
 
 def test_sync_uses_neutral_dispatcher_and_returns_poll_resource(monkeypatch):
-    context = _context(permission=["read", "write"])
+    context = mcp_context(permission=["read", "write"])
     connector = _connector(context)
     dispatched = []
     monkeypatch.setattr(
@@ -318,7 +298,7 @@ def test_sync_uses_neutral_dispatcher_and_returns_poll_resource(monkeypatch):
 
 
 def test_provider_exceptions_are_redacted(monkeypatch):
-    context = _context(permission=["read", "write"])
+    context = mcp_context(permission=["read", "write"])
     connector = _connector(context)
     monkeypatch.setattr(
         tools_connectors,
@@ -345,7 +325,7 @@ def test_provider_exceptions_are_redacted(monkeypatch):
 
 
 def test_connector_resource_is_project_scoped_and_secret_free():
-    context = _context()
+    context = mcp_context()
     connector = _connector(context)
     ConnectorSyncRun.objects.create(
         credential=connector,
@@ -371,7 +351,7 @@ def test_connector_resource_is_project_scoped_and_secret_free():
 
 
 def test_list_shows_keyed_drafts_and_hides_keyless_wizard_rows():
-    context = _context()
+    context = mcp_context()
     keyed = _connector(context, configured=False)
     ConnectorCredential.objects.create(
         project=context.project,
@@ -395,7 +375,7 @@ def test_list_shows_keyed_drafts_and_hides_keyless_wizard_rows():
 
 
 def test_inspect_keyed_draft_can_request_source_projects(monkeypatch):
-    context = _context()
+    context = mcp_context()
     connector = _connector(context, configured=False)
     monkeypatch.setattr(tools_connectors, "get_adapter", lambda value: _ListAdapter())
 
@@ -415,7 +395,7 @@ def test_inspect_keyed_draft_can_request_source_projects(monkeypatch):
 
 
 def test_configure_first_config_defaults_lookback_and_leaves_auto_sync_off():
-    context = _context(permission=["read", "write"])
+    context = mcp_context(permission=["read", "write"])
     connector = _connector(context, configured=False)
 
     result = _call(
@@ -436,7 +416,7 @@ def test_configure_first_config_defaults_lookback_and_leaves_auto_sync_off():
 
 
 def test_configure_explicit_null_lookback_stays_unbounded():
-    context = _context(permission=["read", "write"])
+    context = mcp_context(permission=["read", "write"])
     connector = _connector(context, configured=False)
 
     result = _call(
@@ -451,7 +431,7 @@ def test_configure_explicit_null_lookback_stays_unbounded():
 
 
 def test_sync_without_config_returns_config_required():
-    context = _context(permission=["read", "write"])
+    context = mcp_context(permission=["read", "write"])
     connector = _connector(context, configured=False)
 
     result = _call("sync_connector", {"connector": str(connector.id)}, context)
@@ -465,7 +445,7 @@ def test_sync_without_config_returns_config_required():
 
 
 def test_sync_with_empty_source_returns_source_required():
-    context = _context(permission=["read", "write"])
+    context = mcp_context(permission=["read", "write"])
     connector = _connector(context, configured=False)
     _call(
         "configure_connector",
@@ -484,7 +464,7 @@ def test_sync_with_empty_source_returns_source_required():
 
 
 def test_configure_and_sync_without_keys_still_require_cli():
-    context = _context(permission=["read", "write"])
+    context = mcp_context(permission=["read", "write"])
     connector = ConnectorCredential.objects.create(
         project=context.project,
         name="empty",
@@ -506,7 +486,7 @@ def test_configure_and_sync_without_keys_still_require_cli():
 
 
 def test_create_stamps_verified_at_on_saved_and_reconnected_row(monkeypatch):
-    context = _context()
+    context = mcp_context()
     raw, _ = APIToken.create_for_user(context.user, project=context.project)
     client = APIClient()
     client.credentials(HTTP_X_API_KEY=raw)
@@ -538,7 +518,7 @@ def test_create_stamps_verified_at_on_saved_and_reconnected_row(monkeypatch):
 
 
 def test_create_rejects_project_outside_api_key_scope(monkeypatch):
-    context = _context()
+    context = mcp_context()
     other = Project.objects.create(name="Other", slug=f"other-{uuid.uuid4().hex[:8]}")
     raw, _ = APIToken.create_for_user(context.user, project=context.project)
     client = APIClient()
@@ -562,7 +542,7 @@ def test_create_rejects_project_outside_api_key_scope(monkeypatch):
 
 
 def test_mapping_confirm_on_the_first_call_only_stages():
-    context = _context(permission=["read", "write"])
+    context = mcp_context(permission=["read", "write"])
     connector = _connector(context, mapping_confirmed=False)
     capability = Capability.objects.create(
         project=context.project,
@@ -589,7 +569,7 @@ def test_mapping_confirm_on_the_first_call_only_stages():
 
 
 def test_sync_waits_for_mapping_approval(monkeypatch):
-    context = _context(permission=["read", "write"])
+    context = mcp_context(permission=["read", "write"])
     connector = _connector(context, mapping_confirmed=False)
     monkeypatch.setattr(tools_connectors, "enqueue_connector_sync", lambda value: None)
 
@@ -603,7 +583,7 @@ def test_sync_waits_for_mapping_approval(monkeypatch):
 
 
 def test_empty_mapping_can_be_approved_then_synced(monkeypatch):
-    context = _context(permission=["read", "write"])
+    context = mcp_context(permission=["read", "write"])
     connector = _connector(context, mapping_confirmed=False)
     dispatched = []
     monkeypatch.setattr(
@@ -633,7 +613,7 @@ def test_empty_mapping_can_be_approved_then_synced(monkeypatch):
 
 
 def test_inspect_returns_parent_only_suggested_boundaries(monkeypatch):
-    context = _context()
+    context = mcp_context()
     connector = _connector(context)
     capability = Capability.objects.create(
         project=context.project,
@@ -666,7 +646,7 @@ def test_inspect_returns_parent_only_suggested_boundaries(monkeypatch):
 
 
 def test_configure_drops_nested_names_from_the_staged_mapping(monkeypatch):
-    context = _context(permission=["read", "write"])
+    context = mcp_context(permission=["read", "write"])
     connector = _connector(context, mapping_confirmed=False)
     capability = Capability.objects.create(
         project=context.project,
@@ -709,7 +689,7 @@ def test_configure_drops_nested_names_from_the_staged_mapping(monkeypatch):
 
 
 def test_configure_without_mapping_stages_suggested_parents(monkeypatch):
-    context = _context(permission=["read", "write"])
+    context = mcp_context(permission=["read", "write"])
     connector = _connector(context, mapping_confirmed=False)
     capability = Capability.objects.create(
         project=context.project,
@@ -756,7 +736,7 @@ class _InboxAdapter:
 
 
 def test_configure_keeps_fallback_and_does_not_store_auto_create():
-    context = _context(permission=["read", "write"])
+    context = mcp_context(permission=["read", "write"])
     connector = _connector(context, mapping_confirmed=False)
     capability = Capability.objects.create(
         project=context.project,
@@ -787,7 +767,7 @@ def test_configure_keeps_fallback_and_does_not_store_auto_create():
 
 
 def test_configure_keeps_unmapped_root_and_nested_only_boundaries(monkeypatch):
-    context = _context(permission=["read", "write"])
+    context = mcp_context(permission=["read", "write"])
     connector = _connector(context, mapping_confirmed=False)
     triage = Capability.objects.create(
         project=context.project,
@@ -835,7 +815,7 @@ def test_configure_keeps_unmapped_root_and_nested_only_boundaries(monkeypatch):
 
 
 def test_inspect_lists_nested_capability_matches_as_alternatives(monkeypatch):
-    context = _context()
+    context = mcp_context()
     connector = _connector(context)
     capability = Capability.objects.create(
         project=context.project,
@@ -862,7 +842,7 @@ def test_inspect_lists_nested_capability_matches_as_alternatives(monkeypatch):
 
 
 def test_sync_reports_recarving_when_boundary_names_changed(monkeypatch):
-    context = _context(permission=["read", "write"])
+    context = mcp_context(permission=["read", "write"])
     connector = _connector(context)
     connector.capability_mapping = {
         "source": "observation_name",
@@ -893,7 +873,7 @@ def test_sync_reports_recarving_when_boundary_names_changed(monkeypatch):
 
 
 def test_prepare_connector_sync_adopts_empty_key_and_wipes_on_name_change():
-    context = _context()
+    context = mcp_context()
     connector = _connector(context)
     mapping = {"source": "observation_name", "names": ["analyze_email"]}
     connector.capability_mapping = mapping
@@ -921,7 +901,7 @@ def test_prepare_connector_sync_adopts_empty_key_and_wipes_on_name_change():
 
 
 def test_prepare_connector_sync_skips_wipe_when_only_assignments_change():
-    context = _context()
+    context = mcp_context()
     connector = _connector(context)
     mapping = {
         "source": "observation_name",
@@ -946,7 +926,7 @@ def test_prepare_connector_sync_skips_wipe_when_only_assignments_change():
 
 
 def test_reset_connector_import_deletes_only_that_credential_spans():
-    context = _context()
+    context = mcp_context()
     connector = _connector(context)
     other = _connector(context)
     Span.objects.create(

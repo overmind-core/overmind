@@ -9,7 +9,7 @@ from unittest.mock import Mock
 import pandas as pd
 import pytest
 from conftest import TRAIN_ROWS, frozen_dataset
-from mcp_fixtures import training_setup
+from mcp_fixtures import mcp_context, training_setup
 
 from modal_shared.preparation import preparation_failure
 from overbae.core.errors import InputValidationError
@@ -19,10 +19,7 @@ from overbae.models import (
     Dataset,
     DeployedModel,
     FinetuningJob,
-    Project,
-    ProjectMembership,
     TrainingPreparation,
-    User,
 )
 from overbae.services.datasets import paths, review, store
 from overbae.services.finetuning_validator import ValidationResult
@@ -34,21 +31,6 @@ from overbae.services.mcp.resources import read_resource
 pytestmark = pytest.mark.django_db(transaction=True)
 
 
-def _context(*, permission: str | list[str] = "read") -> MCPContext:
-    user = User.objects.create_user(
-        email=f"mcp-ft-{uuid.uuid4().hex[:8]}@test.com",
-        password="pw",
-        clerk_user_id=f"clerk_{uuid.uuid4().hex}",
-    )
-    project = Project.objects.create(name="Fine tuning", slug=f"ft-{uuid.uuid4().hex[:8]}")
-    ProjectMembership.objects.create(user=user, project=project)
-    permissions = [permission] if isinstance(permission, str) else permission
-    token = APIToken(scope={"scope": "project", "permission": permissions})
-    return MCPContext(
-        user=user, token=token, project=project, inference_base_url="http://testserver/api/v1"
-    )
-
-
 def _call(name: str, arguments: dict, context: MCPContext):
     return asyncio.run(CATALOG.call(name, arguments, context))
 
@@ -56,7 +38,9 @@ def _call(name: str, arguments: dict, context: MCPContext):
 @pytest.mark.parametrize("tool", ["prepare_training_data", "retry_deployment"])
 @pytest.mark.parametrize("known", [True, False])
 def test_preparation_and_deployment_errors_are_safe_for_agents(monkeypatch, tool, known):
-    context = _context(permission=["read", "write"])
+    context = mcp_context(
+        inference_base_url="http://testserver/api/v1", permission=["read", "write"]
+    )
     _, train, _, _ = training_setup(context)
     private = "Traceback: /srv/private/worker.py provider_token=hidden"
     detail = "The previous operation has not stopped." if known else private
@@ -165,7 +149,9 @@ def test_catalog_has_finetuning_tools_and_read_only_keys_hide_writes():
 
 def test_exact_preparation_has_pollable_project_scoped_receipt(settings, monkeypatch):
     settings.FINETUNING_BACKEND = "modal"
-    context = _context(permission=["read", "write", "train"])
+    context = mcp_context(
+        inference_base_url="http://testserver/api/v1", permission=["read", "write", "train"]
+    )
     dataset = frozen_dataset(context.project, TRAIN_ROWS, contract="train")
     monkeypatch.setattr(tools_finetuning.inspect_preparation, "delay", lambda *a: None)
     result = _call(
@@ -197,13 +183,13 @@ def test_exact_preparation_has_pollable_project_scoped_receipt(settings, monkeyp
     assert failed.structuredContent["job_error"] == failure["error"]
     assert failed.structuredContent["progress"] == failure
     assert asyncio.run(resource())["error"] == failure["error"]
-    other = _context()
+    other = mcp_context(inference_base_url="http://testserver/api/v1")
     denied = _call("get_job", {"kind": receipt["kind"], "id": receipt["id"]}, other)
     assert denied.isError
 
 
 def test_readiness_rejects_wrong_intent():
-    context = _context()
+    context = mcp_context(inference_base_url="http://testserver/api/v1")
     wrong_intent = Dataset.objects.create(
         project=context.project,
         name="Eval-shaped",
@@ -224,7 +210,7 @@ def test_readiness_rejects_wrong_intent():
 
 
 def test_readiness_treats_legacy_ft_as_train():
-    context = _context()
+    context = mcp_context(inference_base_url="http://testserver/api/v1")
     dataset = Dataset.objects.create(
         project=context.project,
         name="trading-decision-ft-text",
@@ -243,7 +229,7 @@ def test_readiness_treats_legacy_ft_as_train():
 
 
 def test_readiness_classifies_selected_capability_and_defers_to_data_for_none(monkeypatch):
-    context = _context()
+    context = mcp_context(inference_base_url="http://testserver/api/v1")
     capability, dataset, _, _ = training_setup(context)
     capability.description = "Write Python code."
     capability.save(update_fields=["description"])
@@ -270,8 +256,8 @@ def test_readiness_classifies_selected_capability_and_defers_to_data_for_none(mo
 
 
 def test_cross_project_references_are_not_resolved():
-    context = _context()
-    other = _context()
+    context = mcp_context(inference_base_url="http://testserver/api/v1")
+    other = mcp_context(inference_base_url="http://testserver/api/v1")
     dataset = Dataset.objects.create(
         project=other.project,
         name="Other train",
@@ -302,7 +288,7 @@ def test_cross_project_references_are_not_resolved():
 
 
 def test_estimate_uses_existing_estimator_without_creating_a_job(monkeypatch):
-    context = _context()
+    context = mcp_context(inference_base_url="http://testserver/api/v1")
     dataset = Dataset.objects.create(
         project=context.project,
         name="Train",
@@ -352,7 +338,9 @@ def test_estimate_uses_existing_estimator_without_creating_a_job(monkeypatch):
 def test_start_uses_serializer_and_worker_task(
     monkeypatch, capability_choice, unassigned_set, disable_evals
 ):
-    context = _context(permission=["read", "write"])
+    context = mcp_context(
+        inference_base_url="http://testserver/api/v1", permission=["read", "write"]
+    )
     capability, train, _evaluation, _eval_set = training_setup(context)
     if unassigned_set:
         _eval_set.capability = None
@@ -437,7 +425,9 @@ def test_start_uses_serializer_and_worker_task(
 def test_retry_returns_resource_and_dispatches_for_recoverable_deployment(
     monkeypatch, deployment_status
 ):
-    context = _context(permission=["read", "write"])
+    context = mcp_context(
+        inference_base_url="http://testserver/api/v1", permission=["read", "write"]
+    )
     _, train, _, _ = training_setup(context)
     job = FinetuningJob.objects.create(
         project=context.project,
@@ -487,7 +477,9 @@ def test_retry_returns_resource_and_dispatches_for_recoverable_deployment(
     ],
 )
 def test_retry_rejects_ready_or_in_flight_deployment(deployment_status):
-    context = _context(permission=["read", "write"])
+    context = mcp_context(
+        inference_base_url="http://testserver/api/v1", permission=["read", "write"]
+    )
     train = Dataset.objects.create(
         project=context.project, name="Train", intent=Dataset.Intent.TRAIN
     )
@@ -511,7 +503,9 @@ def test_retry_rejects_ready_or_in_flight_deployment(deployment_status):
 
 
 def test_retry_rejects_deployment_without_usable_finetune_job():
-    context = _context(permission=["read", "write"])
+    context = mcp_context(
+        inference_base_url="http://testserver/api/v1", permission=["read", "write"]
+    )
     train = Dataset.objects.create(
         project=context.project, name="Train", intent=Dataset.Intent.TRAIN
     )
@@ -535,7 +529,9 @@ def test_retry_rejects_deployment_without_usable_finetune_job():
 
 
 def test_retry_remains_durable_when_broker_is_unavailable(monkeypatch):
-    context = _context(permission=["read", "write"])
+    context = mcp_context(
+        inference_base_url="http://testserver/api/v1", permission=["read", "write"]
+    )
     _, train, _, _ = training_setup(context)
     job = FinetuningJob.objects.create(
         project=context.project,
@@ -573,7 +569,9 @@ def test_retry_remains_durable_when_broker_is_unavailable(monkeypatch):
 
 
 def test_set_active_model_validates_ready_same_project_and_clear(monkeypatch):
-    context = _context(permission=["read", "write"])
+    context = mcp_context(
+        inference_base_url="http://testserver/api/v1", permission=["read", "write"]
+    )
     capability, train, _, _ = training_setup(context)
     deployment = DeployedModel.objects.create(
         project=context.project,
@@ -601,7 +599,9 @@ def test_set_active_model_validates_ready_same_project_and_clear(monkeypatch):
 
 
 def test_benchmark_tool_and_capability_resource_preserve_serving():
-    context = _context(permission=["read", "write", "train"])
+    context = mcp_context(
+        inference_base_url="http://testserver/api/v1", permission=["read", "write", "train"]
+    )
     capability, train, _, _ = training_setup(context)
     job = FinetuningJob.objects.create(
         project=context.project, capability=capability, dataset=train, base_model="Qwen/Qwen3-8B"
@@ -642,9 +642,11 @@ def test_benchmark_tool_and_capability_resource_preserve_serving():
 
 
 def test_benchmark_tool_rejects_infrastructure_and_foreign_projects():
-    context = _context(permission=["read", "write", "train"])
+    context = mcp_context(
+        inference_base_url="http://testserver/api/v1", permission=["read", "write", "train"]
+    )
     capability, _, _, _ = training_setup(context)
-    foreign_context = _context()
+    foreign_context = mcp_context(inference_base_url="http://testserver/api/v1")
     for project in (context.project, foreign_context.project):
         deployment = DeployedModel.objects.create(
             project=project, model_id=f"base-{project.id}", status="ready"
@@ -660,7 +662,9 @@ def test_benchmark_tool_rejects_infrastructure_and_foreign_projects():
 
 
 def test_run_inference_redacts_service_errors(monkeypatch):
-    context = _context(permission=["read", "write"])
+    context = mcp_context(
+        inference_base_url="http://testserver/api/v1", permission=["read", "write"]
+    )
     deployment = DeployedModel.objects.create(
         project=context.project,
         model_id="ft-infer",
@@ -686,7 +690,9 @@ def test_run_inference_redacts_service_errors(monkeypatch):
 
 
 def test_start_rejects_credential_shaped_hyperparameter_keys():
-    context = _context(permission=["read", "write"])
+    context = mcp_context(
+        inference_base_url="http://testserver/api/v1", permission=["read", "write"]
+    )
     capability, train, _, _ = training_setup(context)
     result = _call(
         "start_finetune",
@@ -704,7 +710,9 @@ def test_start_rejects_credential_shaped_hyperparameter_keys():
 
 
 def test_model_swap_prompt_returns_prompt_and_capability_refs(monkeypatch):
-    context = _context(permission=["read", "write"])
+    context = mcp_context(
+        inference_base_url="http://testserver/api/v1", permission=["read", "write"]
+    )
     capability, train, _, _ = training_setup(context)
     job = FinetuningJob.objects.create(
         project=context.project,
@@ -743,7 +751,9 @@ def test_model_swap_prompt_returns_prompt_and_capability_refs(monkeypatch):
 
 
 def test_model_swap_prompt_reports_why_it_is_unavailable(monkeypatch):
-    context = _context(permission=["read", "write"])
+    context = mcp_context(
+        inference_base_url="http://testserver/api/v1", permission=["read", "write"]
+    )
     capability, train, _, _ = training_setup(context)
     job = FinetuningJob.objects.create(
         project=context.project,
@@ -765,7 +775,7 @@ def test_model_swap_prompt_reports_why_it_is_unavailable(monkeypatch):
 
 
 def test_deployment_resource_has_url_and_bounded_metrics():
-    context = _context()
+    context = mcp_context(inference_base_url="http://testserver/api/v1")
     deployment = DeployedModel.objects.create(
         project=context.project,
         model_id="ft-resource",
@@ -786,7 +796,7 @@ def test_deployment_resource_has_url_and_bounded_metrics():
 
 
 def test_finetune_resource_bounds_progress_without_checkpoint_urls():
-    context = _context()
+    context = mcp_context(inference_base_url="http://testserver/api/v1")
     job = FinetuningJob.objects.create(
         project=context.project,
         dataset=Dataset.objects.create(
@@ -817,7 +827,7 @@ def test_finetune_resource_bounds_progress_without_checkpoint_urls():
 
 
 def test_readiness_reports_chosen_cell_rows_and_contract_failure(monkeypatch):
-    context = _context()
+    context = mcp_context(inference_base_url="http://testserver/api/v1")
     dataset = Dataset.objects.create(
         project=context.project, name="Train", intent=Dataset.Intent.TRAIN
     )
@@ -845,7 +855,9 @@ def test_readiness_reports_chosen_cell_rows_and_contract_failure(monkeypatch):
 
 
 def test_start_uses_explicit_cell_not_active(monkeypatch):
-    context = _context(permission=["read", "write"])
+    context = mcp_context(
+        inference_base_url="http://testserver/api/v1", permission=["read", "write"]
+    )
     capability, train, _evaluation, _eval_set = training_setup(context)
     extra = _ok_cell(train, intent="train", rows=9, title="shaped", position=1, active=False)
     called = {}
@@ -895,7 +907,9 @@ def test_start_uses_explicit_cell_not_active(monkeypatch):
 
 
 def test_activation_receipt_can_be_polled_and_is_project_scoped():
-    context = _context(permission=["read", "write"])
+    context = mcp_context(
+        inference_base_url="http://testserver/api/v1", permission=["read", "write"]
+    )
     capability, _, _, _ = training_setup(context)
     deployment = DeployedModel.objects.create(
         project=context.project, model_id="ft-receipt", status="ready"
@@ -909,7 +923,7 @@ def test_activation_receipt_can_be_polled_and_is_project_scoped():
     result = _call("get_job", {"kind": "model_activation", "id": receipt["id"]}, context)
     assert not result.isError, result.structuredContent
     assert result.structuredContent["status"] == "checking"
-    other = _context(permission=["read", "write"])
+    other = mcp_context(inference_base_url="http://testserver/api/v1", permission=["read", "write"])
     result = _call("get_job", {"kind": "model_activation", "id": receipt["id"]}, other)
     assert result.isError
     assert result.structuredContent["error"]["code"] == "resource_not_found"

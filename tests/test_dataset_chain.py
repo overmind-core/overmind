@@ -2,10 +2,9 @@
 
 from __future__ import annotations
 
-import uuid
-
 import pytest
 from conftest import EVAL_ROWS, TRAIN_ROWS, review_fixture
+from factories import make_project
 
 from overbae.models import Capability, Cell, Dataset, EvalRun, Project
 from overbae.services.datasets import diff, land, lifecycle, paths, store, use
@@ -13,10 +12,6 @@ from overbae.services.datasets.notebook import libraries, runner
 from overbae.services.datasets.notebook import run as run_svc
 
 pytestmark = pytest.mark.django_db
-
-
-def _project() -> Project:
-    return Project.objects.create(name="P", slug=f"p-{uuid.uuid4().hex[:8]}")
 
 
 def _landed(project: Project, rows, name="ds", intent="pending") -> Dataset:
@@ -89,7 +84,7 @@ def test_library_resolve_and_refusal():
 
 
 def test_landing_writes_cell_zero_and_proposes_the_intent():
-    dataset = _landed(_project(), [dict(r) for r in TRAIN_ROWS])
+    dataset = _landed(make_project(), [dict(r) for r in TRAIN_ROWS])
     source = dataset.source
     assert source is not None and source.position == 0 and source.state == "ok"
     assert source.rows == len(TRAIN_ROWS)
@@ -100,7 +95,7 @@ def test_landing_writes_cell_zero_and_proposes_the_intent():
 
 
 def test_landing_keeps_a_chosen_intent_and_ranks_capabilities():
-    project = _project()
+    project = make_project()
     capability = Capability.objects.create(project=project, name="KB", slug="kb")
     rows = [{**r, "capability_id": str(capability.id)} for r in EVAL_ROWS]
     dataset = _landed(project, rows, intent="train")
@@ -111,7 +106,7 @@ def test_landing_keeps_a_chosen_intent_and_ranks_capabilities():
 
 
 def test_run_executes_queued_cells_in_order_and_numbers_versions():
-    dataset = _landed(_project(), ROWS)
+    dataset = _landed(make_project(), ROWS)
     keep = lifecycle.add_cell(dataset, title="Keep", script=KEEP)
     shape = lifecycle.add_cell(dataset, title="Shape", script=SHAPE)
     run_svc.execute(dataset)
@@ -131,7 +126,7 @@ def test_run_executes_queued_cells_in_order_and_numbers_versions():
 
 
 def test_an_unchanged_cell_is_not_run_again():
-    dataset = _landed(_project(), ROWS)
+    dataset = _landed(make_project(), ROWS)
     keep = lifecycle.add_cell(dataset, title="Keep", script=KEEP)
     run_svc.execute(dataset)
     keep.refresh_from_db()
@@ -143,7 +138,7 @@ def test_an_unchanged_cell_is_not_run_again():
 
 
 def test_editing_a_cell_queues_it_and_everything_after():
-    dataset = _landed(_project(), ROWS)
+    dataset = _landed(make_project(), ROWS)
     keep = lifecycle.add_cell(dataset, title="Keep", script=KEEP)
     shape = lifecycle.add_cell(dataset, title="Shape", script=SHAPE)
     run_svc.execute(dataset)
@@ -159,7 +154,7 @@ def test_editing_a_cell_queues_it_and_everything_after():
 
 
 def test_a_failing_cell_stops_the_run_and_leaves_the_rest_queued():
-    dataset = _landed(_project(), ROWS)
+    dataset = _landed(make_project(), ROWS)
     bad = lifecycle.add_cell(dataset, title="Bad", script="df = df['missing']\n")
     after = lifecycle.add_cell(dataset, title="After", script=KEEP)
     run_svc.execute(dataset)
@@ -173,7 +168,7 @@ def test_a_failing_cell_stops_the_run_and_leaves_the_rest_queued():
 
 
 def test_a_proposal_has_no_version_until_accepted():
-    dataset = _landed(_project(), ROWS)
+    dataset = _landed(make_project(), ROWS)
     proposal = lifecycle.add_cell(dataset, title="Later", script=KEEP, proposed=True, note="why")
     real = lifecycle.add_cell(dataset, title="Now", script=SHAPE)
     real.refresh_from_db()
@@ -188,7 +183,7 @@ def test_a_proposal_has_no_version_until_accepted():
 
 
 def test_removing_a_cell_renumbers_and_queues_the_rest():
-    dataset = _landed(_project(), ROWS)
+    dataset = _landed(make_project(), ROWS)
     keep = lifecycle.add_cell(dataset, title="Keep", script=KEEP)
     shape = lifecycle.add_cell(dataset, title="Shape", script=SHAPE)
     run_svc.execute(dataset)
@@ -199,7 +194,7 @@ def test_removing_a_cell_renumbers_and_queues_the_rest():
 
 
 def test_use_refuses_a_wrong_intent_and_a_failing_contract():
-    dataset = _landed(_project(), ROWS, intent="eval")
+    dataset = _landed(make_project(), ROWS, intent="eval")
     with pytest.raises(lifecycle.DatasetError, match="needs train"):
         use.use(dataset, "train")
     with pytest.raises(lifecycle.DatasetError, match="no input column"):
@@ -207,7 +202,7 @@ def test_use_refuses_a_wrong_intent_and_a_failing_contract():
 
 
 def test_use_marks_the_cell_and_starts_a_new_major(django_assert_num_queries):
-    dataset = _landed(_project(), ROWS, intent="eval")
+    dataset = _landed(make_project(), ROWS, intent="eval")
     keep = lifecycle.add_cell(dataset, title="Keep", script=KEEP)
     shape = lifecycle.add_cell(dataset, title="Shape", script=SHAPE)
     run_svc.execute(dataset)
@@ -244,7 +239,7 @@ def test_use_marks_the_cell_and_starts_a_new_major(django_assert_num_queries):
 
 
 def test_a_used_cell_is_protected_and_blocks_deletion():
-    project = _project()
+    project = make_project()
     dataset = _landed(project, [dict(r) for r in EVAL_ROWS], intent="eval")
     review_fixture(dataset)
     cell = use.use(dataset, "eval")

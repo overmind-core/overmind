@@ -7,6 +7,7 @@ from unittest import mock
 
 import pytest
 from conftest import EVAL_ROWS, frozen_dataset
+from factories import make_project
 
 from overbae.models import (
     Capability,
@@ -15,7 +16,6 @@ from overbae.models import (
     EvalSample,
     Evaluator,
     EvalVariant,
-    Project,
     RunEvaluator,
     Score,
 )
@@ -28,10 +28,6 @@ from overbae.tasks import eval as eval_tasks
 pytestmark = pytest.mark.django_db
 
 
-def _project() -> Project:
-    return Project.objects.create(name="P", slug=f"p-{uuid.uuid4().hex[:8]}")
-
-
 def _attach(run, evaluator) -> RunEvaluator:
     return RunEvaluator.objects.create(
         run=run, evaluator=evaluator, snapshot=snapshots.build_snapshot(evaluator)
@@ -39,7 +35,7 @@ def _attach(run, evaluator) -> RunEvaluator:
 
 
 def test_statistical_pipeline_accuracy():
-    project = _project()
+    project = make_project()
     capability = Capability.objects.create(project=project, name="A", slug="a")
     dataset = frozen_dataset(
         capability.project,
@@ -111,7 +107,7 @@ def test_statistical_pipeline_accuracy():
 
 def test_normalize_datapoint_propagates_row_extra():
     """Row-level extra columns must reach metadata.row_extra for variable mappings."""
-    project = _project()
+    project = make_project()
     capability = Capability.objects.create(project=project, name="A", slug="a")
     dataset = frozen_dataset(
         capability.project,
@@ -164,7 +160,7 @@ def test_normalize_datapoint_strips_gold_keys_from_object_input():
 
 def test_resolve_items_reads_reference_from_expected_output():
     """Read verbatim from expected_output — never scavenged from the input."""
-    project = _project()
+    project = make_project()
     capability = Capability.objects.create(project=project, name="A", slug="a")
     dataset = frozen_dataset(
         capability.project,
@@ -193,7 +189,7 @@ def test_generate_prompt_excludes_reference(monkeypatch):
     """The reference stays out of the prompt but remains available for scoring."""
     from overbae.services.eval.runner import RunResult
 
-    project = _project()
+    project = make_project()
     capability = Capability.objects.create(project=project, name="A", slug="a")
     ground_truth = '{"clusters":8,"silhouette":0.41}'
     dataset = frozen_dataset(
@@ -242,7 +238,7 @@ def test_generate_prompt_excludes_reference(monkeypatch):
 def test_generate_multi_turn_keeps_history_strips_final_assistant(monkeypatch):
     from overbae.services.eval.runner import RunResult
 
-    project = _project()
+    project = make_project()
     capability = Capability.objects.create(project=project, name="A", slug="a")
     dataset = frozen_dataset(
         capability.project,
@@ -294,7 +290,7 @@ def test_generate_multi_turn_keeps_history_strips_final_assistant(monkeypatch):
 def test_existing_mode_reference_synthesized_for_scoring():
     """With no assistant turn in the input, the reference becomes final_output for
     judges while the user message stays clean."""
-    project = _project()
+    project = make_project()
     capability = Capability.objects.create(project=project, name="A", slug="a")
     dataset = frozen_dataset(
         capability.project,
@@ -316,7 +312,7 @@ def test_generate_mode_total_failure_sets_sample_error(monkeypatch):
     """No output at all must set sample.error rather than score an empty output."""
     from overbae.services.eval.runner import RunResult
 
-    project = _project()
+    project = make_project()
     capability = Capability.objects.create(project=project, name="A", slug="a")
     dataset = frozen_dataset(
         capability.project, [{"input": "q1", "expected_output": "a1"}], capability=capability
@@ -368,7 +364,7 @@ def test_generate_max_steps_scales_with_recorded_tool_calls(monkeypatch):
     """The step budget derives from recorded tool-call depth, not the flat default of 12."""
     from overbae.services.eval.runner import RunResult, resolve_max_steps
 
-    project = _project()
+    project = make_project()
     capability = Capability.objects.create(project=project, name="A", slug="a")
     dataset = frozen_dataset(
         capability.project,
@@ -408,7 +404,7 @@ def test_generate_max_steps_scales_with_recorded_tool_calls(monkeypatch):
 def test_generate_max_steps_override_from_variant_params(monkeypatch):
     from overbae.services.eval.runner import RunResult
 
-    project = _project()
+    project = make_project()
     capability = Capability.objects.create(project=project, name="A", slug="a")
     dataset = frozen_dataset(
         capability.project,
@@ -446,7 +442,7 @@ def test_generate_tool_loop_without_final_answer_degrades(monkeypatch):
     """A tool envelope is not an answer: final_output stays empty and the sample degrades."""
     from overbae.services.eval.runner import RunResult
 
-    project = _project()
+    project = make_project()
     capability = Capability.objects.create(project=project, name="A", slug="a")
     dataset = frozen_dataset(
         capability.project, [{"input": "q1", "expected_output": "a1"}], capability=capability
@@ -489,7 +485,7 @@ def test_generate_mode_partial_failure_keeps_output(monkeypatch):
     """An error after some output was produced is metadata, not a hard failure."""
     from overbae.services.eval.runner import RunResult
 
-    project = _project()
+    project = make_project()
     capability = Capability.objects.create(project=project, name="A", slug="a")
     dataset = frozen_dataset(
         capability.project, [{"input": "q1", "expected_output": "a1"}], capability=capability
@@ -519,7 +515,7 @@ def test_generate_mode_partial_failure_keeps_output(monkeypatch):
 
 
 def test_execute_evaluator_idempotent():
-    project = _project()
+    project = make_project()
     capability = Capability.objects.create(project=project, name="A", slug="a")
     dataset = frozen_dataset(
         capability.project,
@@ -561,7 +557,7 @@ def test_execute_evaluator_idempotent():
 
 def test_run_evaluator_snapshot_is_independent():
     """A run's bound rubric snapshot survives edits/deletes to the library."""
-    project = _project()
+    project = make_project()
     capability = Capability.objects.create(project=project, name="A", slug="a")
     dataset = frozen_dataset(capability.project, EVAL_ROWS, capability=capability)
     evaluator = Evaluator.objects.create(
@@ -607,7 +603,7 @@ def _harness_artifact_evaluator(project):
 
 
 def test_harness_artifact_evaluator_not_applicable_in_generate_mode():
-    project = _project()
+    project = make_project()
     capability = Capability.objects.create(project=project, name="A", slug="a")
     dataset = frozen_dataset(capability.project, EVAL_ROWS, capability=capability)
     evaluator = _harness_artifact_evaluator(project)
@@ -638,7 +634,7 @@ def test_harness_artifact_evaluator_not_applicable_in_generate_mode():
 def test_summary_carries_per_item_pass_rates():
     """Two variants can share a score while failing different items, so the
     breakdown is frozen with the run — revealed on request, not in the headline."""
-    project = _project()
+    project = make_project()
     agent = Capability.objects.create(project=project, name="A", slug="a")
     dataset = Dataset.objects.create(project=project, capability=agent, name="d")
     run = EvalRun.objects.create(project=project, name="r", data_source="dataset", dataset=dataset)
@@ -676,7 +672,7 @@ def test_summary_carries_per_item_pass_rates():
 
 
 def test_summary_omits_invented_item_ids():
-    project = _project()
+    project = make_project()
     agent = Capability.objects.create(project=project, name="A", slug="a")
     dataset = Dataset.objects.create(project=project, capability=agent, name="d")
     run = EvalRun.objects.create(project=project, name="r", data_source="dataset", dataset=dataset)
@@ -714,7 +710,7 @@ def test_summary_omits_invented_item_ids():
 def test_summary_pools_proportional_evaluators():
     """Averaging per-row fractions over rows with different denominators favours
     the model that writes least; the ratio of sums does not."""
-    project = _project()
+    project = make_project()
     agent = Capability.objects.create(project=project, name="A", slug="a")
     dataset = Dataset.objects.create(project=project, capability=agent, name="d")
     run = EvalRun.objects.create(project=project, name="r", data_source="dataset", dataset=dataset)
@@ -752,7 +748,7 @@ def test_summary_pools_proportional_evaluators():
 
 def test_a_non_proportional_evaluator_keeps_the_mean_as_its_headline():
     """Only proportional evaluators pool; everything else has one denominator."""
-    project = _project()
+    project = make_project()
     agent = Capability.objects.create(project=project, name="A", slug="a")
     dataset = Dataset.objects.create(project=project, capability=agent, name="d")
     run = EvalRun.objects.create(project=project, name="r", data_source="dataset", dataset=dataset)
@@ -782,7 +778,7 @@ def test_a_non_proportional_evaluator_keeps_the_mean_as_its_headline():
 def test_summary_names_evaluators_that_never_scored():
     """A member that abstains on every row measured nothing, and reads as healthy
     unless the summary names it."""
-    project = _project()
+    project = make_project()
     agent = Capability.objects.create(project=project, name="A", slug="a")
     dataset = Dataset.objects.create(project=project, capability=agent, name="d")
     run = EvalRun.objects.create(project=project, name="r", data_source="dataset", dataset=dataset)
@@ -809,7 +805,7 @@ def test_summary_names_evaluators_that_never_scored():
 
 
 def test_summary_names_uncovered_generate_card_claims():
-    project = _project()
+    project = make_project()
     capability = Capability.objects.create(
         project=project,
         name="A",
@@ -848,7 +844,7 @@ def test_summary_names_uncovered_generate_card_claims():
 def test_summary_gold_label_claim_covered_when_agreement_item_present():
     from conftest import frozen_dataset
 
-    project = _project()
+    project = make_project()
     capability = Capability.objects.create(
         project=project,
         name="Intent",
@@ -894,7 +890,7 @@ def test_summary_gold_label_claim_covered_when_agreement_item_present():
 def test_summary_names_attached_evaluator_that_only_wrote_predictions():
     """Dataset-scope metrics write ``{name}__prediction`` abstains and no scored
     row; those must still surface as never_scored under the snapshot name."""
-    project = _project()
+    project = make_project()
     agent = Capability.objects.create(project=project, name="A", slug="a")
     dataset = Dataset.objects.create(project=project, capability=agent, name="d")
     run = EvalRun.objects.create(project=project, name="r", data_source="dataset", dataset=dataset)
@@ -931,7 +927,7 @@ def test_summary_names_attached_evaluator_that_only_wrote_predictions():
 def test_count_sample_errors_surfaces_evaluator_errors_not_abstains():
     """Both carry value=None; the reasoning prefix is what separates an error from
     a legitimate abstain."""
-    project = _project()
+    project = make_project()
     capability = Capability.objects.create(project=project, name="A", slug="a")
     dataset = frozen_dataset(capability.project, EVAL_ROWS, capability=capability)
     evaluator = Evaluator.objects.create(
@@ -992,7 +988,7 @@ def test_count_sample_errors_surfaces_evaluator_errors_not_abstains():
 
 def test_execute_evaluator_error_uses_countable_prefix(monkeypatch):
     """A raising evaluator persists a None score whose reasoning is counted."""
-    project = _project()
+    project = make_project()
     capability = Capability.objects.create(project=project, name="A", slug="a")
     dataset = frozen_dataset(capability.project, EVAL_ROWS, capability=capability)
     evaluator = Evaluator.objects.create(
@@ -1033,7 +1029,7 @@ def test_execute_evaluator_error_uses_countable_prefix(monkeypatch):
 
 
 def test_harness_artifact_evaluator_scores_in_existing_mode():
-    project = _project()
+    project = make_project()
     capability = Capability.objects.create(project=project, name="A", slug="a")
     dataset = frozen_dataset(capability.project, EVAL_ROWS, capability=capability)
     evaluator = _harness_artifact_evaluator(project)
@@ -1079,7 +1075,7 @@ def test_sample_units_for_dataset_and_dry_run():
     """The dry-run must normalize dataset rows exactly as the run path does."""
     from overbae.services.eval import binding_check
 
-    project = _project()
+    project = make_project()
     capability = Capability.objects.create(
         project=project,
         name="A",
@@ -1120,7 +1116,7 @@ def test_sample_units_for_dataset_and_dry_run():
 def test_generate_mode_prefers_recent_run_samples():
     from overbae.services.eval import binding_check, evidence
 
-    project = _project()
+    project = make_project()
     capability = Capability.objects.create(
         project=project, name="A", slug=f"a-{uuid.uuid4().hex[:8]}"
     )
@@ -1168,7 +1164,7 @@ def test_generate_mode_skips_output_binding_without_run_samples():
     binding is skipped rather than red."""
     from overbae.services.eval import binding_check, evidence
 
-    project = _project()
+    project = make_project()
     capability = Capability.objects.create(
         project=project, name="A", slug=f"a-{uuid.uuid4().hex[:8]}"
     )
@@ -1197,7 +1193,7 @@ def test_prepare_sample_generation_timeout_marks_sample_errored(monkeypatch):
     """A soft time limit marks the sample errored — no hang, no retry, worker freed."""
     from celery.exceptions import SoftTimeLimitExceeded
 
-    project = _project()
+    project = make_project()
     capability = Capability.objects.create(
         project=project, name="A", slug=f"a-{uuid.uuid4().hex[:8]}"
     )
@@ -1234,7 +1230,7 @@ def test_prepare_sample_generation_timeout_marks_sample_errored(monkeypatch):
 def test_cancel_run_revokes_inflight_tasks():
     """Revokes the parent and every sample task with terminate=True so hung
     generation calls stop occupying worker threads."""
-    project = _project()
+    project = make_project()
     capability = Capability.objects.create(
         project=project, name="A", slug=f"a-{uuid.uuid4().hex[:8]}"
     )

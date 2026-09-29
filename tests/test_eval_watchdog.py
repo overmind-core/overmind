@@ -1,18 +1,17 @@
 from __future__ import annotations
 
-import uuid
 from contextlib import contextmanager
 from datetime import timedelta
 
 import pytest
 from django.utils import timezone
+from factories import make_project
 
 from overbae.models import (
     EvalRun,
     EvalSample,
     Evaluator,
     EvalVariant,
-    Project,
     RunEvaluator,
     Score,
 )
@@ -34,10 +33,6 @@ def _bypass_task_lock(monkeypatch):
     monkeypatch.setattr("overbae.tasks.utils.task_lock.acquire_task_lock", _noop_lock)
 
 
-def _project() -> Project:
-    return Project.objects.create(name="P", slug=f"p-{uuid.uuid4().hex[:8]}")
-
-
 def _run(project, status=EvalRun.Status.RUNNING) -> EvalRun:
     return EvalRun.objects.create(project=project, name="run", status=status)
 
@@ -49,7 +44,7 @@ def _make_stale(run, minutes: int) -> None:
 
 
 def test_watchdog_marks_stale_running_run_failed():
-    run = _run(_project())
+    run = _run(make_project())
     _make_stale(run, EVAL_RUN_STALL_MINUTES + 5)
 
     result = reap_stalled_eval_runs()
@@ -63,7 +58,7 @@ def test_watchdog_marks_stale_running_run_failed():
 
 
 def test_watchdog_leaves_recent_running_run_alone():
-    run = _run(_project())
+    run = _run(make_project())
 
     result = reap_stalled_eval_runs()
 
@@ -74,7 +69,7 @@ def test_watchdog_leaves_recent_running_run_alone():
 
 
 def test_watchdog_leaves_run_with_recent_scores_alone():
-    project = _project()
+    project = make_project()
     run = _run(project)
     variant = EvalVariant.objects.create(run=run, label="v")
     evaluator = Evaluator.objects.create(
@@ -100,7 +95,7 @@ def test_watchdog_leaves_run_with_recent_scores_alone():
 
 
 def test_watchdog_ignores_terminal_runs():
-    project = _project()
+    project = make_project()
     for status in (EvalRun.Status.COMPLETED, EvalRun.Status.FAILED, EvalRun.Status.CANCELLED):
         run = _run(project, status=status)
         _make_stale(run, EVAL_RUN_STALL_MINUTES + 60)
@@ -111,7 +106,7 @@ def test_watchdog_ignores_terminal_runs():
 
 def test_watchdog_finalizes_when_all_scores_present():
     """All scores written but the callback was lost: finalize, don't fail."""
-    project = _project()
+    project = make_project()
     run = _run(project)
     variant = EvalVariant.objects.create(run=run, label="v", is_baseline=True)
     evaluator = Evaluator.objects.create(
@@ -147,7 +142,7 @@ def test_watchdog_finalizes_when_all_scores_present():
 
 
 def test_handle_eval_failure_marks_running_run_failed():
-    run = _run(_project())
+    run = _run(make_project())
 
     eval_tasks.handle_eval_failure(RuntimeError("boom"), eval_run_id=str(run.id))
 
@@ -158,7 +153,7 @@ def test_handle_eval_failure_marks_running_run_failed():
 
 
 def test_handle_eval_failure_is_idempotent_and_preserves_completed():
-    project = _project()
+    project = make_project()
     completed = _run(project, status=EvalRun.Status.COMPLETED)
 
     eval_tasks.handle_eval_failure(RuntimeError("late"), eval_run_id=str(completed.id))
@@ -169,7 +164,7 @@ def test_handle_eval_failure_is_idempotent_and_preserves_completed():
 
 
 def test_fail_run_idempotent_returns_zero_on_repeat():
-    run = _run(_project())
+    run = _run(make_project())
     assert eval_tasks._fail_run(str(run.id), "first") == 1
     assert eval_tasks._fail_run(str(run.id), "second") == 0
 

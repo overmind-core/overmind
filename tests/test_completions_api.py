@@ -8,11 +8,12 @@ from unittest.mock import MagicMock, patch
 import pytest
 from conftest import TRAIN_ROWS, drain_stream, frozen_dataset
 from django.test import override_settings
+from factories import api_key_client, make_member, make_project, make_user
 from rest_framework import status
 from rest_framework.test import APIClient
 from rest_framework_simplejwt.tokens import RefreshToken
 
-from overbae.models import InferenceCall, Project, ProjectMembership, User
+from overbae.models import InferenceCall, Project, User
 from overbae.models.inference import DeployedModel
 from overbae.services.inference_client import InferenceClientError
 
@@ -23,23 +24,6 @@ def _consume(response):
     """Non-stream finetuned completions ping first; drain so the backend call runs."""
     drain_stream(response)
     return response
-
-
-def _user() -> User:
-    return User.objects.create_user(
-        email=f"u-{uuid.uuid4().hex[:6]}@test.com",
-        password="pw",
-        clerk_user_id=f"clerk_{uuid.uuid4().hex}",
-        projects_limit=5,
-    )
-
-
-def _project() -> Project:
-    return Project.objects.create(name="P", slug=f"p-{uuid.uuid4().hex[:8]}")
-
-
-def _membership(user: User, project: Project) -> None:
-    ProjectMembership.objects.create(user=user, project=project)
 
 
 def _deployed_model(
@@ -111,15 +95,6 @@ def _sse_payloads(body: str) -> list[dict]:
     ]
 
 
-def _api_key_client(user: User, project: Project) -> APIClient:
-    from overbae.models import APIToken
-
-    raw_key, _ = APIToken.create_for_user(user, project=project)
-    client = APIClient()
-    client.credentials(HTTP_X_API_KEY=raw_key)
-    return client
-
-
 class TestInferenceModelRegistry:
     def test_inference_models_are_slugged_and_unique(self):
         from overbae.core.model_registry import inference_models
@@ -153,8 +128,8 @@ class TestModelsListEndpoint:
 
     @override_settings(OPENROUTER_API_KEY="or-test")
     def test_returns_finetuned_and_frontier(self):
-        u, p = _user(), _project()
-        _membership(u, p)
+        u, p = make_user(), make_project()
+        make_member(u, p)
         _deployed_model(p)
         r = _jwt_client(u).get(self.URL)
         assert r.status_code == status.HTTP_200_OK
@@ -164,8 +139,8 @@ class TestModelsListEndpoint:
 
     @override_settings(OPENROUTER_API_KEY="or-test")
     def test_finetuned_field_shape(self):
-        u, p = _user(), _project()
-        _membership(u, p)
+        u, p = make_user(), make_project()
+        make_member(u, p)
         m = _deployed_model(p)
         r = _jwt_client(u).get(self.URL)
         ft_models = [x for x in r.json()["data"] if x["finetuned"]]
@@ -178,8 +153,8 @@ class TestModelsListEndpoint:
 
     def test_no_openrouter_key_omits_frontier(self, settings):
         settings.OPENROUTER_API_KEY = ""
-        u, p = _user(), _project()
-        _membership(u, p)
+        u, p = make_user(), make_project()
+        make_member(u, p)
         _deployed_model(p)
         r = _jwt_client(u).get(self.URL)
         assert r.status_code == status.HTTP_200_OK
@@ -188,8 +163,8 @@ class TestModelsListEndpoint:
 
     @override_settings(OPENROUTER_API_KEY="or-test")
     def test_default_status_filter_returns_only_ready(self):
-        u, p = _user(), _project()
-        _membership(u, p)
+        u, p = make_user(), make_project()
+        make_member(u, p)
         _deployed_model(p, status_val=DeployedModel.Status.READY)
         _deployed_model(p, status_val=DeployedModel.Status.DEPLOYING)
         r = _jwt_client(u).get(self.URL)
@@ -199,8 +174,8 @@ class TestModelsListEndpoint:
 
     @override_settings(OPENROUTER_API_KEY="or-test")
     def test_status_all_returns_every_status(self):
-        u, p = _user(), _project()
-        _membership(u, p)
+        u, p = make_user(), make_project()
+        make_member(u, p)
         _deployed_model(p, status_val=DeployedModel.Status.READY)
         _deployed_model(p, status_val=DeployedModel.Status.DEPLOYING)
         _deployed_model(p, status_val=DeployedModel.Status.FAILED)
@@ -210,8 +185,8 @@ class TestModelsListEndpoint:
 
     @override_settings(OPENROUTER_API_KEY="or-test")
     def test_status_filter_specific_value(self):
-        u, p = _user(), _project()
-        _membership(u, p)
+        u, p = make_user(), make_project()
+        make_member(u, p)
         _deployed_model(p, status_val=DeployedModel.Status.READY)
         _deployed_model(p, status_val=DeployedModel.Status.FAILED)
         r = _jwt_client(u).get(self.URL + "?status=failed")
@@ -220,18 +195,18 @@ class TestModelsListEndpoint:
         assert ft[0]["status"] == "failed"
 
     def test_invalid_status_returns_400(self):
-        u, p = _user(), _project()
-        _membership(u, p)
+        u, p = make_user(), make_project()
+        make_member(u, p)
         r = _jwt_client(u).get(self.URL + "?status=bogus")
         assert r.status_code == status.HTTP_400_BAD_REQUEST
 
     @override_settings(OPENROUTER_API_KEY="or-test")
     def test_scoped_to_user_projects(self):
-        u_a, p_a = _user(), _project()
-        _membership(u_a, p_a)
+        u_a, p_a = make_user(), make_project()
+        make_member(u_a, p_a)
         _deployed_model(p_a)
 
-        p_b = _project()  # user_a has no membership here
+        p_b = make_project()  # user_a has no membership here
         _deployed_model(p_b)
 
         r = _jwt_client(u_a).get(self.URL + "?status=all")
@@ -240,10 +215,10 @@ class TestModelsListEndpoint:
 
     @override_settings(OPENROUTER_API_KEY="or-test")
     def test_api_key_auth_also_works(self):
-        u, p = _user(), _project()
-        _membership(u, p)
+        u, p = make_user(), make_project()
+        make_member(u, p)
         _deployed_model(p)
-        r = _api_key_client(u, p).get(self.URL)
+        r = api_key_client(u, p).get(self.URL)
         assert r.status_code == status.HTTP_200_OK
 
 
@@ -256,8 +231,8 @@ class TestModelDetailRetrieve:
         assert r.status_code == status.HTTP_401_UNAUTHORIZED
 
     def test_returns_model_details(self):
-        u, p = _user(), _project()
-        _membership(u, p)
+        u, p = make_user(), make_project()
+        make_member(u, p)
         m = _deployed_model(p)
         r = _jwt_client(u).get(self._url(m.model_id))
         assert r.status_code == status.HTTP_200_OK
@@ -269,29 +244,29 @@ class TestModelDetailRetrieve:
         assert body["owned_by"] == "overmind"
 
     def test_returns_404_for_unknown_model(self):
-        u, p = _user(), _project()
-        _membership(u, p)
+        u, p = make_user(), make_project()
+        make_member(u, p)
         r = _jwt_client(u).get(self._url("ft-doesnotexist"))
         assert r.status_code == status.HTTP_404_NOT_FOUND
 
     def test_returns_404_for_other_users_model(self):
-        p_a, p_b = _project(), _project()
-        u_a, u_b = _user(), _user()
-        _membership(u_a, p_a)
-        _membership(u_b, p_b)
+        p_a, p_b = make_project(), make_project()
+        u_a, u_b = make_user(), make_user()
+        make_member(u_a, p_a)
+        make_member(u_b, p_b)
         m = _deployed_model(p_a)
         r = _jwt_client(u_b).get(self._url(m.model_id))
         assert r.status_code == status.HTTP_404_NOT_FOUND
 
     def test_non_finetuned_model_returns_404(self):
-        u, p = _user(), _project()
-        _membership(u, p)
+        u, p = make_user(), make_project()
+        make_member(u, p)
         r = _jwt_client(u).get(self._url("anthropic/claude-sonnet-5"))
         assert r.status_code == status.HTTP_404_NOT_FOUND
 
     def test_works_for_non_ready_model(self):
-        u, p = _user(), _project()
-        _membership(u, p)
+        u, p = make_user(), make_project()
+        make_member(u, p)
         m = _deployed_model(p, status_val=DeployedModel.Status.DEPLOYING)
         r = _jwt_client(u).get(self._url(m.model_id))
         assert r.status_code == status.HTTP_200_OK
@@ -312,8 +287,8 @@ class TestModelDetailDelete:
         assert r.status_code == status.HTTP_401_UNAUTHORIZED
 
     def test_delete_marks_model_deleted(self):
-        u, p = _user(), _project()
-        _membership(u, p)
+        u, p = make_user(), make_project()
+        make_member(u, p)
         m = _deployed_model(p)
         mock_client = self._mock_inference_client()
         with patch("overbae.api.completions.get_inference_client", return_value=mock_client):
@@ -325,8 +300,8 @@ class TestModelDetailDelete:
         assert m.status == DeployedModel.Status.DELETED
 
     def test_delete_calls_inference_client(self):
-        u, p = _user(), _project()
-        _membership(u, p)
+        u, p = make_user(), make_project()
+        make_member(u, p)
         m = _deployed_model(p)
         mock_client = self._mock_inference_client()
         with patch("overbae.api.completions.get_inference_client", return_value=mock_client):
@@ -334,32 +309,32 @@ class TestModelDetailDelete:
         mock_client.delete_model.assert_called_once_with(m.model_id)
 
     def test_cannot_delete_frontier_model(self):
-        u, p = _user(), _project()
-        _membership(u, p)
+        u, p = make_user(), make_project()
+        make_member(u, p)
         r = _jwt_client(u).delete(self._url("anthropic/claude-sonnet-5"))
         assert r.status_code == status.HTTP_400_BAD_REQUEST
         body = r.json()
         assert "not a fine-tuned model" in body["error"]["message"]
 
     def test_cannot_delete_model_already_deleting(self):
-        u, p = _user(), _project()
-        _membership(u, p)
+        u, p = make_user(), make_project()
+        make_member(u, p)
         m = _deployed_model(p, status_val=DeployedModel.Status.DELETING)
         r = _jwt_client(u).delete(self._url(m.model_id))
         assert r.status_code == status.HTTP_409_CONFLICT
 
     def test_cannot_delete_already_deleted_model(self):
-        u, p = _user(), _project()
-        _membership(u, p)
+        u, p = make_user(), make_project()
+        make_member(u, p)
         m = _deployed_model(p, status_val=DeployedModel.Status.DELETED)
         r = _jwt_client(u).delete(self._url(m.model_id))
         assert r.status_code == status.HTTP_409_CONFLICT
 
     def test_delete_returns_404_for_other_users_model(self):
-        p_a, p_b = _project(), _project()
-        u_a, u_b = _user(), _user()
-        _membership(u_a, p_a)
-        _membership(u_b, p_b)
+        p_a, p_b = make_project(), make_project()
+        u_a, u_b = make_user(), make_user()
+        make_member(u_a, p_a)
+        make_member(u_b, p_b)
         m = _deployed_model(p_a)
         r = _jwt_client(u_b).delete(self._url(m.model_id))
         assert r.status_code == status.HTTP_404_NOT_FOUND
@@ -367,8 +342,8 @@ class TestModelDetailDelete:
     def test_delete_sets_failed_on_inference_error(self):
         from overbae.services.inference_client import InferenceClientError
 
-        u, p = _user(), _project()
-        _membership(u, p)
+        u, p = make_user(), make_project()
+        make_member(u, p)
         m = _deployed_model(p)
         mock_client = MagicMock()
         mock_client.delete_model.side_effect = InferenceClientError("Modal down")
@@ -388,20 +363,20 @@ class TestChatCompletionsEndpoint:
         assert r.status_code == status.HTTP_401_UNAUTHORIZED
 
     def test_missing_model_returns_400(self):
-        u, p = _user(), _project()
-        _membership(u, p)
+        u, p = make_user(), make_project()
+        make_member(u, p)
         r = _jwt_client(u).post(self.URL, {"messages": self.MESSAGES}, format="json")
         assert r.status_code == status.HTTP_400_BAD_REQUEST
 
     def test_missing_messages_returns_400(self):
-        u, p = _user(), _project()
-        _membership(u, p)
+        u, p = make_user(), make_project()
+        make_member(u, p)
         r = _jwt_client(u).post(self.URL, {"model": "ft-abc"}, format="json")
         assert r.status_code == status.HTTP_400_BAD_REQUEST
 
     def test_unknown_finetuned_model_returns_404(self):
-        u, p = _user(), _project()
-        _membership(u, p)
+        u, p = make_user(), make_project()
+        make_member(u, p)
         r = _jwt_client(u).post(
             self.URL,
             {"model": "ft-doesnotexist", "messages": self.MESSAGES},
@@ -410,8 +385,8 @@ class TestChatCompletionsEndpoint:
         assert r.status_code == status.HTTP_404_NOT_FOUND
 
     def test_unlisted_slug_without_optimiser_header_returns_404(self):
-        u, p = _user(), _project()
-        _membership(u, p)
+        u, p = make_user(), make_project()
+        make_member(u, p)
         r = _jwt_client(u).post(
             self.URL,
             {"model": "mistralai/mistral-large", "messages": self.MESSAGES},
@@ -421,8 +396,8 @@ class TestChatCompletionsEndpoint:
 
     @override_settings(OPENROUTER_API_KEY="or-test")
     def test_optimiser_header_bypasses_the_allowlist_for_api_keys_only(self):
-        u, p = _user(), _project()
-        _membership(u, p)
+        u, p = make_user(), make_project()
+        make_member(u, p)
         fake_resp = {
             "id": "chatcmpl-opt",
             "object": "chat.completion",
@@ -440,7 +415,7 @@ class TestChatCompletionsEndpoint:
         mock_post.return_value.ok = True
         mock_post.return_value.json.return_value = fake_resp
         with patch("overbae.api.completions._requests.post", mock_post):
-            r = _api_key_client(u, p).post(
+            r = api_key_client(u, p).post(
                 self.URL,
                 {"model": "mistralai/mistral-large", "messages": self.MESSAGES},
                 format="json",
@@ -462,8 +437,8 @@ class TestChatCompletionsEndpoint:
 
     @override_settings(OPENROUTER_API_KEY="or-test")
     def test_optimiser_bare_model_name_resolves_to_full_slug(self):
-        u, p = _user(), _project()
-        _membership(u, p)
+        u, p = make_user(), make_project()
+        make_member(u, p)
         fake_resp = {
             "id": "chatcmpl-opt",
             "object": "chat.completion",
@@ -481,7 +456,7 @@ class TestChatCompletionsEndpoint:
         mock_post.return_value.ok = True
         mock_post.return_value.json.return_value = fake_resp
         with patch("overbae.api.completions._requests.post", mock_post):
-            r = _api_key_client(u, p).post(
+            r = api_key_client(u, p).post(
                 self.URL,
                 {"model": "gpt-5-mini", "messages": self.MESSAGES},
                 format="json",
@@ -491,8 +466,8 @@ class TestChatCompletionsEndpoint:
         assert mock_post.call_args.kwargs["json"]["model"] == "openai/gpt-5-mini"
 
     def test_bare_model_name_without_optimiser_header_still_404s(self):
-        u, p = _user(), _project()
-        _membership(u, p)
+        u, p = make_user(), make_project()
+        make_member(u, p)
         r = _jwt_client(u).post(
             self.URL,
             {"model": "gpt-5-mini", "messages": self.MESSAGES},
@@ -502,8 +477,8 @@ class TestChatCompletionsEndpoint:
 
     @override_settings(OPENROUTER_API_KEY="or-test")
     def test_response_format_is_forwarded_upstream(self):
-        u, p = _user(), _project()
-        _membership(u, p)
+        u, p = make_user(), make_project()
+        make_member(u, p)
         mock_post = MagicMock()
         mock_post.return_value.ok = True
         mock_post.return_value.json.return_value = {
@@ -548,7 +523,7 @@ class TestChatCompletionsEndpoint:
                 ),
             ),
         ):
-            _charge_frontier_usage(_user(), "mistralai/mistral-large", usage)
+            _charge_frontier_usage(make_user(), "mistralai/mistral-large", usage)
 
         if expected_amount is None:
             assert captured == {}
@@ -557,8 +532,8 @@ class TestChatCompletionsEndpoint:
             assert captured["service"] == BillingService.INFERENCE
 
     def test_non_ready_model_returns_503(self):
-        u, p = _user(), _project()
-        _membership(u, p)
+        u, p = make_user(), make_project()
+        make_member(u, p)
         m = _deployed_model(p, status_val=DeployedModel.Status.DEPLOYING)
         r = _jwt_client(u).post(
             self.URL,
@@ -569,8 +544,8 @@ class TestChatCompletionsEndpoint:
 
     def test_frontier_model_without_openrouter_key_returns_503(self, settings):
         settings.OPENROUTER_API_KEY = ""
-        u, p = _user(), _project()
-        _membership(u, p)
+        u, p = make_user(), make_project()
+        make_member(u, p)
         r = _jwt_client(u).post(
             self.URL,
             {"model": "anthropic/claude-sonnet-5", "messages": self.MESSAGES},
@@ -580,8 +555,8 @@ class TestChatCompletionsEndpoint:
 
     @override_settings(OPENROUTER_API_KEY="or-test")
     def test_frontier_model_non_stream_proxies_to_openrouter(self):
-        u, p = _user(), _project()
-        _membership(u, p)
+        u, p = make_user(), make_project()
+        make_member(u, p)
         fake_resp = {
             "id": "chatcmpl-123",
             "object": "chat.completion",
@@ -609,8 +584,8 @@ class TestChatCompletionsEndpoint:
 
     @override_settings(OPENROUTER_API_KEY="or-test")
     def test_frontier_model_openrouter_error_returns_502(self):
-        u, p = _user(), _project()
-        _membership(u, p)
+        u, p = make_user(), make_project()
+        make_member(u, p)
         mock_post = MagicMock()
         mock_post.return_value.ok = False
         mock_post.return_value.status_code = 404
@@ -624,8 +599,8 @@ class TestChatCompletionsEndpoint:
         assert r.status_code == status.HTTP_502_BAD_GATEWAY
 
     def test_finetuned_model_non_stream_returns_completion(self):
-        u, p = _user(), _project()
-        _membership(u, p)
+        u, p = make_user(), make_project()
+        make_member(u, p)
         m = _deployed_model(p)
         fake_completion = {
             "id": "cmpl-ft-1",
@@ -657,8 +632,8 @@ class TestChatCompletionsEndpoint:
     def test_finetuned_non_stream_error_returns_error_status(self):
         from overbae.services.inference_client import InferenceClientError
 
-        u, p = _user(), _project()
-        _membership(u, p)
+        u, p = make_user(), make_project()
+        make_member(u, p)
         m = _deployed_model(p)
         mock_client = MagicMock()
         mock_client.chat_completions.side_effect = InferenceClientError("Modal down")
@@ -673,8 +648,8 @@ class TestChatCompletionsEndpoint:
         assert body["error"]["type"] == "server_error"
 
     def test_finetuned_non_stream_unexpected_error_returns_error_status(self):
-        u, p = _user(), _project()
-        _membership(u, p)
+        u, p = make_user(), make_project()
+        make_member(u, p)
         m = _deployed_model(p)
         mock_client = MagicMock()
         mock_client.chat_completions.side_effect = RuntimeError("boom")
@@ -690,8 +665,8 @@ class TestChatCompletionsEndpoint:
 
     def test_response_format_reaches_the_vllm_backend(self):
         # Without json_object a reasoning model can reply in ``message.reasoning``, content null.
-        u, p = _user(), _project()
-        _membership(u, p)
+        u, p = make_user(), make_project()
+        make_member(u, p)
         m = _deployed_model(p)
         mock_client = MagicMock()
         mock_client.chat_completions.return_value = {"id": "x", "choices": []}
@@ -713,8 +688,8 @@ class TestChatCompletionsEndpoint:
 
     def test_gpt_oss_defaults_suppress_reasoning(self):
         # Harmony rejects reasoning_effort=none; gateway injects low + hide CoT.
-        u, p = _user(), _project()
-        _membership(u, p)
+        u, p = make_user(), make_project()
+        make_member(u, p)
         m = _deployed_model(
             p,
             model_id="ft-test-gpt-oss-20b",
@@ -735,8 +710,8 @@ class TestChatCompletionsEndpoint:
         assert kw["reasoning_effort"] == "low"
 
     def test_gpt_oss_client_reasoning_overrides_defaults(self):
-        u, p = _user(), _project()
-        _membership(u, p)
+        u, p = make_user(), make_project()
+        make_member(u, p)
         m = _deployed_model(
             p,
             model_id="ft-test-gpt-oss-20b-override",
@@ -762,8 +737,8 @@ class TestChatCompletionsEndpoint:
         assert kw["reasoning_effort"] == "high"
 
     def test_muse_defaults_suppress_reasoning(self):
-        u, p = _user(), _project()
-        _membership(u, p)
+        u, p = make_user(), make_project()
+        make_member(u, p)
         m = _deployed_model(
             p,
             model_id="ft-test-muse-glimmer-30b",
@@ -785,8 +760,8 @@ class TestChatCompletionsEndpoint:
         assert "reasoning_effort" not in kw
 
     def test_finetuned_model_stream_returns_event_stream(self):
-        u, p = _user(), _project()
-        _membership(u, p)
+        u, p = make_user(), make_project()
+        make_member(u, p)
         m = _deployed_model(p)
 
         def _fake_stream(**_):
@@ -806,8 +781,8 @@ class TestChatCompletionsEndpoint:
 
     def _run_forced_usage_stream(self, stream_options=None, **chunk_kwargs):
         """Returns (forwarded SSE payloads, usage handed to billing)."""
-        u, p = _user(), _project()
-        _membership(u, p)
+        u, p = make_user(), make_project()
+        make_member(u, p)
         m = _deployed_model(p)
 
         def _fake_stream(**_):
@@ -859,8 +834,8 @@ class TestChatCompletionsEndpoint:
         assert billed == _BILLED_USAGE
 
     def test_stream_with_no_upstream_chunks_records_failure(self):
-        u, p = _user(), _project()
-        _membership(u, p)
+        u, p = make_user(), make_project()
+        make_member(u, p)
         m = _deployed_model(p)
 
         def _fake_stream(**_):
@@ -883,13 +858,13 @@ class TestChatCompletionsEndpoint:
         assert record.call_args.kwargs["error_code"] == "incomplete_stream"
 
     def test_api_key_auth_accepted(self):
-        u, p = _user(), _project()
-        _membership(u, p)
+        u, p = make_user(), make_project()
+        make_member(u, p)
         m = _deployed_model(p)
         mock_client = MagicMock()
         mock_client.chat_completions.return_value = {"id": "x", "choices": []}
         with patch("overbae.api.completions._get_client", return_value=mock_client):
-            r = _api_key_client(u, p).post(
+            r = api_key_client(u, p).post(
                 self.URL,
                 {"model": m.model_id, "messages": self.MESSAGES},
                 format="json",
@@ -927,11 +902,11 @@ class TestAgentAliasRouting:
 
     @pytest.mark.parametrize("auth", ["api_key", "jwt"])
     def test_alias_dispatches_concrete_model_id(self, auth):
-        u, p = _user(), _project()
-        _membership(u, p)
+        u, p = make_user(), make_project()
+        make_member(u, p)
         m = _deployed_model(p)
         capability = _capability(p, active_model=m)
-        client = _api_key_client(u, p) if auth == "api_key" else _jwt_client(u)
+        client = api_key_client(u, p) if auth == "api_key" else _jwt_client(u)
 
         mock_client = self._mock_client()
         with patch("overbae.api.completions._get_client", return_value=mock_client):
@@ -942,8 +917,8 @@ class TestAgentAliasRouting:
         assert mock_client.chat_completions.call_args.kwargs["model_id"] == m.model_id
 
     def test_malformed_uuid_returns_400_naming_shape_and_source(self):
-        u, p = _user(), _project()
-        _membership(u, p)
+        u, p = make_user(), make_project()
+        make_member(u, p)
         r = self._post(_jwt_client(u), "overmind/not-a-uuid")
         assert r.status_code == status.HTTP_400_BAD_REQUEST
         message = r.json()["error"]["message"]
@@ -953,15 +928,15 @@ class TestAgentAliasRouting:
     @pytest.mark.parametrize("unroutable", ["absent", "other_project", "soft_deleted"])
     def test_unroutable_capability_is_an_indistinguishable_404(self, unroutable):
         """404 for every miss, never 403 — the alias must not confirm existence."""
-        u, p_a, p_b = _user(), _project(), _project()
-        _membership(u, p_a)
-        _membership(u, p_b)
+        u, p_a, p_b = make_user(), make_project(), make_project()
+        make_member(u, p_a)
+        make_member(u, p_b)
         client = _jwt_client(u)
         if unroutable == "absent":
             model = f"overmind/{uuid.uuid4()}"
         elif unroutable == "other_project":
             # The user is a member of p_b, but this key is pinned to p_a.
-            client = _api_key_client(u, p_a)
+            client = api_key_client(u, p_a)
             model = self._alias(_capability(p_b, active_model=_deployed_model(p_b)))
         else:
             model = self._alias(
@@ -971,16 +946,16 @@ class TestAgentAliasRouting:
         assert self._post(client, model).status_code == status.HTTP_404_NOT_FOUND
 
     def test_capability_without_active_model_returns_404_not_frontier_fallback(self):
-        u, p = _user(), _project()
-        _membership(u, p)
+        u, p = make_user(), make_project()
+        make_member(u, p)
         capability = _capability(p, model="openai/gpt-5.6-sol")  # must NOT be used
         r = self._post(_jwt_client(u), self._alias(capability))
         assert r.status_code == status.HTTP_404_NOT_FOUND
         assert "no active model" in r.json()["error"]["message"]
 
     def test_non_ready_active_model_returns_503_naming_both_ids(self):
-        u, p = _user(), _project()
-        _membership(u, p)
+        u, p = make_user(), make_project()
+        make_member(u, p)
         m = _deployed_model(p, status_val=DeployedModel.Status.WARMING)
         capability = _capability(p, active_model=m)
 
@@ -992,9 +967,9 @@ class TestAgentAliasRouting:
 
     def test_active_model_in_another_project_reads_as_no_active_model(self):
         """``active_model`` is an unconstrained FK — a foreign deployment cannot route."""
-        u, p_a, p_b = _user(), _project(), _project()
-        _membership(u, p_a)
-        _membership(u, p_b)
+        u, p_a, p_b = make_user(), make_project(), make_project()
+        make_member(u, p_a)
+        make_member(u, p_b)
         capability = _capability(p_a, active_model=_deployed_model(p_b))
 
         r = self._post(_jwt_client(u), self._alias(capability))
@@ -1004,8 +979,8 @@ class TestAgentAliasRouting:
 
 class TestAgentAliasOnModelsEndpoints:
     def test_models_list_includes_alias_with_name(self):
-        u, p = _user(), _project()
-        _membership(u, p)
+        u, p = make_user(), make_project()
+        make_member(u, p)
         m = _deployed_model(p)
         capability = _capability(p, active_model=m)
 
@@ -1017,30 +992,30 @@ class TestAgentAliasOnModelsEndpoints:
         assert alias["base_model"] == m.base_model_id
 
     def test_models_list_under_pinned_key_omits_other_project(self):
-        u, p_a, p_b = _user(), _project(), _project()
-        _membership(u, p_a)
-        _membership(u, p_b)
+        u, p_a, p_b = make_user(), make_project(), make_project()
+        make_member(u, p_a)
+        make_member(u, p_b)
         capability_a = _capability(p_a, active_model=_deployed_model(p_a))
         m_b = _deployed_model(p_b)
         capability_b = _capability(p_b, active_model=m_b)
 
-        ids = {x["id"] for x in _api_key_client(u, p_a).get("/api/v1/models").json()["data"]}
+        ids = {x["id"] for x in api_key_client(u, p_a).get("/api/v1/models").json()["data"]}
         assert f"overmind/{capability_a.id}" in ids
         assert f"overmind/{capability_b.id}" not in ids
         assert m_b.model_id not in ids
 
     def test_models_list_omits_an_alias_pointing_into_another_project(self):
-        u, p_a, p_b = _user(), _project(), _project()
-        _membership(u, p_a)
-        _membership(u, p_b)
+        u, p_a, p_b = make_user(), make_project(), make_project()
+        make_member(u, p_a)
+        make_member(u, p_b)
         capability = _capability(p_a, active_model=_deployed_model(p_b))
 
         ids = {x["id"] for x in _jwt_client(u).get("/api/v1/models").json()["data"]}
         assert f"overmind/{capability.id}" not in ids
 
     def test_alias_detail_get_returns_concrete_deployment(self):
-        u, p = _user(), _project()
-        _membership(u, p)
+        u, p = make_user(), make_project()
+        make_member(u, p)
         m = _deployed_model(p)
         capability = _capability(p, active_model=m)
 
@@ -1049,8 +1024,8 @@ class TestAgentAliasOnModelsEndpoints:
         assert r.json()["id"] == m.model_id
 
     def test_alias_detail_delete_returns_400(self):
-        u, p = _user(), _project()
-        _membership(u, p)
+        u, p = make_user(), make_project()
+        make_member(u, p)
         capability = _capability(p, active_model=_deployed_model(p))
 
         r = _jwt_client(u).delete(f"/api/v1/models/overmind/{capability.id}")
@@ -1060,15 +1035,15 @@ class TestAgentAliasOnModelsEndpoints:
 
 class TestApiKeyProjectScoping:
     def test_concrete_model_from_other_project_returns_404_under_pinned_key(self):
-        u, p_a, p_b = _user(), _project(), _project()
-        _membership(u, p_a)
-        _membership(u, p_b)
+        u, p_a, p_b = make_user(), make_project(), make_project()
+        make_member(u, p_a)
+        make_member(u, p_b)
         m_b = _deployed_model(p_b)
 
         mock_client = MagicMock()
         mock_client.chat_completions.return_value = {"id": "x", "choices": []}
         with patch("overbae.api.completions._get_client", return_value=mock_client):
-            r = _api_key_client(u, p_a).post(
+            r = api_key_client(u, p_a).post(
                 "/api/v1/chat/completions",
                 {"model": m_b.model_id, "messages": [{"role": "user", "content": "hi"}]},
                 format="json",
@@ -1084,12 +1059,12 @@ class TestApiKeyProjectScoping:
         assert r.status_code == status.HTTP_200_OK
 
     def test_model_detail_from_other_project_returns_404_under_pinned_key(self):
-        u, p_a, p_b = _user(), _project(), _project()
-        _membership(u, p_a)
-        _membership(u, p_b)
+        u, p_a, p_b = make_user(), make_project(), make_project()
+        make_member(u, p_a)
+        make_member(u, p_b)
         m_b = _deployed_model(p_b)
 
-        r = _api_key_client(u, p_a).get(f"/api/v1/models/{m_b.model_id}")
+        r = api_key_client(u, p_a).get(f"/api/v1/models/{m_b.model_id}")
         assert r.status_code == status.HTTP_404_NOT_FOUND
 
 
@@ -1098,9 +1073,9 @@ class TestActiveModelValidation:
         return f"/api/capabilities/{capability.id}/"
 
     def test_active_model_from_another_project_is_rejected(self):
-        u, p_a, p_b = _user(), _project(), _project()
-        _membership(u, p_a)
-        _membership(u, p_b)
+        u, p_a, p_b = make_user(), make_project(), make_project()
+        make_member(u, p_a)
+        make_member(u, p_b)
         capability = _capability(p_a)
         foreign = _deployed_model(p_b)
 
@@ -1115,8 +1090,8 @@ class TestActiveModelValidation:
         """Cross-capability sharing inside one project is intentional (no same-capability rule)."""
         from overbae.models import FinetuningJob
 
-        u, p = _user(), _project()
-        _membership(u, p)
+        u, p = make_user(), make_project()
+        make_member(u, p)
         sibling = _capability(p, slug=f"sib-{uuid.uuid4().hex[:6]}")
         capability = _capability(p)
         m = _deployed_model(p)
@@ -1153,7 +1128,7 @@ class TestBenchmarkSelection:
     def test_active_model_does_not_override_the_benchmark(self):
         from overbae.services.finetuning_eval import resolve_baseline_model
 
-        p = _project()
+        p = make_project()
         m = _deployed_model(p, model_id="ft-live-qwen3-8b")
         capability = _capability(p, active_model=m, model="openai/gpt-5.6-sol")
         assert resolve_baseline_model(self._job(capability, p)) == "openai/gpt-5.6-sol"
@@ -1161,7 +1136,7 @@ class TestBenchmarkSelection:
     def test_falls_back_to_capability_model_when_no_active_model(self):
         from overbae.services.finetuning_eval import resolve_baseline_model
 
-        p = _project()
+        p = make_project()
         capability = _capability(p, model="openai/gpt-5.6-sol")
         assert resolve_baseline_model(self._job(capability, p)) == "openai/gpt-5.6-sol"
 
@@ -1169,7 +1144,7 @@ class TestBenchmarkSelection:
     def test_non_ready_self_hosted_incumbent_defers_instead_of_hitting_openrouter(self):
         from overbae.services.finetuning_eval import _baseline_target
 
-        p = _project()
+        p = make_project()
         m = _deployed_model(p, model_id="ft-warming-qwen3-8b")
         m.status = DeployedModel.Status.WARMING
         m.save(update_fields=["status"])
@@ -1182,8 +1157,8 @@ class TestBenchmarkSelection:
 
 
 def test_late_nonstream_failure_aborts_response_and_records_request_id():
-    user, project = _user(), _project()
-    _membership(user, project)
+    user, project = make_user(), make_project()
+    make_member(user, project)
     model = _deployed_model(project)
     backend = MagicMock()
     backend.chat_completions.side_effect = InferenceClientError("private provider detail")
@@ -1196,7 +1171,7 @@ def test_late_nonstream_failure_aborts_response_and_records_request_id():
         patch("overbae.api.completions._get_client", return_value=backend),
         patch("overbae.api.completions.iter_keeping_idle_alive", side_effect=delayed_body),
     ):
-        response = _api_key_client(user, project).post(
+        response = api_key_client(user, project).post(
             "/api/v1/chat/completions",
             {"model": model.model_id, "messages": [{"role": "user", "content": "hello"}]},
             format="json",
@@ -1211,14 +1186,14 @@ def test_late_nonstream_failure_aborts_response_and_records_request_id():
 
 
 def test_application_alias_success_confirms_connection_but_failed_request_does_not():
-    user, project = _user(), _project()
-    _membership(user, project)
+    user, project = make_user(), make_project()
+    make_member(user, project)
     model = _deployed_model(project)
     capability = _capability(project, active_model=model)
     alias = f"overmind/{capability.pk}"
     backend = MagicMock()
     backend.chat_completions.side_effect = InferenceClientError("private provider detail")
-    client = _api_key_client(user, project)
+    client = api_key_client(user, project)
     body = {"model": alias, "messages": [{"role": "user", "content": "hello"}]}
     with patch("overbae.api.completions._get_client", return_value=backend):
         failed = client.post("/api/v1/chat/completions", body, format="json")

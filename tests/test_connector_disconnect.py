@@ -2,11 +2,11 @@
 
 from __future__ import annotations
 
-import uuid
 from datetime import timedelta
 
 import pytest
 from django.utils import timezone
+from factories import make_project
 
 from overbae.api.serializers import ConnectorCredentialSerializer
 from overbae.api.views import ConnectorCredentialViewSet
@@ -17,10 +17,6 @@ from overbae.services.connectors.mapping import observations_to_span_dicts
 from overbae.tasks.connector_sync import _upsert_spans
 
 pytestmark = pytest.mark.django_db
-
-
-def _project() -> Project:
-    return Project.objects.create(name="P", slug=f"p-{uuid.uuid4().hex[:8]}")
 
 
 def _cred(project: Project, *, key: str = "pk-same", name: str = "LF") -> ConnectorCredential:
@@ -44,7 +40,7 @@ def _finish_setup(cred: ConnectorCredential) -> None:
 
 
 def test_disconnect_soft_deactivates_finished_connection():
-    project = _project()
+    project = make_project()
     cred = _cred(project)
     _finish_setup(cred)
 
@@ -56,7 +52,7 @@ def test_disconnect_soft_deactivates_finished_connection():
 
 
 def test_disconnect_hard_deletes_unfinished_draft():
-    project = _project()
+    project = make_project()
     cred = _cred(project)
     # No ConnectorSyncConfig → wizard draft.
     pk = cred.pk
@@ -65,7 +61,7 @@ def test_disconnect_hard_deletes_unfinished_draft():
 
 
 def test_reconnect_same_key_reactivates_and_dedupes_spans():
-    project = _project()
+    project = make_project()
     cred = _cred(project)
     _finish_setup(cred)
 
@@ -112,7 +108,7 @@ def test_reconnect_same_key_reactivates_and_dedupes_spans():
 
 def test_reconnect_via_serializer_is_valid_despite_inactive_name_collision():
     """API path runs validators before create(); inactive rows must not 400."""
-    project = _project()
+    project = make_project()
     cred = _cred(project, name="Langfuse")
     _finish_setup(cred)
     ConnectorCredentialViewSet().perform_destroy(cred)
@@ -138,7 +134,7 @@ def test_reconnect_via_serializer_is_valid_despite_inactive_name_collision():
 
 
 def test_reconnect_new_key_frees_inactive_name_slot_via_serializer():
-    project = _project()
+    project = make_project()
     old = _cred(project, key="pk-old", name="Langfuse")
     _finish_setup(old)
     ConnectorCredentialViewSet().perform_destroy(old)
@@ -166,7 +162,7 @@ def test_reconnect_new_key_frees_inactive_name_slot_via_serializer():
 
 
 def test_active_name_collision_still_rejected():
-    project = _project()
+    project = make_project()
     live = _cred(project, key="pk-a", name="Langfuse")
     _finish_setup(live)  # a configured connection owns its name
     ser = ConnectorCredentialSerializer(
@@ -198,7 +194,7 @@ def _setup_data(project: Project, *, key: str, name: str = "Langfuse") -> dict:
 
 def test_retry_reclaims_abandoned_draft_with_same_key():
     """Leaving setup after verify strands an active draft; retrying must reuse it."""
-    project = _project()
+    project = make_project()
     draft = _cred(project, key="pk-same", name="Langfuse")  # no config → draft
 
     ser = ConnectorCredentialSerializer(data=_setup_data(project, key="pk-same"))
@@ -210,7 +206,7 @@ def test_retry_reclaims_abandoned_draft_with_same_key():
 
 
 def test_retry_with_new_key_discards_abandoned_draft_holding_the_name():
-    project = _project()
+    project = make_project()
     draft = _cred(project, key="pk-old", name="Langfuse")
 
     ser = ConnectorCredentialSerializer(data=_setup_data(project, key="pk-new"))
@@ -225,7 +221,7 @@ def test_retry_with_new_key_discards_abandoned_draft_holding_the_name():
 def test_sweep_deletes_stale_drafts_only():
     from overbae.tasks.connector_sync import _DRAFT_TTL, sweep_abandoned_drafts
 
-    project = _project()
+    project = make_project()
     fresh = _cred(project, key="pk-fresh", name="Fresh")
     stale = _cred(project, key="pk-stale", name="Stale")
     configured = _cred(project, key="pk-live", name="Live")

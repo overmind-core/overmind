@@ -8,18 +8,15 @@ import uuid
 
 import pandas as pd
 import pytest
+from factories import make_project
 
-from overbae.models import Capability, Conversation, Dataset, Project, Span, TaskExecution
+from overbae.models import Capability, Conversation, Dataset, Span, TaskExecution
 from overbae.services.datasets import land, paths, selection, store
 
 pytestmark = pytest.mark.django_db
 
 NS = 1_700_000_000_000_000_000
 COLUMNS = [spec["name"] for spec in land.TRACE_MANIFEST]
-
-
-def _project() -> Project:
-    return Project.objects.create(name="P", slug=f"p-{uuid.uuid4().hex[:8]}")
 
 
 def _span(project, trace_id, *, parent=None, span_type="llm_call", attrs=None, start=NS, **fields):
@@ -83,7 +80,7 @@ def _land(project, spec):
 
 
 def test_one_row_per_trace_in_selection_order_with_the_fixed_columns():
-    project = _project()
+    project = make_project()
     capability = Capability.objects.create(project=project, name="Concierge", slug="concierge")
     first, _ = _chat_trace(project, text="one", capability=capability)
     second, _ = _chat_trace(project, text="two", capability=capability)
@@ -107,7 +104,7 @@ def test_one_row_per_trace_in_selection_order_with_the_fixed_columns():
 
 
 def test_usage_sums_every_span_under_the_attribute_names_as_sent():
-    project = _project()
+    project = make_project()
     trace, root = _chat_trace(project)
     inn, out = _messages("b")
     _span(
@@ -132,7 +129,7 @@ def test_usage_sums_every_span_under_the_attribute_names_as_sent():
 
 
 def test_delivered_output_wins_over_the_root_output():
-    project = _project()
+    project = make_project()
     trace, root = _chat_trace(project, text="draft")
     _span(
         project,
@@ -147,7 +144,7 @@ def test_delivered_output_wins_over_the_root_output():
 
 
 def test_score_is_the_last_scored_task_execution_and_session_id_is_the_wire_id():
-    project = _project()
+    project = make_project()
     conversation = Conversation.objects.create(project=project, external_id="conv-42")
     trace, root = _chat_trace(project, conversation=conversation)
     for offset, score in ((0, 0.2), (60, 0.9), (120, None)):
@@ -165,14 +162,14 @@ def test_score_is_the_last_scored_task_execution_and_session_id_is_the_wire_id()
 
 
 def test_a_failed_trace_carries_its_status_and_error():
-    project = _project()
+    project = make_project()
     trace, _ = _chat_trace(project, error=True)
     _, df = _land(project, {"trace_ids": [trace]})
     assert (df.iloc[0]["status"], df.iloc[0]["error"]) == ("error", "boom")
 
 
 def test_an_interrupted_trace_without_a_root_lands_from_its_longest_span():
-    project = _project()
+    project = make_project()
     trace = uuid.uuid4().hex
     orphan = _span(
         project,
@@ -197,7 +194,7 @@ def test_an_interrupted_trace_without_a_root_lands_from_its_longest_span():
 
 
 def test_a_chunk_of_traces_costs_two_queries(django_assert_num_queries):
-    project = _project()
+    project = make_project()
     ids = [_chat_trace(project)[0] for _ in range(5)]
     with django_assert_num_queries(2):
         rows = list(land.iter_trace_rows(project.id, ids))
@@ -205,7 +202,7 @@ def test_a_chunk_of_traces_costs_two_queries(django_assert_num_queries):
 
 
 def test_unknown_and_empty_traces_are_skipped_and_nothing_matching_is_an_error():
-    project = _project()
+    project = make_project()
     trace, _ = _chat_trace(project)
     _, df = _land(project, {"trace_ids": [trace, uuid.uuid4().hex]})
     assert len(df) == 1

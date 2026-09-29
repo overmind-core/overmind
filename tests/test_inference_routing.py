@@ -4,6 +4,7 @@ import uuid
 from unittest.mock import MagicMock, patch
 
 import pytest
+from factories import make_project
 
 from modal_shared.shared import (
     GPU_TYPE_HEADER,
@@ -15,15 +16,10 @@ from modal_shared.shared import (
     routing_headers,
     worker_cls_name,
 )
-from overbae.models import Project
 from overbae.models.inference import DeployedModel
 from overbae.services.inference_client import InferenceClient
 
 pytestmark = pytest.mark.django_db
-
-
-def _project() -> Project:
-    return Project.objects.create(name="P", slug=f"p-{uuid.uuid4().hex[:8]}")
 
 
 def test_routing_headers_roundtrip():
@@ -118,7 +114,7 @@ def test_inference_client_posts_routing_headers():
 
 def test_inference_client_posts_routing_from_deployed():
     deployed = DeployedModel.objects.create(
-        project=_project(),
+        project=make_project(),
         model_id=f"ft-from-row-{uuid.uuid4().hex[:8]}",
         status=DeployedModel.Status.READY,
         gpu_type="L4",
@@ -144,7 +140,7 @@ def test_inference_client_posts_routing_from_deployed():
 def test_inference_client_delete_sends_weights_path():
     mid = f"ft-del-{uuid.uuid4().hex[:8]}"
     DeployedModel.objects.create(
-        project=_project(),
+        project=make_project(),
         model_id=mid,
         status=DeployedModel.Status.READY,
         weights_path="/weights/ft-del",
@@ -164,7 +160,7 @@ def test_deleting_an_adapter_leaves_the_shared_base_alone():
     """weights_path is a base shared with every other adapter on that model."""
     mid = f"ft-ad-{uuid.uuid4().hex[:8]}"
     DeployedModel.objects.create(
-        project=_project(),
+        project=make_project(),
         model_id=mid,
         status=DeployedModel.Status.READY,
         weights_path="/weights/.base_models/Qwen--Qwen3.5-9B",
@@ -185,7 +181,7 @@ def test_adapter_deployment_sends_adapter_routing_headers():
 
     mid = f"ft-ad2-{uuid.uuid4().hex[:8]}"
     deployed = DeployedModel.objects.create(
-        project=_project(),
+        project=make_project(),
         model_id=mid,
         status=DeployedModel.Status.READY,
         gpu_type="L40S",
@@ -205,7 +201,7 @@ def test_call_llm_attaches_routing_headers_for_inference_gateway():
     from overbae.core.llms import ModelSpec, _model_spec_client_and_name
 
     deployed = DeployedModel.objects.create(
-        project=_project(),
+        project=make_project(),
         model_id=f"ft-eval-{uuid.uuid4().hex[:8]}",
         status=DeployedModel.Status.READY,
         gpu_type="L40S",
@@ -237,7 +233,7 @@ def test_call_llm_attaches_adapter_routing_headers_for_lora_deploy():
 
     mid = f"ft-lora-{uuid.uuid4().hex[:8]}"
     deployed = DeployedModel.objects.create(
-        project=_project(),
+        project=make_project(),
         model_id=mid,
         status=DeployedModel.Status.READY,
         gpu_type="L40S",
@@ -283,7 +279,7 @@ def test_resolve_inference_url_vllm_class():
 
 def test_inference_client_omits_serve_image_header_for_muse():
     deployed = DeployedModel.objects.create(
-        project=_project(),
+        project=make_project(),
         model_id=f"ft-muse-{uuid.uuid4().hex[:8]}",
         status=DeployedModel.Status.READY,
         gpu_type="A100-80GB",

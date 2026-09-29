@@ -3,6 +3,7 @@ from __future__ import annotations
 import uuid
 
 import pytest
+from factories import make_project
 
 from overbae.models import (
     Behaviour,
@@ -11,7 +12,6 @@ from overbae.models import (
     EvalSet,
     EvalSetMember,
     Evaluator,
-    Project,
     Span,
     TaskExecution,
     Verdict,
@@ -351,10 +351,6 @@ def test_run_surfaces_absent_without_turn_slices_or_root():
 pytestmark_db = pytest.mark.django_db
 
 
-def _project() -> Project:
-    return Project.objects.create(name="P", slug=f"p-{uuid.uuid4().hex[:8]}")
-
-
 def _agent(project, name="A") -> Capability:
     capability = Capability.objects.create(
         project=project, name=name, slug=f"{name.lower()}-{uuid.uuid4().hex[:6]}"
@@ -394,7 +390,7 @@ def _db_span(project, capability, *, trace_id, parent, start, attrs, span_type="
 
 @pytestmark_db
 def test_mixed_turn_and_entry_point_trace_scores_both_units():
-    project = _project()
+    project = make_project()
     capability = _agent(project)
     trace_id = uuid.uuid4().hex
     root = _db_span(
@@ -452,7 +448,7 @@ def test_mixed_turn_and_entry_point_trace_scores_both_units():
 def test_single_turn_trace_scores_the_turn_unit_not_the_root():
     """The execution lands on the turn span with ``carve_source="turn"``; the
     root gets only the invocations summary."""
-    project = _project()
+    project = make_project()
     capability = _agent(project)
     trace_id = uuid.uuid4().hex
     root = _db_span(
@@ -520,7 +516,7 @@ def test_single_turn_trace_scores_the_turn_unit_not_the_root():
 
 @pytestmark_db
 def test_rootless_multi_entry_interrupts_the_unit_in_flight():
-    project = _project()
+    project = make_project()
     capability = _agent(project)
     trace_id = uuid.uuid4().hex
     missing_root = uuid.uuid4().hex[:16]
@@ -615,7 +611,7 @@ def test_run_grain_behaviour_binds_the_run_surface_beside_the_declared_turn():
     """The turn binds its declared behaviour; the root additionally materializes
     as a run-grain surface bound by anchor join, carrying that behaviour's
     judges — and only those."""
-    project = _project()
+    project = make_project()
     capability = _agent(project)
     _behaviour(
         capability,
@@ -754,7 +750,7 @@ def test_run_grain_behaviour_binds_the_run_surface_beside_the_declared_turn():
 
 @pytestmark_db
 def test_turn_sliced_trace_without_run_grain_behaviour_grows_no_root_execution():
-    project = _project()
+    project = make_project()
     capability = _agent(project)
     _behaviour(capability, "run-startup", "app.agent.run", ["app.agent.run"])
     trace_id = uuid.uuid4().hex
@@ -794,7 +790,7 @@ def test_turn_sliced_trace_without_run_grain_behaviour_grows_no_root_execution()
 def test_orphan_function_fragment_skips_and_voids_prior_execution():
     """A boundary-less trace of one interior function is not a run: no execution
     mints, and a row a prior pass minted is voided on re-score."""
-    project = _project()
+    project = make_project()
     capability = _agent(project)
     _behaviour(
         capability,
@@ -828,7 +824,7 @@ def test_orphan_function_fragment_skips_and_voids_prior_execution():
 def test_single_declared_boundary_span_stays_scorable():
     """A deliberate one-shot invocation is the run: a lone entry_point span
     scores at the root tier, undegraded."""
-    project = _project()
+    project = make_project()
     capability = _agent(project)
     trace_id = uuid.uuid4().hex
     root = _db_span(
@@ -856,7 +852,7 @@ def test_single_declared_boundary_span_stays_scorable():
 
 @pytestmark_db
 def test_key_segment_executions_carry_carve_source_and_degraded_flag():
-    project = _project()
+    project = make_project()
     capability = _agent(project)
     trace_id = uuid.uuid4().hex
     root = _db_span(

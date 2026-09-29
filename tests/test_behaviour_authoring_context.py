@@ -6,14 +6,13 @@ from __future__ import annotations
 import uuid
 
 import pytest
+from factories import make_capability, make_project
 from rest_framework.test import APIClient
 from rest_framework_simplejwt.tokens import RefreshToken
 
 from overbae.models import (
     Behaviour,
     BehaviourVersion,
-    Capability,
-    Project,
     ProjectMembership,
     User,
 )
@@ -39,14 +38,6 @@ CONTRACT = {
     "tool_set": [{"name": "fetch", "declared_name": "Fetch", "purpose": "", "side_effect": ""}],
     "terminal": {"kind": "emits_record", "description": ""},
 }
-
-
-def _project() -> Project:
-    return Project.objects.create(name="P", slug=f"p-{uuid.uuid4().hex[:8]}")
-
-
-def _capability(project) -> Capability:
-    return Capability.objects.create(project=project, name="A", slug=f"a-{uuid.uuid4().hex[:6]}")
 
 
 def _behaviour(capability) -> Behaviour:
@@ -87,8 +78,8 @@ def test_anchor_segment_valid_checks_declared_order():
 
 
 def test_authoring_context_returns_the_behaviours_contract():
-    project = _project()
-    capability = _capability(project)
+    project = make_project()
+    capability = make_capability(project)
     behaviour = _behaviour(capability)
     client = _client_for(project)
 
@@ -100,8 +91,8 @@ def test_authoring_context_returns_the_behaviours_contract():
 
 
 def test_authoring_context_with_no_analyzed_version_returns_null_contract():
-    project = _project()
-    capability = _capability(project)
+    project = make_project()
+    capability = make_capability(project)
     behaviour = Behaviour.objects.create(
         project=capability.project,
         capability=capability,

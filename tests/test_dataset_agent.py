@@ -7,6 +7,7 @@ from __future__ import annotations
 import json
 import types
 import uuid
+from concurrent.futures import ThreadPoolExecutor
 
 import pytest
 
@@ -401,7 +402,10 @@ class _FakeRun:
         self._tools = tools
 
     def stream(self):
-        out = self._tools["add_cell"].execute({"title": "Keep", "script": KEEP}, None)
+        with ThreadPoolExecutor(max_workers=1) as sdk_thread:
+            out = sdk_thread.submit(
+                self._tools["add_cell"].execute, {"title": "Keep", "script": KEEP}, None
+            ).result()
         assert out["ok"]
         yield types.SimpleNamespace(type="tool_call", name="add_cell", status="running")
         yield types.SimpleNamespace(
@@ -454,6 +458,7 @@ def cursor(monkeypatch):
     return _FakeAgent
 
 
+@pytest.mark.django_db(transaction=True)
 def test_a_cursor_turn_streams_cells_and_text_and_lands_on_the_dataset(cursor):
     dataset = _dataset(intent="eval")
     events = list(agent.follow_up(dataset.id, "Keep only the keep rows"))
@@ -597,6 +602,7 @@ def test_a_refused_cursor_send_still_lands_the_turn(cursor, monkeypatch):
     assert [t["role"] for t in dataset.chat] == ["user", "agent"] and dataset.state == "idle"
 
 
+@pytest.mark.django_db(transaction=True)
 def test_a_cursor_turn_bills_composer_through_the_registry(cursor, monkeypatch):
     from django.contrib.auth import get_user_model
 

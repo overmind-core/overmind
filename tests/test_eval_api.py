@@ -5,8 +5,7 @@ from unittest import mock
 
 import pytest
 from conftest import EVAL_ROWS, frozen_dataset
-from rest_framework.test import APIClient
-from rest_framework_simplejwt.tokens import RefreshToken
+from factories import auth_client, make_user
 
 from overbae.models import (
     Behaviour,
@@ -21,7 +20,6 @@ from overbae.models import (
     Project,
     ProjectMembership,
     Score,
-    User,
 )
 from overbae.services.eval.per_turn_judge import JUDGE_NAME
 from overbae.tasks import eval as eval_tasks
@@ -29,27 +27,11 @@ from overbae.tasks import eval as eval_tasks
 pytestmark = pytest.mark.django_db
 
 
-def _user(email: str) -> User:
-    return User.objects.create_user(
-        email=email,
-        password="test-pass-123",
-        clerk_user_id=f"clerk_{uuid.uuid4().hex}",
-        projects_limit=5,
-    )
-
-
-def _auth_client(user: User) -> APIClient:
-    client = APIClient()
-    token = RefreshToken.for_user(user)
-    client.credentials(HTTP_AUTHORIZATION=f"Bearer {token.access_token}")
-    return client
-
-
 def _setup():
-    user = _user(f"u-{uuid.uuid4().hex[:6]}@example.com")
+    user = make_user(f"u-{uuid.uuid4().hex[:6]}@example.com")
     project = Project.objects.create(name="P", slug=f"p-{uuid.uuid4().hex[:8]}")
     ProjectMembership.objects.create(user=user, project=project)
-    return user, _auth_client(user), project
+    return user, auth_client(user), project
 
 
 def test_context_preview_warns_without_creating_or_blocking_a_run(monkeypatch):

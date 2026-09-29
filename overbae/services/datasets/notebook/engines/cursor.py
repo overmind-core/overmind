@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import logging
-from collections.abc import Generator
+from collections.abc import Callable, Generator
 from typing import Any
+
+from django.db import close_old_connections
 
 from overbae.core.model_registry import Engine as EngineChoice
 from overbae.models import Dataset
@@ -10,6 +12,17 @@ from overbae.services.datasets.notebook import workspace
 from overbae.services.datasets.notebook.engines import Outcome
 
 logger = logging.getLogger(__name__)
+
+
+def _on_sdk_thread(handler: Callable[..., Any]) -> Callable[..., Any]:
+    # The Cursor SDK runs each call on a fresh thread; no request_finished reaches it.
+    def execute(args: dict[str, Any], ctx: Any = None) -> Any:
+        try:
+            return handler(args, ctx)
+        finally:
+            close_old_connections()
+
+    return execute
 
 
 def _stats(usage: Any, model: str) -> dict[str, Any]:
@@ -42,7 +55,9 @@ class CursorEngine:
         store_dir.mkdir(exist_ok=True)
         handlers = tools.handlers()
         custom_tools = {
-            name: CustomTool(execute=handlers[name], description=description, input_schema=schema)
+            name: CustomTool(
+                execute=_on_sdk_thread(handlers[name]), description=description, input_schema=schema
+            )
             for name, (description, schema) in TOOL_SPECS.items()
         }
         return AgentOptions(

@@ -1,35 +1,19 @@
 from __future__ import annotations
 
-import uuid
-
 import pytest
+from factories import make_project, make_user
 
-from overbae.models import Project, ProjectMembership, User
+from overbae.models import ProjectMembership
 from overbae.services.seat_downgrade import enforce_free_seats_after_downgrade
 
 pytestmark = pytest.mark.django_db
 
 
-def _user(email: str | None = None) -> User:
-    return User.objects.create_user(
-        email=email or f"u-{uuid.uuid4().hex[:8]}@example.com",
-        password="test-pass-123",
-        clerk_user_id=f"clerk_{uuid.uuid4().hex}",
-    )
-
-
-def _project() -> Project:
-    return Project.objects.create(
-        name=f"P-{uuid.uuid4().hex[:6]}",
-        slug=f"p-{uuid.uuid4().hex[:8]}",
-    )
-
-
 def test_strips_invitees_keeps_creator():
-    creator = _user("creator@example.com")
-    a = _user("a@example.com")
-    b = _user("b@example.com")
-    project = _project()
+    creator = make_user("creator@example.com")
+    a = make_user("a@example.com")
+    b = make_user("b@example.com")
+    project = make_project()
     ProjectMembership.objects.create(user=creator, project=project)
     ProjectMembership.objects.create(user=a, project=project)
     ProjectMembership.objects.create(user=b, project=project)
@@ -45,9 +29,9 @@ def test_strips_invitees_keeps_creator():
 
 
 def test_invitee_downgrade_does_not_strip_others_project():
-    owner = _user("owner@example.com")
-    invitee = _user("invitee@example.com")
-    project = _project()
+    owner = make_user("owner@example.com")
+    invitee = make_user("invitee@example.com")
+    project = make_project()
     ProjectMembership.objects.create(user=owner, project=project)
     ProjectMembership.objects.create(user=invitee, project=project)
 
@@ -59,9 +43,9 @@ def test_invitee_downgrade_does_not_strip_others_project():
 
 
 def test_idempotent_second_call():
-    creator = _user("solo-creator@example.com")
-    peer = _user("peer@example.com")
-    project = _project()
+    creator = make_user("solo-creator@example.com")
+    peer = make_user("peer@example.com")
+    project = make_project()
     ProjectMembership.objects.create(user=creator, project=project)
     ProjectMembership.objects.create(user=peer, project=project)
 
@@ -75,8 +59,8 @@ def test_idempotent_second_call():
 
 
 def test_creator_only_project_unchanged():
-    creator = _user("alone@example.com")
-    project = _project()
+    creator = make_user("alone@example.com")
+    project = make_project()
     ProjectMembership.objects.create(user=creator, project=project)
 
     result = enforce_free_seats_after_downgrade(creator)

@@ -8,10 +8,10 @@ from types import SimpleNamespace
 import pytest
 from conftest import review_fixture
 from mcp.shared.exceptions import McpError
+from mcp_fixtures import mcp_context
 
 from overbae.models import (
     Annotation,
-    APIToken,
     Capability,
     Cell,
     Dataset,
@@ -21,9 +21,6 @@ from overbae.models import (
     EvalSetMember,
     Evaluator,
     EvalVariant,
-    Project,
-    ProjectMembership,
-    User,
 )
 from overbae.services.datasets import paths, store
 from overbae.services.mcp.catalog import CATALOG
@@ -31,25 +28,6 @@ from overbae.services.mcp.context import MCPContext, bind_context
 from overbae.services.mcp.resources import read_resource
 
 pytestmark = pytest.mark.django_db(transaction=True)
-
-
-def _context(*, permission: str | list[str] = "read") -> MCPContext:
-    user = User.objects.create_user(
-        email=f"mcp-eval-{uuid.uuid4().hex[:8]}@test.com",
-        password="pw",
-        clerk_user_id=f"clerk_{uuid.uuid4().hex}",
-    )
-    project = Project.objects.create(name="Evaluations", slug=f"eval-{uuid.uuid4().hex[:8]}")
-    ProjectMembership.objects.create(user=user, project=project)
-    permissions = [permission] if isinstance(permission, str) else permission
-    token = APIToken(
-        scope={
-            "scope": "project",
-            "resourceIds": [str(project.id)],
-            "permission": permissions,
-        }
-    )
-    return MCPContext(user=user, token=token, project=project)
 
 
 def _call(name: str, arguments: dict, context: MCPContext):
@@ -94,7 +72,7 @@ def _dataset(context: MCPContext, name: str = "Eval") -> Dataset:
 def test_readiness_exposes_advisory_context_without_a_new_readiness_gate(monkeypatch):
     from overbae.services.mcp import tools_evaluations
 
-    context = _context()
+    context = mcp_context()
     dataset = _dataset(context)
     eval_set = EvalSet.objects.create(project=context.project, name="Context checks")
     evaluator = Evaluator.objects.create(
@@ -165,14 +143,14 @@ def test_catalog_exposes_evaluation_tools_and_hides_writes():
         "compare_evaluations",
     }
 
-    result = _call("upsert_evaluator", {"name": "Hidden", "rubric_md": "x"}, _context())
+    result = _call("upsert_evaluator", {"name": "Hidden", "rubric_md": "x"}, mcp_context())
     assert result.isError is True
     assert result.structuredContent["error"]["code"] == "permission_denied"
 
 
 @pytest.mark.parametrize("with_capability", [True, False])
 def test_create_eval_set_returns_readable_members_and_enforces_project_scope(with_capability):
-    context = _context(permission=["read", "write"])
+    context = mcp_context(permission=["read", "write"])
     capability = Capability.objects.create(project=context.project, name="Support", slug="support")
     evaluator = Evaluator.objects.create(
         project=context.project, name="Accuracy", kind="deterministic"
@@ -189,7 +167,7 @@ def test_create_eval_set_returns_readable_members_and_enforces_project_scope(wit
     assert resource["members"][0]["name"] == "Accuracy"
     assert resource["members"][0]["capability"] is None
     assert resource["is_active"] is False
-    other = _context(permission=["read", "write"])
+    other = mcp_context(permission=["read", "write"])
     denied = _call("create_eval_set", payload, other)
     assert denied.isError is True
     with bind_context(other), pytest.raises(McpError):
@@ -205,14 +183,14 @@ def test_create_eval_set_returns_readable_members_and_enforces_project_scope(wit
 
 def test_create_eval_set_is_not_available_to_read_only_keys():
     result = _call(
-        "create_eval_set", {"name": "Quality", "evaluator_ids": [str(uuid.uuid4())]}, _context()
+        "create_eval_set", {"name": "Quality", "evaluator_ids": [str(uuid.uuid4())]}, mcp_context()
     )
     assert result.isError is True
     assert result.structuredContent["error"]["code"] == "permission_denied"
 
 
 def test_readiness_rejects_non_eval_dataset_clearly():
-    context = _context(permission=["read", "write"])
+    context = mcp_context(permission=["read", "write"])
     dataset = Dataset.objects.create(
         project=context.project,
         name="Train",
@@ -228,7 +206,7 @@ def test_readiness_rejects_non_eval_dataset_clearly():
 
 
 def test_upsert_uses_evaluator_spec_validation_and_sanitizes_text():
-    context = _context(permission=["read", "write"])
+    context = mcp_context(permission=["read", "write"])
     invalid = _call(
         "upsert_evaluator",
         {
@@ -268,7 +246,7 @@ def test_upsert_uses_evaluator_spec_validation_and_sanitizes_text():
 
 
 def test_run_uses_existing_serializer_and_task(monkeypatch):
-    context = _context(permission=["read", "write"])
+    context = mcp_context(permission=["read", "write"])
     dataset = _dataset(context)
     evaluator = Evaluator.objects.create(
         project=context.project,
@@ -308,7 +286,7 @@ def test_run_uses_existing_serializer_and_task(monkeypatch):
 
 @pytest.mark.parametrize("selection", ["", "gpt-5.6-luna"])
 def test_run_judge_override_is_frozen_readable_and_project_scoped(monkeypatch, selection):
-    context = _context(permission=["read", "write"])
+    context = mcp_context(permission=["read", "write"])
     dataset = _dataset(context)
     evaluator = Evaluator.objects.create(
         project=context.project,
@@ -341,7 +319,7 @@ def test_run_judge_override_is_frozen_readable_and_project_scoped(monkeypatch, s
         data = json.loads(asyncio.run(read_resource(uri))[0].content)
     assert data["judge_model"] == selection
     assert data["run_evaluators"][0]["judge_model"] == (selection or "gpt-4.1")
-    other = _context(permission=["read", "write"])
+    other = mcp_context(permission=["read", "write"])
     assert _call("run_evaluation", payload, other).isError
     with bind_context(other), pytest.raises(McpError):
         asyncio.run(read_resource(uri))
@@ -351,7 +329,7 @@ def test_run_judge_override_is_frozen_readable_and_project_scoped(monkeypatch, s
 
 
 def test_compare_is_typed_and_run_resource_has_progress():
-    context = _context(permission="read")
+    context = mcp_context(permission="read")
     dataset = _dataset(context)
     baseline = EvalRun.objects.create(
         project=context.project,
@@ -394,8 +372,8 @@ def test_compare_is_typed_and_run_resource_has_progress():
 
 
 def test_evaluation_references_are_project_scoped_and_annotation_uses_user(monkeypatch):
-    context = _context(permission=["read", "write"])
-    other_context = _context(permission=["read", "write"])
+    context = mcp_context(permission=["read", "write"])
+    other_context = mcp_context(permission=["read", "write"])
     other_dataset = _dataset(other_context, "Other dataset")
     other_evaluator = Evaluator.objects.create(
         project=other_context.project,
@@ -437,7 +415,7 @@ def test_evaluation_references_are_project_scoped_and_annotation_uses_user(monke
 
 
 def test_annotation_is_attributed_to_authenticated_user(monkeypatch):
-    context = _context(permission=["read", "write"])
+    context = mcp_context(permission=["read", "write"])
     run = EvalRun.objects.create(project=context.project, name="Run")
     variant = EvalVariant.objects.create(run=run, label="Existing")
     sample = EvalSample.objects.create(run=run, variant=variant)
@@ -455,7 +433,7 @@ def test_annotation_is_attributed_to_authenticated_user(monkeypatch):
 
 
 def test_run_rejects_nonfitting_eval_cell_and_records_explicit_cell(monkeypatch):
-    context = _context(permission=["read", "write"])
+    context = mcp_context(permission=["read", "write"])
     dataset = Dataset.objects.create(
         project=context.project, name="Eval", intent=Dataset.Intent.EVAL
     )

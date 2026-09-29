@@ -1,7 +1,8 @@
 from types import SimpleNamespace
 
 import pytest
-from asgiref.sync import async_to_sync
+from asgiref.sync import SyncToAsync, async_to_sync
+from django.db import connections
 
 
 def drain_stream(response) -> bytes:
@@ -20,6 +21,12 @@ def drain_stream(response) -> bytes:
         return [chunk async for chunk in content]
 
     return b"".join(async_to_sync(_collect)())
+
+
+@pytest.fixture(autouse=True)
+def _close_sync_to_async_connections():
+    yield
+    SyncToAsync.single_thread_executor.submit(connections.close_all).result()
 
 
 @pytest.fixture(autouse=True)

@@ -5,8 +5,7 @@ from decimal import Decimal
 import pytest
 from django.contrib.auth import get_user_model
 from django.urls import reverse
-from rest_framework.test import APIClient
-from rest_framework_simplejwt.tokens import RefreshToken
+from factories import auth_client
 
 from overbae.api.billing import (
     CREDIT_TOPUP_PURPOSE,
@@ -21,13 +20,6 @@ pytestmark = pytest.mark.django_db
 User = get_user_model()
 
 SANDBOX_PRICE = "price_1TxoWdCjF8jVtWKgOWHw2oFE"
-
-
-def _auth_client(user: User) -> APIClient:
-    client = APIClient()
-    token = RefreshToken.for_user(user)
-    client.credentials(HTTP_AUTHORIZATION=f"Bearer {token.access_token}")
-    return client
 
 
 def _make_user(slug: str, **extra) -> User:
@@ -81,7 +73,7 @@ def test_topup_checkout_uses_credit_quantity(monkeypatch, settings):
     calls: list[dict] = []
     _stub_stripe(monkeypatch, settings, calls)
 
-    r = _auth_client(user).post(reverse("billing-topup"), {"amount_usd": 25}, format="json")
+    r = auth_client(user).post(reverse("billing-topup"), {"amount_usd": 25}, format="json")
 
     assert r.status_code == 200
     assert r.data["checkout_url"] == "https://checkout.stripe.test/cs_test"
@@ -103,7 +95,7 @@ def test_topup_rejects_out_of_range_amount(monkeypatch, settings, amount):
     calls: list[dict] = []
     _stub_stripe(monkeypatch, settings, calls)
 
-    r = _auth_client(user).post(reverse("billing-topup"), {"amount_usd": amount}, format="json")
+    r = auth_client(user).post(reverse("billing-topup"), {"amount_usd": amount}, format="json")
 
     assert r.status_code == 400
     assert calls == []
@@ -114,7 +106,7 @@ def test_topup_available_on_free_plan(monkeypatch, settings):
     calls: list[dict] = []
     _stub_stripe(monkeypatch, settings, calls)
 
-    r = _auth_client(user).post(reverse("billing-topup"), {"amount_usd": 1}, format="json")
+    r = auth_client(user).post(reverse("billing-topup"), {"amount_usd": 1}, format="json")
 
     assert r.status_code == 200
     assert calls[0]["line_items"][0]["quantity"] == 100
@@ -125,7 +117,7 @@ def test_topup_requires_configured_price(monkeypatch, settings):
     settings.STRIPE_CREDIT_PRICE_ID = ""
     monkeypatch.setattr("overbae.api.billing._configure_stripe", lambda: True)
 
-    r = _auth_client(user).post(reverse("billing-topup"), {"amount_usd": 10}, format="json")
+    r = auth_client(user).post(reverse("billing-topup"), {"amount_usd": 10}, format="json")
 
     assert r.status_code == 503
 

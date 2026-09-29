@@ -11,8 +11,8 @@ from unittest.mock import MagicMock, patch
 import pytest
 from conftest import EVAL_ROWS, frozen_dataset
 from django.urls import reverse
+from factories import auth_client, make_capability, make_project, make_user
 from rest_framework.test import APIClient
-from rest_framework_simplejwt.tokens import RefreshToken
 
 from overbae.modal.model_registry import baseten_finetuning_catalog
 from overbae.models import (
@@ -53,32 +53,6 @@ from overbae.services.recommendation.hyperparams import (
 pytestmark = pytest.mark.django_db
 
 CELERY_PATH = "overbae.tasks.finetuning.run_finetuning.apply_async"
-
-
-def _user(email: str | None = None) -> User:
-    email = email or f"u-{uuid.uuid4().hex[:6]}@example.com"
-    return User.objects.create_user(
-        email=email,
-        password="pass",
-        clerk_user_id=f"clerk_{uuid.uuid4().hex}",
-        projects_limit=5,
-    )
-
-
-def _auth_client(user: User) -> APIClient:
-    client = APIClient()
-    token = RefreshToken.for_user(user)
-    client.credentials(HTTP_AUTHORIZATION=f"Bearer {token.access_token}")
-    return client
-
-
-def _project() -> Project:
-    return Project.objects.create(name="test", slug=f"p-{uuid.uuid4().hex[:8]}")
-
-
-def _capability(project: Project) -> Capability:
-    slug = f"a-{uuid.uuid4().hex[:8]}"
-    return Capability.objects.create(project=project, name=slug, slug=slug)
 
 
 def _dataset_with_messages(
@@ -139,10 +113,10 @@ def _ft_job_payload(project: Project, dataset: Dataset, **overrides) -> dict:
 
 
 def _setup() -> tuple[User, Project, Capability]:
-    u = _user()
-    p = _project()
+    u = make_user()
+    p = make_project()
     ProjectMembership.objects.create(user=u, project=p)
-    a = _capability(p)
+    a = make_capability(p)
     return u, p, a
 
 
@@ -578,7 +552,7 @@ class TestNewModelFields:
         )
 
         with patch(CELERY_PATH):
-            r = _auth_client(u).get(reverse("finetuningjob-list"))
+            r = auth_client(u).get(reverse("finetuningjob-list"))
 
         assert r.status_code == 200
         row = r.data["results"][0]
@@ -591,7 +565,7 @@ class TestValidateDatasetEndpoint:
         u, p, a = _setup()
         ds = _dataset_with_messages(a, n=5)
 
-        r = _auth_client(u).post(
+        r = auth_client(u).post(
             reverse("finetuningjob-validate-dataset"),
             {"dataset_id": str(ds.id)},
             format="json",
@@ -605,7 +579,7 @@ class TestValidateDatasetEndpoint:
         u, p, a = _setup()
         ds = frozen_dataset(a.project, EVAL_ROWS, capability=a)
 
-        r = _auth_client(u).post(
+        r = auth_client(u).post(
             reverse("finetuningjob-validate-dataset"),
             {"dataset_id": str(ds.id)},
             format="json",
@@ -615,7 +589,7 @@ class TestValidateDatasetEndpoint:
 
     def test_missing_dataset_id_returns_400(self):
         u, _, _ = _setup()
-        r = _auth_client(u).post(
+        r = auth_client(u).post(
             reverse("finetuningjob-validate-dataset"),
             {},
             format="json",
@@ -635,7 +609,7 @@ class TestValidateDatasetEndpoint:
         train_ds = _dataset_with_messages(a, n=8)
         val_ds = _dataset_with_messages(a, n=3, prefix="Held out")
 
-        r = _auth_client(u).post(
+        r = auth_client(u).post(
             reverse("finetuningjob-validate-dataset"),
             {
                 "dataset_id": str(train_ds.id),
@@ -654,7 +628,7 @@ class TestValidateDatasetEndpoint:
         u, p, a = _setup()
         ds = _dataset_with_messages(a, n=6)
 
-        r = _auth_client(u).post(
+        r = auth_client(u).post(
             reverse("finetuningjob-validate-dataset"),
             {
                 "dataset_id": str(ds.id),
@@ -674,7 +648,7 @@ class TestModelsEndpoint:
         u, _, _ = _setup()
         settings.FINETUNING_BACKEND = "together"
 
-        r = _auth_client(u).get(reverse("finetuningjob-models"))
+        r = auth_client(u).get(reverse("finetuningjob-models"))
         assert r.status_code == 200
         assert r.data["backend"] == "together"
         assert "tiers" in r.data
@@ -684,7 +658,7 @@ class TestModelsEndpoint:
         u, _, _ = _setup()
         settings.FINETUNING_BACKEND = "baseten"
 
-        r = _auth_client(u).get(reverse("finetuningjob-models"))
+        r = auth_client(u).get(reverse("finetuningjob-models"))
         assert r.status_code == 200
         assert r.data["backend"] == "baseten"
         assert set(r.data["tiers"]) == {"compact", "small", "mid", "large"}
@@ -695,7 +669,7 @@ class TestRecommendEndpoint:
         u, p, a = _setup()
         ds = _dataset_with_pairs(a, n=10)
 
-        r = _auth_client(u).post(
+        r = auth_client(u).post(
             reverse("finetuningjob-recommend"),
             {"dataset_id": str(ds.id)},
             format="json",
@@ -712,7 +686,7 @@ class TestRecommendEndpoint:
         u, p, a = _setup()
         ds = _dataset_with_pairs(a, n=10)
 
-        r = _auth_client(u).post(
+        r = auth_client(u).post(
             reverse("finetuningjob-recommend"),
             {"dataset_id": str(ds.id)},
             format="json",
@@ -725,7 +699,7 @@ class TestRecommendEndpoint:
         u, p, a = _setup()
         ds = _dataset_with_pairs(a, n=5)
 
-        r = _auth_client(u).post(
+        r = auth_client(u).post(
             reverse("finetuningjob-recommend"),
             {"dataset_id": str(ds.id)},
             format="json",
@@ -741,7 +715,7 @@ class TestRecommendEndpoint:
         _, p2, a2 = _setup()
         foreign_ds = _dataset_with_pairs(a2, n=3)
 
-        r = _auth_client(u).post(
+        r = auth_client(u).post(
             reverse("finetuningjob-recommend"),
             {"dataset_id": str(foreign_ds.id)},
             format="json",
@@ -750,7 +724,7 @@ class TestRecommendEndpoint:
 
     def test_missing_dataset_id_returns_400(self):
         u, _, _ = _setup()
-        r = _auth_client(u).post(
+        r = auth_client(u).post(
             reverse("finetuningjob-recommend"),
             {},
             format="json",
@@ -764,7 +738,7 @@ class TestLossCurvesEndpoint:
         ds = _dataset_with_pairs(a)
         job = FinetuningJob.objects.create(project=p, dataset=ds, base_model="m")
 
-        r = _auth_client(u).get(reverse("finetuningjob-loss-curves", kwargs={"id": str(job.id)}))
+        r = auth_client(u).get(reverse("finetuningjob-loss-curves", kwargs={"id": str(job.id)}))
         assert r.status_code == 200
         assert r.data["steps"] == []
         assert r.data["train_loss"] == []
@@ -792,7 +766,7 @@ class TestLossCurvesEndpoint:
             data={"status": "running"},  # should not appear in loss curves
         )
 
-        r = _auth_client(u).get(reverse("finetuningjob-loss-curves", kwargs={"id": str(job.id)}))
+        r = auth_client(u).get(reverse("finetuningjob-loss-curves", kwargs={"id": str(job.id)}))
         assert r.status_code == 200
         assert len(r.data["steps"]) == 2
         assert len(r.data["train_loss"]) == 2
@@ -805,9 +779,7 @@ class TestLossCurvesEndpoint:
         ds2 = _dataset_with_pairs(a2)
         foreign = FinetuningJob.objects.create(project=p2, dataset=ds2, base_model="m")
 
-        r = _auth_client(u).get(
-            reverse("finetuningjob-loss-curves", kwargs={"id": str(foreign.id)})
-        )
+        r = auth_client(u).get(reverse("finetuningjob-loss-curves", kwargs={"id": str(foreign.id)}))
         assert r.status_code == 404
 
     def test_unauthenticated_returns_401(self):
@@ -1197,7 +1169,7 @@ class TestFinetuningValidationSerializer:
         eval_ds = frozen_dataset(p, EVAL_ROWS, capability=a)
 
         with patch(CELERY_PATH):
-            r = _auth_client(u).post(
+            r = auth_client(u).post(
                 reverse("finetuningjob-list"),
                 _ft_job_payload(
                     p,
@@ -1216,7 +1188,7 @@ class TestFinetuningValidationSerializer:
         ds = _dataset_with_messages(a, n=5)
 
         with patch(CELERY_PATH):
-            r = _auth_client(u).post(
+            r = auth_client(u).post(
                 reverse("finetuningjob-list"),
                 _ft_job_payload(p, ds, validation_split_ratio=0.9),
                 format="json",
@@ -1230,7 +1202,7 @@ class TestFinetuningValidationSerializer:
         ds = _dataset_with_messages(a, n=5)
 
         with patch(CELERY_PATH):
-            r = _auth_client(u).post(
+            r = auth_client(u).post(
                 reverse("finetuningjob-list"),
                 _ft_job_payload(
                     p,
@@ -1249,7 +1221,7 @@ class TestFinetuningValidationSerializer:
         ds = _dataset_with_pairs(a, n=10)
 
         with patch(CELERY_PATH):
-            r = _auth_client(u).post(
+            r = auth_client(u).post(
                 reverse("finetuningjob-list"),
                 _ft_job_payload(
                     p,
@@ -1269,7 +1241,7 @@ class TestFinetuningValidationSerializer:
         ds = _dataset_with_messages(a, n=10)
 
         with patch(CELERY_PATH, return_value=_FakeAsyncResult()):
-            r = _auth_client(u).post(
+            r = auth_client(u).post(
                 reverse("finetuningjob-list"),
                 _ft_job_payload(
                     p,
@@ -1300,7 +1272,7 @@ class TestFinetuningValidationSerializer:
         )
 
         with patch(CELERY_PATH):
-            r = _auth_client(u).get(reverse("finetuningjob-list"))
+            r = auth_client(u).get(reverse("finetuningjob-list"))
 
         assert r.status_code == 200
         row = r.data["results"][0]

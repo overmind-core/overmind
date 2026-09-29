@@ -1,38 +1,21 @@
 from __future__ import annotations
 
 import asyncio
-import uuid
 from types import SimpleNamespace
 
 import pytest
-from mcp_fixtures import training_setup
+from mcp_fixtures import mcp_context, training_setup
 
 from overbae.models import (
-    APIToken,
     Dataset,
     DeployedModel,
     FinetuningJob,
-    Project,
-    ProjectMembership,
-    User,
 )
 from overbae.services.finetuning_validator import ValidationResult
 from overbae.services.mcp.catalog import CATALOG
 from overbae.services.mcp.context import MCPContext
 
 pytestmark = pytest.mark.django_db(transaction=True)
-
-
-def _context() -> MCPContext:
-    user = User.objects.create_user(
-        email=f"mcp-receipt-{uuid.uuid4().hex[:8]}@test.com",
-        password="pw",
-        clerk_user_id=f"clerk_{uuid.uuid4().hex}",
-    )
-    project = Project.objects.create(name="Fine tuning", slug=f"receipt-{uuid.uuid4().hex[:8]}")
-    ProjectMembership.objects.create(user=user, project=project)
-    token = APIToken(scope={"scope": "project", "permission": ["read", "write"]})
-    return MCPContext(user=user, token=token, project=project)
 
 
 def _call(name: str, arguments: dict, context: MCPContext):
@@ -43,7 +26,7 @@ def _call(name: str, arguments: dict, context: MCPContext):
 def test_start_finetune_job_receipt_has_kind_and_preserves_reference(monkeypatch, judge_model):
     from overbae.services.mcp import tools_finetuning
 
-    context = _context()
+    context = mcp_context(["read", "write"])
     capability, train, _evaluation, _eval_set = training_setup(context)
     monkeypatch.setattr(
         tools_finetuning,
@@ -88,7 +71,7 @@ def test_start_finetune_job_receipt_has_kind_and_preserves_reference(monkeypatch
 
 
 def test_retry_deployment_returns_named_deployment_job_receipt(monkeypatch):
-    context = _context()
+    context = mcp_context(["read", "write"])
     train = Dataset.objects.create(
         project=context.project,
         name="Train",

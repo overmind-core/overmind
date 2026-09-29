@@ -5,8 +5,7 @@ from decimal import Decimal
 import pytest
 from django.contrib.auth import get_user_model
 from django.urls import reverse
-from rest_framework.test import APIClient
-from rest_framework_simplejwt.tokens import RefreshToken
+from factories import auth_client
 
 from overbae.api.credit_gate import require_credits
 from overbae.models import BillingService, BillingTelemetry
@@ -17,13 +16,6 @@ from overbae.services.plan_limits import effective_projects_limit, require_plan_
 pytestmark = pytest.mark.django_db
 
 User = get_user_model()
-
-
-def _auth_client(user: User) -> APIClient:
-    client = APIClient()
-    token = RefreshToken.for_user(user)
-    client.credentials(HTTP_AUTHORIZATION=f"Bearer {token.access_token}")
-    return client
 
 
 def _make_user(slug: str) -> User:
@@ -78,7 +70,7 @@ def test_uncapped_me_and_spend_routes(uncapped):
         BillingService.INFERENCE,
         idempotency_key="inf-api",
     )
-    client = _auth_client(user)
+    client = auth_client(user)
 
     me = client.get(reverse("user-me"))
     assert me.status_code == 200
@@ -103,7 +95,7 @@ def test_uncapped_me_and_spend_routes(uncapped):
 
 def test_commercial_me_enables_billing():
     user = _make_user("capped-api")
-    r = _auth_client(user).get(reverse("user-me"))
+    r = auth_client(user).get(reverse("user-me"))
     assert r.status_code == 200
     assert r.data["billing_enabled"] is True
     assert BillingTelemetry.objects.filter(user=user).exists()

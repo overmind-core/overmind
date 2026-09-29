@@ -8,8 +8,9 @@ from unittest.mock import patch
 import pytest
 from conftest import TRAIN_ROWS, frozen_dataset
 from django.contrib.auth import get_user_model
+from factories import make_project, make_user
 
-from overbae.models import BillingService, BillingTelemetry, Project
+from overbae.models import BillingService, BillingTelemetry
 from overbae.models.finetuning import FinetuningJob
 from overbae.services.billing_ledger import balance_usd, charge_llm_usage
 from overbae.tasks.finetuning import _transition
@@ -19,23 +20,8 @@ pytestmark = pytest.mark.django_db
 User = get_user_model()
 
 
-def _user(email: str) -> User:
-    return User.objects.create_user(
-        email=email,
-        password="x",
-        clerk_user_id=f"clerk_{uuid.uuid4().hex[:10]}",
-    )
-
-
-def _project() -> Project:
-    return Project.objects.create(
-        name=f"p-{uuid.uuid4().hex[:6]}",
-        slug=f"p-{uuid.uuid4().hex[:8]}",
-    )
-
-
 def test_charge_llm_usage_bills_the_reported_cost_and_is_idempotent():
-    user = _user("workshop-charge@example.com")
+    user = make_user("workshop-charge@example.com")
     before = balance_usd(user)
     stats = {
         "prompt_tokens": 1000,
@@ -72,7 +58,7 @@ def test_charge_llm_usage_bills_the_reported_cost_and_is_idempotent():
 def test_charge_llm_usage_falls_back_to_catalog_pricing(monkeypatch):
     """A provider that reports no cost is priced from the model that served it,
     and cache reads must not be billed as fresh input."""
-    user = _user("workshop-fallback@example.com")
+    user = make_user("workshop-fallback@example.com")
     seen = {}
 
     def _estimate(model, inp, out, cached_tokens=None):
@@ -96,7 +82,7 @@ def test_charge_llm_usage_falls_back_to_catalog_pricing(monkeypatch):
 
 
 def test_charge_llm_usage_skips_an_empty_turn(monkeypatch):
-    user = _user("workshop-empty@example.com")
+    user = make_user("workshop-empty@example.com")
     monkeypatch.setattr("overbae.services.model_catalog.estimate_cost", lambda *a, **k: 9.99)
     assert (
         charge_llm_usage(
@@ -108,7 +94,7 @@ def test_charge_llm_usage_skips_an_empty_turn(monkeypatch):
 
 
 def test_composite_decision_billing_preserves_known_cost_when_one_attempt_is_unknown(monkeypatch):
-    user = _user("decision-partial@example.com")
+    user = make_user("decision-partial@example.com")
     monkeypatch.setattr("overbae.services.model_catalog.estimate_cost", lambda *a, **k: None)
     row = charge_llm_usage(
         user,
@@ -127,7 +113,7 @@ def test_composite_decision_billing_preserves_known_cost_when_one_attempt_is_unk
 
 
 def test_cached_decision_is_not_repriced_as_a_fresh_call(monkeypatch):
-    user = _user("decision-cache@example.com")
+    user = make_user("decision-cache@example.com")
     monkeypatch.setattr("overbae.services.model_catalog.estimate_cost", lambda *a, **k: 9.99)
     assert (
         charge_llm_usage(
@@ -141,7 +127,7 @@ def test_cached_decision_is_not_repriced_as_a_fresh_call(monkeypatch):
 
 
 def test_provider_reported_zero_cost_is_not_repriced(monkeypatch):
-    user = _user("provider-zero@example.com")
+    user = make_user("provider-zero@example.com")
     monkeypatch.setattr("overbae.services.model_catalog.estimate_cost", lambda *a, **k: 9.99)
     assert (
         charge_llm_usage(
@@ -158,8 +144,8 @@ def test_provider_reported_zero_cost_is_not_repriced(monkeypatch):
 
 
 def test_modal_terminal_transition_charges_once():
-    user = _user("modal-ft@example.com")
-    project = _project()
+    user = make_user("modal-ft@example.com")
+    project = make_project()
     dataset = frozen_dataset(project, TRAIN_ROWS, name="ds")
     started = datetime(2026, 7, 28, 12, 0, tzinfo=UTC)
     job = FinetuningJob.objects.create(
@@ -212,8 +198,8 @@ def test_optimizer_charge_cursor_usage(monkeypatch):
     from overbae.models import Capability
     from overbae.models.optimizer import OptimizerExperiment
 
-    user = _user("opt-charge@example.com")
-    project = _project()
+    user = make_user("opt-charge@example.com")
+    project = make_project()
     capability = Capability.objects.create(project=project, name="A", slug="a")
     exp = OptimizerExperiment.objects.create(
         project=project,

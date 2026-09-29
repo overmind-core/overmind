@@ -6,26 +6,13 @@ import uuid
 
 import pytest
 from django.utils import timezone
+from mcp_fixtures import mcp_context
 
-from overbae.models import APIToken, ConnectorCredential, Project, ProjectMembership, User
+from overbae.models import ConnectorCredential, Project
 from overbae.services.mcp.catalog import CATALOG
 from overbae.services.mcp.context import MCPContext
 
 pytestmark = pytest.mark.django_db(transaction=True)
-
-
-def _context() -> MCPContext:
-    user = User.objects.create_user(
-        email=f"mcp-connector-job-{uuid.uuid4().hex[:8]}@test.com",
-        password="pw",
-        clerk_user_id=f"clerk_{uuid.uuid4().hex}",
-    )
-    project = Project.objects.create(
-        name="Connector jobs", slug=f"connector-{uuid.uuid4().hex[:8]}"
-    )
-    ProjectMembership.objects.create(user=user, project=project)
-    token = APIToken(scope={"scope": "project", "permission": ["read"]})
-    return MCPContext(user=user, token=token, project=project)
 
 
 def _call(context: MCPContext, connector_id: str):
@@ -39,7 +26,7 @@ def _call(context: MCPContext, connector_id: str):
 
 
 def test_connector_sync_get_job_uses_connector_receipt_id_and_resource():
-    context = _context()
+    context = mcp_context()
     synced_at = timezone.now()
     connector = ConnectorCredential.objects.create(
         project=context.project,
@@ -78,7 +65,7 @@ def test_connector_sync_get_job_uses_connector_receipt_id_and_resource():
 
 
 def test_connector_sync_get_job_redacts_aggregate_sync_error():
-    context = _context()
+    context = mcp_context()
     connector = ConnectorCredential.objects.create(
         project=context.project,
         name="Broken traces",
@@ -96,7 +83,7 @@ def test_connector_sync_get_job_redacts_aggregate_sync_error():
 
 
 def test_connector_sync_get_job_is_project_scoped_and_requires_uuid():
-    context = _context()
+    context = mcp_context()
     other = Project.objects.create(name="Other", slug=f"other-{uuid.uuid4().hex[:8]}")
     connector = ConnectorCredential.objects.create(
         project=other,

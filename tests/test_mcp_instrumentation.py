@@ -4,18 +4,15 @@ import asyncio
 import uuid
 
 import pytest
+from mcp_fixtures import mcp_context
 
 from overbae.models import (
-    APIToken,
     Behaviour,
     BehaviourVersion,
     Capability,
     EvidenceProfile,
-    Project,
-    ProjectMembership,
     Span,
     TaskExecution,
-    User,
 )
 from overbae.services.behaviour.instrumentation import instrumentation_tickets
 from overbae.services.mcp.catalog import CATALOG
@@ -24,27 +21,6 @@ from overbae.services.mcp.context import MCPContext
 pytestmark = pytest.mark.django_db(transaction=True)
 
 SHA = "a" * 40
-
-
-def _context(*, permission: str | list[str] = "read") -> MCPContext:
-    user = User.objects.create_user(
-        email=f"mcp-instrumentation-{uuid.uuid4().hex[:8]}@test.com",
-        password="pw",
-        clerk_user_id=f"clerk_{uuid.uuid4().hex}",
-    )
-    project = Project.objects.create(
-        name="Instrumentation", slug=f"instrumentation-{uuid.uuid4().hex[:8]}"
-    )
-    ProjectMembership.objects.create(user=user, project=project)
-    permissions = [permission] if isinstance(permission, str) else permission
-    token = APIToken(
-        scope={
-            "scope": "project",
-            "resourceIds": [str(project.id)],
-            "permission": permissions,
-        }
-    )
-    return MCPContext(user=user, token=token, project=project)
 
 
 def _capability(context: MCPContext, name: str = "Support") -> Capability:
@@ -120,7 +96,7 @@ def test_catalog_has_exact_instrumentation_slice_and_read_annotations():
 
 
 def test_plan_preserves_exact_registered_ticket_fields():
-    context = _context()
+    context = mcp_context()
     capability = _capability(context)
     _behaviour(capability)
 
@@ -157,7 +133,7 @@ def test_plan_preserves_exact_registered_ticket_fields():
 
 
 def test_plan_defaults_to_project_wide_and_capability_scopes_when_supplied():
-    context = _context()
+    context = mcp_context()
     support = _capability(context, "Support")
     sales = _capability(context, "Sales")
     _behaviour(support, "support-task")
@@ -181,7 +157,7 @@ def test_plan_defaults_to_project_wide_and_capability_scopes_when_supplied():
 
 
 def test_plan_requires_capability_for_behaviour_and_empty_registry_is_actionable():
-    context = _context()
+    context = mcp_context()
 
     invalid = _call("get_instrumentation_plan", context, {"behaviour": "support-task"})
     assert invalid.isError is True
@@ -195,8 +171,8 @@ def test_plan_requires_capability_for_behaviour_and_empty_registry_is_actionable
 
 
 def test_plan_and_verify_are_project_isolated():
-    context = _context()
-    other = _context()
+    context = mcp_context()
+    other = mcp_context()
     foreign = _capability(other, "Foreign")
 
     plan = _call("get_instrumentation_plan", context, {"capability": foreign.slug})
@@ -213,7 +189,7 @@ def test_plan_and_verify_are_project_isolated():
 
 
 def test_verify_returns_typed_binding_grades_and_punch_list_without_writes():
-    context = _context()
+    context = mcp_context()
     capability = _capability(context)
     _behaviour(capability)
     spans = [_span(**{"overmind.behaviour.key": "support-task"})]
@@ -252,7 +228,7 @@ def test_verify_returns_typed_binding_grades_and_punch_list_without_writes():
 
 
 def test_verify_reports_malformed_typed_span_and_rejects_json_string():
-    context = _context()
+    context = mcp_context()
 
     malformed = _call(
         "verify_instrumentation",
@@ -274,7 +250,7 @@ def test_verify_reports_malformed_typed_span_and_rejects_json_string():
 
 
 def test_verify_enforces_span_bound_and_redacts_unexpected_failures(monkeypatch):
-    context = _context()
+    context = mcp_context()
     at_limit = _call(
         "verify_instrumentation",
         context,

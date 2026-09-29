@@ -16,7 +16,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 from django.core.cache import cache
 from django.test import override_settings
-from rest_framework.test import APIClient
+from factories import api_key_client, make_member, make_project, make_user
 
 from overbae.models import (
     Capability,
@@ -25,9 +25,6 @@ from overbae.models import (
     OptimizerCommand,
     OptimizerExperiment,
     OptimizerIteration,
-    Project,
-    ProjectMembership,
-    User,
 )
 from overbae.models.optimizer import _model_ids_match
 from overbae.services.model_catalog import resolve_bare_openrouter_slug
@@ -66,34 +63,9 @@ SDK_DEPENDENCIES = {
 }
 
 
-def _user() -> User:
-    return User.objects.create_user(
-        email=f"u-{uuid.uuid4().hex[:6]}@test.com",
-        password="pw",
-        clerk_user_id=f"clerk_{uuid.uuid4().hex}",
-    )
-
-
-def _project() -> Project:
-    return Project.objects.create(name="P", slug=f"p-{uuid.uuid4().hex[:8]}")
-
-
-def _membership(user: User, project: Project) -> None:
-    ProjectMembership.objects.create(user=user, project=project)
-
-
-def _api_key_client(user: User, project: Project) -> APIClient:
-    from overbae.models import APIToken
-
-    raw_key, _ = APIToken.create_for_user(user, project=project)
-    client = APIClient()
-    client.credentials(HTTP_X_API_KEY=raw_key)
-    return client
-
-
 def _post(model_id: str, *, optimiser_header: bool = True) -> tuple[int, str]:
-    u, p = _user(), _project()
-    _membership(u, p)
+    u, p = make_user(), make_project()
+    make_member(u, p)
     mock_post = MagicMock()
     mock_post.return_value.ok = True
     mock_post.return_value.json.return_value = FAKE_RESP
@@ -104,7 +76,7 @@ def _post(model_id: str, *, optimiser_header: bool = True) -> tuple[int, str]:
         override_settings(OPENROUTER_API_KEY="or-test"),
         patch("overbae.api.completions._requests.post", mock_post),
     ):
-        r = _api_key_client(u, p).post(URL, {"model": model_id, "messages": MESSAGES}, **headers)
+        r = api_key_client(u, p).post(URL, {"model": model_id, "messages": MESSAGES}, **headers)
         if r.status_code == 200:
             return r.status_code, mock_post.call_args.kwargs["json"]["model"]
         return r.status_code, r.json().get("error", {}).get("message", "")
@@ -180,8 +152,8 @@ class TestGatewayModelNamePermutations:
 
         from overbae.models import BillingService
 
-        u, p = _user(), _project()
-        _membership(u, p)
+        u, p = make_user(), make_project()
+        make_member(u, p)
         mock_post = MagicMock()
         mock_post.return_value.ok = True
         mock_post.return_value.json.return_value = {
@@ -200,7 +172,7 @@ class TestGatewayModelNamePermutations:
                 ),
             ),
         ):
-            r = _api_key_client(u, p).post(
+            r = api_key_client(u, p).post(
                 URL,
                 {"model": "gpt-5-mini", "messages": MESSAGES},
                 HTTP_X_OVERMIND_OPTIMISER="1",
@@ -244,7 +216,7 @@ class TestTelemetryNormalisationPermutations:
         assert not _model_ids_match(expected, observed)
 
     def test_bare_observed_model_does_not_fail_the_telemetry_gate(self):
-        project = _project()
+        project = make_project()
         capability = Capability.objects.create(
             project=project, name="A", slug=f"a-{uuid.uuid4().hex[:8]}"
         )
@@ -326,7 +298,7 @@ class TestModelValidationPermutations:
     def test_ft_id_stored_verbatim(self):
         from overbae.services.optimizer_create import validate_optimizer_models
 
-        project = _project()
+        project = make_project()
         DeployedModel.objects.create(
             project=project,
             model_id="ft-nimbus-1234",

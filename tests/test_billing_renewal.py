@@ -6,8 +6,8 @@ from decimal import Decimal
 import pytest
 from django.contrib.auth import get_user_model
 from django.urls import reverse
+from factories import auth_client
 from rest_framework.test import APIClient
-from rest_framework_simplejwt.tokens import RefreshToken
 
 from overbae.api.billing import renew_plan_from_invoice, sync_subscription_from_stripe
 from overbae.models import BillingService, BillingTelemetry, Subscription, SubscriptionStatus
@@ -50,13 +50,6 @@ def _invoice(
             ]
         },
     }
-
-
-def _auth_client(user: User) -> APIClient:
-    client = APIClient()
-    token = RefreshToken.for_user(user)
-    client.credentials(HTTP_AUTHORIZATION=f"Bearer {token.access_token}")
-    return client
 
 
 def test_signup_grants_exactly_50_free_credits_once():
@@ -235,7 +228,7 @@ def test_subscription_get_free_user():
         password="x",
         clerk_user_id="clerk_free",
     )
-    r = _auth_client(user).get(reverse("billing-subscription"))
+    r = auth_client(user).get(reverse("billing-subscription"))
     assert r.status_code == 200
     assert r.data["plan"] == "free"
     assert r.data["status"] is None
@@ -256,7 +249,7 @@ def test_subscription_get_pro_user():
         end_date=datetime(2030, 1, 1, tzinfo=UTC),
         cancel_at_period_end=False,
     )
-    r = _auth_client(user).get(reverse("billing-subscription"))
+    r = auth_client(user).get(reverse("billing-subscription"))
     assert r.status_code == 200
     assert r.data["plan"] == "pro"
     assert r.data["status"] == "active"
@@ -286,7 +279,7 @@ def test_cancel_subscription_sets_flag(monkeypatch):
     monkeypatch.setattr("overbae.api.billing._configure_stripe", lambda: True)
     monkeypatch.setattr("overbae.api.billing.stripe.Subscription.modify", fake_modify)
 
-    r = _auth_client(user).post(reverse("billing-cancel"))
+    r = auth_client(user).post(reverse("billing-cancel"))
     assert r.status_code == 200
     assert r.data["cancel_at_period_end"] is True
     assert r.data["plan"] == "pro"
@@ -317,7 +310,7 @@ def test_renew_subscription_clears_flag(monkeypatch):
     monkeypatch.setattr("overbae.api.billing._configure_stripe", lambda: True)
     monkeypatch.setattr("overbae.api.billing.stripe.Subscription.modify", fake_modify)
 
-    r = _auth_client(user).post(reverse("billing-renew"))
+    r = auth_client(user).post(reverse("billing-renew"))
     assert r.status_code == 200
     assert r.data["cancel_at_period_end"] is False
     assert calls == [("sub_resume", {"cancel_at_period_end": False})]
@@ -521,7 +514,7 @@ def test_ledger_lists_own_entries_newest_first():
         idempotency_key="ledger-inf-other",
     )
 
-    r = _auth_client(user).get(reverse("billing-ledger"))
+    r = auth_client(user).get(reverse("billing-ledger"))
     assert r.status_code == 200
     results = r.data["results"]
     assert r.data["count"] == 2  # free-credits + inference debit

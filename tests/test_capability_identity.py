@@ -1,17 +1,14 @@
 import uuid
 
 import pytest
+from factories import make_project
 
 from overbae.api.otlp import _resolve_capability
-from overbae.models import Capability, IdentityAlias, Project
+from overbae.models import Capability, IdentityAlias
 from overbae.services.capabilities import identity
 from overbae.services.connectors.capabilities import resolve_capability as connector_resolve
 
 pytestmark = pytest.mark.django_db
-
-
-def _project() -> Project:
-    return Project.objects.create(name="P", slug=f"p-{uuid.uuid4().hex[:8]}")
 
 
 def _capability(project, name, slug=None, **extra) -> Capability:
@@ -21,7 +18,7 @@ def _capability(project, name, slug=None, **extra) -> Capability:
 
 
 def test_save_records_id_name_and_slug_aliases_and_keeps_old_ones_on_rename():
-    project = _project()
+    project = make_project()
     capability = _capability(project, "Ticket Triage")
     assert set(
         IdentityAlias.objects.filter(capability=capability).values_list("value", flat=True)
@@ -42,16 +39,16 @@ def test_save_records_id_name_and_slug_aliases_and_keeps_old_ones_on_rename():
 
 
 def test_lookup_resolves_id_name_slug_and_slugified_name_case_insensitively():
-    project = _project()
+    project = make_project()
     capability = _capability(project, "Ticket Triage")
     for probe in [str(capability.id), "TICKET TRIAGE", "ticket-triage", "Ticket  Triage"]:
         assert identity.lookup(project.id, probe) == capability, probe
     assert identity.lookup(project.id, "nope") is None
-    assert identity.lookup(_project().id, "ticket-triage") is None
+    assert identity.lookup(make_project().id, "ticket-triage") is None
 
 
 def test_lookup_hides_leftover_unless_asked_and_never_returns_deleted():
-    project = _project()
+    project = make_project()
     old = _capability(project, "Old Triage", status=Capability.Status.LEFTOVER)
     gone = _capability(project, "Gone Triage", status=Capability.Status.DELETED)
 
@@ -62,7 +59,7 @@ def test_lookup_hides_leftover_unless_asked_and_never_returns_deleted():
 
 
 def test_ingest_binds_by_id_only_and_never_mints():
-    project = _project()
+    project = make_project()
     capability = _capability(project, "Ledgerline Invoice Triage")
 
     assert (
@@ -77,7 +74,7 @@ def test_ingest_binds_by_id_only_and_never_mints():
 
 
 def test_ingest_ignores_the_name_beside_the_id():
-    project = _project()
+    project = make_project()
     pinned = _capability(project, "Pinned")
     other = _capability(project, "Other")
 
@@ -87,7 +84,7 @@ def test_ingest_ignores_the_name_beside_the_id():
 
 
 def test_ingest_renamed_capability_binds_via_resource_id_and_never_via_name():
-    project = _project()
+    project = make_project()
     capability = _capability(project, "Ticket Triage")
     capability.name = "Support Triage"
     capability.save(update_fields=["name"])
@@ -102,7 +99,7 @@ def test_ingest_renamed_capability_binds_via_resource_id_and_never_via_name():
 
 
 def test_ingest_span_level_id_beats_resource_id():
-    project = _project()
+    project = make_project()
     process_wide = _capability(project, "Process Wide")
     scoped = _capability(project, "Scoped")
 
@@ -114,7 +111,7 @@ def test_ingest_span_level_id_beats_resource_id():
 
 
 def test_ingest_ignores_leftover_and_deleted_rows():
-    project = _project()
+    project = make_project()
     retired = _capability(project, "Retired", status=Capability.Status.LEFTOVER)
     gone = _capability(project, "Gone", status=Capability.Status.DELETED)
 
@@ -126,7 +123,7 @@ def test_ingest_ignores_leftover_and_deleted_rows():
 def test_resolve_capability_follows_renames():
     from overbae.services.entity_resolution import resolve_capability
 
-    project = _project()
+    project = make_project()
     capability = _capability(project, "Ticket Triage")
     capability.name = "Support Triage"
     capability.save(update_fields=["name"])
@@ -134,7 +131,7 @@ def test_resolve_capability_follows_renames():
 
 
 def test_connector_mapping_observes_reactivates_and_never_mints_a_peer():
-    project = _project()
+    project = make_project()
     mapping = {"auto_create": True, "assignments": {}}
 
     fresh = connector_resolve("Checkout Bot", mapping, project)
@@ -152,7 +149,7 @@ def test_connector_mapping_observes_reactivates_and_never_mints_a_peer():
 
 
 def test_connector_assignment_and_fallback_resolve_through_aliases():
-    project = _project()
+    project = make_project()
     capability = _capability(project, "Triage")
     capability.slug = "triage-v2"
     capability.save(update_fields=["slug"])

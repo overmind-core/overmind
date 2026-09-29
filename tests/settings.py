@@ -1,4 +1,4 @@
-"""Django settings for pytest — SQLite (in-memory) so CI/local tests never touch Postgres."""
+"""Django settings for pytest."""
 
 from __future__ import annotations
 
@@ -27,8 +27,12 @@ from overbae.settings import *  # noqa: E402, F403
 
 DATABASES = {
     "default": {
-        "ENGINE": "django.db.backends.sqlite3",
-        "NAME": ":memory:",
+        "ENGINE": "django.db.backends.postgresql",
+        "NAME": "overbae",
+        "USER": os.environ.get("POSTGRES_USER", "overbae"),
+        "PASSWORD": os.environ.get("POSTGRES_PASSWORD", "overbae"),
+        "HOST": os.environ.get("TEST_POSTGRES_HOST", "localhost"),
+        "PORT": os.environ.get("TEST_POSTGRES_PORT", "5432"),
     }
 }
 
