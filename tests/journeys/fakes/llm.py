@@ -302,6 +302,7 @@ class Network:
     def __init__(self, llm: FakeLLM) -> None:
         self.llm = llm
         self.refused: list[str] = []
+        self.vendors: list[Any] = []
         self._respx = respx.mock(assert_all_called=False, assert_all_mocked=True)
         self._responses = responses.RequestsMock(assert_all_requests_are_fired=False)
 
@@ -313,6 +314,10 @@ class Network:
         return self._route(request.method, request.url, request.body)
 
     def _route(self, method: str, url: str, body) -> tuple[int, dict, bytes]:
+        for vendor in self.vendors:
+            answer = vendor.handle(method, url, body)
+            if answer is not None:
+                return answer
         status, headers, content = self.llm.handle(method, url, body)
         if status == 599:
             self.refused.append(f"{method} {url}")

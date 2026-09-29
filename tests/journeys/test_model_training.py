@@ -1,42 +1,13 @@
-import json
 import re
 
 from .conftest import GOOD_REPLY, answer_turn
-from .datasets import tickets, upload
+from .datasets import tickets, training_rows, until, upload
 from .stack import drain
 
 PREPARE = "overbae.tasks.training_preparation.reconcile"
 TRAIN = "overbae.tasks.finetuning_reconciler.reconcile_finetuning_jobs"
 DEPLOY = "overbae.tasks.inference_controller.reconcile_deployments"
 BAD_REPLY = "Your refund is on its way. The order was delivered."
-
-
-def training_rows(tmp_path, n=12):
-    path = tmp_path / "train.jsonl"
-    path.write_text(
-        "".join(
-            json.dumps(
-                {
-                    "messages": [
-                        {"role": "system", "content": "You are a support agent."},
-                        {"role": "user", "content": f"Refund order {i}"},
-                        {"role": "assistant", "content": f"Order {i} was delivered."},
-                    ]
-                }
-            )
-            + "\n"
-            for i in range(n)
-        )
-    )
-    return path
-
-
-def until(beat, condition, *tasks, limit=30):
-    for _ in range(limit):
-        beat(*tasks)
-        if condition():
-            return
-    raise AssertionError(f"{condition.__name__} not met after {limit} ticks")
 
 
 def trained_turn(request):

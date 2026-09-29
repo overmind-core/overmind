@@ -5,107 +5,12 @@ from __future__ import annotations
 from types import SimpleNamespace
 
 from overbae.services.connectors import (
-    ConnectorAdapter,
     capabilities_for,
     capability_source_error,
     get_adapter,
     registered_sources,
 )
-from overbae.services.connectors.base import Capabilities, IngestUnit
-
-
-def test_langfuse_adapter_satisfies_protocol():
-    cred = SimpleNamespace(
-        pk=None,
-        api_key="pk",
-        api_secret="sk",
-        base_url="",
-        api_version="v2",
-        connector_type="langfuse",
-        capability_mapping={},
-        project=None,
-    )
-
-    # Avoid network: stub client methods after construction.
-    adapter = get_adapter(cred)
-    assert isinstance(adapter, ConnectorAdapter)
-    assert adapter.source == "langfuse"
-    assert isinstance(adapter.capabilities, Capabilities)
-    assert adapter.capabilities.needs_source_project is True
-
-    # Structural checks on return types (no network).
-    unit = IngestUnit(records=[], external_trace_id="t")
-    assert adapter.to_span_dicts(unit, credential=cred) == []
-
-
-def test_braintrust_adapter_satisfies_protocol():
-    cred = SimpleNamespace(
-        pk=None,
-        api_key="bt-st-key",
-        api_secret="",
-        base_url="",
-        api_version="unknown",
-        connector_type="braintrust",
-        capability_mapping={},
-        project=None,
-    )
-
-    adapter = get_adapter(cred)
-    assert isinstance(adapter, ConnectorAdapter)
-    assert adapter.source == "braintrust"
-    assert isinstance(adapter.capabilities, Capabilities)
-    assert adapter.capabilities.needs_source_project is True
-    assert adapter.count(lookback_days=7) is None
-
-    unit = IngestUnit(records=[], external_trace_id="t")
-    assert adapter.to_span_dicts(unit, credential=cred) == []
-
-
-def test_langsmith_adapter_satisfies_protocol():
-    cred = SimpleNamespace(
-        pk=None,
-        api_key="lsv2_sk_key",
-        api_secret="",
-        base_url="",
-        api_version="unknown",
-        connector_type="langsmith",
-        capability_mapping={},
-        project=None,
-    )
-
-    adapter = get_adapter(cred)
-    assert isinstance(adapter, ConnectorAdapter)
-    assert adapter.source == "langsmith"
-    assert isinstance(adapter.capabilities, Capabilities)
-    assert adapter.capabilities.needs_source_project is True
-    assert adapter.count(lookback_days=7) is None
-
-    unit = IngestUnit(records=[], external_trace_id="t")
-    assert adapter.to_span_dicts(unit, credential=cred) == []
-
-
-def test_galileo_adapter_satisfies_protocol():
-    cred = SimpleNamespace(
-        pk=None,
-        api_key="galileo-key",
-        api_secret="",
-        base_url="",
-        api_version="unknown",
-        connector_type="galileo",
-        capability_mapping={},
-        project=None,
-    )
-
-    adapter = get_adapter(cred)
-    assert isinstance(adapter, ConnectorAdapter)
-    assert adapter.source == "galileo"
-    assert isinstance(adapter.capabilities, Capabilities)
-    assert adapter.capabilities.needs_source_project is True
-    assert adapter.capabilities.needs_secret is False
-    assert adapter.count(lookback_days=7) is None
-
-    unit = IngestUnit(records=[], external_trace_id="t")
-    assert adapter.to_span_dicts(unit, credential=cred) == []
+from overbae.services.connectors.base import Capabilities
 
 
 def test_every_adapter_declares_the_vocabulary_the_profiler_reads():

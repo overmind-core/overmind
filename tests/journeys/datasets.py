@@ -39,3 +39,31 @@ def evaluate(mcp, dataset):
             ],
         },
     )
+
+
+def training_rows(tmp_path, n=12):
+    path = tmp_path / "train.jsonl"
+    path.write_text(
+        "".join(
+            json.dumps(
+                {
+                    "messages": [
+                        {"role": "system", "content": "You are a support agent."},
+                        {"role": "user", "content": f"Refund order {i}"},
+                        {"role": "assistant", "content": f"Order {i} was delivered."},
+                    ]
+                }
+            )
+            + "\n"
+            for i in range(n)
+        )
+    )
+    return path
+
+
+def until(beat, condition, *tasks, limit=30):
+    for _ in range(limit):
+        beat(*tasks)
+        if condition():
+            return
+    raise AssertionError(f"{condition.__name__} not met after {limit} ticks")

@@ -4,6 +4,7 @@ import itertools
 import threading
 from collections.abc import Callable
 from dataclasses import dataclass, field
+from types import SimpleNamespace
 from typing import Any
 
 import modal
@@ -67,7 +68,16 @@ class FakeCall:
 
     @property
     def get_call_graph(self) -> _Method:
-        return _Method(lambda: [])
+        from modal.call_graph import InputStatus
+
+        status = {
+            "pending": InputStatus.PENDING,
+            "done": InputStatus.SUCCESS,
+            "failed": InputStatus.FAILURE,
+            "cancelled": InputStatus.TERMINATED,
+        }[self.state]
+        node = SimpleNamespace(function_call_id=self.object_id, status=status, children=[])
+        return _Method(lambda: [node])
 
 
 class FakeFunction:
@@ -141,6 +151,13 @@ class FakeModal:
             call.run()
         return len(calls)
 
+    def fail(self, name_prefix: str, error: Exception) -> int:
+        calls = self.pending(name_prefix)
+        for call in calls:
+            call.error = error
+            call.state = "failed"
+        return len(calls)
+
     def called(self, name_prefix: str) -> list[str]:
         return [kind for kind, name, _, _ in self.log if name.startswith(name_prefix)]
 
@@ -203,6 +220,11 @@ class SftBackend:
         self.uploads.append(run_id)
         self.runs[run_id] = {"status": "running", "steps": 2}
         return {"run_id": run_id, "rows": len(data_jsonl.splitlines())}
+
+    def crash(self, message: str = "CUDA out of memory") -> None:
+        for run in self.runs.values():
+            run["status"] = "failed"
+        self.cloud.fail("sft_", RuntimeError(message))
 
     def _train(self, run_id: str, env: dict, *, gpu_type: str = "", gpu_count: int = 1) -> dict:
         self.runs[run_id]["status"] = "succeeded"
