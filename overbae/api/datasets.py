@@ -8,7 +8,7 @@ import logging
 
 from django.conf import settings
 from django.db.models import Prefetch
-from django.http import StreamingHttpResponse
+from django.http import FileResponse, StreamingHttpResponse
 from django.shortcuts import get_object_or_404
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import OpenApiParameter, extend_schema, extend_schema_view
@@ -30,6 +30,7 @@ from overbae.api.dataset_serializers import (
     DatasetSplitCreateSerializer,
     DetailSerializer,
     RowsPageSerializer,
+    SourceSerializer,
 )
 from overbae.api.scoping import project_ids_for
 from overbae.models import Capability, Cell, Dataset, Project
@@ -130,6 +131,7 @@ class DatasetViewSet(viewsets.ModelViewSet):
             user=request.user if request.user.is_authenticated else None,
             name=data["name"].strip(),
             source=source,
+            brief=data["brief"],
             intent=data.get("intent"),
             capability=capability,
             infer_capability="capability" not in data,
@@ -153,6 +155,7 @@ class DatasetViewSet(viewsets.ModelViewSet):
                 user=request.user if request.user.is_authenticated else None,
                 name=data["name"].strip(),
                 source=source,
+                brief=data["brief"],
                 eval_percent=data["eval_percent"],
                 position=data["position"],
                 group_by=data["group_by"],
@@ -177,7 +180,39 @@ class DatasetViewSet(viewsets.ModelViewSet):
             if data.get("capability")
             else None
         )
-        return project, capability, self._source_payload(data["source"], project)
+        return (
+            project,
+            capability,
+            self._source_payload(data["source"], project) if data.get("source") else {},
+        )
+
+    @extend_schema(request=SourceSerializer, responses={202: DatasetSerializer})
+    @action(detail=True, methods=["post"], url_path="source")
+    def source(self, request, id=None):
+        dataset = self.get_object()
+        body = SourceSerializer(data=request.data)
+        body.is_valid(raise_exception=True)
+        source = self._source_payload(body.validated_data, dataset.project)
+        try:
+            dispatch.attach_source(dataset, request.user, source)
+        except lifecycle.DatasetError as exc:
+            return _error(exc)
+        return Response(DatasetSerializer(dataset).data, status=202)
+
+    @extend_schema(responses={(200, "application/octet-stream"): OpenApiTypes.BINARY})
+    @action(detail=True, methods=["get"], url_path=r"sources/(?P<artifact_id>[0-9a-f]{64})")
+    def source_file(self, request, id=None, artifact_id=None):
+        dataset = self.get_object()
+        artifact = next(
+            (item for item in dataset.source_spec.get("sources", []) if item["id"] == artifact_id),
+            None,
+        )
+        if artifact is None:
+            raise NotFound("No such source file.")
+        path = paths.source_path(dataset.id, artifact_id)
+        if not path.is_file():
+            raise NotFound("The source file is unavailable.")
+        return FileResponse(path.open("rb"), as_attachment=True, filename=artifact["filename"])
 
     @staticmethod
     def _source_payload(source: dict, project: Project) -> dict:
@@ -356,6 +391,9 @@ class DatasetViewSet(viewsets.ModelViewSet):
                 dataset,
                 request.user if request.user.is_authenticated else None,
                 body.validated_data["message"],
+                source=self._source_payload(body.validated_data["source"], dataset.project)
+                if body.validated_data.get("source")
+                else None,
             )
         except lifecycle.DatasetError as exc:
             return _error(exc)

@@ -11,8 +11,9 @@ from typing import Any
 from django.utils import timezone
 
 from overbae.models import Cell, Dataset
-from overbae.services.datasets import measure, paths, review, store
+from overbae.services.datasets import attachments, measure, paths, review, store
 from overbae.services.datasets.context import context_fingerprint
+from overbae.services.datasets.lifecycle import DatasetError
 from overbae.services.datasets.notebook import events, runner
 
 logger = logging.getLogger(__name__)
@@ -104,7 +105,14 @@ def iter_execute(
             cell.review.get("approval") in {"mechanical", "preparation"}
             and cell.review.get("input_fingerprint") != previous.fingerprint
         )
-        if cell.review.get("status") == "accepted" and not automatic_rerun:
+        if cell.review.get("kind") == "attachment":
+            try:
+                result = runner.CellResult(
+                    attachments.merge_frame(dataset, cell, previous), ok=True
+                )
+            except DatasetError as exc:
+                result = runner.CellResult(None, error=str(exc))
+        elif cell.review.get("status") == "accepted" and not automatic_rerun:
             if (
                 cell.review.get("input_fingerprint") != previous.fingerprint
                 or cell.review.get("intent") != dataset.intent

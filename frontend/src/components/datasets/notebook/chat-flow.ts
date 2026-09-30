@@ -1,5 +1,30 @@
 import type { AgentActivityPart } from "@/components/agent-activity/activity-timeline";
 import type { ChatCellRef } from "@/hooks/use-datasets";
+import type { Cell } from "@/openapi";
+
+export function notebookFlow(cells: Cell[], turns: { role?: string; cells?: { id: string }[] }[]) {
+  const chain = cells.filter((cell) => cell.state !== "proposed");
+  const positions = new Map(chain.map((cell, index) => [cell.id, index]));
+  const flow: ({ kind: "cell"; cell: Cell } | { kind: "turn"; index: number })[] = [];
+  let next = 0;
+  const appendThrough = (end: number) => {
+    while (next <= end && next < chain.length) flow.push({ cell: chain[next++], kind: "cell" });
+  };
+  appendThrough(0);
+  turns.forEach((turn, index) => {
+    if (turn.role !== "user") {
+      // A revision can refer backwards; the notebook itself must never do so.
+      const end =
+        index === turns.length - 1
+          ? chain.length - 1
+          : Math.max(next - 1, ...(turn.cells ?? []).map((ref) => positions.get(ref.id) ?? -1));
+      appendThrough(end);
+    }
+    flow.push({ index, kind: "turn" });
+  });
+  appendThrough(chain.length - 1);
+  return flow;
+}
 
 export interface ChatSection {
   offset: number;

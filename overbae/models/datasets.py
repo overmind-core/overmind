@@ -10,6 +10,7 @@ class Dataset(models.Model):
     the capability are proposed at landing and fixed by the first use."""
 
     class SourceKind(models.TextChoices):
+        PENDING = "pending"
         FILE = "file"
         TRACES = "traces"
 
@@ -30,6 +31,7 @@ class Dataset(models.Model):
         "overbae.Project", on_delete=models.CASCADE, related_name="datasets"
     )
     name = models.CharField(max_length=255)
+    brief = models.TextField(blank=True, default="")
     source_kind = models.CharField(
         max_length=16, choices=SourceKind.choices, default=SourceKind.FILE
     )

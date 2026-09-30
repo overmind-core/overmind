@@ -7,6 +7,7 @@ function EmptyState({
   icon: Icon,
   iconClassName,
   title,
+  titleClassName,
   description,
   action,
   size = "page",
@@ -16,7 +17,8 @@ function EmptyState({
   /** For two-tone glyphs (`dark:invert [image-rendering:pixelated]`) that must not take
    *  the default muted-foreground fill. */
   iconClassName?: string;
-  title: string;
+  title: ReactNode;
+  titleClassName?: string;
   description?: ReactNode;
   action?: ReactNode;
   size?: "page" | "section";
@@ -34,12 +36,11 @@ function EmptyState({
     >
       {Icon ? (
         <Icon
+          aria-hidden
           className={cn("mb-4 text-muted-foreground", isPage ? "size-12" : "size-8", iconClassName)}
         />
       ) : null}
-      {/* Always the hero step: the title ramp reserves it for empty-state headlines, and
-          `section` only shrinks the icon and padding. */}
-      <p className={cn("mb-1", TITLE.hero)}>{title}</p>
+      <p className={cn("mb-1", TITLE.hero, titleClassName)}>{title}</p>
       {description ? (
         <p className={cn(PROSE, "mx-auto max-w-md text-sm text-muted-foreground")}>{description}</p>
       ) : null}

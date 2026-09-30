@@ -26,15 +26,18 @@ import pyarrow as pa
 import pyarrow.parquet as pq
 
 from overbae.core.errors import InputValidationError
+from overbae.services.datasets import documents
 
 logger = logging.getLogger(__name__)
 
-ALLOWED_SUFFIXES = (".csv", ".tsv", ".json", ".jsonl", ".ndjson", ".parquet")
+ALLOWED_SUFFIXES = (".csv", ".tsv", ".json", ".jsonl", ".ndjson", ".parquet", *documents.SUFFIXES)
 CHUNK_BYTES = 8 * 1024 * 1024
 MAX_UPLOAD_BYTES = 2 * 1024 * 1024 * 1024
 JSON_ARRAY_MAX_BYTES = 256 * 1024 * 1024
 _SAFE_NAME = re.compile(r"[^A-Za-z0-9._-]+")
-UNSUPPORTED = "Use a CSV, TSV, JSON, JSONL or Parquet file."
+UNSUPPORTED = (
+    "Use a CSV, TSV, JSON, JSONL, Parquet, PDF, DOCX, Markdown, text, PNG, JPEG or WebP file."
+)
 
 # A transcript cell is far longer than the csv module's 128 KB default.
 csv.field_size_limit(MAX_UPLOAD_BYTES)
@@ -189,6 +192,11 @@ def _text_rows(fh: io.TextIOBase, name: str) -> list[dict[str, Any]]:
 
 def read_file_rows(path: Path, *, filename: str) -> list[dict[str, Any]]:
     name = (filename or "").lower()
+    if name.endswith(documents.SUFFIXES):
+        try:
+            return documents.extract(path, filename=filename)[0]
+        except documents.DocumentError as exc:
+            raise FileError(exc.detail) from exc
     bare = name.removesuffix(".gz")
     if bare.endswith(".parquet"):
         try:
@@ -217,6 +225,10 @@ def inspect_upload(upload_id: str, *, size: int) -> dict[str, Any]:
         raise FileError("The file has no rows.")
     path = upload_data_path(upload_id)
     bare = filename.lower().removesuffix(".gz")
+    if bare.endswith(documents.SUFFIXES):
+        if size > documents.MAX_BYTES:
+            raise FileError("Documents are capped at 100 MB.")
+        return {"filename": filename, "bytes": size, "rows": None}
     try:
         if bare.endswith(".parquet"):
             rows = pq.ParquetFile(path).metadata.num_rows
@@ -277,6 +289,8 @@ def begin_upload(filename: str) -> tuple[str, str]:
     lowered = safe.lower()
     if lowered.endswith(".parquet.gz"):
         raise FileError("Parquet is already compressed. Upload the .parquet file.")
+    if lowered.endswith(".gz") and lowered.removesuffix(".gz").endswith(documents.SUFFIXES):
+        raise FileError("Upload documents without gzip compression.")
     if not lowered.removesuffix(".gz").endswith(ALLOWED_SUFFIXES):
         raise FileError(UNSUPPORTED)
     upload_id = str(uuid.uuid4())

@@ -7,6 +7,7 @@ import {
   TOOL_ICONS,
   toolDetail,
 } from "@/components/agent-activity/activity-timeline";
+import { WorkshopStatusIcon } from "@/components/datasets/workshop-status";
 import { type ElbowItem, ElbowList } from "@/components/ui/elbow-list";
 import { Icon } from "@/components/ui/icons";
 import { MarkdownContent } from "@/components/ui/markdown";
@@ -81,7 +82,7 @@ export function WorkshopThinking({ parts, live }: { parts: AgentActivityPart[]; 
   const items = useMemo(() => steps.map((step) => thinkingItem(step, live)), [steps, live]);
   const contentId = useId();
   if (!live && steps.length === 0) return null;
-  const open = userOpen ?? live;
+  const open = userOpen ?? false;
   const current = steps.at(-1);
   const elapsed = steps.reduce(
     (total, step) => total + (step.kind === "thinking" ? (step.durationMs ?? 0) : 0),
@@ -99,11 +100,12 @@ export function WorkshopThinking({ parts, live }: { parts: AgentActivityPart[]; 
       <button
         aria-controls={contentId}
         aria-expanded={open}
+        aria-label={label}
         className="flex items-center gap-2 py-1 text-left text-sm text-muted-foreground hover:text-foreground"
         onClick={() => setUserOpen(!open)}
         type="button"
       >
-        {live && <Spinner size="sm" />}
+        {live && <WorkshopStatusIcon className="size-3.5" state="working" />}
         <span>{label}</span>
         <Icon.chevronRight
           aria-hidden

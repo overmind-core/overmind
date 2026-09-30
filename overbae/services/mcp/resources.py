@@ -161,6 +161,9 @@ def _dataset_upload_resource(uri: str) -> dict:
         ),
         "chunk_bytes": files.CHUNK_BYTES,
         "command": "overmind dataset upload FILE --json",
+        "written_intent": "Use start_dataset with a brief before choosing data or a capability. Attach a file later with overmind dataset upload FILE --dataset DATASET --json. For a new upload, --brief records the original request.",
+        "existing_dataset": "Use overmind dataset upload FILE --dataset DATASET --json to add files to an existing workshop. Each upload appends a recorded import cell after the current chain, preserving earlier versions and source evidence. Inspect the dataset and poll get_job(kind=dataset_run) for completion. REST chat accepts source.uploads with an optional message.",
+        "documents": "PDF, DOCX, Markdown, UTF-8 text and PNG/JPEG/WebP images are extracted by the batch worker (100 MB per document). Original bytes and element/page evidence are retained. PDF extraction preserves native text and automatically runs local English Tesseract OCR on scanned pages and embedded images. Direct images are capped at 64 megapixels; animated images are rejected. OCR engine/version, page regions, upright image coordinates and recognition confidence are retained. Reading order and visual table structure are not reconstructed. Upload inspection returns rows=null until extraction.",
         "auth": "Project-scoped API key from --api-key, .overmind/credentials.toml, or OVERMIND_API_KEY.",
         "config": (
             "project-id from overmind.toml or --project-id; base URL from OVERMIND_API_URL, "

@@ -159,7 +159,9 @@ export const cellsOf = (dataset: Dataset | null | undefined): Cell[] =>
   Array.isArray(dataset?.cells) ? (dataset.cells as Cell[]) : [];
 
 export const isVisibleDatasetColumn = (column: { name: string }): boolean =>
-  column.name !== "source_row" && column.name !== "_overmind_provenance";
+  column.name !== "source_row" &&
+  column.name !== "_overmind_provenance" &&
+  column.name !== "_overmind_document_id";
 
 export const columnsOf = (cell: Cell | null | undefined): ColumnInfo[] =>
   Array.isArray(cell?.columns) ? (cell.columns as ColumnInfo[]).filter(isVisibleDatasetColumn) : [];
@@ -313,9 +315,10 @@ export function useColumnsQuery(id: string | undefined, cell: string | undefined
 export interface CreateDatasetInput {
   projectId: string;
   name: string;
-  intent: "train" | "eval";
+  brief?: string;
+  intent?: "train" | "eval" | "pending";
   capabilityId?: string | null;
-  source: SourceRequest;
+  source?: SourceRequest;
 }
 
 export function useCreateDatasetMutation() {
@@ -324,6 +327,7 @@ export function useCreateDatasetMutation() {
     mutationFn: (input: CreateDatasetInput) =>
       apiClient.datasets.datasetsCreate({
         datasetCreateRequest: {
+          brief: input.brief,
           capability: input.capabilityId,
           intent: input.intent,
           name: input.name,
@@ -340,6 +344,7 @@ export type SplitPosition = PositionEnum;
 export interface CreateDatasetSplitInput {
   projectId: string;
   name: string;
+  brief?: string;
   capabilityId?: string | null;
   source: SourceRequest;
   evalPercent: number;
@@ -356,6 +361,7 @@ export function useCreateDatasetSplitMutation() {
     mutationFn: (input) =>
       apiClient.datasets.datasetsSplitCreate({
         datasetSplitCreateRequest: {
+          brief: input.brief,
           capability: input.capabilityId,
           deduplicate: input.deduplicate,
           evalPercent: input.evalPercent,
@@ -368,6 +374,16 @@ export function useCreateDatasetSplitMutation() {
         },
       }),
     onSuccess: () => invalidateDataset(qc),
+  });
+}
+
+export function useAttachDatasetSourceMutation(id: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (sourceRequest: SourceRequest) =>
+      apiClient.datasets.datasetsSourceCreate({ id, sourceRequest }),
+    onError: (err) => notify.error(err, "Couldn't attach the source"),
+    onSuccess: () => invalidateDataset(qc, id),
   });
 }
 
@@ -425,7 +441,7 @@ export function useAcceptCellMutation(id: string) {
   return useMutation({
     mutationFn: (cellId: string) => apiClient.datasets.datasetsCellsAcceptCreate({ cellId, id }),
     onError: (e) => notify.error(e, "Couldn't run that proposal"),
-    onSuccess: () => invalidateDataset(qc, id),
+    onSettled: () => invalidateDataset(qc, id),
   });
 }
 
@@ -441,8 +457,11 @@ export function useRunMutation(id: string) {
 export function useChatMutation(id: string) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (message: string) =>
-      apiClient.datasets.datasetsChatCreate({ chatRequest: { message }, id }),
+    mutationFn: (input: string | { message: string; source?: SourceRequest }) =>
+      apiClient.datasets.datasetsChatCreate({
+        chatRequest: typeof input === "string" ? { message: input } : input,
+        id,
+      }),
     onError: (e) => notify.error(e, "Couldn't send that"),
     onSuccess: () => invalidateDataset(qc, id),
   });

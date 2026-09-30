@@ -27,6 +27,7 @@ from overbae.services.mcp.contracts.datasets import (
     QueryDatasetInput,
     QueryDatasetOutput,
     RunDatasetInput,
+    StartDatasetInput,
     dataset_resource_link,
     mutation_output,
     sanitize_error,
@@ -168,6 +169,7 @@ def _create_dataset_from_traces_sync(
                 project=context.project,
                 user=context.user,
                 name=payload.name,
+                brief=payload.brief,
                 source={"traces": source.spec()},
                 eval_percent=payload.split.eval_percent,
                 position=payload.split.position,
@@ -182,6 +184,7 @@ def _create_dataset_from_traces_sync(
                 project=context.project,
                 user=context.user,
                 name=payload.name,
+                brief=payload.brief,
                 source={"traces": source.spec()},
                 intent=payload.intent,
                 capability=capability,
@@ -214,6 +217,23 @@ def _message_dataset_agent_sync(
     return mutation_output(dataset, summary="Dataset agent queued.")
 
 
+def _start_dataset_sync(payload: StartDatasetInput, context: MCPContext) -> DatasetMutationOutput:
+    capability = _resolve_capability(context, payload.capability) if payload.capability else None
+    try:
+        dataset = dispatch.create_dataset(
+            project=context.project,
+            user=context.user,
+            name=payload.name,
+            brief=payload.brief,
+            intent=payload.intent,
+            capability=capability,
+            infer_capability=False,
+        )
+    except DatasetError as exc:
+        raise dataset_mcp_error(exc) from exc
+    return mutation_output(dataset, summary="Dataset started from the written request.")
+
+
 def _run_dataset_sync(payload: RunDatasetInput, context: MCPContext) -> DatasetMutationOutput:
     dataset = _resolve_dataset(context, payload.dataset)
     proposal = None
@@ -242,6 +262,16 @@ def register_dataset_tools(catalog) -> None:
     from overbae.services.mcp.catalog import ToolDefinition
 
     definitions = [
+        (
+            "start_dataset",
+            "Start dataset",
+            "Start a dataset from a written request without requiring source data, a capability or a training task. Inspect the dataset for source-upload guidance and the agent response.",
+            StartDatasetInput,
+            DatasetMutationOutput,
+            _start_dataset_sync,
+            False,
+            "job",
+        ),
         (
             "list_datasets",
             "List datasets",
@@ -330,7 +360,9 @@ def register_dataset_tools(catalog) -> None:
                 required_scopes=frozenset(
                     {"overmind:read"} if read_only else {"overmind:data:write"}
                 ),
-                cost_class="llm" if name == "run_dataset" else "free",
+                cost_class="llm"
+                if name in {"run_dataset", "message_dataset_agent", "start_dataset"}
+                else "free",
                 async_mode=mode,
             ),
             _async_handler(function),

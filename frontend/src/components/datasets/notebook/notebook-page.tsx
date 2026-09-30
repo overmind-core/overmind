@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Panel, PanelGroup, PanelResizeHandle } from "react-resizable-panels";
 
 import { useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate } from "@tanstack/react-router";
@@ -8,6 +7,11 @@ import { NotebookCell, type UsePurpose } from "@/components/datasets/notebook/ce
 import { DatasetChat, type LiveTurn } from "@/components/datasets/notebook/chat";
 import { NotebookOutline } from "@/components/datasets/notebook/outline";
 import { ContaminationReport } from "@/components/datasets/notebook/preparation";
+import {
+  extractionStatus,
+  SourceDetails,
+  SourceLanding,
+} from "@/components/datasets/notebook/source";
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
 import {
@@ -64,7 +68,6 @@ export function DatasetNotebook({
   const [selectedId, setSelectedId] = useState<string | null>(cellParam ?? null);
   const [live, setLive] = useState<LiveTurn | null>(null);
   const [landedAt, setLandedAt] = useState(0);
-  const [tracesRead, setTracesRead] = useState(0);
   const refreshTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const refresh = useCallback(() => {
@@ -158,7 +161,7 @@ export function DatasetNotebook({
         refresh();
         break;
       case "land_progress":
-        setTracesRead(Number(event.traces) || 0);
+        if ("stage" in event) refresh();
         break;
       default:
         refresh();
@@ -195,7 +198,12 @@ export function DatasetNotebook({
     const target = document.getElementById(`cell-${id}`);
     if (!column || !target) return;
     const top = target.getBoundingClientRect().top - column.getBoundingClientRect().top;
-    column.scrollTo({ behavior: "smooth", top: column.scrollTop + top - 8 });
+    column.scrollTo({
+      behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches
+        ? "instant"
+        : "smooth",
+      top: column.scrollTop + top - 8,
+    });
   }, []);
   // biome-ignore lint/correctness/useExhaustiveDependencies: once, when the deep-linked cell is loaded
   useEffect(() => {
@@ -256,101 +264,117 @@ export function DatasetNotebook({
   ].filter((c, i, all) => all.findIndex((o) => o.id === c.id) === i);
 
   return (
-    <div className="flex h-full min-h-0 flex-col">
-      <PanelGroup className="min-h-0 flex-1" direction="horizontal">
-        <Panel className="flex flex-col" defaultSize={66} id="notebook" minSize={40} order={1}>
-          <div className="relative flex min-h-0 flex-1">
-            <NotebookOutline
-              activeId={active?.id ?? null}
-              cells={cells}
-              onSelect={scrollTo}
-              selectedId={selectedId}
-            />
-            <div className="min-h-0 min-w-0 flex-1 overflow-y-auto pt-2 pb-6 pl-10" ref={cellsRef}>
-              <ContaminationReport spec={dataset.sourceSpec} />
-              {cells.length === 0 ? (
-                <p className="p-3 text-xs text-muted-foreground">
-                  {dataset.state !== "landing"
-                    ? "Nothing landed."
-                    : tracesRead > 0
-                      ? `Landing the source… ${tracesRead.toLocaleString()} traces read`
-                      : "Landing the source…"}
-                </p>
-              ) : (
-                cells.map((cell) => (
-                  <NotebookCell
-                    actions={{
-                      onActivate: guard(() => patch.mutate({ active: cell.id })),
-                      onCapability: guard((id: string | null) => {
-                        const name = capabilityChoices.find((c) => c.id === id)?.name;
-                        chat.mutate(
-                          `Set the capability to ${name ?? "none"}, then add the fewest cells after ${cell.version} that make both contracts hold.`
-                        );
-                      }),
-                      onExport: (fmt) =>
-                        void downloadExport(
-                          datasetId,
-                          cell.id,
-                          fmt,
-                          `${datasetDisplayName(dataset)}-${cell.version || "source"}`
-                        ).catch((e) => notify.error(e, "Export failed")),
-                      onFix: guard((problem: string) =>
-                        chat.mutate(
-                          `Fix one contract on version ${cell.version}: ${problem}. The intent is ${intent} and the capability is ${dataset.capabilityName ?? "not set"}. Add the fewest cells after ${cell.version} that make that contract hold. Do not run the quality checks and do not touch anything else.`
-                        )
-                      ),
-                      onIntent: guard((next: "train" | "eval") =>
-                        chat.mutate(
-                          `Set the intent to ${next}, then add the fewest cells after ${cell.version} that make both contracts hold.`
-                        )
-                      ),
-                      onRemove: guard(() => removeCell.mutate(cell.id)),
-                      onRun: guard(() => run.mutate()),
-                      onScript: guard((script: string) =>
-                        editCell.mutate(
-                          { cellId: cell.id, script },
-                          { onSuccess: () => cell.state !== "proposed" && run.mutate() }
-                        )
-                      ),
-                      onTitle: guard((title: string) =>
-                        editCell.mutate({ cellId: cell.id, title })
-                      ),
-                      onUse: guard((purpose: UsePurpose) => handOff(cell, purpose)),
-                    }}
-                    active={cell.id === active?.id}
-                    capabilities={capabilityChoices}
-                    capabilityName={dataset.capabilityName ?? ""}
-                    cell={cell}
-                    datasetId={datasetId}
-                    editable={editable}
-                    intent={intent}
-                    key={cell.id}
-                    onSelect={() => setSelectedId(cell.id)}
-                    running={dataset.state === "running"}
-                    selected={cell.id === selectedId}
-                  />
-                ))
-              )}
-            </div>
-          </div>
-        </Panel>
-        <PanelResizeHandle className="relative w-px bg-border/60 transition-colors hover:bg-foreground/40 data-[resize-handle-state='drag']:bg-foreground/60" />
-        <Panel defaultSize={34} id="chat" minSize={22} order={2}>
-          <DatasetChat
-            busy={busy || acceptCell.isPending || removeCell.isPending}
-            cells={all}
-            error={dataset.state === "error" ? dataset.error || undefined : undefined}
-            initialRequest={initialRequest}
-            live={live}
-            onAccept={guard((id: string) => acceptCell.mutate(id))}
-            onDiscard={guard((id: string) => removeCell.mutate(id))}
-            onSelect={scrollTo}
-            onSend={guard((message: string) => chat.mutate(message))}
-            state={dataset.state ?? ""}
-            turns={turns}
+    <div className="relative flex h-full min-h-0 flex-col">
+      <NotebookOutline
+        activeId={active?.id ?? null}
+        cells={cells}
+        onSelect={scrollTo}
+        selectedId={selectedId}
+      />
+      <DatasetChat
+        before={
+          <>
+            <ContaminationReport spec={dataset.sourceSpec} />
+            {cells.length === 0 && (
+              <SourceLanding
+                brief={dataset.brief ?? ""}
+                busy={busy}
+                datasetId={datasetId}
+                landing={dataset.state === "landing"}
+                landingStatus={extractionStatus(dataset.sourceSpec)}
+              />
+            )}
+          </>
+        }
+        busy={busy || chat.isPending || acceptCell.isPending || removeCell.isPending}
+        cells={all}
+        error={dataset.state === "error" ? dataset.error || undefined : undefined}
+        focusedCell={cells.find((cell) => cell.id === selectedId)}
+        initialRequest={initialRequest}
+        landingStatus={extractionStatus(dataset.sourceSpec)}
+        live={live}
+        onAccept={guard((id: string) => acceptCell.mutate(id))}
+        onClearFocus={() => setSelectedId(null)}
+        onDiscard={guard((id: string) => removeCell.mutate(id))}
+        onSelect={scrollTo}
+        onSend={async (message: string, uploads?: string[]) => {
+          let allowed = false;
+          guard(() => {
+            allowed = true;
+          })();
+          if (!allowed) return false;
+          const selected = cells.find((cell) => cell.id === selectedId);
+          await chat.mutateAsync({
+            message:
+              selected && message
+                ? `For version ${selected.version} (${selected.title}):\n${message}`
+                : message,
+            source: uploads?.length ? { uploads } : undefined,
+          });
+          return true;
+        }}
+        renderCell={(cell) => (
+          <NotebookCell
+            actions={{
+              onActivate: guard(() => patch.mutate({ active: cell.id })),
+              onCapability: guard((id: string | null) => {
+                const name = capabilityChoices.find((c) => c.id === id)?.name;
+                chat.mutate(
+                  `Set the capability to ${name ?? "none"}, then add the fewest cells after ${cell.version} that make both contracts hold.`
+                );
+              }),
+              onExport: (fmt) =>
+                void downloadExport(
+                  datasetId,
+                  cell.id,
+                  fmt,
+                  `${datasetDisplayName(dataset)}-${cell.version || "source"}`
+                ).catch((e) => notify.error(e, "Export failed")),
+              onFix: guard((problem: string) =>
+                chat.mutate(
+                  `Fix one contract on version ${cell.version}: ${problem}. The intent is ${intent} and the capability is ${dataset.capabilityName ?? "not set"}. Add the fewest cells after ${cell.version} that make that contract hold. Do not run the quality checks and do not touch anything else.`
+                )
+              ),
+              onIntent: guard((next: "train" | "eval") =>
+                chat.mutate(
+                  `Set the intent to ${next}, then add the fewest cells after ${cell.version} that make both contracts hold.`
+                )
+              ),
+              onRemove: guard(() => removeCell.mutate(cell.id)),
+              onRun: guard(() => run.mutate()),
+              onScript: guard((script: string) =>
+                editCell.mutate(
+                  { cellId: cell.id, script },
+                  { onSuccess: () => cell.state !== "proposed" && run.mutate() }
+                )
+              ),
+              onTitle: guard((title: string) => editCell.mutate({ cellId: cell.id, title })),
+              onUse: guard((purpose: UsePurpose) => handOff(cell, purpose)),
+            }}
+            active={cell.id === active?.id}
+            capabilities={capabilityChoices}
+            capabilityName={dataset.capabilityName ?? ""}
+            cell={cell}
+            datasetId={datasetId}
+            editable={editable}
+            intent={intent}
+            key={cell.id}
+            onSelect={() => setSelectedId(cell.id)}
+            running={dataset.state === "running"}
+            selected={cell.id === selectedId}
+            sourceDetails={
+              <SourceDetails
+                brief={dataset.brief}
+                datasetId={datasetId}
+                spec={dataset.sourceSpec}
+              />
+            }
           />
-        </Panel>
-      </PanelGroup>
+        )}
+        scrollRef={cellsRef}
+        state={dataset.state ?? ""}
+        turns={turns}
+      />
     </div>
   );
 }

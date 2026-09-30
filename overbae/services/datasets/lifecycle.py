@@ -10,8 +10,7 @@ from django.db.models import F
 from django.utils import timezone
 
 from overbae.models import Cell, Dataset
-from overbae.services.datasets import measure, paths, store
-from overbae.services.datasets.context import context_fingerprint
+from overbae.services.datasets import measure, paths, proposals
 
 
 class DatasetError(ValueError):
@@ -98,6 +97,8 @@ def add_cell(
     )
     if dataset.state == Dataset.State.ERROR:
         _touch(dataset, state=Dataset.State.IDLE, error="")
+    if not proposed:
+        proposals.retire_outdated(dataset)
     return cell
 
 
@@ -111,10 +112,8 @@ def edit_cell(
     note: str | None = None,
 ) -> Cell:
     _refuse_while_busy(dataset)
-    if cell.review.get("kind") == "synthetic" and script is not None:
-        raise DatasetError(
-            "Synthetic examples are a recorded batch. Add a transformation cell after it."
-        )
+    if cell.review.get("kind") in {"synthetic", "attachment"} and script is not None:
+        raise DatasetError("These rows are a recorded batch. Add a transformation cell after it.")
     fields: dict[str, Any] = {}
     if title is not None:
         fields["title"] = title.strip()[:255] or cell.title
@@ -134,6 +133,8 @@ def edit_cell(
         cell.refresh_from_db()
     if dataset.state == Dataset.State.ERROR and "script" in fields:
         _touch(dataset, state=Dataset.State.IDLE, error="")
+    if "script" in fields:
+        proposals.retire_outdated(dataset)
     return cell
 
 
@@ -143,14 +144,17 @@ def remove_cell(dataset: Dataset, cell: Cell) -> None:
     _refuse_frozen(dataset, cell)
     position, proposed = cell.position, cell.state == Cell.State.PROPOSED
     path = paths.cell_path(dataset.id, cell.id)
+    attachment_path = paths.attachment_path(dataset.id, cell.id)
     if dataset.active_id == cell.id:
         _touch(dataset, active=None)
     cell.delete()
     transaction.on_commit(lambda: path.unlink(missing_ok=True))
+    transaction.on_commit(lambda: attachment_path.unlink(missing_ok=True))
     for later in dataset.cells.filter(position__gt=position).order_by("position"):
         Cell.objects.filter(pk=later.pk).update(position=F("position") - 1)
     if not proposed:
         _queue_after(dataset, position - 1)
+        proposals.retire_outdated(dataset)
     if dataset.state == Dataset.State.ERROR:
         _touch(dataset, state=Dataset.State.IDLE, error="")
 
@@ -177,16 +181,7 @@ def accept_proposal(dataset: Dataset, cell: Cell) -> Cell:
     if cell.review:
         previous = next((c for c in reversed(chain) if c.state != Cell.State.PROPOSED), None)
         report = cell.review
-        path = paths.cell_path(dataset.id, cell.id)
-        if (
-            previous is None
-            or not previous.ran
-            or previous.fingerprint != report.get("input_fingerprint")
-            or dataset.intent != report.get("intent")
-            or context_fingerprint(dataset.capability) != report.get("context_fingerprint")
-            or not path.exists()
-            or store.file_sha256(path) != report.get("output_fingerprint")
-        ):
+        if not proposals.is_current(dataset, cell, previous):
             raise DatasetError(
                 "The proposal is stale. Ask for a new preview against the current data.",
                 code="stale_proposal",
@@ -202,6 +197,7 @@ def accept_proposal(dataset: Dataset, cell: Cell) -> Cell:
             Cell.objects.filter(pk=other.pk).update(position=F("position") + 1)
         Cell.objects.filter(pk=cell.pk).update(position=target)
     Cell.objects.filter(pk=cell.pk).update(state=Cell.State.QUEUED, updated_at=timezone.now())
+    proposals.retire_outdated(dataset)
     cell.refresh_from_db()
     return cell
 
@@ -223,6 +219,7 @@ def set_intent(dataset: Dataset, intent: str) -> Dataset:
         raise DatasetError("A version was used; the intent is fixed.", code="frozen")
     if intent != dataset.intent:
         _touch(dataset, intent=intent)
+        proposals.retire_outdated(dataset)
         measure.capability_only(dataset)
         if intent == Dataset.Intent.EVAL:
             from overbae.services.eval.eval_set import maybe_enqueue_card_evaluator_sync
@@ -238,6 +235,7 @@ def set_capability(dataset: Dataset, capability: Any) -> Dataset:
         raise DatasetError("That capability belongs to another project.", code="capability")
     if getattr(capability, "id", None) != dataset.capability_id:
         _touch(dataset, capability=capability)
+        proposals.retire_outdated(dataset)
         measure.capability_only(dataset)
         from overbae.services.eval.eval_set import maybe_enqueue_card_evaluator_sync
 

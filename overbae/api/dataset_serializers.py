@@ -42,6 +42,7 @@ class CellSerializer(serializers.ModelSerializer):
             "rows",
             "columns",
             "fingerprint",
+            "input_fingerprint",
             "intent_report",
             "capability_report",
             "fits",
@@ -111,6 +112,7 @@ class DatasetSerializer(serializers.ModelSerializer):
             "id",
             "project",
             "name",
+            "brief",
             "source_kind",
             "source_spec",
             "capability",
@@ -228,13 +230,19 @@ class SourceSerializer(serializers.Serializer):
 
 
 class DatasetCreateSerializer(serializers.Serializer):
-    name = serializers.CharField(max_length=255)
+    name = serializers.CharField(max_length=255, required=False, default="Untitled dataset")
+    brief = serializers.CharField(max_length=8000, required=False, allow_blank=True, default="")
     project = serializers.UUIDField()
     capability = serializers.UUIDField(
         required=False, allow_null=True, help_text="Omit to infer from the rows; null means none."
     )
     intent = serializers.ChoiceField(choices=Dataset.Intent.choices, required=False)
-    source = SourceSerializer()
+    source = SourceSerializer(required=False)
+
+    def validate(self, attrs):
+        if not attrs.get("source") and not attrs.get("brief"):
+            raise serializers.ValidationError("Describe what you want to do or add source data.")
+        return attrs
 
 
 class DatasetSplitCreateSerializer(serializers.Serializer):
@@ -242,6 +250,7 @@ class DatasetSplitCreateSerializer(serializers.Serializer):
     ``eval_percent`` of the rows taken at ``position``."""
 
     name = serializers.CharField(max_length=249)
+    brief = serializers.CharField(max_length=8000, required=False, allow_blank=True, default="")
     project = serializers.UUIDField()
     capability = serializers.UUIDField(
         required=False, allow_null=True, help_text="Omit to infer from the rows; null means none."
@@ -275,7 +284,13 @@ class CellCreateSerializer(CellWriteSerializer):
 
 
 class ChatSerializer(serializers.Serializer):
-    message = serializers.CharField(max_length=8000)
+    message = serializers.CharField(max_length=8000, required=False, allow_blank=True, default="")
+    source = SourceSerializer(required=False)
+
+    def validate(self, attrs):
+        if not attrs.get("message") and not attrs.get("source"):
+            raise serializers.ValidationError("Write a message or attach files.")
+        return attrs
 
 
 class RowsPageSerializer(serializers.Serializer):

@@ -2,8 +2,9 @@ import uuid
 from unittest.mock import Mock, patch
 
 import pytest
+from django.db import transaction
 
-from overbae.models import Cell, Dataset, Project
+from overbae.models import Capability, Cell, Dataset, Project
 from overbae.services.datasets import dispatch, land, lifecycle, paths, store
 from overbae.services.datasets.notebook import agent, engines
 from overbae.services.mcp.contracts.datasets import ChatTurn
@@ -197,6 +198,73 @@ def test_all_decisions_arrive_before_one_continuation(dataset, monkeypatch):
     assert enqueue.call_count == 1
     message = enqueue.call_args.kwargs["kwargs"]["message"]
     assert "denied" in message and "approved" in message
+
+
+def test_approval_retires_other_suggestions_and_continues_on_current_data(dataset, monkeypatch):
+    first = propose(dataset, monkeypatch)
+    second = dataset.cells.get(
+        pk=agent.Tools(dataset.id, None, lambda _: None).add_cell(
+            {
+                "title": "Second option",
+                "script": "df['expected_output'] = 'maybe'",
+                "kind": "semantic",
+            }
+        )["id"]
+    )
+    dataset.chat[-1]["cells"].append({"id": str(second.id), "action": "proposed"})
+    dataset.save(update_fields=["chat"])
+    preview = paths.cell_path(dataset.id, second.id)
+    enqueue = Mock()
+    monkeypatch.setattr(tasks.turn, "apply_async", enqueue)
+    dispatch.run_dataset(dataset, None, proposal=first)
+    dataset.refresh_from_db()
+    assert not dataset.cells.filter(state=Cell.State.PROPOSED).exists()
+    assert not preview.exists()
+    assert dataset.active_id == first.id
+    assert dataset.chat[-1]["status"] == "resolved"
+    assert dataset.chat[-1]["decisions"][str(second.id)]["decision"] == "superseded"
+    assert enqueue.call_count == 1
+    message = enqueue.call_args.kwargs["kwargs"]["message"]
+    assert "superseded" in message and "current data" in message
+
+
+@pytest.mark.parametrize("change", ["intent", "capability", "transformation"])
+def test_dataset_changes_retire_old_suggestions_without_rejecting_them(
+    dataset, monkeypatch, change
+):
+    proposal = propose(dataset, monkeypatch)
+    source = dataset.source
+    fingerprint = store.file_sha256(paths.cell_path(dataset.id, source.id))
+    if change == "intent":
+        lifecycle.set_intent(dataset, "train")
+    elif change == "capability":
+        capability = Capability.objects.create(
+            project=dataset.project, name="Support", slug="support"
+        )
+        lifecycle.set_capability(dataset, capability)
+    else:
+        result = agent.Tools(dataset.id, None, lambda _: None).add_cell(
+            {"title": "Coverage", "script": "df['coverage'] = 'reviewed'"}
+        )
+        assert result["ok"] and not result.get("proposed")
+    dataset.refresh_from_db()
+    assert not dataset.cells.filter(pk=proposal.pk).exists()
+    assert not paths.cell_path(dataset.id, proposal.id).exists()
+    assert store.file_sha256(paths.cell_path(dataset.id, source.id)) == fingerprint
+    assert dataset.chat[-1]["status"] == "resolved"
+    assert dataset.chat[-1]["decisions"][str(proposal.id)]["decision"] == "superseded"
+
+
+def test_rolled_back_change_preserves_the_suggestion_and_preview(dataset, monkeypatch):
+    proposal = propose(dataset, monkeypatch)
+    with pytest.raises(ValueError), transaction.atomic():
+        lifecycle.set_intent(dataset, "train")
+        raise ValueError("rollback")
+    dataset.refresh_from_db()
+    assert dataset.intent == "eval"
+    assert dataset.cells.filter(pk=proposal.pk).exists()
+    assert paths.cell_path(dataset.id, proposal.id).exists()
+    assert dataset.chat[-1]["status"] == "awaiting_approval"
 
 
 def test_resumed_agent_reviews_active_version_and_redelivery_does_not_run_again(

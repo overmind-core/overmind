@@ -141,6 +141,9 @@ jobs:
       - name: Create .env file
         run: touch .env
 
+      - name: Install document OCR runtime
+        run: sudo apt-get update && sudo apt-get install -y tesseract-ocr tesseract-ocr-eng tesseract-ocr-osd
+
       - name: Run tests
         # Match local `make test`: xdist is already in the test dep group.
         run: uv run pytest tests/ -n auto --dist worksteal -q

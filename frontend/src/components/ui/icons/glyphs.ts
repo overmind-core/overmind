@@ -159,6 +159,9 @@ export const glyphs = {
     "M11 20h2v2H9V12h2v8Zm4 0h-2v-8h2v8Zm-6-8H7v-2h2v2Zm8 0h-2v-2h2v2ZM7 10H5V8h2v2Zm12 0h-2V8h2v2Zm2-2h-2V4H5v4H3V2h18v6Z",
   ],
   folder: ["M20 20H4v-2h16v2ZM4 18H2V6h2v12Zm18 0h-2V8h2v10ZM20 8H10V6H4V4h8v2h8v2Z"],
+  "folder-open": [
+    "M4 4h8v2h-8zM2 6h2v12h-2zM10 6h10v2h-10zM20 8h2v4h-2zM8 10h12v2h-12zM22 10h1v4h-1zM6 12h2v2h-2zM21 12h1v2h-1zM4 14h2v2h-2zM19 14h2v2h-2zM17 16h2v2h-2zM4 18h13v2h-13z",
+  ],
   "folder-plus": [
     "M20 18h2v2h-2v2h-2v-2h-2v-2h2v-2h2v2Zm-6 2H4v-2h10v2ZM4 18H2V6h2v12Zm18-4h-2V8h2v6ZM12 6h8v2H10V6H4V4h8v2Z",
   ],

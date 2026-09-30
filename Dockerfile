@@ -53,6 +53,7 @@ RUN echo "apt security refresh: ${APT_SECURITY_REFRESH}" \
     && apt-get upgrade -y \
     && apt-get install -y --no-install-recommends \
         libpq5 ca-certificates libcurl4 libssl3 zlib1g libexpat1 \
+        tesseract-ocr tesseract-ocr-eng tesseract-ocr-osd \
     && apt-get install -y --only-upgrade \
         libssh2-1 perl-base libcurl4 libexpat1 libacl1 libattr1 \
     && apt-get clean \

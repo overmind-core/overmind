@@ -63,6 +63,8 @@ docker compose up -d                        # Postgres, Redis, API on :8000, Cel
 cd frontend && bun install && bun run dev   # Console on :5173
 ```
 
+Document uploads include local English OCR for scanned PDFs, embedded images and direct PNG/JPEG/WebP uploads. Direct images are capped at 100 MB and 64 megapixels; animated images are not supported. The Docker image includes Tesseract and its English/orientation data. For workers or backend tests outside Docker, install `tesseract-ocr`, `tesseract-ocr-eng` and `tesseract-ocr-osd` on Debian/Ubuntu, or `brew install tesseract` on macOS. No external OCR service is required.
+
 On first boot the API runs migrations and seeds the built-in evaluators; Swagger is at `/api/docs/`. `docker compose exec -T api python manage.py shell < seed.py` loads a full demo workspace.
 
 <details>

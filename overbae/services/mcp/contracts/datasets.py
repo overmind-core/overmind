@@ -113,7 +113,7 @@ class DatasetListItem(MCPModel):
     id: str
     name: str = Field(default="", max_length=255)
     intent: Literal["train", "eval", "pending"]
-    source_kind: Literal["file", "traces"]
+    source_kind: Literal["file", "traces", "pending"]
     state: Literal["landing", "diagnosing", "idle", "running", "error"]
     capability: CapabilityRef | None = None
     active: ActiveVersion | None = None
@@ -134,6 +134,7 @@ class CellSummary(MCPModel):
     rows: int = Field(ge=0)
     columns: list[dict[str, Any]] = Field(default_factory=list, max_length=100)
     fingerprint: str = Field(default="", max_length=64)
+    input_fingerprint: str = Field(default="", max_length=64)
     intent_report: dict[str, Any] = Field(default_factory=dict)
     capability_report: dict[str, Any] = Field(default_factory=dict)
     fits: FitReport
@@ -200,6 +201,9 @@ class DatasetHumanAction(MCPModel):
 
 
 class DatasetDetail(DatasetListItem):
+    brief: str = Field(default="", max_length=8000)
+    sources: list[dict[str, Any]] = Field(default_factory=list, max_length=100)
+    sources_total: int = Field(default=0, ge=0)
     preparation_context: dict[str, Any] = Field(default_factory=dict)
     contamination_report: dict[str, Any] = Field(default_factory=dict)
     capability_rank: list[CapabilityRankItem] = Field(default_factory=list, max_length=_RANK_CAP)
@@ -304,6 +308,7 @@ class CreateDatasetFromTracesInput(MCPModel):
     """One row lands per trace. Either ``trace_ids`` or a filter selection, never both."""
 
     name: str = Field(min_length=1, max_length=255, description="Dataset name.")
+    brief: str = Field(default="", max_length=8000)
     trace_ids: list[str] | None = Field(
         default=None,
         max_length=10_000,
@@ -417,6 +422,13 @@ def mutation_output(
     )
 
 
+class StartDatasetInput(MCPModel):
+    brief: str = Field(min_length=1, max_length=8000)
+    name: str = Field(default="Untitled dataset", min_length=1, max_length=255)
+    intent: Literal["train", "eval", "pending"] = "pending"
+    capability: str | None = Field(default=None, max_length=255)
+
+
 def _chain(dataset) -> list[Cell]:
     cached = getattr(dataset, "_prefetched_objects_cache", {}).get("cells")
     if cached is not None:
@@ -507,6 +519,7 @@ def _cell_summary(dataset, cell: Cell, versions: dict, frozen_before: int) -> Ce
         rows=int(cell.rows or 0),
         columns=columns,
         fingerprint=cell.fingerprint or "",
+        input_fingerprint=cell.input_fingerprint or "",
         intent_report=_jsonable(cell.intent_report or {}),
         capability_report=_jsonable(cell.capability_report or {}),
         review=_jsonable(cell.review),
@@ -615,10 +628,10 @@ def _human_action(dataset, active: Cell | None) -> DatasetHumanAction | None:
             command="overmind dataset export DATASET --json",
             arguments={"dataset": str(dataset.id), "project_id": project_id},
         )
-    if dataset.source_kind == Dataset.SourceKind.FILE:
+    if dataset.source_kind in {Dataset.SourceKind.FILE, Dataset.SourceKind.PENDING}:
         return DatasetHumanAction(
-            command="overmind dataset upload FILE --json",
-            arguments={"file": "<path>", "project_id": project_id},
+            command="overmind dataset upload FILE --dataset DATASET --json",
+            arguments={"file": "<path>", "project_id": project_id, "dataset": str(dataset.id)},
         )
     return None
 
@@ -737,6 +750,9 @@ def serialize_dataset_detail(dataset, *, chat_limit: int = _CHAT_DEFAULT) -> Dat
     return DatasetDetail.model_validate(
         {
             **fields,
+            "brief": dataset.brief,
+            "sources": _jsonable(dataset.source_spec.get("sources", [])[:100]),
+            "sources_total": len(dataset.source_spec.get("sources", [])),
             "preparation_context": _jsonable(workshop_context(dataset)),
             "capability_rank": _rank(dataset.capability_rank),
             "contamination_report": _jsonable(dataset.source_spec.get("contamination_report", {})),

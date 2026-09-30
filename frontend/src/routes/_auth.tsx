@@ -1,4 +1,4 @@
-import { Fragment, useEffect } from "react";
+import { Fragment, useEffect, useRef, useState } from "react";
 
 import { useQuery } from "@tanstack/react-query";
 import { createFileRoute, Link, Navigate, Outlet, useRouterState } from "@tanstack/react-router";
@@ -6,6 +6,7 @@ import { createFileRoute, Link, Navigate, Outlet, useRouterState } from "@tansta
 import apiClient from "@/client";
 import { OutOfCreditsDialog } from "@/components/billing/out-of-credits-dialog";
 import { BreadcrumbSwitcher } from "@/components/breadcrumb-switcher";
+import { WorkshopSidebar } from "@/components/datasets/workshop-sidebar";
 import { CreateAccountDialog } from "@/components/guest/create-account-dialog";
 import { HeaderCredits } from "@/components/header-credits";
 import { ProjectSelector } from "@/components/project-selector";
@@ -14,7 +15,9 @@ import { Icon } from "@/components/ui/icons";
 import { Spinner } from "@/components/ui/spinner";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { useAuthContext } from "@/contexts/auth-context";
+import { WorkshopSidebarContext } from "@/contexts/workshop-sidebar-context";
 import { useFinetuningRunJobsQuery } from "@/hooks/use-finetuning";
+import { useIsMobile } from "@/hooks/use-mobile";
 import { useOnboardingStatus } from "@/hooks/use-query";
 import { emitGuestUpgrade, getGuestProjectId, isGuestAllowedPath } from "@/lib/guest";
 import { sentenceCase } from "@/lib/label-case";
@@ -215,7 +218,7 @@ function Breadcrumb() {
 
   return (
     <>
-      <div className="crumb-label flex h-8 min-w-0 flex-1 items-center gap-1.5">
+      <div className="crumb-label flex h-8 w-full min-w-0 items-center gap-1.5 sm:w-auto sm:flex-1">
         <SidebarToggle />
         <nav aria-label="Breadcrumb" className="contents">
           {crumbs.map((crumb, i) => {
@@ -282,7 +285,7 @@ function Breadcrumb() {
 function HeaderActions({ hideProjects }: { hideProjects: boolean }) {
   const { isGuest } = useAuthContext();
   return (
-    <div className="flex h-8 shrink-0 items-center gap-2">
+    <div className="ml-auto flex min-h-8 max-w-full flex-wrap items-center justify-end gap-2 sm:h-8 sm:shrink-0 sm:flex-nowrap">
       {isGuest ? null : <HeaderCredits />}
       {hideProjects ? null : <ProjectSelector />}
       <SettingsMenuButton />
@@ -294,45 +297,90 @@ function HeaderActions({ hideProjects }: { hideProjects: boolean }) {
 function RootLayout() {
   useProjectSearchSync();
   const { open: cmdOpen, setOpen: setCmdOpen } = useCommandPalette();
+  const pathname = useRouterState({
+    select: (s) => s.location.pathname,
+  });
+  const mobile = useIsMobile();
+  const workshopHome = /^\/datasets\/?$/.test(pathname);
+  const inWorkshop = /^\/datasets(?:\/[^/]+)?\/?$/.test(pathname);
+  const [expandedPath, setExpandedPath] = useState<string | null>(null);
+  const workshopOpen = (workshopHome && !mobile) || (inWorkshop && expandedPath === pathname);
+  const workshopTrigger = useRef<HTMLButtonElement | null>(null);
+  useEffect(() => {
+    setExpandedPath((expanded) => (expanded === pathname ? expanded : null));
+  }, [pathname]);
+  useEffect(() => {
+    if (workshopOpen) return;
+    workshopTrigger.current?.focus();
+    workshopTrigger.current = null;
+  }, [workshopOpen]);
   // `?flowFull=true` hides the header chrome so the flow canvas can fill the card bezel.
   const flowFull = useRouterState({
     select: (s) => (s.location.search as { flowFull?: boolean }).flowFull === true,
   });
 
   return (
-    <SidebarProvider>
-      <AppSidebar collapsible="icon" onSearchOpen={() => setCmdOpen(true)} />
-      <CommandPalette onOpenChange={setCmdOpen} open={cmdOpen} />
-      <SidebarInset className="min-w-0 bg-sidebar">
-        <div className="flex h-screen p-2">
-          {/* border-sidebar-border: hairline in the sidebar black family (not --border grey). */}
-          <div className="flex min-w-0 flex-1 flex-col overflow-clip rounded-md border border-sidebar-border bg-card">
-            <header
+    <WorkshopSidebarContext.Provider
+      value={{
+        close: () => setExpandedPath(null),
+        open: workshopOpen,
+        toggle: (trigger) => {
+          if (!workshopOpen) workshopTrigger.current = trigger;
+          setExpandedPath(workshopOpen ? null : pathname);
+        },
+      }}
+    >
+      <SidebarProvider>
+        <AppSidebar collapsible="icon" onSearchOpen={() => setCmdOpen(true)} />
+        <CommandPalette onOpenChange={setCmdOpen} open={cmdOpen} />
+        <SidebarInset className="min-w-0 bg-sidebar">
+          <div className="h-screen p-2">
+            {/* border-sidebar-border: hairline in the sidebar black family (not --border grey). */}
+            <div
               className={cn(
-                // pr-3 matches the 12px the 32px-tall controls leave above and
-                // below them, so the corner control sits square.
-                "flex h-14 shrink-0 items-center gap-3 border-b border-border/70 pl-3 pr-3",
-                flowFull && "hidden"
+                "grid h-full min-w-0 overflow-clip rounded-md border border-sidebar-border transition-[grid-template-columns] ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:transition-none",
+                workshopOpen
+                  ? "grid-cols-[minmax(0,1fr)_0px] duration-300 md:grid-cols-[248px_minmax(0,1fr)]"
+                  : "grid-cols-[0px_minmax(0,1fr)] duration-200"
               )}
             >
-              <Breadcrumb />
-            </header>
-            {/* relative: absolute descendants (e.g. sr-only spans in pagination
+              <WorkshopSidebar open={workshopOpen} />
+              <div
+                aria-hidden={mobile && workshopOpen ? true : undefined}
+                className={cn(
+                  "flex min-h-0 min-w-0 flex-col bg-card",
+                  mobile && workshopOpen && "invisible"
+                )}
+                inert={mobile && workshopOpen}
+              >
+                <header
+                  className={cn(
+                    // pr-3 matches the 12px the 32px-tall controls leave above and
+                    // below them, so the corner control sits square.
+                    "flex shrink-0 flex-wrap items-center gap-1 border-b border-border/70 px-3 py-2 sm:h-14 sm:flex-nowrap sm:gap-3 sm:py-0",
+                    flowFull && "hidden"
+                  )}
+                >
+                  <Breadcrumb />
+                </header>
+                {/* relative: absolute descendants (e.g. sr-only spans in pagination
                   buttons) must resolve their containing block inside this clipper —
                   otherwise they escape to the ICB, extend the hidden-overflow body,
                   and any focus/scrollIntoView shoves the whole shell off screen. */}
-            <div
-              className={cn(
-                "relative flex min-h-0 flex-1 flex-col",
-                flowFull ? "overflow-hidden p-0" : "overflow-y-auto p-4 md:p-6"
-              )}
-            >
-              <Outlet />
+                <div
+                  className={cn(
+                    "relative flex min-h-0 flex-1 flex-col",
+                    flowFull ? "overflow-hidden p-0" : "overflow-y-auto p-4 md:p-6"
+                  )}
+                >
+                  <Outlet />
+                </div>
+              </div>
             </div>
           </div>
-        </div>
-      </SidebarInset>
-    </SidebarProvider>
+        </SidebarInset>
+      </SidebarProvider>
+    </WorkshopSidebarContext.Provider>
   );
 }
 

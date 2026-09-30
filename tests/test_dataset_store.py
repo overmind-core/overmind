@@ -126,5 +126,5 @@ def test_paste_detects_shape():
 
 
 def test_stream_rows_rejects_unknown_extension():
-    with pytest.raises(files.FileError, match="CSV, TSV, JSON, JSONL or Parquet"):
+    with pytest.raises(files.FileError, match="Use a CSV"):
         list(files.iter_stream_rows(io.StringIO("x"), filename="rows.xlsx"))

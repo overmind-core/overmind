@@ -18,6 +18,14 @@ def cell_path(dataset_id: Any, cell_id: Any) -> Path:
     return dataset_dir(dataset_id) / "cells" / f"{cell_id}.parquet"
 
 
+def source_path(dataset_id: Any, artifact_id: str) -> Path:
+    return dataset_dir(dataset_id) / "sources" / artifact_id
+
+
+def attachment_path(dataset_id: Any, cell_id: Any) -> Path:
+    return dataset_dir(dataset_id) / "attachments" / f"{cell_id}.parquet"
+
+
 def workspace_dir(dataset_id: Any) -> Path:
     return dataset_dir(dataset_id) / "workspace"
 

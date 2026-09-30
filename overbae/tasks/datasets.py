@@ -50,13 +50,15 @@ def land(
     user_id: str | None = None,
     split: dict[str, Any] | None = None,
     infer_capability: bool = True,
+    attachment_request: str = "",
+    message: str = "",
 ) -> dict[str, Any]:
     """``source`` is ``{"uploads": [...]}``, ``{"upload_id", "filename"}``, ``{"rows": [...]}`` or
     ``{"traces": {trace_ids | filters}}``. With ``split`` (``eval_dataset_id``,
     ``eval_percent``, ``position``) the source is read once and cut in two.
     The diagnosis follows for every dataset that landed."""
     from overbae.models import Dataset, User
-    from overbae.services.datasets import files
+    from overbae.services.datasets import attachments, files
     from overbae.services.datasets import land as landing
     from overbae.services.datasets.notebook import agent
 
@@ -71,6 +73,9 @@ def land(
         targets.append(evaluation)
     if any(target.state != Dataset.State.LANDING for target in targets):
         return {"status": "landed"}
+    if attachment_request and dataset.source_spec.get("attachment_request") != attachment_request:
+        return {"status": "landed"}
+    appended = None
     user = User.objects.filter(pk=user_id).first() if user_id else None
     for target in targets:
         _emit(target.id, {"type": "land_started"})
@@ -78,11 +83,19 @@ def land(
     def progress(done: int) -> None:
         _emit(dataset_id, {"type": "land_progress", "traces": done})
 
+    def file_progress(detail: dict) -> None:
+        for target in targets:
+            target.source_spec = {**target.source_spec, "landing_progress": detail}
+            Dataset.objects.filter(pk=target.id, state=Dataset.State.LANDING).update(
+                source_spec=target.source_spec, updated_at=timezone.now()
+            )
+            _emit(target.id, {"type": "land_progress", **detail})
+
     upload_id = source.get("upload_id")
     upload_ids = source.get("uploads") or []
     try:
         if upload_ids:
-            read = landing.read_uploads(upload_ids)
+            read = landing.read_uploads(upload_ids, on_progress=file_progress)
         elif upload_id:
             filename = source.get("filename") or files.upload_filename(upload_id) or "upload"
             path = files.upload_data_path(upload_id)
@@ -120,6 +133,22 @@ def land(
                         state=Dataset.State.DIAGNOSING,
                         infer_capability=infer_capability,
                     )
+        elif attachment_request:
+            with transaction.atomic():
+                dataset = Dataset.objects.select_for_update().get(pk=dataset_id)
+                if dataset.source_spec.get("attachment_request") != attachment_request:
+                    return {"status": "landed"}
+                if dataset.cells.exists():
+                    appended = attachments.commit(dataset, read, user=user)
+                else:
+                    landing.commit(
+                        dataset,
+                        read,
+                        user=user,
+                        state=Dataset.State.DIAGNOSING,
+                        infer_capability=False,
+                    )
+                targets = [dataset]
         else:
             landing.commit(
                 dataset,
@@ -147,11 +176,36 @@ def land(
     for target in targets:
         target.refresh_from_db()
         source_cell = target.source
-        landed = source_cell.rows if source_cell else 0
+        landed = (
+            appended.review["added_rows"] if appended else source_cell.rows if source_cell else 0
+        )
         rows += landed
         _emit(target.id, {"type": "land_done", "rows": landed})
         try:
-            diagnose.apply_async(kwargs={"dataset_id": str(target.id), "user_id": user_id})
+            if appended or (attachment_request and message):
+                filenames = [item["filename"] for item in read.spec.get("sources", [])]
+                display = message.strip() or "Merge the attached data into this dataset."
+                if filenames:
+                    display += "\n\nAttached: " + ", ".join(filenames)
+                context = display
+                if appended:
+                    context += (
+                        f"\n\nThe files have already been merged in cell {appended.id}: "
+                        f"{landed} added rows. Inspect that cell and the current data before "
+                        "continuing. Do not append these files again. Preserve existing work; "
+                        "semantic changes still require a reviewed proposal."
+                    )
+                turn.apply_async(
+                    kwargs={
+                        "dataset_id": str(target.id),
+                        "user_id": user_id,
+                        "message": context,
+                        "display": display,
+                    },
+                    task_id=attachment_request,
+                )
+            else:
+                diagnose.apply_async(kwargs={"dataset_id": str(target.id), "user_id": user_id})
         except Exception:  # noqa: BLE001 — a broker failure must not strand the dataset
             logger.exception("could not queue the first scan for dataset %s", target.id)
             agent.settle(target.id)

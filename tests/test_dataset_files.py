@@ -29,7 +29,7 @@ def _read(tmp_path, name: str, body: str | bytes):
         ("scalar.json", "3", "object or an array"),
         ("fake.parquet", "not parquet", "not readable Parquet"),
         ("fake.csv.gz", "not gzip", "not readable gzip"),
-        ("notes.txt", "hello", "Use a CSV, TSV, JSON, JSONL or Parquet file."),
+        ("notes.exe", "hello", "Use a CSV"),
     ],
 )
 def test_a_bad_file_is_refused_in_words(tmp_path, name, body, message):

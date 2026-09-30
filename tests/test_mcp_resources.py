@@ -108,7 +108,22 @@ def test_dataset_upload_resource_describes_cli_flow_and_server_limits():
         return json.loads(contents[0].content)
 
     resource = asyncio.run(read())
-    assert resource["extensions"] == [".csv", ".tsv", ".json", ".jsonl", ".ndjson", ".parquet"]
+    assert resource["extensions"] == [
+        ".csv",
+        ".tsv",
+        ".json",
+        ".jsonl",
+        ".ndjson",
+        ".parquet",
+        ".pdf",
+        ".docx",
+        ".md",
+        ".txt",
+        ".png",
+        ".jpg",
+        ".jpeg",
+        ".webp",
+    ]
     assert resource["max_bytes"] == 2 * 1024**3
     assert resource["json_array_max_bytes"] == 256 * 1024**2
     assert "capped at 2 GiB" in resource["limits"]

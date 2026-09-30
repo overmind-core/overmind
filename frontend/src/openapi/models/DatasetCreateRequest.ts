@@ -39,7 +39,13 @@ export interface DatasetCreateRequest {
      * @type {string}
      * @memberof DatasetCreateRequest
      */
-    name: string;
+    name?: string;
+    /**
+     *
+     * @type {string}
+     * @memberof DatasetCreateRequest
+     */
+    brief?: string;
     /**
      *
      * @type {string}
@@ -63,7 +69,7 @@ export interface DatasetCreateRequest {
      * @type {SourceRequest}
      * @memberof DatasetCreateRequest
      */
-    source: SourceRequest;
+    source?: SourceRequest;
 }
 
 
@@ -72,9 +78,7 @@ export interface DatasetCreateRequest {
  * Check if a given object implements the DatasetCreateRequest interface.
  */
 export function instanceOfDatasetCreateRequest(value: object): value is DatasetCreateRequest {
-    if (!('name' in value) || value['name'] === undefined) return false;
     if (!('project' in value) || value['project'] === undefined) return false;
-    if (!('source' in value) || value['source'] === undefined) return false;
     return true;
 }
 
@@ -88,11 +92,12 @@ export function DatasetCreateRequestFromJSONTyped(json: any, ignoreDiscriminator
     }
     return {
 
-        'name': json['name'],
+        'name': json['name'] == null ? undefined : json['name'],
+        'brief': json['brief'] == null ? undefined : json['brief'],
         'project': json['project'],
         'capability': json['capability'] == null ? undefined : json['capability'],
         'intent': json['intent'] == null ? undefined : IntentEnumFromJSON(json['intent']),
-        'source': SourceRequestFromJSON(json['source']),
+        'source': json['source'] == null ? undefined : SourceRequestFromJSON(json['source']),
     };
 }
 
@@ -108,6 +113,7 @@ export function DatasetCreateRequestToJSONTyped(value?: DatasetCreateRequest | n
     return {
 
         'name': value['name'],
+        'brief': value['brief'],
         'project': value['project'],
         'capability': value['capability'],
         'intent': IntentEnumToJSON(value['intent']),

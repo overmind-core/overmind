@@ -46,6 +46,12 @@ export interface DatasetSplitCreateRequest {
      * @type {string}
      * @memberof DatasetSplitCreateRequest
      */
+    brief?: string;
+    /**
+     *
+     * @type {string}
+     * @memberof DatasetSplitCreateRequest
+     */
     project: string;
     /**
      * Omit to infer from the rows; null means none.
@@ -116,6 +122,7 @@ export function DatasetSplitCreateRequestFromJSONTyped(json: any, ignoreDiscrimi
     return {
 
         'name': json['name'],
+        'brief': json['brief'] == null ? undefined : json['brief'],
         'project': json['project'],
         'capability': json['capability'] == null ? undefined : json['capability'],
         'source': SourceRequestFromJSON(json['source']),
@@ -139,6 +146,7 @@ export function DatasetSplitCreateRequestToJSONTyped(value?: DatasetSplitCreateR
     return {
 
         'name': value['name'],
+        'brief': value['brief'],
         'project': value['project'],
         'capability': value['capability'],
         'source': SourceRequestToJSON(value['source']),

@@ -14,7 +14,7 @@ UUID to every later dataset tool.
 ```
 list_datasets
 → inspect_dataset
-→ create_dataset_from_traces | CLI upload
+→ start_dataset | create_dataset_from_traces | CLI upload
 → get_job(kind=dataset_run)
 → inspect_dataset
 → message_dataset_agent when changes are needed
@@ -33,6 +33,10 @@ reason, activity timestamp and, for generation, validated rows saved against
 the requested target. An unchanged count is not proof that the provider stopped.
 
 ## Landing
+
+Use `start_dataset(brief=...)` when the user has an idea or question before data or a capability. Inspect its response and attach the first source with `overmind dataset upload FILE --dataset ID --json`. The same `--dataset ID` command adds more files to an existing workshop as a new import cell; earlier and used versions remain unchanged. Poll the dataset run and inspect the resulting active cell. For new file uploads, `--brief` records the user's request. Intent and capability can remain pending while exploring.
+
+PDF, DOCX, Markdown, UTF-8 text and PNG/JPEG/WebP images are supported alongside tables. Documents are extracted in the batch worker, with original files, parser metadata and row evidence retained. PDF landing preserves native text and automatically runs local English Tesseract OCR on scanned pages and embedded images. Direct images are capped at 64 megapixels; animated images are rejected. OCR engine/version, page regions, upright image coordinates and recognition confidence are retained; visual layouts and tables are not reconstructed. Inspection returns rows=null until extraction. Document identities keep related rows in the same split.
 
 For REST creation and `create_dataset_from_traces`, omit `capability` to infer
 it from the rows, pass its UUID to bind it, or pass `null` to leave the dataset
@@ -104,7 +108,7 @@ continuation uses the configured workshop engine and may incur model charges.
 Requested generation must produce new examples through `add_synthetic_rows`.
 Do not propose script-based replication or identifier remapping to reach a target.
 
-Mechanical repairs include complex evidence-preserving restructuring and deterministic derivation from supplied facts and declared rules. They can apply automatically. Initial preparation runs measured cleaning and justified exclusions, with source rows and coverage effects preserved. Judgement calls require a concrete proposal even during initial preparation; follow-up exclusions also require review. The Console offers Approve/Deny with identity-matched input/output examples, before/after counts and categorical coverage. Explain the decision, supporting evidence and tradeoff, not just the new row count. Approval is tied to the exact preview and its source/context; stale proposals must be regenerated.
+Mechanical repairs include complex evidence-preserving restructuring and deterministic derivation from supplied facts and declared rules. They can apply automatically. Initial preparation runs measured cleaning and justified exclusions, with source rows and coverage effects preserved. Judgement calls require a concrete proposal even during initial preparation; follow-up exclusions also require review. The Console offers Approve/Deny with identity-matched input/output examples, before/after counts and categorical coverage. Explain the decision, supporting evidence and tradeoff, not just the new row count. Approval is tied to the exact preview and its source/context; changed input or context retires the proposal; any replacement requires a fresh preview.
 
 Preparation requests mean transform, audit, repair actionable findings and recheck the changed version, not just report failures. A selected capability already defines the target. Map each target field to supplied evidence, a deterministic derivation, a representation change, missing evidence or a user decision; audit all four checks against that same target. Ask the workshop to inspect nested source payloads and recover supplied evidence before declaring it missing, and apply supported improvements even when other findings cannot be resolved. Do not join unrelated worker cases, cross held-out boundaries, fabricate missing evidence or relabel worker answers as orchestrator deliverables. Finish independent repairs before proposing a decision; approval cannot make unsupported facts true. Once supported repairs are exhausted, report remaining affected rows and let the user continue with warnings. Audit-only questions do not authorise transformations.
 

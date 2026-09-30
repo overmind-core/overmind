@@ -378,6 +378,40 @@ def test_narration_positions_survive_progress_snapshots_and_cell_updates():
     assert all(e["text_offset"] == offset for e in events if e["type"] == "chat_cell")
 
 
+def test_late_activity_completion_does_not_split_streamed_or_saved_narration(monkeypatch):
+    dataset = _dataset(intent="eval")
+    sentence = "Inspecting the merged dataset 🔎 and attachment rows."
+
+    class LateCompletionEngine:
+        name = "test"
+
+        def run(self, dataset, message, tools, pending):
+            tools.step({"id": "inspect", "phase": "tool_start", "title": "Inspect rows"})
+            tools.respond(sentence.removesuffix(" rows."))
+            tools.step({"id": "inspect", "phase": "tool_done", "ok": True})
+            tools.respond(" rows.")
+            tools.report_progress("working", "Inspecting", "")
+            tools.think()
+            tools.stop_thinking(duration_ms=500)
+            tools.respond("Inspection complete.")
+            while pending:
+                yield pending.pop(0)
+            return engines.Outcome(text=tools.text)
+
+    monkeypatch.setattr(engines, "select", lambda: LateCompletionEngine())
+    events = list(agent.follow_up(dataset.id, "Inspect the attachment"))
+    expected = sentence + "\n\nInspection complete."
+    assert "".join(event["text"] for event in events if event["type"] == "chat_delta") == expected
+    snapshots = [event for event in events if event["type"] == "chat_progress"]
+    assert any(event["text"] == sentence for event in snapshots)
+    dataset.refresh_from_db()
+    saved = dataset.chat[-1]
+    assert saved["text"] == expected
+    assert {step["text_offset"] for step in saved["steps"] if step["id"] == "inspect"} == {0}
+    next_thought = saved["steps"][-1]
+    assert next_thought["text_offset"] == len(sentence.encode("utf-16-le")) // 2
+
+
 def test_workspace_carries_prompt_cells_and_frames():
     dataset = _dataset(intent="eval")
     lifecycle.add_cell(dataset, title="Keep rows", script=KEEP)

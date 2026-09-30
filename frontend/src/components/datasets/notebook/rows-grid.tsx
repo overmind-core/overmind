@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
 
 import { diffText } from "@/components/datasets/notebook/diff";
 import { Badge } from "@/components/ui/badge";
@@ -497,49 +497,86 @@ export function RowsGrid({
                     ? undefined
                     : marks[String(sourceRow)];
                 const open = openRow === rowIndex;
+                const evidence =
+                  (
+                    row._overmind_provenance as {
+                      evidence?: Array<{ filename: string; page?: number; element?: string }>;
+                    } | null
+                  )?.evidence ?? [];
                 return (
-                  <tr
-                    aria-expanded={open}
-                    className={cn(
-                      "cursor-pointer hover:bg-accent/40",
-                      mark?.added && "bg-success/10",
-                      open && "bg-accent/40"
-                    )}
-                    key={row._index}
-                    onClick={() => setOpenRow(open ? null : rowIndex)}
-                  >
-                    <td className="border-r border-b border-border/60 px-2 py-1 font-mono tabular-nums text-muted-foreground">
-                      {row._index}
-                    </td>
-                    {columns.map((c) => {
-                      const value = row[c.name];
-                      const text = open ? fullText(value) : cellText(value);
-                      const before = mark?.before && c.name in mark.before ? mark.before : null;
-                      return (
-                        <td
-                          className={cn(
-                            "max-w-[26rem] border-r border-b border-border/60 px-2 py-1 align-top last:border-r-0",
-                            // Open: the same cells, wrapped to their full text.
-                            open ? "whitespace-pre-wrap break-words" : "truncate",
-                            c.type === "number" || c.type === "integer"
-                              ? "text-right tabular-nums"
-                              : "",
-                            text === "" && !before && "italic text-muted-foreground"
-                          )}
-                          key={c.name}
-                          title={!open && text.length > 80 ? text.slice(0, 400) : undefined}
+                  <Fragment key={row._index}>
+                    <tr
+                      aria-expanded={open}
+                      className={cn(
+                        "cursor-pointer hover:bg-accent/40",
+                        mark?.added && "bg-success/10",
+                        open && "bg-accent/40"
+                      )}
+                      onClick={() => setOpenRow(open ? null : rowIndex)}
+                    >
+                      <td className="border-r border-b border-border/60 px-2 py-1 font-mono tabular-nums text-muted-foreground">
+                        <button
+                          aria-expanded={open}
+                          aria-label={`${open ? "Collapse" : "Inspect"} row ${row._index}`}
+                          className="w-full text-left hover:text-foreground"
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            setOpenRow(open ? null : rowIndex);
+                          }}
+                          type="button"
                         >
-                          {before ? (
-                            <ChangedValue after={value} before={before[c.name]} wrap={open} />
-                          ) : text === "" ? (
-                            "null"
-                          ) : (
-                            text
-                          )}
+                          {row._index}
+                        </button>
+                      </td>
+                      {columns.map((c) => {
+                        const value = row[c.name];
+                        const text = open ? fullText(value) : cellText(value);
+                        const before = mark?.before && c.name in mark.before ? mark.before : null;
+                        return (
+                          <td
+                            className={cn(
+                              "max-w-[26rem] border-r border-b border-border/60 px-2 py-1 align-top last:border-r-0",
+                              // Open: the same cells, wrapped to their full text.
+                              open ? "whitespace-pre-wrap break-words" : "truncate",
+                              c.type === "number" || c.type === "integer"
+                                ? "text-right tabular-nums"
+                                : "",
+                              text === "" && !before && "italic text-muted-foreground"
+                            )}
+                            key={c.name}
+                            title={!open && text.length > 80 ? text.slice(0, 400) : undefined}
+                          >
+                            {before ? (
+                              <ChangedValue after={value} before={before[c.name]} wrap={open} />
+                            ) : text === "" ? (
+                              "null"
+                            ) : (
+                              text
+                            )}
+                          </td>
+                        );
+                      })}
+                    </tr>
+                    {open && evidence.length > 0 && (
+                      <tr>
+                        <td
+                          className="border-b border-border/60 bg-wash-raised px-3 py-2"
+                          colSpan={columns.length + 1}
+                        >
+                          <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
+                            <span>Source evidence</span>
+                            {evidence.map((item, index) => (
+                              <span key={`${item.filename}-${index}`}>
+                                {item.filename}
+                                {item.page ? ` · page ${item.page}` : ""}
+                                {item.element ? ` · ${item.element}` : ""}
+                              </span>
+                            ))}
+                          </div>
                         </td>
-                      );
-                    })}
-                  </tr>
+                      </tr>
+                    )}
+                  </Fragment>
                 );
               })}
             </tbody>

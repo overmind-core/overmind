@@ -287,7 +287,7 @@ PROMPTS = (
             "authenticates with the configured X-Api-Key, uses the "
             "Content-Disposition filename when no output path is supplied, and refuses to "
             "overwrite an existing file. For trace data: select traces, call "
-            "create_dataset_from_traces, poll get_job with kind dataset_run, call inspect_dataset, "
+            "start_dataset for a written intent without source data, or create_dataset_from_traces for existing traces; poll get_job with kind dataset_run, call inspect_dataset, "
             "then run the dataset export locally. Add `--cell` to export the chosen "
             "cell; preserve X-Overmind-Cell, X-Overmind-Version, and "
             "X-Overmind-Fingerprint when caching it. Keep trace export on this workflow; there is no "

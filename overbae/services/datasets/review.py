@@ -70,6 +70,7 @@ def preserve_provenance(before: pd.DataFrame, after: pd.DataFrame, *, group_by=(
         "source_trace_id",
         "conversation_id",
         "human_reviewed",
+        "_overmind_document_id",
         *group_by,
     }:
         if column not in indexed:

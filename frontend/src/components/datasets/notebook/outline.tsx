@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 
+import { WorkshopSwitcher } from "@/components/datasets/workshop-sidebar";
 import { Button } from "@/components/ui/button";
 import { Icon } from "@/components/ui/icons";
 import { Input } from "@/components/ui/input";
@@ -7,7 +8,6 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { cn } from "@/lib/utils";
 import type { Cell } from "@/openapi";
 
-/** The rail down the left edge: search and jump, then one mark per cell. */
 export function NotebookOutline({
   cells,
   selectedId,
@@ -45,6 +45,7 @@ export function NotebookOutline({
       className="pointer-events-none absolute inset-y-0 left-0 z-10 flex w-10 flex-col items-center pt-3"
     >
       <div className="pointer-events-auto flex flex-col items-center">
+        <WorkshopSwitcher iconOnly />
         <Popover onOpenChange={(o) => (o ? setOpen(true) : close())} open={open}>
           <PopoverTrigger asChild>
             <Button

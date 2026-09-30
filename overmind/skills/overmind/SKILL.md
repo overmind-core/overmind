@@ -86,7 +86,8 @@ Follow these for ALL Overmind work:
    (omit to clear), then poll the returned `model_activation` job until verification and routing complete. See [references/capabilities.md](references/capabilities.md).
 1. **Behaviours have no resource.** There is no
    `overmind://behaviours/...`; read them from `query_task_executions`.
-1. **Contracts gate every dataset workflow.** Intent is **`train`**,
+1. **Datasets may start from written intent.** Use `start_dataset` with a brief when no source or capability is chosen. Attach data later with `overmind dataset upload FILE --dataset ID --json`. Original documents and row evidence remain inspectable; extraction does not establish answer correctness.
+1. **Contracts gate dataset consumption.** Intent is **`train`**,
    **`eval`**, or **`pending`** — never `ft` or `surface`. Fine-tuning needs
    `train`; eval runs and optimizer experiments need `eval`. `pending` is
    refused. There is no reingest tool and no dual-intent dataset. Set intent
@@ -186,7 +187,7 @@ Observability:
 Datasets:
 
 `list_datasets`, `inspect_dataset`, `query_dataset`,
-`create_dataset_from_traces`, `message_dataset_agent`, `run_dataset`.
+`start_dataset`, `create_dataset_from_traces`, `message_dataset_agent`, `run_dataset`.
 
 Evaluations:
 

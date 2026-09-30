@@ -14,11 +14,13 @@
 
 
 /**
+ * * `pending` - Pending
  * * `file` - File
  * * `traces` - Traces
  * @export
  */
 export const DatasetSourceKindEnum = {
+    pending: 'pending',
     file: 'file',
     traces: 'traces'
 } as const;

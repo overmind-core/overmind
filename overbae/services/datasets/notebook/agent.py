@@ -18,6 +18,7 @@ from overbae.services.datasets import lifecycle, paths, review, semantic_checks,
 from overbae.services.datasets.context import context_fingerprint, workshop_context
 from overbae.services.datasets.notebook import engines, events, libraries, prompts
 from overbae.services.datasets.notebook import run as run_svc
+from overbae.services.datasets.proposals import retire_outdated
 
 logger = logging.getLogger(__name__)
 
@@ -94,6 +95,9 @@ def _cell_line(
         "state": cell.state,
         "frozen": cell.frozen if frozen_before is None else cell.position <= frozen_before,
         "rows": cell.rows,
+        "fingerprint": cell.fingerprint,
+        "input_fingerprint": cell.input_fingerprint,
+        "seconds": cell.seconds,
         "columns": _visible_columns([c["name"] for c in (cell.columns or [])]),
         "note": cell.note,
         "error": cell.error,
@@ -119,6 +123,8 @@ def status(dataset: Dataset) -> dict[str, Any]:
     context = context_fingerprint(dataset.capability)
     return {
         "dataset": dataset.name,
+        "brief": dataset.brief,
+        "source": dataset.source_spec,
         "intent": dataset.intent,
         "capability": dataset.capability.name if dataset.capability_id else None,
         "capability_rank": dataset.capability_rank[:3],
@@ -271,8 +277,11 @@ class Tools:
         self._thinking = None
 
     def step(self, part: dict[str, Any]) -> None:
-        part["text_offset"] = self.step_offsets.setdefault(part["id"], self.text_offset)
-        self.response_break = True
+        if part["id"] not in self.step_offsets:
+            self.step_offsets[part["id"]] = self.text_offset
+            self.response_break = True
+        # A late completion belongs at the step's start, not between current text chunks.
+        part["text_offset"] = self.step_offsets[part["id"]]
         self.steps.append(part)
         self.emit({"type": "chat_step", **part})
 
@@ -1041,11 +1050,18 @@ def save_turn(dataset_id: Any, turn_id: str, changes: dict[str, Any]) -> None:
 
 
 def system_prompt(dataset: Dataset) -> str:
-    return prompts.system(
+    system = prompts.system(
         dataset.intent,
         capability=prompts.capability_section(dataset),
         libraries=libraries.describe(paths.library_cache(dataset.project_id)),
         sample=prompts.context_section(workshop_context(dataset)),
+    )
+    return (
+        system
+        + "\n\n## Original user request\n"
+        + json.dumps(dataset.brief)
+        + "\n"
+        + prompts.DOCUMENTS
     )
 
 
@@ -1068,6 +1084,7 @@ def iter_turn(
         logger.warning("dataset %s: turn %s already ran, skipping the retry", dataset_id, turn_key)
         return
 
+    retire_outdated(dataset)
     turn_user = {"role": "user", "text": display, "at": started, "context": message}
     turn_id = str(uuid.uuid4())
     draft = {
@@ -1101,7 +1118,7 @@ def iter_turn(
         outcome.error = engines.NOT_CONFIGURED
     else:
         try:
-            if automatic and dataset.intent in {"train", "eval"}:
+            if automatic and dataset.active_cell and dataset.intent in {"train", "eval"}:
                 tools.handlers()["prepare_examples"]({})
                 while pending:
                     yield pending.pop(0)
@@ -1111,6 +1128,7 @@ def iter_turn(
             logger.warning("dataset %s: agent turn failed", dataset_id, exc_info=True)
             outcome.error = engine.describe_error(exc)
     tools.stop_thinking()
+    retire_outdated(_dataset(dataset_id))
     generated = tools.progress.get("generated_rows", 0)
     awaiting_approval = Cell.objects.filter(
         dataset_id=dataset_id,
@@ -1237,11 +1255,14 @@ def diagnose(dataset_id: Any, *, user: Any = None, turn_key: str = "") -> Iterat
     ):
         return
     try:
+        dataset = _dataset(dataset_id)
         yield from iter_turn(
             dataset_id,
-            prompts.PREPARE,
-            display=PREPARE_DISPLAY,
-            automatic=True,
+            f"{prompts.PREPARE}\n\nUser request: {dataset.brief}"
+            if dataset.brief
+            else prompts.PREPARE,
+            display=dataset.brief or PREPARE_DISPLAY,
+            automatic=not bool(dataset.brief),
             user=user,
             turn_key=turn_key,
         )
