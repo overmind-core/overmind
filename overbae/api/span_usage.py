@@ -3,7 +3,8 @@
 The keys must match exactly what the external Overmind SDK's LLM tracer stamps,
 or the /traces token and cost columns only populate for SDK-emitted spans. The
 ``usage`` input is OpenAI/OpenRouter-shaped; OpenRouter adds ``cost`` only under
-``extra_body={"usage": {"include": True}}``.
+``extra_body={"usage": {"include": True}}``. Only a reported cost is copied;
+``span_pricing.stamp_span_cost`` prices the rest when the span is stored.
 """
 
 from __future__ import annotations
@@ -11,7 +12,6 @@ from __future__ import annotations
 from typing import Any
 
 from overbae.api import overmind_attrs as oc_attrs
-from overbae.services.model_catalog import estimate_cost
 
 
 def _get(usage: Any, key: str) -> Any:
@@ -51,8 +51,6 @@ def usage_span_attributes(usage: Any, *, model: str | None = None) -> dict[str, 
         total = (prompt or 0) + (completion or 0)
 
     cost = _as_float(_get(usage, "cost"))
-    if cost is None and model:
-        cost = estimate_cost(model, prompt, completion)
 
     attrs: dict[str, Any] = {}
     if model:

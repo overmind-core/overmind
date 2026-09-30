@@ -12,9 +12,8 @@ classifiers = [
     "Programming Language :: Python :: 3.13",
     "Typing :: Typed",
 ]
-# Default is the CLI (`overmind init`, sync, …). OpenTelemetry lives on `tracing`
-# so an app's OTel pin cannot clash; so does litellm, whose wheel paths bust
-# Windows MAX_PATH under Microsoft Store Python.
+# Default is the CLI (`overmind init`, sync, …). OpenTelemetry lives on the
+# `tracing` extra so an app that already pinned OTel does not clash.
 dependencies = [
     "rich>=14.0.0",
     "typer>=0.25.0",
@@ -37,7 +36,6 @@ version = "0.1.79"
 
     [project.optional-dependencies]
     tracing = [
-        "litellm>=1.90.2",
         "openinference-instrumentation-langchain>=0.1.72",
         "opentelemetry-api>=1.35.0",
         "opentelemetry-sdk>=1.35.0",

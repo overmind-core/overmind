@@ -73,29 +73,29 @@ ______________________________________________________________________
 Emitted by `tracing.observe(type="llm")` and by the on-end enrichment
 processor for auto-instrumentor spans. **These are the keys the server rolls up.**
 
-| Key                                 | Type        | When present       | Meaning                                                                  |
-| ----------------------------------- | ----------- | ------------------ | ------------------------------------------------------------------------ |
-| `genai.model`                       | string      | if known           | Requested model id.                                                      |
-| `genai.response.model`              | string      | if known           | Model the provider actually served.                                      |
-| `genai.provider`                    | string      | if known           | Provider (`openai`, `anthropic`, …).                                     |
-| `genai.prompt_tokens`               | int         | if known           | Prompt/input tokens. **Rolled up.**                                      |
-| `genai.completion_tokens`           | int         | if known           | Completion/output tokens. **Rolled up.**                                 |
-| `genai.total_tokens`                | int         | if known / derived | Total tokens (derived = prompt + completion). **Rolled up.**             |
-| `genai.cost`                        | float (USD) | if known / derived | Provider-reported cost, else computed from model pricing. **Rolled up.** |
-| `genai.cache_read_tokens`           | int         | if known           | Cache-read (prompt-cache) tokens. *(new — server does not roll up yet)*  |
-| `genai.elapsed_seconds`             | float       | always             | Client-measured latency.                                                 |
-| `genai.error`                       | string      | on failure         | Exception class name.                                                    |
-| `genai.request.message_count`       | int         | always             | Number of messages sent.                                                 |
-| `genai.request.message_chars`       | int         | always             | Total chars across message content.                                      |
-| `genai.request.tool_count`          | int         | always             | Number of tool schemas provided.                                         |
-| `genai.request.kwargs`              | string      | if any             | Comma-joined kwarg names (excl. `api_key`).                              |
-| `genai.request.temperature`         | float       | if passed          | Sampling temperature. *(new)*                                            |
-| `genai.request.max_tokens`          | int         | if passed          | Max output tokens. *(new)*                                               |
-| `genai.request.top_p`               | float       | if passed          | Nucleus-sampling top-p. *(new)*                                          |
-| `genai.response.message_chars`      | int         | if known           | Chars in the response message. *(new)*                                   |
-| `genai.response.finish_reason`      | string      | if known           | e.g. `stop`, `tool_calls`, `length`. *(new)*                             |
-| `genai.streaming`                   | bool        | streaming only     | `True` when `stream=True`. *(new)*                                       |
-| `genai.time_to_first_token_seconds` | float       | streaming only     | Time to first streamed chunk (TTFT). *(new)*                             |
+| Key                                 | Type        | When present       | Meaning                                                            |
+| ----------------------------------- | ----------- | ------------------ | ------------------------------------------------------------------ |
+| `genai.model`                       | string      | if known           | Requested model id.                                                |
+| `genai.response.model`              | string      | if known           | Model the provider actually served.                                |
+| `genai.provider`                    | string      | if known           | Provider (`openai`, `anthropic`, …).                               |
+| `genai.prompt_tokens`               | int         | if known           | Prompt/input tokens. **Rolled up.**                                |
+| `genai.completion_tokens`           | int         | if known           | Completion/output tokens. **Rolled up.**                           |
+| `genai.total_tokens`                | int         | if known / derived | Total tokens (derived = prompt + completion). **Rolled up.**       |
+| `genai.cost`                        | float (USD) | if reported        | Reported cost; else the server prices it at ingest. **Rolled up.** |
+| `genai.cache_read_tokens`           | int         | if known           | Cache-read (prompt-cache) tokens; priced at the cache rate.        |
+| `genai.elapsed_seconds`             | float       | always             | Client-measured latency.                                           |
+| `genai.error`                       | string      | on failure         | Exception class name.                                              |
+| `genai.request.message_count`       | int         | always             | Number of messages sent.                                           |
+| `genai.request.message_chars`       | int         | always             | Total chars across message content.                                |
+| `genai.request.tool_count`          | int         | always             | Number of tool schemas provided.                                   |
+| `genai.request.kwargs`              | string      | if any             | Comma-joined kwarg names (excl. `api_key`).                        |
+| `genai.request.temperature`         | float       | if passed          | Sampling temperature. *(new)*                                      |
+| `genai.request.max_tokens`          | int         | if passed          | Max output tokens. *(new)*                                         |
+| `genai.request.top_p`               | float       | if passed          | Nucleus-sampling top-p. *(new)*                                    |
+| `genai.response.message_chars`      | int         | if known           | Chars in the response message. *(new)*                             |
+| `genai.response.finish_reason`      | string      | if known           | e.g. `stop`, `tool_calls`, `length`. *(new)*                       |
+| `genai.streaming`                   | bool        | streaming only     | `True` when `stream=True`. *(new)*                                 |
+| `genai.time_to_first_token_seconds` | float       | streaming only     | Time to first streamed chunk (TTFT). *(new)*                       |
 
 The server also accepts the `genai.usage.prompt_tokens` /
 `genai.usage.completion_tokens` / `genai.usage.total_tokens` aliases for the

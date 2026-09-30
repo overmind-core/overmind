@@ -42,7 +42,7 @@ dependencies = [
     "modal>=1.4.3",
     # Only migration 0001 imports it, to replay the extension 0142 drops.
     "pgvector>=0.4.2",
-    "genai-prices>=0.0.69",
+    "genai-prices>=0.1.9",
     "django-debug-toolbar>=7.0.0",
     "stripe>=15.3.1",
     "newrelic>=13.4.0",

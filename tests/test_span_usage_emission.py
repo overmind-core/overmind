@@ -33,17 +33,6 @@ def test_object_usage_derives_total_when_absent():
     assert oc_attrs.LLM_COST not in attrs
 
 
-def test_cost_derived_from_model_pricing_when_provider_omits_it():
-    catalog = [{"id": "openai/gpt-5-mini", "prompt_price": 0.25, "completion_price": 2.0}]
-    with mock.patch.object(model_catalog, "fetch_model_catalog", return_value=(catalog, True)):
-        attrs = usage_span_attributes(
-            {"prompt_tokens": 1_000_000, "completion_tokens": 1_000_000}, model="gpt-5-mini"
-        )
-    # 1M * 0.25/1M + 1M * 2.0/1M = 2.25
-    assert attrs[oc_attrs.LLM_COST] == 2.25
-    assert attrs[oc_attrs.LLM_MODEL] == "gpt-5-mini"
-
-
 def test_absent_usage_returns_empty():
     assert usage_span_attributes(None) == {}
     assert oc_attrs.LLM_COMPLETION_TOKENS not in usage_span_attributes({"prompt_tokens": 5})

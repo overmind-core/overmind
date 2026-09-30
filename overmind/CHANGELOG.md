@@ -52,11 +52,12 @@ entries here cover the SDK surface.
   `overmind sync` stores the final project-scoped key in the ignored
   `.overmind/credentials.toml` sidecar and refreshes every initialized IDE MCP
   entry, so authentication survives process and IDE restarts without re-init.
-- Packaging: default `pip install overmind` is the CLI alone. OpenTelemetry,
-  LangChain, HTTP instrumentors, and litellm (span cost pricing) live on
-  `overmind[tracing]` so an existing OTel pin does not clash and the CLI
-  installs under Microsoft Store Python, whose deep `site-packages` pushes
-  litellm's wheel past the Windows 260-character path limit.
+- Packaging: default `pip install overmind` is the CLI. OpenTelemetry,
+  LangChain, and HTTP instrumentors live on `overmind[tracing]` so an
+  existing OTel pin does not clash. litellm is no longer a dependency.
+- `genai.cost` is no longer computed by the SDK. The server prices each LLM
+  span from its model and token counts at ingest; a provider-reported
+  `genai.cost` is kept as sent.
 - Orphan-span suppression: a `function` span that starts a new trace outside
   any run boundary (no parent, no unit declaration) is no longer exported —
   the platform quarantines such fragments as noise. A warning is logged once;

@@ -97,20 +97,6 @@ class TestSpanUsage:
         assert usage["total_tokens"] == 1500
         assert usage["models"] == {"gpt-5-mini": 1}
 
-    def test_derives_cost_when_client_omits_it(self):
-        usage = _build_span_usage(
-            _span(
-                {
-                    "genai.prompt_tokens": 1000,
-                    "genai.completion_tokens": 500,
-                    "genai.model": "gpt-5-mini",
-                }
-            )
-        )
-        # Must be a plain float — Decimal + float crashed process_span / capability linking.
-        assert usage["cost_usd"] > 0
-        assert type(usage["cost_usd"]) is float
-
     def test_client_reported_cost_wins(self):
         usage = _build_span_usage(
             _span(
@@ -123,15 +109,3 @@ class TestSpanUsage:
             )
         )
         assert usage["cost_usd"] == 9.99
-
-    def test_unknown_model_yields_zero_cost(self):
-        usage = _build_span_usage(
-            _span(
-                {
-                    "genai.prompt_tokens": 10,
-                    "genai.completion_tokens": 10,
-                    "genai.model": "totally-made-up-model-xyz",
-                }
-            )
-        )
-        assert usage["cost_usd"] == 0.0

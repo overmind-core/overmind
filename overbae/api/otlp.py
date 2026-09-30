@@ -34,6 +34,12 @@ from overbae.models import (
 from overbae.models.traces import usage_slice
 from overbae.services.behaviour.binder import attach_inferred_vcs_sha
 from overbae.services.capabilities import identity
+from overbae.services.span_pricing import (
+    COMPLETION_TOKEN_KEYS,
+    MODEL_KEYS,
+    PROMPT_TOKEN_KEYS,
+    stamp_span_cost,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -100,9 +106,18 @@ _GENAI_COALESCE: dict[str, tuple[str, ...]] = {
     ),
     oc_attrs.LLM_USAGE_TOTAL_TOKENS: ("gen_ai.usage.total_tokens", "llm.token_count.total"),
     oc_attrs.LLM_CACHE_READ_TOKENS: (
+        "gen_ai.usage.cache_read.input_tokens",
         "gen_ai.usage.cache_read_input_tokens",
         "gen_ai.usage.cache_read_tokens",
         "llm.token_count.prompt_details.cache_read",
+    ),
+    # The reported-cost keys the trace readers accept, so the rollup counts them too.
+    oc_attrs.LLM_COST: (
+        "gen_ai.usage.cost",
+        "llm.usage.total_cost",
+        "overmind.cost",
+        "cost",
+        "response_cost",
     ),
     oc_attrs.TOOL_NAME: ("gen_ai.tool.name",),
     oc_attrs.INPUT_DATA: ("input.value",),
@@ -550,39 +565,11 @@ def _apply_overmind_fields(capability: Capability, overmind_tags: dict[str, Any]
     return dirty
 
 
-# Priority order, mirroring the SDK's ``overmind/genai_usage.py``, so ingest also
-# reads native OTel GenAI semconv and Traceloop spans.
-_PROMPT_TOKEN_KEYS = (
-    oc_attrs.LLM_USAGE_PROMPT_TOKENS,
-    oc_attrs.LLM_PROMPT_TOKENS,
-    "gen_ai.usage.prompt_tokens",
-    "gen_ai.usage.input_tokens",
-    "llm.usage.prompt_tokens",
-)
-_COMPLETION_TOKEN_KEYS = (
-    oc_attrs.LLM_USAGE_COMPLETION_TOKENS,
-    oc_attrs.LLM_COMPLETION_TOKENS,
-    "gen_ai.usage.completion_tokens",
-    "gen_ai.usage.output_tokens",
-    "llm.usage.completion_tokens",
-)
 _TOTAL_TOKEN_KEYS = (
     oc_attrs.LLM_USAGE_TOTAL_TOKENS,
     oc_attrs.LLM_TOTAL_TOKENS,
     "gen_ai.usage.total_tokens",
     "llm.usage.total_tokens",
-)
-_CACHE_READ_TOKEN_KEYS = (
-    oc_attrs.LLM_CACHE_READ_TOKENS,
-    "gen_ai.usage.cache_read_input_tokens",
-    "gen_ai.usage.cache_read_tokens",
-)
-_MODEL_KEYS = (
-    oc_attrs.LLM_MODEL,
-    oc_attrs.LLM_RESPONSE_MODEL,
-    "gen_ai.request.model",
-    "gen_ai.response.model",
-    "gen_ai.model",
 )
 
 
@@ -594,44 +581,16 @@ def _first_int(attrs: dict[str, Any], keys: tuple[str, ...]) -> int:
     return 0
 
 
-def _compute_cost(
-    model: str | None, prompt_tokens: int, completion_tokens: int, cache_read_tokens: int = 0
-) -> float:
-    """``0.0`` when there is no model, no tokens, or no pricing entry — cost
-    derivation must never break ingest."""
-    from genai_prices import Usage, calc_price
-
-    if not model or not (prompt_tokens or completion_tokens):
-        return 0.0
-    try:
-        price = calc_price(
-            Usage(
-                input_tokens=prompt_tokens or None,
-                output_tokens=completion_tokens or None,
-                cache_read_tokens=cache_read_tokens or None,
-            ),
-            model_ref=model,
-        )
-    except LookupError:
-        logger.debug("genai_prices has no pricing for model %r", model)
-        return 0.0
-    # genai_prices returns Decimal; usage_stats math stays float-only.
-    return safe_float(price.total_price) if price.total_price else 0.0
-
-
 def _build_span_usage(span: Span) -> dict[str, Any]:
     attrs = span.attributes or {}
     span_type = (span.span_type or "").lower()
 
-    pt = _first_int(attrs, _PROMPT_TOKEN_KEYS)
-    ct = _first_int(attrs, _COMPLETION_TOKEN_KEYS)
+    pt = _first_int(attrs, PROMPT_TOKEN_KEYS)
+    ct = _first_int(attrs, COMPLETION_TOKEN_KEYS)
     tt = _first_int(attrs, _TOTAL_TOKEN_KEYS)
-    cache_read = _first_int(attrs, _CACHE_READ_TOKEN_KEYS)
 
-    model = _get_attr(attrs, *_MODEL_KEYS)
-
-    # Trust a client-reported cost; otherwise derive it from token usage.
-    cost = safe_float(attrs.get(oc_attrs.LLM_COST)) or _compute_cost(model, pt, ct, cache_read)
+    model = _get_attr(attrs, *MODEL_KEYS)
+    cost = safe_float(attrs.get(oc_attrs.LLM_COST))
 
     llm_calls = 1 if span_type == Span.SpanType.LLM_CALL else 0
     tool_calls = 1 if span_type in (Span.SpanType.TOOL_CALL, "tool") else 0
@@ -759,6 +718,7 @@ def _build_span(
     end = span_proto.end_time_unix_nano
     duration = end - start if end and start else 0
     attrs = _coalesce_genai_attrs(_kv_list_to_dict(span_proto.attributes))
+    stamp_span_cost(attrs, start_time_ns=start)
 
     return Span(
         span_id=span_proto.span_id.hex(),

@@ -13,6 +13,7 @@ from django.db.models import Q
 from django.utils import timezone
 
 from overbae.services.connectors.schema import CONNECTOR_VERSION_ATTR
+from overbae.services.span_pricing import stamp_span_cost
 
 logger = logging.getLogger(__name__)
 
@@ -123,6 +124,8 @@ def _upsert_spans(project, span_dicts: list[dict[str, Any]], credential=None, jo
     for s in span_dicts:
         capability = s.get("capability")
         fields = {k: v for k, v in s.items() if k not in ("span_id", "capability")}
+        if fields.get("attributes"):
+            stamp_span_cost(fields["attributes"], start_time_ns=fields.get("start_time_ns"))
         fields["usage"] = usage_slice(fields.get("attributes"))
         current = existing.get(s["span_id"])
         if current is None:

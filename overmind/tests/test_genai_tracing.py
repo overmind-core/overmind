@@ -3,7 +3,8 @@
 Covers the three anchor guarantees:
 
 (a) a span carrying provider ``gen_ai.*`` usage ends up with the canonical
-    ``genai.*`` token counts + ``genai.cost`` (enrichment processor + wrapper);
+    ``genai.*`` token counts (enrichment processor + wrapper), and no cost —
+    the server prices spans at ingest;
 (b) ``init(capability_id=…, capability=…, project_id=…)`` results in
     ``overmind.capability.id`` / ``overmind.capability.name`` / ``overmind.project.id`` on
     emitted spans;
@@ -24,7 +25,7 @@ from opentelemetry.sdk.trace.export import SimpleSpanProcessor
 from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
 
 from overmind import attrs
-from overmind.genai_usage import canonical_usage_updates, compute_cost
+from overmind.genai_usage import canonical_usage_updates
 from overmind.tracing import (
     _GenAiUsageSpanProcessor,
     _seed_identity_context,
@@ -69,7 +70,7 @@ def test_mirror_from_otel_semconv_prompt_completion():
     assert updates[attrs.LLM_PROMPT_TOKENS] == 120
     assert updates[attrs.LLM_COMPLETION_TOKENS] == 30
     assert updates[attrs.LLM_TOTAL_TOKENS] == 150
-    assert updates[attrs.LLM_COST] > 0
+    assert attrs.LLM_COST not in updates
 
 
 def test_mirror_from_input_output_and_llm_total():
@@ -86,19 +87,12 @@ def test_mirror_from_input_output_and_llm_total():
 def test_mirror_never_zero_fills_and_respects_existing():
     # No usage at all → nothing to mirror.
     assert canonical_usage_updates({attrs.SPAN_TYPE: "llm_call"}) == {}
-    # Existing canonical cost must not be overwritten.
+    # Existing canonical counts must not be overwritten.
     updates = canonical_usage_updates({
         "gen_ai.usage.prompt_tokens": 100,
-        "gen_ai.usage.completion_tokens": 100,
-        attrs.LLM_MODEL: "gpt-4o-mini",
-        attrs.LLM_COST: 0.42,
+        attrs.LLM_PROMPT_TOKENS: 90,
     })
-    assert attrs.LLM_COST not in updates
-
-
-def test_compute_cost_unknown_model_is_none():
-    assert compute_cost("some-nonexistent-model-xyz", 100, 100) is None
-    assert compute_cost("gpt-4o-mini", None, None) is None
+    assert attrs.LLM_PROMPT_TOKENS not in updates
 
 
 def test_enrichment_processor_mirrors_on_end(inmem):
@@ -115,7 +109,7 @@ def test_enrichment_processor_mirrors_on_end(inmem):
     assert exported.attributes[attrs.LLM_COMPLETION_TOKENS] == 80
     assert exported.attributes[attrs.LLM_TOTAL_TOKENS] == 280
     assert exported.attributes[attrs.LLM_MODEL] == "gpt-4o-mini"
-    assert exported.attributes[attrs.LLM_COST] > 0
+    assert attrs.LLM_COST not in exported.attributes
 
 
 def test_identity_stamped_on_spans(inmem):

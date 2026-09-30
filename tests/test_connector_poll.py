@@ -73,12 +73,15 @@ class FakeLangfuseClient:
                     id=t["id"],
                     trace_id=t["id"],
                     parent_observation_id=None,
-                    type="SPAN",
+                    type=t.get("type", "SPAN"),
                     name=t.get("name"),
                     start_time=ts,
                     end_time=None,
                     latency=t.get("latency"),
                     is_root_observation=True,
+                    model=t.get("model"),
+                    usage_details=t.get("usage_details"),
+                    total_cost=t.get("total_cost"),
                 )
             ]
 
@@ -153,6 +156,32 @@ def test_backfill_paginates_and_is_idempotent(credential, fake_langfuse):
     ConnectorCredential.objects.filter(id=cred.id).update(next_poll_at=None)
     connector_sync.sync_connector_chunk(str(cred.id))
     assert Span.objects.filter(project=credential.project).count() == 5
+
+
+def test_generations_carry_a_cost_reported_or_priced(credential, fake_langfuse):
+    generation = {
+        "type": "GENERATION",
+        "model": "gpt-4o",
+        "usage_details": {"input": 1000, "output": 500, "total": 1500},
+        "latency": 0.1,
+    }
+    fake_langfuse.traces = [
+        {**generation, "id": "priced", "timestamp": "2026-01-01T00:00:00.000Z"},
+        {
+            **generation,
+            "id": "reported",
+            "timestamp": "2026-01-01T00:00:01.000Z",
+            "total_cost": 0.42,
+        },
+    ]
+
+    _drive_to_live(credential.id)
+
+    costs = sorted(
+        span.usage["genai.cost"] for span in Span.objects.filter(project=credential.project)
+    )
+    # gpt-4o: 1000 in x $2.50/M + 500 out x $10/M
+    assert costs == [pytest.approx(0.0075), 0.42]
 
 
 def test_watermark_advances_and_live_pulls_only_new(credential, fake_langfuse):
