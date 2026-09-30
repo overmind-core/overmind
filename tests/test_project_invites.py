@@ -167,4 +167,3 @@ def test_claim_converts_invites_to_memberships():
     assert ProjectMembership.objects.filter(user=joiner, project=p1).exists()
     assert ProjectMembership.objects.filter(user=joiner, project=p2).exists()
     assert not ProjectInvite.objects.exists()
-

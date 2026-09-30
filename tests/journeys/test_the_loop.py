@@ -114,7 +114,7 @@ def test_failing_traces_become_a_measured_winning_diff(
     assert references == [{"expected_output": GOOD_REPLY}]
 
     repo = sample_agent.repo
-    cli.run("optimise", "start", "-c", "answer", "-d", dataset, "--iterations", "2", cwd=repo)
+    cli.run("optimise", "start", "-c", "answer", "-d", dataset, "--iterations", "5", cwd=repo)
     template = tmp_path / "run_one_datapoint.sh"
     template.write_text(
         RUN_ONE_DATAPOINT.format(
@@ -128,6 +128,11 @@ def test_failing_traces_become_a_measured_winning_diff(
     patch.write_text(_candidate_diff(repo))
     cli.run("optimise", "add-candidate", "--diff", str(patch), cwd=repo)
     cli.run("optimise", "run-iteration", cwd=repo)
+    assert "Action: WRITE_CANDIDATES" in cli.run("optimise", "next", cwd=repo)
+    for _ in range(3):
+        cli.run("optimise", "add-candidate", "--diff", str(patch), cwd=repo)
+        cli.run("optimise", "run-iteration", cwd=repo)
+    assert "Action: COMPLETE" in cli.run("optimise", "next", cwd=repo)
     cli.run("optimise", "complete", cwd=repo)
 
     state = json.loads((repo / ".overmind" / "optimise_state.json").read_text())

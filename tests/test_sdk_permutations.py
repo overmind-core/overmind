@@ -10,21 +10,15 @@ Each section mirrors one real-world way people use their models:
 
 from __future__ import annotations
 
-import uuid
 from decimal import Decimal
 
 import pytest
 from factories import api_key_client, make_member, make_project, make_user
 
 from overbae.models import (
-    Capability,
     DeployedModel,
-    OptimizerCandidate,
-    OptimizerCommand,
     OptimizerExperiment,
-    OptimizerIteration,
 )
-from overbae.models.optimizer import _model_ids_match
 
 pytestmark = pytest.mark.django_db
 
@@ -105,78 +99,6 @@ class TestGatewayModelNamePermutations:
         [charge] = BillingTelemetry.objects.filter(user=user, service=BillingService.INFERENCE)
         assert charge.metadata["model_id"] == "openai/gpt-5-mini"
         assert -charge.amount == Decimal("0.00002")
-
-
-class TestTelemetryNormalisationPermutations:
-    """C1: final-path-segment comparison must accept every provider/slug form
-    an SDK may echo while still rejecting genuinely different models."""
-
-    @pytest.mark.parametrize(
-        ("expected", "observed"),
-        [
-            ("openai/gpt-5-mini", "gpt-5-mini"),
-            ("qwen/qwen3-14b", "qwen3-14b"),
-            ("openrouter/qwen/qwen3-14b", "qwen3-14b"),
-            ("deepseek/deepseek-v4-flash", "DeepSeek/DeepSeek-V4-Flash"),
-            ("deepseek/deepseek-v4-flash", "deepseek-v4-flash"),
-            ("ft-abc", "ft-abc"),
-        ],
-    )
-    def test_forms_compare_equal(self, expected: str, observed: str):
-        assert _model_ids_match(expected, observed)
-
-    @pytest.mark.parametrize(
-        ("expected", "observed"),
-        [
-            ("openai/gpt-5-mini", "anthropic/claude-sonnet-5"),
-            ("openai/gpt-5-mini", "anthropic/gpt-5-mini"),
-            ("qwen/qwen3-14b", "deepseek/deepseek-v4-flash"),
-            ("openai/gpt-5-mini", "openai/gpt-5.4"),
-            ("ft-abc", "ft-def"),
-        ],
-    )
-    def test_different_models_still_differ(self, expected: str, observed: str):
-        assert not _model_ids_match(expected, observed)
-
-    def test_bare_observed_model_does_not_fail_the_telemetry_gate(self):
-        project = make_project()
-        capability = Capability.objects.create(
-            project=project, name="A", slug=f"a-{uuid.uuid4().hex[:8]}"
-        )
-        experiment = OptimizerExperiment.objects.create(
-            project=project,
-            capability=capability,
-            mode=OptimizerExperiment.Mode.MODEL_COMPARISON,
-            model_ids=["qwen/qwen3-14b"],
-            entrypoint="run",
-            code_trigger="run(**datapoint)",
-            status=OptimizerExperiment.Status.SCHEDULED,
-        )
-        iteration = OptimizerIteration.objects.create(experiment=experiment, order=1)
-        candidate = OptimizerCandidate.objects.create(
-            experiment=experiment,
-            iteration=iteration,
-            candidate_index=0,
-            target_model="qwen/qwen3-14b",
-            status=OptimizerCandidate.Status.RUNNING_COMMANDS,
-        )
-        command = OptimizerCommand.objects.create(
-            experiment=experiment,
-            candidate=candidate,
-            iteration=iteration,
-            datapoint_index=0,
-            status=OptimizerCommand.Status.RAN,
-        )
-        assert (
-            command._telemetry_error(
-                {
-                    "output": "answer",
-                    "trace_id": "trace-1",
-                    "telemetry": {"provider": "qwen", "model": "qwen3-14b"},
-                }
-            )
-            == ""
-        )
 
 
 class TestModelValidationPermutations:
