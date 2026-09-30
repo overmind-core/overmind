@@ -168,9 +168,62 @@ jobs:
         # Match local `make test`: xdist is already in the test dep group.
         run: uv run pytest tests/ -n auto --dist worksteal -q
 
+  journeys:
+    if: github.event_name == 'push' || github.event.pull_request.draft == false
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_DB: overbae
+          POSTGRES_USER: overbae
+          POSTGRES_PASSWORD: overbae
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U overbae"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v6
+        with:
+          version: "0.11.0"
+          enable-cache: true
+          # Pin to 3.13: spacy 3.8.x has no cp314 wheels, so uv must not
+          # auto-select the newer 3.14 interpreter. Matches .python-version.
+          python-version: "3.13"
+
+      - name: Install dependencies
+        run: uv sync --frozen --group test
+
+      - name: Create .env file
+        run: touch .env
+
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: "1.3.5"
+
+      - name: Cache bun dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            frontend/node_modules
+            ~/.bun/install/cache
+          key: ${{ runner.os }}-bun-${{ hashFiles('frontend/bun.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-bun-
 
       - name: Install Console dependencies and browser for the Console journeys
         run: |

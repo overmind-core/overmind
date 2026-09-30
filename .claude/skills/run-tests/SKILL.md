@@ -42,7 +42,7 @@ uv run pytest tests/test_foo.py::test_bar 2>&1 | tee "$SCRATCHPAD/pytest-rerun.l
 the compose `postgres` and `redis` services, and uses Redis DB 15. Each journey
 writes a run record to `tests/journeys/.runs/<timestamp>/`; read it for the
 LLM requests, background task failures and the error. `make test` does not
-collect journeys unless `TEST_REDIS_URL` is set. The journeys take about six minutes;
+collect journeys unless `TEST_REDIS_URL` is set. The journeys take about six minutes, and CI runs them as their own job beside `test`;
 `make test-journeys test_args="-k <name>"` runs one. `test_kit_*.py` files run one
 journey per vendor (connectors, workshop LLM engines, GPU training outcomes): a new
 vendor joins its kit's parametrize list.
