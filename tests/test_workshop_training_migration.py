@@ -1,5 +1,9 @@
+import uuid
+
+import psycopg2
+import pytest
 from django.db import connections
-from django.db.backends.sqlite3.base import DatabaseWrapper
+from django.db.backends.postgresql.base import DatabaseWrapper
 from django.db.migrations.executor import MigrationExecutor
 from django.db.migrations.recorder import MigrationRecorder
 from django.test import override_settings
@@ -9,10 +13,32 @@ BASE = ("overbae", "0004_finetuningjob_eval_cell")
 BEAT = ("django_celery_beat", "0001_initial")
 
 
-def test_consolidated_migration_preserves_data_and_applied_history(tmp_path, django_db_blocker):
+@pytest.fixture
+def scratch_database():
+    settings = connections["default"].settings_dict
+    name = f"migration_{uuid.uuid4().hex[:12]}"
+    admin = psycopg2.connect(
+        dbname="postgres",
+        user=settings["USER"],
+        password=settings["PASSWORD"],
+        host=settings["HOST"],
+        port=settings["PORT"],
+    )
+    admin.autocommit = True
+    admin.cursor().execute(f'CREATE DATABASE "{name}"')
+    try:
+        yield name
+    finally:
+        admin.cursor().execute(f'DROP DATABASE IF EXISTS "{name}" WITH (FORCE)')
+        admin.close()
+
+
+def test_consolidated_migration_preserves_data_and_applied_history(
+    scratch_database, django_db_blocker
+):
     original = connections["default"]
     database = DatabaseWrapper(
-        {**original.settings_dict, "NAME": str(tmp_path / "migration.sqlite3")}, alias="default"
+        {**original.settings_dict, "NAME": scratch_database}, alias="default"
     )
     with django_db_blocker.unblock(), override_settings(MIGRATION_MODULES={}):
         connections["default"] = database

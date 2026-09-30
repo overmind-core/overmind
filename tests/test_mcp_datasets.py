@@ -6,6 +6,7 @@ import uuid
 
 import pytest
 from conftest import frozen_dataset
+from fakes.llm import tool_call
 from mcp_fixtures import mcp_context
 
 from overbae.models import (
@@ -16,7 +17,7 @@ from overbae.models import (
     Span,
 )
 from overbae.services.datasets import land, paths, store
-from overbae.services.datasets.notebook import agent, engines
+from overbae.services.datasets.notebook import agent
 from overbae.services.mcp.catalog import CATALOG
 from overbae.services.mcp.context import MCPContext
 
@@ -165,24 +166,29 @@ def test_inspection_exposes_the_workshops_source_families_and_consumer_requireme
     assert "not the application" in preparation["consumers"]["model_evaluation"]["execution"]
 
 
-def test_requested_generation_is_active_and_queryable_without_an_mcp_approval_step(monkeypatch):
+def test_requested_generation_is_active_and_queryable_without_an_mcp_approval_step(fake_llm):
     context = mcp_context(("read", "write"))
     dataset = _dataset(context)
     land.land_rows(dataset, [{"input": "seed", "expected_output": "yes"}])
-
-    class GeneratingEngine:
-        name = "test"
-
-        def run(self, dataset, message, tools, pending):
-            tools.respond("Adding a contrasting example.")
-            tools.seed_examples({"target_rows": 2, "instruction": "Cover variants"})
-            tools.add_synthetic_rows(
-                {"examples": [{"seed_row": 0, "row": {"input": "new", "expected_output": "no"}}]}
-            )
-            yield from pending
-            return engines.Outcome(text="One example added.")
-
-    monkeypatch.setattr(engines, "select", lambda: GeneratingEngine())
+    fake_llm.stream_rounds(
+        [
+            (
+                [
+                    tool_call("seed_examples", {"target_rows": 2, "instruction": "Cover variants"}),
+                    tool_call(
+                        "add_synthetic_rows",
+                        {
+                            "examples": [
+                                {"seed_row": 0, "row": {"input": "new", "expected_output": "no"}}
+                            ]
+                        },
+                    ),
+                ],
+                "Adding a contrasting example.",
+            ),
+            ([], "One example added."),
+        ]
+    )
     list(agent.follow_up(dataset.id, "Generate and add one example"))
     result = _call("inspect_dataset", {"dataset": str(dataset.id)}, context)
     assert not result.isError

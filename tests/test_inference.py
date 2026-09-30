@@ -367,8 +367,8 @@ def test_deployed_models_retrieve_forbidden_for_other_user():
     assert r.status_code == status.HTTP_404_NOT_FOUND
 
 
-def test_deployed_models_delete_marks_deleted(settings):
-    settings.INFERENCE_API_URL = ""  # Skip actual Modal call
+def test_deployed_models_delete_marks_deleted(scripted):
+    gateway = scripted("http://inference.test").reply(json_body={"ok": True})
     u = make_user()
     p = make_project()
     make_member(u, p)
@@ -378,6 +378,7 @@ def test_deployed_models_delete_marks_deleted(settings):
     assert r.status_code == status.HTTP_204_NO_CONTENT
     m.refresh_from_db()
     assert m.status == DeployedModel.Status.DELETED
+    assert [call.method for call in gateway.calls] == ["DELETE"]
 
 
 def test_deploying_a_live_model_keeps_it_serving_without_new_gpu_work(fake_modal):

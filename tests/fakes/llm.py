@@ -61,6 +61,14 @@ class LLMRequest:
         return str((response_format.get("json_schema") or {}).get("name") or "")
 
 
+def tool_call(name: str, arguments: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "id": f"call-{name}",
+        "type": "function",
+        "function": {"name": name, "arguments": json.dumps(arguments)},
+    }
+
+
 def instance(schema: dict[str, Any], defs: dict[str, Any] | None = None) -> Any:
     defs = defs if defs is not None else schema.get("$defs", {})
     if "$ref" in schema:
@@ -103,6 +111,29 @@ class FakeLLM:
             match if callable(match) else (lambda request, needle=match: needle in request.system)
         )
         self._scripts.append((predicate, reply))
+
+    def stream_rounds(self, rounds, *, reasoning: str = "") -> None:
+        """Script the streamed tool-calling replies of an agent, one ``(calls, text)`` per round."""
+        replies = iter(rounds)
+
+        def reply(request: LLMRequest) -> dict[str, Any]:
+            calls, text = next(replies)
+            message: dict[str, Any] = {"content": None, "usage": {"cost": 0.01}}
+            if calls:
+                message["tool_calls"] = calls
+            if isinstance(text, list):
+                message["tokens"] = text
+            elif text:
+                message["content"] = text
+            if reasoning:
+                message["reasoning"] = reasoning
+                message["reasoning_details"] = [{"type": "reasoning.text", "text": reasoning}]
+            return message
+
+        self.on(lambda r: bool(r.body.get("stream")), reply)
+
+    def streamed(self) -> list[LLMRequest]:
+        return [r for r in self.requests if r.body.get("stream")]
 
     def on_json(
         self,
@@ -147,6 +178,8 @@ class FakeLLM:
 
     decisions: list[dict[str, Any]] = field(default_factory=list)
     decide: Callable[[str, dict[str, Any]], str] | None = None
+    decision_cost: float = 0.0
+    decision_confidence: float = 0.9
 
     def _decide(self, key: str, question: dict[str, Any]) -> dict[str, Any]:
         options = list(question.get("criteria") or {})
@@ -155,7 +188,7 @@ class FakeLLM:
             "type": "choice",
             "choice": choice,
             "probabilities": {option: 1.0 if option == choice else 0.0 for option in options},
-            "confidence": 0.9,
+            "confidence": self.decision_confidence,
         }
 
     def fail(
@@ -191,6 +224,9 @@ class FakeLLM:
         message = self._message(request)
         usage = message.pop("usage", {})
         finish = message.pop("finish_reason", None)
+        tokens = message.pop("tokens", None)
+        if tokens is not None:
+            message["content"] = "".join(tokens)
         request.reply = message
         prompt_tokens = max(1, len(request.text) // 4)
         completion_tokens = max(1, len(json.dumps(message)) // 4)
@@ -199,6 +235,7 @@ class FakeLLM:
             self.requests.append(request)
             self.tokens_served += request.total_tokens
         return {
+            **({"_tokens": tokens} if tokens is not None else {}),
             "id": f"fake-{len(self.requests)}",
             "object": "chat.completion",
             "created": 0,
@@ -221,12 +258,19 @@ class FakeLLM:
 
     def stream(self, request: LLMRequest) -> bytes:
         body = self.completion(request)
+        tokens = body.pop("_tokens", None)
         choice = body["choices"][0]
         delta = {"role": "assistant", **{k: v for k, v in choice["message"].items() if k != "role"}}
         for index, call in enumerate(delta.get("tool_calls") or []):
             call["index"] = index
+        if tokens is not None:
+            delta.pop("content", None)
+        pieces = [delta, *({"content": token} for token in tokens or [])]
         chunks = [
-            {**body, "object": "chat.completion.chunk", "choices": [{"index": 0, "delta": delta}]},
+            *(
+                {**body, "object": "chat.completion.chunk", "choices": [{"index": 0, "delta": d}]}
+                for d in pieces
+            ),
             {
                 **body,
                 "object": "chat.completion.chunk",
@@ -287,11 +331,9 @@ class FakeLLM:
             request = LLMRequest(url=url, body=body)
             if body.get("stream"):
                 return 200, {"content-type": "text/event-stream"}, self.stream(request)
-            return (
-                200,
-                {"content-type": "application/json"},
-                json.dumps(self.completion(request)).encode(),
-            )
+            completion = self.completion(request)
+            completion.pop("_tokens", None)
+            return 200, {"content-type": "application/json"}, json.dumps(completion).encode()
         if method == "POST" and url.rstrip("/").endswith("/systemone"):
             body = json.loads(raw or b"{}")
             with self._lock:
@@ -304,7 +346,7 @@ class FakeLLM:
                 "id": f"fake-decision-{len(self.decisions)}",
                 "model": body.get("model"),
                 "answers": answers,
-                "usage": {"input_tokens": 10, "output_tokens": 1, "cost": 0.0},
+                "usage": {"input_tokens": 10, "output_tokens": 1, "cost": self.decision_cost},
             }
             return 200, {"content-type": "application/json"}, json.dumps(payload).encode()
         if method == "GET" and url.rstrip("/").endswith("/models"):

@@ -134,6 +134,8 @@ def clerk(settings, fake_llm) -> ClerkAPI:
 @pytest.fixture(autouse=True)
 def _openrouter_key(monkeypatch):
     monkeypatch.setenv("OPENROUTER_API_KEY", "offline-test-key")
+    # The Cursor SDK dials out from a bridge process the socket guard cannot see.
+    monkeypatch.delenv("CURSOR_API_KEY", raising=False)
 
 
 @pytest.fixture(autouse=True)
