@@ -146,7 +146,6 @@ def test_a_bad_request_is_not_retried(fake_llm, slept):
     assert _attempts_until_refused(fake_llm, 400, "bad request") == 1
 
 
-@pytest.mark.xfail(strict=True, reason="the OpenAI SDK retries a 500 twice before our check")
 @pytest.mark.parametrize("message", ["Missing credentials", "error code: authentication_error"])
 def test_a_credential_error_fails_on_the_first_attempt(fake_llm, slept, message):
     assert _attempts_until_refused(fake_llm, 500, message) == 1

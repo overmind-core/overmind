@@ -122,7 +122,6 @@ def test_empty_per_turn_generation_is_degraded(fake_llm):
     assert sample.degraded_reason.startswith("no_decisions:")
 
 
-@pytest.mark.xfail(strict=True, reason="the OpenAI SDK turns a soft time limit into a retry")
 @pytest.mark.parametrize("method", ["run_capability", "generate_decision"])
 def test_generation_does_not_swallow_worker_soft_timeout(fake_llm, slept, method):
     calls = []
@@ -140,6 +139,20 @@ def test_generation_does_not_swallow_worker_soft_timeout(fake_llm, slept, method
             tool_provider=runner.ReplayToolProvider(),
             model="gpt-5-mini",
         )
+
+
+def test_worker_timeout_stops_the_remaining_recorded_turns(fake_llm):
+    calls = []
+
+    def timeout(request):
+        calls.append(request)
+        raise SoftTimeLimitExceeded()
+
+    fake_llm.on(lambda r: r.model == "openai/gpt-5-mini", timeout)
+    sample = _prepare(_sample(turns=2))
+    assert len(calls) == 1
+    assert sample.error == "generation timed out (exceeded soft_time_limit)"
+    assert not sample.trajectory
 
 
 @pytest.mark.parametrize("failure", [False, True])

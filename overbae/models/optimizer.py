@@ -195,7 +195,7 @@ class OptimizerExperiment(models.Model):
         # Wait-states: the FSM parks in EVALUATING_* while an iteration's EvalRun
         # grades on the worker, and the eval-complete callback moves it to
         # EVALUATED_*. Reached only when the capability has runnable evaluators;
-        # otherwise BASELINE/ITERATING score inline.
+        # otherwise evaluate_iteration scores inline.
         EVALUATING_BASELINE_OUTPUTS = "evaluating_baseline_outputs"
         EVALUATED_BASELINE_OUTPUTS = "evaluated_baseline_outputs"
         ITERATING = "iterating"
@@ -205,6 +205,8 @@ class OptimizerExperiment(models.Model):
         FAILED = "failed"
         CANCELLED = "cancelled"
         PAUSED = "paused"
+
+    TERMINAL = (Status.COMPLETED, Status.FAILED, Status.CANCELLED)
 
     class OpenRouterKeySource(models.TextChoices):
         PLATFORM = "platform", "Overmind credits"
@@ -286,59 +288,6 @@ class OptimizerExperiment(models.Model):
     def generate_next(self):
         """Score posted outputs. The client owns codegen, smoke, and datapoint runs."""
         S = self.Status  # noqa: N806
-        IC = OptimizerIteration.Status  # noqa: N806
-        CC = OptimizerCommand.Status  # noqa: N806
-
-        if self.status in (S.COMPLETED, S.FAILED, S.CANCELLED, S.PAUSED):
-            return
-
-        if self.status in (
-            S.SCHEDULED,
-            S.EVALUATED_BASELINE_OUTPUTS,
-            S.EVALUATED_CANDIDATE_OUTPUTS,
-        ):
-            return
-
-        if self.status in (S.BASELINE, S.ITERATING):
-            order = 0 if self.status == S.BASELINE else self.current_iteration + 1
-            iteration = self.iterations.filter(order=order).first()
-            if iteration is None:
-                return
-            if iteration.status == IC.FAILED:
-                self._fail(
-                    "baseline iteration failed"
-                    if order == 0
-                    else f"iteration {iteration.order} failed"
-                )
-                return
-            pending_cmds = self.commands.filter(
-                iteration=iteration, status__in=[CC.PENDING, CC.RUNNING]
-            )
-            if pending_cmds.exists():
-                return
-            if iteration.status not in (IC.EVALUATED, IC.COMPLETED):
-                if self._has_runnable_evaluators():
-                    self.status = (
-                        S.EVALUATING_BASELINE_OUTPUTS
-                        if order == 0
-                        else S.EVALUATING_CANDIDATE_OUTPUTS
-                    )
-                    self.save(update_fields=["status", "updated_at"])
-                    return
-                iteration.evaluate()
-                self._record_eval_scores(iteration)
-                if order > 0:
-                    self.current_iteration = max(self.current_iteration, order)
-                self.status = (
-                    S.EVALUATED_BASELINE_OUTPUTS if order == 0 else S.EVALUATED_CANDIDATE_OUTPUTS
-                )
-                self.save()
-                return
-            self.status = (
-                S.EVALUATED_BASELINE_OUTPUTS if order == 0 else S.EVALUATED_CANDIDATE_OUTPUTS
-            )
-            self.save()
-            return
 
         if self.status == S.EVALUATING_BASELINE_OUTPUTS:
             if self._iteration_eval_pending(0):
@@ -414,11 +363,17 @@ class OptimizerExperiment(models.Model):
             self.save(update_fields=["failure_reason", "status", "updated_at"])
         transaction.on_commit(self._charge_cursor_usage)
 
-    def cancel(self):
-        if self.status in (self.Status.COMPLETED, self.Status.FAILED, self.Status.CANCELLED):
-            return
+    def _lock_unless_terminal(self) -> bool:
+        """Take the row lock inside the caller's transaction; False once the run has ended."""
+        self.status = (
+            type(self).objects.select_for_update().values_list("status", flat=True).get(pk=self.pk)
+        )
+        return self.status not in self.TERMINAL
 
+    def cancel(self):
         with transaction.atomic():
+            if not self._lock_unless_terminal():
+                return
             self._stop_children(reason="experiment cancelled")
             self.status = self.Status.CANCELLED
             self.save(update_fields=["status", "updated_at"])
@@ -496,9 +451,6 @@ class OptimizerExperiment(models.Model):
                 return members
         return runnable_capability_evaluators(self.capability)
 
-    def _has_runnable_evaluators(self) -> bool:
-        return bool(self._runnable_evaluators())
-
     def start_iteration_eval(self, iteration_order: int) -> bool:
         """Kick off grading for every candidate in one iteration, one
         :class:`EvalRun` each so they list separately on the evals page.
@@ -558,16 +510,19 @@ class OptimizerExperiment(models.Model):
         Called by :func:`optimizer_on_candidate_eval_complete` after the last
         candidate clears its pending marker.
         """
-        iteration = OptimizerIteration.objects.get(experiment=self, order=iteration_order)
-        self._record_eval_scores(iteration)
-        if iteration_order > 0:
-            self.current_iteration = max(self.current_iteration, iteration_order)
-        self.status = (
-            self.Status.EVALUATED_BASELINE_OUTPUTS
-            if iteration_order == 0
-            else self.Status.EVALUATED_CANDIDATE_OUTPUTS
-        )
-        self.save()
+        with transaction.atomic():
+            if not self._lock_unless_terminal():
+                return
+            iteration = OptimizerIteration.objects.get(experiment=self, order=iteration_order)
+            self._record_eval_scores(iteration)
+            if iteration_order > 0:
+                self.current_iteration = max(self.current_iteration, iteration_order)
+            self.status = (
+                self.Status.EVALUATED_BASELINE_OUTPUTS
+                if iteration_order == 0
+                else self.Status.EVALUATED_CANDIDATE_OUTPUTS
+            )
+            self.save()
 
     def build_candidate_eval_run(self, candidate: OptimizerCandidate):
         """Create one :class:`EvalRun` for a candidate and pre-seed its samples:
@@ -934,7 +889,7 @@ class OptimizerIteration(models.Model):
         elif statuses & {CS.RUNNING_COMMANDS, CS.PENDING}:
             new = self.Status.RUNNING_COMMANDS
         elif all(c.status in (CS.COMMANDS_DONE, CS.EVALUATED, CS.FAILED) for c in candidates):
-            # All-failed still rolls up to EVALUATING so evaluate() scores ~0
+            # All-failed still rolls up to EVALUATING so grading scores ~0
             # rather than hard-failing the batch. Only experiment._fail /
             # _stop_children set FAILED here.
             new = self.Status.EVALUATING
@@ -944,22 +899,6 @@ class OptimizerIteration(models.Model):
         if new != self.status:
             self.status = new
             self.save(update_fields=["status"])
-
-    def evaluate(self):
-        """Score every candidate in this iteration, in parallel."""
-        self.status = self.Status.EVALUATING
-        self.save(update_fields=["status"])
-        candidates = list(self.candidates.all())
-
-        with ThreadPoolExecutor(max_workers=min(20, len(candidates))) as executor:
-            futures = {executor.submit(c.evaluate): c for c in candidates}
-            for future in as_completed(futures):
-                future.result()
-
-        best = max((c.score for c in self.candidates.all()), default=0.0)
-        self.scores = {"best": best}
-        self.status = self.Status.EVALUATED
-        self.save(update_fields=["status", "scores"])
 
 
 class OptimizerCandidate(models.Model):
@@ -1265,7 +1204,7 @@ def optimizer_on_candidate_eval_complete(
     candidate of an iteration also finalises the iteration and resumes the FSM.
     """
     experiment = OptimizerExperiment.objects.filter(id=experiment_id).first()
-    if experiment is None:
+    if experiment is None or experiment.status in experiment.TERMINAL:
         return
 
     candidate = OptimizerCandidate.objects.filter(id=candidate_id).first()

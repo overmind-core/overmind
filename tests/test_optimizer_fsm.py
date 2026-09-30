@@ -225,7 +225,6 @@ def test_cancel_leaves_a_finished_experiment_alone(terminal):
     assert candidate.status == OptimizerCandidate.Status.COMMANDS_DONE
 
 
-@pytest.mark.xfail(strict=True, reason="a grading callback overwrites a cancel")
 def test_a_grading_run_that_finishes_after_cancel_does_not_revive_the_experiment():
     user = make_user()
     exp = _experiment(user=user)
@@ -255,7 +254,6 @@ def test_an_advance_during_candidate_grading_waits_for_the_grades():
     assert exp.failure_reason == ""
 
 
-@pytest.mark.xfail(strict=True, reason="a queued advance grades an iteration before its outputs")
 def test_a_late_advance_does_not_grade_an_iteration_still_receiving_outputs(eager):
     exp = _experiment()
     _run(exp, 0, ["four", "paris"])
