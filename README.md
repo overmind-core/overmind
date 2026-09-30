@@ -112,7 +112,11 @@ def handle(request: dict, session_id: str) -> dict:
 
 ## Connect your coding agent
 
-Overmind ships an MCP server at `/api/mcp/`: 32 tools, 14 resources and 11 prompts covering everything the Console can do, scoped to one project by its API key. Every tool declares what it costs to run (`free`, `compute`, `llm`, `gpu`) and none can delete anything. `overmind init --ide <cursor|claude|opencode|codex>` writes the config for you, or by hand:
+Overmind ships an MCP server at `/api/mcp/` with tools, resources and prompts for the platform's agent workflows. Account API keys and OAuth connections can access every active project their account is authorized to use: call `list_projects`, then pass the selected `project_id` on project tools and resource URIs. Membership is checked on every operation. Project API keys remain limited to their configured project. Every tool declares what it costs to run (`free`, `compute`, `llm`, `gpu`) and none can delete anything.
+
+The [optional plugin](overmind/README.md#mcp-and-optional-plugins) packages the MCP connection, Overmind branding and nine workflow skills. OAuth connections remain authorized until revoked; access tokens expire after one hour and refresh tokens rotate. Direct MCP connections can use an API key without OAuth or a plugin.
+
+`overmind init --ide <cursor|claude|opencode|codex>` prepares the local configuration and `overmind sync` installs the repository's project API key. To configure an API key by hand:
 
 <details>
 <summary><b>Cursor</b> — <code>.cursor/mcp.json</code></summary>
@@ -174,6 +178,7 @@ http_headers = { "X-Api-Key" = "ovr_…" }
 
 | Domain          | Tools                                                                                                                                               |
 | --------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Projects        | `list_projects`                                                                                                                                     |
 | Observability   | `inspect_capability_health`, `query_failures`, `query_traces`, `query_task_executions`, `get_job`                                                   |
 | Datasets        | `list_datasets`, `inspect_dataset`, `query_dataset`, `create_dataset_from_traces`, `message_dataset_agent`, `run_dataset`                           |
 | Evaluations     | `check_evaluation_readiness`, `upsert_evaluator`, `run_evaluation`, `compare_evaluations`, `annotate_evaluation_sample`                             |
