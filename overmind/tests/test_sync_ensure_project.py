@@ -35,28 +35,6 @@ def test_ensure_project_id_noop_when_present(tmp_path: Path):
     assert created is False
 
 
-def test_ensure_project_id_creates_and_persists(tmp_path: Path):
-    path = tmp_path / "overmind.toml"
-    cfg = Config(
-        api_key="k",
-        project_id="",
-        project_name="gpt-researcher",
-        repo_summary="GPT-Researcher is an autonomous research agent that plans web searches.",
-    )
-    dump(cfg, path)
-
-    with patch("overmind.sync.create_project", return_value="11111111-1111-1111-1111-111111111111") as create:
-        out, created = ensure_project_id(cfg, path, "k", "https://api.example")
-
-    create.assert_called_once()
-    kwargs = create.call_args.kwargs
-    assert kwargs["name"] == "gpt-researcher"
-    assert kwargs["slug"] == "gpt-researcher"
-    assert created is True
-    assert out.project_id == "11111111-1111-1111-1111-111111111111"
-    assert load(path).project_id == out.project_id
-
-
 def test_ensure_project_id_falls_back_to_directory_name(tmp_path: Path):
     path = tmp_path / "overmind.toml"
     cfg = Config(

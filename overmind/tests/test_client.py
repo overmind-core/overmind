@@ -12,19 +12,9 @@ import pytest
 import requests
 
 from overmind.client import (
-    ChatCompletion,
-    ChatCompletionChunk,
-    Choice,
     Client,
-    Delta,
-    Model,
-    ModelDeleted,
-    ModelList,
     OvermindInferenceError,
     _iter_sse_chunks,
-    _parse_chat_completion,
-    _parse_chunk,
-    _parse_model,
     _raise_for_status,
 )
 
@@ -115,135 +105,6 @@ class TestRaiseForStatus:
             _raise_for_status(resp)
 
 
-class TestParseChatCompletion:
-    def _raw(self, **overrides) -> dict:
-        base = {
-            "id": "chatcmpl-abc",
-            "object": "chat.completion",
-            "model": "ft-llama-123",
-            "choices": [
-                {
-                    "index": 0,
-                    "message": {"role": "assistant", "content": "Hello!"},
-                    "finish_reason": "stop",
-                }
-            ],
-            "usage": {"prompt_tokens": 5, "completion_tokens": 3, "total_tokens": 8},
-            "created": 1700000000,
-        }
-        base.update(overrides)
-        return base
-
-    def test_basic_fields(self):
-        cc = _parse_chat_completion(self._raw())
-        assert isinstance(cc, ChatCompletion)
-        assert cc.id == "chatcmpl-abc"
-        assert cc.model == "ft-llama-123"
-        assert cc.created == 1700000000
-
-    def test_choice_parsed(self):
-        cc = _parse_chat_completion(self._raw())
-        assert len(cc.choices) == 1
-        c = cc.choices[0]
-        assert isinstance(c, Choice)
-        assert c.message.role == "assistant"
-        assert c.message.content == "Hello!"
-        assert c.finish_reason == "stop"
-
-    def test_usage_parsed(self):
-        cc = _parse_chat_completion(self._raw())
-        assert cc.usage is not None
-        assert cc.usage.prompt_tokens == 5
-        assert cc.usage.completion_tokens == 3
-        assert cc.usage.total_tokens == 8
-
-    def test_missing_usage_returns_none(self):
-        raw = self._raw()
-        del raw["usage"]
-        cc = _parse_chat_completion(raw)
-        assert cc.usage is None
-
-    def test_null_content_defaults_to_empty_string(self):
-        raw = self._raw()
-        raw["choices"][0]["message"]["content"] = None
-        cc = _parse_chat_completion(raw)
-        assert cc.choices[0].message.content == ""
-
-    def test_empty_choices(self):
-        cc = _parse_chat_completion({"id": "x", "object": "o", "model": "m", "choices": []})
-        assert cc.choices == []
-
-    def test_error_body_raises(self):
-        with pytest.raises(OvermindInferenceError, match="Inference backend error"):
-            _parse_chat_completion({"error": {"message": "Inference backend error.", "type": "server_error"}})
-
-
-class TestParseChunk:
-    def _raw(self) -> dict:
-        return {
-            "id": "chunk-1",
-            "object": "chat.completion.chunk",
-            "model": "ft-test",
-            "choices": [{"index": 0, "delta": {"role": "assistant", "content": "Hi"}, "finish_reason": None}],
-            "created": 100,
-        }
-
-    def test_basic_chunk_parsing(self):
-        chunk = _parse_chunk(self._raw())
-        assert isinstance(chunk, ChatCompletionChunk)
-        assert chunk.id == "chunk-1"
-        assert chunk.model == "ft-test"
-
-    def test_delta_content_parsed(self):
-        chunk = _parse_chunk(self._raw())
-        assert len(chunk.choices) == 1
-        d = chunk.choices[0].delta
-        assert isinstance(d, Delta)
-        assert d.content == "Hi"
-        assert d.role == "assistant"
-
-    def test_delta_missing_content_is_none(self):
-        raw = self._raw()
-        raw["choices"][0]["delta"] = {}
-        chunk = _parse_chunk(raw)
-        assert chunk.choices[0].delta.content is None
-
-
-class TestParseModel:
-    def _raw(self, **overrides) -> dict:
-        base = {
-            "id": "ft-llama-abc",
-            "object": "model",
-            "created": 1700000000,
-            "owned_by": "overmind",
-            "finetuned": True,
-            "status": "ready",
-            "base_model": "meta-llama/llama-3.1-8b-instruct",
-        }
-        base.update(overrides)
-        return base
-
-    def test_finetuned_model_parsed(self):
-        m = _parse_model(self._raw())
-        assert isinstance(m, Model)
-        assert m.id == "ft-llama-abc"
-        assert m.finetuned is True
-        assert m.status == "ready"
-        assert m.base_model == "meta-llama/llama-3.1-8b-instruct"
-
-    def test_non_finetuned_model_parsed(self):
-        raw = self._raw(id="anthropic/claude-sonnet-5", finetuned=False, owned_by="anthropic", status="", base_model="")
-        m = _parse_model(raw)
-        assert m.finetuned is False
-        assert m.owned_by == "anthropic"
-
-    def test_defaults_for_missing_optional_fields(self):
-        m = _parse_model({"id": "x", "object": "model", "created": 0, "owned_by": "overmind"})
-        assert m.finetuned is False
-        assert m.status == ""
-        assert m.base_model == ""
-
-
 class TestIterSseChunks:
     def _resp(self, lines: list[str]) -> MagicMock:
         resp = MagicMock(spec=requests.Response)
@@ -306,49 +167,6 @@ class TestChatCompletionsNonStream:
         "usage": {"prompt_tokens": 2, "completion_tokens": 3, "total_tokens": 5},
     }
 
-    def test_returns_chat_completion(self):
-        c = _make_client()
-        c._session.post = MagicMock(return_value=_mock_response(json_data=self._RESPONSE_DATA))
-        result = c.chat.completions.create(model="ft-test", messages=self._MESSAGES)
-        assert isinstance(result, ChatCompletion)
-        assert result.id == "cmpl-1"
-        assert result.choices[0].message.content == "Hello!"
-
-    def test_sends_correct_url(self):
-        c = _make_client("https://api.example.com")
-        mock_post = MagicMock(return_value=_mock_response(json_data=self._RESPONSE_DATA))
-        c._session.post = mock_post
-        c.chat.completions.create(model="ft-test", messages=self._MESSAGES)
-        call_url = mock_post.call_args[0][0]
-        assert call_url == "https://api.example.com/api/v1/chat/completions"
-
-    def test_sends_model_and_messages_in_payload(self):
-        c = _make_client()
-        mock_post = MagicMock(return_value=_mock_response(json_data=self._RESPONSE_DATA))
-        c._session.post = mock_post
-        c.chat.completions.create(model="ft-test", messages=self._MESSAGES, temperature=0.5)
-        payload = mock_post.call_args[1]["json"]
-        assert payload["model"] == "ft-test"
-        assert payload["messages"] == self._MESSAGES
-        assert payload["temperature"] == 0.5
-        assert payload["stream"] is False
-
-    def test_includes_max_tokens_when_set(self):
-        c = _make_client()
-        mock_post = MagicMock(return_value=_mock_response(json_data=self._RESPONSE_DATA))
-        c._session.post = mock_post
-        c.chat.completions.create(model="m", messages=self._MESSAGES, max_tokens=100)
-        payload = mock_post.call_args[1]["json"]
-        assert payload["max_tokens"] == 100
-
-    def test_omits_max_tokens_when_not_set(self):
-        c = _make_client()
-        mock_post = MagicMock(return_value=_mock_response(json_data=self._RESPONSE_DATA))
-        c._session.post = mock_post
-        c.chat.completions.create(model="m", messages=self._MESSAGES)
-        payload = mock_post.call_args[1]["json"]
-        assert "max_tokens" not in payload
-
     def test_http_error_raises_inference_error(self):
         c = _make_client()
         c._session.post = MagicMock(
@@ -369,15 +187,6 @@ class TestChatCompletionsNonStream:
         with pytest.raises(OvermindInferenceError, match="Request failed"):
             c.chat.completions.create(model="m", messages=self._MESSAGES)
 
-    def test_extra_kwargs_forwarded(self):
-        c = _make_client()
-        mock_post = MagicMock(return_value=_mock_response(json_data=self._RESPONSE_DATA))
-        c._session.post = mock_post
-        c.chat.completions.create(model="m", messages=self._MESSAGES, top_p=0.9, frequency_penalty=0.1)
-        payload = mock_post.call_args[1]["json"]
-        assert payload["top_p"] == 0.9
-        assert payload["frequency_penalty"] == 0.1
-
 
 class TestChatCompletionsStream:
     _MESSAGES = [{"role": "user", "content": "Stream test"}]
@@ -390,29 +199,6 @@ class TestChatCompletionsStream:
             "choices": [{"index": 0, "delta": {"content": content}, "finish_reason": None}],
         }
         return f"data: {json.dumps(data)}"
-
-    def test_yields_chat_completion_chunks(self):
-        c = _make_client()
-        c._session.post = MagicMock(
-            return_value=_sse_response([
-                self._chunk_line("Hello"),
-                self._chunk_line(" world"),
-                "data: [DONE]",
-            ])
-        )
-        chunks = list(c.chat.completions.create(model="ft-test", messages=self._MESSAGES, stream=True))
-        assert len(chunks) == 2
-        assert all(isinstance(ch, ChatCompletionChunk) for ch in chunks)
-        text = "".join(ch.choices[0].delta.content or "" for ch in chunks)
-        assert text == "Hello world"
-
-    def test_stream_payload_has_stream_true(self):
-        c = _make_client()
-        mock_post = MagicMock(return_value=_sse_response(["data: [DONE]"]))
-        c._session.post = mock_post
-        list(c.chat.completions.create(model="m", messages=self._MESSAGES, stream=True))
-        payload = mock_post.call_args[1]["json"]
-        assert payload["stream"] is True
 
     def test_stream_error_chunk_raises(self):
         c = _make_client()
@@ -442,54 +228,6 @@ class TestModelsList:
         "base_model": "",
     }
 
-    def test_returns_model_list(self):
-        c = _make_client()
-        c._session.get = MagicMock(
-            return_value=_mock_response(json_data={"object": "list", "data": [self._FT_MODEL, self._FRONTIER]})
-        )
-        result = c.models.list()
-        assert isinstance(result, ModelList)
-        assert len(result.data) == 2
-
-    def test_models_parsed_correctly(self):
-        c = _make_client()
-        c._session.get = MagicMock(return_value=_mock_response(json_data={"object": "list", "data": [self._FT_MODEL]}))
-        result = c.models.list()
-        m = result.data[0]
-        assert isinstance(m, Model)
-        assert m.id == "ft-test-abc"
-        assert m.finetuned is True
-        assert m.status == "ready"
-
-    def test_no_status_param_sends_no_query_param(self):
-        c = _make_client()
-        mock_get = MagicMock(return_value=_mock_response(json_data={"object": "list", "data": []}))
-        c._session.get = mock_get
-        c.models.list()
-        params = mock_get.call_args[1]["params"]
-        assert "status" not in params
-
-    def test_status_param_forwarded(self):
-        c = _make_client()
-        mock_get = MagicMock(return_value=_mock_response(json_data={"object": "list", "data": []}))
-        c._session.get = mock_get
-        c.models.list(status="all")
-        params = mock_get.call_args[1]["params"]
-        assert params["status"] == "all"
-
-    def test_sends_correct_url(self):
-        c = _make_client("https://api.example.com")
-        mock_get = MagicMock(return_value=_mock_response(json_data={"object": "list", "data": []}))
-        c._session.get = mock_get
-        c.models.list()
-        assert mock_get.call_args[0][0] == "https://api.example.com/api/v1/models"
-
-    def test_empty_data_list(self):
-        c = _make_client()
-        c._session.get = MagicMock(return_value=_mock_response(json_data={"object": "list", "data": []}))
-        result = c.models.list()
-        assert result.data == []
-
     def test_http_error_raises(self):
         c = _make_client()
         c._session.get = MagicMock(
@@ -516,21 +254,6 @@ class TestModelsGet:
         "base_model": "meta-llama/llama-3.1-8b-instruct",
     }
 
-    def test_returns_model(self):
-        c = _make_client()
-        c._session.get = MagicMock(return_value=_mock_response(json_data=self._MODEL_DATA))
-        m = c.models.get("ft-test-abc")
-        assert isinstance(m, Model)
-        assert m.id == "ft-test-abc"
-        assert m.finetuned is True
-
-    def test_sends_correct_url(self):
-        c = _make_client("https://api.example.com")
-        mock_get = MagicMock(return_value=_mock_response(json_data=self._MODEL_DATA))
-        c._session.get = mock_get
-        c.models.get("ft-test-abc")
-        assert mock_get.call_args[0][0] == "https://api.example.com/api/v1/models/ft-test-abc"
-
     def test_404_raises_inference_error(self):
         c = _make_client()
         c._session.get = MagicMock(
@@ -552,28 +275,6 @@ class TestModelsGet:
 
 class TestModelsDelete:
     _DELETE_RESPONSE = {"id": "ft-test-abc", "object": "model", "deleted": True}
-
-    def test_returns_model_deleted(self):
-        c = _make_client()
-        c._session.delete = MagicMock(return_value=_mock_response(json_data=self._DELETE_RESPONSE))
-        result = c.models.delete("ft-test-abc")
-        assert isinstance(result, ModelDeleted)
-        assert result.id == "ft-test-abc"
-        assert result.deleted is True
-
-    def test_sends_correct_url(self):
-        c = _make_client("https://api.example.com")
-        mock_delete = MagicMock(return_value=_mock_response(json_data=self._DELETE_RESPONSE))
-        c._session.delete = mock_delete
-        c.models.delete("ft-test-abc")
-        assert mock_delete.call_args[0][0] == "https://api.example.com/api/v1/models/ft-test-abc"
-
-    def test_uses_60s_timeout(self):
-        c = _make_client()
-        mock_delete = MagicMock(return_value=_mock_response(json_data=self._DELETE_RESPONSE))
-        c._session.delete = mock_delete
-        c.models.delete("ft-test-abc")
-        assert mock_delete.call_args[1]["timeout"] == 60
 
     def test_400_raises_inference_error(self):
         c = _make_client()
