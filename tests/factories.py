@@ -25,6 +25,7 @@ from overbae.models import (
     User,
     Verdict,
 )
+from overbae.services.behaviour.ledger import TurnTransitions
 
 
 def make_user(email: str | None = None, **fields: Any) -> User:
@@ -145,6 +146,36 @@ def reconcile_training(active_tasks: list[dict] | None = None) -> list[tuple[str
         patch("overbae.tasks.model_deployment.register_finetuned_model.delay"),
     ):
         reconcile_finetuning_jobs()
+    return sent
+
+
+def classifier_replies(fake_llm, *outcomes):
+    """Script the classifier's replies in order: a list of transitions, None for an
+    unparsable reply, or an exception for a provider failure. The last repeats."""
+    fake_llm.forget()
+    sent = []
+
+    def current():
+        outcome = outcomes[min(len(sent), len(outcomes) - 1)]
+        return getattr(outcome, "parsed", outcome)
+
+    def failing(request):
+        if request.schema_name == "TurnTransitions" and isinstance(current(), Exception):
+            sent.append(request)
+            return True
+        return False
+
+    def reply(request):
+        outcome = current()
+        sent.append(request)
+        if outcome is None:
+            return "not json"
+        if isinstance(outcome, TurnTransitions):
+            return outcome.model_dump_json()
+        return TurnTransitions(transitions=outcome).model_dump_json()
+
+    fake_llm.fail(failing, 400, "down")
+    fake_llm.on(lambda r: r.schema_name == "TurnTransitions", reply)
     return sent
 
 

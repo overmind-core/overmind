@@ -112,6 +112,10 @@ class FakeLLM:
         )
         self._scripts.append((predicate, reply))
 
+    def forget(self) -> None:
+        self._scripts.clear()
+        self._failures.clear()
+
     def stream_rounds(self, rounds, *, reasoning: str = "") -> None:
         """Script the streamed tool-calling replies of an agent, one ``(calls, text)`` per round."""
         replies = iter(rounds)
