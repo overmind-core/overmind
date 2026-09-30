@@ -220,7 +220,7 @@ def test_requested_generation_is_active_and_queryable_without_an_mcp_approval_st
             yield from pending
             return engines.Outcome(text="One example added.")
 
-    monkeypatch.setattr(engines, "select", lambda: GeneratingEngine())
+    monkeypatch.setattr(engines, "select", lambda user=None: GeneratingEngine())
     list(agent.follow_up(dataset.id, "Generate and add one example"))
     result = _call("inspect_dataset", {"dataset": str(dataset.id)}, context)
     assert not result.isError

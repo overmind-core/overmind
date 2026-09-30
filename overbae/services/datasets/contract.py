@@ -23,6 +23,7 @@ from overbae.services.finetuning_tool_validation import tool_schema_errors
 TRAIN = "train"
 EVAL = "eval"
 PENDING = "pending"
+EXPLORE = "explore"
 _LEGACY_INTENT = {"ft": TRAIN, "unstructured": EVAL}
 _FAILURE_SAMPLES = 10
 
@@ -30,7 +31,7 @@ _FAILURE_SAMPLES = 10
 def public_intent(value: str | None) -> str:
     """``ft`` → train, ``unstructured`` → eval; leftover rows were never rewritten."""
     raw = (value or "").strip()
-    if raw in (TRAIN, EVAL, PENDING):
+    if raw in (TRAIN, EVAL, PENDING, EXPLORE):
         return raw
     return _LEGACY_INTENT.get(raw, PENDING)
 
@@ -42,7 +43,7 @@ def stored_intents(public: str) -> tuple[str, ...]:
         return (TRAIN, "ft")
     if mapped == EVAL:
         return (EVAL, "unstructured")
-    return (PENDING,)
+    return (mapped,)
 
 
 def _missing(value: Any) -> bool:
@@ -237,29 +238,6 @@ def _has_text(df: pd.DataFrame) -> bool:
             if isinstance(value, str) and any(ch.isalpha() for ch in value):
                 return True
     return False
-
-
-def propose_intent(df: pd.DataFrame, report: dict[str, Any]) -> str:
-    """What the rows look like: a transcript table is ``train``, an input with a
-    reference is ``eval``, anything else stays ``pending``."""
-    if (report.get("train") or {}).get("ok"):
-        return TRAIN
-    if (report.get("eval") or {}).get("ok"):
-        return EVAL
-    columns = set(df.columns)
-    if "messages" in columns:
-        assistant = 0
-        for value in df["messages"].head(200).tolist():
-            value = _as_obj(value)
-            if isinstance(value, list) and any(
-                isinstance(m, dict) and m.get("role") == "assistant" for m in value
-            ):
-                assistant += 1
-        if assistant >= max(1, min(200, len(df)) // 2):
-            return TRAIN
-    if {"input", "expected_output"} <= columns or {"question", "answer"} <= columns:
-        return EVAL
-    return PENDING
 
 
 def stats(df: pd.DataFrame) -> dict[str, Any]:

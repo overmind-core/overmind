@@ -2,7 +2,7 @@
 
 A trace source lands one row per trace: the traces-table facts, the wire
 transcript, the delivered I/O and the trace's score. Landing never rejects a
-row and never triggers scoring. It proposes the capability rank and the intent.
+row and never triggers scoring. It proposes the capability rank.
 """
 
 from __future__ import annotations
@@ -132,8 +132,6 @@ def commit(
         if best["score"] > 0:
             fields["capability_id"] = best["capability_id"]
     report = contract.measure(df)
-    if dataset.intent == Dataset.Intent.PENDING:
-        fields["intent"] = contract.propose_intent(df, report)
     Dataset.objects.filter(pk=dataset.pk).update(**fields, updated_at=timezone.now())
     dataset.refresh_from_db()
     measure.frame(dataset, source, path, df=df, report=report, input_fingerprint="", seconds=0.0)

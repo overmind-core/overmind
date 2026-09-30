@@ -7,6 +7,10 @@ import { DatasetChat } from "@/components/datasets/notebook/chat";
 import { type ChatTurn, chatOf } from "@/hooks/use-datasets";
 import { type Cell, DatasetFromJSON } from "@/openapi";
 
+vi.mock("@/hooks/use-workshop-funding", () => ({
+  useWorkshopFunding: () => ({ data: undefined }),
+}));
+
 const source = { fingerprint: "source-hash", id: "source", state: "ok", title: "Source" } as Cell;
 const proposal = {
   id: "proposal",
@@ -32,6 +36,7 @@ const generated = {
 } as unknown as Cell;
 const callbacks = () => ({
   onAccept: vi.fn(),
+  onChooseIntent: vi.fn(),
   onDiscard: vi.fn(),
   onSelect: vi.fn(),
   onSend: vi.fn(),
@@ -56,6 +61,82 @@ afterEach(() => {
 });
 
 describe("Workshop chat", () => {
+  it("keeps a streamed sentence intact across tool activity and reload", async () => {
+    const prefix = 'Treating "Extraing training data" as an';
+    const text = `${prefix} explicit training request.`;
+    const steps = [
+      {
+        id: "inspect",
+        phase: "tool_start" as const,
+        text_offset: prefix.length,
+        title: "Inspect rows",
+        type: "activity" as const,
+      },
+    ];
+    const props = { ...callbacks(), cells: [source], turns: [] };
+    const { rerender } = render(
+      <DatasetChat {...props} busy live={{ cells: [], steps, text: prefix }} />
+    );
+    rerender(<DatasetChat {...props} busy live={{ cells: [], steps, text }} />);
+    const paragraph = await screen.findByText(text, { selector: "p" });
+    expect(paragraph.contains(screen.getByRole("region", { name: "Thinking and steps" }))).toBe(
+      false
+    );
+    rerender(
+      <DatasetChat
+        {...props}
+        busy={false}
+        live={null}
+        turns={[{ at: new Date().toISOString(), role: "agent", status: "complete", steps, text }]}
+      />
+    );
+    expect(await screen.findByText(text, { selector: "p" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "View steps" })).toBeTruthy();
+  });
+
+  it("restores an unanswered intent question with no default and keeps it on submission failure", async () => {
+    const onChooseIntent = vi.fn().mockResolvedValueOnce(false).mockResolvedValueOnce(true);
+    const turns = chatOf(
+      DatasetFromJSON({
+        cells: [],
+        chat: [
+          {
+            at: new Date().toISOString(),
+            id: "intent-question",
+            role: "agent",
+            status: "awaiting_intent",
+            text: "What will you use this data for?",
+          },
+        ],
+      })
+    );
+    render(
+      <DatasetChat
+        {...callbacks()}
+        busy={false}
+        cells={[source]}
+        live={null}
+        onChooseIntent={onChooseIntent}
+        turns={turns}
+      />
+    );
+    expect(screen.queryByText("Incomplete")).toBeNull();
+    expect(screen.getAllByRole("radio")).toHaveLength(3);
+    expect(
+      screen.getAllByRole("radio").every((radio) => !(radio as HTMLInputElement).checked)
+    ).toBe(true);
+    expect((screen.getByRole("button", { name: "Continue" }) as HTMLButtonElement).disabled).toBe(
+      true
+    );
+    fireEvent.click(screen.getByRole("radio", { name: "Data exploration" }));
+    await act(async () => fireEvent.click(screen.getByRole("button", { name: "Continue" })));
+    expect(onChooseIntent).toHaveBeenCalledWith("explore", "intent-question");
+    expect(
+      (screen.getByRole("radio", { name: "Data exploration" }) as HTMLInputElement).checked
+    ).toBe(true);
+    expect(screen.getByRole("button", { name: "Continue" })).toBeTruthy();
+  });
+
   it.each([
     "running",
     "awaiting_approval",

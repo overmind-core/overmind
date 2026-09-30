@@ -15,6 +15,7 @@ import { Attachment } from "@/components/datasets/attachment";
 import { WorkshopActivity, WorkshopThinking } from "@/components/datasets/notebook/activity";
 import { chatSections, notebookFlow } from "@/components/datasets/notebook/chat-flow";
 import { ProposalImpact } from "@/components/datasets/notebook/preparation";
+import { WorkshopFundingControl } from "@/components/datasets/workshop-funding";
 import { WorkshopStatusIcon } from "@/components/datasets/workshop-status";
 import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
@@ -24,9 +25,83 @@ import { Icon, type IconName } from "@/components/ui/icons";
 import { MarkdownContent } from "@/components/ui/markdown";
 import type { ChatCellRef, ChatTurn, WorkshopProgress } from "@/hooks/use-datasets";
 import { useDatasetUploads } from "@/hooks/use-uploads";
+import { useWorkshopFunding } from "@/hooks/use-workshop-funding";
 import { errorMessage } from "@/lib/notify";
 import { cn } from "@/lib/utils";
-import type { Cell } from "@/openapi";
+import type { Cell, ChatRequest } from "@/openapi";
+
+type IntentChoice = NonNullable<ChatRequest["intentChoice"]>;
+
+function IntentQuestion({
+  turnId,
+  busy,
+  onChoose,
+}: {
+  turnId: string;
+  busy: boolean;
+  onChoose: (intent: IntentChoice, turnId: string) => Promise<boolean | undefined> | undefined;
+}) {
+  const [choice, setChoice] = useState<IntentChoice | null>(null);
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState("");
+  const sending = useRef(false);
+  const submit = async () => {
+    if (!choice || busy || sending.current) return;
+    sending.current = true;
+    setSubmitting(true);
+    setError("");
+    try {
+      if ((await onChoose(choice, turnId)) !== false) return;
+    } catch (err) {
+      setError(errorMessage(err, "Couldn't save your choice. Try again."));
+    }
+    sending.current = false;
+    setSubmitting(false);
+  };
+  return (
+    <Card className="mb-2 bg-popover p-3">
+      <fieldset disabled={busy || submitting}>
+        <legend className="mb-3 text-sm text-foreground">What will you use this data for?</legend>
+        <div className="flex flex-wrap items-center gap-x-5 gap-y-3">
+          {(
+            [
+              ["train", "Training"],
+              ["eval", "Eval"],
+              ["explore", "Data exploration"],
+            ] as const
+          ).map(([value, label]) => (
+            <label className="flex cursor-pointer items-center gap-2 text-sm" key={value}>
+              <input
+                checked={choice === value}
+                className="size-4 accent-primary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+                name={`intent-${turnId}`}
+                onChange={() => setChoice(value)}
+                type="radio"
+                value={value}
+              />
+              {label}
+            </label>
+          ))}
+          <Button
+            className="ml-auto"
+            disabled={!choice || busy || submitting}
+            onClick={() => void submit()}
+            size="sm"
+            type="button"
+          >
+            {submitting && <WorkshopStatusIcon className="size-4" state="working" />}
+            Continue
+          </Button>
+        </div>
+      </fieldset>
+      {error && (
+        <Alert className="mt-3" variant="destructive">
+          {error}
+        </Alert>
+      )}
+    </Card>
+  );
+}
 
 type ChipState = "created" | "edited" | "failed" | "ran";
 
@@ -213,6 +288,7 @@ const Turn = memo(function Turn({
   );
   const interrupted = "status" in turn && turn.status === "running" && !busy;
   const awaitingApproval = "status" in turn && turn.status === "awaiting_approval";
+  if ("status" in turn && turn.status === "awaiting_intent") return null;
   const label = open
     ? "Agent response"
     : sections[summaryIndex].text
@@ -324,6 +400,7 @@ export function DatasetChat({
   onSelect,
   onAccept,
   onDiscard,
+  onChooseIntent,
   initialRequest = "",
   focusedCell,
   onClearFocus,
@@ -343,6 +420,10 @@ export function DatasetChat({
   onSelect: (id: string) => void;
   onAccept: (id: string) => void;
   onDiscard: (id: string) => void;
+  onChooseIntent: (
+    intent: IntentChoice,
+    turnId: string
+  ) => Promise<boolean | undefined> | undefined;
   initialRequest?: string;
   focusedCell?: Cell;
   onClearFocus?: () => void;
@@ -352,6 +433,7 @@ export function DatasetChat({
 }) {
   const [draft, setDraft] = useState(initialRequest);
   const uploads = useDatasetUploads();
+  const { isChanging: changingFunding } = useWorkshopFunding();
   const fileInput = useRef<HTMLInputElement>(null);
   const sending = useRef(false);
   const [submitting, setSubmitting] = useState(false);
@@ -360,7 +442,8 @@ export function DatasetChat({
   const blocked = busy || submitting;
   const busyLabel = (state === "landing" && landingStatus) || WAITING[state] || "Working";
   const unfinished = uploads.files.some((file) => file.status !== "ready");
-  const canSend = !blocked && !unfinished && (!!draft.trim() || uploads.files.length > 0);
+  const canSend =
+    !blocked && !changingFunding && !unfinished && (!!draft.trim() || uploads.files.length > 0);
   const addFiles = (files: File[]) => {
     if (blocked || !files.length) return;
     if (uploads.files.length + files.length > 100) {
@@ -512,6 +595,14 @@ export function DatasetChat({
       </div>
       <div className="shrink-0 bg-card px-3 pt-2 pb-3 sm:px-6">
         <div className="mx-auto max-w-4xl">
+          {lastTurn?.status === "awaiting_intent" && lastTurn.id && (
+            <IntentQuestion
+              busy={blocked || changingFunding}
+              key={lastTurn.id}
+              onChoose={onChooseIntent}
+              turnId={lastTurn.id}
+            />
+          )}
           {proposals.length > 0 && (
             <section aria-label="Proposed changes" className="mx-2 mb-2">
               <Card className="max-h-[40dvh] overflow-y-auto bg-popover">
@@ -609,30 +700,33 @@ export function DatasetChat({
                 type="file"
               />
               <div className="mt-2 flex items-end gap-2">
-                <Button
-                  aria-label="Add files"
-                  disabled={blocked}
-                  onClick={() => fileInput.current?.click()}
-                  size="icon-sm"
-                  title="Add files to this dataset"
-                  variant="ghost"
-                >
-                  <Icon.add />
-                </Button>
-                <ul
-                  aria-label="Attached files"
-                  className="flex max-h-32 min-w-0 flex-1 flex-wrap gap-1.5 overflow-y-auto"
-                >
-                  {uploads.files.map((entry) => (
-                    <Attachment
-                      disabled={submitting}
-                      entry={entry}
-                      key={entry.id}
-                      onRemove={() => uploads.remove(entry.id)}
-                      onRetry={() => uploads.retry(entry)}
-                    />
-                  ))}
-                </ul>
+                <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
+                  <Button
+                    aria-label="Add files"
+                    disabled={blocked}
+                    onClick={() => fileInput.current?.click()}
+                    size="icon-sm"
+                    title="Add files to this dataset"
+                    variant="ghost"
+                  >
+                    <Icon.add />
+                  </Button>
+                  <WorkshopFundingControl disabled={submitting} />
+                  <ul
+                    aria-label="Attached files"
+                    className="flex max-h-32 min-w-0 flex-1 flex-wrap gap-1.5 overflow-y-auto"
+                  >
+                    {uploads.files.map((entry) => (
+                      <Attachment
+                        disabled={submitting}
+                        entry={entry}
+                        key={entry.id}
+                        onRemove={() => uploads.remove(entry.id)}
+                        onRetry={() => uploads.retry(entry)}
+                      />
+                    ))}
+                  </ul>
+                </div>
                 <Button
                   aria-label="Send"
                   disabled={!canSend}

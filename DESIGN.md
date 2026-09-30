@@ -645,6 +645,23 @@ reflows content.
 
 ### Data Workshop notebook
 
+Existing-email ChatGPT callbacks return to the login card for a single local
+password confirmation, with an explicit Connect and sign in action and Start
+again link. They retain the verified provider connection through that step.
+
+The self-hosted login card puts **Continue with ChatGPT**, with the OpenAI mark,
+above the email/password form. A remembered registration shows its email and
+**Use another account**. OAuth returns to the login screen to establish the
+local session; the Workshop composer handles model selection.
+
+Self-hosted Workshop composers place the OpenAI-marked **Use ChatGPT** toggle
+beside the plus button at the bottom of the input. Enabling it reveals the
+shared model selector, populated from the connected account's catalogue.
+Turning it off restores server models without disconnecting the account.
+Requests wait for funding changes to finish saving. Settings retains account
+connection, selection and disconnection, with ChatGPT plan limits and zero
+Overmind credits shown separately from the server-model choice.
+
 Workshop composers, their inner input panels and the content bezel use the standard
 `rounded-md` (3px), matching other pages. Composers have a 4px inset. The landing
 composer has no footer row; its plus menu offers **Add files** and **Select from traces**.
@@ -676,6 +693,7 @@ optional with an example placeholder. Split controls appear only for Train + eva
 their row counts stay inline. On narrow screens, fields stack and only the body scrolls.
 
 The dataset page fills its frame with one notebook canvas on app tokens.
+An unanswered purpose appears in a compact panel above the composer: “What will you use this data for?” with Training, Eval, and Data exploration radio choices and Continue. No choice is preselected. The question survives reloads; failed submissions retain the choice, and submission disables duplicate actions. Data exploration is neutral rather than a missing-intent warning.
 Requests, cells and agent responses share the vertical flow. Cells appear once
 in canonical order; later revisions link back without moving the chain. There is no page header: the breadcrumb names the dataset, and the
 name, the intent and the capability change through the chat (the agent's

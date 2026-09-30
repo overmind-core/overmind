@@ -15,6 +15,7 @@ from overbae.services.datasets.lifecycle import (
     accept_proposal,
     enter_busy,
     remove_cell,
+    set_intent,
 )
 
 _SOURCE_KEYS = ("traces", "rows", "upload_id", "uploads")
@@ -178,7 +179,66 @@ def create_split(
     return train, evaluation
 
 
-def message_agent(dataset, user, message: str, *, source: dict | None = None) -> Dataset:
+@transaction.atomic
+def answer_intent(dataset, user, intent: str, turn_id: str) -> Dataset:
+    locked = Dataset.objects.select_for_update().get(pk=dataset.pk)
+    if locked.state in _BUSY:
+        raise DatasetError("The dataset is busy. Wait for it.", code=locked.state)
+    question = (locked.chat or [{}])[-1]
+    if (
+        locked.intent != Dataset.Intent.PENDING
+        or question.get("id") != turn_id
+        or question.get("status") != "awaiting_intent"
+    ):
+        raise DatasetError(
+            "That intent question is no longer awaiting an answer.", code="intent_question"
+        )
+    request = next(
+        (
+            item.get("context", item.get("text", ""))
+            for item in reversed(locked.chat[:-1])
+            if item.get("role") == "user"
+        ),
+        locked.brief,
+    )
+    set_intent(locked, intent)
+    Dataset.objects.filter(pk=locked.pk).update(
+        state=Dataset.State.DIAGNOSING, error="", updated_at=timezone.now()
+    )
+    from overbae.tasks.datasets import turn
+
+    label = {"train": "Training", "eval": "Eval", "explore": "Data exploration"}[intent]
+    message = (
+        f"The user selected {label}. Continue their original request with this intent. "
+        "Do not ask for intent again. For exploration, inspect and answer without automatic "
+        "train/eval shaping. Original request:\n" + request
+    )
+    transaction.on_commit(
+        lambda: turn.apply_async(
+            kwargs={
+                "dataset_id": str(locked.pk),
+                "user_id": _user_id(user),
+                "message": message,
+                "display": label,
+            },
+            task_id=str(uuid.uuid5(locked.id, f"intent:{turn_id}")),
+        )
+    )
+    dataset.refresh_from_db()
+    return dataset
+
+
+def message_agent(
+    dataset,
+    user,
+    message: str,
+    *,
+    source: dict | None = None,
+    intent_choice: str | None = None,
+    intent_turn_id: str = "",
+) -> Dataset:
+    if intent_choice:
+        return answer_intent(dataset, user, intent_choice, intent_turn_id)
     if source:
         return attach_source(dataset, user, source, message=message)
     if not enter_busy(

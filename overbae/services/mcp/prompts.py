@@ -91,7 +91,7 @@ PROMPTS = (
         template=(
             "Prepare an evaluation for dataset {dataset} using eval set {eval_set}. "
             "Resolve it with list_datasets and pass its UUID to inspect_dataset. Use "
-            "message_dataset_agent for intent, capability, name, or cell changes; poll with "
+            "message_dataset_agent for intent, capability, name, or cell changes. If recent_chat has awaiting_intent, ask the user to choose Training, Eval, or Data exploration, then send intent_choice and intent_turn_id with no message. Never infer intent from rows. Poll with "
             "get_job(kind=dataset_run), inspect again, and use query_dataset to verify the "
             "chosen cell. Run check_evaluation_readiness with that dataset, cell and proposed variants. "
             "Report context_checks as advisory estimates, never as launch blockers. "

@@ -94,10 +94,13 @@ describe("dataset file dialog", () => {
     await within(screen.getByRole("list", { name: "Selected files" })).findByText("7 rows");
     const create = screen.getByRole("button", { name: "Create dataset" }) as HTMLButtonElement;
     expect(create.disabled).toBe(false);
-    expect(screen.getByRole("combobox", { name: "Purpose" }).textContent).toBe("Explore first");
+    expect(screen.getByRole("combobox", { name: "Purpose" }).textContent).toBe(
+      "Choose in workshop"
+    );
     fireEvent.keyDown(screen.getByRole("combobox", { name: "Purpose" }), { key: "ArrowDown" });
     expect(screen.getAllByRole("option").map((option) => option.textContent)).toEqual([
-      "Explore first",
+      "Choose in workshop",
+      "Data exploration",
       "Evaluation",
       "Training",
       "Train + eval",
@@ -106,7 +109,9 @@ describe("dataset file dialog", () => {
     expect(create.disabled).toBe(false);
     view.rerender(<NewDatasetDialog {...props} open={false} />);
     view.rerender(<NewDatasetDialog {...props} open />);
-    expect(screen.getByRole("combobox", { name: "Purpose" }).textContent).toBe("Explore first");
+    expect(screen.getByRole("combobox", { name: "Purpose" }).textContent).toBe(
+      "Choose in workshop"
+    );
     expect(
       (screen.getByRole("button", { name: "Create dataset" }) as HTMLButtonElement).disabled
     ).toBe(true);

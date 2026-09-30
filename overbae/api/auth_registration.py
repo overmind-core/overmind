@@ -104,13 +104,15 @@ class AuthTokensResponseSerializer(serializers.Serializer):
     user = UserMeSerializer()
 
 
-def _tokens_for(user: User) -> dict:
+def tokens_for(user: User) -> dict:
     refresh = RefreshToken.for_user(user)
-    return {
-        "access": str(refresh.access_token),
-        "refresh": str(refresh),
-        "user": UserMeSerializer(user).data,
-    }
+    return AuthTokensResponseSerializer(
+        {
+            "access": str(refresh.access_token),
+            "refresh": str(refresh),
+            "user": user,
+        }
+    ).data
 
 
 def local_session(*, email: str, password: str) -> tuple[User, bool]:
@@ -174,7 +176,7 @@ class LocalSessionView(APIView):
             password=serializer.validated_data["password"],
         )
         return Response(
-            _tokens_for(user),
+            tokens_for(user),
             status=status.HTTP_201_CREATED if created else status.HTTP_200_OK,
         )
 

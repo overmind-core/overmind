@@ -3,6 +3,7 @@ import { type ReactNode, useEffect, useState } from "react";
 import { QualityChip } from "@/components/datasets/notebook/preparation";
 import { RowsGrid } from "@/components/datasets/notebook/rows-grid";
 import { ScriptCode } from "@/components/datasets/notebook/script-code";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import {
@@ -358,6 +359,12 @@ function FitChip({
   /** Absent while the dataset is busy or frozen: the card then only reports. */
   actions?: Pick<CellActions, "onFix" | "onIntent" | "onCapability">;
 }) {
+  if (intent === "explore")
+    return (
+      <Badge size="chip" variant="neutral">
+        Data exploration
+      </Badge>
+    );
   const reports = (cell.intentReport as Record<string, Report> | null) ?? {};
   const shape = (reports[intent] ?? {}) as Report;
   const ran = cell.state === "ok" && !!cell.fingerprint;

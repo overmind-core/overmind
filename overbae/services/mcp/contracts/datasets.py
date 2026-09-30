@@ -112,7 +112,7 @@ class ActiveVersion(MCPModel):
 class DatasetListItem(MCPModel):
     id: str
     name: str = Field(default="", max_length=255)
-    intent: Literal["train", "eval", "pending"]
+    intent: Literal["train", "eval", "explore", "pending"]
     source_kind: Literal["file", "traces", "pending"]
     state: Literal["landing", "diagnosing", "idle", "running", "error"]
     capability: CapabilityRef | None = None
@@ -179,13 +179,21 @@ class AgentProgress(MCPModel):
 
 
 class ChatTurn(MCPModel):
+    funding_source: Literal["platform", "chatgpt"] | None = None
+    model: str | None = None
+    engine: str | None = None
+    id: str | None = None
+    intent_choice: Literal["train", "eval", "explore"] | None = None
     role: Literal["user", "agent"]
     text: str = Field(default="", max_length=_SCRIPT_CHARS)
     error: str | None = None
     cells: list[TouchedCell] = Field(default_factory=list, max_length=20)
     at: str | None = Field(default=None, max_length=80)
     ms: int | None = Field(default=None, ge=0)
-    status: Literal["running", "awaiting_approval", "resolved", "complete", "error"] | None = None
+    status: (
+        Literal["running", "awaiting_approval", "awaiting_intent", "resolved", "complete", "error"]
+        | None
+    ) = None
     progress: AgentProgress | None = None
 
 
@@ -241,7 +249,7 @@ class DatasetMutationOutput(MCPModel):
 
 class ListDatasetsInput(MCPModel):
     capability: str | None = Field(default=None, min_length=1, max_length=255)
-    intent: Literal["train", "eval", "pending"] | None = None
+    intent: Literal["train", "eval", "explore", "pending"] | None = None
     state: Literal["landing", "diagnosing", "idle", "running", "error"] | None = None
     search: str | None = Field(default=None, min_length=1, max_length=255)
     limit: int = Field(default=20, ge=1, le=_LIST_CAP)
@@ -380,7 +388,19 @@ class MessageDatasetAgentInput(MCPModel):
         max_length=255,
         validation_alias=AliasChoices("dataset", "dataset_id"),
     )
-    message: str = Field(min_length=1, max_length=_SCRIPT_CHARS)
+    message: str = Field(default="", max_length=_SCRIPT_CHARS)
+    intent_choice: Literal["train", "eval", "explore"] | None = None
+    intent_turn_id: str | None = Field(default=None, min_length=1, max_length=80)
+
+    @model_validator(mode="after")
+    def valid_message(self):
+        if bool(self.intent_choice) != bool(self.intent_turn_id):
+            raise ValueError("Provide the intent choice and question id together.")
+        if self.intent_choice and self.message.strip():
+            raise ValueError("Answer the intent question separately from a message.")
+        if not self.intent_choice and not self.message.strip():
+            raise ValueError("Write a message or answer the intent question.")
+        return self
 
 
 class RunDatasetInput(MCPModel):
@@ -425,7 +445,7 @@ def mutation_output(
 class StartDatasetInput(MCPModel):
     brief: str = Field(min_length=1, max_length=8000)
     name: str = Field(default="Untitled dataset", min_length=1, max_length=255)
-    intent: Literal["train", "eval", "pending"] = "pending"
+    intent: Literal["train", "eval", "explore", "pending"] = "pending"
     capability: str | None = Field(default=None, max_length=255)
 
 
@@ -608,6 +628,11 @@ def _chat(raw, limit: int) -> list[ChatTurn]:
         ms = item.get("ms")
         out.append(
             ChatTurn(
+                funding_source=item.get("funding_source"),
+                model=item.get("model"),
+                engine=item.get("engine"),
+                id=item.get("id"),
+                intent_choice=item.get("intent_choice"),
                 role=role,
                 text=_clip(str(item.get("text") or "")),
                 error=error,

@@ -3,6 +3,7 @@ import { type CSSProperties, type RefObject, useEffect, useRef, useState } from 
 import { useNavigate } from "@tanstack/react-router";
 
 import { Attachment } from "@/components/datasets/attachment";
+import { WorkshopFundingControl } from "@/components/datasets/workshop-funding";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import {
@@ -17,6 +18,7 @@ import { Spinner } from "@/components/ui/spinner";
 import { useCreateDatasetMutation } from "@/hooks/use-datasets";
 import { useGuestGate } from "@/hooks/use-guest-gate";
 import type { useDatasetUploads } from "@/hooks/use-uploads";
+import { useWorkshopFunding } from "@/hooks/use-workshop-funding";
 import { errorMessage } from "@/lib/notify";
 import { cn } from "@/lib/utils";
 
@@ -52,12 +54,18 @@ export function WorkshopStart({
   const create = useCreateDatasetMutation();
   const navigate = useNavigate();
   const guard = useGuestGate();
+  const { isChanging: changingFunding } = useWorkshopFunding();
   const pending = submitting || create.isPending;
   const failed = uploads.files.some((file) => file.status === "error");
   const unfinished = uploads.files.some((file) => file.status !== "ready");
   const tooMany = uploads.files.length > 100;
   const canStart =
-    !!brief.trim() && uploads.files.length > 0 && !unfinished && !tooMany && !pending;
+    !!brief.trim() &&
+    uploads.files.length > 0 &&
+    !unfinished &&
+    !tooMany &&
+    !pending &&
+    !changingFunding;
   const start = async () => {
     if (!canStart || sending.current) return;
     sending.current = true;
@@ -168,46 +176,49 @@ export function WorkshopStart({
               value={brief}
             />
             <div className="flex items-end gap-2 px-3 pb-3">
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button
-                    aria-label="Add source"
-                    disabled={pending}
-                    size="icon"
-                    title="Add source"
-                    type="button"
-                    variant="ghost"
-                  >
-                    <Icon.add />
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="start" side="top">
-                  <DropdownMenuItem onSelect={guard(() => fileInput.current?.click())}>
-                    <Icon.files />
-                    Add files
-                  </DropdownMenuItem>
-                  {onImportTraces && (
-                    <DropdownMenuItem onSelect={onImportTraces}>
-                      <Icon.observability />
-                      Select from traces
+              <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button
+                      aria-label="Add source"
+                      disabled={pending}
+                      size="icon"
+                      title="Add source"
+                      type="button"
+                      variant="ghost"
+                    >
+                      <Icon.add />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="start" side="top">
+                    <DropdownMenuItem onSelect={guard(() => fileInput.current?.click())}>
+                      <Icon.files />
+                      Add files
                     </DropdownMenuItem>
-                  )}
-                </DropdownMenuContent>
-              </DropdownMenu>
-              <ul
-                aria-label="Attached files"
-                className="flex max-h-32 min-w-0 flex-1 flex-wrap gap-1.5 overflow-y-auto"
-              >
-                {uploads.files.map((entry) => (
-                  <Attachment
-                    disabled={pending}
-                    entry={entry}
-                    key={entry.id}
-                    onRemove={() => uploads.remove(entry.id)}
-                    onRetry={() => uploads.retry(entry)}
-                  />
-                ))}
-              </ul>
+                    {onImportTraces && (
+                      <DropdownMenuItem onSelect={onImportTraces}>
+                        <Icon.observability />
+                        Select from traces
+                      </DropdownMenuItem>
+                    )}
+                  </DropdownMenuContent>
+                </DropdownMenu>
+                <WorkshopFundingControl disabled={pending} />
+                <ul
+                  aria-label="Attached files"
+                  className="flex max-h-32 min-w-0 flex-1 flex-wrap gap-1.5 overflow-y-auto"
+                >
+                  {uploads.files.map((entry) => (
+                    <Attachment
+                      disabled={pending}
+                      entry={entry}
+                      key={entry.id}
+                      onRemove={() => uploads.remove(entry.id)}
+                      onRetry={() => uploads.retry(entry)}
+                    />
+                  ))}
+                </ul>
+              </div>
               <Button
                 aria-label="Start workshop"
                 disabled={!canStart}

@@ -494,3 +494,14 @@ WORKSHOP_KEY_ENVS: tuple[str, ...] = tuple(e.provider.key_env for e in WORKSHOP_
 
 def workshop_engine() -> Engine | None:
     return next((e for e in WORKSHOP_ENGINES if e.provider.configured()), None)
+
+
+def chatgpt_model_choices(payload: dict) -> list[dict[str, str]]:
+    return [
+        {"id": item["slug"], "name": item["display_name"]}
+        for item in payload.get("models", [])
+        if item.get("visibility") == "list"
+        and isinstance(item.get("slug"), str)
+        and 0 < len(item["slug"]) <= 255
+        and isinstance(item.get("display_name"), str)
+    ]

@@ -6,6 +6,7 @@ from typing import Any, Protocol
 
 from overbae.core.model_registry import WORKSHOP_KEY_ENVS, workshop_engine
 from overbae.models import Dataset
+from overbae.services.chatgpt import selected_session
 
 NOT_CONFIGURED = (
     "No agent is configured on this server. Set one of " + ", ".join(WORKSHOP_KEY_ENVS) + "."
@@ -29,7 +30,13 @@ class Engine(Protocol):
     def describe_error(self, exc: Exception) -> str: ...
 
 
-def select() -> Engine | None:
+def select(user=None) -> Engine | None:
+    session = selected_session(user)
+    if session is not None:
+        # The engine protocol lives here; importing adapters eagerly creates a cycle.
+        from overbae.services.datasets.notebook.engines.chatgpt import ChatGPTEngine
+
+        return ChatGPTEngine(session)
     choice = workshop_engine()
     if choice is None:
         return None

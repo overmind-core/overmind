@@ -589,6 +589,8 @@ def _chat_turn(raw) -> dict | None:
     cells = raw.get("cells") if isinstance(raw.get("cells"), list) else []
     ms = raw.get("ms")
     return {
+        "id": raw.get("id"),
+        "intent_choice": raw.get("intent_choice"),
         "role": _clip_text(raw.get("role"), 16),
         "text": _clip_text(raw.get("text"), _CHAT_TEXT_CAP),
         "error": _clip_text(raw.get("error"), _ERROR_CAP) or None,

@@ -294,6 +294,15 @@ export function DatasetNotebook({
         landingStatus={extractionStatus(dataset.sourceSpec)}
         live={live}
         onAccept={guard((id: string) => acceptCell.mutate(id))}
+        onChooseIntent={async (intentChoice, intentTurnId) => {
+          let allowed = false;
+          guard(() => {
+            allowed = true;
+          })();
+          if (!allowed) return false;
+          await chat.mutateAsync({ intentChoice, intentTurnId });
+          return true;
+        }}
         onClearFocus={() => setSelectedId(null)}
         onDiscard={guard((id: string) => removeCell.mutate(id))}
         onSelect={scrollTo}

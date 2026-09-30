@@ -213,12 +213,18 @@ def set_active(dataset: Dataset, cell: Cell | None) -> Dataset:
 
 
 def set_intent(dataset: Dataset, intent: str) -> Dataset:
-    if intent not in (Dataset.Intent.TRAIN, Dataset.Intent.EVAL):
-        raise DatasetError("The intent is train or eval.", code="intent")
+    if intent not in (Dataset.Intent.TRAIN, Dataset.Intent.EVAL, Dataset.Intent.EXPLORE):
+        raise DatasetError("Choose Training, Eval, or Data exploration.", code="intent")
     if dataset.frozen_before >= 0:
         raise DatasetError("A version was used; the intent is fixed.", code="frozen")
     if intent != dataset.intent:
-        _touch(dataset, intent=intent)
+        chat = [
+            {**turn, "status": "resolved", "intent_choice": intent}
+            if turn.get("status") == "awaiting_intent"
+            else turn
+            for turn in dataset.chat or []
+        ]
+        _touch(dataset, intent=intent, chat=chat)
         proposals.retire_outdated(dataset)
         measure.capability_only(dataset)
         if intent == Dataset.Intent.EVAL:

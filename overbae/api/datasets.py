@@ -107,7 +107,7 @@ class DatasetViewSet(viewsets.ModelViewSet):
             qs = qs.filter(project_id=params["project"])
         if params.get("capability"):
             qs = qs.filter(capability_id=params["capability"])
-        if params.get("intent") in ("train", "eval", "pending"):
+        if params.get("intent") in Dataset.Intent.values:
             qs = qs.filter(intent=params["intent"])
         if params.get("search"):
             qs = qs.filter(name__icontains=params["search"])
@@ -391,6 +391,8 @@ class DatasetViewSet(viewsets.ModelViewSet):
                 dataset,
                 request.user if request.user.is_authenticated else None,
                 body.validated_data["message"],
+                intent_choice=body.validated_data.get("intent_choice"),
+                intent_turn_id=str(body.validated_data.get("intent_turn_id") or ""),
                 source=self._source_payload(body.validated_data["source"], dataset.project)
                 if body.validated_data.get("source")
                 else None,

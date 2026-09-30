@@ -80,6 +80,18 @@ The API will not start without these. `.env.example` documents every other key.
 
 Two keys gate features rather than boot: `OPENROUTER_API_KEY` for judges, evals and every routed model call, and one LLM key for the Data Workshop agent — it uses the first of `CURSOR_API_KEY`, `OPENROUTER_API_KEY`, `OPENAI_API_KEY`, `ANTHROPIC_API_KEY` or `GEMINI_API_KEY` it finds. Without `STRIPE_SECRET_KEY`, usage is metered and shown with no remaining-credit cap.
 
+Self-hosted users can choose **Continue with ChatGPT** on the initial login
+screen, creating their local account without a password. Existing local accounts
+confirm their Overmind password once in the same flow. Plan permission enables
+ChatGPT funding with an available account model; the Workshop picker can change it.
+Settings also supports connecting and managing ChatGPT accounts. Open the
+Console at `http://127.0.0.1:5173`; the default OAuth callback is
+`http://127.0.0.1:8000/api/chatgpt/callback/`. Keep Clerk and Stripe secrets blank.
+ChatGPT-funded turns and semantic checks record zero Overmind credit charges;
+plan limits stop the request. Evaluation runs, training and serving keep their
+existing billing. See [self-hosting](https://docs.overmindlab.ai/platform/self-hosting)
+for configuration and private VM setup.
+
 </details>
 
 ### Send a first trace

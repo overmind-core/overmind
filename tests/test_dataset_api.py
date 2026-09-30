@@ -55,7 +55,7 @@ def _create(client, project, rows=ROWS, **extra):
 def test_create_lands_the_source_and_reads_back_with_cells():
     project = _project()
     client = _client(project)
-    dataset = _create(client, project, rows=[dict(r) for r in EVAL_ROWS])
+    dataset = _create(client, project, rows=[dict(r) for r in EVAL_ROWS], intent="eval")
     res = client.get(f"/api/datasets/{dataset.id}/")
     assert res.status_code == 200
     body = res.data
@@ -311,7 +311,7 @@ def test_chat_is_refused_while_busy_and_locks_the_dataset_at_once():
 def test_list_filters_by_intent_and_shows_the_active_version():
     project = _project()
     client = _client(project)
-    _create(client, project, rows=[dict(r) for r in EVAL_ROWS])
+    _create(client, project, rows=[dict(r) for r in EVAL_ROWS], intent="eval")
     _create(client, project, intent="train")
     res = client.get("/api/datasets/", {"project": str(project.id), "intent": "eval"})
     assert res.status_code == 200

@@ -10,6 +10,7 @@ import type { AgentActivityPart } from "@/components/agent-activity/activity-tim
 import { notify } from "@/lib/notify";
 import type {
   Cell,
+  ChatRequest,
   ColumnStat,
   Dataset,
   DatasetPair,
@@ -55,6 +56,7 @@ export interface WorkshopProgress {
     | "validating"
     | "review"
     | "awaiting_approval"
+    | "awaiting_intent"
     | "partial"
     | "complete"
     | "error";
@@ -148,6 +150,7 @@ export function traceSelectionBody(selection: TraceSelectionSpec) {
 
 export const INTENT_LABEL: Record<string, string> = {
   eval: "Eval",
+  explore: "Data exploration",
   pending: "Pending",
   train: "Train",
 };
@@ -316,7 +319,7 @@ export interface CreateDatasetInput {
   projectId: string;
   name: string;
   brief?: string;
-  intent?: "train" | "eval" | "pending";
+  intent?: Intent;
   capabilityId?: string | null;
   source?: SourceRequest;
 }
@@ -457,7 +460,7 @@ export function useRunMutation(id: string) {
 export function useChatMutation(id: string) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (input: string | { message: string; source?: SourceRequest }) =>
+    mutationFn: (input: string | ChatRequest) =>
       apiClient.datasets.datasetsChatCreate({
         chatRequest: typeof input === "string" ? { message: input } : input,
         id,

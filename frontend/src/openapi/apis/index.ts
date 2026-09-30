@@ -5,6 +5,7 @@ export * from './AuthApi';
 export * from './BehavioursApi';
 export * from './BillingApi';
 export * from './CapabilitiesApi';
+export * from './ChatGPTApi';
 export * from './ConnectorCredentialsApi';
 export * from './DatasetsApi';
 export * from './DeployedModelsApi';

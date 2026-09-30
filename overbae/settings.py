@@ -543,6 +543,9 @@ LOGGING = {
         },
     },
     "filters": {
+        "redact_chatgpt_callback": {
+            "()": "overbae.core.logging.RedactChatGPTCallback",
+        },
         "skip_health": {
             "()": "django.utils.log.CallbackFilter",
             "callback": lambda record: "GET /health" not in record.getMessage(),
@@ -552,6 +555,7 @@ LOGGING = {
         "console": {
             "class": "logging.StreamHandler",
             "formatter": "verbose" if DEBUG else "json",
+            "filters": ["redact_chatgpt_callback"],
         },
     },
     "root": {
@@ -666,3 +670,12 @@ if not CURSOR_API_KEY:
         raise ImproperlyConfigured(
             "OPENROUTER_API_KEY must be set for dataworkshop to work, get it from https://openrouter.ai/workspaces/default/keys"
         )
+
+CHATGPT_PLAN_USAGE_ENABLED = os.environ.get("CHATGPT_PLAN_USAGE_ENABLED", "true").lower() == "true"
+CHATGPT_REDIRECT_URI = os.environ.get(
+    "CHATGPT_REDIRECT_URI", "http://127.0.0.1:8000/api/chatgpt/callback/"
+)
+# The local OAuth state cookie must accompany the Console’s authenticated start request.
+CORS_ALLOW_CREDENTIALS = (
+    CHATGPT_PLAN_USAGE_ENABLED and not CLERK_API_SECRET_KEY and not STRIPE_SECRET_KEY
+)

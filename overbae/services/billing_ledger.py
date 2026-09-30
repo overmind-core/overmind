@@ -187,3 +187,27 @@ def charge_llm_usage(
             getattr(user, "pk", None),
         )
         return None
+
+
+def record_workshop_usage(
+    user, stats, *, funding_source, project_id, idempotency_key, metadata=None
+):
+    if user is None:
+        return None
+    if funding_source == "chatgpt":
+        return append_entry(
+            user=user,
+            amount=Decimal("0"),
+            service=BillingService.DATA_WORKSHOP,
+            project_id=project_id,
+            idempotency_key=idempotency_key,
+            metadata={**(metadata or {}), "funding_source": "chatgpt", "llm_usage": stats},
+        )
+    return charge_llm_usage(
+        user,
+        stats,
+        service=BillingService.DATA_WORKSHOP,
+        project_id=project_id,
+        idempotency_key=idempotency_key,
+        metadata=metadata,
+    )

@@ -13,6 +13,20 @@
  */
 
 import { mapValues } from '../runtime';
+import type { FundingSourceEnum } from './FundingSourceEnum';
+import {
+    FundingSourceEnumFromJSON,
+    FundingSourceEnumFromJSONTyped,
+    FundingSourceEnumToJSON,
+    FundingSourceEnumToJSONTyped,
+} from './FundingSourceEnum';
+import type { IntentChoiceEnum } from './IntentChoiceEnum';
+import {
+    IntentChoiceEnumFromJSON,
+    IntentChoiceEnumFromJSONTyped,
+    IntentChoiceEnumToJSON,
+    IntentChoiceEnumToJSONTyped,
+} from './IntentChoiceEnum';
 import type { ChatTurnStatusEnum } from './ChatTurnStatusEnum';
 import {
     ChatTurnStatusEnumFromJSON,
@@ -34,6 +48,24 @@ import {
  * @interface ChatTurn
  */
 export interface ChatTurn {
+    /**
+     *
+     * @type {FundingSourceEnum}
+     * @memberof ChatTurn
+     */
+    fundingSource?: FundingSourceEnum;
+    /**
+     *
+     * @type {string}
+     * @memberof ChatTurn
+     */
+    model?: string;
+    /**
+     *
+     * @type {string}
+     * @memberof ChatTurn
+     */
+    engine?: string;
     /**
      *
      * @type {string}
@@ -84,6 +116,12 @@ export interface ChatTurn {
     status?: ChatTurnStatusEnum;
     /**
      *
+     * @type {IntentChoiceEnum}
+     * @memberof ChatTurn
+     */
+    intentChoice?: IntentChoiceEnum;
+    /**
+     *
      * @type {any}
      * @memberof ChatTurn
      */
@@ -118,6 +156,9 @@ export function ChatTurnFromJSONTyped(json: any, ignoreDiscriminator: boolean): 
     }
     return {
 
+        'fundingSource': json['funding_source'] == null ? undefined : FundingSourceEnumFromJSON(json['funding_source']),
+        'model': json['model'] == null ? undefined : json['model'],
+        'engine': json['engine'] == null ? undefined : json['engine'],
         'id': json['id'] == null ? undefined : json['id'],
         'role': ChatTurnRoleEnumFromJSON(json['role']),
         'text': json['text'],
@@ -126,6 +167,7 @@ export function ChatTurnFromJSONTyped(json: any, ignoreDiscriminator: boolean): 
         'steps': json['steps'] == null ? undefined : json['steps'],
         'ms': json['ms'] == null ? undefined : json['ms'],
         'status': json['status'] == null ? undefined : ChatTurnStatusEnumFromJSON(json['status']),
+        'intentChoice': json['intent_choice'] == null ? undefined : IntentChoiceEnumFromJSON(json['intent_choice']),
         'progress': json['progress'] == null ? undefined : json['progress'],
         'at': json['at'],
     };
@@ -142,6 +184,9 @@ export function ChatTurnToJSONTyped(value?: ChatTurn | null, ignoreDiscriminator
 
     return {
 
+        'funding_source': FundingSourceEnumToJSON(value['fundingSource']),
+        'model': value['model'],
+        'engine': value['engine'],
         'id': value['id'],
         'role': ChatTurnRoleEnumToJSON(value['role']),
         'text': value['text'],
@@ -150,6 +195,7 @@ export function ChatTurnToJSONTyped(value?: ChatTurn | null, ignoreDiscriminator
         'steps': value['steps'],
         'ms': value['ms'],
         'status': ChatTurnStatusEnumToJSON(value['status']),
+        'intent_choice': IntentChoiceEnumToJSON(value['intentChoice']),
         'progress': value['progress'],
         'at': value['at'],
     };

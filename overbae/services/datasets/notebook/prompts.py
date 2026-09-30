@@ -38,7 +38,7 @@ Its rows have already been added; do not append them again or edit its script.
 Inspect the combined data and use subsequent transformation cells for changes.
 Original files, row evidence and earlier versions remain available.
 
-Your job is to make the table fit its intent (train or eval) for its capability,
+For train or eval, your job is to make the table fit its selected intent and capability,
 then assess its quality against the task. The unchanged source version preserves
 the original data; prepared versions need not repeat its columns. Synthetic
 examples are allowed only when the user explicitly requests generation, through
@@ -71,7 +71,7 @@ examples are allowed only when the user explicitly requests generation, through
   Applied/source/generated versions cannot be removed. Never use version numbers,
   positions or the active version for proposal cleanup.
 - `set_active` — choose which ran version consumers read.
-- `set_intent` — train or eval. Fixed once a version was used.
+- `set_intent` — train, eval, or explore, only from an explicit user request with an exact quote as evidence. Never infer it from rows or capability. Fixed once a version was used.
 - `set_capability` — bind a capability by name, or `none`. Fixed once a version
   was used. Every version is re-measured.
 - `rename` — the dataset's name.
@@ -434,17 +434,41 @@ Quality checks, each one a cell only when rows are behind it:
 """
 
 PENDING_PLAYBOOK = """\
-## Intent is pending
+## Choose the purpose before doing any work
 
-Decide it from the rows and the capability card before anything else: transcripts
-with assistant turns are `train`; an input with a reference is `eval`. Call
-`set_intent`, then follow that playbook.
+The user has not selected a purpose. Use only the user's written request to
+resolve it, never source rows, filenames, schema, capability, previous assistant
+assumptions, or generic instructions to clean/prepare/generate data.
+If the user explicitly requests training/fine-tuning, evaluation/benchmarking,
+or data exploration/analysis, call set_intent with train, eval, or explore and
+an exact quote of those words as evidence. Follow the returned playbook.
+Negated, quoted, hypothetical, or conflicting purposes are not a choice.
+If no single purpose is explicit, stop and ask: "What will you use this data for?"
+The interface provides Training, Eval, and Data exploration choices. Do not
+access data, transform, audit, generate, or choose a default while waiting.
 """
 
-PLAYBOOKS = {"train": TRAIN_PLAYBOOK, "eval": EVAL_PLAYBOOK, "pending": PENDING_PLAYBOOK}
+EXPLORE_PLAYBOOK = """\
+## Data exploration
+
+The user chose data exploration. Answer their request using the source as-is:
+inspect rows, summarize patterns, or run requested analysis. Do not prepare
+training/evaluation formats or run their automatic preparation and audit loops.
+Make only transformations requested by the user, under the normal review rules.
+Do not switch to train or eval unless the user explicitly asks to do so.
+"""
+
+PLAYBOOKS = {
+    "train": TRAIN_PLAYBOOK,
+    "eval": EVAL_PLAYBOOK,
+    "pending": PENDING_PLAYBOOK,
+    "explore": EXPLORE_PLAYBOOK,
+}
 
 PREPARE = """\
-Prepare this dataset end-to-end in one pass. Read `status` and use the supplied
+First resolve pending intent from the explicit user request or pause for a choice.
+For data exploration, follow only its exploration playbook and the user request.
+For train or eval, prepare this dataset end-to-end in one pass. Read `status` and use the supplied
 source-family profiles and consumer contracts; query missing facts across the
 relevant families. Give a short plan, then create and run
 the cells needed to meet both contracts for the intent. Use add_cell directly:

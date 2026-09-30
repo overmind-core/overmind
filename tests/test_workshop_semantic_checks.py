@@ -177,7 +177,7 @@ def test_quality_save_locks_dataset_not_nullable_capability_join(dataset, provid
 
 def test_failed_audit_persistence_still_charges_provider_usage(dataset, provider, monkeypatch):
     charge = Mock()
-    monkeypatch.setattr(semantic_checks, "charge_llm_usage", charge)
+    monkeypatch.setattr(semantic_checks, "record_workshop_usage", charge)
     monkeypatch.setattr(
         review, "record_quality_results", Mock(side_effect=DatabaseError("save failed"))
     )
@@ -296,7 +296,7 @@ def test_stale_result_spend_is_not_lost(dataset, provider, monkeypatch):
 
     provider.side_effect = change_intent
     charged = Mock()
-    monkeypatch.setattr(semantic_checks, "charge_llm_usage", charged)
+    monkeypatch.setattr(semantic_checks, "record_workshop_usage", charged)
     with pytest.raises(ValueError, match="changed during the audit"):
         semantic_checks.run_checks(dataset, dataset.active_cell, request())
     charged.assert_called_once()

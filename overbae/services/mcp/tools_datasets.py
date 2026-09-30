@@ -208,10 +208,14 @@ def _message_dataset_agent_sync(
 ) -> DatasetMutationOutput:
     dataset = _resolve_dataset(context, payload.dataset)
     message = payload.message.strip()
-    if not message:
-        raise MCPError("invalid_input", "A non-empty message is required.")
     try:
-        dispatch.message_agent(dataset, context.user, message)
+        dispatch.message_agent(
+            dataset,
+            context.user,
+            message,
+            intent_choice=payload.intent_choice,
+            intent_turn_id=payload.intent_turn_id or "",
+        )
     except DatasetError as exc:
         raise dataset_mcp_error(exc) from exc
     return mutation_output(dataset, summary="Dataset agent queued.")
@@ -319,7 +323,7 @@ def register_dataset_tools(catalog) -> None:
         (
             "message_dataset_agent",
             "Message dataset agent",
-            "Queue one agent turn for an idle project dataset.",
+            "Queue one agent turn for an idle project dataset. When recent_chat has awaiting_intent, ask the user to choose Training, Eval, or Data exploration, then send intent_choice (train/eval/explore) and intent_turn_id from that turn instead of message. Never infer purpose from source data.",
             MessageDatasetAgentInput,
             DatasetMutationOutput,
             _message_dataset_agent_sync,

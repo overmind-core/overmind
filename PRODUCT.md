@@ -127,8 +127,13 @@ navigation code but are no longer used to stage access.
 
 ### Data Workshop specifics
 
+- Self-hosted users can continue with ChatGPT on the initial login screen, confirming an existing local password once inline when needed, or connect it in Settings. First login/link enables granted plan funding with an available account model; users can toggle **Use ChatGPT**
+  and choose its model at the bottom of either Workshop composer
+  to fund their Workshop turns and semantic checks. These record no Overmind
+  credit charge. ChatGPT plan limits stop the request; server models require an
+  explicit switch. Evaluation runs, training and serving keep their own billing.
 - The Console upload composer requires ready source files and a written
-  prompt. A capability and train/eval intent can follow exploration. The original
+  prompt. If the user has not specified Training, Eval or Data exploration, the workshop pauses and asks them to choose before preparation. Data exploration is a saved intent, not an inferred training or evaluation target. A capability can follow exploration. The original
   wording stays with the dataset. REST and MCP can still create a source-free draft.
   A bottom-anchored composer holds compact attachment chips beside the plus button,
   with retry and removal. The plus menu offers Add files and Select from traces;
@@ -142,8 +147,7 @@ navigation code but are no longer used to stage access.
   PDF extraction preserves encoded text and automatically runs local OCR on scanned pages
   and embedded images. Direct image uploads support paste and drag-and-drop, with attachment previews and background extraction progress. Source evidence records recognition details and page regions.
   OCR currently uses English language data; visual tables are not reconstructed.
-- Landing proposes two things and the first use freezes them: the **intent**
-  (train or eval) and the **capability** the rows belong to. Both are
+- The user chooses **intent** (train, eval or explore); landing proposes the **capability** the rows belong to. The first use freezes both. For train/eval, these are
   contracts every version is measured against: the intent contract is the
   shape, the capability contract is row by row — an eval input carries the
   capability's required keys, a train transcript is the capability's own

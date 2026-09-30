@@ -14,6 +14,9 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock("@tanstack/react-router", () => ({ useNavigate: () => mocks.navigate }));
 vi.mock("@/hooks/use-guest-gate", () => ({ useGuestGate: () => (action: unknown) => action }));
+vi.mock("@/hooks/use-workshop-funding", () => ({
+  useWorkshopFunding: () => ({ data: undefined }),
+}));
 vi.mock("@/hooks/use-datasets", () => ({
   useCreateDatasetMutation: () => ({ isPending: false, mutateAsync: mocks.create }),
 }));

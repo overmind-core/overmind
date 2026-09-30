@@ -4,9 +4,39 @@ import { chatSections, notebookFlow } from "@/components/datasets/notebook/chat-
 import type { Cell } from "@/openapi";
 
 describe("Workshop conversation order", () => {
+  it.each([
+    'Treating "Extraing training data" as an explicit training request.',
+    "Reading the [source evidence](https://example.com/source) before continuing.",
+    "```python\nfirst = 1\n\nsecond = 2\n```",
+  ])("keeps actions out of a complete Markdown block: %s", (paragraph) => {
+    const text = `${paragraph}\n\nInspection complete.`;
+    const sections = chatSections(
+      text,
+      [{ id: "inspect", phase: "tool_start", text_offset: 15, type: "activity" }],
+      [{ action: "ran", id: "cell", text_offset: 20 }]
+    );
+    expect(sections[0].text).toBe(`${paragraph}\n\n`);
+    expect(sections[0].steps).toEqual([]);
+    expect(sections[1].steps).toHaveLength(1);
+    expect(sections[1].cells).toHaveLength(1);
+    expect(sections.map((section) => section.text).join("")).toBe(text);
+  });
+
+  it("keeps live text together while an action arrives before its remaining tokens", () => {
+    const steps = [
+      { id: "inspect", phase: "tool_start" as const, text_offset: 12, type: "activity" as const },
+    ];
+    const partial = "Inspecting 🔎 the attached";
+    expect(chatSections(partial, steps, [], true)[0].text).toBe(partial);
+    const complete = `${partial} rows.`;
+    const sections = chatSections(complete, steps, [], false);
+    expect(sections[0].text).toBe(complete);
+    expect(sections[1].steps).toHaveLength(1);
+  });
+
   it("keeps thinking deltas with their starting section and replaces cell states", () => {
     const sections = chatSections(
-      "Plan 🔎. Done.",
+      "Plan 🔎.\n\nDone.",
       [
         { id: "think", phase: "thinking", status: "running", text_offset: 8, type: "activity" },
         { id: "think", phase: "thinking", text: "Inspecting", type: "activity" },
@@ -17,7 +47,7 @@ describe("Workshop conversation order", () => {
         { action: "ran", id: "cell", text_offset: 8 },
       ]
     );
-    expect(sections.map((section) => section.text)).toEqual(["Plan 🔎.", " Done."]);
+    expect(sections.map((section) => section.text)).toEqual(["Plan 🔎.\n\n", "Done."]);
     expect(sections[1].steps).toHaveLength(3);
     expect(sections[1].cells).toEqual([{ action: "ran", id: "cell", text_offset: 8 }]);
   });

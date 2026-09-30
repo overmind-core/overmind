@@ -23,7 +23,11 @@ export function IntentBadge({
 }) {
   if (!intent) return null;
   return (
-    <Badge className={className} size="chip" variant={intent === "pending" ? "neutral" : "success"}>
+    <Badge
+      className={className}
+      size="chip"
+      variant={intent === "pending" || intent === "explore" ? "neutral" : "success"}
+    >
       {INTENT_LABEL[intent] ?? intent}
     </Badge>
   );

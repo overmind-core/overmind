@@ -44,9 +44,10 @@ import { errorMessage } from "@/lib/notify";
 import { cn } from "@/lib/utils";
 import type { Dataset, SourceRequest } from "@/openapi";
 
-type Purpose = "train" | "eval" | "split" | "pending";
+type Purpose = "train" | "eval" | "explore" | "split" | "pending";
 const PURPOSES: Array<{ value: Purpose; label: string }> = [
-  { label: "Explore first", value: "pending" },
+  { label: "Choose in workshop", value: "pending" },
+  { label: "Data exploration", value: "explore" },
   { label: "Evaluation", value: "eval" },
   { label: "Training", value: "train" },
   { label: "Train + eval", value: "split" },

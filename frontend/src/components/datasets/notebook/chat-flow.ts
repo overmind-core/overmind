@@ -33,15 +33,33 @@ export interface ChatSection {
   cells: ChatCellRef[];
 }
 
+function paragraphEnds(text: string) {
+  const ends = [0];
+  let fence = "";
+  for (const match of text.matchAll(/^.*(?:\n|$)/gm)) {
+    const line = match[0];
+    const marker = /^ {0,3}(`{3,}|~{3,})/.exec(line)?.[1];
+    if (marker) {
+      if (!fence) fence = marker;
+      else if (marker[0] === fence[0] && marker.length >= fence.length) fence = "";
+    }
+    if (!fence && !line.trim()) ends.push(match.index + line.length);
+  }
+  ends.push(text.length);
+  return ends;
+}
+
 export function chatSections(
   text: string,
   steps: AgentActivityPart[],
   cells: ChatCellRef[],
   live = false
 ) {
+  const boundaries = paragraphEnds(text);
   const groups = new Map<number, ChatSection>();
   const group = (position: number) => {
-    const offset = Math.max(0, Math.min(text.length, position));
+    // Actions may arrive between tokens, but must not split a paragraph or code fence.
+    const offset = boundaries.find((end) => end >= position) ?? text.length;
     let section = groups.get(offset);
     if (!section) {
       section = { cells: [], offset, steps: [], text: "" };

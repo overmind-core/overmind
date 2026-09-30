@@ -39,7 +39,7 @@ def test_twenty_thousand_transcripts_land_run_page_and_diff_within_budget():
     dataset = Dataset.objects.create(project=project, name="big", intent="pending")
     _timed(20, lambda: land.land_rows(dataset, rows))
     dataset.refresh_from_db()
-    assert dataset.intent == "train" and dataset.source.fits("train") == (True, "")
+    assert dataset.intent == "pending" and dataset.source.fits("train") == (True, "")
 
     cell = lifecycle.add_cell(dataset, title="Drop a tag", script="df = df[df.tag != 3]\n")
     _timed(30, lambda: run_svc.execute(dataset))

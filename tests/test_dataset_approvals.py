@@ -44,7 +44,7 @@ def propose(dataset, monkeypatch, *, generation=False, error=""):
             yield from pending
             return engines.Outcome(text="Approve or deny the proposed labels.", error=error)
 
-    monkeypatch.setattr(engines, "select", lambda: Engine())
+    monkeypatch.setattr(engines, "select", lambda user=None: Engine())
     list(agent.follow_up(dataset.id, "Prepare these rows and check their quality"))
     dataset.refresh_from_db()
     return dataset.cells.get(state=Cell.State.PROPOSED)
@@ -303,7 +303,7 @@ def test_resumed_agent_reviews_active_version_and_redelivery_does_not_run_again(
             yield from pending
             return engines.Outcome(text="Quality checks recorded.")
 
-    monkeypatch.setattr(engines, "select", lambda: ReviewingEngine())
+    monkeypatch.setattr(engines, "select", lambda user=None: ReviewingEngine())
     queued = enqueue.call_args.kwargs
     result = tasks.turn.apply(kwargs=queued["kwargs"], task_id=queued["task_id"])
     assert result.result == {"status": "ok"}

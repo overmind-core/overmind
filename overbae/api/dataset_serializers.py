@@ -84,6 +84,9 @@ class CellSerializer(serializers.ModelSerializer):
 
 
 class ChatTurnSerializer(serializers.Serializer):
+    funding_source = serializers.ChoiceField(choices=["platform", "chatgpt"], required=False)
+    model = serializers.CharField(required=False, allow_blank=True)
+    engine = serializers.CharField(required=False, allow_blank=True)
     id = serializers.CharField(required=False)
     role = serializers.ChoiceField(choices=["user", "agent"])
     text = serializers.CharField(allow_blank=True)
@@ -92,8 +95,17 @@ class ChatTurnSerializer(serializers.Serializer):
     steps = serializers.ListField(child=serializers.JSONField(), required=False)
     ms = serializers.IntegerField(required=False)
     status = serializers.ChoiceField(
-        choices=["running", "awaiting_approval", "resolved", "complete", "error"], required=False
+        choices=[
+            "running",
+            "awaiting_approval",
+            "awaiting_intent",
+            "resolved",
+            "complete",
+            "error",
+        ],
+        required=False,
     )
+    intent_choice = serializers.ChoiceField(choices=["train", "eval", "explore"], required=False)
     progress = serializers.JSONField(required=False)
     at = serializers.CharField()
 
@@ -286,9 +298,19 @@ class CellCreateSerializer(CellWriteSerializer):
 class ChatSerializer(serializers.Serializer):
     message = serializers.CharField(max_length=8000, required=False, allow_blank=True, default="")
     source = SourceSerializer(required=False)
+    intent_choice = serializers.ChoiceField(choices=["train", "eval", "explore"], required=False)
+    intent_turn_id = serializers.UUIDField(required=False)
 
     def validate(self, attrs):
-        if not attrs.get("message") and not attrs.get("source"):
+        if bool(attrs.get("intent_choice")) != bool(attrs.get("intent_turn_id")):
+            raise serializers.ValidationError(
+                "Provide the intent choice and its question id together."
+            )
+        if attrs.get("intent_choice") and (attrs.get("message") or attrs.get("source")):
+            raise serializers.ValidationError(
+                "Answer the intent question before sending another message or files."
+            )
+        if not attrs.get("message") and not attrs.get("source") and not attrs.get("intent_choice"):
             raise serializers.ValidationError("Write a message or attach files.")
         return attrs
 

@@ -1,6 +1,13 @@
 from .behaviour import Behaviour, BehaviourVersion, ConversationEvent, TaskExecution
 from .billing import BillingService, BillingTelemetry, Subscription, SubscriptionStatus
 from .capabilities import Capability, IdentityAlias, Prompt
+from .chatgpt import (
+    ChatGPTAccount,
+    ChatGPTAuthorization,
+    ChatGPTInstallation,
+    ChatGPTLoginTicket,
+    WorkshopPreference,
+)
 from .connectors import ConnectorCredential, ConnectorSyncConfig, ConnectorSyncRun
 from .dataset_context import DatasetContext
 from .datasets import Cell, Dataset
@@ -48,6 +55,11 @@ from .optimizer import (
 from .traces import BacktestRun, Conversation, Span
 
 __all__ = [
+    "ChatGPTAccount",
+    "ChatGPTAuthorization",
+    "ChatGPTInstallation",
+    "ChatGPTLoginTicket",
+    "WorkshopPreference",
     "User",
     "UserManager",
     "SignOnMethod",

@@ -16,6 +16,7 @@
 /**
  * * `running` - running
  * * `awaiting_approval` - awaiting_approval
+ * * `awaiting_intent` - awaiting_intent
  * * `resolved` - resolved
  * * `complete` - complete
  * * `error` - error
@@ -24,6 +25,7 @@
 export const ChatTurnStatusEnum = {
     running: 'running',
     awaiting_approval: 'awaiting_approval',
+    awaiting_intent: 'awaiting_intent',
     resolved: 'resolved',
     complete: 'complete',
     error: 'error'

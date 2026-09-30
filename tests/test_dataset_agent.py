@@ -131,7 +131,9 @@ def test_add_cell_runs_and_reports_and_a_proposal_waits():
 def test_edit_cell_reruns_and_set_intent_only_while_pending():
     dataset = _dataset()
     tools, _ = _tools(dataset)
-    assert tools.set_intent({"intent": "eval"})["ok"]
+    tools.user_request = "Use this for evaluation"
+    assert tools.set_intent({"intent": "eval", "evidence": "for evaluation"})["ok"]
+    dataset.refresh_from_db()
     accept(dataset, tools.add_cell({"title": "Keep", "script": KEEP}))
     result = tools.edit_cell({"version": "1.1", "script": "df = df\n"})
     assert result["ok"] and result["rows"] == 3
@@ -173,7 +175,7 @@ def test_set_capability_and_rename_change_the_dataset():
 
 
 def test_guarded_tools_return_json_safe_errors():
-    dataset = _dataset()
+    dataset = _dataset(intent="eval")
     tools, _ = _tools(dataset)
     handlers = tools.handlers()
     assert (
@@ -367,6 +369,7 @@ def test_narration_positions_survive_progress_snapshots_and_cell_updates():
     tools.respond("Reading the data 🔎.")
     offset = len(tools.text.encode("utf-16-le")) // 2
     tools.handlers()["add_cell"]({"title": "Shape rows", "script": SHAPE})
+    tools.start_response()
     tools.respond("The prepared version is ready.")
     tools.report_progress("complete", "Complete", "")
     snapshot = events[-1]
@@ -393,12 +396,13 @@ def test_late_activity_completion_does_not_split_streamed_or_saved_narration(mon
             tools.report_progress("working", "Inspecting", "")
             tools.think()
             tools.stop_thinking(duration_ms=500)
+            tools.start_response()
             tools.respond("Inspection complete.")
             while pending:
                 yield pending.pop(0)
             return engines.Outcome(text=tools.text)
 
-    monkeypatch.setattr(engines, "select", lambda: LateCompletionEngine())
+    monkeypatch.setattr(engines, "select", lambda user=None: LateCompletionEngine())
     events = list(agent.follow_up(dataset.id, "Inspect the attachment"))
     expected = sentence + "\n\nInspection complete."
     assert "".join(event["text"] for event in events if event["type"] == "chat_delta") == expected
@@ -410,6 +414,32 @@ def test_late_activity_completion_does_not_split_streamed_or_saved_narration(mon
     assert {step["text_offset"] for step in saved["steps"] if step["id"] == "inspect"} == {0}
     next_thought = saved["steps"][-1]
     assert next_thought["text_offset"] == len(sentence.encode("utf-16-le")) // 2
+
+
+def test_new_activity_does_not_insert_breaks_inside_streamed_narration(monkeypatch):
+    dataset = _dataset(intent="train")
+    prefix = 'Treating "Extraing training data" as an'
+    suffix = " explicit training request. Reading the source 🔎."
+
+    class InterleavedEngine:
+        name = "test"
+
+        def run(self, dataset, message, tools, pending):
+            tools.respond(prefix)
+            tools.handlers()["status"]({})
+            tools.thought("Read the current rows.")
+            tools.respond(suffix)
+            tools.report_progress("working", "Inspecting", "")
+            while pending:
+                yield pending.pop(0)
+            return engines.Outcome(text=tools.text)
+
+    monkeypatch.setattr(engines, "select", lambda user=None: InterleavedEngine())
+    events = list(agent.follow_up(dataset.id, "Extract training data"))
+    assert "".join(e["text"] for e in events if e["type"] == "chat_delta") == prefix + suffix
+    dataset.refresh_from_db()
+    assert dataset.chat[-1]["text"] == prefix + suffix
+    assert any(e["text"] == prefix + suffix for e in events if e["type"] == "chat_progress")
 
 
 def test_workspace_carries_prompt_cells_and_frames():
@@ -431,10 +461,30 @@ def test_workspace_carries_prompt_cells_and_frames():
 
 
 class _FakeRun:
-    def __init__(self, tools):
+    def __init__(self, tools, send_options=None):
         self._tools = tools
+        self.send_options = send_options
 
     def stream(self):
+        update = self.send_options.on_delta
+        update(types.SimpleNamespace(type="step-started", step_id=0))
+        for message in self.messages():
+            if message.type == "assistant":
+                for block in message.message.content:
+                    update(types.SimpleNamespace(type="text-delta", text=block.text))
+            elif message.type == "thinking":
+                if message.text:
+                    update(types.SimpleNamespace(type="thinking-delta", text=message.text))
+                if message.thinking_duration_ms is not None:
+                    update(
+                        types.SimpleNamespace(
+                            type="thinking-completed",
+                            thinking_duration_ms=message.thinking_duration_ms,
+                        )
+                    )
+            yield message
+
+    def messages(self):
         out = self._tools["add_cell"].execute({"title": "Keep", "script": KEEP}, None)
         assert out["ok"]
         yield types.SimpleNamespace(type="tool_call", name="add_cell", status="running")
@@ -471,11 +521,11 @@ class _FakeAgent:
     def __exit__(self, *exc):
         return False
 
-    def send(self, message):
+    def send(self, message, options=None):
         # No **kwargs on purpose: the bridge rejects idempotency_key on a local
         # agent's Send, so passing one has to fail here too.
         self.message = message
-        return _FakeRun(self.options.local.custom_tools)
+        return _FakeRun(self.options.local.custom_tools, options)
 
 
 @pytest.fixture
@@ -546,7 +596,7 @@ def test_running_generation_progress_is_persisted_and_partial_rows_survive_failu
         def describe_error(self, exc):
             return str(exc)
 
-    monkeypatch.setattr(engines, "select", lambda: PartialEngine())
+    monkeypatch.setattr(engines, "select", lambda user=None: PartialEngine())
     list(agent.follow_up(dataset.id, "Generate to 5 rows"))
     dataset.refresh_from_db()
     assert len(dataset.chat) == 2
@@ -563,7 +613,7 @@ def test_cursor_thinking_streams_and_survives_reload(cursor, monkeypatch):
     explanation = "The source has three rows. One is missing a question, so that row needs review."
 
     class ThinkingRun(_FakeRun):
-        def stream(self):
+        def messages(self):
             yield types.SimpleNamespace(
                 type="thinking", text=explanation, thinking_duration_ms=None
             )
@@ -576,7 +626,9 @@ def test_cursor_thinking_streams_and_survives_reload(cursor, monkeypatch):
             )
 
     monkeypatch.setattr(
-        _FakeAgent, "send", lambda self, message: ThinkingRun(self.options.local.custom_tools)
+        _FakeAgent,
+        "send",
+        lambda self, message, options: ThinkingRun(self.options.local.custom_tools, options),
     )
     events = list(agent.follow_up(dataset.id, "Inspect the data"))
     assert [e["text"] for e in events if e["type"] == "chat_thinking"] == [explanation]
@@ -585,6 +637,43 @@ def test_cursor_thinking_streams_and_survives_reload(cursor, monkeypatch):
     assert thought["phase"] == "thinking" and thought["status"] == "done"
     assert thought["duration_ms"] == 750 and thought["text"] == explanation
     assert dataset.chat[-1]["text"] == "Three rows."
+
+
+def test_cursor_narration_uses_model_rounds_not_tool_callback_timing(cursor, monkeypatch):
+    from cursor_sdk import SendOptions
+
+    dataset = _dataset(intent="train")
+    prefix = 'Treating "Extraing training data" as an'
+    suffix = " explicit training request. Reading the source 🔎."
+
+    class InterleavedRun(_FakeRun):
+        def stream(self):
+            update = self.send_options.on_delta
+            update(types.SimpleNamespace(type="step-started", step_id=0))
+            update(types.SimpleNamespace(type="text-delta", text=prefix))
+            self._tools["status"].execute({}, None)
+            yield types.SimpleNamespace(type="tool_call")
+            update(types.SimpleNamespace(type="text-delta", text=suffix))
+            yield types.SimpleNamespace(type="assistant")
+            update(types.SimpleNamespace(type="step-started", step_id=1))
+            update(types.SimpleNamespace(type="thinking-delta", text="Inspect rows."))
+            update(types.SimpleNamespace(type="thinking-completed", thinking_duration_ms=800))
+            update(types.SimpleNamespace(type="text-delta", text="Inspection complete."))
+            yield types.SimpleNamespace(type="assistant")
+
+    def send(self, message, options):
+        assert isinstance(options, SendOptions)
+        run = InterleavedRun(self.options.local.custom_tools)
+        run.send_options = options
+        return run
+
+    monkeypatch.setattr(_FakeAgent, "send", send)
+    events = list(agent.follow_up(dataset.id, "Extract training data"))
+    expected = prefix + suffix + "\n\nInspection complete."
+    assert "".join(e["text"] for e in events if e["type"] == "chat_delta") == expected
+    dataset.refresh_from_db()
+    assert dataset.chat[-1]["text"] == expected
+    assert dataset.chat[-1]["steps"][-1]["duration_ms"] == 800
 
 
 def test_generation_keeps_the_explanation_alongside_verified_counts(monkeypatch):
@@ -604,7 +693,7 @@ def test_generation_keeps_the_explanation_alongside_verified_counts(monkeypatch)
             yield from pending
             return engines.Outcome(text=explanation)
 
-    monkeypatch.setattr(engines, "select", lambda: GeneratingEngine())
+    monkeypatch.setattr(engines, "select", lambda user=None: GeneratingEngine())
     list(agent.follow_up(dataset.id, "Add one example"))
     dataset.refresh_from_db()
     text = dataset.chat[-1]["text"]
@@ -619,7 +708,7 @@ def test_a_refused_cursor_send_still_lands_the_turn(cursor, monkeypatch):
     import cursor_sdk
 
     class _RefusingAgent(_FakeAgent):
-        def send(self, message):
+        def send(self, message, options=None):
             raise RuntimeError("Idempotency-Key is only supported for cloud Send in v1")
 
     monkeypatch.setattr(cursor_sdk, "Agent", _RefusingAgent)
@@ -730,6 +819,26 @@ def test_a_native_turn_streams_cells_and_text_and_lands_on_the_dataset(openroute
     assert [c["action"] for c in dataset.chat[1]["cells"]] == ["proposed"]
     assert len(dataset.chat[1]["steps"]) == 6 and dataset.chat[1]["ms"] >= 0
     assert dataset.versions()[dataset.active_cell.id] == "1.0"
+
+
+def test_native_narration_separates_complete_model_responses(openrouter, monkeypatch):
+    monkeypatch.setattr(native, "DELTA_FLUSH_SECONDS", 0)
+    monkeypatch.setattr(
+        native,
+        "stream_llm_tools",
+        _fake_stream(
+            [
+                ([_call("status", {})], ["Inspecting the ", "source 🔎."]),
+                ([], ["Inspection ", "complete."]),
+            ]
+        ),
+    )
+    dataset = _dataset(intent="train")
+    events = list(agent.follow_up(dataset.id, "Inspect the training data"))
+    expected = "Inspecting the source 🔎.\n\nInspection complete."
+    assert "".join(e["text"] for e in events if e["type"] == "chat_delta") == expected
+    dataset.refresh_from_db()
+    assert dataset.chat[-1]["text"] == expected
 
 
 def test_the_ladder_picks_cursor_then_openrouter_then_a_vendor_key(monkeypatch):
