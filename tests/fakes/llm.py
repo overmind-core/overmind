@@ -118,9 +118,14 @@ class FakeLLM:
     catalog_models: list[str] | None = None
     prices: dict[str, dict[str, str]] = field(default_factory=dict)
     limits: dict[str, int] = field(default_factory=dict)
+    catalog_payload: list[dict[str, Any]] | None = None
+    catalog_reads: list[dict[str, str]] = field(default_factory=list)
 
     def catalog(self) -> list[dict[str, Any]]:
         from overbae.core.model_registry import OPENROUTER_MODEL_SLUGS
+
+        if self.catalog_payload is not None:
+            return self.catalog_payload
 
         listed = (
             OPENROUTER_MODEL_SLUGS.values() if self.catalog_models is None else self.catalog_models
@@ -152,16 +157,22 @@ class FakeLLM:
             "confidence": 0.9,
         }
 
-    def fail(self, match: Callable[[LLMRequest], bool], status: int = 500) -> None:
-        self._failures.append((match, status))
+    def fail(
+        self,
+        match: Callable[[LLMRequest], bool],
+        status: int = 500,
+        message: str = "fake outage",
+        headers: dict[str, str] | None = None,
+    ) -> None:
+        self._failures.append((match, status, message, headers or {}))
 
-    def _failure(self, request: LLMRequest) -> int:
-        for predicate, status in self._failures:
+    def _failure(self, request: LLMRequest) -> tuple[int, str, dict[str, str]]:
+        for predicate, status, message, headers in self._failures:
             if predicate(request):
                 with self._lock:
                     self.requests.append(request)
-                return status
-        return 0
+                return status, message, headers
+        return 0, "", {}
 
     def _message(self, request: LLMRequest) -> dict[str, Any]:
         for predicate, reply in reversed(self._scripts):
@@ -260,13 +271,15 @@ class FakeLLM:
             server.shutdown()
             server.server_close()
 
-    def handle(self, method: str, url: str, raw: bytes | str | None) -> tuple[int, dict, bytes]:
-        failure = self._failure(LLMRequest(url=url, body=_json_body(raw)))
+    def handle(
+        self, method: str, url: str, raw: bytes | str | None, headers: dict | None = None
+    ) -> tuple[int, dict, bytes]:
+        failure, message, extra = self._failure(LLMRequest(url=url, body=_json_body(raw)))
         if failure:
             return (
                 failure,
-                {"content-type": "application/json"},
-                b'{"error": {"message": "fake outage"}}',
+                {"content-type": "application/json", **extra},
+                json.dumps({"error": {"message": message}}).encode(),
             )
         if method == "POST" and url.rstrip("/").endswith("/chat/completions"):
             body = json.loads(raw or b"{}")
@@ -294,6 +307,8 @@ class FakeLLM:
             }
             return 200, {"content-type": "application/json"}, json.dumps(payload).encode()
         if method == "GET" and url.rstrip("/").endswith("/models"):
+            with self._lock:
+                self.catalog_reads.append({k.lower(): v for k, v in (headers or {}).items()})
             return (
                 200,
                 {"content-type": "application/json"},
@@ -336,7 +351,7 @@ class Network:
             answer = vendor.handle(method, url, body, headers)
             if answer is not None:
                 return answer
-        status, headers, content = self.llm.handle(method, url, body)
+        status, headers, content = self.llm.handle(method, url, body, headers)
         if status == 599:
             self.refused.append(f"{method} {url}")
         return status, headers, content
