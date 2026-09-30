@@ -15,22 +15,24 @@ from overbae.services.eval.evaluators.gen_judge import ChecklistItem, ChecklistR
 from overbae.tasks.eval import _assess_degradation
 
 
-def _stub_judge_score(monkeypatch, verdicts=(True, False), reasoning="judged"):
+def _stub_judge_score(fake_llm, verdicts=(True, False), reasoning="judged"):
     """Stubs the judge with one checklist verdict per entry; the score the
     evaluator lands on is the pass fraction."""
 
-    def fake_invoke_judge(prompt, **kwargs):
-        return judging.JudgeOutcome(
-            parsed=ChecklistResult(
-                items=[ChecklistItem(id=f"c{n}", verdict=v) for n, v in enumerate(verdicts)],
-                reasoning=reasoning,
-            ),
-            raw="{}",
-            stats={"response_cost": 0.0, "response_ms": 0},
-            judge_trace_id="t",
-        )
-
-    monkeypatch.setattr(judging, "invoke_judge", fake_invoke_judge)
+    fake_llm.on(
+        lambda r: r.schema_name in ("ChecklistResult", "ClaimsResult", "JudgeResult"),
+        (
+            judging.JudgeOutcome(
+                parsed=ChecklistResult(
+                    items=[ChecklistItem(id=f"c{n}", verdict=v) for n, v in enumerate(verdicts)],
+                    reasoning=reasoning,
+                ),
+                raw="{}",
+                stats={"response_cost": 0.0, "response_ms": 0},
+                judge_trace_id="t",
+            )
+        ).parsed.model_dump_json(),
+    )
 
 
 def _provenance_marker(draft):
@@ -310,9 +312,9 @@ def _judge_stub(scope: str, source: str):
     )
 
 
-def test_judge_scores_low_provenance_on_empty_trajectory_evidence(monkeypatch):
+def test_judge_scores_low_provenance_on_empty_trajectory_evidence(fake_llm):
     # Empty evidence still scores — execution never blocks a user-selected eval.
-    _stub_judge_score(monkeypatch)
+    _stub_judge_score(fake_llm)
     unit = EvalUnit(trajectory={"metadata": {}, "final_output": ""}, structured={}, expected=None)
     evaluator = _judge_stub(scope="trajectory", source="tool_calls")
 
@@ -352,7 +354,7 @@ def _gated_judge_stub(scope: str, source: str):
     return ev
 
 
-def test_gated_judge_flags_low_provenance_when_bound_var_absent(monkeypatch):
+def test_gated_judge_flags_low_provenance_when_bound_var_absent(fake_llm):
     unit = EvalUnit(trajectory={"metadata": {}, "final_output": ""}, structured={}, expected=None)
     evaluator = _gated_judge_stub(scope="sample", source="input")
 
@@ -360,7 +362,7 @@ def test_gated_judge_flags_low_provenance_when_bound_var_absent(monkeypatch):
     assert reason is not None
     assert "ungradable gate" in reason.lower()
 
-    _stub_judge_score(monkeypatch, verdicts=(False,))
+    _stub_judge_score(fake_llm, verdicts=(False,))
     drafts = gen_judge.evaluate(unit, evaluator, ctx={})
     assert drafts[0].value == 0.0  # scored, not abstained
     marker = _provenance_marker(drafts[0])

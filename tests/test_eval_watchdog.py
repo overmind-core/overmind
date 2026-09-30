@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from contextlib import contextmanager
 from datetime import timedelta
 
 import pytest
@@ -19,18 +18,6 @@ from overbae.tasks import eval as eval_tasks
 from overbae.tasks.eval_watchdog import EVAL_RUN_STALL_MINUTES, reap_stalled_eval_runs
 
 pytestmark = pytest.mark.django_db
-
-
-@contextmanager
-def _noop_lock(*_args, **_kwargs):
-    yield True
-
-
-@pytest.fixture(autouse=True)
-def _bypass_task_lock(monkeypatch):
-    # reap_stalled_eval_runs is wrapped in @with_task_lock, which contacts Redis;
-    # bypass it so CI doesn't need a broker.
-    monkeypatch.setattr("overbae.tasks.utils.task_lock.acquire_task_lock", _noop_lock)
 
 
 def _run(project, status=EvalRun.Status.RUNNING) -> EvalRun:
@@ -163,11 +150,11 @@ def test_handle_eval_failure_is_idempotent_and_preserves_completed():
     assert completed.error == ""
 
 
-def test_fail_run_idempotent_returns_zero_on_repeat():
+def test_a_second_failure_keeps_the_first_error():
     run = _run(make_project())
-    assert eval_tasks._fail_run(str(run.id), "first") == 1
-    assert eval_tasks._fail_run(str(run.id), "second") == 0
+    eval_tasks.handle_eval_failure(RuntimeError("first"), eval_run_id=str(run.id))
+    eval_tasks.handle_eval_failure(RuntimeError("second"), eval_run_id=str(run.id))
 
     run.refresh_from_db()
     assert run.status == EvalRun.Status.FAILED
-    assert run.error == "first"
+    assert "first" in run.error and "second" not in run.error

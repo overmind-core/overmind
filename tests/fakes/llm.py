@@ -118,6 +118,7 @@ class FakeLLM:
     catalog_models: list[str] | None = None
     prices: dict[str, dict[str, str]] = field(default_factory=dict)
     limits: dict[str, int] = field(default_factory=dict)
+    output_limits: dict[str, int] = field(default_factory=dict)
     catalog_payload: list[dict[str, Any]] | None = None
     catalog_reads: list[dict[str, str]] = field(default_factory=list)
 
@@ -136,7 +137,7 @@ class FakeLLM:
                 "id": slug,
                 "name": slug,
                 "context_length": self.limits.get(slug, 128_000),
-                "top_provider": {"max_completion_tokens": 16_384},
+                "top_provider": {"max_completion_tokens": self.output_limits.get(slug, 16_384)},
                 "supported_parameters": ["tools", "response_format", "structured_outputs"],
                 "pricing": self.prices.get(slug, {"prompt": "0.000001", "completion": "0.000002"}),
                 "architecture": {"modality": "text->text"},
