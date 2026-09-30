@@ -1,6 +1,6 @@
 ---
 name: overmind
-description: Use Overmind's curated MCP server for project-scoped observability, datasets, evaluations, fine-tuning, optimization, connectors, and instrumentation; use the skill only as fallback orchestration and for local repository work.
+description: Connect and set up Overmind, discover capabilities from a local repository, or coordinate work across product surfaces. Use the focused Overmind surface skills for individual platform workflows and native MCP prompts when available.
 ---
 
 # Overmind MCP
@@ -36,6 +36,7 @@ Route guided work to these exact prompt names:
 - `upload-dataset-file` — upload local data through the CLI, then land the dataset through MCP or REST.
 - `export-dataset` — download a dataset version through the local CLI; MCP carries guidance, not file bytes.
 - `download-checkpoint` — download an archived fine-tuned deployment checkpoint through the local CLI; MCP carries guidance, not checkpoint bytes.
+- `connect-traces` — connect a tracing provider, review capability boundaries and verify imported traces.
 - `prepare-evaluation` — check evaluation dataset, evaluators, eval set, bindings, and credits.
 - `evaluate-change` — run an evaluation and compare it with a supplied baseline.
 - `finetune-capability` — check, estimate, launch, and verify fine-tuning.
@@ -53,14 +54,38 @@ Do not reimplement these workflows as a single generic call. The prompt
 supplies the workflow; the skill supplies only missing local actions,
 human approval boundaries, and fallback sequencing.
 
+The plugin is an optional distribution package for this skill and the existing
+MCP connection. Essential guidance is supplied by MCP initialization, tool
+descriptions and resources. Installing the plugin adds no separate product UI
+or additional platform permissions.
+
+## Product surface skills
+
+The plugin and `overmind init` include these focused workflows. Select the one
+that matches the user's task; do not load all of them for a single operation.
+Each works directly with the configured MCP connection and can be used on its own.
+
+| Skill                                               | Use it for                                                   |
+| --------------------------------------------------- | ------------------------------------------------------------ |
+| [Agent](../overmind-agent/SKILL.md)                 | Capability map, behaviour coverage and repository provenance |
+| [Observability](../overmind-observability/SKILL.md) | Traces, failures, latency and instrumentation gaps           |
+| [Datasets](../overmind-datasets/SKILL.md)           | Data Workshop preparation, proposals, generation and export  |
+| [Evaluations](../overmind-evaluations/SKILL.md)     | Rubrics, eval sets, runs and baseline comparisons            |
+| [Optimiser](../overmind-optimiser/SKILL.md)         | Prompt/code experiments and model comparisons                |
+| [Training](../overmind-training/SKILL.md)           | Model selection, exact preparation, cost and fine-tuning     |
+| [Inference](../overmind-inference/SKILL.md)         | Serving metrics, worker state and approved activation        |
+| [Integrations](../overmind-integrations/SKILL.md)   | Provider connectors, boundary mapping and trace import       |
+
 ## Connection and safety
 
 - `overmind sync` stores the **project-scoped API key** locally and configures
-  each initialized MCP client with `X-Api-Key`; that value is still an API key,
-  not OAuth. Never use OAuth for this server and never ask the user to paste a
-  key into chat.
+  each initialized MCP client with `X-Api-Key`. Plugin connections use OAuth;
+  account API keys also work. Never ask the user to paste a key into chat.
 - The public server supports read and write permissions for the curated
-  surface. It is project-scoped and returns structured errors as values.
+  surface and returns structured errors as values. Start with `list_projects`.
+  Account connections require `project_id` for every project operation and
+  resource URI query. Follow returned resource links; selection is per request.
+  Project keys remain limited to their configured project.
 - There are no public product tools for deletion, cancellation, or removal.
   Deployment recovery is limited to `retry_deployment` for failed or deleted
   deployments; do not invent other lifecycle tools.
@@ -78,7 +103,7 @@ Follow these for ALL Overmind work:
    goes through the Overmind
    MCP server. Do not curl REST endpoints, do not invent base URLs, and do not
    hardcode hosts. The server is already configured (plugin, or `overmind init`)
-   and scoped to one project via the saved API key in its headers. Call the named
+   and authenticated through OAuth or an account/project API key. Call the named
    tools; inspect each tool's schema for arguments. If tools are missing, tell
    the user to run `overmind init` for the IDE and `overmind sync` to install
    its project credential. Do not paste a URL or ask them to paste the raw key
@@ -313,11 +338,15 @@ Typical loop (local setup once, then MCP):
 
 ## Resources
 
-The static project resource is:
+Discover accessible projects with `list_projects`. The project resource is:
 
-`overmind://project/current`
+`overmind://project/current?project_id=ID`
 
 Includes `repository_snapshot` (repository, directory, branch, commit, dirty state, fingerprint and scan time) and `last_synced_at`. A null snapshot means the revision is unknown; sync time is not scan time. Run local `/overmind setup` to refresh the map.
+
+`console_url` opens the authenticated project's ordinary Console on this
+deployment. It contains no credentials; the browser still requires its own
+Console session.
 
 The static local dataset upload guidance resource is:
 
@@ -353,6 +382,29 @@ Use a capability, dataset, run, deployment, connector, or experiment name/id
 only where the tool schema accepts it. Resource reads are project-scoped and
 return JSON. Job references use the kind values accepted by `get_job`, such as
 `eval_run`, `finetune_job`, `deployment`, `model_activation`, or `optimizer_experiment`.
+
+## Console navigation
+
+When the user wants to see a product view, start with `console_url` from
+`overmind://project/current`. Use an existing returned Console link where one is
+available. Otherwise preserve its deployment base and `projectId`, and append
+the relevant route using a resource ID already resolved through MCP:
+
+| View           | Route                   |
+| -------------- | ----------------------- |
+| Capability     | `capabilities/{id}`     |
+| Traces         | `observability`         |
+| Dataset        | `datasets/{id}`         |
+| Evaluation run | `evaluations/runs/{id}` |
+| Training       | `training`              |
+| Optimiser      | `optimiser`             |
+| Serving        | `inference`             |
+
+Use the host's browser-opening tool (Codex `open_in_codex` when available), or
+return the ordinary link. Do not add plugin-only presentation parameters or
+build another UI. Verify the browser project matches the MCP project before
+combining their evidence. Console navigation is optional; continue platform
+work through MCP when no browser is available.
 
 ## Fallback routing
 

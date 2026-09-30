@@ -1,0 +1,7 @@
+interface:
+  display_name: "Overmind Evaluations"
+  short_description: "Prepare evaluations and compare measured results"
+  default_prompt: "Use $overmind-evaluations to compare my latest evaluation with its baseline."
+  brand_color: "#ED670F"
+  icon_small: "./assets/icon.png"
+  icon_large: "./assets/icon.png"

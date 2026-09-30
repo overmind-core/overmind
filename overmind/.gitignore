@@ -23,6 +23,8 @@ dev/
 
 # Generated images/plots
 *.png
+!/assets/icon.png
+!/skills/*/assets/icon.png
 
 # Results and output
 tmp/

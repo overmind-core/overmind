@@ -1,0 +1,7 @@
+interface:
+  display_name: "Overmind Agent"
+  short_description: "Inspect capabilities, contracts and agent coverage"
+  default_prompt: "Use $overmind-agent to explain my agent map and identify gaps in behaviour coverage."
+  brand_color: "#ED670F"
+  icon_small: "./assets/icon.png"
+  icon_large: "./assets/icon.png"

@@ -39,6 +39,7 @@ from .iam import (
     UserOnboarding,
 )
 from .inference import DeployedModel, InferenceCall, ModelActivation
+from .mcp_oauth import MCPOAuthClient, MCPOAuthGrant, MCPOAuthToken
 from .optimizer import (
     OptimizerCandidate,
     OptimizerCommand,
@@ -48,6 +49,9 @@ from .optimizer import (
 from .traces import BacktestRun, Conversation, Span
 
 __all__ = [
+    "MCPOAuthClient",
+    "MCPOAuthGrant",
+    "MCPOAuthToken",
     "User",
     "UserManager",
     "SignOnMethod",

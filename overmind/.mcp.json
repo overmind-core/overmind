@@ -1,0 +1,7 @@
+{
+  "mcpServers": {
+    "overmind": {
+      "url": "https://api.overmindlab.ai/api/mcp/"
+    }
+  }
+}

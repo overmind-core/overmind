@@ -268,6 +268,8 @@ DATA_UPLOAD_MAX_MEMORY_SIZE = None
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
 FRONTEND_URL = os.environ.get("FRONTEND_URL", "http://localhost:5173")
+MCP_SERVER_URL = os.environ.get("MCP_SERVER_URL", "http://localhost:8000/api/mcp/" if DEBUG else "")
+OPENAI_APPS_CHALLENGE = os.environ.get("OPENAI_APPS_CHALLENGE", "")
 
 # A trace with no root span is "live" until it has been quiet this long, then
 # "interrupted" — the root ends last, so a killed run never exports one.

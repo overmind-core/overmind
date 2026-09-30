@@ -58,7 +58,8 @@ def test_requires_api_key_and_rejects_jwt():
     assert response.json()["error"]["code"] == "authentication_failed"
 
 
-def test_unauthenticated_mcp_does_not_challenge_oauth_bearer():
+def test_unconfigured_oauth_does_not_advertise_a_bearer_challenge(settings):
+    settings.MCP_SERVER_URL = ""
     with TestClient(create_mcp_application()) as client:
         response = client.post(
             MCP_URL,
@@ -75,7 +76,7 @@ def test_unauthenticated_mcp_does_not_challenge_oauth_bearer():
     assert "bearer" not in response.headers.get("www-authenticate", "").casefold()
 
 
-def test_requires_project_pinned_scope():
+def test_rejects_account_scope_with_project_binding():
     raw, _ = _token(scope={"scope": "account", "permission": ["read", "write"]})
     response = _call(raw)
     assert response.status_code == 403

@@ -6,7 +6,7 @@ from mcp_fixtures import EXPECTED_TOOL_NAMES
 
 from overbae.services.mcp.catalog import CATALOG
 
-MAX_MANIFEST_BYTES = 34 * 1024
+MAX_MANIFEST_BYTES = 40 * 1024
 SECRET_INPUT_PARTS = {
     "access_token",
     "api_key",

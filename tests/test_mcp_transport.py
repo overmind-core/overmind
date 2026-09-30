@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import json
+import re
 import uuid
+from urllib.parse import parse_qs, urlsplit
 
 import pytest
 from mcp_fixtures import EXPECTED_TOOL_NAMES
@@ -53,8 +55,9 @@ def _application():
     return create_mcp_application()
 
 
-def test_initialize_uses_official_streamable_http_transport():
-    raw, _ = _token()
+def test_initialize_uses_official_streamable_http_transport(settings):
+    settings.FRONTEND_URL = "https://console.example.test/workspace/"
+    raw, token = _token()
     with TestClient(_application()) as client:
         response = _post(
             client,
@@ -69,11 +72,22 @@ def test_initialize_uses_official_streamable_http_transport():
             ),
         )
 
+        result = response.json()["result"]
+        project_uri = re.search(r"overmind://project/current", result["instructions"]).group()
+        project_response = _post(client, raw, _rpc("resources/read", {"uri": project_uri}))
+
     assert response.status_code == 200
     result = response.json()["result"]
     assert result["protocolVersion"] == "2025-03-26"
     assert result["serverInfo"]["name"] == "overmind-platform"
     assert "tools" in result["capabilities"]
+    assert project_response.status_code == 200
+    project = json.loads(project_response.json()["result"]["contents"][0]["text"])
+    console_url = urlsplit(project["console_url"])
+    assert console_url.scheme == "https"
+    assert console_url.netloc == "console.example.test"
+    assert console_url.path == "/workspace/"
+    assert parse_qs(console_url.query) == {"projectId": [str(token.project_id)]}
 
 
 def test_ping_is_protocol_level_and_catalog_lists_curated_tools():
@@ -102,7 +116,7 @@ def test_tools_list_is_permission_filtered_and_stays_within_manifest_budget():
     assert full_response.status_code == 200
     assert read_names < {tool["name"] for tool in full_tools}
     assert len(full_tools) == len(EXPECTED_TOOL_NAMES)
-    assert len(full_response.content) <= 34 * 1024
+    assert len(full_response.content) <= 40 * 1024
 
 
 def test_resources_and_prompts_list_over_streamable_http():

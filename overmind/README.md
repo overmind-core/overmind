@@ -32,6 +32,12 @@ pipx install overmind
 
 ## Quick start (local setup)
 
+The optional plugin connects through OAuth and can access every project your
+Overmind account is authorized to access. Start with `list_projects`, then pass
+the chosen `project_id` on each project tool and resource URI. Account API keys
+support the same access model. The local repository setup below intentionally
+installs a narrower project API key for that repository.
+
 ```bash
 export OVERMIND_API_KEY=<your-api-key>
 export OVERMIND_API_URL=https://api.overmindlab.ai   # or your console API host
@@ -190,6 +196,29 @@ app = workflow.compile()
 
 Each node invocation runs inside `task(key, unit="turn")` (re-entrant phases share one unit) and function-backed nodes carry their `code.namespace` / `code.function.name` identity for contract anchoring.
 
+## MCP and optional plugins
+
+MCP is the complete platform integration. Its tools, resources, initialization
+guidance and native workflow prompts work without a plugin. Connect directly
+with `overmind init --ide <client>` and `overmind sync`.
+
+The Codex, Cursor and Claude Code plugin manifests package that same connection
+and the shared workflow skills. They add installation, branding, workflow guidance and
+links to the normal Console. They do not add a separate UI or another API.
+
+The bundled `.mcp.json` connects to the hosted API through OAuth account sign-in.
+Access continues until revoked, with automatic token refresh. Standalone MCP
+also accepts account or project API keys through `X-Api-Key` or
+`Authorization: Bearer`; never include a key in a plugin archive. For local or
+self-hosted projects, the direct `init`/`sync` setup selects the deployment and
+project credential. Keep one active connection for the intended account or
+project to avoid duplicate connections.
+
+Call `list_projects`, then read `overmind://project/current?project_id=ID` to
+identify the chosen project and obtain its `console_url`. Open that ordinary
+Console URL when a visual view is useful;
+its browser session remains separate from MCP authentication.
+
 ## Skills
 
 Use these from Cursor, Codex, or Claude Code to scaffold agents and operate
@@ -200,6 +229,7 @@ repository (e.g. `npx skills add overmind-core/overmind`).
 ```bash
 overmind skills list --verbose
 overmind skills sync overmind
+overmind skills sync overmind-observability overmind-datasets --ide codex
 overmind init --ide codex
 ```
 
@@ -221,9 +251,20 @@ exclude file and written with owner-only permissions. Sync refuses to put a key
 in a tracked config. Codex loads project configuration only for trusted
 repositories.
 
-| Skill      | What it does                                                                                        |
-| ---------- | --------------------------------------------------------------------------------------------------- |
-| `Overmind` | Instrument tracing, inspect telemetry via MCP, upload datasets, run evals, fine-tune, and optimize. |
+`overmind init` installs the complete skill set. Plugins bundle the same source;
+`overmind skills sync` refreshes selected skills in an existing installation.
+
+| Skill                    | What it does                                                       |
+| ------------------------ | ------------------------------------------------------------------ |
+| `overmind`               | Local setup, repository discovery and workflows across surfaces    |
+| `overmind-agent`         | Inspect capabilities, behaviour coverage and repository provenance |
+| `overmind-observability` | Investigate traces, failures, latency and instrumentation gaps     |
+| `overmind-datasets`      | Prepare, verify, generate and export Data Workshop versions        |
+| `overmind-evaluations`   | Author evaluators, prepare runs and compare results                |
+| `overmind-optimiser`     | Run prompt/code experiments and model comparisons                  |
+| `overmind-training`      | Prepare exact inputs, estimate costs and inspect fine-tuning       |
+| `overmind-inference`     | Inspect serving metrics, worker state and live routing             |
+| `overmind-integrations`  | Configure provider mappings and verify imported traces             |
 
 ## Anonymous usage analytics
 

@@ -1,0 +1,7 @@
+interface:
+  display_name: "Overmind Observability"
+  short_description: "Investigate traces, failures and latency"
+  default_prompt: "Use $overmind-observability to investigate recent failures in my Overmind project."
+  brand_color: "#ED670F"
+  icon_small: "./assets/icon.png"
+  icon_large: "./assets/icon.png"

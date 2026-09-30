@@ -1,0 +1,7 @@
+interface:
+  display_name: "Overmind"
+  short_description: "Connect Overmind and coordinate agent improvements"
+  default_prompt: "Use $overmind to connect my project and identify the next improvement to my agent."
+  brand_color: "#ED670F"
+  icon_small: "./assets/icon.png"
+  icon_large: "./assets/icon.png"

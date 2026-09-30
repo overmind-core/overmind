@@ -1,0 +1,7 @@
+interface:
+  display_name: "Overmind Datasets"
+  short_description: "Prepare and verify Data Workshop versions"
+  default_prompt: "Use $overmind-datasets to prepare training data from my agent traces."
+  brand_color: "#ED670F"
+  icon_small: "./assets/icon.png"
+  icon_large: "./assets/icon.png"

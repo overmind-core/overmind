@@ -28,6 +28,7 @@ from overbae.services.mcp.auth import MCP_PATH, MCPAuthMiddleware
 from overbae.services.mcp.catalog import CATALOG
 from overbae.services.mcp.context import get_context
 from overbae.services.mcp.errors import MCPError, error_payload
+from overbae.services.mcp.oauth_routes import domain_challenge, oauth_routes
 from overbae.services.mcp.prompts import get_prompt as render_prompt
 from overbae.services.mcp.prompts import list_prompts
 from overbae.services.mcp.resources import read_resource, resource_list, resource_templates
@@ -35,7 +36,35 @@ from overbae.services.mcp.resources import read_resource, resource_list, resourc
 SERVER_NAME = "overmind-platform"
 SERVER_VERSION = "1.0.0"
 
-mcp_server = Server(SERVER_NAME, version=SERVER_VERSION)
+mcp_server = Server(
+    SERVER_NAME,
+    version=SERVER_VERSION,
+    instructions=(
+        "Overmind is an agent improvement platform. Call list_projects first to find "
+        "accessible projects and choose the project relevant to the user's request. "
+        "Account connections require project_id on each project tool and resource URI; "
+        "there is no shared selected-project state. Follow returned resource links. "
+        "Read overmind://project/current?project_id=ID for repository provenance and "
+        "the ordinary Console URL. Project-scoped API keys remain limited to their project; "
+        "do not mix records from a different Console project or put credentials in tool arguments. "
+        "MCP provides the integration without a plugin or custom UI. Discover tools, "
+        "resources and prompts through their MCP lists; use the current schemas and returned "
+        "identifiers rather than inventing endpoint-shaped tools. Native prompts guide longer "
+        "workflows; optional skills cover local repository work and clients without prompt support. "
+        "Tools return the same data as structured content and JSON text. Treat isError and "
+        "structured error fields as failures; follow resource links and poll get_job with "
+        "the returned kind and id for asynchronous work. Preserve pagination, truncation, "
+        "missing scores, evaluator errors and pinned dataset/model identities in conclusions. "
+        "Inspection does not authorize mutations or paid runs. Check readiness and costs "
+        "before an authorized evaluation or training launch. Use message_dataset_agent for "
+        "dataset preparation; semantic replacements require a reviewed proposal, while "
+        "quality findings are advisory. Benchmark selection and live serving are separate. "
+        "Local scanning, file transfers, credentials and repository execution use the CLI "
+        "handoffs in the relevant resources/prompts. The server does not edit local files. "
+        "When a user wants a visual view, open the ordinary Console for this project; "
+        "opening a page does not authorize its write actions."
+    ),
+)
 
 
 @mcp_server.list_tools()
@@ -244,11 +273,13 @@ def create_mcp_application() -> Starlette:
 
     app = Starlette(
         routes=[
+            *oauth_routes(),
+            Route("/.well-known/openai-apps-challenge", endpoint=domain_challenge, methods=["GET"]),
             Route(
                 MCP_PATH,
                 endpoint=_TransportEndpoint(manager),
                 methods=["GET", "POST", "DELETE"],
-            )
+            ),
         ],
         middleware=[
             Middleware(MCPAuthMiddleware),

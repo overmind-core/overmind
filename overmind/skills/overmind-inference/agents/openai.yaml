@@ -1,0 +1,7 @@
+interface:
+  display_name: "Overmind Inference"
+  short_description: "Inspect deployments, metrics and live routing"
+  default_prompt: "Use $overmind-inference to check model readiness, worker state and application traffic."
+  brand_color: "#ED670F"
+  icon_small: "./assets/icon.png"
+  icon_large: "./assets/icon.png"

@@ -1,0 +1,7 @@
+interface:
+  display_name: "Overmind Integrations"
+  short_description: "Connect providers and verify imported traces"
+  default_prompt: "Use $overmind-integrations to review my tracing connector mapping and sync status."
+  brand_color: "#ED670F"
+  icon_small: "./assets/icon.png"
+  icon_large: "./assets/icon.png"

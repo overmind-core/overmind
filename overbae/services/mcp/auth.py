@@ -1,4 +1,4 @@
-"""API-key authentication and project authorization for MCP."""
+"""API-key and OAuth authentication for account-aware MCP access."""
 
 from __future__ import annotations
 
@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from asgiref.sync import sync_to_async
+from django.conf import settings
 from django.db import close_old_connections, connections
 from rest_framework import exceptions
 from starlette.datastructures import URL, Headers
@@ -17,6 +18,7 @@ from overbae.api.authentication import APITokenBackend
 from overbae.models import APIToken, Project
 from overbae.services.mcp.context import MCPContext, bind_context
 from overbae.services.mcp.errors import MCPError, error_payload
+from overbae.services.mcp.oauth import authenticate_access
 
 MCP_PATH = "/api/mcp/"
 
@@ -81,13 +83,31 @@ def recycle_connections() -> None:
 def _authenticate_sync(scope: Scope) -> MCPContext:
     # Starlette MCP never runs Django's request_started/finished.
     recycle_connections()
+    request = _request_for_scope(scope)
+    authorization = request.headers.get("Authorization", "").split(None, 1)
+    if (
+        not request.headers.get("X-Api-Key")
+        and len(authorization) == 2
+        and authorization[0].lower() == "bearer"
+        and authorization[1].startswith("om_oauth_")
+    ):
+        token = authenticate_access(authorization[1]) if settings.MCP_SERVER_URL else None
+        if token is None:
+            raise MCPError("authentication_failed", "The OAuth access token is invalid or expired.")
+        return MCPContext(
+            user=token.grant.user,
+            token=token,
+            project=None,
+            client_ip=(scope.get("client") or (None, None))[0],
+            inference_base_url=str(URL(scope=scope).replace(path="/api/v1", query="")),
+        )
     try:
         result = APITokenBackend().authenticate(_request_for_scope(scope))
     except exceptions.AuthenticationFailed as exc:
         raise _auth_error(str(exc.detail)) from None
 
     if result is None:
-        raise MCPError("authentication_required", "An MCP API key is required.")
+        raise MCPError("authentication_required", "Connect with OAuth or an Overmind API key.")
 
     user, token = result
     if not isinstance(token, APIToken):
@@ -99,9 +119,11 @@ def _authenticate_sync(scope: Scope) -> MCPContext:
 
     token_scope = token.scope if isinstance(token.scope, dict) else {}
     resource_ids = token_scope.get("resourceIds")
-    if (
-        token_scope.get("scope") != "project"
-        or not isinstance(resource_ids, list)
+    scope_kind = token_scope.get("scope")
+    if scope_kind not in {"account", "project"} or (scope_kind == "account" and token.project_id):
+        raise MCPError("project_required", "The API key has an invalid resource scope.")
+    if scope_kind == "project" and (
+        not isinstance(resource_ids, list)
         or len(resource_ids) != 1
         or token.project_id is None
         or str(resource_ids[0]) != str(token.project_id)
@@ -116,16 +138,18 @@ def _authenticate_sync(scope: Scope) -> MCPContext:
     ):
         raise MCPError("permission_denied", "The MCP API key has no MCP permissions.")
 
-    project = (
-        Project.objects.filter(
-            pk=resource_ids[0],
-            is_active=True,
-            memberships__user_id=user.pk,
+    project = None
+    if scope_kind == "project":
+        project = (
+            Project.objects.filter(
+                pk=resource_ids[0],
+                is_active=True,
+                memberships__user_id=user.pk,
+            )
+            .distinct()
+            .first()
         )
-        .distinct()
-        .first()
-    )
-    if project is None:
+    if scope_kind == "project" and project is None:
         raise MCPError("project_required", "The MCP API key is not valid for a project.")
 
     return MCPContext(
@@ -154,11 +178,16 @@ class MCPAuthMiddleware:
             try:
                 context = await authenticate_scope(scope)
             except MCPError as error:
-                # Cursor treats WWW-Authenticate: Bearer as an OAuth resource and
-                # POSTs /register. This surface is X-Api-Key only.
+                headers = {}
+                if settings.MCP_SERVER_URL:
+                    origin = settings.MCP_SERVER_URL.removesuffix("/api/mcp/")
+                    headers["WWW-Authenticate"] = (
+                        f'Bearer resource_metadata="{origin}/.well-known/oauth-protected-resource/api/mcp/"'
+                    )
                 response = JSONResponse(
                     {"error": error_payload(error)},
                     status_code=401 if error.data.code.startswith("authentication") else 403,
+                    headers=headers,
                 )
                 await response(scope, receive, send)
                 return

@@ -37,6 +37,7 @@ from overbae.api.eval_views import (
 )
 from overbae.api.guest import GuestClaimView, GuestStartView
 from overbae.api.health import health_check
+from overbae.api.mcp_oauth import MCPConsentView
 from overbae.api.optimizer import OptimizerCandidateViewSet, OptimizerExperimentViewSet
 from overbae.api.otlp import otlp_traces
 from overbae.api.public_models import PublicModelLibraryDetailView, PublicModelLibraryListView
@@ -99,6 +100,7 @@ router.register(r"behaviours", BehaviourViewSet, basename="behaviour")
 router.register(r"task-executions", TaskExecutionViewSet, basename="taskexecution")
 
 urlpatterns = [
+    path("api/mcp-oauth/consent/", MCPConsentView.as_view(), name="mcp-oauth-consent"),
     path(settings.ADMIN_URL_PATH, admin.site.urls),
     path("health", health_check, name="health"),
     path("api/v1/traces", otlp_traces, name="otlp-traces"),

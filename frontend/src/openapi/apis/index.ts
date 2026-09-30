@@ -16,6 +16,7 @@ export * from './EvaluatorsApi';
 export * from './FeedbackApi';
 export * from './FinetuningJobsApi';
 export * from './HealthApi';
+export * from './McpOauthApi';
 export * from './ModelsApi';
 export * from './OptimizerCandidatesApi';
 export * from './OptimizerExperimentsApi';

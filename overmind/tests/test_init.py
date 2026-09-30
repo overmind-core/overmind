@@ -12,6 +12,16 @@ from overmind.init_cmd import claude_config_path
 
 runner = CliRunner()
 SKILL_SOURCE = Path(__file__).resolve().parents[1] / "skills" / "overmind"
+SURFACE_SKILLS = (
+    "overmind-agent",
+    "overmind-observability",
+    "overmind-datasets",
+    "overmind-evaluations",
+    "overmind-optimiser",
+    "overmind-training",
+    "overmind-inference",
+    "overmind-integrations",
+)
 
 
 def _claude_overmind(project: Path) -> dict:
@@ -56,6 +66,12 @@ def test_init_delivers_current_onboarding_workflow(tmp_path, monkeypatch, ide, s
     if existing:
         (tmp_path / skill_dir / "skills" / "overmind" / progress).write_text("Outdated progress\n")
 
+    if existing:
+        for slug in SURFACE_SKILLS:
+            installed = tmp_path / skill_dir / "skills" / slug
+            installed.mkdir(parents=True, exist_ok=True)
+            (installed / "SKILL.md").write_text("Outdated surface workflow\n")
+
     result = runner.invoke(app, ["init", "--ide", ide, "--env", "production"], catch_exceptions=False)
     assert result.exit_code == 0, result.output
 
@@ -69,6 +85,11 @@ def test_init_delivers_current_onboarding_workflow(tmp_path, monkeypatch, ide, s
     assert (tmp_path / skill_dir / "skills" / "overmind" / progress).read_text() == (
         SKILL_SOURCE / progress
     ).read_text()
+    for slug in SURFACE_SKILLS:
+        source = SKILL_SOURCE.parent / slug
+        installed = tmp_path / skill_dir / "skills" / slug
+        assert (installed / "SKILL.md").read_bytes() == (source / "SKILL.md").read_bytes()
+        assert (installed / "agents/openai.yaml").read_bytes() == (source / "agents/openai.yaml").read_bytes()
 
 
 def test_init_writes_cursor_mcp_json(tmp_path, monkeypatch):

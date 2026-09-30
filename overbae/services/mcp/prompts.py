@@ -384,7 +384,16 @@ def get_prompt(name: str, arguments: Mapping[str, str] | None = None) -> types.G
         messages=[
             types.PromptMessage(
                 role="user",
-                content=types.TextContent(type="text", text=prompt.template.format(**values)),
+                content=types.TextContent(
+                    type="text",
+                    text=(
+                        "First use list_projects to identify the intended accessible project. "
+                        "For an account connection, pass its project_id on every project tool "
+                        "and add project_id to resource URI query parameters. Follow returned "
+                        "resource links; do not infer a shared selected project. "
+                        + prompt.template.format(**values)
+                    ),
+                ),
             )
         ],
     )

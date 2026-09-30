@@ -38,6 +38,7 @@ import {
   EvaluatorsApi,
   FeedbackApi,
   FinetuningJobsApi,
+  McpOauthApi,
   ModelsApi,
   OptimizerExperimentsApi,
   ProjectsApi,
@@ -400,6 +401,7 @@ export async function request<T>(path: string, init?: RequestInit): Promise<T> {
 }
 
 export class API {
+  mcpOauth: McpOauthApi;
   agent: AgentApi;
   capabilities: CapabilitiesApi;
   auth: AuthApi;
@@ -430,6 +432,7 @@ export class API {
   evalScores: EvalScoresApi;
 
   constructor(private cfg: Configuration) {
+    this.mcpOauth = new McpOauthApi(this.cfg);
     this.agent = new AgentApi(this.cfg);
     this.capabilities = new CapabilitiesApi(this.cfg);
     this.auth = new AuthApi(this.cfg);

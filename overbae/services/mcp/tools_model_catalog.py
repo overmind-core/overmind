@@ -40,6 +40,7 @@ def register_model_catalog_tools(catalog) -> None:
             required_scopes=frozenset({"overmind:read"}),
             cost_class="free",
             async_mode="sync",
+            project_scoped=False,
         ),
         _get_model_catalog,
     )

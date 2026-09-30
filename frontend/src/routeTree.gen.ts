@@ -14,6 +14,7 @@ import { Route as LoginRouteImport } from './routes/login'
 import { Route as DemoRouteImport } from './routes/demo'
 import { Route as AuthRouteImport } from './routes/_auth'
 import { Route as AuthIndexRouteImport } from './routes/_auth/index'
+import { Route as OauthAuthorizeRouteImport } from './routes/oauth.authorize'
 import { Route as AuthTrainingRouteImport } from './routes/_auth/training'
 import { Route as AuthSettingsRouteImport } from './routes/_auth/settings'
 import { Route as AuthObservabilityRouteImport } from './routes/_auth/observability'
@@ -55,6 +56,11 @@ const AuthIndexRoute = AuthIndexRouteImport.update({
   id: '/',
   path: '/',
   getParentRoute: () => AuthRoute,
+} as any)
+const OauthAuthorizeRoute = OauthAuthorizeRouteImport.update({
+  id: '/oauth/authorize',
+  path: '/oauth/authorize',
+  getParentRoute: () => rootRouteImport,
 } as any)
 const AuthTrainingRoute = AuthTrainingRouteImport.update({
   id: '/training',
@@ -158,6 +164,7 @@ export interface FileRoutesByFullPath {
   '/observability': typeof AuthObservabilityRouteWithChildren
   '/settings': typeof AuthSettingsRoute
   '/training': typeof AuthTrainingRoute
+  '/oauth/authorize': typeof OauthAuthorizeRoute
   '/capabilities/$capabilityId': typeof AuthCapabilitiesCapabilityIdRoute
   '/inference/$modelId': typeof AuthInferenceModelIdRoute
   '/observability/$traceId': typeof AuthObservabilityTraceIdRoute
@@ -180,6 +187,7 @@ export interface FileRoutesByTo {
   '/observability': typeof AuthObservabilityRouteWithChildren
   '/settings': typeof AuthSettingsRoute
   '/training': typeof AuthTrainingRoute
+  '/oauth/authorize': typeof OauthAuthorizeRoute
   '/': typeof AuthIndexRoute
   '/capabilities/$capabilityId': typeof AuthCapabilitiesCapabilityIdRoute
   '/inference/$modelId': typeof AuthInferenceModelIdRoute
@@ -205,6 +213,7 @@ export interface FileRoutesById {
   '/_auth/observability': typeof AuthObservabilityRouteWithChildren
   '/_auth/settings': typeof AuthSettingsRoute
   '/_auth/training': typeof AuthTrainingRoute
+  '/oauth/authorize': typeof OauthAuthorizeRoute
   '/_auth/': typeof AuthIndexRoute
   '/_auth/capabilities/$capabilityId': typeof AuthCapabilitiesCapabilityIdRoute
   '/_auth/inference_/$modelId': typeof AuthInferenceModelIdRoute
@@ -231,6 +240,7 @@ export interface FileRouteTypes {
     | '/observability'
     | '/settings'
     | '/training'
+    | '/oauth/authorize'
     | '/capabilities/$capabilityId'
     | '/inference/$modelId'
     | '/observability/$traceId'
@@ -253,6 +263,7 @@ export interface FileRouteTypes {
     | '/observability'
     | '/settings'
     | '/training'
+    | '/oauth/authorize'
     | '/'
     | '/capabilities/$capabilityId'
     | '/inference/$modelId'
@@ -277,6 +288,7 @@ export interface FileRouteTypes {
     | '/_auth/observability'
     | '/_auth/settings'
     | '/_auth/training'
+    | '/oauth/authorize'
     | '/_auth/'
     | '/_auth/capabilities/$capabilityId'
     | '/_auth/inference_/$modelId'
@@ -298,6 +310,7 @@ export interface RootRouteChildren {
   DemoRoute: typeof DemoRoute
   LoginRoute: typeof LoginRoute
   OnboardingRoute: typeof OnboardingRoute
+  OauthAuthorizeRoute: typeof OauthAuthorizeRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -336,6 +349,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/'
       preLoaderRoute: typeof AuthIndexRouteImport
       parentRoute: typeof AuthRoute
+    }
+    '/oauth/authorize': {
+      id: '/oauth/authorize'
+      path: '/oauth/authorize'
+      fullPath: '/oauth/authorize'
+      preLoaderRoute: typeof OauthAuthorizeRouteImport
+      parentRoute: typeof rootRouteImport
     }
     '/_auth/training': {
       id: '/_auth/training'
@@ -517,6 +537,7 @@ const rootRouteChildren: RootRouteChildren = {
   DemoRoute: DemoRoute,
   LoginRoute: LoginRoute,
   OnboardingRoute: OnboardingRoute,
+  OauthAuthorizeRoute: OauthAuthorizeRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

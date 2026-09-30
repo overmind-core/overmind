@@ -12,6 +12,17 @@ The MCP server is the project-scoped agent API. It shares
 domain services with the Console and REST API; it does not proxy either of
 them.
 
+The optional Codex plugin under `overmind/.codex-plugin/` packages the existing
+MCP connection and shared workflow skills. The focused skills in
+`overmind/skills/overmind-*/` cover Agent, Observability, Datasets, Evaluations,
+Optimiser, Training, Inference and Integrations; the main `overmind` skill keeps
+local setup and workflows across surfaces. CLI initialization installs all of them.
+Essential client-independent guidance
+belongs in server initialization, tool descriptions and resources; longer
+workflows use native prompts and skill fallbacks. The current-project resource
+includes `console_url` from `FRONTEND_URL` for ordinary browser navigation.
+Do not make a plugin or a custom UI a prerequisite for platform operations.
+
 ## MCP-impact classification
 
 For every new or modified Overmind capability, function, API workflow, or
@@ -69,7 +80,7 @@ server.
 | Layer              | Location                            | Responsibility                                                                                                     |
 | ------------------ | ----------------------------------- | ------------------------------------------------------------------------------------------------------------------ |
 | Transport          | `services/mcp/server.py`            | MCP protocol, allowed hosts/origins, request-size limit, SDK callbacks.                                            |
-| Authentication     | `services/mcp/auth.py`              | Authenticate the API key, require exactly one active project, enforce allowed IPs, and bind context.               |
+| Authentication     | `services/mcp/auth.py`              | Authenticate an account/project API key or MCP OAuth token, enforce credential limits, and bind context.           |
 | Context            | `services/mcp/context.py`           | Make immutable `{user, token, project, client_ip}` available only during the request.                              |
 | Catalog            | `services/mcp/catalog.py`           | Publish a curated visible tool set, validate contracts, invoke handlers, and turn known failures into MCP results. |
 | Contracts          | `services/mcp/contracts/`           | Strict Pydantic input/output models, resource links, page metadata, and job receipts.                              |
@@ -86,16 +97,31 @@ endpoint.
 
 ## Authentication and authorization
 
-Every MCP request is authenticated before the SDK callback runs. A usable key
-must be active, belong to the user, be pinned to exactly one active project,
-and carry the public `read` and/or `write` permission. The authenticated
-project comes only from `MCPContext`; handlers never accept a project id or
-trust a caller-supplied tenant reference.
+Every MCP request is authenticated before the SDK callback runs. Account API
+keys and OAuth grants can access active projects belonging to their user;
+project API keys remain limited to their one project and allowed IPs. All
+credentials enforce public `read` and/or `write` permissions. `list_projects`
+returns only accessible projects. The catalog resolves `project_id` against
+membership before invoking project handlers; handlers receive the selected
+project only through `MCPContext`. Resources accept the same `project_id` as a
+query parameter. Account result links retain it. Selection is per request,
+never shared session state; missing or inaccessible projects are rejected.
 
-Never send `WWW-Authenticate: Bearer` on MCP 401s. Cursor and other MCP HTTP
-clients treat that challenge as an OAuth protected resource and POST
-`/register`. This surface is `X-Api-Key` only. `Authorization: Bearer <api-key>`
-is still accepted as an API key, not as OAuth.
+OAuth uses the installed MCP SDK protocol handlers and durable, hashed codes
+and tokens in `models/mcp_oauth.py`. Console sign-in and explicit consent grant
+account access, including future memberships. Public clients register with
+auth method `none` and S256 PKCE. Authorization and token exchange require the
+exact `MCP_SERVER_URL` resource. Access tokens expire after one hour; refresh
+tokens rotate without a time-based expiry; authorization continues until revoked.
+Refresh-token reuse revokes the family. Account status and project memberships
+remain enforced on every request.
+OAuth credentials work only on MCP. API keys remain supported through
+`X-Api-Key` or `Authorization: Bearer`.
+
+Set `MCP_SERVER_URL` to the deployed HTTPS `/api/mcp/` URL (local loopback HTTP
+is supported). Only configured OAuth servers advertise a Bearer challenge and
+discovery/registration routes. `OPENAI_APPS_CHALLENGE` serves the public domain
+verification token at `/.well-known/openai-apps-challenge`.
 
 `ToolDefinition.required_scopes` records the product capability a tool needs
 (`overmind:read`, `overmind:data:write`, and so on). Catalog visibility

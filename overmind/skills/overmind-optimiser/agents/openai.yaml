@@ -1,0 +1,7 @@
+interface:
+  display_name: "Overmind Optimiser"
+  short_description: "Improve prompts, code and model choices"
+  default_prompt: "Use $overmind-optimiser to assess readiness for a capability optimisation experiment."
+  brand_color: "#ED670F"
+  icon_small: "./assets/icon.png"
+  icon_large: "./assets/icon.png"

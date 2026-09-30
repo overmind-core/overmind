@@ -24,7 +24,7 @@ This file is the single playbook. Cursor reads it natively; Claude Code reads it
 
 Each line is the invariant; the named skill section carries the mechanics.
 
-- Single Django app `overbae`: `api/` (DRF views/serializers, one module per surface), `models/` (split by domain), `services/` (business logic), `tasks/` (Celery), `modal/` (GPU workers). Map: backend-architecture skill. MCP is the first-class project-scoped agent surface at `/api/mcp/` (`services/mcp/`); it shares domain services with REST/Console and is not a proxy of either. Procedure: mcp skill.
+- Single Django app `overbae`: `api/` (DRF views/serializers, one module per surface), `models/` (split by domain), `services/` (business logic), `tasks/` (Celery), `modal/` (GPU workers). Map: backend-architecture skill. MCP is the first-class agent surface at `/api/mcp/` (`services/mcp/`); account API keys and OAuth connections discover authorized projects with `list_projects` and pass `project_id` per operation. Project API keys retain their narrower scope. It shares domain services with REST/Console and is not a proxy of either. Procedure: mcp skill.
 
 - Tracing is **span-only**: no Trace table; a trace = spans sharing `trace_id`; the root span has `parent_span_id IS NULL`. OTLP ingest at `POST /api/v1/traces`.
 

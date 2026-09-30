@@ -1,0 +1,7 @@
+interface:
+  display_name: "Overmind Training"
+  short_description: "Prepare, estimate and inspect model training"
+  default_prompt: "Use $overmind-training to estimate fine-tuning and evaluation costs for my dataset."
+  brand_color: "#ED670F"
+  icon_small: "./assets/icon.png"
+  icon_large: "./assets/icon.png"

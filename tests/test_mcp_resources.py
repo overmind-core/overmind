@@ -79,7 +79,9 @@ def test_project_resource_exposes_scan_provenance():
 
 
 def test_resource_templates_cover_the_public_resource_surface():
-    templates = {template.uriTemplate for template in resource_templates()}
+    templates = {
+        template.uriTemplate.removesuffix("{?project_id}") for template in resource_templates()
+    }
     assert templates == {
         "overmind://capabilities/{capability}",
         "overmind://traces/{trace_id}",

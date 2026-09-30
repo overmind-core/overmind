@@ -14,6 +14,7 @@ apis/EvaluatorsApi.ts
 apis/FeedbackApi.ts
 apis/FinetuningJobsApi.ts
 apis/HealthApi.ts
+apis/McpOauthApi.ts
 apis/ModelsApi.ts
 apis/OptimizerCandidatesApi.ts
 apis/OptimizerExperimentsApi.ts
@@ -111,6 +112,9 @@ models/ConnectorSyncRunModeEnum.ts
 models/ConnectorSyncRunStatusEnum.ts
 models/ConnectorTypeEnum.ts
 models/ConnectorVerifyResponse.ts
+models/ConsentDecisionRequest.ts
+models/ConsentDetails.ts
+models/ConsentRedirect.ts
 models/ConversationTurn.ts
 models/CreateIterationRequest.ts
 models/CreditTopUpRequestRequest.ts

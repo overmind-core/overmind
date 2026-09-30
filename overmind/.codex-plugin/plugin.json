@@ -1,12 +1,13 @@
 {
   "name": "overmind",
   "version": "1.2.0",
-  "description": "Skills for working with Overmind — agent observability, tracing, and optimization.",
+  "description": "Investigate agent failures, prepare datasets, evaluate models, and manage training and serving with Overmind.",
   "author": {
     "name": "Overmind",
-    "email": "hello@overmindlab.ai"
+    "email": "hello@overmindlab.ai",
+    "url": "https://www.overmindlab.ai/"
   },
-  "homepage": "https://overmindlab.ai",
+  "homepage": "https://www.overmindlab.ai/",
   "repository": "https://github.com/overmind-core/overmind",
   "license": "MIT",
   "keywords": [
@@ -15,20 +16,31 @@
     "observability",
     "tracing",
     "agent",
-    "optimization"
+    "optimization",
+    "mcp"
   ],
   "skills": "./skills/",
+  "mcpServers": "./.mcp.json",
   "interface": {
     "displayName": "Overmind",
-    "shortDescription": "Agent observability and tracing skills",
-    "longDescription": "Install Overmind skills for instrumenting, verifying, and improving AI agents.",
+    "shortDescription": "Improve agents with real data",
+    "longDescription": "Connect your Overmind account to investigate agent failures, turn production traces into training data, compare evaluation results, and manage model training and serving. Inspect evidence and check readiness and costs before launching runs. Open the Overmind Console for charts and detailed results. Requires an Overmind account with project access; training and inference use your Overmind credits.",
     "developerName": "Overmind",
     "category": "Developer Tools",
-    "capabilities": ["Read", "Write"],
+    "capabilities": [
+      "Read",
+      "Write"
+    ],
+    "composerIcon": "./assets/icon.png",
+    "logo": "./assets/icon.png",
     "defaultPrompt": [
-      "Instrument this agent with Overmind telemetry.",
-      "Verify this agent's Overmind instrumentation.",
-      "Use Overmind traces to improve this agent."
-    ]
+      "Investigate recent failures in my Overmind project.",
+      "Prepare a training dataset from my agent traces.",
+      "Compare my latest evaluation with its baseline."
+    ],
+    "websiteURL": "https://www.overmindlab.ai/",
+    "privacyPolicyURL": "https://www.overmindlab.ai/legals/privacy",
+    "termsOfServiceURL": "https://www.overmindlab.ai/legals/terms",
+    "brandColor": "#ED670F"
   }
 }

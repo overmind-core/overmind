@@ -9,6 +9,7 @@ from collections.abc import Iterable
 from urllib.parse import parse_qs, quote, unquote, urlparse
 
 from asgiref.sync import sync_to_async
+from django.conf import settings
 from django.db.models import Prefetch
 from mcp import types
 from mcp.server.lowlevel.helper_types import ReadResourceContents
@@ -43,10 +44,11 @@ from overbae.services.eval.preload_status import read_eval_preload
 from overbae.services.eval.sample_io import sample_io
 from overbae.services.inference_live import worker_status
 from overbae.services.inference_metrics import model_activity, model_metrics, monitoring_options
-from overbae.services.mcp.context import get_context
+from overbae.services.mcp.context import get_context, project_context
 from overbae.services.mcp.contracts.datasets import next_actions, serialize_dataset_detail
 from overbae.services.mcp.contracts.instrumentation import MAX_INSTRUMENTATION_SPANS
 from overbae.services.mcp.errors import MCPError, error_payload, internal_error
+from overbae.services.mcp.references import project_references
 from overbae.services.model_activation import activation_progress
 
 JSON_MIME = "application/json"
@@ -434,6 +436,7 @@ def _project_resource(project, uri: str) -> dict:
         "id": str(project.id),
         "name": project.name,
         "slug": project.slug,
+        "console_url": f"{settings.FRONTEND_URL.rstrip('/')}/?projectId={project.id}",
         "integration_type": project.integration_type,
         "is_active": project.is_active,
         "created_at": project.created_at,
@@ -1174,7 +1177,7 @@ def resource_list() -> list[types.Resource]:
             name="current-project",
             title="Current project",
             uri="overmind://project/current",
-            description="The authenticated project identity and safe metadata.",
+            description="Project identity and safe metadata. Account connections must add ?project_id=ID from list_projects.",
             mimeType=JSON_MIME,
         ),
         types.Resource(
@@ -1226,7 +1229,7 @@ def resource_templates() -> list[types.ResourceTemplate]:
         types.ResourceTemplate(
             name=name,
             title=title,
-            uriTemplate=template,
+            uriTemplate=template + "{?project_id}",
             description=(
                 f"{title}. Current worker state and measurements, inference metrics and activity; optional period=1h|24h|7d|30d|all and source=application|all query parameters (defaults: all)."
                 if name == "deployment"
@@ -1241,9 +1244,27 @@ def resource_templates() -> list[types.ResourceTemplate]:
 async def read_resource(uri: AnyUrl) -> Iterable[ReadResourceContents]:
     context = get_context()
     try:
+        if not context.has_permission("read"):
+            raise MCPError("permission_denied", "The connection does not grant resource access.")
+        parsed = urlparse(str(uri))
+        ids = parse_qs(parsed.query, keep_blank_values=True).get("project_id", [])
+        if len(ids) > 1:
+            raise MCPError("invalid_input", "Pass exactly one project_id.")
+        static = parsed.netloc in {
+            "dataset-upload",
+            "dataset-export",
+            "checkpoint-download",
+            "connector-setup",
+        }
+        if not static or ids:
+            context = await sync_to_async(project_context, thread_sensitive=True)(
+                context, ids[0] if ids else None
+            )
         payload = await sync_to_async(_read_resource_sync, thread_sensitive=True)(
             context.project, str(uri)
         )
+        if context.project and context.token.scope.get("scope") == "account":
+            payload = project_references(payload, context.project.pk)
     except MCPError as error:
         code = 404 if error.data.code == "resource_not_found" else 400
         raise McpError(

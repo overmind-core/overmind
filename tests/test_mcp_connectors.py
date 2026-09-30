@@ -365,7 +365,7 @@ def test_connector_resource_is_project_scoped_and_secret_free():
     assert resource["sync_runs"][0]["has_error"] is True
     assert "provider-secret-value" not in encoded
     assert "provider-key" not in encoded
-    assert "overmind://connectors/{connector}" in {
+    assert "overmind://connectors/{connector}{?project_id}" in {
         template.uriTemplate for template in resource_templates()
     }
 

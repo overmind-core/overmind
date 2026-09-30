@@ -7,12 +7,14 @@ import logging
 from collections.abc import Awaitable, Callable, Iterable
 from typing import Any, Literal
 
+from asgiref.sync import sync_to_async
 from mcp import types
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator, model_validator
 
 from overbae.services.mcp.annotations import annotations_for
-from overbae.services.mcp.context import MCPContext
+from overbae.services.mcp.context import MCPContext, project_context
 from overbae.services.mcp.errors import MCPError, error_result, internal_error
+from overbae.services.mcp.references import project_references
 from overbae.services.mcp.result_compat import tool_result
 
 logger = logging.getLogger(__name__)
@@ -56,6 +58,7 @@ class ToolDefinition(BaseModel):
     required_scopes: frozenset[str] = Field(default_factory=frozenset)
     cost_class: CostClass
     async_mode: AsyncMode
+    project_scoped: bool = True
 
     @field_validator("required_scopes")
     @classmethod
@@ -82,11 +85,18 @@ class ToolDefinition(BaseModel):
             raise CatalogError("destructive tools are not supported")
 
     def as_mcp_tool(self) -> types.Tool:
+        schema = _compact_schema(self.input_model.model_json_schema(by_alias=True))
+        if self.project_scoped:
+            schema.setdefault("properties", {})["project_id"] = {
+                "type": "string",
+                "format": "uuid",
+                "description": "Project ID from list_projects. Required for account connections.",
+            }
         return types.Tool(
             name=self.name,
             title=self.title,
             description=self.description,
-            inputSchema=_compact_schema(self.input_model.model_json_schema(by_alias=True)),
+            inputSchema=schema,
             annotations=annotations_for(self),
         )
 
@@ -165,10 +175,17 @@ class ToolCatalog:
         permissions = frozenset(scope.get("permission", []))
         if not self._visible(entry.definition, permissions):
             return error_result(
-                MCPError("permission_denied", "The API key does not grant access to this tool.")
+                MCPError("permission_denied", "The connection does not grant access to this tool.")
             )
         try:
+            arguments = dict(arguments)
+            if entry.definition.project_scoped:
+                context = await sync_to_async(project_context, thread_sensitive=True)(
+                    context, arguments.pop("project_id", None)
+                )
             payload = entry.definition.input_model.model_validate(arguments)
+        except MCPError as error:
+            return error_result(error)
         except ValidationError as error:
             fields = {
                 ".".join(map(str, issue["loc"])) or "arguments": issue["msg"][:300]
@@ -192,10 +209,14 @@ class ToolCatalog:
         except ValidationError:
             return error_result(MCPError("invalid_output", "The tool returned an invalid result."))
         except Exception:
-            logger.exception("MCP tool %s failed for project %s", name, context.project.id)
+            logger.exception(
+                "MCP tool %s failed for project %s", name, getattr(context.project, "id", None)
+            )
             return error_result(internal_error())
 
         structured = output.model_dump(mode="json", by_alias=True)
+        if entry.definition.project_scoped and context.token.scope.get("scope") == "account":
+            structured = project_references(structured, context.project.pk)
         return tool_result(structured)
 
     @staticmethod
@@ -205,6 +226,10 @@ class ToolCatalog:
 
 
 CATALOG = ToolCatalog()
+
+from overbae.services.mcp.tools_projects import register_project_tools  # noqa: E402
+
+register_project_tools(CATALOG)
 
 from overbae.services.mcp.tools_observability import (  # noqa: E402
     register_observability_tools,

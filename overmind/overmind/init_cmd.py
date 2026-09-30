@@ -24,6 +24,7 @@ from overmind.config import (
     saved_project_api_key,
 )
 from overmind.skills import get_destination_dir, sync_skills
+from overmind.skills_db import skills
 
 console = Console()
 
@@ -317,9 +318,15 @@ def run_init(
         configured_url = load(config_path).base_url
     mcp_url, base_url = resolve_mcp_url(env, configured_url)
 
-    sync_skills(["overmind"], ide=ide)
+    if (
+        ide == "codex"
+        and env in {"local", "development", "dev"}
+        and not (api_url or os.environ.get("OVERMIND_API_URL") or os.environ.get("OVERMIND_BASE_URL"))
+    ):
+        raise typer.BadParameter("Codex setup supports production or staging", param_hint="--env")
+    sync_skills([skill.slug for skill in skills], ide=ide)
     dest = get_destination_dir(ide)
-    console.print(f"Skills → {dest}/skills/overmind")
+    console.print(f"Skills → {dest}/skills ({len(skills)})")
 
     for path in write_slash_commands(ide, root):
         console.print(f"Command → {path.relative_to(root)}")

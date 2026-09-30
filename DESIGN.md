@@ -430,6 +430,13 @@ details) want `sm`, not `xs`.
 
 ## Layout
 
+The MCP connection consent page uses the website's 404 starfield, trees and
+asteroid artwork. It stays dark within its own root, with a regular-weight
+Mondwest display heading and a solid permissions panel inside a pixel frame.
+Artwork is decorative and noninteractive; reduced-motion preferences stop the
+asteroids. The page scrolls independently so consent controls remain reachable
+on short screens.
+
 The authenticated shell is the structural template: the entire application
 interior is one card in an 8px warm gutter.
 

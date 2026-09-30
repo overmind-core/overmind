@@ -6,6 +6,7 @@ from overbae.models import Capability, EvalSet, EvalSetMember, Evaluator
 from overbae.services.mcp.context import MCPContext
 
 EXPECTED_TOOL_NAMES = {
+    "list_projects",
     "inspect_capability_health",
     "query_failures",
     "query_traces",
