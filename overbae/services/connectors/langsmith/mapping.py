@@ -23,7 +23,6 @@ _USER_KEYS = ("user_id",)
 LANGSMITH = SourceConventions(
     source=CONNECTOR_SOURCE_LANGSMITH,
     span_types={"TOOL": "tool_call", "RETRIEVER": "retrieval", "CHAIN": "workflow"},
-    model_call_types=frozenset({"LLM", "EMBEDDING"}),
     metadata_skip=frozenset({"ls_model_name"}),
 )
 

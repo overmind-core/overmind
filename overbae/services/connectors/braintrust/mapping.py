@@ -42,12 +42,10 @@ _MAPPED_METRICS = frozenset(
 )
 
 # Braintrust span_attributes.type -> Overmind span_type. Anything absent is an
-# LLM call; only the tool-shaped types need saying. Braintrust has no capability type,
-# so capability_type stays empty and the profiler ranks on structure alone.
+# LLM call; only the tool-shaped types need saying.
 BRAINTRUST = SourceConventions(
     source=CONNECTOR_SOURCE_BRAINTRUST,
     span_types={"FUNCTION": "tool_call", "TOOL": "tool_call"},
-    model_call_types=frozenset({"LLM"}),
     # model is already stamped as the gen_ai usage attribute.
     metadata_skip=frozenset({"model"}),
 )

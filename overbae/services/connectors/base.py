@@ -73,7 +73,7 @@ class Page:
 class ConnectorAdapter(Protocol):
     source: str
     capabilities: Capabilities
-    # The provider's own span vocabulary, read by the capability profiler.
+    # Provider types normalized into stored span types.
     conventions: SourceConventions
 
     def verify(self) -> VerifyResult: ...
@@ -110,5 +110,4 @@ class ConnectorAdapter(Protocol):
         *,
         credential: Any,
         project: Any = None,
-        mapping: dict[str, Any] | None = None,
     ) -> list[dict[str, Any]]: ...

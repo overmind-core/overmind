@@ -8,9 +8,7 @@ from overbae.services.connectors.braintrust.mapping import (
     BRAINTRUST,
     rows_to_records,
 )
-from overbae.services.connectors.capabilities import assign_capability_keys
 from overbae.services.connectors.mapping import observations_to_span_dicts as _to_span_dicts
-from overbae.services.connectors.profiling import profile_capability_candidates
 from overbae.services.connectors.schema import (
     CONNECTOR_SOURCE_ATTR,
     CONNECTOR_VERSION_ATTR,
@@ -219,20 +217,6 @@ def test_multi_parent_takes_the_first_sorted_and_keeps_the_whole_array(caplog):
     assert "has 2 parents" in caplog.text
 
 
-def test_one_span_belongs_to_one_capability_only():
-    rows = [
-        _row("s-a", row_id="id-a", is_root=True, name="root"),
-        _row("s-b", row_id="id-b", parents=["s-a"], name="capability_b"),
-        _row("s-c", row_id="id-c", parents=["s-b", "s-a"], name="shared"),
-    ]
-    records = rows_to_records(rows)
-    keys = assign_capability_keys(
-        records, {"source": "observation_name", "names": ["capability_b", "root"]}
-    )
-
-    assert keys["id-c"] == "root"
-
-
 def test_float_unix_timings_become_iso_and_survive_into_span_ns():
     records = rows_to_records(_trace_rows())
     root = next(r for r in records if r.is_root_observation)
@@ -299,7 +283,7 @@ def test_spans_are_stamped_with_the_braintrust_source():
     assert all("braintrust.trace_id" in s["attributes"] for s in spans)
 
 
-def test_observation_name_boundary_roots_its_own_trace():
+def test_named_agent_keeps_its_original_trace_and_parent():
     rows = [
         _row("s-root", row_id="id-root", is_root=True, name="handler"),
         _row("s-capability", row_id="id-capability", parents=["s-root"], name="researcher"),
@@ -309,36 +293,14 @@ def test_observation_name_boundary_roots_its_own_trace():
     spans = observations_to_span_dicts(
         records,
         credential=_cred(),
-        mapping={"source": "observation_name", "names": ["researcher"]},
     )
 
-    roots = [s for s in spans if s["parent_span_id"] is None]
-    assert sorted(s["name"] for s in roots) == ["handler", "researcher"]
-    # The nested capability keeps its subtree.
-    capability_trace = next(s["trace_id"] for s in roots if s["name"] == "researcher")
-    leaf = next(s for s in spans if s["name"] == "llm")
-    assert leaf["trace_id"] == capability_trace
-
-
-def test_shared_profiler_ranks_braintrust_records_unchanged():
-    """The payoff of the neutral record: no Braintrust-specific profiling code."""
-    traces = []
-    for i in range(4):
-        rows = [
-            _row("s-root", row_id=f"root-{i}", is_root=True, name="handler"),
-            _row("s-capability", row_id=f"capability-{i}", parents=["s-root"], name="researcher"),
-            _row("s-llm-1", row_id=f"llm-a-{i}", parents=["s-capability"], name="chat"),
-            _row("s-llm-2", row_id=f"llm-b-{i}", parents=["s-capability"], name="chat"),
-        ]
-        traces.append(rows_to_records(rows))
-
-    shapes = profile_capability_candidates(traces, BRAINTRUST)
-    names = [s["name"] for s in shapes]
-
-    assert names[0] in {"handler", "researcher"}
-    # "chat" repeats twice per trace, so it is a loop step, not a boundary.
-    assert names.index("chat") > names.index("researcher")
-    assert next(s["parent_name"] for s in shapes if s["name"] == "researcher") == "handler"
+    by_name = {s["name"]: s for s in spans}
+    assert [s["name"] for s in spans if s["parent_span_id"] is None] == ["handler"]
+    assert len({s["trace_id"] for s in spans}) == 1
+    assert by_name["researcher"]["parent_span_id"] == by_name["handler"]["span_id"]
+    assert by_name["llm"]["parent_span_id"] == by_name["researcher"]["span_id"]
+    assert all(s["capability"] is None for s in spans)
 
 
 if __name__ == "__main__":

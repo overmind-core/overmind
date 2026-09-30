@@ -6,7 +6,6 @@ import pytest
 
 from overbae.services.connectors.galileo.mapping import GALILEO, tree_to_records
 from overbae.services.connectors.mapping import observations_to_span_dicts as _to_span_dicts
-from overbae.services.connectors.profiling import profile_capability_candidates
 from overbae.services.connectors.schema import CONNECTOR_SOURCE_ATTR, CONNECTOR_VERSION_ATTR
 from overbae.services.connectors.spans import span_id_for
 
@@ -213,32 +212,7 @@ def test_row_version_reaches_the_span_attribute():
     assert root_span["attributes"][CONNECTOR_VERSION_ATTR] == root_version
 
 
-def test_agent_spans_are_ranked_as_the_capability_boundary():
-    traces = []
-    for i in range(4):
-        tree = _trace(
-            id=f"trace-{i}",
-            spans=[
-                {
-                    "id": f"agent-{i}",
-                    "type": "agent",
-                    "name": "researcher",
-                    "created_at": "2026-01-02T00:00:01Z",
-                    "updated_at": "2026-01-02T00:00:02Z",
-                    "metrics": {"duration_ns": 2_000_000_000},
-                    "spans": [_leaf(id=f"llm-{i}")],
-                }
-            ],
-        )
-        traces.append(tree_to_records(tree))
-
-    shapes = profile_capability_candidates(traces, GALILEO)
-    researcher = next(s for s in shapes if s["name"] == "researcher")
-    assert researcher["type"] == "AGENT"
-    assert shapes[0]["name"] in {"handler", "researcher"}
-
-
-def test_same_name_trace_wrapper_is_not_a_boundary_when_an_agent_exists():
+def test_trace_wrapper_and_agent_remain_in_the_same_trace():
     tree = _trace(
         name="adjudicate_claim",
         spans=[
@@ -257,17 +231,13 @@ def test_same_name_trace_wrapper_is_not_a_boundary_when_an_agent_exists():
     spans = observations_to_span_dicts(
         tree_to_records(tree),
         credential=cred,
-        mapping={"source": "observation_name", "names": ["adjudicate_claim"]},
     )
-    mapped_roots = [
-        span
-        for span in spans
-        if span["parent_span_id"] is None
-        and span["attributes"].get("connector.agent_key") == "adjudicate_claim"
-    ]
-
-    assert len(mapped_roots) == 1
-    assert mapped_roots[0]["span_id"] == span_id_for(str(cred.id), "agent-1")
+    roots = [s for s in spans if s["parent_span_id"] is None]
+    assert len(roots) == 1
+    assert len({s["trace_id"] for s in spans}) == 1
+    agent = next(s for s in spans if s["span_id"] == span_id_for(str(cred.id), "agent-1"))
+    assert agent["parent_span_id"] == roots[0]["span_id"]
+    assert all(s["capability"] is None for s in spans)
 
 
 if __name__ == "__main__":

@@ -35,7 +35,7 @@ _LEASE_SECONDS = 1800
 
 
 @contextmanager
-def _single_flight(trace_id: str, project_id: str) -> Iterator[bool]:
+def single_flight(trace_id: str, project_id: str) -> Iterator[bool]:
     """Results only land per unit, so a duplicate pass re-runs every in-flight
     judge and multiplies the provider bill."""
     key = f"score_trace:{project_id}:{trace_id}"
@@ -55,7 +55,7 @@ def _single_flight(trace_id: str, project_id: str) -> Iterator[bool]:
     retry_kwargs={"max_retries": 2},
 )
 def score_trace(self, *, trace_id: str, project_id: str, **kwargs) -> dict[str, Any]:  # noqa: ARG001
-    with _single_flight(trace_id, project_id) as acquired:
+    with single_flight(trace_id, project_id) as acquired:
         if not acquired:
             logger.info("score_trace already in flight for trace=%s", trace_id)
             return {"status": "in_flight", "trace_id": trace_id}

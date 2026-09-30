@@ -15,6 +15,7 @@ from mcp.server.lowlevel.helper_types import ReadResourceContents
 from mcp.shared.exceptions import McpError
 from pydantic import AnyUrl
 
+from overbae.api.connector_review import ImportPreviewSerializer
 from overbae.api.eval_serializers import compute_run_progress
 from overbae.core.errors import InputValidationError
 from overbae.models import (
@@ -30,6 +31,8 @@ from overbae.models import (
     Span,
     TrainingPreparation,
 )
+from overbae.services.connectors.imports import expire_stalled_preview, import_remaining_seconds
+from overbae.services.connectors.review import list_groups, review_summary
 from overbae.services.deployment import deployment_progress
 from overbae.services.entity_resolution import (
     resolve_capability,
@@ -138,8 +141,9 @@ def _connector_setup_resource(uri: str) -> dict:
         ),
         "next_mcp_calls": [
             "inspect_connectors(connector=id, include_source_projects=true)",
-            "configure_connector (stage mapping.names, present alternatives, wait, confirm_mapping=true)",
-            "sync_connector",
+            "configure_connector (select range; inspect ready count and duration estimate)",
+            "sync_connector (confirm preview_id)",
+            "review_trace_groups (assignments: group_id, capability_id or null, expected_revision)",
         ],
     }
 
@@ -298,50 +302,13 @@ def _connector_capabilities(connector_type: str) -> dict:
     }
 
 
-def connector_mapping_assignments(project, raw) -> tuple[dict, list[dict]]:
-    payload = raw if isinstance(raw, dict) else {}
-    source = payload.get("source")
-    mapping = {
-        "source": source if source in _CONNECTOR_MAPPING_SOURCES else None,
-        "key": str(payload.get("key"))[:255] if payload.get("key") is not None else None,
-        "names": [str(name)[:255] for name in (payload.get("names") or [])[:100]],
-        "assignments": {},
-        "fallback_capability_id": None,
-    }
-    assignments = payload.get("assignments") if isinstance(payload.get("assignments"), dict) else {}
-    ids = [normalized for value in assignments.values() if (normalized := _uuid_ref(str(value)))]
-    capabilities = {
-        str(capability.id): capability
-        for capability in Capability.objects.filter(project=project, id__in=ids)
-    }
-    details = []
-    for key, value in list(assignments.items())[:100]:
-        source_value = str(key)[:255]
-        capability_id = str(value)[:255]
-        mapping["assignments"][source_value] = capability_id
-        capability = capabilities.get(capability_id)
-        details.append(
-            {
-                "source_value": source_value,
-                "capability_id": capability_id,
-                "capability_name": capability.name[:255] if capability else "Unknown capability",
-            }
-        )
-    fallback = payload.get("fallback_capability_id")
-    if fallback:
-        mapping["fallback_capability_id"] = str(fallback)[:255]
-    return mapping, details
-
-
-def _connector_mapping(project, connector) -> tuple[dict, list[dict]]:
-    raw = connector.capability_mapping if isinstance(connector.capability_mapping, dict) else {}
-    return connector_mapping_assignments(project, raw)
-
-
 def connector_resource_payload(project, connector, uri: str) -> dict:
     """Return connector metadata without credentials or provider response text."""
     config = connector.active_config()
-    mapping, assignment_details = _connector_mapping(project, connector)
+
+    preview = connector.previews.first()
+    if preview:
+        preview = expire_stalled_preview(preview)
     runs = list(connector.runs.order_by("-started_at")[:51])
     return {
         "uri": uri,
@@ -369,8 +336,10 @@ def connector_resource_payload(project, connector, uri: str) -> dict:
             if config is not None
             else None
         ),
-        "capability_mapping": mapping,
-        "capability_assignments": assignment_details,
+        "groups": list_groups(connector),
+        "review_summary": review_summary(connector),
+        "import_remaining_seconds": import_remaining_seconds(connector),
+        "latest_preview": ImportPreviewSerializer(preview).data if preview else None,
         "sync": {
             "status": connector.sync_status,
             "auto_sync_enabled": connector.auto_sync_enabled,

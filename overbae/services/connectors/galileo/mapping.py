@@ -21,8 +21,6 @@ GALILEO = SourceConventions(
     source=CONNECTOR_SOURCE_GALILEO,
     span_types={"TOOL": "tool_call"},
     # Galileo's native agent span is the closest analog to a capability boundary.
-    capability_type="AGENT",
-    model_call_types=frozenset({"LLM"}),
 )
 
 

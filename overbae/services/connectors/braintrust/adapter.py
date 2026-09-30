@@ -355,14 +355,12 @@ class BraintrustAdapter:
         *,
         credential,
         project=None,
-        mapping: dict[str, Any] | None = None,
     ) -> list[dict[str, Any]]:
         return observations_to_span_dicts(
             unit.records,
             credential=credential,
             conventions=BRAINTRUST,
             project=project,
-            mapping=mapping,
         )
 
 

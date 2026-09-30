@@ -13,6 +13,13 @@
  */
 
 import { mapValues } from '../runtime';
+import type { ConnectorReviewSummary } from './ConnectorReviewSummary';
+import {
+    ConnectorReviewSummaryFromJSON,
+    ConnectorReviewSummaryFromJSONTyped,
+    ConnectorReviewSummaryToJSON,
+    ConnectorReviewSummaryToJSONTyped,
+} from './ConnectorReviewSummary';
 import type { ApiVersionEnum } from './ApiVersionEnum';
 import {
     ApiVersionEnumFromJSON,
@@ -164,16 +171,22 @@ export interface ConnectorCredential {
     readonly nextPollAt: Date | null;
     /**
      *
-     * @type {any}
-     * @memberof ConnectorCredential
-     */
-    capabilityMapping?: any | null;
-    /**
-     *
      * @type {ConnectorActiveConfig}
      * @memberof ConnectorCredential
      */
     readonly activeConfig: ConnectorActiveConfig | null;
+    /**
+     *
+     * @type {ConnectorReviewSummary}
+     * @memberof ConnectorCredential
+     */
+    readonly reviewSummary: ConnectorReviewSummary;
+    /**
+     *
+     * @type {number}
+     * @memberof ConnectorCredential
+     */
+    readonly importRemainingSeconds: number | null;
     /**
      *
      * @type {Date}
@@ -211,6 +224,8 @@ export function instanceOfConnectorCredential(value: object): value is Connector
     if (!('totalTracesImported' in value) || value['totalTracesImported'] === undefined) return false;
     if (!('nextPollAt' in value) || value['nextPollAt'] === undefined) return false;
     if (!('activeConfig' in value) || value['activeConfig'] === undefined) return false;
+    if (!('reviewSummary' in value) || value['reviewSummary'] === undefined) return false;
+    if (!('importRemainingSeconds' in value) || value['importRemainingSeconds'] === undefined) return false;
     if (!('createdAt' in value) || value['createdAt'] === undefined) return false;
     if (!('updatedAt' in value) || value['updatedAt'] === undefined) return false;
     return true;
@@ -245,8 +260,9 @@ export function ConnectorCredentialFromJSONTyped(json: any, ignoreDiscriminator:
         'totalSpansImported': json['total_spans_imported'],
         'totalTracesImported': json['total_traces_imported'],
         'nextPollAt': (json['next_poll_at'] == null ? null : new Date(json['next_poll_at'])),
-        'capabilityMapping': json['capability_mapping'] == null ? undefined : json['capability_mapping'],
         'activeConfig': ConnectorActiveConfigFromJSON(json['active_config']),
+        'reviewSummary': ConnectorReviewSummaryFromJSON(json['review_summary']),
+        'importRemainingSeconds': json['import_remaining_seconds'],
         'createdAt': (new Date(json['created_at'])),
         'updatedAt': (new Date(json['updated_at'])),
     };
@@ -256,7 +272,7 @@ export function ConnectorCredentialToJSON(json: any): ConnectorCredential {
     return ConnectorCredentialToJSONTyped(json, false);
 }
 
-export function ConnectorCredentialToJSONTyped(value?: Omit<ConnectorCredential, 'id'|'api_key_hint'|'is_active'|'last_synced_at'|'sync_status'|'backfill_imported'|'backfill_total'|'sync_error'|'api_version'|'verified_at'|'total_spans_imported'|'total_traces_imported'|'next_poll_at'|'active_config'|'created_at'|'updated_at'> | null, ignoreDiscriminator: boolean = false): any {
+export function ConnectorCredentialToJSONTyped(value?: Omit<ConnectorCredential, 'id'|'api_key_hint'|'is_active'|'last_synced_at'|'sync_status'|'backfill_imported'|'backfill_total'|'sync_error'|'api_version'|'verified_at'|'total_spans_imported'|'total_traces_imported'|'next_poll_at'|'active_config'|'review_summary'|'import_remaining_seconds'|'created_at'|'updated_at'> | null, ignoreDiscriminator: boolean = false): any {
     if (value == null) {
         return value;
     }
@@ -269,6 +285,5 @@ export function ConnectorCredentialToJSONTyped(value?: Omit<ConnectorCredential,
         'base_url': value['baseUrl'],
         'auto_sync_enabled': value['autoSyncEnabled'],
         'poll_interval_seconds': value['pollIntervalSeconds'],
-        'capability_mapping': value['capabilityMapping'],
     };
 }

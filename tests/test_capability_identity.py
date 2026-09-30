@@ -5,7 +5,6 @@ import pytest
 from overbae.api.otlp import _resolve_capability
 from overbae.models import Capability, IdentityAlias, Project
 from overbae.services.capabilities import identity
-from overbae.services.connectors.capabilities import resolve_capability as connector_resolve
 
 pytestmark = pytest.mark.django_db
 
@@ -131,32 +130,3 @@ def test_resolve_capability_follows_renames():
     capability.name = "Support Triage"
     capability.save(update_fields=["name"])
     assert resolve_capability(project, "Ticket Triage") == (capability, None)
-
-
-def test_connector_mapping_observes_reactivates_and_never_mints_a_peer():
-    project = _project()
-    mapping = {"auto_create": True, "assignments": {}}
-
-    fresh = connector_resolve("Checkout Bot", mapping, project)
-    assert fresh.observed is True and fresh.status == Capability.Status.CURRENT
-    assert connector_resolve("checkout bot", mapping, project) == fresh
-
-    fresh.status = Capability.Status.LEFTOVER
-    fresh.save(update_fields=["status"])
-    assert connector_resolve("Checkout Bot", mapping, project) == fresh
-    fresh.refresh_from_db()
-    assert fresh.status == Capability.Status.CURRENT
-
-    assert connector_resolve("Checkout Bot", {"auto_create": False}, project) is None
-    assert Capability.objects.filter(project=project).count() == 1
-
-
-def test_connector_assignment_and_fallback_resolve_through_aliases():
-    project = _project()
-    capability = _capability(project, "Triage")
-    capability.slug = "triage-v2"
-    capability.save(update_fields=["slug"])
-    mapping = {"assignments": {"svc-a": "triage"}, "fallback_capability_id": str(capability.id)}
-    assert connector_resolve("svc-a", mapping, project) == capability
-    assert connector_resolve(None, mapping, project) == capability
-    assert connector_resolve("svc-unknown", mapping, project) == capability

@@ -1,7 +1,14 @@
 from .behaviour import Behaviour, BehaviourVersion, ConversationEvent, TaskExecution
 from .billing import BillingService, BillingTelemetry, Subscription, SubscriptionStatus
 from .capabilities import Capability, IdentityAlias, Prompt
-from .connectors import ConnectorCredential, ConnectorSyncConfig, ConnectorSyncRun
+from .connectors import (
+    ConnectorCredential,
+    ConnectorGroupReview,
+    ConnectorImportPreview,
+    ConnectorSyncConfig,
+    ConnectorSyncRun,
+    ConnectorTraceGroup,
+)
 from .dataset_context import DatasetContext
 from .datasets import Cell, Dataset
 from .evaluation import (
@@ -67,6 +74,9 @@ __all__ = [
     "Subscription",
     "SubscriptionStatus",
     "ConnectorCredential",
+    "ConnectorGroupReview",
+    "ConnectorImportPreview",
+    "ConnectorTraceGroup",
     "ConnectorSyncConfig",
     "ConnectorSyncRun",
     "Dataset",

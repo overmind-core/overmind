@@ -12,12 +12,6 @@ from overbae.services.connectors.base import (
     SourceProject,
     VerifyResult,
 )
-from overbae.services.connectors.capabilities import (
-    assign_capability_keys,
-    discover_capabilities,
-    relabel_connector_capabilities,
-    resolve_capability,
-)
 from overbae.services.connectors.records import ObservationRecord
 from overbae.services.connectors.registry import (
     capabilities_for,
@@ -35,7 +29,6 @@ from overbae.services.connectors.schema import (
     CONNECTOR_SOURCE_LANGFUSE,
     CONNECTOR_SOURCE_LANGSMITH,
     CONNECTOR_VERSION_ATTR,
-    CapabilityMapping,
 )
 from overbae.services.connectors.spans import span_id_for, trace_id_for
 from overbae.services.connectors.windows import TimeWindow, plan_windows
@@ -50,7 +43,6 @@ __all__ = [
     "CONNECTOR_SOURCE_LANGFUSE",
     "CONNECTOR_SOURCE_LANGSMITH",
     "CONNECTOR_VERSION_ATTR",
-    "CapabilityMapping",
     "Capabilities",
     "ConnectorAdapter",
     "IngestUnit",
@@ -60,14 +52,10 @@ __all__ = [
     "TimeWindow",
     "VerifyResult",
     "capability_source_error",
-    "assign_capability_keys",
     "capabilities_for",
-    "discover_capabilities",
     "get_adapter",
     "plan_windows",
     "registered_sources",
-    "relabel_connector_capabilities",
-    "resolve_capability",
     "span_id_for",
     "trace_id_for",
 ]

@@ -10,11 +10,11 @@ from datetime import UTC, datetime
 
 import pytest
 
-from overbae.models import ConnectorCredential, Project, Span
+from overbae.models import ConnectorCredential, ConnectorSyncConfig, Project, Span
 from overbae.services.connectors.base import Page
 from overbae.services.connectors.langfuse.adapter import LangfuseAdapter
 from overbae.services.connectors.langfuse.client import LangFuseError, LangFuseObservation
-from overbae.services.connectors.sync import boundary_import_key, enqueue_connector_sync
+from overbae.services.connectors.sync import enqueue_connector_sync
 from overbae.tasks import connector_sync
 
 pytestmark = pytest.mark.django_db
@@ -319,7 +319,7 @@ def test_manual_sync_works_when_auto_sync_disabled(credential, fake_langfuse):
     assert Span.objects.filter(project=credential.project).count() == 3
 
 
-def test_import_enqueues_trace_scoring(credential, fake_langfuse, monkeypatch):
+def test_import_waits_for_review_before_scoring(credential, fake_langfuse, monkeypatch):
     # bulk_create fires no signals and the beat sweep only looks back 2h, so
     # without this enqueue an imported trace is never scored.
     enqueued = []
@@ -332,12 +332,11 @@ def test_import_enqueues_trace_scoring(credential, fake_langfuse, monkeypatch):
     _drive_to_live(credential.id)
 
     roots = Span.objects.filter(project=credential.project, parent_span_id__isnull=True)
-    assert sorted(enqueued) == sorted(roots.values_list("trace_id", flat=True))
+    assert roots.count() == 3
+    assert enqueued == []
 
 
-def test_enqueue_connector_sync_restarts_backfill_when_live_imported_nothing(
-    credential, monkeypatch
-):
+def test_enqueue_connector_sync_keeps_confirmed_empty_range(credential, monkeypatch):
     monkeypatch.setattr(connector_sync.sync_connector_chunk, "apply_async", lambda *a, **k: None)
     ConnectorCredential.objects.filter(pk=credential.pk).update(
         sync_status=ConnectorCredential.SyncStatus.LIVE,
@@ -345,10 +344,13 @@ def test_enqueue_connector_sync_restarts_backfill_when_live_imported_nothing(
         total_traces_imported=0,
     )
     credential.refresh_from_db()
+    ConnectorSyncConfig.objects.create(
+        credential=credential, version=1, effective_from=datetime.now(UTC)
+    )
     enqueue_connector_sync(credential)
     credential.refresh_from_db()
-    assert credential.sync_status == ConnectorCredential.SyncStatus.BACKFILLING
-    assert credential.sync_cursor == {}
+    assert credential.sync_status == ConnectorCredential.SyncStatus.LIVE
+    assert credential.sync_cursor == {"mode": "live", "watermark": None}
 
 
 def test_enqueue_connector_sync_keeps_live_cursor_after_import(credential, monkeypatch):
@@ -360,29 +362,10 @@ def test_enqueue_connector_sync_keeps_live_cursor_after_import(credential, monke
         total_traces_imported=4,
     )
     credential.refresh_from_db()
+    ConnectorSyncConfig.objects.create(
+        credential=credential, version=1, effective_from=datetime.now(UTC)
+    )
     enqueue_connector_sync(credential)
     credential.refresh_from_db()
     assert credential.sync_status == ConnectorCredential.SyncStatus.LIVE
     assert credential.sync_cursor == cursor
-
-
-def test_enqueue_connector_sync_restarts_backfill_when_boundaries_changed(credential, monkeypatch):
-    monkeypatch.setattr(connector_sync.sync_connector_chunk, "apply_async", lambda *a, **k: None)
-    ConnectorCredential.objects.filter(pk=credential.pk).update(
-        sync_status=ConnectorCredential.SyncStatus.LIVE,
-        sync_cursor={"mode": "live", "watermark": "2026-01-01T00:00:00Z"},
-        total_traces_imported=4,
-        capability_mapping={"source": "observation_name", "names": ["analyze_email"]},
-        imported_boundary_key=boundary_import_key(
-            {"source": "observation_name", "names": ["run_invoice_agent"]}
-        ),
-    )
-    credential.refresh_from_db()
-    enqueue_connector_sync(credential)
-    credential.refresh_from_db()
-    assert credential.sync_status == ConnectorCredential.SyncStatus.BACKFILLING
-    assert credential.sync_cursor == {}
-
-
-if __name__ == "__main__":
-    raise SystemExit(pytest.main([__file__, "-q"]))

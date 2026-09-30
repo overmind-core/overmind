@@ -414,6 +414,7 @@ CELERY_TASK_ROUTES = {
     "overbae.tasks.datasets.diagnose": {"queue": "interactive"},
     "overbae.tasks.eval.prepare_sample": {"queue": "batch"},
     "overbae.tasks.datasets.land": {"queue": "batch"},
+    "overbae.tasks.connector_review.preview_connector_import": {"queue": "batch"},
     "overbae.tasks.connector_sync.sync_connector_chunk": {"queue": "batch"},
     "overbae.tasks.eval.execute_evaluator": {"queue": "io"},
     "overbae.tasks.model_deployment.advance_model_deployment": {"queue": "io"},

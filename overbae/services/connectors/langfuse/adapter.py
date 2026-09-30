@@ -117,7 +117,10 @@ class LangfuseAdapter:
                 break
         return units
 
-    def fetch_page(self, state: dict[str, Any]) -> Page:
+    def fetch_preview_page(self, state: dict[str, Any]) -> Page:
+        return self.fetch_page(state, count_only=True)
+
+    def fetch_page(self, state: dict[str, Any], *, count_only=False) -> Page:
         """Fetch one time window. Cursor keys match the pre-adapter shape."""
         config = self.credential.active_config()
         lookback_days = config.lookback_days if config else None
@@ -133,14 +136,24 @@ class LangfuseAdapter:
         configured_from = getattr(config, "backfill_from", None) if config else None
         configured_to = getattr(config, "backfill_to", None) if config else None
         anchor = _parse_iso(state.get("backfill_anchor")) or configured_to or timezone.now()
-        all_windows = plan_windows(
-            configured_from,
-            anchor,
-            max_lookback=timedelta(days=lookback_days) if lookback_days else None,
-        )
         next_end = state.get("next_window_end")
-        if next_end:
-            all_windows = [w for w in all_windows if w.end.isoformat() <= next_end]
+        if self._client.api_version == "v2":
+            end = _parse_iso(next_end) or anchor
+            start = configured_from or (
+                anchor - timedelta(days=lookback_days) if lookback_days else None
+            )
+            # Cursor pagination already bounds v2 pages; daily windows multiply empty requests.
+            all_windows = plan_windows(
+                start, end, chunk=max(end - (start or end), timedelta(seconds=1))
+            )
+        else:
+            all_windows = plan_windows(
+                configured_from,
+                anchor,
+                max_lookback=timedelta(days=lookback_days) if lookback_days else None,
+            )
+            if next_end:
+                all_windows = [w for w in all_windows if w.end.isoformat() <= next_end]
         if not all_windows:
             return Page(
                 units=[],
@@ -150,7 +163,29 @@ class LangfuseAdapter:
             )
 
         window = all_windows[0]
-        units, newest = self._collect_window(window.start, window.end)
+        if self._client.api_version == "v2":
+            units, next_cursor = self._collect_v2_page(
+                window.start, window.end, cursor=state.get("backfill_cursor"), count_only=count_only
+            )
+            newest = max((u.newest_ts for u in units if u.newest_ts), default=watermark)
+            if next_cursor:
+                return Page(
+                    units=units,
+                    next_state={
+                        "mode": "backfill",
+                        "watermark": newest or watermark,
+                        "backfill_anchor": anchor.isoformat(),
+                        "next_window_end": window.end.isoformat(),
+                        "backfill_cursor": next_cursor,
+                        "windows_remaining": len(all_windows),
+                    },
+                    done=False,
+                    window_from=window.start if window.start.year > 1 else None,
+                    window_to=window.end,
+                    mode="backfill",
+                )
+        else:
+            units, newest = self._collect_window(window.start, window.end)
         self._persist_api_version()
         remaining = all_windows[1:]
         if not remaining:
@@ -181,8 +216,8 @@ class LangfuseAdapter:
             window_from = _parse_iso(state.get("live_window_from"))
             window_to = _parse_iso(state.get("live_window_to"))
         else:
-            window_from = _parse_iso(state.get("watermark")) or (
-                timezone.now() - timedelta(hours=1)
+            window_from = (_parse_iso(state.get("watermark")) or timezone.now()) - timedelta(
+                minutes=20
             )
             window_to = timezone.now()
 
@@ -237,19 +272,17 @@ class LangfuseAdapter:
         window_to: datetime,
         *,
         cursor: str | None,
+        count_only=False,
     ) -> tuple[list[IngestUnit], str | None]:
-        groups, next_cursor = self._client.fetch_v2_trace_page(
-            TimeWindow(start=window_from, end=window_to),
-            cursor=cursor,
-            expand_metadata=self._expanded_metadata_key(),
-        )
+        window = TimeWindow(start=window_from, end=window_to)
+        if count_only:
+            groups, next_cursor = self._client.fetch_v2_count_page(window, cursor=cursor)
+        else:
+            groups, next_cursor = self._client.fetch_v2_trace_page(
+                window, cursor=cursor, expand_metadata=None
+            )
         units, _ = self._units_from_observation_groups(iter(groups))
         return units, next_cursor
-
-    def _expanded_metadata_key(self) -> str | None:
-        mapping = getattr(self.credential, "capability_mapping", None) or {}
-        key = mapping.get("key") if mapping.get("source") == "metadata" else None
-        return key if isinstance(key, str) and key else None
 
     def _units_from_observation_groups(
         self, observation_groups
@@ -285,12 +318,10 @@ class LangfuseAdapter:
         *,
         credential,
         project=None,
-        mapping: dict[str, Any] | None = None,
     ) -> list[dict[str, Any]]:
         return observations_to_span_dicts(
             unit.records,
             credential=credential,
             conventions=LANGFUSE,
             project=project,
-            mapping=mapping,
         )

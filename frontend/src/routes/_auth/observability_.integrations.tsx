@@ -1,4 +1,4 @@
-import { type ReactNode, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute, Link, useSearch } from "@tanstack/react-router";
@@ -7,18 +7,17 @@ import { toast } from "sonner";
 import api from "@/client";
 import { CONNECTORS, ConnectorDialog, type ConnectorMeta } from "@/components/connectors";
 import { ConnectorSetupWizard } from "@/components/connectors/setup-wizard";
+import { ConnectorReviewDialog } from "@/components/connectors/trace-groups";
 import { CreateProjectDialog } from "@/components/create-project";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { DateTime } from "@/components/ui/datetime";
-import { FloatingNudge } from "@/components/ui/floating-nudge";
 import { Icon } from "@/components/ui/icons";
 import { Label } from "@/components/ui/label";
 import { PageHeader } from "@/components/ui/page-header";
 import { PageShell } from "@/components/ui/page-shell";
-import { Progress } from "@/components/ui/progress";
-import { Separator } from "@/components/ui/separator";
 import { Spinner } from "@/components/ui/spinner";
 import { Switch } from "@/components/ui/switch";
 import {
@@ -29,24 +28,14 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { useNudgeDismissalCount } from "@/hooks/use-nudge-dismissal";
+import { formatDuration } from "@/lib/formatters";
+import { ResolvedStatusBadge, resolveStatus } from "@/lib/job-status";
 import { notify } from "@/lib/notify";
 import { backoffPolling } from "@/lib/poll";
 import { projectIdSearchSchema } from "@/lib/schemas";
 import { PROSE } from "@/lib/typography";
 import type { ConnectorCredential, ConnectorSyncRun } from "@/openapi";
 
-type SyncStartedInfo = {
-  credentialId: string;
-  targetProjectId: string;
-  connectorType: string;
-  /** Epoch ms — bumps dismiss gate so a later sync can re-show the nudge. */
-  at: number;
-};
-
-const SYNC_NUDGE_KEY = (credentialId: string) => `connector-sync-nudge:${credentialId}`;
-
-/** Keep the credentials list on the 2s poll path after Sync now / start sync. */
 const FAST_POLL_AFTER_SYNC_MS = 45_000;
 
 export const Route = createFileRoute("/_auth/observability_/integrations")({
@@ -58,90 +47,44 @@ interface CredentialItemProps {
   meta: ConnectorMeta;
   credential: ConnectorCredential;
   projectId: string;
-  onSyncStarted?: (info: SyncStartedInfo) => void;
   /** Enter the 2s credentials refetch window (live Sync now stays `live` on the server). */
   onSyncKicked?: () => void;
+  onAdd: () => void;
 }
 
-function SyncStatusLine({ credential }: { credential: ConnectorCredential }) {
-  const { syncStatus, backfillImported, backfillTotal, syncError, lastSyncedAt, nextPollAt } =
-    credential;
-
-  if (!credential.autoSyncEnabled && syncStatus !== "backfilling" && syncStatus !== "live") {
-    return <span className="text-xs text-muted-foreground">Auto-sync off</span>;
-  }
-
-  if (syncStatus === "backfilling") {
-    // Prefer totalTracesImported — same unit as the Traces stat.
-    // No Spinner: lookback walks many (often empty) windows after the count
-    // stops moving; a spinner reads as "still importing" when history scan
-    // is just draining older days.
-    const tracesDone = credential.totalTracesImported || backfillImported;
-    const pct =
-      backfillTotal && backfillTotal > 0
-        ? Math.round((tracesDone / backfillTotal) * 100)
-        : undefined;
-    return (
-      <div className="flex min-w-[180px] flex-col gap-1">
-        <span className="text-xs text-muted-foreground">
-          Importing history · {tracesDone.toLocaleString()}
-          {backfillTotal ? ` / ~${backfillTotal.toLocaleString()}` : ""} traces
-        </span>
-        {pct != null && <Progress label="Backfill progress" percent={pct} />}
-      </div>
-    );
-  }
-  if (syncStatus === "error") {
-    return (
-      <span className="flex items-start gap-1.5 text-xs text-destructive">
-        <Icon.warning className="mt-0.5 size-3.5 shrink-0" />
-        <span>{syncError || "Sync error — retrying automatically"}</span>
-      </span>
-    );
-  }
-  if (syncStatus === "live") {
-    return (
-      <span className="text-xs text-muted-foreground">
-        <span className="mr-1 inline-block size-1.5 rounded-xs bg-success align-middle" />
-        Live
-        {lastSyncedAt && (
-          <>
-            {" "}
-            · last <DateTime value={lastSyncedAt} />
-          </>
-        )}
-        {credential.autoSyncEnabled && nextPollAt && (
-          <>
-            {" "}
-            · next <DateTime value={nextPollAt} />
-          </>
-        )}
-      </span>
-    );
-  }
-  return <span className="text-xs text-muted-foreground">Waiting for first sync…</span>;
-}
-
-function Stat({ label, value }: { label: string; value: ReactNode }) {
+function ImportProgress({ credential }: { credential: ConnectorCredential }) {
+  const total = credential.backfillTotal;
+  const imported = credential.backfillImported;
+  const progress = total ? Math.min(99, (imported / total) * 100) : null;
+  const remaining = credential.importRemainingSeconds;
   return (
-    <div className="min-w-0">
-      <div className="text-xs text-muted-foreground">{label}</div>
-      <div className="truncate text-sm font-medium text-foreground">{value}</div>
+    <div className="flex max-w-full flex-col items-end gap-1.5" role="status">
+      <ResolvedStatusBadge
+        cfg={{ ...resolveStatus("running", "running"), label: "Importing" }}
+        progress={progress}
+        solidProgress
+      />
+      <span className="text-xs text-muted-foreground tabular-nums">
+        {imported.toLocaleString()}
+        {total != null ? ` / ${total.toLocaleString()}` : ""} traces
+        {remaining != null
+          ? ` · ~${formatDuration(Math.max(1000, remaining * 1000))} left`
+          : total != null && imported >= total
+            ? " · Finishing import…"
+            : " · Estimating time…"}
+      </span>
     </div>
   );
 }
 
-function CredentialItem({
-  meta,
-  credential,
-  projectId,
-  onSyncStarted,
-  onSyncKicked,
-}: CredentialItemProps) {
+function CredentialItem({ meta, credential, projectId, onSyncKicked, onAdd }: CredentialItemProps) {
   const qc = useQueryClient();
   const [editOpen, setEditOpen] = useState(false);
   const [wizardOpen, setWizardOpen] = useState(false);
   const [showRuns, setShowRuns] = useState(false);
+  const [reviewOpen, setReviewOpen] = useState(false);
+  const importing = credential.syncStatus === "backfilling";
+  const pending = credential.reviewSummary?.pendingGroups ?? 0;
 
   const invalidate = () => qc.invalidateQueries({ queryKey: ["connector-credentials", projectId] });
 
@@ -154,6 +97,18 @@ function CredentialItem({
       }),
     queryKey: ["connector-sync-runs", credential.id],
   });
+
+  const sourceId = credential.activeConfig?.sourceProjectId;
+  const sourceProjects = useQuery({
+    enabled: meta.available && !!sourceId,
+    queryFn: () =>
+      api.connectorCredentials.connectorCredentialsSourceProjectsRetrieve({ id: credential.id }),
+    queryKey: ["connector-source-projects", credential.id, credential.updatedAt?.getTime()],
+    retry: false,
+    staleTime: 5 * 60 * 1000,
+  });
+  const sourceName =
+    sourceProjects.data?.projects?.find((project) => project.id === sourceId)?.name ?? sourceId;
 
   const disconnectMutation = useMutation({
     mutationFn: () => api.connectorCredentials.connectorCredentialsDestroy({ id: credential.id }),
@@ -240,27 +195,52 @@ function CredentialItem({
   });
 
   const autoSyncId = `auto-sync-${credential.id}`;
-  const mappedCapabilities =
-    credential.capabilityMapping?.assignments &&
-    typeof credential.capabilityMapping.assignments === "object"
-      ? Object.keys(credential.capabilityMapping.assignments as object).length
-      : 0;
   const runs: ConnectorSyncRun[] = runsQuery.data?.results ?? [];
-  const openConfig = () => {
-    if (meta.available) setWizardOpen(true);
-    else setEditOpen(true);
-  };
 
   return (
     <>
-      <div className="flex flex-col gap-3 rounded-md border border-border bg-wash-subtle px-3 py-3">
-        <div className="flex items-start gap-3">
+      <Card className="flex flex-col gap-3 px-4 py-4">
+        <div className="flex flex-wrap items-start justify-between gap-4">
+          {meta.logoUrl && <img alt="" className="size-9 shrink-0 rounded-md" src={meta.logoUrl} />}
           <div className="flex min-w-0 flex-1 flex-col gap-1">
-            <span className="text-sm font-medium text-foreground">{credential.name}</span>
-            <SyncStatusLine credential={credential} />
+            <span className="text-sm font-semibold text-foreground">{meta.label}</span>
+            <span className="text-xs text-muted-foreground">{credential.name}</span>
+            {sourceId && (
+              <p className="break-words text-xs text-muted-foreground">
+                {meta.type === "galileo" ? "Source log stream" : "Source project"}: {sourceName}
+              </p>
+            )}
+            <p className="text-xs text-muted-foreground">
+              {credential.totalTracesImported.toLocaleString()} traces imported
+              {pending > 0 && !importing && (
+                <span className="text-warning">
+                  {" "}
+                  · {pending.toLocaleString()} {pending === 1 ? "pattern needs" : "patterns need"}{" "}
+                  review
+                </span>
+              )}
+            </p>
           </div>
-
-          <div className="flex shrink-0 flex-wrap items-center justify-end gap-1.5">
+          {importing ? (
+            <ImportProgress credential={credential} />
+          ) : pending > 0 ? (
+            <Button onClick={() => setReviewOpen(true)} size="sm">
+              Review
+            </Button>
+          ) : credential.syncStatus === "live" ? (
+            <Badge variant="success">
+              <Icon.success className="size-3.5" />
+              Completed
+            </Badge>
+          ) : null}
+        </div>
+        {credential.syncError && (
+          <p className="text-xs text-destructive" role="alert">
+            {credential.syncError}
+          </p>
+        )}
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="flex flex-wrap items-center gap-2">
             {meta.available && (
               <div className="mr-1 flex items-center gap-2">
                 <Switch
@@ -281,7 +261,7 @@ function CredentialItem({
             {meta.available && (
               <Button
                 className="gap-1.5"
-                disabled={syncMutation.isPending}
+                disabled={syncMutation.isPending || importing}
                 onClick={() => syncMutation.mutate()}
                 size="sm"
                 variant="secondary"
@@ -290,9 +270,20 @@ function CredentialItem({
                 Sync now
               </Button>
             )}
-            <Button onClick={openConfig} size="sm" variant="secondary">
+            <Button onClick={onAdd} size="sm" variant="secondary">
+              New connection
+            </Button>
+            <Button onClick={() => setEditOpen(true)} size="sm" variant="secondary">
+              Credentials
+            </Button>
+            <Button
+              disabled={importing}
+              onClick={() => setWizardOpen(true)}
+              size="sm"
+              variant="secondary"
+            >
               <Icon.edit />
-              Edit
+              Import traces
             </Button>
             <ConfirmDialog
               confirmLabel="Disconnect"
@@ -318,12 +309,6 @@ function CredentialItem({
 
         {meta.available && (
           <>
-            <div className="grid grid-cols-3 gap-3 border-t border-border/70 pt-3">
-              <Stat label="Traces" value={(credential.totalTracesImported ?? 0).toLocaleString()} />
-              <Stat label="Spans" value={(credential.totalSpansImported ?? 0).toLocaleString()} />
-              <Stat label="Mapped capabilities" value={mappedCapabilities.toLocaleString()} />
-            </div>
-
             <div className="flex flex-wrap items-center gap-2 border-t border-border/70 pt-3">
               <Button asChild size="sm" variant="secondary">
                 <Link
@@ -387,22 +372,28 @@ function CredentialItem({
             )}
           </>
         )}
-      </div>
+      </Card>
 
+      <ConnectorReviewDialog
+        credentialId={credential.id}
+        name={credential.name}
+        onClose={() => setReviewOpen(false)}
+        open={reviewOpen}
+        projectId={projectId}
+      />
+      <ConnectorDialog
+        existing={credential}
+        meta={meta}
+        onClose={() => setEditOpen(false)}
+        open={editOpen}
+        projectId={projectId}
+      />
       {meta.available ? (
         <ConnectorSetupWizard
           existing={credential}
           meta={meta}
           onClose={() => setWizardOpen(false)}
-          onCompleted={({ credentialId, targetProjectId }) => {
-            onSyncKicked?.();
-            onSyncStarted?.({
-              at: Date.now(),
-              connectorType: meta.type,
-              credentialId,
-              targetProjectId,
-            });
-          }}
+          onCompleted={() => onSyncKicked?.()}
           open={wizardOpen}
           projectId={projectId}
         />
@@ -423,10 +414,8 @@ interface ConnectorSectionProps {
   meta: ConnectorMeta;
   credentials: ConnectorCredential[];
   projectId: string;
-  isLast: boolean;
   /** Called when the user wants to add a connection but has no project yet. */
   onRequireProject: () => void;
-  onSyncStarted?: (info: SyncStartedInfo) => void;
   onSyncKicked?: () => void;
 }
 
@@ -434,121 +423,64 @@ function ConnectorSection({
   meta,
   credentials,
   projectId,
-  isLast,
   onRequireProject,
-  onSyncStarted,
   onSyncKicked,
 }: ConnectorSectionProps) {
   const [addOpen, setAddOpen] = useState(false);
-
   return (
     <>
-      <div className="py-5">
-        <div className="flex items-start gap-4">
-          {meta.logoUrl && (
-            <img
-              alt={meta.label}
-              className="mt-0.5 size-9 shrink-0 rounded-md"
-              src={meta.logoUrl}
-            />
-          )}
-          <div className="flex min-w-0 flex-1 flex-col gap-1">
-            <div className="flex items-center gap-2.5">
-              <span className="text-sm font-semibold text-foreground">{meta.label}</span>
-              {credentials.length > 0 && (
-                <Badge className="gap-1 px-1.5 py-0 text-xs" variant="outline">
-                  <span className="size-1.5 rounded-xs bg-success" />
-                  {credentials.length === 1 ? "1 connection" : `${credentials.length} connections`}
-                </Badge>
-              )}
-              {!meta.available && (
-                <Badge className="px-1.5 py-0 text-xs" variant="secondary">
-                  Coming soon
-                </Badge>
-              )}
-            </div>
-            <p className={`${PROSE} text-sm leading-relaxed text-muted-foreground`}>
-              {meta.description}
-            </p>
+      {credentials.length ? (
+        credentials.map((credential) => (
+          <CredentialItem
+            credential={credential}
+            key={credential.id}
+            meta={meta}
+            onAdd={() => setAddOpen(true)}
+            onSyncKicked={onSyncKicked}
+            projectId={projectId}
+          />
+        ))
+      ) : (
+        <Card className="flex flex-wrap items-start gap-4 p-4">
+          {meta.logoUrl && <img alt="" className="size-9 shrink-0 rounded-md" src={meta.logoUrl} />}
+          <div className="min-w-0 flex-1">
+            <p className="text-sm font-semibold">{meta.label}</p>
+            <p className={`${PROSE} mt-1 text-sm text-muted-foreground`}>{meta.description}</p>
           </div>
-
-          {meta.available && (
+          {meta.available ? (
             <Button
-              className="shrink-0"
               onClick={() => (projectId ? setAddOpen(true) : onRequireProject())}
               size="sm"
               variant="secondary"
             >
-              <Icon.add />
-              New connection
+              Connect
             </Button>
+          ) : (
+            <Badge variant="secondary">Coming soon</Badge>
           )}
-        </div>
-
-        {credentials.length > 0 && (
-          <div className="mt-3 flex flex-col gap-2">
-            {credentials.map((cred) => (
-              <CredentialItem
-                credential={cred}
-                key={cred.id}
-                meta={meta}
-                onSyncKicked={onSyncKicked}
-                onSyncStarted={onSyncStarted}
-                projectId={projectId}
-              />
-            ))}
-          </div>
-        )}
-      </div>
-
-      {!isLast && <Separator />}
-
-      {/* Available connectors use the setup wizard; others fall back to the credentials dialog. */}
-      {projectId &&
-        (meta.available ? (
-          <ConnectorSetupWizard
-            meta={meta}
-            onClose={() => setAddOpen(false)}
-            onCompleted={({ credentialId, targetProjectId }) => {
-              onSyncKicked?.();
-              onSyncStarted?.({
-                at: Date.now(),
-                connectorType: meta.type,
-                credentialId,
-                targetProjectId,
-              });
-            }}
-            open={addOpen}
-            projectId={projectId}
-          />
-        ) : (
-          <ConnectorDialog
-            meta={meta}
-            onClose={() => setAddOpen(false)}
-            open={addOpen}
-            projectId={projectId}
-          />
-        ))}
+        </Card>
+      )}
+      {projectId && (
+        <ConnectorSetupWizard
+          meta={meta}
+          onClose={() => setAddOpen(false)}
+          onCompleted={() => onSyncKicked?.()}
+          open={addOpen}
+          projectId={projectId}
+        />
+      )}
     </>
   );
 }
 
-/** Moved out of Settings: connectors feed traces, so they live with the
-    Observability surface they fill. */
 function IntegrationsPage() {
   const routeSearch = Route.useSearch();
   const authSearch = useSearch({ from: "/_auth" });
   const navigate = Route.useNavigate();
   const projectId = routeSearch.projectId ?? authSearch.projectId ?? "";
   const [createProjectOpen, setCreateProjectOpen] = useState(false);
-  const [postSync, setPostSync] = useState<SyncStartedInfo | null>(null);
   const [fastPollUntil, setFastPollUntil] = useState(0);
   const bumpFastPoll = () => setFastPollUntil(Date.now() + FAST_POLL_AFTER_SYNC_MS);
-  const { dismissed: syncNudgeDismissed, dismiss: dismissSyncNudge } = useNudgeDismissalCount(
-    postSync ? SYNC_NUDGE_KEY(postSync.credentialId) : "",
-    postSync?.at ?? 0
-  );
-
   const { createProject } = routeSearch;
   useEffect(() => {
     if (!createProject) return;
@@ -594,7 +526,7 @@ function IntegrationsPage() {
       header={
         <PageHeader
           actions={credentialsQuery.isLoading ? <Spinner /> : undefined}
-          description="Connect third-party observability platforms to pull traces into Overmind automatically."
+          description="Import traces from your provider, then review their capability assignments."
           icon={<Icon.integrations aria-hidden className="size-6 shrink-0" />}
           title="Integrations"
         />
@@ -617,49 +549,20 @@ function IntegrationsPage() {
         </div>
       )}
 
-      <div className="rounded-md border border-border">
-        {CONNECTORS.map((meta, i) => (
-          <div className="px-4" key={meta.type}>
-            <ConnectorSection
-              credentials={credentialsByType[meta.type] ?? []}
-              isLast={i === CONNECTORS.length - 1}
-              meta={meta}
-              onRequireProject={() => setCreateProjectOpen(true)}
-              onSyncKicked={bumpFastPoll}
-              onSyncStarted={setPostSync}
-              projectId={projectId}
-            />
-          </div>
+      <div className="flex flex-col gap-4">
+        {CONNECTORS.map((meta) => (
+          <ConnectorSection
+            credentials={credentialsByType[meta.type] ?? []}
+            key={meta.type}
+            meta={meta}
+            onRequireProject={() => setCreateProjectOpen(true)}
+            onSyncKicked={bumpFastPoll}
+            projectId={projectId}
+          />
         ))}
       </div>
 
       <CreateProjectDialog onOpenChange={setCreateProjectOpen} open={createProjectOpen} />
-
-      {postSync && !syncNudgeDismissed ? (
-        <FloatingNudge
-          cta={
-            <Button asChild size="sm">
-              <Link
-                search={{
-                  projectId: postSync.targetProjectId,
-                  service_name__icontains: postSync.connectorType,
-                }}
-                to="/observability"
-              >
-                <Icon.observability />
-                View traces
-              </Link>
-            </Button>
-          }
-          description="Imported traces appear in Observability as the sync runs"
-          icon={<Icon.observability className="size-5" />}
-          onDismiss={() => {
-            dismissSyncNudge();
-            setPostSync(null);
-          }}
-          title="Sync started"
-        />
-      ) : null}
     </PageShell>
   );
 }

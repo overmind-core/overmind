@@ -9,14 +9,15 @@ from typing import Any
 
 from celery import shared_task
 from celery.exceptions import SoftTimeLimitExceeded
-from django.db.models import Q
+from django.db import transaction
+from django.db.models import F, Q
 from django.utils import timezone
 
 from overbae.services.connectors.schema import CONNECTOR_VERSION_ATTR
 
 logger = logging.getLogger(__name__)
 
-_LEASE_SECONDS = int(os.environ.get("CONNECTOR_LEASE_SECONDS", "600"))
+_LEASE_SECONDS = max(1260, int(os.environ.get("CONNECTOR_LEASE_SECONDS", "1260")))
 _BACKOFF_BASE_SECONDS = 30
 # Generous enough that a user reading docs mid-setup never loses their draft.
 _DRAFT_TTL = timedelta(hours=24)
@@ -24,22 +25,6 @@ _BACKOFF_CAP_SECONDS = 3600
 _MAX_SYNC_RETRIES = 12
 _CHUNK_HARD_TIME_LIMIT = 60 * 20
 _CHUNK_SOFT_TIME_LIMIT = 60 * 18
-
-
-def _match_capabilities_by_name(project, spans: list) -> None:
-    """Assign capabilities to unsaved spans through identity.lookup, so renamed
-    and merged capabilities still claim their connector spans."""
-    from overbae.services.capabilities import identity  # noqa: PLC0415
-
-    cache: dict[str, Any] = {}
-    for span in spans:
-        if span.capability_id is not None or not span.name:
-            continue
-        key = span.name.lower()
-        if key not in cache:
-            cache[key] = identity.lookup(project.id, span.name)
-        if cache[key] is not None:
-            span.capability = cache[key]
 
 
 def _stamp_conversations(project, spans: list) -> None:
@@ -101,57 +86,70 @@ _UPDATE_FIELDS = (
 )
 
 
+@transaction.atomic
 def _upsert_spans(project, span_dicts: list[dict[str, Any]], credential=None, job=None) -> int:
-    """Idempotently insert spans keyed by ``span_id``; returns rows created.
+    from overbae.models import ConnectorCredential, ConnectorTraceGroup, Span
+    from overbae.models.traces import usage_slice
+    from overbae.services.connectors.review import group_imported_traces
 
-    A provider that rewrites rows in place (Braintrust: async scoring, human
-    review) stamps ``connector.version`` and its spans are overwritten when a
-    higher version arrives. Rescoring is deliberately not re-enqueued for those —
-    a scorer writing back upstream would otherwise loop.
-    """
     if not span_dicts:
         return 0
-    from overbae.models import Span
-    from overbae.models.traces import usage_slice
-
+    if credential:
+        ConnectorCredential.objects.select_for_update().get(pk=credential.pk)
     existing = {
         span.span_id: span
-        for span in Span.objects.filter(span_id__in=[s["span_id"] for s in span_dicts])
+        for span in Span.objects.filter(
+            project=project, span_id__in=[s["span_id"] for s in span_dicts]
+        )
     }
-    new_spans = []
-    updated_spans = []
-    for s in span_dicts:
-        capability = s.get("capability")
+    new_spans, updated_spans = [], []
+    affected_trace_ids = {s["trace_id"] for s in span_dicts}
+    for s in {s["span_id"]: s for s in span_dicts}.values():
         fields = {k: v for k, v in s.items() if k not in ("span_id", "capability")}
-        fields["usage"] = usage_slice(fields.get("attributes"))
+        fields["attributes"] = dict(fields.get("attributes") or {})
+        fields["attributes"].pop("overmind.capability.id", None)
+        fields["attributes"].pop("overmind.capability.name", None)
+        fields["usage"] = usage_slice(fields["attributes"])
         current = existing.get(s["span_id"])
         if current is None:
-            new_spans.append(
-                Span(project=project, span_id=s["span_id"], capability=capability, **fields)
-            )
+            new_spans.append(Span(project=project, span_id=s["span_id"], **fields))
             continue
         incoming_version = _row_version(s)
-        if incoming_version is None or incoming_version <= (_row_version(current) or -1):
+        stored_version = _row_version(current)
+        if (
+            incoming_version is not None
+            and stored_version is not None
+            and incoming_version < stored_version
+        ):
             continue
+        if incoming_version is not None and incoming_version == stored_version:
+            # Normalization can repair provider parentage without changing the provider row.
+            fields = {k: fields[k] for k in ("trace_id", "parent_span_id", "span_type")}
+        elif current.capability_id:
+            fields["attributes"]["overmind.capability.id"] = str(current.capability_id)
+        # Unversioned providers can complete an observation after its first import.
+        changed = False
+        affected_trace_ids.add(current.trace_id)
         for key in _UPDATE_FIELDS:
-            if key == "capability":
-                current.capability = capability
-            elif key in fields:
+            if key != "capability" and key in fields and getattr(current, key) != fields[key]:
                 setattr(current, key, fields[key])
-        updated_spans.append(current)
-
+                changed = True
+        if changed:
+            current.connector_reviewed = False
+            updated_spans.append(current)
     if updated_spans:
-        _match_capabilities_by_name(project, updated_spans)
         _stamp_conversations(project, updated_spans)
-        Span.objects.bulk_update(updated_spans, [*_UPDATE_FIELDS, "conversation"])
-
+        Span.objects.bulk_update(
+            updated_spans, [*_UPDATE_FIELDS, "conversation", "connector_reviewed"]
+        )
+        ConnectorTraceGroup.objects.filter(
+            pk__in={s.connector_group_id for s in updated_spans if s.connector_group_id}
+        ).update(revision=F("revision") + 1)
     if new_spans:
-        from overbae.api.otlp import enqueue_trace_scoring
-
-        _match_capabilities_by_name(project, new_spans)
         _stamp_conversations(project, new_spans)
         Span.objects.bulk_create(new_spans, ignore_conflicts=True)
-        enqueue_trace_scoring(new_spans)
+    if credential:
+        group_imported_traces(credential, project, affected_trace_ids)
     return len(new_spans)
 
 
@@ -177,10 +175,11 @@ def _apply_backoff(credential, exc: Exception) -> dict:
         _save_sync_state(
             credential,
             sync_status=ConnectorCredential.SyncStatus.ERROR,
-            sync_error=str(exc)[:1000],
+            sync_error="The provider rate limit was reached. Import will retry.",
             next_poll_at=timezone.now() + timedelta(seconds=delay),
         )
-        return {"status": "error", "retry_after": delay, "error": str(exc)}
+        sync_connector_chunk.apply_async(args=[str(credential.id)], countdown=delay)
+        return {"status": "error", "retry_after": delay, "error": credential.sync_error}
 
     if auth_failure or retry >= _MAX_SYNC_RETRIES:
         prefix = (
@@ -191,7 +190,7 @@ def _apply_backoff(credential, exc: Exception) -> dict:
         _save_sync_state(
             credential,
             sync_status=ConnectorCredential.SyncStatus.ERROR,
-            sync_error=(prefix + str(exc))[:1000],
+            sync_error=prefix.strip(),
             sync_retry_count=retry,
             auto_sync_enabled=False,
             next_poll_at=None,
@@ -203,13 +202,13 @@ def _apply_backoff(credential, exc: Exception) -> dict:
             retry,
             exc,
         )
-        return {"status": "disabled", "error": str(exc)}
+        return {"status": "disabled", "error": credential.sync_error}
 
     delay = min(_BACKOFF_CAP_SECONDS, _BACKOFF_BASE_SECONDS * (2 ** (retry - 1)))
     _save_sync_state(
         credential,
         sync_status=ConnectorCredential.SyncStatus.ERROR,
-        sync_error=str(exc)[:1000],
+        sync_error="The provider request failed. Import will retry.",
         sync_retry_count=retry,
         next_poll_at=timezone.now() + timedelta(seconds=delay),
     )
@@ -220,7 +219,8 @@ def _apply_backoff(credential, exc: Exception) -> dict:
         delay,
         exc,
     )
-    return {"status": "error", "retry_after": delay, "error": str(exc)}
+    sync_connector_chunk.apply_async(args=[str(credential.id)], countdown=delay)
+    return {"status": "error", "retry_after": delay, "error": credential.sync_error}
 
 
 def _run_adapter_chunk(credential, cursor: dict) -> dict:
@@ -269,9 +269,9 @@ def _run_adapter_chunk(credential, cursor: dict) -> dict:
                 project=target_project,
             )
             imported += _upsert_spans(target_project, span_dicts, credential=credential)
-    except Exception as exc:
+    except Exception:
         run.status = ConnectorSyncRun.Status.FAILED
-        run.error = str(exc)[:1000]
+        run.error = "The import failed. Check the integration connection and retry."
         run.finished_at = timezone.now()
         run.traces_seen = traces_seen
         run.spans_created = imported
@@ -285,9 +285,18 @@ def _run_adapter_chunk(credential, cursor: dict) -> dict:
     run.save()
 
     credential.refresh_from_db()
-    new_traces = credential.total_traces_imported + traces_seen
+    from overbae.services.connectors.sync import connector_imported_spans
+
+    stored = connector_imported_spans(credential)
+    new_traces = stored.order_by().values("trace_id").distinct().count()
+    in_range = stored
+    if config and config.backfill_from:
+        in_range = in_range.filter(start_time_ns__gte=int(config.backfill_from.timestamp() * 1e9))
+    if config and config.backfill_to:
+        in_range = in_range.filter(start_time_ns__lt=int(config.backfill_to.timestamp() * 1e9))
+    range_traces = in_range.order_by().values("trace_id").distinct().count()
     type(credential).objects.filter(pk=credential.pk).update(
-        total_spans_imported=credential.total_spans_imported + imported,
+        total_spans_imported=stored.count(),
         total_traces_imported=new_traces,
     )
 
@@ -296,10 +305,10 @@ def _run_adapter_chunk(credential, cursor: dict) -> dict:
             credential,
             sync_status=ConnectorCredential.SyncStatus.LIVE,
             sync_cursor=page.next_state,
-            backfill_imported=new_traces
+            backfill_imported=range_traces
             if page.mode == "backfill"
             else credential.backfill_imported,
-            backfill_total=new_traces if page.mode == "backfill" else credential.backfill_total,
+            backfill_total=credential.backfill_total,
             sync_error="",
             sync_retry_count=0,
             last_synced_at=timezone.now(),
@@ -320,8 +329,10 @@ def _run_adapter_chunk(credential, cursor: dict) -> dict:
             else ConnectorCredential.SyncStatus.BACKFILLING
         ),
         sync_cursor=page.next_state,
-        backfill_imported=(new_traces if page.mode == "backfill" else credential.backfill_imported),
-        backfill_total=None if page.mode == "backfill" else credential.backfill_total,
+        backfill_imported=(
+            range_traces if page.mode == "backfill" else credential.backfill_imported
+        ),
+        backfill_total=credential.backfill_total,
         sync_error="",
         sync_retry_count=0,
         last_synced_at=timezone.now(),
@@ -344,7 +355,6 @@ def sync_connector_chunk(credential_id: str) -> dict:
     """Pull one resumable slice of traces for a connector (backfill or live)."""
     from overbae.models import ConnectorCredential
     from overbae.services.connectors import registered_sources
-    from overbae.services.connectors.sync import prepare_connector_sync
 
     credential = ConnectorCredential.objects.filter(id=credential_id, is_active=True).first()
     if not credential:
@@ -356,12 +366,12 @@ def sync_connector_chunk(credential_id: str) -> dict:
     claimed = (
         ConnectorCredential.objects.filter(pk=credential.pk)
         .filter(Q(next_poll_at__isnull=True) | Q(next_poll_at__lte=now))
-        .update(next_poll_at=now + timedelta(seconds=_LEASE_SECONDS))
+        .filter(Q(sync_lease_expires_at__isnull=True) | Q(sync_lease_expires_at__lte=now))
+        .update(sync_lease_expires_at=now + timedelta(seconds=_LEASE_SECONDS))
     )
     if not claimed:
         return {"status": "skipped", "reason": "leased"}
     credential.refresh_from_db()
-    prepare_connector_sync(credential)
 
     cursor = dict(credential.sync_cursor or {})
     if "mode" not in cursor:
@@ -375,6 +385,10 @@ def sync_connector_chunk(credential_id: str) -> dict:
         return {"status": "soft_timeout_resumed"}
     except Exception as exc:
         return _apply_backoff(credential, exc)
+    finally:
+        ConnectorCredential.objects.filter(
+            pk=credential.pk, sync_lease_expires_at=now + timedelta(seconds=_LEASE_SECONDS)
+        ).update(sync_lease_expires_at=None)
 
 
 @shared_task(name="overbae.tasks.connector_sync.sweep_abandoned_drafts")

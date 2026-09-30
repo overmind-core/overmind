@@ -19,6 +19,7 @@ from rest_framework.decorators import action
 from rest_framework.exceptions import APIException, PermissionDenied
 from rest_framework.response import Response
 
+from overbae.api.connector_review import ConnectorReviewActions
 from overbae.api.filters import (
     DeployedModelFilter,
     FinetuningJobFilter,
@@ -28,14 +29,7 @@ from overbae.api.filters import (
 )
 from overbae.api.scoping import project_ids_for
 from overbae.api.serializers import (
-    ConnectorCapabilityMappingResponseSerializer,
-    ConnectorCapabilityMappingWriteSerializer,
     ConnectorCredentialSerializer,
-    ConnectorDiscoverCapabilitiesResponseSerializer,
-    ConnectorPreviewRequestSerializer,
-    ConnectorPreviewResponseSerializer,
-    ConnectorSyncConfigCreateResponseSerializer,
-    ConnectorSyncConfigWriteSerializer,
     ConnectorSyncRunSerializer,
     ConnectorVerifyResponseSerializer,
     DatasetOverlapResponseSerializer,
@@ -1471,7 +1465,7 @@ class FeedbackViewSet(mixins.CreateModelMixin, viewsets.GenericViewSet):
         ),
     ),
 )
-class ConnectorCredentialViewSet(viewsets.ModelViewSet):
+class ConnectorCredentialViewSet(ConnectorReviewActions, viewsets.ModelViewSet):
     serializer_class = ConnectorCredentialSerializer
     lookup_field = "id"
     http_method_names = ["get", "post", "put", "patch", "delete", "head", "options"]
@@ -1529,7 +1523,9 @@ class ConnectorCredentialViewSet(viewsets.ModelViewSet):
             try:
                 result = get_adapter(tmp).verify()
             except Exception as exc:
-                raise drf_serializers.ValidationError({"detail": str(exc)}) from exc
+                raise drf_serializers.ValidationError(
+                    {"detail": "Could not verify this connection. Check the host and credentials."}
+                ) from exc
             if not result.ok:
                 raise drf_serializers.ValidationError({"detail": result.detail or "Verify failed"})
         credential = serializer.save()
@@ -1641,197 +1637,6 @@ class ConnectorCredentialViewSet(viewsets.ModelViewSet):
                     "retention_note": (caps.retention_note if caps else "") or "",
                 },
             }
-        )
-
-    @extend_schema(
-        summary="Create a new sync config version",
-        request=ConnectorSyncConfigWriteSerializer,
-        responses={201: ConnectorSyncConfigCreateResponseSerializer},
-    )
-    @action(detail=True, methods=["post"], url_path="config")
-    def config(self, request, id=None):
-        credential = self.get_object()
-        from overbae.services.connectors.feedforward import save_sync_config
-
-        write = ConnectorSyncConfigWriteSerializer(data=request.data)
-        write.is_valid(raise_exception=True)
-        data = write.validated_data
-
-        target_project = None
-        target_project_id = data.get("target_project_id")
-        if target_project_id:
-            target_project = Project.objects.filter(
-                id=target_project_id, id__in=_user_project_ids(request.user)
-            ).first()
-            if not target_project:
-                return Response(
-                    {"detail": "target_project_id is not accessible."},
-                    status=status.HTTP_400_BAD_REQUEST,
-                )
-
-        config_kwargs = {
-            "source_project_id": data.get("source_project_id") or "",
-            "target_project": target_project,
-            "lookback_days": data.get("lookback_days"),
-        }
-        if "backfill_from" in data:
-            config_kwargs["backfill_from"] = data["backfill_from"]
-        if "backfill_to" in data:
-            config_kwargs["backfill_to"] = data["backfill_to"]
-        config = save_sync_config(
-            credential,
-            **config_kwargs,
-        )
-        from overbae.services.connectors.sync import reset_connector_import
-
-        reset_connector_import(credential)
-        return Response(
-            {
-                "version": config.version,
-                "effective_from": config.effective_from.isoformat(),
-            },
-            status=status.HTTP_201_CREATED,
-        )
-
-    @extend_schema(
-        summary="Preview how many traces match the import range",
-        request=ConnectorPreviewRequestSerializer,
-        responses={200: ConnectorPreviewResponseSerializer},
-    )
-    @action(detail=True, methods=["post"], url_path="preview")
-    def preview(self, request, id=None):
-        from overbae.services.connectors import get_adapter
-
-        credential = self.get_object()
-        preview = ConnectorPreviewRequestSerializer(data=request.data)
-        preview.is_valid(raise_exception=True)
-        data = preview.validated_data
-        lookback = data.get("lookback_days")
-        try:
-            count = get_adapter(credential).count(
-                lookback_days=int(lookback) if lookback is not None else None,
-                source_project_id=data["source_project_id"],
-                window_from=data.get("backfill_from"),
-                window_to=data.get("backfill_to"),
-            )
-        except Exception as exc:
-            return Response({"detail": str(exc)}, status=status.HTTP_502_BAD_GATEWAY)
-        return Response({"count": count})
-
-    @extend_schema(
-        summary="Discover capability-identity candidates from the provider",
-        parameters=[
-            OpenApiParameter(
-                "lookback_days",
-                OpenApiTypes.INT,
-                description="How far back to sample for discovery (default 30).",
-            ),
-            OpenApiParameter(
-                "source",
-                OpenApiTypes.STR,
-                description="Optional identity source filter.",
-            ),
-            OpenApiParameter(
-                "key",
-                OpenApiTypes.STR,
-                description="Optional metadata/tag key when source needs one.",
-            ),
-            OpenApiParameter(
-                "source_project_id",
-                OpenApiTypes.STR,
-                description=(
-                    "Provider project to sample. Required mid-wizard for a connector "
-                    "with needs_source_project, whose sync config is not written yet."
-                ),
-            ),
-        ],
-        responses={200: ConnectorDiscoverCapabilitiesResponseSerializer},
-    )
-    @action(detail=True, methods=["get"], url_path="discover-capabilities")
-    def discover_capabilities_action(self, request, id=None):
-        from overbae.services.connectors import discover_capabilities, get_adapter
-        from overbae.services.connectors.capability_resolution import propose_capability_assignments
-        from overbae.services.connectors.profiling import profile_capability_candidates
-
-        credential = self.get_object()
-        mapping = credential.capability_mapping or {}
-        # Never inherit the saved source: the wizard needs every signal the sample
-        # holds to offer a different one.
-        source = request.query_params.get("source")
-        key = request.query_params.get("key") or mapping.get("key")
-        raw_lookback = request.query_params.get("lookback_days")
-        if raw_lookback is not None and str(raw_lookback).strip() != "":
-            lookback_days = max(1, min(int(raw_lookback), 365))
-        else:
-            cfg = credential.active_config()
-            lookback_days = (cfg.lookback_days if cfg and cfg.lookback_days else None) or 30
-        try:
-            adapter = get_adapter(credential)
-            traces = adapter.sample_units(
-                lookback_days=lookback_days,
-                limit=200,
-                source_project_id=request.query_params.get("source_project_id") or "",
-            )
-            results = discover_capabilities(
-                traces,
-                {"source": source, "key": key, "names": mapping.get("names") or []}
-                if source
-                else None,
-            )
-            # Ranked shapes let the wizard offer a boundary for apps that emit
-            # no CAPABILITY observations, where `candidates` finds nothing.
-            shapes = profile_capability_candidates(traces, adapter.conventions)
-        except Exception as exc:
-            return Response({"detail": str(exc)}, status=status.HTTP_502_BAD_GATEWAY)
-        proposals = propose_capability_assignments(
-            credential.project,
-            [c["value"] for c in results if c.get("value")] + [s["name"] for s in shapes[:10]],
-        )
-        return Response(
-            {
-                "candidates": results,
-                "shapes": shapes,
-                "proposals": proposals,
-                "lookback_days": lookback_days,
-                "sampled": len(traces),
-            }
-        )
-
-    @extend_schema(
-        summary="Update capability mapping and relabel existing spans",
-        request=ConnectorCapabilityMappingWriteSerializer,
-        responses={200: ConnectorCapabilityMappingResponseSerializer},
-    )
-    @action(detail=True, methods=["put"], url_path="capability-mapping")
-    def capability_mapping(self, request, id=None):
-        from overbae.services.connectors import (
-            capability_source_error,
-            relabel_connector_capabilities,
-        )
-
-        credential = self.get_object()
-        write = ConnectorCapabilityMappingWriteSerializer(data=request.data)
-        write.is_valid(raise_exception=True)
-        mapping = {k: v for k, v in write.validated_data.items() if v is not None}
-        unsupported = capability_source_error(credential.connector_type, mapping.get("source"))
-        if unsupported:
-            return Response({"source": [unsupported]}, status=status.HTTP_400_BAD_REQUEST)
-        if "fallback_capability_id" in mapping:
-            mapping["fallback_capability_id"] = str(mapping["fallback_capability_id"])
-        credential.capability_mapping = mapping
-        credential.pending_capability_mapping = {}
-        credential.capability_mapping_confirmed = True
-        credential.save(
-            update_fields=[
-                "capability_mapping",
-                "pending_capability_mapping",
-                "capability_mapping_confirmed",
-                "updated_at",
-            ]
-        )
-        relabeled = relabel_connector_capabilities(credential)
-        return Response(
-            {"capability_mapping": credential.capability_mapping, "relabeled_span_count": relabeled}
         )
 
     @extend_schema(

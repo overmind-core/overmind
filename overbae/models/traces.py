@@ -160,6 +160,15 @@ class Span(models.Model):
     # Keyed by signal name; live scores live under the "trace_scoring" block.
     feedback_score = models.JSONField(null=True, blank=True, default=None)
 
+    connector_group = models.ForeignKey(
+        "overbae.ConnectorTraceGroup",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="spans",
+    )
+    connector_reviewed = models.BooleanField(default=False)
+
     received_at = models.DateTimeField(auto_now_add=True)
 
     def save(self, *args, **kwargs):

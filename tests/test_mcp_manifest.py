@@ -98,9 +98,10 @@ def test_manifest_annotations_cover_read_only_world_and_cost_metadata():
         "retry_deployment": (False, False, True, "gpu", "job"),
         "run_inference": (False, False, True, "llm", "sync"),
         "get_model_swap_prompt": (True, True, False, "free", "sync"),
-        "inspect_connectors": (True, True, True, "compute", "sync"),
-        "configure_connector": (False, False, False, "free", "sync"),
-        "sync_connector": (False, False, True, "free", "task"),
+        "inspect_connectors": (True, True, True, "free", "sync"),
+        "configure_connector": (False, False, True, "compute", "sync"),
+        "sync_connector": (False, False, True, "compute", "task"),
+        "review_trace_groups": (False, False, False, "free", "sync"),
         "get_model_catalog": (True, True, False, "free", "sync"),
         "set_benchmark_model": (False, True, False, "free", "sync"),
     }

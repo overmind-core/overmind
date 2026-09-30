@@ -176,16 +176,12 @@ def test_connector_prompt_asks_the_human_to_run_cli():
     assert "Do not run the CLI yourself" in text
     assert "include_source_projects=true" in text
     assert "configure_connector" in text
-    assert "confirm_mapping=true" in text
-    assert "suggested_boundaries" in text
-    assert "capability boundaries" in text
+    assert "preview_id" in text
+    assert "expected_revision" in text
+    assert "capability_id=null" in text
     assert "mapping_options" in text
-    assert "wait for the human" in text
-    assert "alternatives" in text
-    assert "stop until the human replies" in text
-    assert "console_traces_url" in text
+    assert "review_trace_groups" in text
     assert "sync_connector" in text
-    assert "get_job(kind=connector_sync)" in text
 
 
 def test_checkpoint_prompt_uses_mcp_deployment_id_and_local_cli_boundary():

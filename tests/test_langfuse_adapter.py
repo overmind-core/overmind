@@ -40,6 +40,9 @@ def _adapter(monkeypatch, *, tick=timedelta(seconds=2)):
 
     monkeypatch.setattr(adapter_module, "timezone", SimpleNamespace(now=fake_now))
     monkeypatch.setattr(LangFuseClient, "iter_ingest_units", lambda self, **kwargs: iter(()))
+    monkeypatch.setattr(
+        LangFuseClient, "fetch_v2_trace_page", lambda self, *args, **kwargs: ([], None)
+    )
     return LangfuseAdapter(_cred())
 
 
@@ -55,21 +58,26 @@ def _walk(adapter, max_pages=10):
     return pages
 
 
-def test_backfill_covers_every_window_while_the_clock_moves(monkeypatch):
+def test_empty_v2_backfill_reads_the_whole_range_once(monkeypatch):
     pages = _walk(_adapter(monkeypatch))
-
-    assert len(pages) == 5
-    assert pages[-1].done is True
-    for earlier, later in zip(pages[:-1], pages[1:], strict=True):
-        assert later.window_to == earlier.window_from
+    assert len(pages) == 1
+    assert pages[0].done
+    assert pages[0].window_to - pages[0].window_from == timedelta(days=5)
 
 
-def test_backfill_pins_its_anchor_in_the_cursor(monkeypatch):
-    pages = _walk(_adapter(monkeypatch))
+def test_backfill_pins_its_anchor_across_cursor_pages(monkeypatch):
+    adapter = _adapter(monkeypatch)
+    calls = []
 
-    anchor = pages[0].next_state["backfill_anchor"]
-    assert all(p.next_state.get("backfill_anchor") == anchor for p in pages[:-1])
-    assert pages[0].window_to.isoformat() == anchor
+    def fetch(self, window, *, cursor, expand_metadata):
+        calls.append(window)
+        return [], "next" if cursor is None else None
+
+    monkeypatch.setattr(LangFuseClient, "fetch_v2_trace_page", fetch)
+    pages = _walk(adapter)
+    assert len(pages) == 2
+    assert calls[0] == calls[1]
+    assert pages[1].done
 
 
 def test_backfill_uses_the_configured_bounds(monkeypatch):
@@ -77,6 +85,9 @@ def test_backfill_uses_the_configured_bounds(monkeypatch):
     end = start + timedelta(days=1)
     adapter = LangfuseAdapter(_cred(lookback_days=30, backfill_from=start, backfill_to=end))
     monkeypatch.setattr(LangFuseClient, "iter_ingest_units", lambda self, **kwargs: iter(()))
+    monkeypatch.setattr(
+        LangFuseClient, "fetch_v2_trace_page", lambda self, *args, **kwargs: ([], None)
+    )
 
     page = adapter.fetch_page({})
 
@@ -164,6 +175,10 @@ def test_live_v2_pagination_pins_its_window_and_resumes(monkeypatch):
     assert second.done is True
     assert second.next_state == {"mode": "live", "watermark": first.window_to.isoformat()}
     assert calls == [
-        (adapter_module.TimeWindow(_START, first.window_to), None, "capability"),
-        (adapter_module.TimeWindow(_START, first.window_to), "cursor-1", "capability"),
+        (adapter_module.TimeWindow(_START - timedelta(minutes=20), first.window_to), None, None),
+        (
+            adapter_module.TimeWindow(_START - timedelta(minutes=20), first.window_to),
+            "cursor-1",
+            None,
+        ),
     ]

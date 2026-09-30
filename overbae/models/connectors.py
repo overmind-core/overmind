@@ -5,9 +5,7 @@ encryption (see overbae/core/encryption.py).  The EncryptedField transparently
 encrypts on write and decrypts on read so the rest of the codebase works with
 plain strings.
 
-Capability mapping lives on ConnectorCredential (mutable, retroactive) — relabeling
-is a correction, not an ingestion filter. Source project + lookback live on
-ConnectorSyncConfig (versioned).
+Imports keep provider trace structure; assignments belong to reviewed stored groups.
 """
 
 from __future__ import annotations
@@ -97,6 +95,7 @@ class ConnectorCredential(models.Model):
     sync_error = models.TextField(blank=True, default="")
     sync_retry_count = models.PositiveSmallIntegerField(default=0)
     next_poll_at = models.DateTimeField(null=True, blank=True)
+    sync_lease_expires_at = models.DateTimeField(null=True, blank=True)
 
     api_version = models.CharField(
         max_length=16, choices=ApiVersion.choices, default=ApiVersion.UNKNOWN
@@ -105,18 +104,10 @@ class ConnectorCredential(models.Model):
     total_spans_imported = models.PositiveIntegerField(default=0)
     total_traces_imported = models.PositiveIntegerField(default=0)
 
-    # Mutable. Shape:
-    #   {source: "observation_name"|"metadata"|"tag"|"trace_name",
-    #    key: str|null, names: [str], assignments: {<discovered>: <capability uuid>},
-    #    auto_create: bool, fallback_capability_id: uuid|null}
-    # Assignments are retroactive; changing source regroups traces and needs a re-import.
+    # Historical mapping metadata is retained through the migration; ingest never reads it.
     capability_mapping = models.JSONField(default=dict, blank=True)
-    # MCP stages a proposal here until confirm_mapping=true. Console mapping PUT applies live.
     pending_capability_mapping = models.JSONField(default=dict, blank=True)
-    # MCP sync requires True. Console mapping writes set it; new CLI rows stay False.
     capability_mapping_confirmed = models.BooleanField(default=False)
-    # source + names + key of the mapping last adopted or imported. Empty means
-    # the next sync adopts the live mapping without wiping existing spans.
     imported_boundary_key = models.TextField(blank=True, default="")
 
     created_at = models.DateTimeField(auto_now_add=True)
@@ -214,3 +205,71 @@ class ConnectorSyncRun(models.Model):
 
     def __str__(self) -> str:
         return f"{self.credential_id} {self.mode} {self.status}"
+
+
+class ConnectorImportPreview(models.Model):
+    class Status(models.TextChoices):
+        QUEUED = "queued"
+        RUNNING = "running"
+        READY = "ready"
+        FAILED = "failed"
+        IMPORTED = "imported"
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    credential = models.ForeignKey(
+        ConnectorCredential, on_delete=models.CASCADE, related_name="previews"
+    )
+    source_project_id = models.CharField(max_length=128, blank=True, default="")
+    window_from = models.DateTimeField(null=True, blank=True)
+    credential_updated_at = models.DateTimeField(null=True, blank=True)
+    window_to = models.DateTimeField()
+    status = models.CharField(max_length=16, choices=Status.choices, default=Status.QUEUED)
+    trace_count = models.PositiveIntegerField(default=0)
+    span_count = models.PositiveIntegerField(default=0)
+    estimated_seconds_min = models.PositiveIntegerField(default=0)
+    estimated_seconds_max = models.PositiveIntegerField(default=0)
+    error = models.TextField(blank=True, default="")
+    created_at = models.DateTimeField(auto_now_add=True)
+    finished_at = models.DateTimeField(null=True, blank=True)
+    expires_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+
+
+class ConnectorTraceGroup(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    credential = models.ForeignKey(
+        ConnectorCredential, on_delete=models.CASCADE, related_name="trace_groups"
+    )
+    project = models.ForeignKey(
+        "overbae.Project", on_delete=models.CASCADE, related_name="connector_trace_groups"
+    )
+    fingerprint = models.CharField(max_length=64)
+    name = models.CharField(max_length=255)
+    evidence = models.JSONField(default=dict)
+    revision = models.PositiveIntegerField(default=1)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["name", "id"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["credential", "project", "fingerprint"],
+                name="connector_group_fingerprint_unique",
+            )
+        ]
+
+
+class ConnectorGroupReview(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    group = models.ForeignKey(ConnectorTraceGroup, on_delete=models.CASCADE, related_name="reviews")
+    actor = models.ForeignKey("overbae.User", on_delete=models.SET_NULL, null=True, blank=True)
+    capability_id_snapshot = models.UUIDField(null=True, blank=True)
+    capability_name = models.CharField(max_length=255, blank=True, default="")
+    revision = models.PositiveIntegerField()
+    trace_count = models.PositiveIntegerField()
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-created_at"]

@@ -16,73 +16,73 @@ import { mapValues } from '../runtime';
 /**
  *
  * @export
- * @interface ConnectorPreviewRequestRequest
+ * @interface ImportRangeRequest
  */
-export interface ConnectorPreviewRequestRequest {
-    /**
-     *
-     * @type {number}
-     * @memberof ConnectorPreviewRequestRequest
-     */
-    lookbackDays?: number | null;
+export interface ImportRangeRequest {
     /**
      *
      * @type {string}
-     * @memberof ConnectorPreviewRequestRequest
+     * @memberof ImportRangeRequest
      */
     sourceProjectId?: string;
     /**
      *
      * @type {Date}
-     * @memberof ConnectorPreviewRequestRequest
+     * @memberof ImportRangeRequest
      */
     backfillFrom?: Date | null;
     /**
      *
      * @type {Date}
-     * @memberof ConnectorPreviewRequestRequest
+     * @memberof ImportRangeRequest
      */
-    backfillTo?: Date | null;
+    backfillTo?: Date;
+    /**
+     *
+     * @type {number}
+     * @memberof ImportRangeRequest
+     */
+    lookbackDays?: number | null;
 }
 
 /**
- * Check if a given object implements the ConnectorPreviewRequestRequest interface.
+ * Check if a given object implements the ImportRangeRequest interface.
  */
-export function instanceOfConnectorPreviewRequestRequest(value: object): value is ConnectorPreviewRequestRequest {
+export function instanceOfImportRangeRequest(value: object): value is ImportRangeRequest {
     return true;
 }
 
-export function ConnectorPreviewRequestRequestFromJSON(json: any): ConnectorPreviewRequestRequest {
-    return ConnectorPreviewRequestRequestFromJSONTyped(json, false);
+export function ImportRangeRequestFromJSON(json: any): ImportRangeRequest {
+    return ImportRangeRequestFromJSONTyped(json, false);
 }
 
-export function ConnectorPreviewRequestRequestFromJSONTyped(json: any, ignoreDiscriminator: boolean): ConnectorPreviewRequestRequest {
+export function ImportRangeRequestFromJSONTyped(json: any, ignoreDiscriminator: boolean): ImportRangeRequest {
     if (json == null) {
         return json;
     }
     return {
 
-        'lookbackDays': json['lookback_days'] == null ? undefined : json['lookback_days'],
         'sourceProjectId': json['source_project_id'] == null ? undefined : json['source_project_id'],
         'backfillFrom': json['backfill_from'] == null ? undefined : (new Date(json['backfill_from'])),
         'backfillTo': json['backfill_to'] == null ? undefined : (new Date(json['backfill_to'])),
+        'lookbackDays': json['lookback_days'] == null ? undefined : json['lookback_days'],
     };
 }
 
-export function ConnectorPreviewRequestRequestToJSON(json: any): ConnectorPreviewRequestRequest {
-    return ConnectorPreviewRequestRequestToJSONTyped(json, false);
+export function ImportRangeRequestToJSON(json: any): ImportRangeRequest {
+    return ImportRangeRequestToJSONTyped(json, false);
 }
 
-export function ConnectorPreviewRequestRequestToJSONTyped(value?: ConnectorPreviewRequestRequest | null, ignoreDiscriminator: boolean = false): any {
+export function ImportRangeRequestToJSONTyped(value?: ImportRangeRequest | null, ignoreDiscriminator: boolean = false): any {
     if (value == null) {
         return value;
     }
 
     return {
 
-        'lookback_days': value['lookbackDays'],
         'source_project_id': value['sourceProjectId'],
         'backfill_from': value['backfillFrom'] == null ? value['backfillFrom'] : value['backfillFrom'].toISOString(),
         'backfill_to': value['backfillTo'] == null ? value['backfillTo'] : value['backfillTo'].toISOString(),
+        'lookback_days': value['lookbackDays'],
     };
 }

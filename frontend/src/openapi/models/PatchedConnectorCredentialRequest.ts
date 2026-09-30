@@ -75,12 +75,6 @@ export interface PatchedConnectorCredentialRequest {
      * @memberof PatchedConnectorCredentialRequest
      */
     pollIntervalSeconds?: number;
-    /**
-     *
-     * @type {any}
-     * @memberof PatchedConnectorCredentialRequest
-     */
-    capabilityMapping?: any | null;
 }
 
 
@@ -110,7 +104,6 @@ export function PatchedConnectorCredentialRequestFromJSONTyped(json: any, ignore
         'apiSecret': json['api_secret'] == null ? undefined : json['api_secret'],
         'autoSyncEnabled': json['auto_sync_enabled'] == null ? undefined : json['auto_sync_enabled'],
         'pollIntervalSeconds': json['poll_interval_seconds'] == null ? undefined : json['poll_interval_seconds'],
-        'capabilityMapping': json['capability_mapping'] == null ? undefined : json['capability_mapping'],
     };
 }
 
@@ -133,6 +126,5 @@ export function PatchedConnectorCredentialRequestToJSONTyped(value?: PatchedConn
         'api_secret': value['apiSecret'],
         'auto_sync_enabled': value['autoSyncEnabled'],
         'poll_interval_seconds': value['pollIntervalSeconds'],
-        'capability_mapping': value['capabilityMapping'],
     };
 }

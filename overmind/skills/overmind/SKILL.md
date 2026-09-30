@@ -211,7 +211,7 @@ Optimization:
 
 Connectors:
 
-`inspect_connectors`, `configure_connector`, `sync_connector`.
+`inspect_connectors`, `configure_connector`, `sync_connector`, `review_trace_groups`.
 
 Instrumentation:
 
@@ -360,14 +360,17 @@ local work is needed:
 - `/overmind setup` scans the local repository and writes capability metadata;
   `overmind sync` sends that snapshot to the configured project. MCP cannot
   scan or edit the repository.
+
 - `get_instrumentation_plan` is read-only. Apply its exact tickets locally;
   the MCP server cannot edit files or ingest a smoke trace. Use
   `verify_instrumentation` only with caller-supplied spans.
+
 - MCP does not carry local file bytes. From a coding agent with filesystem
   access, run `overmind dataset upload FILE --json` with optional
   `--intent train|eval` and `--project-id`. The command returns the dataset
   UUID; poll it with `get_job(kind=dataset_run)`, then inspect it. Land raw
   rows; the dataset agent shapes cells on the server.
+
 - MCP does not carry dataset export bytes. After the active version fits, run
   `overmind dataset export DATASET --json` locally, optionally adding
   `--format jsonl|csv`, `--cell`, or `--output PATH`. Use the dataset id
@@ -375,6 +378,7 @@ local work is needed:
   no output path is given, and refuses overwrite. For traces, select traces,
   call `create_dataset_from_traces`, wait for the agent to shape the chain,
   then run the local export. There is no `export_trace` MCP tool.
+
 - MCP does not carry checkpoint bytes or presigned URLs. Resolve and read the
   deployment through the existing MCP resource/tool flow, then run
   `overmind model download-checkpoint DEPLOYMENT --json` locally with the
@@ -385,6 +389,7 @@ local work is needed:
   providers are downloadable, and the CLI refuses overwrite. Report the local
   `path` and `bytes_written`; never expose the presigned S3 URL to model
   context.
+
 - Connector credentials are never MCP arguments. If `inspect_connectors`
   reports `connector_setup_required`, present the command from
   `available_types[].command` (for example `overmind connector add langfuse --json`)
@@ -393,22 +398,21 @@ local work is needed:
   `project-id` must be this MCP project. Do not paste provider keys in chat,
   export them, or run the CLI in a non-TTY sandbox. After the JSON id is
   available, `inspect_connectors` with that id and `include_source_projects=true`.
-  Read `observation_shapes` and `suggested_boundaries`. `mapping.names` are
-  capability boundaries (Overmind trace roots). Default to the suggested parent
-  observation names so children nest. `alternatives` are other names that match
-  the same capability; the human may pick one as the boundary — list that name
-  in `mapping.names` and do not also list its ancestor. Do not list tools, LLM
-  spans, or other `nested_names` unless the human chose that alternative. Then
-  `configure_connector` with source project, lookback, and that mapping
-  **without** `confirm_mapping`. Present `suggested_boundaries`,
-  `alternatives`, `unmapped_roots`, and `mapping_options` (including import
-  unmapped) and stop until the human replies. Then `configure_connector` with
-  `confirm_mapping=true`, then `sync_connector`. Read
-  `overmind://connector-setup` for env var names. After sync, give the human
-  `console_traces_url`.
+  Choose the source and time range with `configure_connector`. Read the connector resource
+  until `latest_preview` is ready; show the trace count and duration estimate and wait
+  for confirmation before `sync_connector` with `preview_id`. Imports keep provider
+  trace structure and apply approved pattern rules. New patterns begin unassigned. Inspect pending groups and their sample traces,
+  present `mapping_options`, and use `review_trace_groups` with the human's chosen
+  `assignments` array of `group_id`, `capability_id` (or null) and `expected_revision`.
+  Confirm the reviewed choices together. Each approved rule also applies to future matching
+  traces. New patterns and retired capabilities require another review. Similarity alone
+  does not authorize an initial assignment. `overmind://connector-setup`
+  documents credential environment variables.
+
 - Optimizer and backtest repository execution stays in the local SDK/CLI
   execution ledger. MCP schedules and reports the project experiment; it does
   not execute local commands or apply diffs.
+
 - If MCP returns a repository change, show it as a human action. The human
   reviews and applies it locally.
 

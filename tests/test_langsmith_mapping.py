@@ -9,7 +9,6 @@ from overbae.services.connectors.langsmith.mapping import (
     runs_to_records,
 )
 from overbae.services.connectors.mapping import observations_to_span_dicts as _to_span_dicts
-from overbae.services.connectors.profiling import profile_capability_candidates
 from overbae.services.connectors.schema import (
     CONNECTOR_SOURCE_ATTR,
     CONNECTOR_VERSION_ATTR,
@@ -268,25 +267,6 @@ def test_spans_are_stamped_with_the_langsmith_source():
     assert {s["attributes"][CONNECTOR_SOURCE_ATTR] for s in spans} == {"langsmith"}
     assert all(s["scope_name"] == "langsmith" for s in spans)
     assert all("langsmith.trace_id" in s["attributes"] for s in spans)
-
-
-def test_shared_profiler_ranks_langsmith_records_unchanged():
-    traces = []
-    for i in range(4):
-        runs = [
-            _run(f"root-{i}", is_root=True, name="handler", run_type="CHAIN"),
-            _run(f"capability-{i}", parent_ids=[f"root-{i}"], name="researcher", run_type="CHAIN"),
-            _run(f"llm-a-{i}", parent_ids=[f"capability-{i}"], name="chat"),
-            _run(f"llm-b-{i}", parent_ids=[f"capability-{i}"], name="chat"),
-        ]
-        traces.append(runs_to_records(runs))
-
-    shapes = profile_capability_candidates(traces, LANGSMITH)
-    names = [s["name"] for s in shapes]
-
-    assert names[0] in {"handler", "researcher"}
-    assert names.index("chat") > names.index("researcher")
-    assert next(s["parent_name"] for s in shapes if s["name"] == "researcher") == "handler"
 
 
 if __name__ == "__main__":

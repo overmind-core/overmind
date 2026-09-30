@@ -118,7 +118,7 @@ def test_an_update_does_not_re_enqueue_trace_scoring(credential, _no_trace_scori
     connector_sync._upsert_spans(
         credential.project, _span_dicts(credential, xact_id=1000), credential=credential
     )
-    assert len(_no_trace_scoring) == 1
+    assert len(_no_trace_scoring) == 0
 
     connector_sync._upsert_spans(
         credential.project,
@@ -127,10 +127,10 @@ def test_an_update_does_not_re_enqueue_trace_scoring(credential, _no_trace_scori
     )
 
     # Rescoring an updated row would loop against a scorer that writes upstream.
-    assert len(_no_trace_scoring) == 1
+    assert len(_no_trace_scoring) == 0
 
 
-def test_a_provider_without_a_row_version_stays_insert_only(credential):
+def test_unversioned_observations_refresh_when_the_provider_completes_them(credential):
     from overbae.services.connectors.records import ObservationRecord
 
     record = ObservationRecord(
@@ -155,7 +155,7 @@ def test_a_provider_without_a_row_version_stays_insert_only(credential):
         credential=credential,
     )
 
-    assert Span.objects.get(project=credential.project).name == "first"
+    assert Span.objects.get(project=credential.project).name == "second"
 
 
 def test_a_pending_langsmith_run_is_replaced_once_it_completes(credential, _no_trace_scoring):

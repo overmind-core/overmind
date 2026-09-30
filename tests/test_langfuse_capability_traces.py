@@ -8,7 +8,6 @@ GENERATION.
 
 from types import SimpleNamespace
 
-from overbae.services.connectors.capabilities import discover_capabilities
 from overbae.services.connectors.langfuse.client import LangFuseObservation
 from overbae.services.connectors.langfuse.mapping import LANGFUSE
 from overbae.services.connectors.mapping import observations_to_span_dicts as _to_span_dicts
@@ -20,8 +19,7 @@ _CAPABILITY_NAMES = ["scan-inbox", "triage-invoices", "plan-payments", "triage-e
 
 
 def observations_to_span_dicts(observations, **kwargs):
-    """Every case here is a Langfuse trace mapped by name, so bind both once."""
-    kwargs.setdefault("mapping", {"source": "observation_name", "names": _CAPABILITY_NAMES})
+    """Use the provider vocabulary for these observed trace fixtures."""
     return _to_span_dicts(observations, conventions=LANGFUSE, **kwargs)
 
 
@@ -127,38 +125,13 @@ def _by_trace(spans):
     return grouped
 
 
-def test_one_trace_per_capability_keeping_the_langfuse_subtree():
-    cred = _cred()
-    spans = observations_to_span_dicts(scan_inbox_trace(20, invoices=10), credential=cred)
-    traces = _by_trace(spans)
-
-    # One trace per CAPABILITY, and no observation duplicated: 44 in, 44 spans out.
-    assert len(traces) == 3
-    assert len(spans) == 44
-
-    roots = [s for s in spans if s["parent_span_id"] is None]
-    assert len(roots) == len(traces)  # exactly one root per trace
-    assert {r["span_type"] for r in roots} == {"entry_point"}
-    assert sorted(r["name"] for r in roots) == [
-        "plan-payments",
-        "scan-inbox",
-        "triage-invoices",
-    ]
-
-    triage = next(t for t in traces.values() if any(s["name"] == "analyze-email" for s in t))
-    assert len(triage) == 1 + 20 * 2  # the capability plus every email and its generation
-    root = next(s for s in triage if s["parent_span_id"] is None)
-    assert root["name"] == "triage-invoices"
-    for i in range(20):
-        email = next(
-            s for s in triage if s["attributes"]["langfuse.observation_id"] == f"email-{i}"
-        )
-        gen = next(s for s in triage if s["attributes"]["langfuse.observation_id"] == f"gen-{i}")
-        assert email["parent_span_id"] == root["span_id"]
-        assert gen["parent_span_id"] == email["span_id"]
-
-    plan = next(t for t in traces.values() if any(s["name"] == "rank-invoices" for s in t))
-    assert sorted(s["name"] for s in plan) == ["plan-payments", "rank-invoices"]
+def test_a_multi_agent_provider_trace_keeps_its_original_tree():
+    observations = scan_inbox_trace(20, invoices=10)
+    spans = observations_to_span_dicts(observations, credential=_cred())
+    assert len(spans) == len(observations)
+    assert len(_by_trace(spans)) == 1
+    assert [s["name"] for s in spans if s["parent_span_id"] is None] == ["scan-inbox"]
+    assert all(s["capability"] is None for s in spans)
 
 
 def test_structure_is_preserved_verbatim():
@@ -173,23 +146,18 @@ def test_structure_is_preserved_verbatim():
     by_obs = {s["attributes"]["langfuse.observation_id"]: s for s in spans}
     for o in obs:
         parent = by_obs[o.id]["parent_span_id"]
-        # Only a capability is re-rooted; every other parent link is Langfuse's own.
-        if o.type == "CAPABILITY":
-            assert parent is None
-        else:
-            assert parent == span_id_for(str(cred.id), o.parent_observation_id)
+        assert parent == (
+            span_id_for(str(cred.id), o.parent_observation_id) if o.parent_observation_id else None
+        )
 
 
-def test_childless_capability_still_emits_a_trace():
-    """plan-payments with zero generations (plan_source == 'empty') is a real run."""
+def test_childless_agent_step_stays_in_the_provider_trace():
     spans = observations_to_span_dicts(scan_inbox_trace(1, invoices=0), credential=_cred())
     plan = [s for s in spans if s["name"] == "plan-payments"]
     assert len(plan) == 1
-    assert plan[0]["parent_span_id"] is None
-    assert plan[0]["span_type"] == "entry_point"
+    assert plan[0]["parent_span_id"] is not None
     assert plan[0]["attributes"]["langfuse.metadata.plan_source"] == "empty"
-    # Its trace holds only the capability root.
-    assert len(_by_trace(spans)[plan[0]["trace_id"]]) == 1
+    assert len(_by_trace(spans)) == 1
 
 
 def test_warning_fallback_is_not_reported_as_success():
@@ -225,9 +193,9 @@ def test_single_capability_trace_keeps_original_ids():
     assert gen["parent_span_id"] == root["span_id"]
 
 
-def test_capability_traces_share_one_session_and_upstream_trace_id():
+def test_import_keeps_the_upstream_trace_id_without_inventing_a_session():
     spans = observations_to_span_dicts(scan_inbox_trace(3), credential=_cred())
-    assert {s["attributes"]["conversation.id"] for s in spans} == {"lf-trace"}
+    assert all("conversation.id" not in s["attributes"] for s in spans)
     assert {s["attributes"]["langfuse.trace_id"] for s in spans} == {"lf-trace"}
 
 
@@ -284,43 +252,24 @@ def test_metadata_is_carried_and_sdk_noise_stripped():
     assert "langfuse.metadata.langfuse_tags" not in gen["attributes"]
 
 
-def test_uniform_tags_do_not_collapse_the_two_capabilities():
-    """Tags are identical trace-wide, so segregation must key on name + type."""
-    spans = observations_to_span_dicts(
-        scan_inbox_trace(3),
-        credential=_cred(),
-        mapping={
-            "source": "observation_name",
-            "names": ["scan-inbox", "triage-invoices", "plan-payments"],
-            "assignments": {},
-        },
-    )
-    keyed = {s["name"]: s["attributes"].get("connector.agent_key") for s in spans}
-    assert keyed["analyze-email"] == "triage-invoices"
-    assert keyed["rank-invoices"] == "plan-payments"
-    assert keyed["scan-inbox"] == "scan-inbox"
+def test_uniform_tags_do_not_create_capability_assignments():
+    spans = observations_to_span_dicts(scan_inbox_trace(3), credential=_cred())
+    assert all(CONNECTOR_CAPABILITY_KEY_ATTR not in s["attributes"] for s in spans)
+    assert all(s["capability"] is None for s in spans)
 
 
-def test_capability_nested_under_a_span_claims_its_own_trace():
-    """Depth is not fixed: a sub-capability below a plain SPAN still roots its own trace."""
-    obs = [
-        _obs("root", type="CAPABILITY", name="outer"),
+def test_nested_agent_steps_keep_their_provider_parents():
+    observations = [
+        _obs("root", type="AGENT", name="outer"),
         _obs("step", type="SPAN", name="step", parent="root"),
-        _obs("sub", type="CAPABILITY", name="inner", parent="step"),
+        _obs("sub", type="AGENT", name="inner", parent="step"),
         _obs("gen", type="GENERATION", name="call", parent="sub"),
     ]
-    spans = observations_to_span_dicts(
-        obs,
-        credential=_cred(),
-        mapping={"source": "observation_name", "names": ["outer", "inner"]},
-    )
-    traces = _by_trace(spans)
-    assert len(traces) == 2
-    inner = next(t for t in traces.values() if any(s["name"] == "call" for s in t))
-    assert sorted(s["name"] for s in inner) == ["call", "inner"]
-    # The outer capability's unit stops at the sub-capability boundary.
-    outer = next(t for t in traces.values() if any(s["name"] == "step" for s in t))
-    assert sorted(s["name"] for s in outer) == ["outer", "step"]
+    spans = observations_to_span_dicts(observations, credential=_cred())
+    assert len(_by_trace(spans)) == 1
+    by_name = {s["name"]: s for s in spans}
+    assert by_name["inner"]["parent_span_id"] == by_name["step"]["span_id"]
+    assert by_name["call"]["parent_span_id"] == by_name["inner"]["span_id"]
 
 
 def test_parent_cycle_does_not_hang():
@@ -348,36 +297,20 @@ def test_a_trace_with_no_matching_boundary_stays_whole():
     assert root["name"] == "workflow"
 
 
-def test_observation_names_can_mark_capability_boundaries():
-    spans = observations_to_span_dicts(
-        _langchain_style_trace(),
-        credential=_cred(),
-        mapping={"source": "observation_name", "names": ["answer-question"]},
-    )
-    traces = _by_trace(spans)
-    assert len(traces) == 2
-    answer = next(t for t in traces.values() if any(s["name"] == "llm" for s in t))
-    root = next(s for s in answer if s["parent_span_id"] is None)
-    assert root["name"] == "answer-question"
-    assert root["span_type"] == "entry_point"
-    # The remainder keeps its own root and loses the promoted subtree.
-    other = next(t for t in traces.values() if t is not answer)
-    assert sorted(s["name"] for s in other) == ["fetch-docs", "workflow"]
+def test_observation_names_cannot_re_root_a_trace():
+    spans = observations_to_span_dicts(_langchain_style_trace(), credential=_cred())
+    assert len(_by_trace(spans)) == 1
+    assert [s["name"] for s in spans if s["parent_span_id"] is None] == ["workflow"]
 
 
-def test_metadata_key_can_mark_capability_boundaries():
-    obs = _langchain_style_trace()
-    obs[2].metadata = {"capability": "answerer"}
-    spans = observations_to_span_dicts(
-        obs,
-        credential=_cred(),
-        mapping={"source": "metadata", "key": "capability"},
-    )
-    root = next(s for s in spans if s["parent_span_id"] is None and s["name"] == "answer-question")
-    assert root["attributes"][CONNECTOR_CAPABILITY_KEY_ATTR] == "answerer"
-    # The nested generation inherits the boundary's key, not the trace's.
-    gen = next(s for s in spans if s["name"] == "llm")
-    assert gen["attributes"][CONNECTOR_CAPABILITY_KEY_ATTR] == "answerer"
+def test_provider_metadata_is_evidence_not_an_assignment():
+    observations = _langchain_style_trace()
+    observations[2].metadata = {"capability": "answerer"}
+    spans = observations_to_span_dicts(observations, credential=_cred())
+    answer = next(s for s in spans if s["name"] == "answer-question")
+    assert answer["attributes"]["langfuse.metadata.capability"] == "answerer"
+    assert answer["parent_span_id"] is not None
+    assert answer["capability"] is None
 
 
 def test_named_boundary_prunes_the_parent_subtree():
@@ -385,63 +318,9 @@ def test_named_boundary_prunes_the_parent_subtree():
     spans = observations_to_span_dicts(
         _langchain_style_trace(),
         credential=_cred(),
-        mapping={"source": "observation_name", "names": ["answer-question"]},
     )
     ids = [s["span_id"] for s in spans]
     assert len(ids) == len(set(ids)) == 4
-
-
-def test_discover_capabilities_surfaces_nested_capabilities():
-    candidates = discover_capabilities(
-        [scan_inbox_trace(3), triage_email_trace()],
-        {
-            "source": "observation_name",
-            "names": ["scan-inbox", "triage-invoices", "plan-payments", "triage-email"],
-        },
-    )
-    found = {c["value"]: c["count"] for c in candidates}
-    assert found == {
-        "scan-inbox": 1,
-        "triage-invoices": 1,
-        "plan-payments": 1,
-        "triage-email": 1,
-    }
-
-
-def test_observation_name_discovery_needs_the_saved_names():
-    """Without names the predicate matches nothing, which reads as "no candidates"."""
-    traces = [scan_inbox_trace(3), triage_email_trace()]
-
-    assert discover_capabilities(traces, {"source": "observation_name"}) == []
-
-    named = discover_capabilities(
-        traces, {"source": "observation_name", "names": ["analyze-email"]}
-    )
-    assert {c["value"] for c in named} == {"analyze-email"}
-
-
-def test_metadata_keys_report_coverage_with_discriminating_keys_first():
-    """A key Langfuse copied onto every observation would make every span a boundary."""
-    trace = [
-        _obs("root", type="CAPABILITY", name="scan-inbox", metadata={"feature": "inbox"}),
-        _obs(
-            "a",
-            type="SPAN",
-            name="analyze-email",
-            parent="root",
-            metadata={"feature": "inbox", "email_id": "e0"},
-        ),
-        _obs("b", type="SPAN", name="analyze-email", parent="root", metadata={"feature": "inbox"}),
-    ]
-
-    entry = next(
-        c for c in discover_capabilities([trace]) if c["source"] == "metadata" and not c["value"]
-    )
-    keys = entry["metadata_keys"]
-
-    assert [k["name"] for k in keys] == ["email_id", "feature"]
-    assert keys[0] == {"name": "email_id", "observations": 1, "coverage": 0.333}
-    assert keys[1]["coverage"] == 1.0
 
 
 def test_generation_directly_under_capability_needs_no_intermediate_span():
@@ -465,13 +344,13 @@ def test_zero_filled_usage_is_not_stored():
     assert not [k for k in root["attributes"] if k.startswith("genai.")]
 
 
-def test_capability_cost_is_the_sum_of_its_subtree():
+def test_import_preserves_cost_across_the_whole_provider_trace():
     """Cost does not roll up in Langfuse, so a capability's total is its descendants'."""
     spans = observations_to_span_dicts(scan_inbox_trace(20, invoices=10), credential=_cred())
     triage_trace = next(
         t for t in _by_trace(spans).values() if any(s["name"] == "analyze-email" for s in t)
     )
-    assert sum(s["attributes"].get("genai.cost", 0) for s in triage_trace) == 20 * 0.001
+    assert sum(s["attributes"].get("genai.cost", 0) for s in triage_trace) == 20 * 0.001 + 0.002
 
 
 def test_cost_survives_null_model_name():

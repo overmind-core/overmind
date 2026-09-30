@@ -36,6 +36,7 @@ EXPECTED_TOOL_NAMES = {
     "start_optimizer",
     "inspect_optimizer_result",
     "inspect_connectors",
+    "review_trace_groups",
     "configure_connector",
     "sync_connector",
     "get_instrumentation_plan",

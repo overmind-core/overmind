@@ -20,6 +20,7 @@ from typing import Any, Literal
 
 import httpx
 
+from overbae.services.connectors.base import SourceProject
 from overbae.services.connectors.records import LangFuseObservation
 from overbae.services.connectors.windows import TimeWindow, plan_windows
 
@@ -62,13 +63,14 @@ class LangFuseClient:
     def api_version(self) -> ApiVersion:
         return self._api_version
 
-    def _get(self, path: str, **params) -> Any:
+    def _get(self, path: str, *, retry_rate_limits=True, **params) -> Any:
         # Drop None params so we don't send empty query keys.
         clean = {k: v for k, v in params.items() if v is not None}
         url = f"{self.base_url}{path}"
         last_429 = ""
         last_retry_after = _DEPRECATED_MIN_INTERVAL
-        for attempt in range(_429_ATTEMPTS):
+        attempts = _429_ATTEMPTS if retry_rate_limits else 1
+        for attempt in range(attempts):
             if _is_deprecated_read(path):
                 _pace_deprecated_read()
             try:
@@ -79,7 +81,7 @@ class LangFuseClient:
             if resp.status_code == 429:
                 last_429 = resp.text[:200]
                 last_retry_after = _retry_after_seconds(resp)
-                if attempt < _429_ATTEMPTS - 1:
+                if attempt < attempts - 1:
                     time.sleep(last_retry_after)
                     continue
                 break
@@ -124,6 +126,53 @@ class LangFuseClient:
                 # Auth / network errors should surface, not silently downgrade.
                 raise
         return self._api_version
+
+    def list_projects(self) -> list[SourceProject]:
+        data = self._get("/api/public/projects")
+        return [
+            SourceProject(id=str(p["id"]), name=p.get("name") or str(p["id"]))
+            for p in data.get("data", [])
+        ]
+
+    def _iter_v1_traces(self, window: TimeWindow) -> Iterator[list[LangFuseObservation]]:
+        page = 1
+        while True:
+            data = self._get(
+                "/api/public/traces",
+                page=page,
+                limit=100,
+                fromTimestamp=_iso(window.start) if window.start.year > 1 else None,
+                toTimestamp=_iso(window.end),
+            )
+            rows = data.get("data") or []
+            for row in rows:
+                detail = self._get(f"/api/public/traces/{row['id']}")
+                observations = detail.get("observations") or []
+                if not observations:
+                    observations = [
+                        {
+                            "id": row["id"],
+                            "traceId": row["id"],
+                            "name": row.get("name"),
+                            "startTime": row.get("timestamp"),
+                            "input": row.get("input"),
+                            "output": row.get("output"),
+                            "type": "SPAN",
+                        }
+                    ]
+                yield [
+                    _observation_from_v2(
+                        {
+                            **obs,
+                            "traceId": row["id"],
+                            "sessionId": obs.get("sessionId") or row.get("sessionId"),
+                        }
+                    )
+                    for obs in observations
+                ]
+            if not rows or page >= (data.get("meta") or {}).get("totalPages", page):
+                break
+            page += 1
 
     def count(
         self,
@@ -188,12 +237,16 @@ class LangFuseClient:
         *,
         cursor: str | None = None,
         expand_metadata: str | None = None,
+        fields: str = _V2_FIELDS,
+        limit: int = _V2_PAGE_SIZE,
+        retry_rate_limits=True,
         **filters,
     ) -> tuple[list[LangFuseObservation], str | None]:
         data = self._get(
             "/api/public/v2/observations",
-            limit=_V2_PAGE_SIZE,
-            fields=_V2_FIELDS,
+            limit=limit,
+            fields=fields,
+            retry_rate_limits=retry_rate_limits,
             expandMetadata=expand_metadata,
             cursor=cursor,
             **filters,
@@ -207,6 +260,20 @@ class LangFuseClient:
     ) -> list[LangFuseObservation]:
         """Every observation of one trace, regardless of when each started."""
         return list(self._iter_v2_observations(traceId=trace_id, expand_metadata=expand_metadata))
+
+    def fetch_v2_count_page(self, window, *, cursor=None):
+        observations, next_cursor = self._v2_observation_page(
+            cursor=cursor,
+            fields="core",
+            limit=1000,
+            retry_rate_limits=False,
+            fromStartTime=_iso(window.start) if window.start.year > 1 else None,
+            toStartTime=_iso(window.end),
+        )
+        by_trace = {}
+        for observation in observations:
+            by_trace.setdefault(observation.trace_id or observation.id, []).append(observation)
+        return list(by_trace.values()), next_cursor
 
     def fetch_v2_trace_page(
         self,
@@ -343,5 +410,22 @@ def _observation_from_v2(raw: dict[str, Any]) -> LangFuseObservation:
         release=raw.get("release"),
         trace_name=raw.get("traceName"),
         is_root_observation=raw.get("isRootObservation"),
+        row_version=str(
+            int(
+                datetime.fromisoformat(raw["updatedAt"].replace("Z", "+00:00")).timestamp()
+                * 1_000_000
+            )
+        )
+        if raw.get("updatedAt")
+        else None,
+        extra_attrs={
+            key: raw[source]
+            for key, source in (
+                ("prompt_id", "promptId"),
+                ("prompt_name", "promptName"),
+                ("prompt_version", "promptVersion"),
+            )
+            if raw.get(source) is not None
+        },
         raw=raw,
     )

@@ -11,6 +11,7 @@ _SPAN_TYPES = {
     "EMBEDDING": "llm_call",
     "TOOL": "tool_call",
     "CAPABILITY": "llm_call",  # overridden to entry_point when it roots a trace
+    "AGENT": "workflow",
     "CHAIN": "workflow",
     "RETRIEVER": "retrieval",
     "EVALUATOR": "workflow",
@@ -22,8 +23,6 @@ _SPAN_TYPES = {
 LANGFUSE = SourceConventions(
     source=CONNECTOR_SOURCE_LANGFUSE,
     span_types=_SPAN_TYPES,
-    capability_type="CAPABILITY",
-    model_call_types=frozenset({"GENERATION", "EMBEDDING"}),
     # SDK-injected noise plus a v2/v3-era tag convention that is inert in SDK v4.
     metadata_skip=frozenset({"scope", "resourceAttributes", "langfuse_tags"}),
 )

@@ -43,6 +43,8 @@ from overbae.models import (
     Capability,
     Cell,
     ConnectorCredential,
+    ConnectorImportPreview,
+    ConnectorSyncConfig,
     Conversation,
     Dataset,
     DeployedModel,
@@ -76,6 +78,7 @@ from overbae.models import (
 from overbae.models.traces import usage_slice
 from overbae.services import sync as sync_service
 from overbae.services.capabilities import identity as capability_identity
+from overbae.services.connectors.review import group_imported_traces
 from overbae.services.datasets import land as dataset_land
 from overbae.services.datasets import lifecycle as dataset_lifecycle
 from overbae.services.datasets import paths as dataset_paths
@@ -1651,6 +1654,14 @@ class Command(BaseCommand):
             backfill_total=412,
         )
         stamp(langfuse_cred, days_ago(DAYS - 6), days_ago(6))
+        ConnectorSyncConfig.objects.create(
+            credential=langfuse_cred,
+            version=1,
+            source_project_id="demo-support",
+            backfill_from=days_ago(DAYS),
+            backfill_to=days_ago(6),
+            effective_from=days_ago(6),
+        )
 
         # ── Traces ───────────────────────────────────────────────────────────────────────
 
@@ -2612,6 +2623,38 @@ class Command(BaseCommand):
             ],
         )
         _flush()
+
+        imported_ids = list(
+            Span.objects.filter(project=project, parent_span_id__isnull=True)
+            .order_by("trace_id")
+            .values_list("trace_id", flat=True)
+            .distinct()[:30]
+        )
+        imported_spans = list(Span.objects.filter(project=project, trace_id__in=imported_ids))
+        for span in imported_spans:
+            span.resource_attrs = {
+                **(span.resource_attrs or {}),
+                "connector.credential_id": str(langfuse_cred.id),
+                "connector.source": "langfuse",
+            }
+        Span.objects.bulk_update(imported_spans, ["resource_attrs"])
+        group_imported_traces(langfuse_cred, project, imported_ids)
+        ConnectorCredential.objects.filter(pk=langfuse_cred.pk).update(
+            backfill_imported=len(imported_ids),
+            backfill_total=len(imported_ids),
+            total_traces_imported=len(imported_ids),
+            total_spans_imported=len(imported_spans),
+        )
+        ConnectorImportPreview.objects.create(
+            credential=langfuse_cred,
+            status="imported",
+            source_project_id="demo-support",
+            window_from=days_ago(DAYS),
+            window_to=days_ago(6),
+            trace_count=len(imported_ids),
+            span_count=len(imported_spans),
+            finished_at=days_ago(6),
+        )
 
         for conv_ext in conv_buf:
             rows = list(

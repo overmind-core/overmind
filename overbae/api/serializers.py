@@ -10,6 +10,7 @@ from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
 from rest_framework.validators import UniqueTogetherValidator
 
+from overbae.api.connector_review import ConnectorReviewSummarySerializer
 from overbae.api.model_activation import ModelActivationSerializer
 from overbae.api.scoping import project_ids_for
 from overbae.core.errors import InputValidationError
@@ -43,6 +44,8 @@ from overbae.services.codebase.flow import (
     capability_input_keys,
     capability_tool_names,
 )
+from overbae.services.connectors.imports import import_remaining_seconds
+from overbae.services.connectors.review import review_summary
 from overbae.services.datasets import use as dataset_use
 from overbae.services.datasets.lifecycle import DatasetError
 from overbae.services.deployment import deployment_progress
@@ -1765,106 +1768,6 @@ class ConnectorActiveConfigSerializer(serializers.Serializer):
     effective_from = serializers.DateTimeField()
 
 
-class ConnectorSyncConfigWriteSerializer(serializers.Serializer):
-    source_project_id = serializers.CharField(required=False, allow_blank=True, default="")
-    target_project_id = serializers.UUIDField(required=False, allow_null=True)
-    lookback_days = serializers.IntegerField(required=False, allow_null=True)
-    backfill_from = serializers.DateTimeField(required=False, allow_null=True)
-    backfill_to = serializers.DateTimeField(required=False, allow_null=True)
-
-    def validate(self, attrs):
-        if (
-            attrs.get("backfill_from") is not None
-            and attrs.get("backfill_to") is not None
-            and attrs["backfill_from"] >= attrs["backfill_to"]
-        ):
-            raise serializers.ValidationError("backfill_from must be before backfill_to.")
-        return attrs
-
-
-class ConnectorSyncConfigCreateResponseSerializer(serializers.Serializer):
-    version = serializers.IntegerField()
-    effective_from = serializers.DateTimeField()
-
-
-class ConnectorPreviewRequestSerializer(serializers.Serializer):
-    lookback_days = serializers.IntegerField(required=False, allow_null=True)
-    source_project_id = serializers.CharField(required=False, allow_blank=True, default="")
-    backfill_from = serializers.DateTimeField(required=False, allow_null=True)
-    backfill_to = serializers.DateTimeField(required=False, allow_null=True)
-
-    def validate(self, attrs):
-        if (
-            attrs.get("backfill_from") is not None
-            and attrs.get("backfill_to") is not None
-            and attrs["backfill_from"] >= attrs["backfill_to"]
-        ):
-            raise serializers.ValidationError("backfill_from must be before backfill_to.")
-        return attrs
-
-
-class ConnectorPreviewResponseSerializer(serializers.Serializer):
-    count = serializers.IntegerField(allow_null=True)
-
-
-class ConnectorCapabilityCandidateSerializer(serializers.Serializer):
-    value = serializers.CharField(required=False, allow_blank=True, allow_null=True)
-    count = serializers.IntegerField()
-    source = serializers.CharField(required=False, allow_blank=True)
-    key = serializers.CharField(required=False, allow_blank=True, allow_null=True)
-    metadata_keys = serializers.JSONField(required=False)
-
-
-class ConnectorShapeCandidateSerializer(serializers.Serializer):
-    """One recurring observation shape, ranked as a possible capability boundary."""
-
-    name = serializers.CharField()
-    type = serializers.CharField()
-    traces = serializers.IntegerField()
-    occurrences = serializers.IntegerField()
-    max_per_trace = serializers.IntegerField()
-    model_calls = serializers.IntegerField()
-    is_root = serializers.BooleanField()
-    parent_name = serializers.CharField(allow_null=True)
-    score = serializers.IntegerField()
-    reasons = serializers.ListField(child=serializers.CharField())
-
-
-class ConnectorCapabilityProposalSerializer(serializers.Serializer):
-    """A suggested Capability for one discovered key, and where it came from."""
-
-    capability_id = serializers.UUIDField()
-    capability_name = serializers.CharField()
-    method = serializers.ChoiceField(choices=["source", "name", "capability_card"])
-    evidence = serializers.CharField(allow_blank=True)
-
-
-class ConnectorDiscoverCapabilitiesResponseSerializer(serializers.Serializer):
-    candidates = ConnectorCapabilityCandidateSerializer(many=True)
-    shapes = ConnectorShapeCandidateSerializer(many=True, required=False)
-    proposals = serializers.DictField(child=ConnectorCapabilityProposalSerializer(), required=False)
-    lookback_days = serializers.IntegerField(required=False)
-    sampled = serializers.IntegerField(required=False)
-
-
-class ConnectorCapabilityMappingWriteSerializer(serializers.Serializer):
-    source = serializers.ChoiceField(
-        choices=["observation_name", "metadata", "tag", "trace_name"],
-        required=False,
-        allow_blank=True,
-    )
-    key = serializers.CharField(required=False, allow_blank=True, allow_null=True)
-    names = serializers.ListField(child=serializers.CharField(), required=False)
-    assignments = serializers.DictField(child=serializers.CharField(), required=False, default=dict)
-    auto_create = serializers.BooleanField(required=False, default=False)
-    fallback_capability_id = serializers.UUIDField(required=False, allow_null=True)
-
-
-class ConnectorCapabilityMappingResponseSerializer(serializers.Serializer):
-    capability_mapping = serializers.JSONField()
-    relabeled_span_count = serializers.IntegerField()
-
-
 class ConnectorCredentialSerializer(serializers.ModelSerializer):
     api_key = serializers.CharField(
         write_only=True,
@@ -1875,6 +1778,8 @@ class ConnectorCredentialSerializer(serializers.ModelSerializer):
     api_secret = serializers.CharField(write_only=True, required=False, allow_blank=True)
     api_key_hint = serializers.SerializerMethodField(read_only=True)
     active_config = serializers.SerializerMethodField(read_only=True)
+    review_summary = serializers.SerializerMethodField(read_only=True)
+    import_remaining_seconds = serializers.SerializerMethodField(read_only=True)
 
     class Meta:
         model = ConnectorCredential
@@ -1900,8 +1805,9 @@ class ConnectorCredentialSerializer(serializers.ModelSerializer):
             "total_spans_imported",
             "total_traces_imported",
             "next_poll_at",
-            "capability_mapping",
             "active_config",
+            "review_summary",
+            "import_remaining_seconds",
             "created_at",
             "updated_at",
         ]
@@ -1922,6 +1828,8 @@ class ConnectorCredentialSerializer(serializers.ModelSerializer):
             "total_traces_imported",
             "next_poll_at",
             "active_config",
+            "review_summary",
+            "import_remaining_seconds",
         ]
         # Only connected integrations own a name; a soft-disconnected row (kept
         # for its span-id namespace) or an unfinished wizard draft may be reused.
@@ -1933,6 +1841,13 @@ class ConnectorCredentialSerializer(serializers.ModelSerializer):
                 fields=["project", "connector_type", "name"],
             )
         ]
+
+    @extend_schema_field(ConnectorReviewSummarySerializer)
+    def get_review_summary(self, obj):
+        return review_summary(obj)
+
+    def get_import_remaining_seconds(self, obj) -> int | None:
+        return import_remaining_seconds(obj)
 
     def get_api_key_hint(self, obj: ConnectorCredential) -> str:
         return obj.api_key_hint

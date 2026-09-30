@@ -15,27 +15,25 @@
 
 import * as runtime from '../runtime';
 import type {
-  ConnectorCapabilityMappingResponse,
-  ConnectorCapabilityMappingWriteRequest,
+  ConfirmImportRequest,
   ConnectorCredential,
   ConnectorCredentialRequest,
   ConnectorCredentialsSourceProjectsRetrieve200Response,
   ConnectorCredentialsSyncCreate202Response,
-  ConnectorDiscoverCapabilitiesResponse,
-  ConnectorPreviewRequestRequest,
-  ConnectorPreviewResponse,
-  ConnectorSyncConfigCreateResponse,
-  ConnectorSyncConfigWriteRequest,
   ConnectorVerifyResponse,
+  ImportPreview,
+  ImportRangeRequest,
   PaginatedConnectorCredentialList,
   PaginatedConnectorSyncRunList,
+  PaginatedTraceGroupList,
   PatchedConnectorCredentialRequest,
+  PatchedReviewTraceGroupRequest,
+  ReviewTraceGroupsRequest,
+  TraceGroup,
 } from '../models/index';
 import {
-    ConnectorCapabilityMappingResponseFromJSON,
-    ConnectorCapabilityMappingResponseToJSON,
-    ConnectorCapabilityMappingWriteRequestFromJSON,
-    ConnectorCapabilityMappingWriteRequestToJSON,
+    ConfirmImportRequestFromJSON,
+    ConfirmImportRequestToJSON,
     ConnectorCredentialFromJSON,
     ConnectorCredentialToJSON,
     ConnectorCredentialRequestFromJSON,
@@ -44,35 +42,27 @@ import {
     ConnectorCredentialsSourceProjectsRetrieve200ResponseToJSON,
     ConnectorCredentialsSyncCreate202ResponseFromJSON,
     ConnectorCredentialsSyncCreate202ResponseToJSON,
-    ConnectorDiscoverCapabilitiesResponseFromJSON,
-    ConnectorDiscoverCapabilitiesResponseToJSON,
-    ConnectorPreviewRequestRequestFromJSON,
-    ConnectorPreviewRequestRequestToJSON,
-    ConnectorPreviewResponseFromJSON,
-    ConnectorPreviewResponseToJSON,
-    ConnectorSyncConfigCreateResponseFromJSON,
-    ConnectorSyncConfigCreateResponseToJSON,
-    ConnectorSyncConfigWriteRequestFromJSON,
-    ConnectorSyncConfigWriteRequestToJSON,
     ConnectorVerifyResponseFromJSON,
     ConnectorVerifyResponseToJSON,
+    ImportPreviewFromJSON,
+    ImportPreviewToJSON,
+    ImportRangeRequestFromJSON,
+    ImportRangeRequestToJSON,
     PaginatedConnectorCredentialListFromJSON,
     PaginatedConnectorCredentialListToJSON,
     PaginatedConnectorSyncRunListFromJSON,
     PaginatedConnectorSyncRunListToJSON,
+    PaginatedTraceGroupListFromJSON,
+    PaginatedTraceGroupListToJSON,
     PatchedConnectorCredentialRequestFromJSON,
     PatchedConnectorCredentialRequestToJSON,
+    PatchedReviewTraceGroupRequestFromJSON,
+    PatchedReviewTraceGroupRequestToJSON,
+    ReviewTraceGroupsRequestFromJSON,
+    ReviewTraceGroupsRequestToJSON,
+    TraceGroupFromJSON,
+    TraceGroupToJSON,
 } from '../models/index';
-
-export interface ConnectorCredentialsCapabilityMappingUpdateRequest {
-    id: string;
-    connectorCapabilityMappingWriteRequest?: ConnectorCapabilityMappingWriteRequest;
-}
-
-export interface ConnectorCredentialsConfigCreateRequest {
-    id: string;
-    connectorSyncConfigWriteRequest?: ConnectorSyncConfigWriteRequest;
-}
 
 export interface ConnectorCredentialsCreateRequest {
     connectorCredentialRequest: ConnectorCredentialRequest;
@@ -82,12 +72,24 @@ export interface ConnectorCredentialsDestroyRequest {
     id: string;
 }
 
-export interface ConnectorCredentialsDiscoverCapabilitiesRetrieveRequest {
+export interface ConnectorCredentialsGroupsListRequest {
     id: string;
-    key?: string;
-    lookbackDays?: number;
-    source?: string;
-    sourceProjectId?: string;
+    ordering?: string;
+    page?: number;
+    pageSize?: number;
+    pendingOnly?: boolean;
+    search?: string;
+}
+
+export interface ConnectorCredentialsGroupsPartialUpdateRequest {
+    groupId: string;
+    id: string;
+    patchedReviewTraceGroupRequest?: PatchedReviewTraceGroupRequest;
+}
+
+export interface ConnectorCredentialsImportCreateRequest {
+    id: string;
+    confirmImportRequest: ConfirmImportRequest;
 }
 
 export interface ConnectorCredentialsListRequest {
@@ -105,11 +107,23 @@ export interface ConnectorCredentialsPartialUpdateRequest {
 
 export interface ConnectorCredentialsPreviewCreateRequest {
     id: string;
-    connectorPreviewRequestRequest?: ConnectorPreviewRequestRequest;
+    importRangeRequest?: ImportRangeRequest;
+}
+
+export interface ConnectorCredentialsPreviewRetrieveRequest {
+    id: string;
+    previewId: string;
 }
 
 export interface ConnectorCredentialsRetrieveRequest {
     id: string;
+}
+
+export interface ConnectorCredentialsReviewCreateRequest {
+    id: string;
+    reviewTraceGroupsRequest: ReviewTraceGroupsRequest;
+    ordering?: string;
+    search?: string;
 }
 
 export interface ConnectorCredentialsRunsListRequest {
@@ -141,126 +155,6 @@ export interface ConnectorCredentialsVerifyCreateRequest {
  *
  */
 export class ConnectorCredentialsApi extends runtime.BaseAPI {
-
-    /**
-     * Update capability mapping and relabel existing spans
-     */
-    async connectorCredentialsCapabilityMappingUpdateRaw(requestParameters: ConnectorCredentialsCapabilityMappingUpdateRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<ConnectorCapabilityMappingResponse>> {
-        if (requestParameters['id'] == null) {
-            throw new runtime.RequiredError(
-                'id',
-                'Required parameter "id" was null or undefined when calling connectorCredentialsCapabilityMappingUpdate().'
-            );
-        }
-
-        const queryParameters: any = {};
-
-        const headerParameters: runtime.HTTPHeaders = {};
-
-        headerParameters['Content-Type'] = 'application/json';
-
-        if (this.configuration && this.configuration.accessToken) {
-            const token = this.configuration.accessToken;
-            const tokenString = await token("ClerkBearerAuth", []);
-
-            if (tokenString) {
-                headerParameters["Authorization"] = `Bearer ${tokenString}`;
-            }
-        }
-        if (this.configuration && this.configuration.apiKey) {
-            headerParameters["X-Api-Key"] = await this.configuration.apiKey("X-Api-Key"); // ApiKeyAuth authentication
-        }
-
-        if (this.configuration && this.configuration.accessToken) {
-            const token = this.configuration.accessToken;
-            const tokenString = await token("BearerAuth", []);
-
-            if (tokenString) {
-                headerParameters["Authorization"] = `Bearer ${tokenString}`;
-            }
-        }
-
-        let urlPath = `/api/connector-credentials/{id}/capability-mapping/`;
-        urlPath = urlPath.replace(`{${"id"}}`, encodeURIComponent(String(requestParameters['id'])));
-
-        const response = await this.request({
-            path: urlPath,
-            method: 'PUT',
-            headers: headerParameters,
-            query: queryParameters,
-            body: ConnectorCapabilityMappingWriteRequestToJSON(requestParameters['connectorCapabilityMappingWriteRequest']),
-        }, initOverrides);
-
-        return new runtime.JSONApiResponse(response, (jsonValue) => ConnectorCapabilityMappingResponseFromJSON(jsonValue));
-    }
-
-    /**
-     * Update capability mapping and relabel existing spans
-     */
-    async connectorCredentialsCapabilityMappingUpdate(requestParameters: ConnectorCredentialsCapabilityMappingUpdateRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<ConnectorCapabilityMappingResponse> {
-        const response = await this.connectorCredentialsCapabilityMappingUpdateRaw(requestParameters, initOverrides);
-        return await response.value();
-    }
-
-    /**
-     * Create a new sync config version
-     */
-    async connectorCredentialsConfigCreateRaw(requestParameters: ConnectorCredentialsConfigCreateRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<ConnectorSyncConfigCreateResponse>> {
-        if (requestParameters['id'] == null) {
-            throw new runtime.RequiredError(
-                'id',
-                'Required parameter "id" was null or undefined when calling connectorCredentialsConfigCreate().'
-            );
-        }
-
-        const queryParameters: any = {};
-
-        const headerParameters: runtime.HTTPHeaders = {};
-
-        headerParameters['Content-Type'] = 'application/json';
-
-        if (this.configuration && this.configuration.accessToken) {
-            const token = this.configuration.accessToken;
-            const tokenString = await token("ClerkBearerAuth", []);
-
-            if (tokenString) {
-                headerParameters["Authorization"] = `Bearer ${tokenString}`;
-            }
-        }
-        if (this.configuration && this.configuration.apiKey) {
-            headerParameters["X-Api-Key"] = await this.configuration.apiKey("X-Api-Key"); // ApiKeyAuth authentication
-        }
-
-        if (this.configuration && this.configuration.accessToken) {
-            const token = this.configuration.accessToken;
-            const tokenString = await token("BearerAuth", []);
-
-            if (tokenString) {
-                headerParameters["Authorization"] = `Bearer ${tokenString}`;
-            }
-        }
-
-        let urlPath = `/api/connector-credentials/{id}/config/`;
-        urlPath = urlPath.replace(`{${"id"}}`, encodeURIComponent(String(requestParameters['id'])));
-
-        const response = await this.request({
-            path: urlPath,
-            method: 'POST',
-            headers: headerParameters,
-            query: queryParameters,
-            body: ConnectorSyncConfigWriteRequestToJSON(requestParameters['connectorSyncConfigWriteRequest']),
-        }, initOverrides);
-
-        return new runtime.JSONApiResponse(response, (jsonValue) => ConnectorSyncConfigCreateResponseFromJSON(jsonValue));
-    }
-
-    /**
-     * Create a new sync config version
-     */
-    async connectorCredentialsConfigCreate(requestParameters: ConnectorCredentialsConfigCreateRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<ConnectorSyncConfigCreateResponse> {
-        const response = await this.connectorCredentialsConfigCreateRaw(requestParameters, initOverrides);
-        return await response.value();
-    }
 
     /**
      * Add a new connector credential
@@ -380,32 +274,35 @@ export class ConnectorCredentialsApi extends runtime.BaseAPI {
     }
 
     /**
-     * Discover capability-identity candidates from the provider
      */
-    async connectorCredentialsDiscoverCapabilitiesRetrieveRaw(requestParameters: ConnectorCredentialsDiscoverCapabilitiesRetrieveRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<ConnectorDiscoverCapabilitiesResponse>> {
+    async connectorCredentialsGroupsListRaw(requestParameters: ConnectorCredentialsGroupsListRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<PaginatedTraceGroupList>> {
         if (requestParameters['id'] == null) {
             throw new runtime.RequiredError(
                 'id',
-                'Required parameter "id" was null or undefined when calling connectorCredentialsDiscoverCapabilitiesRetrieve().'
+                'Required parameter "id" was null or undefined when calling connectorCredentialsGroupsList().'
             );
         }
 
         const queryParameters: any = {};
 
-        if (requestParameters['key'] != null) {
-            queryParameters['key'] = requestParameters['key'];
+        if (requestParameters['ordering'] != null) {
+            queryParameters['ordering'] = requestParameters['ordering'];
         }
 
-        if (requestParameters['lookbackDays'] != null) {
-            queryParameters['lookback_days'] = requestParameters['lookbackDays'];
+        if (requestParameters['page'] != null) {
+            queryParameters['page'] = requestParameters['page'];
         }
 
-        if (requestParameters['source'] != null) {
-            queryParameters['source'] = requestParameters['source'];
+        if (requestParameters['pageSize'] != null) {
+            queryParameters['page_size'] = requestParameters['pageSize'];
         }
 
-        if (requestParameters['sourceProjectId'] != null) {
-            queryParameters['source_project_id'] = requestParameters['sourceProjectId'];
+        if (requestParameters['pendingOnly'] != null) {
+            queryParameters['pending_only'] = requestParameters['pendingOnly'];
+        }
+
+        if (requestParameters['search'] != null) {
+            queryParameters['search'] = requestParameters['search'];
         }
 
         const headerParameters: runtime.HTTPHeaders = {};
@@ -431,7 +328,7 @@ export class ConnectorCredentialsApi extends runtime.BaseAPI {
             }
         }
 
-        let urlPath = `/api/connector-credentials/{id}/discover-capabilities/`;
+        let urlPath = `/api/connector-credentials/{id}/groups/`;
         urlPath = urlPath.replace(`{${"id"}}`, encodeURIComponent(String(requestParameters['id'])));
 
         const response = await this.request({
@@ -441,14 +338,144 @@ export class ConnectorCredentialsApi extends runtime.BaseAPI {
             query: queryParameters,
         }, initOverrides);
 
-        return new runtime.JSONApiResponse(response, (jsonValue) => ConnectorDiscoverCapabilitiesResponseFromJSON(jsonValue));
+        return new runtime.JSONApiResponse(response, (jsonValue) => PaginatedTraceGroupListFromJSON(jsonValue));
     }
 
     /**
-     * Discover capability-identity candidates from the provider
      */
-    async connectorCredentialsDiscoverCapabilitiesRetrieve(requestParameters: ConnectorCredentialsDiscoverCapabilitiesRetrieveRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<ConnectorDiscoverCapabilitiesResponse> {
-        const response = await this.connectorCredentialsDiscoverCapabilitiesRetrieveRaw(requestParameters, initOverrides);
+    async connectorCredentialsGroupsList(requestParameters: ConnectorCredentialsGroupsListRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<PaginatedTraceGroupList> {
+        const response = await this.connectorCredentialsGroupsListRaw(requestParameters, initOverrides);
+        return await response.value();
+    }
+
+    /**
+     */
+    async connectorCredentialsGroupsPartialUpdateRaw(requestParameters: ConnectorCredentialsGroupsPartialUpdateRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<TraceGroup>> {
+        if (requestParameters['groupId'] == null) {
+            throw new runtime.RequiredError(
+                'groupId',
+                'Required parameter "groupId" was null or undefined when calling connectorCredentialsGroupsPartialUpdate().'
+            );
+        }
+
+        if (requestParameters['id'] == null) {
+            throw new runtime.RequiredError(
+                'id',
+                'Required parameter "id" was null or undefined when calling connectorCredentialsGroupsPartialUpdate().'
+            );
+        }
+
+        const queryParameters: any = {};
+
+        const headerParameters: runtime.HTTPHeaders = {};
+
+        headerParameters['Content-Type'] = 'application/json';
+
+        if (this.configuration && this.configuration.accessToken) {
+            const token = this.configuration.accessToken;
+            const tokenString = await token("ClerkBearerAuth", []);
+
+            if (tokenString) {
+                headerParameters["Authorization"] = `Bearer ${tokenString}`;
+            }
+        }
+        if (this.configuration && this.configuration.apiKey) {
+            headerParameters["X-Api-Key"] = await this.configuration.apiKey("X-Api-Key"); // ApiKeyAuth authentication
+        }
+
+        if (this.configuration && this.configuration.accessToken) {
+            const token = this.configuration.accessToken;
+            const tokenString = await token("BearerAuth", []);
+
+            if (tokenString) {
+                headerParameters["Authorization"] = `Bearer ${tokenString}`;
+            }
+        }
+
+        let urlPath = `/api/connector-credentials/{id}/groups/{group_id}/`;
+        urlPath = urlPath.replace(`{${"group_id"}}`, encodeURIComponent(String(requestParameters['groupId'])));
+        urlPath = urlPath.replace(`{${"id"}}`, encodeURIComponent(String(requestParameters['id'])));
+
+        const response = await this.request({
+            path: urlPath,
+            method: 'PATCH',
+            headers: headerParameters,
+            query: queryParameters,
+            body: PatchedReviewTraceGroupRequestToJSON(requestParameters['patchedReviewTraceGroupRequest']),
+        }, initOverrides);
+
+        return new runtime.JSONApiResponse(response, (jsonValue) => TraceGroupFromJSON(jsonValue));
+    }
+
+    /**
+     */
+    async connectorCredentialsGroupsPartialUpdate(requestParameters: ConnectorCredentialsGroupsPartialUpdateRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<TraceGroup> {
+        const response = await this.connectorCredentialsGroupsPartialUpdateRaw(requestParameters, initOverrides);
+        return await response.value();
+    }
+
+    /**
+     */
+    async connectorCredentialsImportCreateRaw(requestParameters: ConnectorCredentialsImportCreateRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<ImportPreview>> {
+        if (requestParameters['id'] == null) {
+            throw new runtime.RequiredError(
+                'id',
+                'Required parameter "id" was null or undefined when calling connectorCredentialsImportCreate().'
+            );
+        }
+
+        if (requestParameters['confirmImportRequest'] == null) {
+            throw new runtime.RequiredError(
+                'confirmImportRequest',
+                'Required parameter "confirmImportRequest" was null or undefined when calling connectorCredentialsImportCreate().'
+            );
+        }
+
+        const queryParameters: any = {};
+
+        const headerParameters: runtime.HTTPHeaders = {};
+
+        headerParameters['Content-Type'] = 'application/json';
+
+        if (this.configuration && this.configuration.accessToken) {
+            const token = this.configuration.accessToken;
+            const tokenString = await token("ClerkBearerAuth", []);
+
+            if (tokenString) {
+                headerParameters["Authorization"] = `Bearer ${tokenString}`;
+            }
+        }
+        if (this.configuration && this.configuration.apiKey) {
+            headerParameters["X-Api-Key"] = await this.configuration.apiKey("X-Api-Key"); // ApiKeyAuth authentication
+        }
+
+        if (this.configuration && this.configuration.accessToken) {
+            const token = this.configuration.accessToken;
+            const tokenString = await token("BearerAuth", []);
+
+            if (tokenString) {
+                headerParameters["Authorization"] = `Bearer ${tokenString}`;
+            }
+        }
+
+        let urlPath = `/api/connector-credentials/{id}/import/`;
+        urlPath = urlPath.replace(`{${"id"}}`, encodeURIComponent(String(requestParameters['id'])));
+
+        const response = await this.request({
+            path: urlPath,
+            method: 'POST',
+            headers: headerParameters,
+            query: queryParameters,
+            body: ConfirmImportRequestToJSON(requestParameters['confirmImportRequest']),
+        }, initOverrides);
+
+        return new runtime.JSONApiResponse(response, (jsonValue) => ImportPreviewFromJSON(jsonValue));
+    }
+
+    /**
+     */
+    async connectorCredentialsImportCreate(requestParameters: ConnectorCredentialsImportCreateRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<ImportPreview> {
+        const response = await this.connectorCredentialsImportCreateRaw(requestParameters, initOverrides);
         return await response.value();
     }
 
@@ -582,9 +609,8 @@ export class ConnectorCredentialsApi extends runtime.BaseAPI {
     }
 
     /**
-     * Preview how many traces match the import range
      */
-    async connectorCredentialsPreviewCreateRaw(requestParameters: ConnectorCredentialsPreviewCreateRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<ConnectorPreviewResponse>> {
+    async connectorCredentialsPreviewCreateRaw(requestParameters: ConnectorCredentialsPreviewCreateRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<ImportPreview>> {
         if (requestParameters['id'] == null) {
             throw new runtime.RequiredError(
                 'id',
@@ -627,17 +653,82 @@ export class ConnectorCredentialsApi extends runtime.BaseAPI {
             method: 'POST',
             headers: headerParameters,
             query: queryParameters,
-            body: ConnectorPreviewRequestRequestToJSON(requestParameters['connectorPreviewRequestRequest']),
+            body: ImportRangeRequestToJSON(requestParameters['importRangeRequest']),
         }, initOverrides);
 
-        return new runtime.JSONApiResponse(response, (jsonValue) => ConnectorPreviewResponseFromJSON(jsonValue));
+        return new runtime.JSONApiResponse(response, (jsonValue) => ImportPreviewFromJSON(jsonValue));
     }
 
     /**
-     * Preview how many traces match the import range
      */
-    async connectorCredentialsPreviewCreate(requestParameters: ConnectorCredentialsPreviewCreateRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<ConnectorPreviewResponse> {
+    async connectorCredentialsPreviewCreate(requestParameters: ConnectorCredentialsPreviewCreateRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<ImportPreview> {
         const response = await this.connectorCredentialsPreviewCreateRaw(requestParameters, initOverrides);
+        return await response.value();
+    }
+
+    /**
+     */
+    async connectorCredentialsPreviewRetrieveRaw(requestParameters: ConnectorCredentialsPreviewRetrieveRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<ImportPreview>> {
+        if (requestParameters['id'] == null) {
+            throw new runtime.RequiredError(
+                'id',
+                'Required parameter "id" was null or undefined when calling connectorCredentialsPreviewRetrieve().'
+            );
+        }
+
+        if (requestParameters['previewId'] == null) {
+            throw new runtime.RequiredError(
+                'previewId',
+                'Required parameter "previewId" was null or undefined when calling connectorCredentialsPreviewRetrieve().'
+            );
+        }
+
+        const queryParameters: any = {};
+
+        if (requestParameters['previewId'] != null) {
+            queryParameters['preview_id'] = requestParameters['previewId'];
+        }
+
+        const headerParameters: runtime.HTTPHeaders = {};
+
+        if (this.configuration && this.configuration.accessToken) {
+            const token = this.configuration.accessToken;
+            const tokenString = await token("ClerkBearerAuth", []);
+
+            if (tokenString) {
+                headerParameters["Authorization"] = `Bearer ${tokenString}`;
+            }
+        }
+        if (this.configuration && this.configuration.apiKey) {
+            headerParameters["X-Api-Key"] = await this.configuration.apiKey("X-Api-Key"); // ApiKeyAuth authentication
+        }
+
+        if (this.configuration && this.configuration.accessToken) {
+            const token = this.configuration.accessToken;
+            const tokenString = await token("BearerAuth", []);
+
+            if (tokenString) {
+                headerParameters["Authorization"] = `Bearer ${tokenString}`;
+            }
+        }
+
+        let urlPath = `/api/connector-credentials/{id}/preview/`;
+        urlPath = urlPath.replace(`{${"id"}}`, encodeURIComponent(String(requestParameters['id'])));
+
+        const response = await this.request({
+            path: urlPath,
+            method: 'GET',
+            headers: headerParameters,
+            query: queryParameters,
+        }, initOverrides);
+
+        return new runtime.JSONApiResponse(response, (jsonValue) => ImportPreviewFromJSON(jsonValue));
+    }
+
+    /**
+     */
+    async connectorCredentialsPreviewRetrieve(requestParameters: ConnectorCredentialsPreviewRetrieveRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<ImportPreview> {
+        const response = await this.connectorCredentialsPreviewRetrieveRaw(requestParameters, initOverrides);
         return await response.value();
     }
 
@@ -695,6 +786,79 @@ export class ConnectorCredentialsApi extends runtime.BaseAPI {
      */
     async connectorCredentialsRetrieve(requestParameters: ConnectorCredentialsRetrieveRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<ConnectorCredential> {
         const response = await this.connectorCredentialsRetrieveRaw(requestParameters, initOverrides);
+        return await response.value();
+    }
+
+    /**
+     */
+    async connectorCredentialsReviewCreateRaw(requestParameters: ConnectorCredentialsReviewCreateRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<Array<TraceGroup>>> {
+        if (requestParameters['id'] == null) {
+            throw new runtime.RequiredError(
+                'id',
+                'Required parameter "id" was null or undefined when calling connectorCredentialsReviewCreate().'
+            );
+        }
+
+        if (requestParameters['reviewTraceGroupsRequest'] == null) {
+            throw new runtime.RequiredError(
+                'reviewTraceGroupsRequest',
+                'Required parameter "reviewTraceGroupsRequest" was null or undefined when calling connectorCredentialsReviewCreate().'
+            );
+        }
+
+        const queryParameters: any = {};
+
+        if (requestParameters['ordering'] != null) {
+            queryParameters['ordering'] = requestParameters['ordering'];
+        }
+
+        if (requestParameters['search'] != null) {
+            queryParameters['search'] = requestParameters['search'];
+        }
+
+        const headerParameters: runtime.HTTPHeaders = {};
+
+        headerParameters['Content-Type'] = 'application/json';
+
+        if (this.configuration && this.configuration.accessToken) {
+            const token = this.configuration.accessToken;
+            const tokenString = await token("ClerkBearerAuth", []);
+
+            if (tokenString) {
+                headerParameters["Authorization"] = `Bearer ${tokenString}`;
+            }
+        }
+        if (this.configuration && this.configuration.apiKey) {
+            headerParameters["X-Api-Key"] = await this.configuration.apiKey("X-Api-Key"); // ApiKeyAuth authentication
+        }
+
+        if (this.configuration && this.configuration.accessToken) {
+            const token = this.configuration.accessToken;
+            const tokenString = await token("BearerAuth", []);
+
+            if (tokenString) {
+                headerParameters["Authorization"] = `Bearer ${tokenString}`;
+            }
+        }
+
+        let urlPath = `/api/connector-credentials/{id}/review/`;
+        urlPath = urlPath.replace(`{${"id"}}`, encodeURIComponent(String(requestParameters['id'])));
+
+        const response = await this.request({
+            path: urlPath,
+            method: 'POST',
+            headers: headerParameters,
+            query: queryParameters,
+            body: ReviewTraceGroupsRequestToJSON(requestParameters['reviewTraceGroupsRequest']),
+        }, initOverrides);
+
+        return new runtime.JSONApiResponse(response, (jsonValue) => jsonValue.map(TraceGroupFromJSON));
+    }
+
+    /**
+     */
+    async connectorCredentialsReviewCreate(requestParameters: ConnectorCredentialsReviewCreateRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<Array<TraceGroup>> {
+        const response = await this.connectorCredentialsReviewCreateRaw(requestParameters, initOverrides);
         return await response.value();
     }
 
