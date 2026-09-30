@@ -47,6 +47,16 @@ collect journeys unless `TEST_REDIS_URL` is set. The journeys take about six min
 journey per vendor (connectors, workshop LLM engines, GPU training outcomes): a new
 vendor joins its kit's parametrize list.
 
+## Where a test belongs
+
+- **Journey** (`tests/journeys/`): a customer promise across CLI, MCP, REST, SDK, worker and Console on the live stack. `tests/journeys/console/` builds the self-hosted Console (`bun run build`, ~4 s) and drives it with Playwright on its own thread; `uv run playwright install chromium-headless-shell` once per machine.
+- **Contract kit** (`tests/test_*_contract.py`, `test_otlp_dialects.py`): one table over every vendor or dialect, the real client talking to a network fake.
+- **Unit test**: pure logic with many edge cases, through a public entry point.
+
+The unit suite runs behind the same outbound guard as the journeys: sockets reach loopback only, and every HTTP call must be answered by `tests/fakes` (`fake_llm` is autouse; `fake_modal`, `sft`, `serving`, `clerk`, `stripe_api`, `scripted(host)`, `slept` on request). FakeLLM serves chat, streaming (`stream_rounds`), the OpenRouter catalog (`catalog_payload`, `limits`, `prices`), and Jev decisions (`decide`; the Jev path needs Redis, so point `CACHES` at `TEST_REDIS_URL`). The Cursor SDK dials out from a bridge process the guard cannot see, so `CURSOR_API_KEY` is removed unless a test asks for the `cursor` fake.
+
+A known product defect gets a `pytest.mark.xfail(strict=True, reason=...)` control that asserts the correct behaviour; it turns red when the fix lands, and the marker goes.
+
 ## Gotchas
 
 - Backend tests need the compose `postgres` service on `localhost:5432`

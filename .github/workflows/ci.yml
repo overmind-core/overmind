@@ -168,5 +168,14 @@ jobs:
         # Match local `make test`: xdist is already in the test dep group.
         run: uv run pytest tests/ -n auto --dist worksteal -q
 
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.3.5"
+
+      - name: Install Console dependencies and browser for the Console journeys
+        run: |
+          cd frontend && bun install --frozen-lockfile
+          cd .. && uv run playwright install --with-deps chromium-headless-shell
+
       - name: Run journeys
         run: make test-journeys
