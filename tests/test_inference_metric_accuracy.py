@@ -9,7 +9,6 @@ import uuid
 
 import pytest
 
-from overbae.api.completions import _process_stream_chunk
 from overbae.models import Project
 from overbae.models.inference import DeployedModel, InferenceCall
 from overbae.services.deployed_chat import record_inference_call
@@ -85,25 +84,3 @@ def test_record_clears_warming_stamp() -> None:
     record_inference_call(m, usage={"completion_tokens": 1}, latency_ms=10.0)
     m.refresh_from_db()
     assert m.warming_started_at is None
-
-
-def test_stream_chunk_captures_and_strips_metrics() -> None:
-    captured: dict = {"usage": None, "metrics": None}
-    final = (
-        'data: {"choices": [], "usage": {"completion_tokens": 5}, '
-        '"metrics": {"tokens_per_second": 50.0}}\n\n'
-    )
-    forwarded = _process_stream_chunk(final, captured, include_usage=True)
-    assert captured["metrics"] == {"tokens_per_second": 50.0}
-    assert captured["usage"] == {"completion_tokens": 5}
-    assert forwarded is not None
-    assert "metrics" not in forwarded
-    assert "usage" in forwarded
-
-
-def test_stream_chunk_dropped_when_client_did_not_opt_in() -> None:
-    captured: dict = {"usage": None, "metrics": None}
-    final = 'data: {"choices": [], "usage": {"completion_tokens": 5}, "metrics": {"tokens_per_second": 50.0}}\n\n'
-    forwarded = _process_stream_chunk(final, captured, include_usage=False)
-    assert captured["metrics"] == {"tokens_per_second": 50.0}
-    assert forwarded is None

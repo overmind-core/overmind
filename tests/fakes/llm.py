@@ -176,6 +176,7 @@ class FakeLLM:
     def completion(self, request: LLMRequest) -> dict[str, Any]:
         message = self._message(request)
         usage = message.pop("usage", {})
+        finish = message.pop("finish_reason", None)
         request.reply = message
         prompt_tokens = max(1, len(request.text) // 4)
         completion_tokens = max(1, len(json.dumps(message)) // 4)
@@ -192,7 +193,8 @@ class FakeLLM:
                 {
                     "index": 0,
                     "message": message,
-                    "finish_reason": "tool_calls" if message.get("tool_calls") else "stop",
+                    "finish_reason": finish
+                    or ("tool_calls" if message.get("tool_calls") else "stop"),
                 }
             ],
             "usage": {

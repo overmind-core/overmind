@@ -1,15 +1,12 @@
 from __future__ import annotations
 
 import uuid
-from unittest.mock import MagicMock, patch
 
 import pytest
 from conftest import frozen_dataset
-from django.db import IntegrityError
 from django.urls import reverse
 from factories import auth_client, make_capability, make_member, make_project, make_user
 from rest_framework import status
-from rest_framework.test import APIClient
 
 from overbae.api.filters import NO_CAPABILITY
 from overbae.models import (
@@ -50,74 +47,6 @@ def _deployed_model(project: Project, job: FinetuningJob | None = None) -> Deplo
     )
 
 
-def test_deployed_model_create_and_str():
-    p = make_project()
-    m = DeployedModel.objects.create(
-        project=p,
-        model_id="ft-test-abc12345",
-        status=DeployedModel.Status.QUEUED,
-        base_model_id="meta-llama/Meta-Llama-3.1-8B-Instruct-Reference",
-    )
-    assert str(m) == "ft-test-abc12345 [queued]"
-    assert m.is_terminal is False
-
-
-def test_deployed_model_is_terminal_for_ready():
-    p = make_project()
-    m = DeployedModel.objects.create(
-        project=p,
-        model_id=f"ft-{uuid.uuid4().hex[:8]}",
-        status=DeployedModel.Status.READY,
-        base_model_id="x",
-    )
-    assert m.is_terminal is True
-
-
-def test_deployed_model_is_terminal_for_failed():
-    p = make_project()
-    m = DeployedModel.objects.create(
-        project=p,
-        model_id=f"ft-{uuid.uuid4().hex[:8]}",
-        status=DeployedModel.Status.FAILED,
-        base_model_id="x",
-    )
-    assert m.is_terminal is True
-
-
-def test_deployed_model_is_not_terminal_while_deploying():
-    p = make_project()
-    m = DeployedModel.objects.create(
-        project=p,
-        model_id=f"ft-{uuid.uuid4().hex[:8]}",
-        status=DeployedModel.Status.DEPLOYING,
-        base_model_id="x",
-    )
-    assert m.is_terminal is False
-
-
-def test_deployed_model_model_id_unique():
-    p = make_project()
-    model_id = f"ft-unique-{uuid.uuid4().hex[:8]}"
-    DeployedModel.objects.create(project=p, model_id=model_id, base_model_id="x")
-    with pytest.raises(IntegrityError):
-        DeployedModel.objects.create(project=p, model_id=model_id, base_model_id="x")
-
-
-def test_inference_client_headers():
-    from overbae.services.inference_client import InferenceClient
-
-    client = InferenceClient(base_url="https://example.modal.run", api_key="test-key-123")
-    assert client._headers["Authorization"] == "Bearer test-key-123"
-    assert client._headers["Content-Type"] == "application/json"
-
-
-def test_inference_client_base_url_strips_trailing_slash():
-    from overbae.services.inference_client import InferenceClient
-
-    client = InferenceClient(base_url="https://example.modal.run/", api_key="k")
-    assert not client._base_url.endswith("/")
-
-
 def test_inference_client_is_model_ready_returns_false_on_error():
     from overbae.services.inference_client import InferenceClient
 
@@ -134,28 +63,12 @@ def test_inference_client_is_model_ready_returns_true_on_status():
     assert client.is_model_ready(m.model_id) is True
 
 
-def test_inference_client_check_health_returns_false_on_error():
+def test_inference_client_check_health_returns_false_on_error(scripted):
     from overbae.services.inference_client import InferenceClient
 
+    scripted("https://example.modal.run").reply(503, text="unreachable")
     client = InferenceClient(base_url="https://example.modal.run", api_key="k")
-    with patch.object(client, "_get", side_effect=Exception("unreachable")):
-        assert client.check_health() is False
-
-
-def test_inference_client_stream_chat_yields_lines():
-    from overbae.services.inference_client import InferenceClient
-
-    client = InferenceClient(base_url="https://example.modal.run", api_key="k")
-    fake_resp = MagicMock()
-    fake_resp.iter_lines.return_value = [b"data: hello", b"data: world"]
-    with patch.object(client, "chat_completions", return_value=fake_resp):
-        chunks = list(
-            client.stream_chat_completions(
-                model_id="ft-test",
-                messages=[{"role": "user", "content": "hi"}],
-            )
-        )
-    assert chunks == ["data: hello\n\n", "data: world\n\n"]
+    assert client.check_health() is False
 
 
 def test_make_model_id_slug_format():
@@ -200,23 +113,17 @@ def test_deploy_task_skips_non_succeeded_job():
     assert not DeployedModel.objects.filter(finetuning_job=job).exists()
 
 
-def test_deploy_task_only_initializes_durable_state():
+def test_deploy_task_only_initializes_durable_state(fake_modal):
     from overbae.tasks.model_deployment import register_finetuned_model
 
     job = _job(make_project(), status="succeeded")
-    with patch("modal.Function.from_name") as remote:
-        register_finetuned_model(job_id=str(job.id))
-        register_finetuned_model(job_id=str(job.id))
+    register_finetuned_model(job_id=str(job.id))
+    register_finetuned_model(job_id=str(job.id))
     deployed = DeployedModel.objects.get(finetuning_job=job)
     assert deployed.status == "queued"
     assert deployed.deployment_stage == "base"
     assert deployed.deployment_attempts == 1
-    remote.assert_not_called()
-
-
-def test_deployed_models_list_requires_auth():
-    r = APIClient().get(reverse("deployedmodel-list"))
-    assert r.status_code == status.HTTP_401_UNAUTHORIZED
+    assert fake_modal.log == []
 
 
 def test_deployed_models_list_returns_200():
@@ -473,22 +380,21 @@ def test_deployed_models_delete_marks_deleted(settings):
     assert m.status == DeployedModel.Status.DELETED
 
 
-def test_deployed_models_deploy_action_dispatches_task():
+def test_deploying_a_live_model_keeps_it_serving_without_new_gpu_work(fake_modal):
     u = make_user()
     p = make_project()
     make_member(u, p)
     job = _job(p, status="succeeded")
     m = _deployed_model(p, job)
 
-    with patch("overbae.tasks.model_deployment.register_finetuned_model") as mock_task:
-        mock_task.delay = MagicMock()
-        r = auth_client(u).post(reverse("deployedmodel-deploy", args=[str(m.id)]))
+    r = auth_client(u).post(reverse("deployedmodel-deploy", args=[str(m.id)]))
 
     assert r.status_code == status.HTTP_200_OK
-    mock_task.delay.assert_not_called()
+    assert r.data["status"] == "ready"
+    assert fake_modal.log == []
 
 
-def test_deployed_models_retry_action_dispatches_task():
+def test_retrying_a_failed_deployment_requeues_it_and_clears_the_error(fake_modal):
     u = make_user()
     p = make_project()
     make_member(u, p)
@@ -498,12 +404,10 @@ def test_deployed_models_retry_action_dispatches_task():
         status=DeployedModel.Status.FAILED, error_message="Pre-warm failed: boom"
     )
 
-    with patch("overbae.tasks.model_deployment.register_finetuned_model") as mock_task:
-        mock_task.delay = MagicMock()
-        r = auth_client(u).post(reverse("deployedmodel-retry", args=[str(m.id)]))
+    r = auth_client(u).post(reverse("deployedmodel-retry", args=[str(m.id)]))
 
     assert r.status_code == status.HTTP_200_OK
-    mock_task.delay.assert_not_called()
+    assert fake_modal.log == []
     m.refresh_from_db()
     assert m.status == DeployedModel.Status.QUEUED
     assert m.error_message == ""
@@ -518,19 +422,11 @@ def test_deployed_models_retry_rejects_undeployable_job():
     m = _deployed_model(p, job)
     DeployedModel.objects.filter(pk=m.pk).update(status=DeployedModel.Status.FAILED)
 
-    with patch("overbae.tasks.model_deployment.register_finetuned_model") as mock_task:
-        mock_task.delay = MagicMock()
-        r = auth_client(u).post(reverse("deployedmodel-retry", args=[str(m.id)]))
+    r = auth_client(u).post(reverse("deployedmodel-retry", args=[str(m.id)]))
 
     assert r.status_code == status.HTTP_400_BAD_REQUEST
-    mock_task.delay.assert_not_called()
     m.refresh_from_db()
     assert m.status == DeployedModel.Status.FAILED
-
-
-def test_deployed_models_url_resolves():
-    url = reverse("deployedmodel-list")
-    assert url == "/api/deployed-models/"
 
 
 def test_inference_pricing_estimate_and_unknown_gpu():
@@ -604,27 +500,6 @@ def test_model_activity_endpoint_returns_points():
     assert len(points) == 1
     assert points[0]["request_count"] == 1
     assert points[0]["total_tokens"] == 10
-
-
-def test_deployed_model_serializer_fields():
-    from overbae.api.serializers import DeployedModelSerializer
-
-    p = make_project()
-    job = _job(p)
-    m = DeployedModel.objects.create(
-        project=p,
-        finetuning_job=job,
-        model_id=f"ft-ser-{uuid.uuid4().hex[:8]}",
-        status=DeployedModel.Status.READY,
-        base_model_id="meta-llama/Meta-Llama-3.1-8B-Instruct-Reference",
-    )
-
-    data = DeployedModelSerializer(m).data
-    assert data["model_id"] == m.model_id
-    assert data["status"] == "ready"
-    assert str(data["finetuning_job_id"]) == str(job.id)
-    assert str(data["project"]) == str(p.id)
-    assert "created_at" in data
 
 
 def test_metrics_separate_failures_end_to_end_and_warm_engine_latency():

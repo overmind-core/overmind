@@ -44,6 +44,10 @@ class ScriptedAPI:
         self.steps.append(error)
         return self
 
+    def then(self, answer):
+        self.steps.append(answer)
+        return self
+
     def handle(self, method: str, url: str, body, headers=None) -> tuple[int, dict, bytes] | None:
         if not url.startswith(self.host):
             return None
@@ -52,6 +56,8 @@ class ScriptedAPI:
             Call(method, url, {k.lower(): v for k, v in (headers or {}).items()}, raw)
         )
         step = self.steps[min(len(self.calls) - 1, len(self.steps) - 1)]
+        if callable(step):
+            step = step(self.calls[-1])
         if isinstance(step, BaseException):
             raise step
         return step

@@ -8,6 +8,7 @@ from types import SimpleNamespace
 from typing import Any
 
 import modal
+from asgiref.sync import sync_to_async
 from modal.exception import NotFoundError
 
 _ids = itertools.count(1)
@@ -21,7 +22,7 @@ class _Method:
         return self._sync(*args, **kwargs)
 
     async def aio(self, *args, **kwargs):
-        return self._sync(*args, **kwargs)
+        return await sync_to_async(self._sync)(*args, **kwargs)
 
 
 @dataclass
@@ -36,6 +37,9 @@ class FakeCall:
     state: str = "pending"
     result: Any = None
     error: BaseException | None = None
+    children: list[FakeCall] = field(default_factory=list)
+    on_get: Callable[[], Any] | None = None
+    unreachable: BaseException | None = None
 
     def run(self) -> None:
         try:
@@ -46,6 +50,10 @@ class FakeCall:
             self.state = "failed"
 
     def _get(self, timeout: float | None = None):
+        if self.on_get is not None:
+            self.on_get()
+        if self.unreachable is not None:
+            raise self.unreachable
         if self.state == "pending":
             raise TimeoutError(self.object_id)
         if self.state == "cancelled":
@@ -55,8 +63,22 @@ class FakeCall:
         return self.result
 
     def _cancel(self, *args, **kwargs) -> None:
+        self.cloud.cancelled.append((self.object_id, kwargs))
         if self.state == "pending":
             self.state = "cancelled"
+
+    def _node(self):
+        from modal.call_graph import InputStatus
+
+        status = {
+            "pending": InputStatus.PENDING,
+            "done": InputStatus.SUCCESS,
+            "failed": InputStatus.FAILURE,
+            "cancelled": InputStatus.TERMINATED,
+            "timeout": InputStatus.TIMEOUT,
+        }[self.state]
+        children = [child._node() for child in self.children]
+        return SimpleNamespace(function_call_id=self.object_id, status=status, children=children)
 
     @property
     def get(self) -> _Method:
@@ -68,16 +90,7 @@ class FakeCall:
 
     @property
     def get_call_graph(self) -> _Method:
-        from modal.call_graph import InputStatus
-
-        status = {
-            "pending": InputStatus.PENDING,
-            "done": InputStatus.SUCCESS,
-            "failed": InputStatus.FAILURE,
-            "cancelled": InputStatus.TERMINATED,
-        }[self.state]
-        node = SimpleNamespace(function_call_id=self.object_id, status=status, children=[])
-        return _Method(lambda: [node])
+        return _Method(lambda: [self._node()])
 
 
 class FakeFunction:
@@ -131,12 +144,21 @@ class FakeModal:
     handlers: dict[tuple[str, str], tuple[Callable[..., Any], bool]] = field(default_factory=dict)
     calls: dict[str, FakeCall] = field(default_factory=dict)
     log: list[tuple[str, str, tuple, dict]] = field(default_factory=list)
+    cancelled: list[tuple[str, dict]] = field(default_factory=list)
     _lock: threading.Lock = field(default_factory=threading.Lock)
 
     def deploy(
         self, app: str, name: str, handler: Callable[..., Any], *, held: bool = False
     ) -> None:
         self.handlers[(app, name)] = (handler, held)
+
+    def adopt(self, object_id: str, name: str = "operation", **fields: Any) -> FakeCall:
+        call = FakeCall(self, name, lambda: None, (), {}, True, object_id=object_id, **fields)
+        self.calls[object_id] = call
+        return call
+
+    def spawns(self) -> list[str]:
+        return [name for kind, name, _, _ in self.log if kind == "spawn"]
 
     def pending(self, name_prefix: str) -> list[FakeCall]:
         return [
@@ -253,7 +275,7 @@ class SftBackend:
             "found": True,
             "meta": {"status": run["status"]},
             "metrics": metrics,
-            "has_final_checkpoint": run["status"] == "succeeded",
+            "has_final_checkpoint": run["status"] == "succeeded" or bool(run.get("final")),
         }
 
 
