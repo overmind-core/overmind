@@ -22,6 +22,24 @@
     <title>Overmind Console</title>
     <meta content="noindex, nofollow" name="robots" />
     <meta content="Overmind is a devtool that enables AI to learn from production data. Using pattern of life analysis, it turns real-world agent behaviour into continuous improvement, allowing teams to ship secure and highly specialised agents." name="description" />
+    <!-- Link previews (X, LinkedIn, Slack). Crawlers never run the SPA, so
+         every route shares these static tags. No og:url: a shared link keeps
+         its own path and UTM tags. og:image must be absolute for X. -->
+    <meta content="website" property="og:type" />
+    <meta content="Overmind" property="og:site_name" />
+    <meta content="Overmind Console" property="og:title" />
+    <meta content="Overmind turns your production traces into specialised models you own, automatically trained, benchmarked, and served." property="og:description" />
+    <meta content="https://console.overmindlab.ai/og-image.png" property="og:image" />
+    <meta content="image/png" property="og:image:type" />
+    <meta content="1200" property="og:image:width" />
+    <meta content="630" property="og:image:height" />
+    <meta content="Overmind" property="og:image:alt" />
+    <meta content="summary_large_image" name="twitter:card" />
+    <meta content="@OvermindLab" name="twitter:site" />
+    <meta content="Overmind Console" name="twitter:title" />
+    <meta content="Overmind turns your production traces into specialised models you own, automatically trained, benchmarked, and served." name="twitter:description" />
+    <meta content="https://console.overmindlab.ai/og-image.png" name="twitter:image" />
+    <meta content="Overmind" name="twitter:image:alt" />
     <!-- The body face. Without this it isn't discovered until the CSS parses,
          so first paint lands in the system fallback and reflows — the pixel
          face sets ~16% wider, so the swap moves text, not just its shape.
