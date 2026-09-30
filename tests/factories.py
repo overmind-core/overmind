@@ -112,6 +112,18 @@ def sync_until_live(credential: ConnectorCredential, *, chunks: int = 50) -> Con
     raise AssertionError("backfill never reached LIVE")
 
 
+def prepare_training(job, fake_modal):
+    from overbae.services import training_preparation
+
+    preparation = training_preparation.for_job(job)
+    training_preparation.advance(preparation.id)
+    fake_modal.release("prepare_")
+    training_preparation.advance(preparation.id)
+    preparation.refresh_from_db()
+    assert preparation.state == "ready", preparation.error
+    return preparation
+
+
 def make_capability(
     project: Project, name: str = "A", *, with_set: bool = False, **fields: Any
 ) -> Capability:

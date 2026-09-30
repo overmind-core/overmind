@@ -2,7 +2,6 @@
 
 from types import SimpleNamespace
 
-
 from overbae.services.connectors.galileo.mapping import GALILEO, tree_to_records
 from overbae.services.connectors.mapping import observations_to_span_dicts as _to_span_dicts
 from overbae.services.connectors.profiling import profile_capability_candidates

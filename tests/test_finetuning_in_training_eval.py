@@ -25,7 +25,6 @@ from overbae.models import (
     User,
 )
 from overbae.services.finetuning_eval import (
-    _aggregate_from_summary,
     job_wants_evals,
     serialize_job_evals,
     sync_eval_scores,
@@ -87,21 +86,35 @@ def test_job_wants_evals_requires_both_links():
     assert job_wants_evals(job) is False
 
 
-def test_aggregate_from_summary_means():
+def _final_score(summary) -> float | None:
+    _, _, job, _, _ = _setup()
+    run = EvalRun.objects.create(
+        project=job.project,
+        name="final",
+        dataset=job.eval_dataset,
+        eval_set=job.eval_set,
+        status=EvalRun.Status.COMPLETED,
+        summary=summary,
+    )
+    FinetuningJobEval.objects.create(
+        job=job,
+        eval_run=run,
+        kind=FinetuningJobEval.Kind.FINAL,
+        status=FinetuningJobEval.Status.RUNNING,
+        model_id="ft:model",
+    )
+    [row] = sync_eval_scores(job)
+    return row["aggregate_score"]
+
+
+def test_the_job_score_is_the_mean_of_its_criteria():
     summary = {
-        "variants": {
-            "v1": {
-                "metrics": {
-                    "helpfulness": {"mean": 0.8},
-                    "accuracy": {"mean": 0.6},
-                }
-            }
-        }
+        "variants": {"v1": {"metrics": {"helpfulness": {"mean": 0.8}, "accuracy": {"mean": 0.6}}}}
     }
-    assert _aggregate_from_summary(summary) == 0.7
+    assert _final_score(summary) == 0.7
 
 
-def test_aggregate_from_summary_excludes_gate_only_metrics():
+def test_gate_only_metrics_stay_out_of_the_job_score():
     summary = {
         "gate_metrics": ["output-contract-required-keys"],
         "variants": {
@@ -113,7 +126,7 @@ def test_aggregate_from_summary_excludes_gate_only_metrics():
             }
         },
     }
-    assert _aggregate_from_summary(summary) == 0.8
+    assert _final_score(summary) == 0.8
 
 
 def test_sync_eval_scores_computes_baseline_delta():
@@ -390,7 +403,7 @@ def test_loss_curves_includes_judge_evals():
     assert r.data["judge_evals"][0]["aggregate_score"] == 0.42
 
 
-def test_cancel_revokes_related_eval_runs():
+def test_cancel_revokes_related_eval_runs(sft, fake_modal):
     u, _, job, _, _ = _setup()
     run = EvalRun.objects.create(
         project=job.project,
@@ -407,15 +420,15 @@ def test_cancel_revokes_related_eval_runs():
         status=FinetuningJobEval.Status.RUNNING,
         model_id=job.base_model,
     )
-    mock_runner = MagicMock()
-    with (
-        patch("overbae.services.finetuning_runner.get_runner", return_value=mock_runner),
-        patch("overbae.celery.app"),
-        patch("overbae.tasks.eval.revoke_run_tasks", return_value=1) as revoke,
-    ):
+    FinetuningJob.objects.filter(pk=job.pk).update(
+        provider=FinetuningJob.Provider.MODAL, remote_job_id="run-x:fc-x"
+    )
+    fake_modal.adopt("fc-x", "sft_train")
+    with patch("celery.current_app.control.revoke") as revoke:
         r = auth_client(u).post(reverse("finetuningjob-cancel", kwargs={"id": job.id}))
     assert r.status_code == 200
-    revoke.assert_called_once()
+    assert revoke.call_args.args[0] == ["eval-celery-1"]
+    assert [call for call, _ in fake_modal.cancelled] == ["fc-x"]
     run.refresh_from_db()
     assert run.status == EvalRun.Status.CANCELLED
     row = FinetuningJobEval.objects.get(job=job)
