@@ -1,7 +1,6 @@
-from overmind import attrs
-
 from overbae.api import overmind_attrs
 from overbae.models.traces import USAGE_ATTR_KEYS
+from overmind import attrs
 
 
 def _constants(module) -> dict[str, str]:
