@@ -29,7 +29,7 @@ from overmind import attrs
 
 logger = logging.getLogger("overmind.genai")
 
-# Cost derivation needs litellm's pricing tables (a default install).
+# Cost derivation needs litellm's pricing tables (the `tracing` extra).
 # Missing is a supported configuration — hint once, never crash tracing.
 _litellm_missing_logged = False
 
@@ -111,7 +111,7 @@ def compute_cost(model: str | None, prompt_tokens: int | None, completion_tokens
         global _litellm_missing_logged
         if not _litellm_missing_logged:
             _litellm_missing_logged = True
-            logger.info("genai.cost enrichment disabled: litellm is not installed (pip install overmind)")
+            logger.info("genai.cost enrichment disabled: litellm is not installed (pip install 'overmind[tracing]')")
         return None
     try:
         prompt_cost, completion_cost = cost_per_token(

@@ -21,6 +21,9 @@ pip install "overmind[tracing]"   # OpenTelemetry tracing (optional extra)
 The default install is the command-line tool. Tracing is a separate extra so an
 app that already pinned OpenTelemetry does not clash with ours.
 
+On Windows, install into a virtual environment; see
+[Windows](https://docs.overmindlab.ai/platform/cli#windows).
+
 ```bash
 uv tool install overmind
 # or
