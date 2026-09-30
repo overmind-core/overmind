@@ -179,6 +179,61 @@ def classifier_replies(fake_llm, *outcomes):
     return sent
 
 
+def ingest_spans(project: Project, spans: list[dict[str, Any]], resource: dict | None = None):
+    """POST spans to the OTLP endpoint as a real exporter would. Each span is
+    ``{"name", "attributes", "trace_id"?, "span_id"?, "parent"?}``; ids are hex."""
+    from opentelemetry.proto.collector.trace.v1.trace_service_pb2 import (
+        ExportTraceServiceRequest,
+    )
+    from opentelemetry.proto.common.v1.common_pb2 import AnyValue, KeyValue
+    from opentelemetry.proto.resource.v1.resource_pb2 import Resource
+    from opentelemetry.proto.trace.v1.trace_pb2 import ResourceSpans, ScopeSpans
+    from opentelemetry.proto.trace.v1.trace_pb2 import Span as ProtoSpan
+
+    def value(v):
+        if isinstance(v, bool):
+            return AnyValue(bool_value=v)
+        if isinstance(v, int):
+            return AnyValue(int_value=v)
+        if isinstance(v, float):
+            return AnyValue(double_value=v)
+        return AnyValue(string_value=str(v))
+
+    def attributes(mapping):
+        return [KeyValue(key=k, value=value(v)) for k, v in (mapping or {}).items()]
+
+    default_trace = uuid.uuid4().hex
+    proto = [
+        ProtoSpan(
+            trace_id=bytes.fromhex(span.get("trace_id") or default_trace),
+            span_id=bytes.fromhex(span.get("span_id") or uuid.uuid4().hex[:16]),
+            parent_span_id=bytes.fromhex(span["parent"]) if span.get("parent") else b"",
+            name=span["name"],
+            start_time_unix_nano=1_000,
+            end_time_unix_nano=9_000,
+            attributes=attributes(span.get("attributes")),
+        )
+        for span in spans
+    ]
+    request = ExportTraceServiceRequest(
+        resource_spans=[
+            ResourceSpans(
+                resource=Resource(attributes=attributes(resource)),
+                scope_spans=[ScopeSpans(spans=proto)],
+            )
+        ]
+    )
+    owner = make_user()
+    make_member(owner, project)
+    response = api_key_client(owner, project).post(
+        "/api/v1/traces",
+        data=request.SerializeToString(),
+        content_type="application/x-protobuf",
+    )
+    assert response.status_code == 200, response.content
+    return response
+
+
 def make_capability(
     project: Project, name: str = "A", *, with_set: bool = False, **fields: Any
 ) -> Capability:
