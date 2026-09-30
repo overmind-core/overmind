@@ -7,6 +7,7 @@ import uuid
 from types import SimpleNamespace
 from typing import Any
 
+from django.utils import timezone
 from rest_framework.test import APIClient
 from rest_framework_simplejwt.tokens import RefreshToken
 
@@ -15,6 +16,8 @@ from overbae.models import (
     Behaviour,
     BehaviourVersion,
     Capability,
+    ConnectorCredential,
+    ConnectorSyncConfig,
     EvalSet,
     Project,
     ProjectMembership,
@@ -62,6 +65,51 @@ def member_client(project: Project) -> APIClient:
     user = make_user()
     make_member(user, project)
     return auth_client(user)
+
+
+def make_connector(
+    connector_type: str,
+    *,
+    source_project_id: str = "",
+    base_url: str = "",
+    api_key: str = "key",
+    api_secret: str = "",
+    project: Project | None = None,
+    capability_mapping: dict | None = None,
+    name: str = "",
+    **config: Any,
+) -> ConnectorCredential:
+    credential = ConnectorCredential.objects.create(
+        project=project or make_project(),
+        name=name or f"{connector_type}-{uuid.uuid4().hex[:6]}",
+        connector_type=connector_type,
+        base_url=base_url,
+        api_key=api_key,
+        api_secret=api_secret,
+        api_version="v2" if connector_type == "langfuse" else "unknown",
+        capability_mapping=capability_mapping or {},
+    )
+    ConnectorSyncConfig.objects.create(
+        credential=credential,
+        version=1,
+        source_project_id=source_project_id,
+        lookback_days=config.pop("lookback_days", 3),
+        effective_from=timezone.now(),
+        **config,
+    )
+    return credential
+
+
+def sync_until_live(credential: ConnectorCredential, *, chunks: int = 50) -> ConnectorCredential:
+    from overbae.tasks.connector_sync import sync_connector_chunk
+
+    for _ in range(chunks):
+        ConnectorCredential.objects.filter(id=credential.id).update(next_poll_at=None)
+        sync_connector_chunk(str(credential.id))
+        credential.refresh_from_db()
+        if credential.sync_status == ConnectorCredential.SyncStatus.LIVE:
+            return credential
+    raise AssertionError("backfill never reached LIVE")
 
 
 def make_capability(

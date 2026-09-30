@@ -15,12 +15,21 @@ from __future__ import annotations
 import uuid
 
 import pytest
+from factories import make_connector
 from rest_framework.test import APIClient
 from rest_framework_simplejwt.tokens import RefreshToken
 
 from overbae.api.otlp import process_span
-from overbae.models import Capability, Conversation, Project, ProjectMembership, Span, User
-from overbae.tasks.connector_sync import _upsert_spans
+from overbae.models import (
+    Capability,
+    ConnectorCredential,
+    Conversation,
+    Project,
+    ProjectMembership,
+    Span,
+    User,
+)
+from overbae.tasks import connector_sync
 
 pytestmark = pytest.mark.django_db
 
@@ -267,48 +276,32 @@ def test_traces_list_filters_by_session():
     assert all(r["conversation"] == str(conversation.id) for r in rows)
 
 
-def _langfuse_span_dicts(project, *, n=1, session_id="lf-sess"):
-    from types import SimpleNamespace
-
-    from overbae.services.connectors.langfuse.client import LangFuseObservation
-    from overbae.services.connectors.langfuse.mapping import LANGFUSE
-    from overbae.services.connectors.mapping import observations_to_span_dicts
-
-    cred = SimpleNamespace(
-        id="22222222-2222-2222-2222-222222222222",
-        name="LF",
-        project=project,
-        capability_mapping={},
+def test_an_imported_langfuse_session_groups_its_traces(scripted, slept):
+    api = scripted("https://cloud.langfuse.com")
+    credential = make_connector("langfuse", api_secret="sk")
+    ConnectorCredential.objects.filter(pk=credential.pk).update(
+        sync_cursor={"mode": "live"}, sync_status=ConnectorCredential.SyncStatus.LIVE
     )
-    out = []
-    for i in range(n):
-        obs = LangFuseObservation(
-            id=f"lf-{i}",
-            trace_id=f"lf-{i}",
-            parent_observation_id=None,
-            type="SPAN",
-            name=f"t{i}",
-            start_time="2026-07-01T00:00:00Z",
-            end_time=None,
-            session_id=session_id,
-            is_root_observation=True,
-        )
-        out.extend(observations_to_span_dicts([obs], credential=cred, conventions=LANGFUSE))
-    return out
+    observations = [
+        {
+            "id": f"lf-{i}",
+            "traceId": f"lf-{i}",
+            "type": "SPAN",
+            "name": f"t{i}",
+            "startTime": "2026-07-01T00:00:00Z",
+            "sessionId": "lf-sess",
+            "isRootObservation": True,
+        }
+        for i in range(2)
+    ]
+    api.reply(json_body={"data": observations, "meta": {}})
+    for observation in observations:
+        api.reply(json_body={"data": [observation], "meta": {}})
 
+    connector_sync.sync_connector_chunk(str(credential.pk))
 
-def test_langfuse_trace_maps_session_id_to_conversation_attr():
-    _, project = _client_and_project()
-    span_dict = _langfuse_span_dicts(project, n=1, session_id="lf-session-1")[0]
-    assert span_dict["attributes"]["conversation.id"] == "lf-session-1"
-    assert span_dict["service_name"].startswith("langfuse/")
-
-
-def test_upsert_spans_resolves_and_stamps_sessions():
-    _, project = _client_and_project()
-    span_dicts = _langfuse_span_dicts(project, n=2, session_id="lf-sess")
-    created = _upsert_spans(project, span_dicts)
-    assert created == 2
-
-    conversation = Conversation.objects.get(project=project, external_id="lf-sess")
-    assert conversation.spans.count() == 2
+    conversation = Conversation.objects.get(project=credential.project, external_id="lf-sess")
+    spans = list(conversation.spans.all())
+    assert len(spans) == 2
+    assert all(span.attributes["conversation.id"] == "lf-sess" for span in spans)
+    assert all(span.service_name.startswith("langfuse/") for span in spans)

@@ -339,7 +339,3 @@ def test_shared_profiler_ranks_braintrust_records_unchanged():
     # "chat" repeats twice per trace, so it is a loop step, not a boundary.
     assert names.index("chat") > names.index("researcher")
     assert next(s["parent_name"] for s in shapes if s["name"] == "researcher") == "handler"
-
-
-if __name__ == "__main__":
-    raise SystemExit(pytest.main([__file__, "-q"]))

@@ -2,7 +2,6 @@
 
 from types import SimpleNamespace
 
-import pytest
 
 from overbae.services.connectors.galileo.mapping import GALILEO, tree_to_records
 from overbae.services.connectors.mapping import observations_to_span_dicts as _to_span_dicts
@@ -268,7 +267,3 @@ def test_same_name_trace_wrapper_is_not_a_boundary_when_an_agent_exists():
 
     assert len(mapped_roots) == 1
     assert mapped_roots[0]["span_id"] == span_id_for(str(cred.id), "agent-1")
-
-
-if __name__ == "__main__":
-    raise SystemExit(pytest.main([__file__, "-q"]))

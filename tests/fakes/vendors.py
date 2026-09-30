@@ -73,22 +73,27 @@ def _json(body: Any, status: int = 200) -> tuple[int, dict, bytes]:
     return status, {"content-type": "application/json"}, json.dumps(body).encode()
 
 
+def _parse(value: str) -> datetime:
+    return datetime.fromisoformat(value.replace("Z", "+00:00"))
+
+
 @dataclass
 class LangfuseAPI:
     host: str = "https://langfuse.fake"
-    trace_id: str = ""
-    steps: list[Step] = field(default_factory=list)
+    traces: dict[str, list[Step]] = field(default_factory=dict)
     requests: list[Call] = field(default_factory=list)
+    page_size: int | None = None
+    status: int = 200
 
     def record(self, trace_id: str, steps: list[Step]) -> None:
-        self.trace_id, self.steps = trace_id, steps
+        self.traces[trace_id] = steps
 
-    def _observation(self, step: Step) -> dict[str, Any]:
+    def _observation(self, trace_id: str, step: Step) -> dict[str, Any]:
         kind = {"generation": "GENERATION", "tool": "SPAN", "span": "SPAN"}[step.kind]
         prompt, completion = step.tokens
         return {
             "id": step.id,
-            "traceId": self.trace_id,
+            "traceId": trace_id,
             "parentObservationId": step.parent,
             "type": kind,
             "name": step.name,
@@ -102,26 +107,41 @@ class LangfuseAPI:
             if step.kind == "generation"
             else {},
             "costDetails": {},
-            "traceName": self.steps[0].name,
+            "traceName": self.traces[trace_id][0].name,
             "isRootObservation": step.parent is None,
         }
+
+    def _observations(self, query: dict[str, str]) -> dict[str, Any]:
+        wanted = query.get("traceId")
+        since = _parse(query["fromStartTime"]) if query.get("fromStartTime") else None
+        until = _parse(query["toStartTime"]) if query.get("toStartTime") else None
+        rows = [
+            self._observation(trace_id, step)
+            for trace_id, steps in self.traces.items()
+            if wanted in (None, trace_id)
+            for step in steps
+            if wanted
+            or ((since is None or step.start >= since) and (until is None or step.start < until))
+        ]
+        rows.sort(key=lambda row: row["startTime"], reverse=True)
+        if wanted or not self.page_size:
+            return {"data": [] if query.get("cursor") else rows, "meta": {}}
+        offset = int(query.get("cursor") or 0)
+        page = rows[offset : offset + self.page_size]
+        more = offset + self.page_size < len(rows)
+        return {"data": page, "meta": {"cursor": str(offset + self.page_size) if more else None}}
 
     def handle(self, method: str, url: str, body, headers=None) -> tuple[int, dict, bytes] | None:
         if not url.startswith(self.host):
             return None
         parsed = urlparse(url)
         self.requests.append(Call(method, url, headers or {}, body))
+        if self.status != 200:
+            return _json({"message": "fake outage"}, status=self.status)
         if parsed.path == "/api/public/projects":
             return _json({"data": [{"id": "lf-project", "name": "support-desk"}]})
         if parsed.path == "/api/public/v2/observations":
-            query = {k: v[0] for k, v in parse_qs(parsed.query).items()}
-            if query.get("cursor"):
-                return _json({"data": [], "meta": {"cursor": None}})
-            wanted = query.get("traceId")
-            data = [
-                self._observation(step) for step in self.steps if wanted in (None, self.trace_id)
-            ]
-            return _json({"data": data, "meta": {"cursor": None}})
+            return _json(self._observations({k: v[0] for k, v in parse_qs(parsed.query).items()}))
         return _json({"message": f"not found: {parsed.path}"}, status=404)
 
 

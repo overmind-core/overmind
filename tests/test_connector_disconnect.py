@@ -6,15 +6,12 @@ from datetime import timedelta
 
 import pytest
 from django.utils import timezone
-from factories import make_project
+from factories import make_project, sync_until_live
+from fakes.vendors import LangfuseAPI, support_desk_trace
 
 from overbae.api.serializers import ConnectorCredentialSerializer
 from overbae.api.views import ConnectorCredentialViewSet
 from overbae.models import ConnectorCredential, ConnectorSyncConfig, Project, Span
-from overbae.services.connectors.langfuse.client import LangFuseObservation
-from overbae.services.connectors.langfuse.mapping import LANGFUSE
-from overbae.services.connectors.mapping import observations_to_span_dicts
-from overbae.tasks.connector_sync import _upsert_spans
 
 pytestmark = pytest.mark.django_db
 
@@ -60,32 +57,22 @@ def test_disconnect_hard_deletes_unfinished_draft():
     assert not ConnectorCredential.objects.filter(pk=pk).exists()
 
 
-def test_reconnect_same_key_reactivates_and_dedupes_spans():
+def test_reconnect_same_key_reactivates_and_imports_no_duplicate_spans(fake_llm, slept):
+    langfuse = LangfuseAPI(host="https://cloud.langfuse.com")
+    langfuse.record(*support_desk_trace(timezone.now() - timedelta(hours=1)))
+    fake_llm.network.vendors.append(langfuse)
     project = make_project()
     cred = _cred(project)
     _finish_setup(cred)
-
-    obs = [
-        LangFuseObservation(
-            id="obs-reconnect",
-            trace_id="t-reconnect",
-            parent_observation_id=None,
-            type="SPAN",
-            name="root",
-            start_time="2026-01-01T00:00:00Z",
-            end_time=None,
-            is_root_observation=True,
-        )
-    ]
-    spans = observations_to_span_dicts(obs, credential=cred, conventions=LANGFUSE)
-    assert _upsert_spans(project, spans, credential=cred) == 1
+    sync_until_live(cred)
+    imported = Span.objects.filter(project=project).count()
+    assert imported
 
     ConnectorCredentialViewSet().perform_destroy(cred)
     cred.refresh_from_db()
     assert cred.is_active is False
 
-    ser = ConnectorCredentialSerializer()
-    reactivated = ser.create(
+    reactivated = ConnectorCredentialSerializer().create(
         {
             "project": project,
             "name": "LF",
@@ -100,10 +87,9 @@ def test_reconnect_same_key_reactivates_and_dedupes_spans():
     assert reactivated.is_active is True
     assert reactivated.api_secret == "sk-new"
 
-    again = observations_to_span_dicts(obs, credential=reactivated, conventions=LANGFUSE)
-    assert again[0]["span_id"] == spans[0]["span_id"]
-    assert _upsert_spans(project, again, credential=reactivated) == 0
-    assert Span.objects.filter(project=project).count() == 1
+    ConnectorCredential.objects.filter(pk=cred.pk).update(sync_cursor={})
+    sync_until_live(reactivated)
+    assert Span.objects.filter(project=project).count() == imported
 
 
 def test_reconnect_via_serializer_is_valid_despite_inactive_name_collision():

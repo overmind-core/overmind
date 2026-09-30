@@ -45,7 +45,6 @@ LANGSMITH_CAPABILITIES = Capabilities(
     needs_secret=False,
 )
 
-_DEFAULT_LOOKBACK_DAYS = 30
 _LIVE_LOOKBACK_DAYS = 6
 _SAMPLE_TRACE_LIMIT = 100
 
@@ -62,17 +61,12 @@ def _parse_iso(value: Any) -> datetime | None:
 
 
 def _backfill_bounds(config: Any) -> tuple[datetime | None, datetime | None, timedelta | None]:
-    if config and (hasattr(config, "backfill_from") or hasattr(config, "backfill_to")):
-        return (
-            _parse_iso(getattr(config, "backfill_from", None)),
-            _parse_iso(getattr(config, "backfill_to", None)),
-            None,
-        )
-    try:
-        lookback_days = int(getattr(config, "lookback_days", None) or _DEFAULT_LOOKBACK_DAYS)
-    except (TypeError, ValueError):
-        lookback_days = _DEFAULT_LOOKBACK_DAYS
-    return None, None, timedelta(days=lookback_days)
+    lookback_days = getattr(config, "lookback_days", None)
+    return (
+        _parse_iso(getattr(config, "backfill_from", None)),
+        _parse_iso(getattr(config, "backfill_to", None)),
+        timedelta(days=int(lookback_days)) if lookback_days else None,
+    )
 
 
 class LangSmithAdapter:
