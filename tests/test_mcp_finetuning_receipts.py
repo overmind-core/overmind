@@ -11,7 +11,6 @@ from overbae.models import (
     DeployedModel,
     FinetuningJob,
 )
-from overbae.services.finetuning_validator import ValidationResult
 from overbae.services.mcp.catalog import CATALOG
 from overbae.services.mcp.context import MCPContext
 
@@ -24,22 +23,9 @@ def _call(name: str, arguments: dict, context: MCPContext):
 
 @pytest.mark.parametrize("judge_model", ["", "gpt-5.6-luna"])
 def test_start_finetune_job_receipt_has_kind_and_preserves_reference(monkeypatch, judge_model):
-    from overbae.services.mcp import tools_finetuning
 
     context = mcp_context(["read", "write"])
     capability, train, _evaluation, _eval_set = training_setup(context)
-    monkeypatch.setattr(
-        tools_finetuning,
-        "validate_dataset",
-        lambda *_args, **_kwargs: ValidationResult(True, "conversational", 1),
-    )
-    monkeypatch.setattr(
-        tools_finetuning,
-        "stamp_hyperparameters_for_model",
-        lambda *_args: {"training_type": {"type": "Lora"}},
-    )
-    monkeypatch.setattr("overbae.api.credit_gate.require_credits", lambda _user: None)
-    monkeypatch.setattr("overbae.services.plan_limits.require_plan_quota", lambda *_args: None)
     monkeypatch.setattr(
         "overbae.tasks.finetuning.run_finetuning.apply_async",
         lambda **_kwargs: SimpleNamespace(id="celery-ft"),
@@ -90,7 +76,6 @@ def test_retry_deployment_returns_named_deployment_job_receipt(monkeypatch):
         model_id="ft-receipt",
         status=DeployedModel.Status.FAILED,
     )
-    monkeypatch.setattr("overbae.api.credit_gate.require_credits", lambda _user: None)
     monkeypatch.setattr(
         "overbae.tasks.model_deployment.register_finetuned_model.delay",
         lambda **_kwargs: None,

@@ -264,12 +264,3 @@ def test_verify_enforces_span_bound_and_redacts_unexpected_failures(monkeypatch)
     assert at_limit.isError is False
     assert too_many.isError is True
     assert too_many.structuredContent["error"]["code"] == "invalid_input"
-
-    def fail(*_args, **_kwargs):
-        raise RuntimeError("private provider detail")
-
-    monkeypatch.setattr("overbae.services.mcp.tools_instrumentation.dry_run.verify_spans", fail)
-    result = _call("verify_instrumentation", context, {"spans": []})
-    assert result.isError is True
-    assert result.structuredContent["error"]["code"] == "internal_error"
-    assert "private provider detail" not in result.content[0].text

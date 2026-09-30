@@ -5,6 +5,7 @@ import json
 import uuid
 
 import pytest
+from conftest import frozen_dataset
 from mcp_fixtures import mcp_context
 
 from overbae.models import (
@@ -16,7 +17,6 @@ from overbae.models import (
 )
 from overbae.services.datasets import land, paths, store
 from overbae.services.datasets.notebook import agent, engines
-from overbae.services.mcp import tools_datasets
 from overbae.services.mcp.catalog import CATALOG
 from overbae.services.mcp.context import MCPContext
 
@@ -199,7 +199,7 @@ def test_requested_generation_is_active_and_queryable_without_an_mcp_approval_st
     assert not queried.isError and queried.structuredContent["rows"] == [{"n": 2}]
 
 
-def test_inspect_is_bounded_ordered_and_refuses_an_ambiguous_name(monkeypatch):
+def test_inspect_is_bounded_ordered_and_refuses_an_ambiguous_name():
     context = mcp_context(("read", "write"))
     dataset = _dataset(
         context,
@@ -220,8 +220,6 @@ def test_inspect_is_bounded_ordered_and_refuses_an_ambiguous_name(monkeypatch):
         state=Cell.State.PROPOSED,
         script="return df",
     )
-    monkeypatch.setattr("pathlib.Path.exists", lambda _path: False)
-
     result = _call("inspect_dataset", {"dataset": str(dataset.id), "chat_limit": 30}, context)
     by_name = _call("inspect_dataset", {"dataset": dataset.name}, context)
 
@@ -269,19 +267,14 @@ def test_inspect_next_action_follows_dataset_state(state: str, tool: str):
     assert "/private/tmp" not in json.dumps(result.structuredContent)
 
 
-def test_query_is_project_and_cell_scoped_read_only_and_capped(monkeypatch):
+def test_query_is_project_and_cell_scoped_read_only_and_capped():
     context = mcp_context(("read", "write"))
-    dataset = _dataset(context)
-    cell = _ran_cell(dataset)
+    dataset = frozen_dataset(
+        context.project, [{"input": str(n), "expected_output": "x"} for n in range(150)]
+    )
+    cell = dataset.active_cell
     foreign_dataset = _dataset(context, "Foreign dataset")
     foreign_cell = _ran_cell(foreign_dataset)
-    calls = []
-
-    def query(sql, *, limit, **tables):
-        calls.append((sql, limit, tables))
-        return {"columns": ["input"], "rows": [{"input": str(n)} for n in range(limit)]}
-
-    monkeypatch.setattr(tools_datasets.store, "query", query)
     ok = _call(
         "query_dataset",
         {"dataset": str(dataset.id), "cell": str(cell.id), "sql": "select input from t"},
@@ -302,7 +295,6 @@ def test_query_is_project_and_cell_scoped_read_only_and_capped(monkeypatch):
     assert len(ok.structuredContent["rows"]) == 100
     assert ok.structuredContent["columns"] == ["input"]
     assert ok.structuredContent["truncated"] is True
-    assert calls[0][1] == 101
     assert foreign.structuredContent["error"]["code"] == "cell_not_found"
     assert write.structuredContent["error"]["code"] == "query_invalid"
 
@@ -374,23 +366,10 @@ def test_trace_creation_respects_the_capability_choice(split, choice):
         assert dataset.capability_rank[0]["capability_id"] == str(matched.id)
 
 
-def test_trace_creation_returns_a_dataset_run_receipt(monkeypatch):
+def test_trace_creation_returns_a_dataset_run_receipt():
     context = mcp_context(("read", "write"))
     Capability.objects.create(project=context.project, name="Support", slug="support")
     _root_span(context.project, "b" * 32)
-    sources = []
-
-    def create_dataset(**kwargs):
-        sources.append(kwargs["source"])
-        return _dataset(
-            context,
-            kwargs["name"],
-            capability=kwargs.get("capability"),
-            intent=kwargs.get("intent") or Dataset.Intent.PENDING,
-            state=Dataset.State.LANDING,
-        )
-
-    monkeypatch.setattr(tools_datasets.dispatch, "create_dataset", create_dataset)
 
     traces = _call(
         "create_dataset_from_traces",
@@ -408,7 +387,9 @@ def test_trace_creation_returns_a_dataset_run_receipt(monkeypatch):
             link["uri"] for link in body["resource_links"]
         }
         assert body["traces"] == 1
-    assert sources == [{"traces": {"trace_ids": ["b" * 32]}}]
+    dataset = Dataset.objects.get(pk=traces.structuredContent["dataset"]["id"])
+    assert dataset.state == Dataset.State.IDLE, dataset.error
+    assert dataset.active_cell.rows == 1
 
 
 def test_message_agent_refuses_busy_then_queues_one_turn(monkeypatch):

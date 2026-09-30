@@ -18,7 +18,6 @@ from overbae.models import (
     OptimizerIteration,
 )
 from overbae.services.datasets import paths, store
-from overbae.services.mcp import tools_optimizer
 from overbae.services.mcp.catalog import CATALOG
 from overbae.services.mcp.context import MCPContext, bind_context
 from overbae.services.mcp.contracts.optimizer import InspectOptimizerResultOutput
@@ -90,25 +89,9 @@ def test_readiness_reports_wrong_dataset_intent_and_executioner_state():
     assert output["executioner"]["connected"] is False
 
 
-def test_start_calls_shared_create_service_and_returns_cli_next_step(monkeypatch):
+def test_start_calls_shared_create_service_and_returns_cli_next_step():
     context = mcp_context(permission=["read", "write"])
     capability, dataset, eval_set = _ready_objects(context)
-    called = {}
-
-    def fake_create(**kwargs):
-        called.update(kwargs)
-        return OptimizerExperiment.objects.create(
-            project=context.project,
-            capability=capability,
-            dataset=dataset,
-            cell=kwargs.get("cell") or dataset.active_cell,
-            eval_set=eval_set,
-            mode=kwargs["mode"],
-            model_ids=kwargs["model_ids"],
-            status=OptimizerExperiment.Status.SCHEDULED,
-        )
-
-    monkeypatch.setattr(tools_optimizer, "create_optimizer_experiment", fake_create)
     result = _call(
         "start_optimizer",
         {"capability": capability.slug, "dataset": str(dataset.id)},
@@ -117,8 +100,9 @@ def test_start_calls_shared_create_service_and_returns_cli_next_step(monkeypatch
 
     assert result.isError is False
     output = result.structuredContent
-    assert called["openrouter_key_source"] == OptimizerExperiment.OpenRouterKeySource.PLATFORM
-    assert called["capability"] == capability
+    experiment = OptimizerExperiment.objects.get(pk=output["experiment_id"])
+    assert experiment.openrouter_key_source == OptimizerExperiment.OpenRouterKeySource.PLATFORM
+    assert experiment.capability == capability
     assert output["job"]["id"] == output["experiment_id"]
     assert output["experiment"]["cell"]["id"] == str(dataset.active_cell.id)
     assert output["experiment"]["cell"]["rows"] == dataset.active_cell.rows
@@ -248,20 +232,6 @@ def test_readiness_and_start_use_explicit_eval_cell(monkeypatch):
     )
     extra.fingerprint = store.file_sha256(path)
     extra.save(update_fields=["fingerprint"])
-    called = {}
-
-    def fake_create(**kwargs):
-        called.update(kwargs)
-        return OptimizerExperiment.objects.create(
-            project=context.project,
-            capability=capability,
-            dataset=dataset,
-            cell=kwargs["cell"],
-            eval_set=eval_set,
-            status=OptimizerExperiment.Status.SCHEDULED,
-        )
-
-    monkeypatch.setattr(tools_optimizer, "create_optimizer_experiment", fake_create)
     result = _call(
         "start_optimizer",
         {
@@ -272,6 +242,7 @@ def test_readiness_and_start_use_explicit_eval_cell(monkeypatch):
         context,
     )
     assert result.isError is False, result.structuredContent
-    assert called["cell"].id == extra.id
+    experiment = OptimizerExperiment.objects.get(pk=result.structuredContent["experiment_id"])
+    assert experiment.cell_id == extra.id
     assert result.structuredContent["experiment"]["cell"]["id"] == str(extra.id)
     assert result.structuredContent["experiment"]["cell"]["rows"] == 11

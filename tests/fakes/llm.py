@@ -117,6 +117,7 @@ class FakeLLM:
     extra_models: list[str] = field(default_factory=list)
     catalog_models: list[str] | None = None
     prices: dict[str, dict[str, str]] = field(default_factory=dict)
+    limits: dict[str, int] = field(default_factory=dict)
 
     def catalog(self) -> list[dict[str, Any]]:
         from overbae.core.model_registry import OPENROUTER_MODEL_SLUGS
@@ -124,12 +125,12 @@ class FakeLLM:
         listed = (
             OPENROUTER_MODEL_SLUGS.values() if self.catalog_models is None else self.catalog_models
         )
-        slugs = sorted(set(listed) | set(self.extra_models) | set(self.prices))
+        slugs = sorted(set(listed) | set(self.extra_models) | set(self.prices) | set(self.limits))
         return [
             {
                 "id": slug,
                 "name": slug,
-                "context_length": 128_000,
+                "context_length": self.limits.get(slug, 128_000),
                 "top_provider": {"max_completion_tokens": 16_384},
                 "supported_parameters": ["tools", "response_format", "structured_outputs"],
                 "pricing": self.prices.get(slug, {"prompt": "0.000001", "completion": "0.000002"}),

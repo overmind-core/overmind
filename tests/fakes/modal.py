@@ -126,6 +126,19 @@ class FakeFunction:
     def spawn(self) -> _Method:
         return _Method(self._spawn)
 
+    def _current_stats(self):
+        self.cloud.log.append(("stats", self.name, (), {}))
+        stats = self.cloud.worker_stats
+        if isinstance(stats, BaseException):
+            raise stats
+        if stats is None:
+            raise NotFoundError(f"{self.app}/{self.name} has no running pool.")
+        return SimpleNamespace(**stats)
+
+    @property
+    def get_current_stats(self) -> _Method:
+        return _Method(self._current_stats)
+
     def with_options(self, **options) -> FakeFunction:
         self.options.update(options)
         return self
@@ -145,6 +158,7 @@ class FakeModal:
     calls: dict[str, FakeCall] = field(default_factory=dict)
     log: list[tuple[str, str, tuple, dict]] = field(default_factory=list)
     cancelled: list[tuple[str, dict]] = field(default_factory=list)
+    worker_stats: dict[str, Any] | BaseException | None = None
     _lock: threading.Lock = field(default_factory=threading.Lock)
 
     def deploy(

@@ -67,9 +67,8 @@ def _dataset(context: MCPContext, name: str = "Eval") -> Dataset:
     return dataset
 
 
-def test_readiness_exposes_advisory_context_without_a_new_readiness_gate(monkeypatch):
-    from overbae.services.mcp import tools_evaluations
-
+def test_readiness_exposes_advisory_context_without_a_new_readiness_gate(fake_llm):
+    fake_llm.limits["openai/gpt-4.1"] = 1000
     context = mcp_context()
     dataset = _dataset(context)
     eval_set = EvalSet.objects.create(project=context.project, name="Context checks")
@@ -81,23 +80,6 @@ def test_readiness_exposes_advisory_context_without_a_new_readiness_gate(monkeyp
         applicable_roles=["generative"],
     )
     EvalSetMember.objects.create(eval_set=eval_set, evaluator=evaluator, role="generative")
-    warning = {
-        "role": "generation",
-        "label": "Candidate",
-        "model": "gpt-4.1",
-        "context_window": 1000,
-        "max_output_tokens": 5000,
-        "estimated_input_tokens": 2000,
-        "reserved_output_tokens": 5000,
-        "required_context": 7000,
-        "checked_rows": 2,
-        "affected_rows": 2,
-        "row_indices": [0, 1],
-        "estimated": True,
-        "status": "warning",
-        "message": "Context may be too small.",
-    }
-    monkeypatch.setattr(tools_evaluations, "check_context", lambda **kwargs: [warning])
     result = _call(
         "check_evaluation_readiness",
         {
@@ -109,17 +91,13 @@ def test_readiness_exposes_advisory_context_without_a_new_readiness_gate(monkeyp
         context,
     )
     assert not result.isError
-    assert result.structuredContent["context_checks"] == [
-        {
-            **warning,
-            "total_input_tokens": 0,
-            "configured_model": "",
-            "estimated_cost_usd": None,
-            "cost_basis": "",
-            "suggestions": [],
-            "suggestion_note": "",
-        }
-    ]
+    [check] = result.structuredContent["context_checks"]
+    assert check["role"] == "generation"
+    assert check["label"] == "Candidate"
+    assert check["context_window"] == 1000
+    assert check["status"] == "warning"
+    assert check["required_context"] > 1000
+    assert check["affected_rows"] == check["checked_rows"] == dataset.active_cell.rows
     assert result.structuredContent["ready"] is True
 
 
@@ -253,7 +231,6 @@ def test_run_uses_existing_serializer_and_task(monkeypatch):
         config={"check": "exact_match"},
     )
     calls: dict[str, object] = {}
-    monkeypatch.setattr("overbae.api.credit_gate.require_credits", lambda _user: None)
     monkeypatch.setattr(
         "overbae.tasks.eval.run_eval_run.apply_async",
         lambda **kwargs: calls.update(kwargs=kwargs) or SimpleNamespace(id="celery-eval"),
@@ -293,7 +270,6 @@ def test_run_judge_override_is_frozen_readable_and_project_scoped(monkeypatch, s
         judge_model="gpt-4.1",
         checklist=[{"id": "correct", "q": "Is the answer correct?"}],
     )
-    monkeypatch.setattr("overbae.api.credit_gate.require_credits", lambda _user: None)
     monkeypatch.setattr(
         "overbae.tasks.eval.run_eval_run.apply_async", lambda **kwargs: SimpleNamespace(id="test")
     )
@@ -458,7 +434,6 @@ def test_run_rejects_nonfitting_eval_cell_and_records_explicit_cell(monkeypatch)
         kind=Evaluator.Kind.DETERMINISTIC,
         config={"check": "exact_match"},
     )
-    monkeypatch.setattr("overbae.api.credit_gate.require_credits", lambda _user: None)
     monkeypatch.setattr(
         "overbae.tasks.eval.run_eval_run.apply_async",
         lambda **_kwargs: SimpleNamespace(id="celery-eval"),

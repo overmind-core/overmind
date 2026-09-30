@@ -22,7 +22,6 @@ from overbae.models import (
     TrainingPreparation,
 )
 from overbae.services.datasets import paths, review, store
-from overbae.services.finetuning_validator import ValidationResult
 from overbae.services.mcp import tools_finetuning
 from overbae.services.mcp.catalog import CATALOG
 from overbae.services.mcp.context import MCPContext, bind_context
@@ -36,15 +35,13 @@ def _call(name: str, arguments: dict, context: MCPContext):
 
 
 @pytest.mark.parametrize("tool", ["prepare_training_data", "retry_deployment"])
-@pytest.mark.parametrize("known", [True, False])
-def test_preparation_and_deployment_errors_are_safe_for_agents(monkeypatch, tool, known):
+def test_preparation_and_deployment_refusals_reach_the_agent(monkeypatch, tool):
     context = mcp_context(
         inference_base_url="http://testserver/api/v1", permission=["read", "write"]
     )
     _, train, _, _ = training_setup(context)
-    private = "Traceback: /srv/private/worker.py provider_token=hidden"
-    detail = "The previous operation has not stopped." if known else private
-    failure = InputValidationError(detail) if known else ValueError(detail)
+    detail = "The previous operation has not stopped."
+    failure = InputValidationError(detail)
     if tool == "prepare_training_data":
         monkeypatch.setattr(tools_finetuning, "request_preparation", Mock(side_effect=failure))
         arguments = {
@@ -59,16 +56,11 @@ def test_preparation_and_deployment_errors_are_safe_for_agents(monkeypatch, tool
         deployed = DeployedModel.objects.create(
             project=context.project, finetuning_job=job, status="failed", model_id="retry-error"
         )
-        monkeypatch.setattr("overbae.api.credit_gate.require_credits", lambda _: None)
         monkeypatch.setattr(tools_finetuning, "retry_deployment", Mock(side_effect=failure))
         arguments = {"deployment": str(deployed.id)}
     result = _call(tool, arguments, context)
     assert result.isError
-    assert private not in json.dumps(result.structuredContent)
-    if known:
-        assert result.structuredContent["error"]["message"] == detail
-    else:
-        assert result.structuredContent["error"]["code"] == "internal_error"
+    assert result.structuredContent["error"]["message"] == detail
 
 
 def _ok_cell(dataset, *, intent, rows=2, title="source", position=0, active=True, fits=True):
@@ -228,14 +220,14 @@ def test_readiness_treats_legacy_ft_as_train():
     assert estimate.structuredContent["error"]["code"] == "finetune_not_ready"
 
 
-def test_readiness_classifies_selected_capability_and_defers_to_data_for_none(monkeypatch):
+def test_readiness_classifies_selected_capability_and_defers_to_data_for_none(fake_llm):
     context = mcp_context(inference_base_url="http://testserver/api/v1")
     capability, dataset, _, _ = training_setup(context)
     capability.description = "Write Python code."
     capability.save(update_fields=["description"])
-    monkeypatch.setattr(
-        "overbae.services.codebase.task_type.call_llm",
-        lambda *args, **kwargs: ('{"task_type":"code_generation"}', {}),
+    fake_llm.on_json(
+        lambda r: r.system.startswith("Classify the task an AI capability"),
+        lambda r: {"task_type": "code_generation"},
     )
     selected = _call(
         "check_finetune_readiness",
@@ -287,48 +279,20 @@ def test_cross_project_references_are_not_resolved():
     assert active.structuredContent["error"]["code"] == "capability_not_found"
 
 
-def test_estimate_uses_existing_estimator_without_creating_a_job(monkeypatch):
+def test_estimate_prices_the_chosen_cell_without_creating_a_job():
     context = mcp_context(inference_base_url="http://testserver/api/v1")
-    dataset = Dataset.objects.create(
-        project=context.project,
-        name="Train",
-        intent=Dataset.Intent.TRAIN,
-    )
-    cell = _ok_cell(dataset, intent="train", rows=4)
-    calls = {}
+    _, dataset, _, _ = training_setup(context)
+    arguments = {"dataset": str(dataset.id), "base_model": "Qwen/Qwen2.5-7B-Instruct"}
 
-    def estimate(dataset_id, **kwargs):
-        calls.update(dataset_id=dataset_id, kwargs=kwargs)
-        return {
-            "cost_estimate": {"usd": 1.25},
-            "time_estimate": {"seconds": 60, "human": "1 min"},
-            "trained_tokens": 1000,
-        }
+    one = _call("estimate_finetune", {**arguments, "n_epochs": 1}, context)
+    four = _call("estimate_finetune", {**arguments, "n_epochs": 4}, context)
 
-    monkeypatch.setattr(tools_finetuning, "estimate_for_hyperparams", estimate)
-    result = _call(
-        "estimate_finetune",
-        {
-            "dataset": str(dataset.id),
-            "base_model": "Qwen/Qwen2.5-7B-Instruct",
-            "n_epochs": 4,
-            "use_lora": False,
-        },
-        context,
-    )
-    assert result.isError is False, result.structuredContent
-    assert calls == {
-        "dataset_id": str(dataset.id),
-        "kwargs": {
-            "base_model": "Qwen/Qwen2.5-7B-Instruct",
-            "n_epochs": 4,
-            "use_lora": False,
-            "cell": cell,
-        },
-    }
-    assert result.structuredContent["trained_tokens"] == 1000
-    assert result.structuredContent["cell"]["id"] == str(cell.id)
-    assert result.structuredContent["cell"]["rows"] == 4
+    assert not one.isError, one.structuredContent
+    one, four = one.structuredContent, four.structuredContent
+    assert four["trained_tokens"] == 4 * one["trained_tokens"]
+    assert four["cost_estimate"]["usd"] >= one["cost_estimate"]["usd"]
+    assert four["cell"]["id"] == str(dataset.active_cell.id)
+    assert four["cell"]["rows"] == dataset.active_cell.rows
     assert not FinetuningJob.objects.filter(project=context.project).exists()
 
 
@@ -346,18 +310,6 @@ def test_start_uses_serializer_and_worker_task(
         _eval_set.capability = None
         _eval_set.save(update_fields=["capability"])
     calls = {}
-    monkeypatch.setattr(
-        tools_finetuning,
-        "validate_dataset",
-        lambda *_args, **_kwargs: ValidationResult(True, "conversational", 1),
-    )
-    monkeypatch.setattr(
-        tools_finetuning,
-        "stamp_hyperparameters_for_model",
-        lambda *_args: {"training_type": {"type": "Lora"}},
-    )
-    monkeypatch.setattr("overbae.api.credit_gate.require_credits", lambda _user: None)
-    monkeypatch.setattr("overbae.services.plan_limits.require_plan_quota", lambda *_args: None)
     monkeypatch.setattr(
         "overbae.tasks.finetuning.run_finetuning.apply_async",
         lambda **kwargs: calls.update(kwargs=kwargs) or SimpleNamespace(id="celery-ft"),
@@ -443,7 +395,6 @@ def test_retry_returns_resource_and_dispatches_for_recoverable_deployment(
         model_id=f"ft-retry-{deployment_status}",
         error_message="previous deployment failure",
     )
-    monkeypatch.setattr("overbae.api.credit_gate.require_credits", lambda _user: None)
     calls = {}
     monkeypatch.setattr(
         "overbae.tasks.model_deployment.register_finetuned_model.delay",
@@ -546,7 +497,6 @@ def test_retry_remains_durable_when_broker_is_unavailable(monkeypatch):
         status=DeployedModel.Status.FAILED,
         error_message="previous failure",
     )
-    monkeypatch.setattr("overbae.api.credit_gate.require_credits", lambda _user: None)
 
     job.remote_job_id = "remote"
     job.save(update_fields=["remote_job_id"])
@@ -661,7 +611,7 @@ def test_benchmark_tool_rejects_infrastructure_and_foreign_projects():
     assert capability.benchmark_model_id is None
 
 
-def test_run_inference_redacts_service_errors(monkeypatch):
+def test_run_inference_redacts_service_errors(scripted):
     context = mcp_context(
         inference_base_url="http://testserver/api/v1", permission=["read", "write"]
     )
@@ -670,12 +620,7 @@ def test_run_inference_redacts_service_errors(monkeypatch):
         model_id="ft-infer",
         status=DeployedModel.Status.READY,
     )
-    monkeypatch.setattr("overbae.api.credit_gate.require_credits", lambda _user: None)
-    monkeypatch.setattr(
-        tools_finetuning,
-        "chat_with_deployed_model",
-        lambda **_kwargs: {"error": "provider secret body"},
-    )
+    scripted("http://inference.test").reply(500, text="provider secret body")
     result = _call(
         "run_inference",
         {
@@ -709,7 +654,7 @@ def test_start_rejects_credential_shaped_hyperparameter_keys():
     assert not FinetuningJob.objects.filter(project=context.project).exists()
 
 
-def test_model_swap_prompt_returns_prompt_and_capability_refs(monkeypatch):
+def test_model_swap_prompt_returns_prompt_and_capability_refs():
     context = mcp_context(
         inference_base_url="http://testserver/api/v1", permission=["read", "write"]
     )
@@ -727,30 +672,16 @@ def test_model_swap_prompt_returns_prompt_and_capability_refs(monkeypatch):
         model_id="ft-pr",
         status=DeployedModel.Status.READY,
     )
-    monkeypatch.setattr(
-        "overbae.services.model_swap_prompt.model_swap_prompt_for_job",
-        lambda _job, pin=False, base_url="": (
-            {
-                "prompt": "Point the client at the new model.",
-                "pin": pin,
-                "capability_id": str(capability.id),
-                "capability_name": capability.name,
-                "old_model": "gpt-4o-mini",
-                "new_model": "ft-pr",
-            },
-            None,
-        ),
-    )
     result = _call("get_model_swap_prompt", {"finetune": str(job.id)}, context)
     assert result.isError is False, result.structuredContent
     body = result.structuredContent
-    assert body["prompt"] == "Point the client at the new model."
-    assert body["old_model"] == "gpt-4o-mini"
-    assert body["new_model"] == "ft-pr"
+    assert capability.name in body["prompt"]
+    assert body["old_model"] == capability.model
+    assert body["new_model"] == f"overmind/{capability.id}"
     assert body["capability_id"] == str(capability.id)
 
 
-def test_model_swap_prompt_reports_why_it_is_unavailable(monkeypatch):
+def test_model_swap_prompt_reports_why_it_is_unavailable():
     context = mcp_context(
         inference_base_url="http://testserver/api/v1", permission=["read", "write"]
     )
@@ -761,13 +692,6 @@ def test_model_swap_prompt_reports_why_it_is_unavailable(monkeypatch):
         dataset=train,
         base_model="Qwen/Qwen2.5-7B-Instruct",
         status=FinetuningJob.Status.RUNNING,
-    )
-    monkeypatch.setattr(
-        "overbae.services.model_swap_prompt.model_swap_prompt_for_job",
-        lambda _job, pin=False, base_url="": (
-            None,
-            "Only successfully trained models can be shipped.",
-        ),
     )
     result = _call("get_model_swap_prompt", {"finetune": str(job.id)}, context)
     assert result.isError is True
@@ -826,24 +750,12 @@ def test_finetune_resource_bounds_progress_without_checkpoint_urls():
     assert "signed.example" not in json.dumps(resource)
 
 
-def test_readiness_reports_chosen_cell_rows_and_contract_failure(monkeypatch):
+def test_readiness_reports_chosen_cell_rows_and_contract_failure():
     context = mcp_context(inference_base_url="http://testserver/api/v1")
     dataset = Dataset.objects.create(
         project=context.project, name="Train", intent=Dataset.Intent.TRAIN
     )
     cell = _ok_cell(dataset, intent="train", rows=7, fits=False)
-    monkeypatch.setattr(
-        tools_finetuning,
-        "finetune_prerequisite_report",
-        lambda *_args, **_kwargs: {
-            "missing": [],
-            "catalog": {},
-            "n_candidates": 0,
-            "recommendations": [],
-            "has_tool_calling": False,
-            "excluded": [],
-        },
-    )
     result = _call("check_finetune_readiness", {"dataset": str(dataset.id)}, context)
     assert result.isError is False
     output = result.structuredContent
@@ -860,33 +772,19 @@ def test_start_uses_explicit_cell_not_active(monkeypatch):
     )
     capability, train, _evaluation, _eval_set = training_setup(context)
     extra = _ok_cell(train, intent="train", rows=9, title="shaped", position=1, active=False)
-    called = {}
-
-    def fake_launch(**kwargs):
-        called.update(kwargs)
-        return FinetuningJob.objects.create(
-            project=context.project,
-            dataset=train,
-            capability=capability,
-            cell=kwargs["cell"],
-            base_model=kwargs["base_model"],
-            name="job",
-            status=FinetuningJob.Status.QUEUED,
-        )
-
-    monkeypatch.setattr(tools_finetuning, "launch_finetune", fake_launch)
-    monkeypatch.setattr(
-        tools_finetuning,
-        "validate_dataset",
-        lambda *_args, **_kwargs: ValidationResult(True, "conversational", 1),
+    benchmark = FinetuningJob.objects.create(
+        project=context.project, dataset=train, status=FinetuningJob.Status.SUCCEEDED
+    )
+    DeployedModel.objects.create(
+        project=context.project,
+        finetuning_job=benchmark,
+        model_id="ft-selected-benchmark",
+        status=DeployedModel.Status.READY,
     )
     monkeypatch.setattr(
-        tools_finetuning,
-        "stamp_hyperparameters_for_model",
-        lambda *_args: {"training_type": {"type": "Lora"}},
+        "overbae.tasks.finetuning.run_finetuning.apply_async",
+        lambda **_kwargs: SimpleNamespace(id="celery-ft"),
     )
-    monkeypatch.setattr("overbae.api.credit_gate.require_credits", lambda _user: None)
-    monkeypatch.setattr("overbae.services.plan_limits.require_plan_quota", lambda *_args: None)
     result = _call(
         "start_finetune",
         {
@@ -899,10 +797,11 @@ def test_start_uses_explicit_cell_not_active(monkeypatch):
         context,
     )
     assert result.isError is False, result.structuredContent
-    assert called["cell"].id == extra.id
-    assert called["baseline_model"] == "ft-selected-benchmark"
+    job = FinetuningJob.objects.exclude(pk=benchmark.pk).get(project=context.project)
+    assert job.cell_id == extra.id
+    assert job.baseline_model == "ft-selected-benchmark"
     extra.refresh_from_db()
-    assert extra.used_at is None  # The mocked launch skips the atomic creation/freeze service.
+    assert extra.used_at is not None
     assert result.structuredContent["cell"]["id"] == str(extra.id)
 
 

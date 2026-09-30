@@ -84,6 +84,7 @@ class LangfuseAPI:
     requests: list[Call] = field(default_factory=list)
     page_size: int | None = None
     status: int = 200
+    outage: str = "fake outage"
 
     def record(self, trace_id: str, steps: list[Step]) -> None:
         self.traces[trace_id] = steps
@@ -137,7 +138,7 @@ class LangfuseAPI:
         parsed = urlparse(url)
         self.requests.append(Call(method, url, headers or {}, body))
         if self.status != 200:
-            return _json({"message": "fake outage"}, status=self.status)
+            return _json({"message": self.outage}, status=self.status)
         if parsed.path == "/api/public/projects":
             return _json({"data": [{"id": "lf-project", "name": "support-desk"}]})
         if parsed.path == "/api/public/v2/observations":
