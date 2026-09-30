@@ -124,6 +124,30 @@ def prepare_training(job, fake_modal):
     return preparation
 
 
+def reconcile_training(active_tasks: list[dict] | None = None) -> list[tuple[str, dict]]:
+    from unittest.mock import MagicMock, patch
+
+    from overbae.tasks.finetuning_reconciler import reconcile_finetuning_jobs
+
+    sent: list[tuple[str, dict]] = []
+    app = MagicMock()
+    app.control.inspect.return_value.active.return_value = {"w1": active_tasks or []}
+    app.control.inspect.return_value.reserved.return_value = {}
+    app.control.inspect.return_value.scheduled.return_value = {}
+
+    def _send(name, kwargs=None):
+        sent.append((name, kwargs or {}))
+        return MagicMock(id=str(uuid.uuid4()))
+
+    app.send_task.side_effect = _send
+    with (
+        patch("overbae.celery.get_celery_app", return_value=app),
+        patch("overbae.tasks.model_deployment.register_finetuned_model.delay"),
+    ):
+        reconcile_finetuning_jobs()
+    return sent
+
+
 def make_capability(
     project: Project, name: str = "A", *, with_set: bool = False, **fields: Any
 ) -> Capability:

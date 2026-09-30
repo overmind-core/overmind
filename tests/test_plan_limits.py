@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import uuid
-from unittest.mock import patch
 
 import pytest
 from conftest import TRAIN_ROWS, frozen_dataset
@@ -178,8 +177,7 @@ def test_finetuned_deploy_counts_toward_deploy_quota():
     assert usage_count(user, "deploy_jobs") == 1
 
 
-@patch("overbae.tasks.model_deployment.modal", create=True)
-def test_register_finetuned_skips_deploy_when_over_cap(_modal):
+def test_register_finetuned_skips_deploy_when_over_cap(fake_modal):
     user = make_user()
     project = make_project(member=user)
     dataset = frozen_dataset(project, TRAIN_ROWS, name="ds")
@@ -217,6 +215,7 @@ def test_register_finetuned_skips_deploy_when_over_cap(_modal):
     assert job.status == FinetuningJob.Status.SUCCEEDED
     assert "deploy limit" in job.error_message.lower()
     assert not DeployedModel.objects.filter(finetuning_job=job).exists()
+    assert fake_modal.log == []
 
 
 def test_subscription_payload_includes_usage():

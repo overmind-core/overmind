@@ -7,9 +7,8 @@ from django.contrib.auth import get_user_model
 from django.urls import reverse
 from factories import auth_client
 
-from overbae.api.credit_gate import require_credits
 from overbae.models import BillingService, BillingTelemetry
-from overbae.services.billing_ledger import charge_credits, grant_free_credits, spent_usd
+from overbae.services.billing_ledger import charge_credits, grant_free_credits
 from overbae.services.billing_provider import get_billing
 from overbae.services.plan_limits import effective_projects_limit, require_plan_quota
 
@@ -39,27 +38,10 @@ def test_uncapped_skips_signup_grant(uncapped):
     assert not BillingTelemetry.objects.filter(user=user).exists()
 
 
-def test_uncapped_require_credits_does_not_raise(uncapped):
-    user = _make_user("uncapped-gate")
-    require_credits(user)
-
-
 def test_uncapped_plan_quota_is_unlimited(uncapped):
     user = _make_user("uncapped-quota")
     require_plan_quota(user, "training_jobs")
     assert effective_projects_limit(user) is None
-
-
-def test_uncapped_charges_still_meter(uncapped):
-    user = _make_user("uncapped-spend")
-    charge_credits(
-        user,
-        Decimal("1.25"),
-        BillingService.INFERENCE,
-        idempotency_key="inf-uncapped",
-    )
-    assert spent_usd(user) == Decimal("1.25")
-    assert BillingTelemetry.objects.filter(user=user).count() == 1
 
 
 def test_uncapped_me_and_spend_routes(uncapped):

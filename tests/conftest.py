@@ -9,6 +9,7 @@ from fakes.clerk import ClerkAPI
 from fakes.http import ScriptedAPI
 from fakes.llm import FakeLLM, Network
 from fakes.modal import FakeModal, ServingBackend, SftBackend
+from fakes.stripe import StripeAPI
 
 collect_ignore = [] if os.environ.get("TEST_REDIS_URL") else ["journeys"]
 
@@ -66,6 +67,14 @@ def fake_llm():
         llm.network = network
         yield llm
     assert not network.refused, f"Unrouted outbound calls: {network.refused}"
+
+
+@pytest.fixture
+def stripe_api(settings, fake_llm) -> StripeAPI:
+    api = StripeAPI()
+    settings.STRIPE_WEBHOOK_SECRET = api.webhook_secret
+    fake_llm.network.vendors.append(api)
+    return api
 
 
 @pytest.fixture

@@ -9,7 +9,6 @@ from django.urls import reverse
 from factories import auth_client
 from rest_framework.test import APIClient
 
-from overbae.api.billing import renew_plan_from_invoice, sync_subscription_from_stripe
 from overbae.models import BillingService, BillingTelemetry, Subscription, SubscriptionStatus
 from overbae.services.billing_ledger import (
     FREE_CREDITS_USD,
@@ -26,6 +25,19 @@ pytestmark = pytest.mark.django_db
 User = get_user_model()
 
 
+def _deliver(stripe, event_type: str, obj: dict) -> None:
+    payload, signature = stripe.signed(
+        {"id": f"evt_{obj['id']}", "type": event_type, "data": {"object": obj}}
+    )
+    response = APIClient().post(
+        reverse("billing-webhook"),
+        data=payload,
+        content_type="application/json",
+        HTTP_STRIPE_SIGNATURE=signature,
+    )
+    assert response.status_code < 300, response.data
+
+
 def _invoice(
     *,
     invoice_id: str,
@@ -38,6 +50,7 @@ def _invoice(
 ) -> dict:
     return {
         "id": invoice_id,
+        "object": "invoice",
         "customer": customer,
         "subscription": subscription,
         "amount_paid": amount_paid,
@@ -68,7 +81,7 @@ def test_signup_grants_exactly_50_free_credits_once():
     assert balance_usd(user) == FREE_CREDITS_USD
 
 
-def test_renew_plan_from_invoice_activates_pro_and_grants_credits():
+def test_renew_plan_from_invoice_activates_pro_and_grants_credits(stripe_api):
     user = User.objects.create_user(
         email="pro-renew@example.com",
         password="x",
@@ -78,13 +91,15 @@ def test_renew_plan_from_invoice_activates_pro_and_grants_credits():
     )
     Subscription.objects.create(user=user, status=SubscriptionStatus.INCOMPLETE)
 
-    renew_plan_from_invoice(
+    _deliver(
+        stripe_api,
+        "invoice.paid",
         _invoice(
             invoice_id="in_first",
             amount_paid=12000,
             period_start=1861920000,
             period_end=1893456000,
-        )
+        ),
     )
 
     user.refresh_from_db()
@@ -106,7 +121,7 @@ def test_renew_plan_from_invoice_activates_pro_and_grants_credits():
     assert balance_usd(user) == Decimal("170")
 
 
-def test_renew_plan_extends_end_date_and_adds_credits_without_changing_start():
+def test_renew_plan_extends_end_date_and_adds_credits_without_changing_start(stripe_api):
     user = User.objects.create_user(
         email="pro-renew2@example.com",
         password="x",
@@ -116,7 +131,9 @@ def test_renew_plan_extends_end_date_and_adds_credits_without_changing_start():
     )
     Subscription.objects.create(user=user, status=SubscriptionStatus.INCOMPLETE)
 
-    renew_plan_from_invoice(
+    _deliver(
+        stripe_api,
+        "invoice.paid",
         _invoice(
             invoice_id="in_a",
             amount_paid=12000,
@@ -124,14 +141,16 @@ def test_renew_plan_extends_end_date_and_adds_credits_without_changing_start():
             period_end=1893456000,
             customer="cus_test2",
             subscription="sub_test2",
-        )
+        ),
     )
     sub = user.subscription
     sub.refresh_from_db()
     start = sub.start_date
     assert start == datetime(2029, 1, 1, tzinfo=UTC)
 
-    renew_plan_from_invoice(
+    _deliver(
+        stripe_api,
+        "invoice.paid",
         _invoice(
             invoice_id="in_b",
             amount_paid=12000,
@@ -139,7 +158,7 @@ def test_renew_plan_extends_end_date_and_adds_credits_without_changing_start():
             period_end=1924992000,
             customer="cus_test2",
             subscription="sub_test2",
-        )
+        ),
     )
 
     sub.refresh_from_db()
@@ -150,7 +169,7 @@ def test_renew_plan_extends_end_date_and_adds_credits_without_changing_start():
     assert balance_usd(user) == Decimal("290")
 
 
-def test_renew_plan_idempotent_on_same_invoice_id():
+def test_renew_plan_idempotent_on_same_invoice_id(stripe_api):
     user = User.objects.create_user(
         email="pro-idem@example.com",
         password="x",
@@ -168,8 +187,8 @@ def test_renew_plan_idempotent_on_same_invoice_id():
         subscription="sub_idem",
     )
 
-    renew_plan_from_invoice(payload)
-    renew_plan_from_invoice(payload)
+    _deliver(stripe_api, "invoice.paid", payload)
+    _deliver(stripe_api, "invoice.paid", payload)
 
     assert (
         BillingTelemetry.objects.filter(
@@ -256,146 +275,98 @@ def test_subscription_get_pro_user():
     assert r.data["credits_usd"] == "50.0000"
 
 
-def test_cancel_subscription_sets_flag(monkeypatch):
+@pytest.mark.parametrize(
+    ("endpoint", "before", "after"),
+    [("billing-cancel", False, True), ("billing-renew", True, False)],
+)
+def test_cancelling_and_resuming_change_the_stripe_subscription(
+    stripe_api, endpoint, before, after
+):
     user = User.objects.create_user(
-        email="pro-cancel@example.com",
-        password="x",
-        clerk_user_id="clerk_pro_cancel",
+        email=f"{endpoint}@example.com", password="x", clerk_user_id=f"clerk_{endpoint}"
     )
+    remote = stripe_api.subscription(cancel_at_period_end=before)
     Subscription.objects.create(
         user=user,
         status=SubscriptionStatus.ACTIVE,
-        stripe_subscription_id="sub_cancel",
-        cancel_at_period_end=False,
+        stripe_subscription_id=remote["id"],
+        cancel_at_period_end=before,
         end_date=datetime(2030, 1, 1, tzinfo=UTC),
     )
 
-    calls: list[tuple] = []
+    r = auth_client(user).post(reverse(endpoint))
 
-    def fake_modify(sub_id, **kwargs):
-        calls.append((sub_id, kwargs))
-        return {"id": sub_id, **kwargs}
+    assert r.status_code == 200
+    assert r.data["cancel_at_period_end"] is after
+    assert r.data["plan"] == "pro"
+    assert remote["cancel_at_period_end"] is after
+    user.subscription.refresh_from_db()
+    assert user.subscription.cancel_at_period_end is after
 
-    monkeypatch.setattr("overbae.api.billing._configure_stripe", lambda: True)
-    monkeypatch.setattr("overbae.api.billing.stripe.Subscription.modify", fake_modify)
+
+def test_a_stripe_outage_leaves_the_subscription_unchanged(stripe_api):
+    user = User.objects.create_user(
+        email="cancel-outage@example.com", password="x", clerk_user_id="clerk_cancel_outage"
+    )
+    remote = stripe_api.subscription()
+    Subscription.objects.create(
+        user=user, status=SubscriptionStatus.ACTIVE, stripe_subscription_id=remote["id"]
+    )
+    stripe_api.down = True
 
     r = auth_client(user).post(reverse("billing-cancel"))
-    assert r.status_code == 200
-    assert r.data["cancel_at_period_end"] is True
-    assert r.data["plan"] == "pro"
-    assert calls == [("sub_cancel", {"cancel_at_period_end": True})]
+
+    assert r.status_code >= 500
     user.subscription.refresh_from_db()
-    assert user.subscription.cancel_at_period_end is True
+    assert user.subscription.cancel_at_period_end is False
 
 
-def test_renew_subscription_clears_flag(monkeypatch):
+@pytest.mark.parametrize(
+    ("event_type", "remote", "status", "cancel_at_period_end", "projects_limit"),
+    [
+        ("customer.subscription.deleted", "canceled", SubscriptionStatus.CANCELED, False, 5),
+        ("customer.subscription.updated", "active", SubscriptionStatus.ACTIVE, True, None),
+    ],
+)
+def test_subscription_events_sync_the_plan(
+    stripe_api, event_type, remote, status, cancel_at_period_end, projects_limit
+):
     user = User.objects.create_user(
-        email="pro-resume@example.com",
+        email=f"sync-{remote}@example.com",
         password="x",
-        clerk_user_id="clerk_pro_resume",
-    )
-    Subscription.objects.create(
-        user=user,
-        status=SubscriptionStatus.ACTIVE,
-        stripe_subscription_id="sub_resume",
-        cancel_at_period_end=True,
-    )
-
-    calls: list[tuple] = []
-
-    def fake_modify(sub_id, **kwargs):
-        calls.append((sub_id, kwargs))
-        return {"id": sub_id, **kwargs}
-
-    monkeypatch.setattr("overbae.api.billing._configure_stripe", lambda: True)
-    monkeypatch.setattr("overbae.api.billing.stripe.Subscription.modify", fake_modify)
-
-    r = auth_client(user).post(reverse("billing-renew"))
-    assert r.status_code == 200
-    assert r.data["cancel_at_period_end"] is False
-    assert calls == [("sub_resume", {"cancel_at_period_end": False})]
-
-
-def test_sync_subscription_from_stripe_canceled():
-    user = User.objects.create_user(
-        email="pro-sync@example.com",
-        password="x",
-        clerk_user_id="clerk_pro_sync",
+        clerk_user_id=f"clerk_sync_{remote}",
         projects_limit=None,
     )
     Subscription.objects.create(
         user=user,
         status=SubscriptionStatus.ACTIVE,
         stripe_subscription_id="sub_sync",
-        cancel_at_period_end=True,
+        cancel_at_period_end=not cancel_at_period_end,
     )
 
-    sync_subscription_from_stripe(
+    _deliver(
+        stripe_api,
+        event_type,
         {
             "id": "sub_sync",
+            "object": "subscription",
             "customer": "cus_sync",
-            "status": "canceled",
-            "cancel_at_period_end": False,
+            "status": remote,
+            "cancel_at_period_end": cancel_at_period_end,
             "current_period_end": 1893456000,
-        }
+        },
     )
 
     user.refresh_from_db()
     sub = user.subscription
     sub.refresh_from_db()
-    assert sub.status == SubscriptionStatus.CANCELED
-    assert sub.cancel_at_period_end is False
-    assert user.projects_limit == 5
-    assert sub.payload.get("status") == "canceled"
-
-
-def test_renew_plan_from_stripe_sdk_object():
-    """Webhook payloads are StripeObjects (no ``.get``); handlers must accept them."""
-    from stripe._stripe_object import StripeObject
-
-    user = User.objects.create_user(
-        email="pro-sdk@example.com",
-        password="x",
-        clerk_user_id="clerk_pro_sdk",
-        projects_limit=5,
-        stripe_customer_id="cus_sdk",
-    )
-    Subscription.objects.create(user=user, status=SubscriptionStatus.INCOMPLETE)
-
-    invoice = StripeObject.construct_from(
-        {
-            "id": "in_sdk",
-            "customer": "cus_sdk",
-            "subscription": "sub_sdk",
-            "amount_paid": 12000,
-            "lines": {
-                "data": [
-                    {
-                        "price": {"id": "price_sdk"},
-                        "period": {"start": 1861920000, "end": 1893456000},
-                    }
-                ]
-            },
-        },
-        key=None,
-    )
-    assert not hasattr(invoice, "get") or not callable(getattr(type(invoice), "get", None))
-
-    renew_plan_from_invoice(invoice)
-
-    user.refresh_from_db()
-    sub = user.subscription
-    assert user.projects_limit is None
-    assert sub.status == SubscriptionStatus.ACTIVE
-    assert sub.stripe_subscription_id == "sub_sdk"
-    assert balance_usd(user) == Decimal("170")
+    assert sub.status == status
+    assert sub.cancel_at_period_end is cancel_at_period_end
     assert sub.end_date == datetime(2030, 1, 1, tzinfo=UTC)
+    assert user.projects_limit == projects_limit
 
 
-def test_renew_plan_from_invoice_parent_subscription_details():
-    """Newer Stripe invoices nest subscription under parent.subscription_details."""
-    from stripe._stripe_object import StripeObject
-
+def test_a_newer_invoice_names_its_subscription_under_parent_details(stripe_api):
     user = User.objects.create_user(
         email="pro-parent@example.com",
         password="x",
@@ -405,9 +376,12 @@ def test_renew_plan_from_invoice_parent_subscription_details():
     )
     Subscription.objects.create(user=user, status=SubscriptionStatus.INCOMPLETE)
 
-    invoice = StripeObject.construct_from(
+    _deliver(
+        stripe_api,
+        "invoice.paid",
         {
             "id": "in_parent",
+            "object": "invoice",
             "customer": "cus_parent",
             "subscription": None,
             "amount_paid": 5000,
@@ -421,50 +395,12 @@ def test_renew_plan_from_invoice_parent_subscription_details():
                 ]
             },
         },
-        key=None,
     )
-
-    renew_plan_from_invoice(invoice)
 
     sub = user.subscription
     sub.refresh_from_db()
     assert sub.stripe_subscription_id == "sub_parent"
-    # $50 free + $50 invoice
     assert balance_usd(user) == Decimal("100")
-
-
-def test_sync_subscription_from_stripe_sdk_object():
-    from stripe._stripe_object import StripeObject
-
-    user = User.objects.create_user(
-        email="pro-sync-sdk@example.com",
-        password="x",
-        clerk_user_id="clerk_pro_sync_sdk",
-        projects_limit=None,
-    )
-    Subscription.objects.create(
-        user=user,
-        status=SubscriptionStatus.ACTIVE,
-        stripe_subscription_id="sub_sync_sdk",
-        cancel_at_period_end=False,
-    )
-
-    stripe_sub = StripeObject.construct_from(
-        {
-            "id": "sub_sync_sdk",
-            "customer": "cus_sync_sdk",
-            "status": "active",
-            "cancel_at_period_end": True,
-            "current_period_end": 1893456000,
-        },
-        key=None,
-    )
-    sync_subscription_from_stripe(stripe_sub)
-
-    sub = user.subscription
-    sub.refresh_from_db()
-    assert sub.cancel_at_period_end is True
-    assert sub.end_date == datetime(2030, 1, 1, tzinfo=UTC)
 
 
 def test_webhook_bad_signature_no_ledger_write(settings):

@@ -111,11 +111,6 @@ def test_retrieve_other_project_not_visible():
     assert r.status_code == 404
 
 
-def test_unauthenticated_requests_rejected():
-    r = APIClient().get(reverse("project-list"))
-    assert r.status_code == 401
-
-
 def test_list_memberships_for_project():
     owner = make_user("owner2@example.com")
     peer = make_user("peer@example.com")

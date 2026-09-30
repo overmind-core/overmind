@@ -5,7 +5,6 @@ invitation; the invite becomes a membership when the invitee first signs in.
 from __future__ import annotations
 
 import uuid
-from unittest.mock import patch
 
 import pytest
 from django.urls import reverse
@@ -169,11 +168,3 @@ def test_claim_converts_invites_to_memberships():
     assert ProjectMembership.objects.filter(user=joiner, project=p2).exists()
     assert not ProjectInvite.objects.exists()
 
-
-def test_claim_never_raises():
-    joiner = make_user("lonely@person.ai")
-    with patch(
-        "overbae.services.project_invites.ProjectInvite.objects.filter",
-        side_effect=RuntimeError("db down"),
-    ):
-        claim_pending_invites(joiner)

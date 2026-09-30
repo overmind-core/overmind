@@ -8,15 +8,16 @@ from __future__ import annotations
 
 import uuid
 from datetime import timedelta
-from unittest.mock import MagicMock, patch
 
 import pytest
 from django.utils import timezone
+from factories import reconcile_training
 
 from overbae.models.finetuning import FinetuningJob
-from overbae.tasks.finetuning_reconciler import _RUN_TASK, _reconcile
 
 pytestmark = pytest.mark.django_db
+
+_RUN_TASK = "overbae.tasks.finetuning.run_finetuning"
 
 
 def test_inflight_function_call_beats_stale_volume_failed():
@@ -74,30 +75,10 @@ def _cancelled(fake_modal) -> bool:
     )
 
 
-def _run_reconcile(active_tasks: list[dict] | None = None) -> list[tuple[str, dict]]:
-    sent: list[tuple[str, dict]] = []
-    app = MagicMock()
-    app.control.inspect.return_value.active.return_value = {"w1": active_tasks or []}
-    app.control.inspect.return_value.reserved.return_value = {}
-    app.control.inspect.return_value.scheduled.return_value = {}
-
-    def _send(name, kwargs=None):
-        sent.append((name, kwargs or {}))
-        return MagicMock(id=str(uuid.uuid4()))
-
-    app.send_task.side_effect = _send
-    with (
-        patch("overbae.celery.get_celery_app", return_value=app),
-        patch("overbae.tasks.model_deployment.register_finetuned_model.delay"),
-    ):
-        _reconcile()
-    return sent
-
-
 def test_running_job_past_four_hours_stays_running_while_remote_alive(remote, fake_modal):
     job = _job()
     remote()
-    sent = _run_reconcile()
+    sent = reconcile_training()
 
     job.refresh_from_db()
     assert job.status == FinetuningJob.Status.RUNNING
@@ -109,7 +90,7 @@ def test_running_job_past_four_hours_stays_running_while_remote_alive(remote, fa
 def test_running_job_is_observed_not_requeued(remote, fake_modal):
     job = _job(started_at=timezone.now())
     remote()
-    sent = _run_reconcile()
+    sent = reconcile_training()
     assert all(k.get("job_id") != str(job.id) for _, k in sent)
     assert _polls(fake_modal) == 1
 
@@ -117,10 +98,10 @@ def test_running_job_is_observed_not_requeued(remote, fake_modal):
 def test_succeeded_poll_finalizes_once(remote):
     job = _job(started_at=timezone.now())
     remote(meta="succeeded", call="done")
-    _run_reconcile()
+    reconcile_training()
     job.refresh_from_db()
     assert job.status == FinetuningJob.Status.DEPLOYING
-    _run_reconcile()
+    reconcile_training()
     job.refresh_from_db()
     assert job.status == FinetuningJob.Status.DEPLOYING
     assert job.events.filter(message="Fine-tuning completed — deploying model").count() == 1
@@ -128,7 +109,7 @@ def test_succeeded_poll_finalizes_once(remote):
 
 def test_queued_without_remote_still_enqueues_submit(remote, fake_modal):
     job = _job(status=FinetuningJob.Status.QUEUED, remote_job_id="", started_at=None)
-    sent = _run_reconcile()
+    sent = reconcile_training()
     mine = [(n, k) for n, k in sent if k.get("job_id") == str(job.id)]
     assert mine == [(_RUN_TASK, {"job_id": str(job.id)})]
     assert _polls(fake_modal) == 0
@@ -137,7 +118,7 @@ def test_queued_without_remote_still_enqueues_submit(remote, fake_modal):
 def test_preparing_with_remote_id_is_observed(remote, fake_modal):
     job = _job(status=FinetuningJob.Status.PREPARING, started_at=None)
     remote()
-    sent = _run_reconcile()
+    sent = reconcile_training()
     assert all(n != _RUN_TASK for n, _ in sent)
     assert _polls(fake_modal) == 1
     job.refresh_from_db()
@@ -159,7 +140,7 @@ def test_run_finetuning_does_not_poll_after_submit(remote, fake_modal):
 def test_queued_with_remote_is_observed_not_resubmitted(remote, fake_modal):
     _job(status=FinetuningJob.Status.QUEUED)
     remote()
-    sent = _run_reconcile()
+    sent = reconcile_training()
     assert all(n != _RUN_TASK for n, _ in sent)
     assert _polls(fake_modal) == 1
     assert fake_modal.spawns() == []
@@ -172,7 +153,7 @@ def test_preparing_without_remote_is_not_double_submitted(remote, fake_modal):
         celery_task_id="submit-in-flight",
         started_at=None,
     )
-    sent = _run_reconcile(active_tasks=[])
+    sent = reconcile_training(active_tasks=[])
     assert all(k.get("job_id") != str(job.id) for _, k in sent)
     assert _polls(fake_modal) == 0
 
@@ -180,7 +161,7 @@ def test_preparing_without_remote_is_not_double_submitted(remote, fake_modal):
 def test_a_failed_call_with_final_weights_still_deploys(remote, fake_modal):
     job = _job()
     remote(meta="failed", call="failed", error=RuntimeError("OutputExpired"), final=True)
-    _run_reconcile()
+    reconcile_training()
     job.refresh_from_db()
     assert job.status == FinetuningJob.Status.DEPLOYING
     assert job.output_model_name
@@ -190,7 +171,7 @@ def test_a_failed_call_with_final_weights_still_deploys(remote, fake_modal):
 def test_a_failed_call_without_weights_fails_and_cancels_the_remote(remote, fake_modal):
     job = _job()
     remote(meta="failed", call="failed", error=RuntimeError("train.py exited 1"))
-    _run_reconcile()
+    reconcile_training()
     job.refresh_from_db()
     assert job.status == FinetuningJob.Status.FAILED
     assert _cancelled(fake_modal)
@@ -199,13 +180,13 @@ def test_a_failed_call_without_weights_fails_and_cancels_the_remote(remote, fake
 def test_progress_that_stops_moving_for_half_an_hour_fails_and_cancels(remote, fake_modal):
     job = _job()
     remote(steps=5)
-    _run_reconcile()
+    reconcile_training()
     job.refresh_from_db()
     assert job.status == FinetuningJob.Status.RUNNING
     job.progress["observe"]["last_move_at"] = (timezone.now() - timedelta(minutes=31)).isoformat()
     job.save(update_fields=["progress"])
 
-    _run_reconcile()
+    reconcile_training()
     job.refresh_from_db()
     assert job.status == FinetuningJob.Status.FAILED
     assert _cancelled(fake_modal)
@@ -221,7 +202,7 @@ def test_poll_errors_fail_after_budget(remote, fake_modal):
         raise RuntimeError("revoked key")
 
     fake_modal.deploy("overmind-sft", "get_progress", revoked)
-    _run_reconcile()
+    reconcile_training()
     job.refresh_from_db()
     assert job.status == FinetuningJob.Status.FAILED
     assert _cancelled(fake_modal)
@@ -229,5 +210,5 @@ def test_poll_errors_fail_after_budget(remote, fake_modal):
 
 def test_a_deploying_job_is_not_resubmitted(remote):
     job = _job(status=FinetuningJob.Status.DEPLOYING)
-    sent = _run_reconcile()
+    sent = reconcile_training()
     assert [(n, k) for n, k in sent if k.get("job_id") == str(job.id)] == []
