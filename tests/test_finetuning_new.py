@@ -60,13 +60,10 @@ def _dataset_with_messages(
         capability.project,
         [
             {
-                "input": {
-                    "messages": [
-                        {"role": "user", "content": f"{prefix} {i}"},
-                        {"role": "assistant", "content": f"Answer {i}"},
-                    ]
-                },
-                "expected_output": None,
+                "messages": [
+                    {"role": "user", "content": f"{prefix} {i}"},
+                    {"role": "assistant", "content": f"Answer {i}"},
+                ]
             }
             for i in range(n)
         ],
@@ -223,25 +220,22 @@ class TestValidatorDB:
             a.project,
             [
                 {
-                    "input": {
-                        "messages": [
-                            {"role": "user", "content": "go"},
-                            {
-                                "role": "assistant",
-                                "content": None,
-                                "tool_calls": [
-                                    {
-                                        "id": "call_real",
-                                        "type": "function",
-                                        "function": {"name": "fn", "arguments": "{}"},
-                                    }
-                                ],
-                            },
-                            {"role": "tool", "tool_call_id": "call_bad", "content": "{}"},
-                            {"role": "assistant", "content": "done"},
-                        ]
-                    },
-                    "expected_output": None,
+                    "messages": [
+                        {"role": "user", "content": "go"},
+                        {
+                            "role": "assistant",
+                            "content": None,
+                            "tool_calls": [
+                                {
+                                    "id": "call_real",
+                                    "type": "function",
+                                    "function": {"name": "fn", "arguments": "{}"},
+                                }
+                            ],
+                        },
+                        {"role": "tool", "tool_call_id": "call_bad", "content": "{}"},
+                        {"role": "assistant", "content": "done"},
+                    ]
                 }
                 for i in range(12)
             ],

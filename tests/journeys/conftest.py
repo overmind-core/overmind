@@ -1,10 +1,8 @@
 from __future__ import annotations
 
-import ipaddress
 import json
 import os
 import re
-import socket
 import sys
 import time
 from datetime import UTC, datetime
@@ -21,8 +19,6 @@ from factories import make_user  # noqa: E402
 import overmind  # noqa: E402
 from overbae.models import APIToken  # noqa: E402
 
-from .fakes.llm import FakeLLM, Network  # noqa: E402
-from .fakes.modal import FakeModal, ServingBackend, SftBackend  # noqa: E402
 from .stack import LiveAPI, celery_worker, drain  # noqa: E402
 from .surfaces import CliSurface, McpSurface, RestSurface, SampleAgent  # noqa: E402
 
@@ -46,25 +42,12 @@ def _inline_dataset_tasks():
 
 
 @pytest.fixture(autouse=True)
-def _offline_model_resolution():
+def _rubric_compiler():
     yield
-
-
-@pytest.fixture(autouse=True)
-def _offline_rubric_compiler():
-    yield
-
-
-@pytest.fixture(autouse=True)
-def _clerk_offline(settings):
-    settings.CLERK_API_SECRET_KEY = ""
 
 
 @pytest.fixture(autouse=True)
 def _journey_db(transactional_db):
-    from django.core.cache import cache
-
-    cache.clear()
     yield
 
 
@@ -75,43 +58,6 @@ def _only_fake_providers(monkeypatch):
     for env in WORKSHOP_KEY_ENVS:
         monkeypatch.delenv(env, raising=False)
     monkeypatch.setenv("OPENROUTER_API_KEY", "sk-fake")
-
-
-def _loopback(address) -> bool:
-    if not isinstance(address, tuple):
-        return True
-    host = address[0]
-    if host == "localhost":
-        return True
-    try:
-        return ipaddress.ip_address(host).is_loopback
-    except ValueError:
-        return False
-
-
-@pytest.fixture(autouse=True)
-def _no_outside_sockets(monkeypatch):
-    connect = socket.socket.connect
-
-    def guarded(sock, address):
-        if not _loopback(address):
-            raise ConnectionRefusedError(f"Journeys may not reach {address}.")
-        return connect(sock, address)
-
-    monkeypatch.setattr(socket.socket, "connect", guarded)
-    for proxy in ("HTTP_PROXY", "HTTPS_PROXY", "http_proxy", "https_proxy"):
-        monkeypatch.setenv(proxy, "http://127.0.0.1:9")
-    monkeypatch.setenv("NO_PROXY", "127.0.0.1,localhost")
-    monkeypatch.setenv("no_proxy", "127.0.0.1,localhost")
-
-
-@pytest.fixture(autouse=True)
-def fake_llm():
-    llm = FakeLLM()
-    with Network(llm) as network:
-        llm.network = network
-        yield llm
-    assert not network.refused, f"Unrouted outbound calls: {network.refused}"
 
 
 @pytest.fixture(scope="session")
@@ -291,21 +237,6 @@ def workshop(cli, mcp_for, sample_agent, worker, fake_llm, rubric_judges):
     cli.scan(sample_agent)
     cli.sync(sample_agent)
     return mcp_for(cli.project_key(sample_agent))
-
-
-@pytest.fixture
-def fake_modal(monkeypatch) -> FakeModal:
-    return FakeModal().install(monkeypatch)
-
-
-@pytest.fixture
-def sft(fake_modal) -> SftBackend:
-    return SftBackend(fake_modal).install()
-
-
-@pytest.fixture
-def serving(fake_modal) -> ServingBackend:
-    return ServingBackend(fake_modal, url="http://inference.test").install()
 
 
 @pytest.fixture

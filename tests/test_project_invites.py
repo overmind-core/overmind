@@ -23,13 +23,10 @@ from overbae.services.project_invites import claim_pending_invites
 
 pytestmark = pytest.mark.django_db
 
-CREATE_CLERK = "overbae.services.project_invites.create_clerk_invitation"
-REVOKE_CLERK = "overbae.services.project_invites.revoke_clerk_invitation"
-
 
 @pytest.fixture(autouse=True)
-def _clerk_on(settings):
-    settings.CLERK_API_SECRET_KEY = "sk_test_clerk"
+def _clerk_on(clerk):
+    return clerk
 
 
 def _pro(user: User) -> User:
@@ -55,53 +52,49 @@ def _invites_url(project: Project) -> str:
     return reverse("project-invite-list", kwargs={"project_id": project.id})
 
 
-def test_invite_unknown_email_creates_row_and_clerk_invitation():
+def test_invite_unknown_email_creates_row_and_clerk_invitation(clerk):
     owner = _pro(make_user("lead@example.com"))
     project = _project_with(owner)
 
-    with patch(CREATE_CLERK, return_value="inv_clerk_1") as mock_create:
-        r = auth_client(owner).post(
-            _invites_url(project), {"email": "New@Person.ai"}, format="json"
-        )
+    r = auth_client(owner).post(_invites_url(project), {"email": "New@Person.ai"}, format="json")
 
     assert r.status_code == 201
-    mock_create.assert_called_once_with("new@person.ai")
+    [sent] = clerk.invitations.values()
+    assert sent["email_address"] == "new@person.ai"
     invite = ProjectInvite.objects.get(project=project)
     assert invite.email == "new@person.ai"
     assert invite.invited_by == owner
-    assert invite.clerk_invitation_id == "inv_clerk_1"
+    assert invite.clerk_invitation_id == sent["id"]
     assert r.data["email"] == "new@person.ai"
     assert r.data["invited_by_email"] == owner.email
 
 
-def test_invite_existing_user_email_is_rejected():
+def test_invite_existing_user_email_is_rejected(clerk):
     owner = _pro(make_user("lead@example.com"))
     make_user("known@example.com")
     project = _project_with(owner)
 
-    with patch(CREATE_CLERK) as mock_create:
-        r = auth_client(owner).post(
-            _invites_url(project), {"email": "known@example.com"}, format="json"
-        )
+    r = auth_client(owner).post(
+        _invites_url(project), {"email": "known@example.com"}, format="json"
+    )
 
     assert r.status_code == 400
     assert r.data["code"] == "user_exists"
-    mock_create.assert_not_called()
+    assert clerk.invitations == {}
     assert not ProjectInvite.objects.exists()
 
 
-def test_repeat_invite_is_idempotent():
+def test_repeat_invite_is_idempotent(clerk):
     owner = _pro(make_user("lead@example.com"))
     project = _project_with(owner)
     client = auth_client(owner)
 
-    with patch(CREATE_CLERK, return_value="inv_clerk_1") as mock_create:
-        first = client.post(_invites_url(project), {"email": "new@person.ai"}, format="json")
-        second = client.post(_invites_url(project), {"email": "new@person.ai"}, format="json")
+    first = client.post(_invites_url(project), {"email": "new@person.ai"}, format="json")
+    second = client.post(_invites_url(project), {"email": "new@person.ai"}, format="json")
 
     assert first.status_code == 201
     assert second.status_code == 201
-    assert mock_create.call_count == 1
+    assert len(clerk.invitations) == 1
     assert ProjectInvite.objects.filter(project=project).count() == 1
     assert second.data["id"] == first.data["id"]
 
@@ -120,34 +113,31 @@ def test_invite_list_requires_membership():
     assert r.status_code == 404
 
 
-def test_revoke_invite_deletes_row_and_revokes_clerk():
+def test_revoke_invite_deletes_row_and_revokes_clerk(clerk):
     owner = _pro(make_user("lead@example.com"))
     project = _project_with(owner)
+    sent = clerk.invite("new@person.ai")
     invite = ProjectInvite.objects.create(
-        project=project, email="new@person.ai", invited_by=owner, clerk_invitation_id="inv_clerk_1"
+        project=project, email="new@person.ai", invited_by=owner, clerk_invitation_id=sent["id"]
     )
 
-    with patch(REVOKE_CLERK) as mock_revoke:
-        r = auth_client(owner).delete(
-            reverse("project-invite-detail", kwargs={"project_id": project.id, "id": invite.id})
-        )
+    r = auth_client(owner).delete(
+        reverse("project-invite-detail", kwargs={"project_id": project.id, "id": invite.id})
+    )
 
     assert r.status_code == 204
-    mock_revoke.assert_called_once_with("inv_clerk_1")
+    assert sent["status"] == "revoked"
     assert not ProjectInvite.objects.exists()
 
 
-def test_free_actor_cannot_invite_past_seat_limit():
+def test_free_actor_cannot_invite_past_seat_limit(clerk):
     owner = make_user("free@example.com")
     project = _project_with(owner)
 
-    with patch(CREATE_CLERK) as mock_create:
-        r = auth_client(owner).post(
-            _invites_url(project), {"email": "new@person.ai"}, format="json"
-        )
+    r = auth_client(owner).post(_invites_url(project), {"email": "new@person.ai"}, format="json")
 
     assert r.status_code == 403
-    mock_create.assert_not_called()
+    assert clerk.invitations == {}
     assert not ProjectInvite.objects.exists()
 
 

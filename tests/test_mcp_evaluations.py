@@ -6,7 +6,6 @@ import uuid
 from types import SimpleNamespace
 
 import pytest
-from conftest import review_fixture
 from mcp.shared.exceptions import McpError
 from mcp_fixtures import mcp_context
 
@@ -55,7 +54,6 @@ def _ok_cell(dataset, *, intent="eval", rows=2, title="source", position=0, acti
     )
     cell.fingerprint = store.file_sha256(path)
     cell.save(update_fields=["fingerprint"])
-    review_fixture(dataset, cell)
     return cell
 
 

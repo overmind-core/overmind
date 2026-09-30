@@ -89,7 +89,8 @@ def job(monkeypatch):
 
 
 @pytest.mark.parametrize("choices", list(product([False, True], repeat=4)))
-def test_every_schedule_runs_only_selected_models_at_the_selected_time(job, choices):
+def test_every_schedule_runs_only_selected_models_at_the_selected_time(job, choices, fake_llm):
+    fake_llm.catalog_models = []
     for field, value in zip(FIELDS, choices, strict=True):
         setattr(job, field, value)
     job.save(update_fields=FIELDS)
@@ -315,8 +316,9 @@ def test_preprocessing_worker_failure_preserves_actionable_error_and_never_submi
 @pytest.mark.parametrize("existing_waiter", [False, True])
 @pytest.mark.parametrize("cancel_pending", [False, True])
 def test_unresolved_baseline_does_not_change_running_training(
-    job, monkeypatch, settings, existing_waiter, cancel_pending
+    job, monkeypatch, settings, existing_waiter, cancel_pending, fake_llm
 ):
+    fake_llm.catalog_models = []
     settings.FINETUNING_BACKEND = "modal"
     monkeypatch.setattr(
         "overbae.tasks.finetuning.for_job",
@@ -425,7 +427,8 @@ def test_starting_model_uses_openrouter_without_provisioning_inference(
     deploy.assert_not_called()
 
 
-def test_missing_openrouter_model_still_prepares_local_base(job, monkeypatch):
+def test_missing_openrouter_model_still_prepares_local_base(job, monkeypatch, fake_llm):
+    fake_llm.catalog_models = []
     job.provider = "modal"
     job.eval_model_before = True
     job.eval_incumbent_before = False

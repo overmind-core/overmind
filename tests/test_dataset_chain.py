@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import pytest
-from conftest import EVAL_ROWS, TRAIN_ROWS, review_fixture
+from conftest import EVAL_ROWS, TRAIN_ROWS
 from factories import make_project
 
 from overbae.models import Capability, Cell, Dataset, EvalRun, Project
@@ -207,7 +207,6 @@ def test_use_marks_the_cell_and_starts_a_new_major(django_assert_num_queries):
     shape = lifecycle.add_cell(dataset, title="Shape", script=SHAPE)
     run_svc.execute(dataset)
     shape.refresh_from_db()
-    review_fixture(dataset, shape)
     cell = use.use(dataset, "eval")
     assert cell == shape and cell.used_at is not None
     assert dataset.versions()[shape.id] == "2.0"
@@ -241,7 +240,6 @@ def test_use_marks_the_cell_and_starts_a_new_major(django_assert_num_queries):
 def test_a_used_cell_is_protected_and_blocks_deletion():
     project = make_project()
     dataset = _landed(project, [dict(r) for r in EVAL_ROWS], intent="eval")
-    review_fixture(dataset)
     cell = use.use(dataset, "eval")
     EvalRun.objects.create(project=project, name="r", dataset=dataset, cell=cell)
     assert "used by runs" in lifecycle.delete_blocked_reason(dataset)

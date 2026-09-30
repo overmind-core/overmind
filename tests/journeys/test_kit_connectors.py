@@ -2,14 +2,14 @@ import json
 from datetime import UTC, datetime, timedelta
 
 import pytest
-
-from .fakes.vendors import (
+from fakes.vendors import (
     BraintrustAPI,
     GalileoAPI,
     LangfuseAPI,
     LangSmithAPI,
     support_desk_trace,
 )
+
 from .stack import drain
 
 VENDORS = {

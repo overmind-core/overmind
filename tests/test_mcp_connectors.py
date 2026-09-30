@@ -6,6 +6,7 @@ import uuid
 
 import pytest
 from django.utils import timezone
+from fakes.vendors import LangfuseAPI
 from mcp_fixtures import mcp_context
 from rest_framework.test import APIClient
 
@@ -33,6 +34,13 @@ from overbae.services.mcp.context import MCPContext, bind_context
 from overbae.services.mcp.resources import read_resource, resource_templates
 
 pytestmark = pytest.mark.django_db(transaction=True)
+
+
+@pytest.fixture(autouse=True)
+def langfuse(fake_llm) -> LangfuseAPI:
+    api = LangfuseAPI(host="https://cloud.langfuse.com")
+    fake_llm.network.vendors.append(api)
+    return api
 
 
 def _call(name: str, arguments: dict, context: MCPContext):

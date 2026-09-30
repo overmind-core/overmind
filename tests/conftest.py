@@ -1,9 +1,14 @@
+import ipaddress
 import os
-from types import SimpleNamespace
+import socket
 
 import pytest
 from asgiref.sync import SyncToAsync, async_to_sync
 from django.db import connections
+from fakes.clerk import ClerkAPI
+from fakes.http import ScriptedAPI
+from fakes.llm import FakeLLM, Network
+from fakes.modal import FakeModal, ServingBackend, SftBackend
 
 collect_ignore = [] if os.environ.get("TEST_REDIS_URL") else ["journeys"]
 
@@ -26,6 +31,77 @@ def drain_stream(response) -> bytes:
     return b"".join(async_to_sync(_collect)())
 
 
+def _loopback(address) -> bool:
+    if not isinstance(address, tuple):
+        return True
+    host = address[0]
+    if host == "localhost":
+        return True
+    try:
+        return ipaddress.ip_address(host).is_loopback
+    except ValueError:
+        return False
+
+
+@pytest.fixture(autouse=True)
+def _no_outside_sockets(monkeypatch):
+    connect = socket.socket.connect
+
+    def guarded(sock, address):
+        if not _loopback(address):
+            raise ConnectionRefusedError(f"Tests may not reach {address}.")
+        return connect(sock, address)
+
+    monkeypatch.setattr(socket.socket, "connect", guarded)
+    for proxy in ("HTTP_PROXY", "HTTPS_PROXY", "http_proxy", "https_proxy"):
+        monkeypatch.setenv(proxy, "http://127.0.0.1:9")
+    monkeypatch.setenv("NO_PROXY", "127.0.0.1,localhost")
+    monkeypatch.setenv("no_proxy", "127.0.0.1,localhost")
+
+
+@pytest.fixture(autouse=True)
+def fake_llm():
+    llm = FakeLLM()
+    with Network(llm) as network:
+        llm.network = network
+        yield llm
+    assert not network.refused, f"Unrouted outbound calls: {network.refused}"
+
+
+@pytest.fixture
+def scripted(fake_llm):
+    def install(host: str) -> ScriptedAPI:
+        api = ScriptedAPI(host)
+        fake_llm.network.vendors.append(api)
+        return api
+
+    return install
+
+
+@pytest.fixture
+def slept(monkeypatch) -> list[float]:
+    import time
+
+    naps: list[float] = []
+    monkeypatch.setattr(time, "sleep", naps.append)
+    return naps
+
+
+@pytest.fixture
+def fake_modal(monkeypatch) -> FakeModal:
+    return FakeModal().install(monkeypatch)
+
+
+@pytest.fixture
+def sft(fake_modal) -> SftBackend:
+    return SftBackend(fake_modal).install()
+
+
+@pytest.fixture
+def serving(fake_modal) -> ServingBackend:
+    return ServingBackend(fake_modal, url="http://inference.test").install()
+
+
 @pytest.fixture(autouse=True)
 def _close_sync_to_async_connections():
     yield
@@ -33,41 +109,22 @@ def _close_sync_to_async_connections():
 
 
 @pytest.fixture(autouse=True)
-def _clerk_offline(monkeypatch):
-    """ClerkAuthentication is the first authenticator, so every Bearer request verifies
-    the token against Clerk's remote JWKS over real HTTP; offline runs hang there.
-    Patch the call, not the class, to keep authenticator order and the 401 path intact.
-    """
-    monkeypatch.setattr(
-        "overbae.auth.authenticate_request",
-        lambda request, options: SimpleNamespace(is_signed_in=False),
-    )
+def _clerk_offline(settings):
+    settings.CLERK_API_SECRET_KEY = ""
+
+
+@pytest.fixture
+def clerk(settings, fake_llm) -> ClerkAPI:
+    api = ClerkAPI()
+    settings.CLERK_API_SECRET_KEY = "sk_test_clerk"
+    settings.CLERK_AUTHORIZED_PARTIES = ["http://localhost:5173"]
+    fake_llm.network.vendors.append(api)
+    return api
 
 
 @pytest.fixture(autouse=True)
-def _offline_model_resolution(monkeypatch):
-    """Model resolution must behave the same with and without real credentials:
-    a developer's real OPENROUTER_API_KEY would let an unmocked judge call
-    reach the provider while CI fails on the missing key. Every test gets the
-    same inert key; tests of the no-key path delete it themselves.
-    """
+def _openrouter_key(monkeypatch):
     monkeypatch.setenv("OPENROUTER_API_KEY", "offline-test-key")
-    monkeypatch.setattr("overbae.services.llm_context.fetch_model_catalog", lambda: ([], False))
-    monkeypatch.setattr(
-        "overbae.services.eval.context_suggestions.fetch_model_catalog", lambda: ([], False)
-    )
-    from overbae.core.decisions import DecisionError
-
-    def no_decision_network(*args, **kwargs):
-        raise DecisionError("offline_test")
-
-    monkeypatch.setattr("overbae.core.decisions._request", no_decision_network)
-    monkeypatch.setattr(
-        "overbae.services.finetuning_eval.resolve_training_openrouter_slug", lambda _: None
-    )
-    monkeypatch.setattr(
-        "overbae.services.deployment.resolve_training_openrouter_slug", lambda _: None
-    )
 
 
 @pytest.fixture(autouse=True)
@@ -84,6 +141,13 @@ TRAIN_ROWS = [
     {"messages": [{"role": "user", "content": "q1"}, {"role": "assistant", "content": "a1"}]},
     {"messages": [{"role": "user", "content": "q2"}, {"role": "assistant", "content": "a2"}]},
 ]
+
+
+@pytest.fixture(autouse=True)
+def _fresh_cache():
+    from django.core.cache import cache
+
+    cache.clear()
 
 
 @pytest.fixture(autouse=True)
@@ -114,25 +178,6 @@ def _inline_dataset_tasks(monkeypatch):
     monkeypatch.setattr(dataset_tasks.turn, "apply_async", lambda kwargs, **_: None)
 
 
-def _lift_messages(row):
-    """The old canonical shape kept the transcript under ``input``; the product
-    table carries it as a ``messages`` column."""
-    row = dict(row)
-    inp = row.get("input")
-    if isinstance(inp, dict) and isinstance(inp.get("messages"), list) and "messages" not in row:
-        row["messages"] = inp["messages"]
-        if inp.get("tools"):
-            row["tools"] = inp["tools"]
-        rest = {k: v for k, v in inp.items() if k not in ("messages", "tools")}
-        if rest:
-            row["input"] = rest
-        else:
-            row.pop("input")
-        if row.get("expected_output") is None:
-            row.pop("expected_output", None)
-    return row
-
-
 def frozen_dataset(project, rows=None, *, capability=None, name="ds", contract=None, user=None):
     """A dataset whose source landed in-process, so its active version is
     ready. ``rows`` defaults to a two-row table of the requested intent."""
@@ -145,46 +190,18 @@ def frozen_dataset(project, rows=None, *, capability=None, name="ds", contract=N
     dataset = Dataset.objects.create(
         project=project, capability=capability, name=name, intent=contract or "pending"
     )
-    land.land_rows(dataset, [_lift_messages(r) for r in rows], user=user)
+    land.land_rows(dataset, list(rows), user=user)
     run_svc.execute(dataset, user=user)
     dataset.refresh_from_db()
-    review_fixture(dataset)
     return dataset
 
 
-def review_fixture(dataset, cell=None):
-    from overbae.services.datasets import review
-
-    cell = cell or dataset.active_cell
-    review.record_quality(
-        dataset,
-        cell,
-        [
-            {
-                "name": name,
-                "result": "pass",
-                "evidence": "Known test fixture.",
-                "rows_checked": cell.rows,
-            }
-            for name in review.REQUIRED_CHECKS
-        ],
-        script="df = pd.DataFrame({name: [True] * len(df) for name in ('task_alignment', 'input_evidence', 'answer_support', 'output_schema')})",
-    )
-
-
 @pytest.fixture(autouse=True)
-def _offline_rubric_compiler(monkeypatch):
-    """Authoring a judge compiles its rubric, so every test that saves one would
-    otherwise reach a provider and wait out the retry budget before falling back.
-    Returns a fixed two-item checklist; the compiler's own tests opt back in.
-    """
-    from overbae.services.eval import rubric_compiler
-
-    monkeypatch.setattr(
-        rubric_compiler,
-        "compile_rubric",
-        lambda rubric_md, **kwargs: {
-            "checklist": [
+def _rubric_compiler(fake_llm):
+    fake_llm.on_json(
+        lambda r: r.schema_name == "_Checklist",
+        lambda r: {
+            "items": [
                 {"id": "criterion_1", "q": "Does the output satisfy the rubric?", "weight": 0.5},
                 {"id": "criterion_2", "q": "Is the output free of errors?", "weight": 0.5},
             ],

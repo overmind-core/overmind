@@ -5,7 +5,7 @@ import json
 import uuid
 
 import pytest
-from conftest import EVAL_ROWS, frozen_dataset, review_fixture
+from conftest import EVAL_ROWS, frozen_dataset
 from mcp_fixtures import mcp_context
 
 from overbae.models import (
@@ -248,7 +248,6 @@ def test_readiness_and_start_use_explicit_eval_cell(monkeypatch):
     )
     extra.fingerprint = store.file_sha256(path)
     extra.save(update_fields=["fingerprint"])
-    review_fixture(dataset, extra)
     called = {}
 
     def fake_create(**kwargs):

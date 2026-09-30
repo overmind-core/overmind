@@ -7,6 +7,8 @@ from datetime import UTC, datetime, timedelta
 from typing import Any
 from urllib.parse import parse_qs, urlparse
 
+from fakes.http import Call
+
 BAD_REPLY = "Your refund is on its way. The order was delivered."
 MODEL = "openai/gpt-4.1-mini"
 
@@ -76,7 +78,7 @@ class LangfuseAPI:
     host: str = "https://langfuse.fake"
     trace_id: str = ""
     steps: list[Step] = field(default_factory=list)
-    requests: list[str] = field(default_factory=list)
+    requests: list[Call] = field(default_factory=list)
 
     def record(self, trace_id: str, steps: list[Step]) -> None:
         self.trace_id, self.steps = trace_id, steps
@@ -104,11 +106,11 @@ class LangfuseAPI:
             "isRootObservation": step.parent is None,
         }
 
-    def handle(self, method: str, url: str, body) -> tuple[int, dict, bytes] | None:
+    def handle(self, method: str, url: str, body, headers=None) -> tuple[int, dict, bytes] | None:
         if not url.startswith(self.host):
             return None
         parsed = urlparse(url)
-        self.requests.append(f"{method} {parsed.path}")
+        self.requests.append(Call(method, url, headers or {}, body))
         if parsed.path == "/api/public/projects":
             return _json({"data": [{"id": "lf-project", "name": "support-desk"}]})
         if parsed.path == "/api/public/v2/observations":
@@ -132,7 +134,7 @@ class LangSmithAPI:
     host: str = "https://langsmith.fake"
     trace_id: str = ""
     steps: list[Step] = field(default_factory=list)
-    requests: list[str] = field(default_factory=list)
+    requests: list[Call] = field(default_factory=list)
     project: str = field(default_factory=lambda: str(uuid.uuid4()))
 
     def record(self, trace_id: str, steps: list[Step]) -> None:
@@ -160,11 +162,11 @@ class LangSmithAPI:
             "total_tokens": (prompt + completion) or None,
         }
 
-    def handle(self, method: str, url: str, body) -> tuple[int, dict, bytes] | None:
+    def handle(self, method: str, url: str, body, headers=None) -> tuple[int, dict, bytes] | None:
         if not url.startswith(self.host):
             return None
         path = urlparse(url).path
-        self.requests.append(f"{method} {path}")
+        self.requests.append(Call(method, url, headers or {}, body))
         if path == "/api/v1/sessions":
             return _json([{"id": self.project, "name": "support-desk"}])
         if path == "/api/v1/runs/query":
@@ -177,7 +179,7 @@ class BraintrustAPI:
     host: str = "https://braintrust.fake"
     trace_id: str = ""
     steps: list[Step] = field(default_factory=list)
-    requests: list[str] = field(default_factory=list)
+    requests: list[Call] = field(default_factory=list)
 
     def record(self, trace_id: str, steps: list[Step]) -> None:
         self.trace_id, self.steps = trace_id, steps
@@ -207,11 +209,11 @@ class BraintrustAPI:
             "_xact_id": "1",
         }
 
-    def handle(self, method: str, url: str, body) -> tuple[int, dict, bytes] | None:
+    def handle(self, method: str, url: str, body, headers=None) -> tuple[int, dict, bytes] | None:
         if not url.startswith(self.host):
             return None
         path = urlparse(url).path
-        self.requests.append(f"{method} {path}")
+        self.requests.append(Call(method, url, headers or {}, body))
         if path == "/v1/project":
             return _json({"objects": [{"id": "bt-project", "name": "support-desk"}]})
         if path == "/btql":
@@ -224,7 +226,7 @@ class GalileoAPI:
     host: str = "https://galileo.fake"
     trace_id: str = ""
     steps: list[Step] = field(default_factory=list)
-    requests: list[str] = field(default_factory=list)
+    requests: list[Call] = field(default_factory=list)
     project: str = field(default_factory=lambda: str(uuid.uuid4()))
     stream: str = field(default_factory=lambda: str(uuid.uuid4()))
 
@@ -258,11 +260,11 @@ class GalileoAPI:
             "spans": [self._node(child) for child in self.steps if child.parent == step.id],
         }
 
-    def handle(self, method: str, url: str, body) -> tuple[int, dict, bytes] | None:
+    def handle(self, method: str, url: str, body, headers=None) -> tuple[int, dict, bytes] | None:
         if not url.startswith(self.host):
             return None
         path = urlparse(url).path
-        self.requests.append(f"{method} {path}")
+        self.requests.append(Call(method, url, headers or {}, body))
         if path == "/v2/projects/paginated":
             return _json(
                 {

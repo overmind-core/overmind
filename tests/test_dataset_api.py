@@ -7,7 +7,7 @@ import uuid
 from unittest.mock import patch
 
 import pytest
-from conftest import EVAL_ROWS, review_fixture
+from conftest import EVAL_ROWS
 from factories import make_project, member_client
 
 from overbae.models import Capability, Dataset, Span
@@ -307,7 +307,6 @@ def test_delete_refused_while_a_version_is_used():
     project = make_project()
     client = member_client(project)
     dataset = _create(client, project, rows=[dict(r) for r in EVAL_ROWS], intent="eval")
-    review_fixture(dataset)
     use.use(dataset, "eval")
     res = client.delete(f"/api/datasets/{dataset.id}/")
     assert res.status_code == 409 and res.data["code"] == "dataset_referenced"

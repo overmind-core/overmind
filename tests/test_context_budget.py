@@ -217,7 +217,9 @@ def test_per_turn_truncation_cannot_be_hidden_by_other_successful_turns():
     assert degraded and reason.startswith("output_token_limit:")
 
 
-def test_judge_does_not_repair_or_cache_truncated_json_but_keeps_usage(monkeypatch):
+def test_judge_does_not_repair_or_cache_truncated_json_but_keeps_usage(monkeypatch, fake_llm):
+    fake_llm.catalog_models = []
+
     class Result(BaseModel):
         score: float
 

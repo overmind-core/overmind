@@ -575,8 +575,9 @@ def _ready_base_deployment(project, base="Qwen/Qwen3-8B"):
 
 @override_settings(INFERENCE_API_URL="https://gateway.example.modal.run")
 def test_baseten_baseline_waits_for_base_deployment_then_fires(
-    django_capture_on_commit_callbacks,
+    django_capture_on_commit_callbacks, fake_llm
 ):
+    fake_llm.catalog_models = []
     _, _, job, _, _ = _setup()
     _basetenify(job)
 
@@ -695,8 +696,9 @@ def _fake_modal(monkeypatch, calls):
 
 @override_settings(INFERENCE_API_URL="https://gateway.example.modal.run")
 def test_deploy_base_model_for_eval_deploys_then_launches_baseline(
-    monkeypatch, django_capture_on_commit_callbacks
+    monkeypatch, django_capture_on_commit_callbacks, fake_llm
 ):
+    fake_llm.catalog_models = []
     from overbae.models import DeployedModel
     from overbae.tasks.model_deployment import deploy_base_model_for_eval
 
@@ -724,8 +726,9 @@ def test_deploy_base_model_for_eval_deploys_then_launches_baseline(
 
 @override_settings(INFERENCE_API_URL="https://gateway.example.modal.run")
 def test_deploy_base_model_dedupes_ready_deployment(
-    monkeypatch, django_capture_on_commit_callbacks
+    monkeypatch, django_capture_on_commit_callbacks, fake_llm
 ):
+    fake_llm.catalog_models = []
     from overbae.tasks.model_deployment import deploy_base_model_for_eval
 
     _, _, job, _, _ = _setup()
@@ -768,7 +771,10 @@ def test_deploy_base_model_skips_cancelled_job(monkeypatch):
 
 
 @override_settings(INFERENCE_API_URL="https://gateway.example.modal.run")
-def test_baseten_final_eval_fires_after_ready_deployment(django_capture_on_commit_callbacks):
+def test_baseten_final_eval_fires_after_ready_deployment(
+    django_capture_on_commit_callbacks, fake_llm
+):
+    fake_llm.catalog_models = []
     from overbae.models import DeployedModel
 
     _, _, job, _, _ = _setup()

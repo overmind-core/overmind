@@ -32,12 +32,10 @@ CELERY_PATH = "overbae.tasks.finetuning.run_finetuning.apply_async"
 def _dataset(capability: Capability, *, n_points: int = 2) -> Dataset:
     rows = [
         {
-            "input": {
-                "messages": [
-                    {"role": "user", "content": f"in-{i}"},
-                    {"role": "assistant", "content": f"out-{i}"},
-                ]
-            }
+            "messages": [
+                {"role": "user", "content": f"in-{i}"},
+                {"role": "assistant", "content": f"out-{i}"},
+            ]
         }
         for i in range(n_points)
     ]

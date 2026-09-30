@@ -115,11 +115,15 @@ class FakeLLM:
         self._scripts.append((match, reply))
 
     extra_models: list[str] = field(default_factory=list)
+    catalog_models: list[str] | None = None
 
     def catalog(self) -> list[dict[str, Any]]:
         from overbae.core.model_registry import OPENROUTER_MODEL_SLUGS
 
-        slugs = sorted(set(OPENROUTER_MODEL_SLUGS.values()) | set(self.extra_models))
+        listed = (
+            OPENROUTER_MODEL_SLUGS.values() if self.catalog_models is None else self.catalog_models
+        )
+        slugs = sorted(set(listed) | set(self.extra_models))
         return [
             {
                 "id": slug,
@@ -253,16 +257,16 @@ class FakeLLM:
             server.server_close()
 
     def handle(self, method: str, url: str, raw: bytes | str | None) -> tuple[int, dict, bytes]:
+        failure = self._failure(LLMRequest(url=url, body=_json_body(raw)))
+        if failure:
+            return (
+                failure,
+                {"content-type": "application/json"},
+                b'{"error": {"message": "fake outage"}}',
+            )
         if method == "POST" and url.rstrip("/").endswith("/chat/completions"):
             body = json.loads(raw or b"{}")
             request = LLMRequest(url=url, body=body)
-            failure = self._failure(request)
-            if failure:
-                return (
-                    failure,
-                    {"content-type": "application/json"},
-                    b'{"error": {"message": "fake outage"}}',
-                )
             if body.get("stream"):
                 return 200, {"content-type": "text/event-stream"}, self.stream(request)
             return (
@@ -298,6 +302,14 @@ class FakeLLM:
         )
 
 
+def _json_body(raw: bytes | str | None) -> dict[str, Any]:
+    try:
+        body = json.loads(raw or b"{}")
+    except (TypeError, ValueError):
+        return {}
+    return body if isinstance(body, dict) else {}
+
+
 class Network:
     def __init__(self, llm: FakeLLM) -> None:
         self.llm = llm
@@ -307,15 +319,17 @@ class Network:
         self._responses = responses.RequestsMock(assert_all_requests_are_fired=False)
 
     def _httpx(self, request: httpx.Request) -> httpx.Response:
-        status, headers, body = self._route(request.method, str(request.url), request.content)
+        status, headers, body = self._route(
+            request.method, str(request.url), request.content, dict(request.headers)
+        )
         return httpx.Response(status, headers=headers, content=body)
 
     def _requests(self, request) -> tuple[int, dict, bytes]:
-        return self._route(request.method, request.url, request.body)
+        return self._route(request.method, request.url, request.body, dict(request.headers))
 
-    def _route(self, method: str, url: str, body) -> tuple[int, dict, bytes]:
+    def _route(self, method: str, url: str, body, headers: dict) -> tuple[int, dict, bytes]:
         for vendor in self.vendors:
-            answer = vendor.handle(method, url, body)
+            answer = vendor.handle(method, url, body, headers)
             if answer is not None:
                 return answer
         status, headers, content = self.llm.handle(method, url, body)
