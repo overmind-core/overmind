@@ -636,7 +636,9 @@ _REQUIRED_KEYS = {
     "HF_TOKEN": "gated Hugging Face base models",
 }
 _missing_keys = [
-    f"{name} ({purpose})" for name, purpose in _REQUIRED_KEYS.items() if not os.environ.get(name)
+    f"{name} ({purpose})"
+    for name, purpose in _REQUIRED_KEYS.items()
+    if not os.environ.get(name, "").strip()
 ]
 if _missing_keys:
     raise ImproperlyConfigured(
