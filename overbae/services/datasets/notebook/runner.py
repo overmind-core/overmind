@@ -5,7 +5,6 @@ bound a runaway script, not an attacker."""
 from __future__ import annotations
 
 import ast
-import contextlib
 import json
 import os
 import subprocess
@@ -76,21 +75,20 @@ def audit(script: str, allowed: frozenset[str]) -> list[str]:
     return sorted(set(violations))
 
 
-def _limits():  # pragma: no cover — runs in the child
-    def apply() -> None:
-        import resource
-
-        # No RLIMIT_NPROC: it counts every process of the uid, so any useful
-        # cap stops numpy from starting its thread pool.
-        for name, ceiling in (
-            (resource.RLIMIT_CPU, (CPU_SECONDS, CPU_SECONDS)),
-            (resource.RLIMIT_AS, (_ADDRESS_SPACE_BYTES, _ADDRESS_SPACE_BYTES)),
-            (resource.RLIMIT_FSIZE, (_FILE_SIZE_BYTES, _FILE_SIZE_BYTES)),
-        ):
-            with contextlib.suppress(ValueError, OSError):
-                resource.setrlimit(name, ceiling)
-
-    return apply
+_LIMITS = f"""\
+import resource
+# No RLIMIT_NPROC: it counts every process of the uid, so any useful
+# cap stops numpy from starting its thread pool.
+for _limit, _ceiling in (
+    (resource.RLIMIT_CPU, {CPU_SECONDS}),
+    (resource.RLIMIT_AS, {_ADDRESS_SPACE_BYTES}),
+    (resource.RLIMIT_FSIZE, {_FILE_SIZE_BYTES}),
+):
+    try:
+        resource.setrlimit(_limit, (_ceiling, _ceiling))
+    except (ValueError, OSError):
+        pass
+"""
 
 
 _RUNNER = """\
@@ -206,7 +204,7 @@ def run(
         kinds_path = tmp_path / "in.kinds"
         out_path = tmp_path / "out.parquet"
         script_path.write_text(script, encoding="utf-8")
-        runner_path.write_text(_RUNNER, encoding="utf-8")
+        runner_path.write_text(_LIMITS + _RUNNER, encoding="utf-8")
         kinds_path.write_text(
             json.dumps({c["name"]: c["type"] for c in store.read_manifest(source)}),
             encoding="utf-8",
@@ -238,7 +236,6 @@ def run(
                 capture_output=True,
                 text=True,
                 timeout=WALL_SECONDS,
-                preexec_fn=_limits() if os.name == "posix" else None,
             )
         except subprocess.TimeoutExpired:
             return CellResult(
