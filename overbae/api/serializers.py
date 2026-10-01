@@ -1286,8 +1286,6 @@ class FinetuningJobSerializer(serializers.ModelSerializer):
 
     def validate(self, attrs):
         attrs = super().validate(attrs)
-        if self.instance is None and settings.TRAINING_UNCONFIGURED_ERROR:
-            raise serializers.ValidationError(settings.TRAINING_UNCONFIGURED_ERROR)
         if self.instance is not None:
             for field in (
                 "project",

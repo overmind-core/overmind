@@ -15,7 +15,6 @@ from collections.abc import Mapping
 from datetime import UTC, datetime, timedelta
 
 from celery import shared_task
-from django.conf import settings
 from django.utils import timezone
 
 logger = logging.getLogger(__name__)
@@ -102,9 +101,6 @@ def plan_run_retention(runs: Mapping[str, float], *, now=None) -> dict[str, list
 @shared_task(name="overbae.tasks.cleanup_modal.prune_modal_sft_volume")
 def prune_modal_sft_volume() -> dict:
     import modal
-
-    if settings.TRAINING_UNCONFIGURED:
-        return {"skipped": "training not configured"}
 
     env = os.environ.get("MODAL_ENVIRONMENT") or None
 

@@ -624,28 +624,23 @@ INFERENCE_API_URL: str = os.environ.get("INFERENCE_API_URL", "")
 # Must match INFERENCE_API_KEY in the Modal overmind-inference secret.
 INFERENCE_API_KEY: str = os.environ.get("INFERENCE_API_KEY", "")
 
-TRAINING_UNCONFIGURED: list[str] = [
-    name
-    for name, value in (
-        ("MODAL_TOKEN_ID", os.environ.get("MODAL_TOKEN_ID", "")),
-        ("MODAL_TOKEN_SECRET", os.environ.get("MODAL_TOKEN_SECRET", "")),
-        ("INFERENCE_API_URL", INFERENCE_API_URL),
-        ("INFERENCE_API_KEY", INFERENCE_API_KEY),
-        ("AWS_BUCKET_NAME", AWS_BUCKET_NAME),
-        ("AWS_ACCESS_KEY_ID", AWS_ACCESS_KEY_ID),
-        ("AWS_SECRET_ACCESS_KEY", AWS_SECRET_ACCESS_KEY),
-    )
-    if not value
+_REQUIRED_KEYS = {
+    "OPENROUTER_API_KEY": "judges, evals, trace scoring and the Data Workshop",
+    "MODAL_TOKEN_ID": "Modal training and serving workers",
+    "MODAL_TOKEN_SECRET": "Modal training and serving workers",
+    "INFERENCE_API_URL": "the Modal serving endpoint",
+    "INFERENCE_API_KEY": "the Modal serving endpoint",
+    "AWS_ACCESS_KEY_ID": "the fine-tuning checkpoint archive",
+    "AWS_SECRET_ACCESS_KEY": "the fine-tuning checkpoint archive",
+    "AWS_BUCKET_NAME": "the fine-tuning checkpoint archive",
+    "HF_TOKEN": "gated Hugging Face base models",
+}
+_missing_keys = [
+    f"{name} ({purpose})" for name, purpose in _REQUIRED_KEYS.items() if not os.environ.get(name)
 ]
-TRAINING_UNCONFIGURED_ERROR = (
-    f"Training is not configured on this server. Set {', '.join(TRAINING_UNCONFIGURED)}."
-    if TRAINING_UNCONFIGURED
-    else ""
-)
-
-
-if not OPENROUTER_API_KEY:
+if _missing_keys:
     raise ImproperlyConfigured(
-        "OPENROUTER_API_KEY must be set: judges, evals and the Data Workshop use it. "
-        "Get one at https://openrouter.ai/keys"
+        "Set these in .env before starting the API: "
+        + "; ".join(_missing_keys)
+        + ". .env.example describes each one."
     )

@@ -53,8 +53,6 @@ def request_preparation(
         raise InputValidationError(
             "Exact preprocessing is available for the Modal training backend."
         )
-    if settings.TRAINING_UNCONFIGURED_ERROR:
-        raise InputValidationError(settings.TRAINING_UNCONFIGURED_ERROR)
     model_config = get_model_config_any_backend(model)
     if not model_config:
         raise InputValidationError("Choose a catalog training model.")

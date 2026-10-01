@@ -58,25 +58,33 @@ Self-hosting keeps traces and training data inside your own network. The hosted 
 
 ```bash
 git clone https://github.com/overmind-core/overmind.git && cd overmind
-cp .env.example .env                        # OpenRouter, S3, a training backend (Modal or Baseten), an LLM key for the Data Workshop agent
-docker compose up -d                        # Postgres, Redis, API on :8000, Celery workers, beat, Grafana on :3001
-cd frontend && bun install && bun run dev   # Console on :5173
+cp .env.example .env    # set the required keys below
+docker compose up -d    # Postgres, Redis, API on :8000, Console on :5173, Celery workers, beat, Grafana on :3001
 ```
 
-On first boot the API runs migrations and seeds the built-in evaluators; Swagger is at `/api/docs/`. `docker compose exec -T api python manage.py shell < seed.py` loads a full demo workspace.
+On first boot the API runs migrations and seeds the built-in evaluators; Swagger is at `/api/docs/`. Sign in at `http://localhost:5173` with any email and password. `docker compose exec api python manage.py seed_demo --owner <your email>` loads a full demo workspace.
 
 <details>
 <summary><b>What the API needs to boot</b></summary>
 
-The API needs one key to boot: `OPENROUTER_API_KEY`. It serves judges, evals, the Data Workshop and every routed model call. Set `CURSOR_API_KEY` to run the Data Workshop agent on Cursor Composer instead. `.env.example` documents every other key.
+The API refuses to start until every required key is set, and the error names each missing one. `.env.example` documents every key.
 
-| Optional group | Variables                                                                         |
-| -------------- | --------------------------------------------------------------------------------- |
-| Training       | `FINETUNING_BACKEND=modal`, `MODAL_TOKEN_ID`, `MODAL_TOKEN_SECRET`                |
-| Serving        | `INFERENCE_API_URL`, `INFERENCE_API_KEY` — the Modal endpoint from `modal deploy` |
-| Checkpoints    | `AWS_BUCKET_NAME`, `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`                   |
+| Required                                                        | Used for                                                                               |
+| --------------------------------------------------------------- | -------------------------------------------------------------------------------------- |
+| `OPENROUTER_API_KEY`                                            | Judges, evals, trace scoring, the Data Workshop, optimiser scoring, frontier inference |
+| `MODAL_TOKEN_ID`, `MODAL_TOKEN_SECRET`                          | Modal training and serving workers (`MODAL_ENVIRONMENT` defaults to `overmind-dev`)    |
+| `INFERENCE_API_URL`, `INFERENCE_API_KEY`                        | Serving trained models — the endpoint printed by `modal deploy` and its shared secret  |
+| `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_BUCKET_NAME` | The fine-tuning checkpoint archive                                                     |
+| `HF_TOKEN`                                                      | Gated Hugging Face base models; also set it in the Modal secret                        |
 
-Until all three groups are set, fine-tuning readiness lists the missing variables and job creation is refused. Without `STRIPE_SECRET_KEY`, usage is metered and shown with no remaining-credit cap.
+| Optional                              | Effect                                                                                 |
+| ------------------------------------- | -------------------------------------------------------------------------------------- |
+| `CURSOR_API_KEY`                      | Recommended for the Data Workshop: runs the dataset agent as a Cursor Composer session |
+| `OPENAI_API_KEY`                      | The `embedding_cosine` evaluator                                                       |
+| `ANTHROPIC_API_KEY`, `GEMINI_API_KEY` | Fallback engines for the Data Workshop; unused while `OPENROUTER_API_KEY` is set       |
+| `STRIPE_SECRET_KEY`                   | Paid plans and the credit cap; without it, usage is metered with no cap                |
+
+Fine-tuning and serving also need the Modal workers deployed (`modal deploy overbae/modal/modal_vllm_worker.py`, `register_model.py` and `modal_sft_worker.py`) and a Modal secret named `overmind-inference` with the AWS keys, `INFERENCE_API_KEY` and `HF_TOKEN`.
 
 </details>
 
