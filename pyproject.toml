@@ -7,7 +7,7 @@ classifiers = [
 ]
 dependencies = [
     "openai>=1.0.0",
-    "django>=6.0.7",
+    "django>=6.0.8",
     "django-cors-headers>=4.9.0",
     "django-filter>=25.2",
     "cryptography>=50.0.0",
