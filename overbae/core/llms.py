@@ -11,6 +11,7 @@ from urllib.parse import parse_qsl, urlsplit, urlunsplit
 
 import json_repair
 import openai
+from celery.exceptions import SoftTimeLimitExceeded
 from openai import OpenAI
 from openai.lib._pydantic import to_strict_json_schema
 from pydantic import BaseModel
@@ -86,6 +87,11 @@ class IncompleteCompletionError(RuntimeError):
         self.stats = stats
 
 
+# ``_do_openai_completion`` owns chat retries. The SDK's own loop would retry a
+# credential error before our fail-fast check and swallow a worker's soft time limit.
+_SDK_RETRIES = 0
+
+
 @lru_cache(maxsize=8)
 def _provider_client(name: str) -> OpenAI:
     provider = PROVIDERS[name]
@@ -97,6 +103,7 @@ def _provider_client(name: str) -> OpenAI:
         base_url=provider.base_url,
         default_headers=provider.headers or None,
         timeout=_REQUEST_TIMEOUT,
+        max_retries=_SDK_RETRIES,
     )
 
 
@@ -126,6 +133,7 @@ def _openai_compatible_client(
         api_key=api_key,
         base_url=base_url,
         timeout=_REQUEST_TIMEOUT,
+        max_retries=_SDK_RETRIES,
         default_query=dict(query_items) or None,
         default_headers=dict(header_items) or None,
     )
@@ -269,7 +277,12 @@ def _do_openai_completion(
 ):
     def _once():
         started = time.monotonic()
-        response = client.chat.completions.create(**completion_kwargs, **request_kwargs)
+        try:
+            response = client.chat.completions.create(**completion_kwargs, **request_kwargs)
+        except openai.APIConnectionError as exc:
+            if isinstance(exc.__cause__, SoftTimeLimitExceeded):
+                raise exc.__cause__ from None
+            raise
         response_ms = (time.monotonic() - started) * 1000
         with suppress(AttributeError, TypeError):
             object.__setattr__(response, "_response_ms", response_ms)
@@ -567,7 +580,7 @@ def call_llm(
         response = _do_openai_completion(client, completion_kwargs, request_kwargs, retry_deadline)
         return _extract_llm_response(response)
 
-    except IncompleteCompletionError:
+    except (IncompleteCompletionError, SoftTimeLimitExceeded):
         raise
     except Exception as e:
         raise RuntimeError(f"Error calling LLM: {e}") from e
@@ -663,6 +676,8 @@ def call_llm_tools(
         response = _do_openai_completion(
             _provider_client(provider.name), completion_kwargs, {}, retry_deadline
         )
+    except SoftTimeLimitExceeded:
+        raise
     except Exception as e:
         raise RuntimeError(f"Error calling LLM: {e}") from e
 
@@ -761,6 +776,8 @@ def stream_llm_tools(
         stream = _do_openai_completion(
             _provider_client(provider.name), completion_kwargs, {}, retry_deadline
         )
+    except SoftTimeLimitExceeded:
+        raise
     except Exception as e:
         raise RuntimeError(f"Error calling LLM: {e}") from e
 
@@ -795,6 +812,8 @@ def stream_llm_tools(
                 parts.append(text)
                 yield ToolStreamDelta("text", text)
             _merge_tool_call_delta(calls, getattr(delta, "tool_calls", None))
+    except SoftTimeLimitExceeded:
+        raise
     except Exception as e:
         raise RuntimeError(f"Error streaming LLM: {e}") from e
     finally:
