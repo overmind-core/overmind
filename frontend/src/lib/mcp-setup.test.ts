@@ -77,7 +77,7 @@ describe("mcp setup snippets", () => {
     const prompt = telemetrySetupPrompt("codex");
     expect(prompt).toContain("get_instrumentation_plan");
     expect(prompt).toContain("query_traces");
-    expect(prompt).toContain("overmind://traces/{trace_id}");
+    expect(prompt).toContain("verify_instrumentation(trace_id=...)");
     expect(prompt).toContain("verify_instrumentation");
     expect(prompt).toContain("capability_id");
     expect(prompt).toContain("Real run (recommended)");
@@ -93,8 +93,6 @@ describe("mcp setup snippets", () => {
     expect(prompt).toContain("conversation.id");
     expect(prompt).toContain("query_traces(session=<correlation>, all_spans=false, limit=2)");
     expect(prompt).toContain("page.total == 1");
-    expect(prompt).toContain("truncated == false");
-    expect(prompt).toContain("span_count == len(spans)");
     expect(prompt).toContain("Real-run retries require fresh approval");
     expect(prompt).toContain("application outcome separately from instrumentation status");
     expect(prompt).not.toContain("get_instrumentation_context");
@@ -146,12 +144,16 @@ overmind sync`
     expect(guidance).toContain("do not assume pip");
     const prompt = onboardWithAiBootstrapPrompt("cursor", KEY, PROD);
     expect(prompt).toContain("references/onboard.md");
-    expect(prompt).toContain(`export OVERMIND_API_URL=${PROD}`);
-    expect(prompt).toContain(`export OVERMIND_API_KEY=${KEY}`);
-    expect(prompt).toContain("overmind init --ide cursor");
+    expect(prompt).toContain(
+      `OVERMIND_API_URL=${PROD} OVERMIND_API_KEY=${KEY} overmind init --ide cursor`
+    );
+    expect(prompt).toContain(
+      `Run \`OVERMIND_API_URL=${PROD} OVERMIND_API_KEY=${KEY} overmind sync\``
+    );
+    expect(prompt).not.toContain("export ");
     expect(prompt).toContain("temporary bootstrap credential");
-    expect(prompt).toContain("Run `overmind sync`");
-    expect(prompt).toContain("do not re-export the key or run init again");
+    expect(prompt).toContain("Do not pass the bootstrap key again or run init again");
+    expect(onboardWithAiBootstrapPrompt("claude", KEY, PROD)).toContain("`claude -c`");
     expect(prompt).not.toContain("OVERMIND_PROJECT_ID");
     expect(prompt).not.toContain("pip install overmind");
   });

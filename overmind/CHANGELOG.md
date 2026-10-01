@@ -48,6 +48,10 @@ entries here cover the SDK surface.
 
 ### Changed
 
+- `overmind init --ide claude` writes the Overmind MCP server to Claude Code's
+  local scope (`~/.claude.json`) instead of `.mcp.json`, so sync works in
+  repositories that commit `.mcp.json`. It no longer writes
+  `.claude/commands/`; `/overmind <step>` routes through the skill.
 - `overmind init` no longer persists the account bootstrap key. The first
   `overmind sync` stores the final project-scoped key in the ignored
   `.overmind/credentials.toml` sidecar and refreshes every initialized IDE MCP

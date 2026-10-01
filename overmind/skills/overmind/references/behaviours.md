@@ -32,9 +32,9 @@ ticket exactly: `key`, `behaviour_id`, `version_id`, `version_analyzed_sha`,
 `allowed_keys`, `grain`, `target`, `required_scope`, `required_spans`, and
 `required_identity`.
 
-The server cannot edit the target files. Apply tickets locally, then send
-caller-supplied spans to `verify_instrumentation`. That check is read-only and
-does not ingest spans or write scores. If the result has `human_action` or no
+The server cannot edit the target files. Apply tickets locally, run the
+application, then pass the run's `trace_id` to `verify_instrumentation`. That
+check is read-only and does not ingest spans or write scores. If the result has `human_action` or no
 placements, report its instruction and stop this attempt. When the registry is
 unavailable, run local `/overmind setup` followed by `overmind sync`, then
 request the plan again in a new attempt.

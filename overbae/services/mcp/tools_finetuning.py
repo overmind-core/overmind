@@ -7,6 +7,7 @@ from types import SimpleNamespace
 from typing import Any
 
 from asgiref.sync import sync_to_async
+from django.conf import settings
 from django.db.models import Q
 from rest_framework.exceptions import ValidationError as DRFValidationError
 
@@ -342,6 +343,8 @@ def _readiness_sync(
         missing.append("evaluator — select at least one active generative evaluator")
     if not credits.available:
         missing.append("credits — add credits before starting fine-tuning")
+    if settings.TRAINING_UNCONFIGURED_ERROR:
+        missing.append(f"training backend — {settings.TRAINING_UNCONFIGURED_ERROR}")
     ready = not missing
     dataset_data = FineTuneDatasetReadiness(
         id=str(dataset.id),

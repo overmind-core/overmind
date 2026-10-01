@@ -8,9 +8,15 @@ from typer.testing import CliRunner
 
 from overmind.__main__ import app
 from overmind.config import Config, dump
+from overmind.init_cmd import claude_config_path
 
 runner = CliRunner()
 SKILL_SOURCE = Path(__file__).resolve().parents[1] / "skills" / "overmind"
+
+
+def _claude_overmind(project: Path) -> dict:
+    config = json.loads(claude_config_path().read_text())
+    return config["projects"][project.resolve().as_posix()]["mcpServers"]["overmind"]
 
 
 def _init(tmp_path: Path, ide: str, *extra: str) -> None:
@@ -26,7 +32,7 @@ def _init(tmp_path: Path, ide: str, *extra: str) -> None:
     ("ide", "skill_dir", "command_dir"),
     [
         ("cursor", ".cursor", ".cursor"),
-        ("claude", ".claude", ".claude"),
+        ("claude", ".claude", None),
         ("opencode", ".opencode", None),
         ("codex", ".agents", None),
     ],
@@ -143,36 +149,37 @@ def test_init_backfills_project_name_without_overwriting(tmp_path, monkeypatch):
     assert 'project-name = "custom-name"' in toml
 
 
-def test_init_claude_writes_project_root_mcp_json(tmp_path, monkeypatch):
+def test_init_claude_writes_local_scope_mcp(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     monkeypatch.delenv("OVERMIND_API_KEY", raising=False)
 
     for alias in ("claude", "claude_code", "claude-code"):
         _init(tmp_path, alias)
 
-        # Claude Code reads .mcp.json at the project root, never .claude/mcp.json.
-        cfg = json.loads((tmp_path / ".mcp.json").read_text())
-        assert cfg["mcpServers"]["overmind"] == {
-            "type": "http",
-            "url": "http://localhost:8000/api/mcp/",
-        }
-        assert not (tmp_path / ".claude" / "mcp.json").exists()
+        assert _claude_overmind(tmp_path) == {"type": "http", "url": "http://localhost:8000/api/mcp/"}
+        assert not (tmp_path / ".mcp.json").exists()
+        assert not (tmp_path / ".claude" / "commands").exists()
         assert (tmp_path / ".claude" / "skills" / "overmind" / "SKILL.md").is_file()
-        assert (tmp_path / ".claude" / "commands" / "overmind-setup.md").is_file()
-        claude_setup = (tmp_path / ".claude" / "commands" / "overmind-setup.md").read_text()
-        assert claude_setup.startswith('---\ndescription: "Scan the repository and sync capabilities"\n---\n')
         assert (tmp_path / "overmind.toml").is_file()
 
 
-def test_init_claude_preserves_other_servers(tmp_path, monkeypatch):
+def test_init_claude_preserves_other_config_and_tracked_mcp_json(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
-    (tmp_path / ".mcp.json").write_text(json.dumps({"mcpServers": {"other": {"command": "uvx", "args": ["other"]}}}))
+    subprocess.run(["git", "init", "-q"], cwd=tmp_path, check=True)
+    tracked = json.dumps({"mcpServers": {"other": {"command": "uvx", "args": ["other"]}}})
+    (tmp_path / ".mcp.json").write_text(tracked)
+    subprocess.run(["git", "add", ".mcp.json"], cwd=tmp_path, check=True)
+    claude_config_path().write_text(
+        json.dumps({"theme": "dark", "projects": {"/elsewhere": {"mcpServers": {"x": {"type": "http", "url": "u"}}}}})
+    )
 
     _init(tmp_path, "claude")
 
-    cfg = json.loads((tmp_path / ".mcp.json").read_text())
-    assert cfg["mcpServers"]["other"] == {"command": "uvx", "args": ["other"]}
-    assert "overmind" in cfg["mcpServers"]
+    config = json.loads(claude_config_path().read_text())
+    assert config["theme"] == "dark"
+    assert config["projects"]["/elsewhere"]["mcpServers"] == {"x": {"type": "http", "url": "u"}}
+    assert _claude_overmind(tmp_path)["url"] == "http://localhost:8000/api/mcp/"
+    assert (tmp_path / ".mcp.json").read_text() == tracked
 
 
 def test_init_keeps_bootstrap_key_out_of_local_files(tmp_path, monkeypatch):
@@ -184,7 +191,7 @@ def test_init_keeps_bootstrap_key_out_of_local_files(tmp_path, monkeypatch):
 
     for path in (
         tmp_path / ".cursor" / "mcp.json",
-        tmp_path / ".mcp.json",
+        claude_config_path(),
         tmp_path / "opencode.json",
         tmp_path / ".codex" / "config.toml",
         tmp_path / "overmind.toml",
@@ -260,9 +267,9 @@ def test_init_uses_saved_project_key_when_adding_an_ide(tmp_path, monkeypatch):
     result = runner.invoke(app, ["init", "--ide", "claude"], catch_exceptions=False)
 
     assert result.exit_code == 0, result.output
-    config = json.loads((tmp_path / ".mcp.json").read_text())
-    assert config["mcpServers"]["overmind"]["headers"] == {"X-Api-Key": "ovr_project_key"}
-    assert config["mcpServers"]["overmind"]["url"] == "http://localhost:8000/api/mcp/"
+    server = _claude_overmind(tmp_path)
+    assert server["headers"] == {"X-Api-Key": "ovr_project_key"}
+    assert server["url"] == "http://localhost:8000/api/mcp/"
 
 
 def test_init_does_not_copy_legacy_inline_key_into_mcp(tmp_path, monkeypatch):

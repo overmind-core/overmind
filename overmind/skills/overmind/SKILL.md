@@ -10,8 +10,22 @@ execution**. A capability is the product AI surface, a behaviour is a
 scanned contract, and a task execution is a carved, scored unit of a trace.
 
 MCP prompts are the native guided workflows. Invoke the matching prompt when
-the client supports prompts; use the references in this directory only when
-prompt support is unavailable or when local repository work is required.
+the client lets the agent invoke prompts. Otherwise, or when local repository
+work is required, follow the matching reference in this directory. In Claude
+Code only the user can run a prompt, as `/mcp__overmind__<prompt-name>`.
+
+## Arguments
+
+When invoked with an argument, such as `/overmind setup`, open the matching
+reference and follow it:
+
+- `onboard` — [references/onboard.md](references/onboard.md)
+- `setup` — [references/setup.md](references/setup.md)
+- `ensure-tracing` — [references/telemetry.md](references/telemetry.md)
+- `dataset` — [references/datasets.md](references/datasets.md)
+- `finetune` — [references/finetuning.md](references/finetuning.md)
+- `optimise` — [references/optimizer.md](references/optimizer.md)
+- `backtest` — [references/backtest.md](references/backtest.md)
 
 ## Native prompts
 
@@ -126,11 +140,10 @@ Follow these for ALL Overmind work:
 1. **Server-side verification.** Stamp the approved correlation as
    `conversation.id`, run only the approved input, and flush. Poll
    `query_traces(session=<correlation>, all_spans=false, limit=2)` within a
-   fixed bound and require `page.total == 1`. Read that row's
-   `overmind://traces/{trace_id}` resource, require `truncated == false` and
-   `span_count == len(spans)`, then pass its server-supplied `spans` unchanged
-   to `verify_instrumentation` (no DB writes). Report application outcome
-   separately from instrumentation status.
+   fixed bound and require `page.total == 1`. Pass that row's `trace_id` to
+   `verify_instrumentation(trace_id=...)`; the server grades the ingested
+   spans (no DB writes). Report application outcome separately from
+   instrumentation status.
 
 ## Use-case references
 
@@ -361,8 +374,8 @@ local work is needed:
   `overmind sync` sends that snapshot to the configured project. MCP cannot
   scan or edit the repository.
 - `get_instrumentation_plan` is read-only. Apply its exact tickets locally;
-  the MCP server cannot edit files or ingest a smoke trace. Use
-  `verify_instrumentation` only with caller-supplied spans.
+  the MCP server cannot edit files or ingest a smoke trace. Verify an ingested
+  run with `verify_instrumentation(trace_id=...)`.
 - MCP does not carry local file bytes. From a coding agent with filesystem
   access, run `overmind dataset upload FILE --json` with optional
   `--intent train|eval` and `--project-id`. The command returns the dataset

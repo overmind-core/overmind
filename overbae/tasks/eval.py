@@ -158,9 +158,11 @@ def preload_capability_eval_set(self, *, capability_id: str, **kwargs) -> dict[s
         raise
 
     capability.refresh_from_db(fields=["improvement_metadata"])
+    authoring_error = result.get("authoring_error")
     write_eval_preload(
         capability,
-        status=terminal_status_from_result(result),
+        status=STATUS_FAILED if authoring_error else terminal_status_from_result(result),
+        error=f"Judge authoring failed: {authoring_error}" if authoring_error else None,
         counts=preload_counts_from_result(result) or None,
     )
     return result

@@ -1286,6 +1286,8 @@ class FinetuningJobSerializer(serializers.ModelSerializer):
 
     def validate(self, attrs):
         attrs = super().validate(attrs)
+        if self.instance is None and settings.TRAINING_UNCONFIGURED_ERROR:
+            raise serializers.ValidationError(settings.TRAINING_UNCONFIGURED_ERROR)
         if self.instance is not None:
             for field in (
                 "project",
@@ -1475,8 +1477,6 @@ class FinetuningJobSerializer(serializers.ModelSerializer):
         # Baseten/Modal: rows over the *selected training kind's* max fine-tuning
         # context are rejected outright — MAX_LENGTH truncation would corrupt
         # training targets. Check train + validation; require headroom.
-        from django.conf import settings
-
         if getattr(settings, "FINETUNING_BACKEND", "") == "baseten" and entry:
             from overbae.modal.model_registry import context_headroom
             from overbae.modal.training_type import training_context_length, training_enabled

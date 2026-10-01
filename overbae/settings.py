@@ -600,10 +600,6 @@ BASETEN_API_KEY = os.environ.get("BASETEN_API_KEY", "")
 BASETEN_PROJECT = os.environ.get("BASETEN_PROJECT", "")
 
 HF_TOKEN = os.environ.get("HF_TOKEN", "")
-if not HF_TOKEN:
-    raise ImproperlyConfigured(
-        "HF_TOKEN must be set, get it from https://huggingface.co/settings/tokens"
-    )
 
 # Durable home for a fine-tune's checkpoint.zip / job_logs.txt / metrics.json.
 # The names match Modal's overmind-inference secret. These static keys go
@@ -618,40 +614,32 @@ FINETUNING_BACKEND = os.environ.get("FINETUNING_BACKEND", "modal")
 # Must be `modal deploy`-ed before FINETUNING_BACKEND=modal can submit jobs.
 MODAL_SFT_APP_NAME = os.environ.get("MODAL_SFT_APP_NAME", "overmind-sft")
 
-_missing_aws = [
-    name
-    for name, value in (
-        ("AWS_BUCKET_NAME", AWS_BUCKET_NAME),
-        ("AWS_ACCESS_KEY_ID", AWS_ACCESS_KEY_ID),
-        ("AWS_SECRET_ACCESS_KEY", AWS_SECRET_ACCESS_KEY),
-    )
-    if not value
-]
-if _missing_aws:
-    raise ImproperlyConfigured(
-        f"{', '.join(_missing_aws)} must be set (fine-tuning checkpoint S3 archive)"
-    )
-
 if FINETUNING_BACKEND != "modal":
     raise ImproperlyConfigured("FINETUNING_BACKEND must be modal")
-
-
-if FINETUNING_BACKEND == "modal" and not (
-    os.environ.get("MODAL_TOKEN_ID") and os.environ.get("MODAL_TOKEN_SECRET")
-):
-    raise ImproperlyConfigured(
-        "MODAL_TOKEN_ID and MODAL_TOKEN_SECRET must be set when FINETUNING_BACKEND=modal, get them from https://modal.com/secrets/"
-    )
 
 # The InferenceAPIServer ASGI endpoint, printed by `modal deploy`.
 INFERENCE_API_URL: str = os.environ.get("INFERENCE_API_URL", "")
 # Must match INFERENCE_API_KEY in the Modal overmind-inference secret.
 INFERENCE_API_KEY: str = os.environ.get("INFERENCE_API_KEY", "")
 
-if not INFERENCE_API_URL:
-    raise ImproperlyConfigured("INFERENCE_API_URL must be set")
-if not INFERENCE_API_KEY:
-    raise ImproperlyConfigured("INFERENCE_API_KEY must be set")
+TRAINING_UNCONFIGURED: list[str] = [
+    name
+    for name, value in (
+        ("MODAL_TOKEN_ID", os.environ.get("MODAL_TOKEN_ID", "")),
+        ("MODAL_TOKEN_SECRET", os.environ.get("MODAL_TOKEN_SECRET", "")),
+        ("INFERENCE_API_URL", INFERENCE_API_URL),
+        ("INFERENCE_API_KEY", INFERENCE_API_KEY),
+        ("AWS_BUCKET_NAME", AWS_BUCKET_NAME),
+        ("AWS_ACCESS_KEY_ID", AWS_ACCESS_KEY_ID),
+        ("AWS_SECRET_ACCESS_KEY", AWS_SECRET_ACCESS_KEY),
+    )
+    if not value
+]
+TRAINING_UNCONFIGURED_ERROR = (
+    f"Training is not configured on this server. Set {', '.join(TRAINING_UNCONFIGURED)}."
+    if TRAINING_UNCONFIGURED
+    else ""
+)
 
 
 if not any([OPENAI_API_KEY, ANTHROPIC_API_KEY, GEMINI_API_KEY, OPENROUTER_API_KEY, CURSOR_API_KEY]):

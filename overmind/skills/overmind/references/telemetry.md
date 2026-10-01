@@ -145,10 +145,9 @@ for approval. In either branch:
    `page.total == 1`. Zero or multiple root rows is a correlation failure, not
    a verification pass. Use the single row's `trace_id`.
 
-1. Read `overmind://traces/<trace_id>`. Require `truncated == false` and
-   `span_count == len(spans)`, then pass its `spans` list unchanged to
-   `verify_instrumentation`. The trace resource and verifier share a 100-span
-   limit; a larger trace is a reported blocker, not a partial pass.
+1. Call `verify_instrumentation(trace_id=<trace_id>)`. The server grades the
+   ingested spans, so they never pass through the conversation. A trace over
+   the verifier's span limit is a reported blocker, not a partial pass.
 
 1. Report instrumentation status separately from application outcome. A
    successful application run does not prove instrumentation quality, and a

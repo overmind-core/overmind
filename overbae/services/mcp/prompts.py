@@ -73,9 +73,8 @@ PROMPTS = (
             "before approval. Stamp the approved correlation as conversation.id with the application's "
             "existing mechanism or overmind.set_conversation_id, run only the approved input, and "
             "flush spans. Poll query_traces(session=<correlation>, all_spans=false, limit=2) within a "
-            "fixed bound and require page.total == 1. Read that row's "
-            "overmind://traces/{{trace_id}} resource, require truncated == false and "
-            "span_count == len(spans), then pass the supplied spans unchanged to verify_instrumentation. "
+            "fixed bound and require page.total == 1. Pass that row's trace_id to "
+            "verify_instrumentation(trace_id=...); the server grades the ingested spans. "
             "Report application outcome separately from instrumentation status. A real-run retry needs "
             "fresh approval unless the user approved an exact input and bounded attempt count."
         ),

@@ -68,15 +68,15 @@ On first boot the API runs migrations and seeds the built-in evaluators; Swagger
 <details>
 <summary><b>What the API needs to boot</b></summary>
 
-The API will not start without these. `.env.example` documents every other key.
+The API needs one key to boot: `OPENROUTER_API_KEY` (or `CURSOR_API_KEY`). OpenRouter serves judges, evals and every routed model call; the Data Workshop agent uses the first of `CURSOR_API_KEY`, `OPENROUTER_API_KEY`, `OPENAI_API_KEY`, `ANTHROPIC_API_KEY` or `GEMINI_API_KEY` it finds. `.env.example` documents every other key.
 
-| Group            | Variables                                                                                                                 |
-| ---------------- | ------------------------------------------------------------------------------------------------------------------------- |
-| Object storage   | `AWS_BUCKET_NAME`, `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY` — checkpoint archive                                      |
-| Training backend | `FINETUNING_BACKEND=baseten` + `BASETEN_API_KEY`, or `FINETUNING_BACKEND=modal` + `MODAL_TOKEN_ID` + `MODAL_TOKEN_SECRET` |
-| Serving          | `INFERENCE_API_URL` — the Modal vLLM endpoint printed by `modal deploy`                                                   |
+| Optional group | Variables                                                                         |
+| -------------- | --------------------------------------------------------------------------------- |
+| Training       | `FINETUNING_BACKEND=modal`, `MODAL_TOKEN_ID`, `MODAL_TOKEN_SECRET`                |
+| Serving        | `INFERENCE_API_URL`, `INFERENCE_API_KEY` — the Modal endpoint from `modal deploy` |
+| Checkpoints    | `AWS_BUCKET_NAME`, `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`                   |
 
-Two keys gate features rather than boot: `OPENROUTER_API_KEY` for judges, evals and every routed model call, and one LLM key for the Data Workshop agent — it uses the first of `CURSOR_API_KEY`, `OPENROUTER_API_KEY`, `OPENAI_API_KEY`, `ANTHROPIC_API_KEY` or `GEMINI_API_KEY` it finds. Without `STRIPE_SECRET_KEY`, usage is metered and shown with no remaining-credit cap.
+Until all three groups are set, fine-tuning readiness lists the missing variables and job creation is refused. Without `STRIPE_SECRET_KEY`, usage is metered and shown with no remaining-credit cap.
 
 </details>
 

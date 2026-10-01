@@ -33,7 +33,6 @@ SUPPORTED_IDES: tuple[Ide, ...] = ("cursor", "claude", "opencode", "codex")
 
 MCP_CONFIG_PATHS: dict[Ide, Path] = {
     "cursor": Path(".cursor/mcp.json"),
-    "claude": Path(".mcp.json"),
     "opencode": Path("opencode.json"),
     "codex": Path(".codex/config.toml"),
 }
@@ -99,8 +98,6 @@ def _normalize_ide(ide: str) -> Ide:
 def _commands_root(ide: Ide, cwd: Path) -> Path | None:
     if ide == "cursor":
         return cwd / ".cursor" / "commands"
-    if ide == "claude":
-        return cwd / ".claude" / "commands"
     return None
 
 
@@ -108,15 +105,11 @@ def _strip_frontmatter(text: str) -> str:
     return _FRONTMATTER.sub("", text, count=1)
 
 
-def _command_body(cmd_key: str, source: Path, *, ide: Ide) -> str:
-    label = SLASH_LABELS[cmd_key]
-    description = COMMAND_DESCRIPTIONS[cmd_key]
+def _command_body(cmd_key: str, source: Path) -> str:
     body = _strip_frontmatter(source.read_text())
     # Cursor's command palette uses the first line as the subtitle and does
     # not parse YAML, so a `---` fence shows up as "--- (project)".
-    if ide == "cursor":
-        return f"{description}\n\n# {label}\n\n{body}"
-    return f"---\ndescription: {json.dumps(description)}\n---\n\n# {label}\n\n{body}"
+    return f"{COMMAND_DESCRIPTIONS[cmd_key]}\n\n# {SLASH_LABELS[cmd_key]}\n\n{body}"
 
 
 def resolve_mcp_url(env: str, api_url: str = "") -> tuple[str, str]:
@@ -173,6 +166,28 @@ def write_codex_mcp(path: Path, url: str, api_key: str | None = None) -> None:
     )
 
 
+def claude_config_path() -> Path:
+    config_dir = os.environ.get("CLAUDE_CONFIG_DIR", "").strip()
+    return (Path(config_dir).expanduser() if config_dir else Path.home()) / ".claude.json"
+
+
+def _claude_servers(config: dict, cwd: Path) -> dict | None:
+    servers = config.get("projects", {}).get(cwd.resolve().as_posix(), {}).get("mcpServers")
+    return servers if isinstance(servers, dict) else None
+
+
+def write_claude_mcp(cwd: Path, url: str, api_key: str | None) -> Path:
+    path = claude_config_path().resolve()
+    config = json.loads(path.read_text()) if path.exists() else {}
+    server: dict = {"type": "http", "url": url}
+    if api_key:
+        server["headers"] = {"X-Api-Key": api_key}
+    project = config.setdefault("projects", {}).setdefault(cwd.resolve().as_posix(), {})
+    project.setdefault("mcpServers", {})["overmind"] = server
+    _write_text(path, json.dumps(config, indent=2) + "\n", contains_secret=True)
+    return path
+
+
 def write_slash_commands(ide: Ide, cwd: Path) -> list[Path]:
     root = _commands_root(ide, cwd)
     if root is None:
@@ -182,7 +197,7 @@ def write_slash_commands(ide: Ide, cwd: Path) -> list[Path]:
     written: list[Path] = []
     for cmd_key, step in COMMANDS.items():
         path = root / f"{cmd_key}.md"
-        path.write_text(_command_body(cmd_key, skill_root / step, ide=ide))
+        path.write_text(_command_body(cmd_key, skill_root / step))
         written.append(path)
     return written
 
@@ -208,6 +223,8 @@ def seed_toml(path: Path, *, base_url: str) -> Path | None:
 
 
 def write_mcp_config(ide: Ide, cwd: Path, mcp_url: str, api_key: str | None) -> Path:
+    if ide == "claude":
+        return write_claude_mcp(cwd, mcp_url, api_key)
     path = cwd / MCP_CONFIG_PATHS[ide]
     if api_key:
         protect_secret_file(path, repo_root=cwd)
@@ -225,15 +242,6 @@ def write_mcp_config(ide: Ide, cwd: Path, mcp_url: str, api_key: str | None) -> 
         if api_key:
             server["headers"] = {"X-Api-Key": api_key}
         config.setdefault("mcp", {})["overmind"] = server
-    elif ide == "claude":
-        config = json.loads(path.read_text()) if path.exists() else {}
-        server = {
-            "type": "http",
-            "url": mcp_url,
-        }
-        if api_key:
-            server["headers"] = {"X-Api-Key": api_key}
-        config.setdefault("mcpServers", {})["overmind"] = server
     else:
         config = json.loads(path.read_text()) if path.exists() else {}
         server = {"url": mcp_url}
@@ -248,6 +256,11 @@ def write_mcp_config(ide: Ide, cwd: Path, mcp_url: str, api_key: str | None) -> 
 def configured_ides(cwd: Path) -> list[Ide]:
     configured: list[Ide] = []
     for ide in SUPPORTED_IDES:
+        if ide == "claude":
+            path = claude_config_path()
+            if path.exists() and "overmind" in (_claude_servers(json.loads(path.read_text()), cwd) or {}):
+                configured.append(ide)
+            continue
         path = cwd / MCP_CONFIG_PATHS[ide]
         if not path.exists():
             continue
@@ -268,6 +281,8 @@ def configured_ides(cwd: Path) -> list[Ide]:
 def preflight_mcp_configs(cwd: Path) -> list[Ide]:
     ides = configured_ides(cwd)
     for ide in ides:
+        if ide == "claude":
+            continue
         path = cwd / MCP_CONFIG_PATHS[ide]
         protect_secret_file(path, repo_root=cwd)
         if ide != "codex":

@@ -939,7 +939,7 @@ def author_grounded_judges(
             raise
         return []
     except Exception as exc:  # noqa: BLE001 — Tier 1 is additive on top of Tier 0
-        logger.warning("Tier 1 %s judge authoring failed (Tier 0 output stands): %s", suite, exc)
+        _record_drop(drops, suite=suite, name="", stage="failed", reason=str(exc))
         return []
     finally:
         executor.shutdown(wait=False, cancel_futures=True)

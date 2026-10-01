@@ -4,7 +4,7 @@ export type McpClient = "cursor" | "claude" | "opencode" | "codex";
 
 export const MCP_CLIENTS: { id: McpClient; label: string; destination: string }[] = [
   { destination: ".cursor/mcp.json", id: "cursor", label: "Cursor" },
-  { destination: ".mcp.json", id: "claude", label: "Claude Code" },
+  { destination: "~/.claude.json", id: "claude", label: "Claude Code" },
   { destination: "opencode.json", id: "opencode", label: "opencode" },
   { destination: ".codex/config.toml", id: "codex", label: "Codex" },
 ];
@@ -183,16 +183,18 @@ export function onboardWithAiBootstrapPrompt(
   apiUrl = config.apiUrl
 ): string {
   const url = apiUrl.replace(/\/$/, "");
-  const initCmd = `overmind init ${initCliFlags(client, url)}`;
+  const env = `OVERMIND_API_URL=${url} OVERMIND_API_KEY=${apiKey}`;
+  const reload =
+    client === "claude"
+      ? "Then ask the user to exit Claude Code and run `claude -c` to continue with the Overmind MCP server loaded."
+      : "Reload the IDE once after sync.";
   return [
     projectDependencyInstallGuidance(url),
     "Run all Overmind and Python commands in this project's environment: use uv run for uv, poetry run for Poetry, or the project's virtual-environment executables. Do not use a globally installed overmind.",
-    "The account-scoped API key below is a temporary bootstrap credential. Export it only in this shell session; do not write it into project files.",
-    `export OVERMIND_API_URL=${url}`,
-    `export OVERMIND_API_KEY=${apiKey}`,
-    initCmd,
+    "The account-scoped API key below is a temporary bootstrap credential. Shell exports may not persist between commands, so prefix each command with it as shown; do not write it into project files.",
+    `${env} overmind init ${initCliFlags(client, url)}`,
     `Before the first sync, open ${OVERMIND_SKILL_ONBOARD} and references/onboarding-progress.md from the installed overmind skill. Show the full onboarding roadmap and data disclosure, then use its numbered progress updates throughout.`,
-    "Run `overmind sync`. It creates the project, stores the final project-scoped credential locally, and updates this IDE's MCP configuration. Reload the IDE once after sync; do not re-export the key or run init again.",
+    `Run \`${env} overmind sync\`. It creates the project, stores the final project-scoped credential locally, and updates this IDE's MCP configuration. ${reload} Do not pass the bootstrap key again or run init again.`,
     `After reload, reopen ${OVERMIND_SKILL_ONBOARD} from the installed overmind skill and continue the remaining workflow without repeating bootstrap sync.`,
   ].join("\n\n");
 }
@@ -206,6 +208,6 @@ export function telemetrySetupPrompt(client: McpClient): string {
     "For local runs, the tracing SDK reuses the credential saved by `overmind sync`; deployed processes still require `OVERMIND_API_KEY` in their runtime secret configuration.",
     "Follow `references/telemetry.md`. Call `get_instrumentation_plan` with no capability for project-wide work or the supplied capability for scoped work. If it returns `human_action` or no placements, report the instruction and stop this attempt.",
     "Apply every placement as an exact ticket. When delegating, compute touched files from `target.file` and every `required_spans[].target.file`, coalesce overlapping tickets under one owner, and never let two workers edit the same file. Preserve every ticket field verbatim, including `key`, `behaviour_id`, `version_id`, `version_analyzed_sha`, `contract_fingerprint`, `capability`, `capability_id`, `placement_mode`, `allowed_keys`, `grain`, `target`, `required_scope`, `required_spans`, and `required_identity`.",
-    "After applying the tickets, report the changed files and checks, generate a unique verification correlation, and ask the user to choose Real run (recommended) or Smoke run. Present the exact command or input, capability, environment, provider/model, expected side effects, correlation value, and approved attempt count; mark unknown fields as needing user input. Do not run either mode before explicit approval. Stamp the approved correlation as `conversation.id` with the application's existing mechanism or `overmind.set_conversation_id`, run only the approved input, flush, and poll `query_traces(session=<correlation>, all_spans=false, limit=2)` within a fixed bound. Require `page.total == 1`, read that row's `overmind://traces/{trace_id}` resource, require `truncated == false` and `span_count == len(spans)`, and pass the supplied spans unchanged to `verify_instrumentation`. Real-run retries require fresh approval unless an exact input and bounded attempt count were approved. Report application outcome separately from instrumentation status.",
+    "After applying the tickets, report the changed files and checks, generate a unique verification correlation, and ask the user to choose Real run (recommended) or Smoke run. Present the exact command or input, capability, environment, provider/model, expected side effects, correlation value, and approved attempt count; mark unknown fields as needing user input. Do not run either mode before explicit approval. Stamp the approved correlation as `conversation.id` with the application's existing mechanism or `overmind.set_conversation_id`, run only the approved input, flush, and poll `query_traces(session=<correlation>, all_spans=false, limit=2)` within a fixed bound. Require `page.total == 1` and pass that row's `trace_id` to `verify_instrumentation(trace_id=...)`; the server grades the ingested spans. Real-run retries require fresh approval unless an exact input and bounded attempt count were approved. Report application outcome separately from instrumentation status.",
   ].join(" ");
 }

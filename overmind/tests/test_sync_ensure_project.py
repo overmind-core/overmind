@@ -9,7 +9,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from overmind.config import Config, dump, load
-from overmind.init_cmd import write_mcp_config
+from overmind.init_cmd import claude_config_path, write_mcp_config
 from overmind.sync import (
     SyncError,
     _api_key_scope,
@@ -165,9 +165,8 @@ def test_sync_installs_final_key_for_all_configured_ides(tmp_path: Path, monkeyp
     assert json.loads((tmp_path / ".cursor" / "mcp.json").read_text())["mcpServers"]["overmind"]["headers"] == {
         "X-Api-Key": "ovr_project_key"
     }
-    assert json.loads((tmp_path / ".mcp.json").read_text())["mcpServers"]["overmind"]["headers"] == {
-        "X-Api-Key": "ovr_project_key"
-    }
+    claude = json.loads(claude_config_path().read_text())["projects"][tmp_path.resolve().as_posix()]
+    assert claude["mcpServers"]["overmind"]["headers"] == {"X-Api-Key": "ovr_project_key"}
     assert json.loads((tmp_path / "opencode.json").read_text())["mcp"]["overmind"]["headers"] == {
         "X-Api-Key": "ovr_project_key"
     }
@@ -222,6 +221,7 @@ def test_sync_does_not_add_overmind_to_uninitialized_ide_config(tmp_path: Path):
     dump(Config(project_id=project_id, project_name="demo"), path)
     unrelated = {"mcpServers": {"other": {"command": "other"}}}
     (tmp_path / ".mcp.json").write_text(json.dumps(unrelated))
+    claude_config_path().write_text(json.dumps({"projects": {tmp_path.resolve().as_posix(): unrelated}}))
 
     with (
         patch("overmind.sync._api_key_scope", return_value="account"),
@@ -231,3 +231,4 @@ def test_sync_does_not_add_overmind_to_uninitialized_ide_config(tmp_path: Path):
         run_up(path, "bootstrap", "https://api.example")
 
     assert json.loads((tmp_path / ".mcp.json").read_text()) == unrelated
+    assert json.loads(claude_config_path().read_text()) == {"projects": {tmp_path.resolve().as_posix(): unrelated}}

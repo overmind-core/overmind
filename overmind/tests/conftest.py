@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 
+import pytest
 from opentelemetry import trace as _otel_trace
 from opentelemetry.sdk.trace import TracerProvider
 
@@ -23,3 +24,8 @@ _overmind_tracing._initialized = True
 os.environ["OVERMIND_API_KEY"] = "test"
 # Product analytics is opt-out; keep the suite from phone-homing.
 os.environ["OVERMIND_ANALYTICS_ENABLED"] = "false"
+
+
+@pytest.fixture(autouse=True)
+def _isolated_claude_config(tmp_path_factory, monkeypatch):
+    monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(tmp_path_factory.mktemp("claude-config")))

@@ -113,10 +113,7 @@ def test_instrument_repository_supports_project_wide_and_scoped_workflows():
     assert "conversation.id" in text
     assert "query_traces(session=<correlation>, all_spans=false, limit=2)" in text
     assert "page.total == 1" in text
-    assert "overmind://traces/{trace_id}" in text
-    assert "truncated == false" in text
-    assert "span_count == len(spans)" in text
-    assert "supplied spans unchanged" in text
+    assert "verify_instrumentation(trace_id=...)" in text
     assert "A real-run retry needs fresh approval" in text
 
 

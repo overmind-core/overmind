@@ -719,9 +719,9 @@ def _persist_authoring_status(
 
     degraded_reasons = [f"tier1 {s} suite timed out" for s in suites_timed_out]
     degraded_reasons += [
-        f"tier1 {d.get('suite') or '?'} suite truncated: {d.get('reason')}"
+        f"tier1 {d.get('suite') or '?'} suite {d['stage']}: {d.get('reason')}"
         for d in drops
-        if d.get("stage") == "truncated"
+        if d.get("stage") in ("truncated", "failed")
     ]
     status = {
         "drops": drops,
@@ -968,6 +968,7 @@ def generate_and_preload_default_set(
             capability.id,
             ", ".join(empty_suites),
         )
+    authoring_error = next((d["reason"] for d in drops if d.get("stage") == "failed"), None)
     return {
         "eval_set_id": str(eval_set.id),
         "generated": len(all_specs),
@@ -975,6 +976,7 @@ def generate_and_preload_default_set(
         "added": total_added,
         "generative": result["generative"],
         "trace_scoring": result["trace_scoring"],
+        "authoring_error": authoring_error,
         "empty_tier1_suites": empty_suites,
         "tier1_authored": reauthored,
         "suites_timed_out": suites_timed_out,

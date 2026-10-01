@@ -206,18 +206,20 @@ overmind init --ide codex
 `init` prepares each vendor's project-scoped MCP config, leaving any other
 configured servers untouched. `sync` installs the final project key:
 
-| `--ide`                  | MCP config           | Skill install      |
-| ------------------------ | -------------------- | ------------------ |
-| `cursor`                 | `.cursor/mcp.json`   | `.cursor/skills`   |
-| `claude` / `claude_code` | `.mcp.json`          | `.claude/skills`   |
-| `opencode`               | `opencode.json`      | `.opencode/skills` |
-| `codex`                  | `.codex/config.toml` | `.agents/skills`   |
+| `--ide`                  | MCP config                     | Skill install      |
+| ------------------------ | ------------------------------ | ------------------ |
+| `cursor`                 | `.cursor/mcp.json`             | `.cursor/skills`   |
+| `claude` / `claude_code` | `~/.claude.json` (local scope) | `.claude/skills`   |
+| `opencode`               | `opencode.json`                | `.opencode/skills` |
+| `codex`                  | `.codex/config.toml`           | `.agents/skills`   |
 
-Claude Code reads project MCP servers from a root-level `.mcp.json`; it does not
-read `.claude/mcp.json`. MCP configs containing the project key and
-`.overmind/credentials.toml` are added to the clone-local Git exclude file and
-written with owner-only permissions. Sync refuses to put a key in a tracked
-config. Codex loads project configuration only for trusted repositories.
+Claude Code gets a local-scope server for this directory in `~/.claude.json`
+(or `$CLAUDE_CONFIG_DIR/.claude.json`), so the key never enters the repository
+and a committed `.mcp.json` is left untouched. Other MCP configs containing the
+project key and `.overmind/credentials.toml` are added to the clone-local Git
+exclude file and written with owner-only permissions. Sync refuses to put a key
+in a tracked config. Codex loads project configuration only for trusted
+repositories.
 
 | Skill      | What it does                                                                                        |
 | ---------- | --------------------------------------------------------------------------------------------------- |

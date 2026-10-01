@@ -297,3 +297,37 @@ def test_verify_enforces_span_bound_and_redacts_unexpected_failures(monkeypatch)
     assert result.isError is True
     assert result.structuredContent["error"]["code"] == "internal_error"
     assert "private provider detail" not in result.content[0].text
+
+
+def test_verify_grades_an_ingested_trace_by_id_beyond_the_caller_span_bound():
+    context = _context()
+    capability = _capability(context)
+    _behaviour(capability)
+    trace_id = uuid.uuid4().hex
+    root = _span(trace_id=trace_id, **{"overmind.behaviour.key": "support-task"})
+    rows = [root] + [
+        {
+            **_span(trace_id=trace_id),
+            "parent_span_id": root["span_id"],
+            "span_type": "function",
+            "name": f"step-{i}",
+        }
+        for i in range(150)
+    ]
+    Span.objects.bulk_create(
+        [Span(project=context.project, duration_ns=1_000_000, **row) for row in rows]
+    )
+    counts = (Span.objects.count(), TaskExecution.objects.count())
+
+    result = _call(
+        "verify_instrumentation", context, {"capability": capability.slug, "trace_id": trace_id}
+    )
+    foreign = _call("verify_instrumentation", _context(), {"trace_id": trace_id})
+    both = _call("verify_instrumentation", context, {"trace_id": trace_id, "spans": [_span()]})
+
+    assert result.isError is False
+    assert result.structuredContent["ok"] is True
+    assert result.structuredContent["tasks"][0]["binding_source"] == "declared"
+    assert counts == (Span.objects.count(), TaskExecution.objects.count())
+    assert foreign.structuredContent["error"]["code"] == "resource_not_found"
+    assert both.structuredContent["error"]["code"] == "invalid_input"

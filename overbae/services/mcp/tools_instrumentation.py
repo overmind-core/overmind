@@ -4,11 +4,14 @@ from __future__ import annotations
 
 from asgiref.sync import sync_to_async
 
+from overbae.models import Span
 from overbae.services.behaviour import dry_run
 from overbae.services.behaviour.instrumentation import instrumentation_tickets
 from overbae.services.capabilities import identity
 from overbae.services.mcp.context import MCPContext
 from overbae.services.mcp.contracts.instrumentation import (
+    MAX_INSTRUMENTATION_SPANS,
+    MAX_VERIFY_TRACE_SPANS,
     GetInstrumentationPlanInput,
     GetInstrumentationPlanOutput,
     InstrumentationHumanAction,
@@ -69,16 +72,29 @@ def _verify_sync(
     payload: VerifyInstrumentationInput, context: MCPContext
 ) -> VerifyInstrumentationOutput:
     capability = _resolve_capability(context, payload.capability)
-    result = dry_run.verify_spans(
-        str(context.project.id),
-        [span.model_dump(mode="python", exclude_none=True) for span in payload.spans],
-        capability=capability,
-    )
+    project_id = str(context.project.id)
+    if payload.trace_id:
+        span_count = Span.objects.filter(project_id=project_id, trace_id=payload.trace_id).count()
+        if not span_count:
+            raise MCPError("resource_not_found", "The trace was not found in this project.")
+        if span_count > MAX_VERIFY_TRACE_SPANS:
+            raise MCPError(
+                "invalid_input",
+                f"The trace has {span_count} spans; verification accepts at most "
+                f"{MAX_VERIFY_TRACE_SPANS}. Verify a smaller run.",
+            )
+        result = dry_run.verify_trace(project_id, payload.trace_id, capability=capability)
+    else:
+        result = dry_run.verify_spans(
+            project_id,
+            [span.model_dump(mode="python", exclude_none=True) for span in payload.spans],
+            capability=capability,
+        )
     return VerifyInstrumentationOutput(
         summary="Instrumentation verified." if result.get("ok") else "Instrumentation gaps found.",
         ok=bool(result.get("ok")),
-        tasks=result.get("tasks") or [],
-        capabilities=result.get("capabilities") or [],
+        tasks=(result.get("tasks") or [])[:MAX_INSTRUMENTATION_SPANS],
+        capabilities=(result.get("capabilities") or [])[:MAX_INSTRUMENTATION_SPANS],
         errors=result.get("errors") or [],
     )
 
@@ -105,7 +121,7 @@ def register_instrumentation_tools(catalog) -> None:
         (
             "verify_instrumentation",
             "Verify instrumentation",
-            "Bind and grade a bounded caller-supplied span list without writing traces or scores.",
+            "Grade an ingested trace (trace_id) or caller-supplied spans without writes.",
             VerifyInstrumentationInput,
             VerifyInstrumentationOutput,
             _verify_sync,

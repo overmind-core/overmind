@@ -212,7 +212,7 @@ overmind sync
 
 `convert_json_to_toml` preserves existing `base-url` / `project-id` / capability `id` values from any prior `overmind.toml`, fills `system_prompt` from cited spans, drops fabricated anchors and unverifiable provenance, and stamps `trajectory_map[].verified` against the AST chassis of the JSON's parent directory. Conversion attaches the verified scan provenance to `overmind.toml`. Sync preserves that original revision and scan time, even if the checkout changes afterward; the server records sync time separately. The Console Agent header and `overmind://project/current` expose the snapshot. `overmind sync` reads the local project credential, POSTs the snapshot to `/api/v1/sync`, and writes assigned ids back. If `project-id` was empty and the temporary key is account-scoped, sync creates the project first and persists the new id.
 
-`eval_matrix` in toml is **intent metadata** — it round-trips through sync but is not turned into runnable graders. The platform authors the Default eval set server-side from the capability card after sync (async preload; check the Console Evaluators tab or `eval_preload` on the capability).
+`eval_matrix` in toml is **intent metadata** — it round-trips through sync but is not turned into runnable graders. The platform authors the Default eval set server-side from the capability card after sync (async preload). Read `eval_preload` on `overmind://capabilities/{capability}`; `status: failed` with a judge authoring error means the server's model provider call failed. Report the error; after the operator fixes the server configuration, run `overmind sync` again to retry.
 
 Never upload the repository. Never invent project or capability UUIDs.
 

@@ -65,10 +65,6 @@ def _identity_of(project_id: str, spans: list[Span]) -> Capability | None:
 def verify_spans(
     project_id: str, spans_payload: list[dict], capability: Capability | None = None
 ) -> dict[str, Any]:
-    """Each unit resolves its own capability — from its own spans' identity, then
-    its ancestors', then the ``capability`` fallback — so a smoke run spanning
-    several capabilities, or a handoff across a capability boundary, is never
-    smeared under one."""
     errors: list[dict[str, Any]] = []
     spans: list[Span] = []
     for index, raw in enumerate(spans_payload or []):
@@ -77,7 +73,29 @@ def verify_spans(
             errors.append({"index": index, "error": error})
         else:
             spans.append(span)
+    return _grade(project_id, spans, errors, capability)
 
+
+def verify_trace(
+    project_id: str, trace_id: str, capability: Capability | None = None
+) -> dict[str, Any]:
+    """Grade an ingested trace in place, so its spans never round-trip through the caller."""
+    spans = list(
+        Span.objects.filter(project_id=project_id, trace_id=trace_id).order_by("start_time_ns")
+    )
+    return _grade(project_id, spans, [], capability)
+
+
+def _grade(
+    project_id: str,
+    spans: list[Span],
+    errors: list[dict[str, Any]],
+    capability: Capability | None,
+) -> dict[str, Any]:
+    """Each unit resolves its own capability — from its own spans' identity, then
+    its ancestors', then the ``capability`` fallback — so a smoke run spanning
+    several capabilities, or a handoff across a capability boundary, is never
+    smeared under one."""
     by_trace: dict[str, list[Span]] = {}
     for span in spans:
         by_trace.setdefault(span.trace_id, []).append(span)

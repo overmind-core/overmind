@@ -9,6 +9,7 @@ from pydantic import Field, StrictInt, StrictStr, model_validator
 from overbae.services.mcp.contracts.common import MCPModel
 
 MAX_INSTRUMENTATION_SPANS = 100
+MAX_VERIFY_TRACE_SPANS = 5_000
 MAX_INSTRUMENTATION_TICKETS = 100
 
 
@@ -130,7 +131,16 @@ class InstrumentationCapabilityResult(MCPModel):
 
 class VerifyInstrumentationInput(MCPModel):
     capability: str | None = Field(default=None, min_length=1, max_length=255)
-    spans: list[InstrumentationSpan] = Field(max_length=MAX_INSTRUMENTATION_SPANS)
+    trace_id: StrictStr = Field(default="", max_length=32)
+    spans: list[InstrumentationSpan] = Field(
+        default_factory=list, max_length=MAX_INSTRUMENTATION_SPANS
+    )
+
+    @model_validator(mode="after")
+    def trace_or_spans(self) -> VerifyInstrumentationInput:
+        if self.trace_id and self.spans:
+            raise ValueError("pass trace_id or spans, not both")
+        return self
 
 
 class VerifyInstrumentationOutput(MCPModel):

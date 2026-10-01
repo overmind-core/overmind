@@ -39,6 +39,7 @@ from overbae.services.entity_resolution import (
     resolve_session,
 )
 from overbae.services.eval.context_check import run_context_checks
+from overbae.services.eval.preload_status import read_eval_preload
 from overbae.services.eval.sample_io import sample_io
 from overbae.services.inference_live import worker_status
 from overbae.services.inference_metrics import model_activity, model_metrics, monitoring_options
@@ -467,6 +468,7 @@ def _capability_resource(project, value: str, uri: str) -> dict:
         "active_eval_set": str(capability.active_eval_set_id)
         if capability.active_eval_set_id
         else None,
+        "eval_preload": read_eval_preload(capability),
         "active_model": (
             {
                 "id": str(active_model.id),
