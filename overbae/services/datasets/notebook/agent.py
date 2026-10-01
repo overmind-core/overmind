@@ -8,7 +8,7 @@ from collections.abc import Callable, Iterator
 from threading import RLock
 from typing import Any
 
-from django.db import close_old_connections, transaction
+from django.db import transaction
 from django.utils import timezone
 from pydantic import ValidationError
 
@@ -1018,8 +1018,6 @@ def _guarded(tools: Tools, name: str, fn: Callable[..., Any]) -> Callable[..., A
                 "working", "Preparing the next step", "The agent is reviewing the tool result."
             )
         tools.think()
-        # The Cursor SDK runs each call on a fresh thread; no request_finished reaches it.
-        close_old_connections()
         return result
 
     def serial_call(args: dict[str, Any], ctx: Any = None) -> Any:
