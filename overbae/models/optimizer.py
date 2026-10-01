@@ -365,9 +365,9 @@ class OptimizerExperiment(models.Model):
 
     def _lock_unless_terminal(self) -> bool:
         """Take the row lock inside the caller's transaction; False once the run has ended."""
-        self.status = (
-            type(self).objects.select_for_update().values_list("status", flat=True).get(pk=self.pk)
-        )
+        locked = type(self).objects.select_for_update().get(pk=self.pk)
+        for field in self._meta.concrete_fields:
+            setattr(self, field.attname, getattr(locked, field.attname))
         return self.status not in self.TERMINAL
 
     def cancel(self):
