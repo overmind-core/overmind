@@ -24,6 +24,7 @@ class Step:
     id: str = field(default_factory=lambda: uuid.uuid4().hex[:16])
     start: datetime | None = None
     end: datetime | None = None
+    cost: float | None = None
 
 
 def support_desk_trace(started: datetime) -> tuple[str, list[Step]]:
@@ -108,6 +109,7 @@ class LangfuseAPI:
             if step.kind == "generation"
             else {},
             "costDetails": {},
+            "totalCost": step.cost,
             "traceName": self.traces[trace_id][0].name,
             "isRootObservation": step.parent is None,
         }

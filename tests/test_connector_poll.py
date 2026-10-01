@@ -67,6 +67,24 @@ def test_backfill_imports_every_trace_once(credential, langfuse):
     assert _spans(credential) == 5
 
 
+def test_generations_carry_a_cost_reported_or_priced(credential, langfuse):
+    for second, cost in ((0, None), (1, 0.42)):
+        start = datetime(2026, 1, 1, 0, 0, second, tzinfo=UTC)
+        end = start + timedelta(seconds=1)
+        step = Step(
+            "answer", "generation", None, tokens=(1000, 500), start=start, end=end, cost=cost
+        )
+        langfuse.record(uuid.uuid4().hex, [step])
+
+    sync_until_live(credential)
+
+    costs = sorted(
+        span.usage["genai.cost"] for span in Span.objects.filter(project=credential.project)
+    )
+    # gpt-4.1-mini: 1000 in x $0.40/M + 500 out x $1.60/M
+    assert costs == [pytest.approx(0.0012), 0.42]
+
+
 def test_live_polling_pulls_only_what_arrived_since_the_watermark(credential, langfuse):
     _traces(langfuse, 3)
     cred = sync_until_live(credential)
