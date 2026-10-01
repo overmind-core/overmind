@@ -85,10 +85,10 @@ def test_order_zero_model_candidate_defaults_to_challenger():
     assert model_bearing.is_baseline is False
 
 
-def test_model_comparison_stub_accumulates_by_model(monkeypatch):
-    monkeypatch.setattr("overbae.services.optimizer_create.is_model_available", lambda _: True)
-    capability, dataset = _capability_with_eval_dataset()
+def test_model_comparison_stub_accumulates_by_model(fake_llm):
     models = ["openai/gpt-5-mini", "anthropic/claude-sonnet-4"]
+    fake_llm.extra_models = models
+    capability, dataset = _capability_with_eval_dataset()
     exp = create_optimizer_experiment(
         user=None,
         capability=capability,

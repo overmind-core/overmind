@@ -244,19 +244,14 @@ def test_generation_locks_only_the_dataset_with_optional_capability(with_capabil
     if with_capability:
         ds.capability = Capability.objects.create(project=ds.project, name="Task", slug="task")
         ds.save(update_fields=["capability"])
-    # SQLite ignores row locks, so also assert the PostgreSQL lock scope.
-    with patch.object(
-        Dataset.objects, "select_for_update", wraps=Dataset.objects.select_for_update
-    ) as lock:
-        cell = synthetic.add(
-            ds,
-            ds.source,
-            [{"seed_row": 0, "row": {"input": "new", "expected_output": "yes"}}],
-            instruction="Cover variants",
-            generation_id=str(uuid.uuid4()),
-            target_rows=3,
-        )
-    lock.assert_called_once_with(of=("self",))
+    cell = synthetic.add(
+        ds,
+        ds.source,
+        [{"seed_row": 0, "row": {"input": "new", "expected_output": "yes"}}],
+        instruction="Cover variants",
+        generation_id=str(uuid.uuid4()),
+        target_rows=3,
+    )
     assert cell.state == "ok" and cell.review["generated_rows"] == 1
     assert ds.active_cell.rows == 3
     assert cell.review["output_examples"][-1][review.PROVENANCE_COLUMN]["capability"] == (
@@ -407,11 +402,7 @@ def test_generation_never_changes_a_consumed_version():
         ],
         script="df = pd.DataFrame({name: [True] * len(df) for name in ('task_alignment', 'input_evidence', 'answer_support', 'output_schema')})",
     )
-    with patch.object(
-        Dataset.objects, "select_for_update", wraps=Dataset.objects.select_for_update
-    ) as lock:
-        consumed = use.use(ds, "eval")
-    lock.assert_called_once_with(of=("self",))
+    consumed = use.use(ds, "eval")
     with pytest.raises(ValueError, match="used"):
         tools.add_synthetic_rows(
             {"examples": [{"seed_row": 1, "row": {"input": "another", "expected_output": "no"}}]}

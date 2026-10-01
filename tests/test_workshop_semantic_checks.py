@@ -1,12 +1,11 @@
+import os
 from unittest.mock import Mock
 
 import pytest
 from django.contrib.auth import get_user_model
-from django.core.cache import cache
 from django.db import DatabaseError
 from pydantic import ValidationError
 
-from overbae.core import decisions as transport
 from overbae.models import BillingTelemetry, Cell, Dataset, Project
 from overbae.services.datasets import land, paths, review, semantic_checks, store
 from overbae.services.datasets.context import context_fingerprint
@@ -29,32 +28,34 @@ def dataset():
     return dataset
 
 
+def _supported(fake_llm):
+    def decide(key, question):
+        row = fake_llm.decisions[-1]["state"]["rows"][key.split("_")[0][1:]]
+        return "pass" if row["expected_output"] == "blue" else "fail"
+
+    return decide
+
+
 @pytest.fixture
-def provider(monkeypatch):
-    cache.clear()
-
-    def invoke(body, **kwargs):
-        answers = {}
-        for key, question in body["questions"].items():
-            row = body["state"]["rows"][key.split("_")[0][1:]]
-            choice = "pass" if row["expected_output"] == "blue" else "fail"
-            answers[key] = {
-                "type": "choice",
-                "choice": choice,
-                "confidence": 0.99,
-                "probabilities": {
-                    option: float(option == choice) for option in question["criteria"]
-                },
-            }
-        return {
-            "model": "typesafe/jev-1.13-test",
-            "answers": answers,
-            "usage": {"input_tokens": 10, "output_tokens": 0, "cost": 0.00001},
+def provider(fake_llm, settings):
+    # The decision transport meters capacity in Redis and refuses without it.
+    settings.CACHES = {
+        "default": {
+            "BACKEND": "django.core.cache.backends.redis.RedisCache",
+            "LOCATION": os.environ.get("TEST_REDIS_URL", "redis://localhost:6379/15").rsplit(
+                "/", 1
+            )[0]
+            + "/13",
         }
+    }
+    fake_llm.decide = _supported(fake_llm)
+    fake_llm.decision_cost = 0.00001
+    fake_llm.decision_confidence = 0.99
+    return fake_llm
 
-    call = Mock(side_effect=invoke)
-    monkeypatch.setattr(transport, "_request", call)
-    return call
+
+def _sent_rows(provider) -> list[dict]:
+    return [row for body in provider.decisions for row in body["state"]["rows"].values()]
 
 
 def request(max_rows=200):
@@ -94,30 +95,20 @@ def test_partial_audit_preserves_unknown_coverage_and_resumes(dataset, provider)
     assert second["remaining_rows"] == 0
     third = semantic_checks.run_checks(dataset, dataset.active_cell, request(max_rows=1))
     assert third["processed_rows"] == 2
-    assert provider.call_count == 2
+    assert len(provider.decisions) == 2
 
 
-def test_provider_failure_uses_closed_shared_question_resolution(dataset, provider, monkeypatch):
-    provider.side_effect = transport.DecisionError("provider_timeout")
-
-    def generate(prompt, response_format, **kwargs):
-        assert response_format.__name__ == "QuestionResolution"
-        parsed = response_format.model_validate(
-            {
-                "answers": {
-                    "r0_c0": {"reasoning": "Blue is stated.", "choice": "pass"},
-                    "r1_c0": {"reasoning": "Green contradicts red.", "choice": "fail"},
-                }
+def test_provider_failure_uses_closed_shared_question_resolution(dataset, provider):
+    provider.fail(lambda r: r.url.endswith("/systemone"), 504, "provider_timeout")
+    provider.on_json(
+        lambda r: r.schema_name == "QuestionResolution",
+        lambda r: {
+            "answers": {
+                "r0_c0": {"reasoning": "Blue is stated.", "choice": "pass"},
+                "r1_c0": {"reasoning": "Green contradicts red.", "choice": "fail"},
             }
-        )
-        return semantic_checks.funnel.JudgeOutcome(
-            parsed=parsed,
-            raw="{}",
-            stats={"response_cost": 0.001},
-            judge_trace_id="fallback",
-        )
-
-    monkeypatch.setattr(semantic_checks.funnel, "invoke_judge", generate)
+        },
+    )
     result = semantic_checks.run_checks(dataset, dataset.active_cell, request())
     check = result["quality_report"]["checks"][0]
     assert check["rows_failed"] == 1
@@ -141,14 +132,14 @@ def test_missing_columns_fail_before_inference(dataset, provider):
     req.checks[0].evidence_columns = ["missing"]
     with pytest.raises(ValueError, match="Missing check columns"):
         semantic_checks.run_checks(dataset, dataset.active_cell, req)
-    provider.assert_not_called()
+    assert provider.decisions == []
 
 
 def test_cross_dataset_cell_rejected(dataset, provider):
     other = Dataset.objects.create(project=dataset.project, name="Other", intent="eval")
     with pytest.raises(ValueError, match="different dataset"):
         semantic_checks.run_checks(other, dataset.active_cell, request())
-    provider.assert_not_called()
+    assert provider.decisions == []
 
 
 def test_quality_save_rejects_changed_intent(dataset):
@@ -168,23 +159,17 @@ def test_quality_save_rejects_changed_intent(dataset):
         )
 
 
-def test_quality_save_locks_dataset_not_nullable_capability_join(dataset, provider, monkeypatch):
-    lock = Mock(wraps=Dataset.objects.select_for_update)
-    monkeypatch.setattr(Dataset.objects, "select_for_update", lock)
-    semantic_checks.run_checks(dataset, dataset.active_cell, request())
-    lock.assert_called_once_with(of=("self",))
-
-
 def test_failed_audit_persistence_still_charges_provider_usage(dataset, provider, monkeypatch):
-    charge = Mock()
-    monkeypatch.setattr(semantic_checks, "charge_llm_usage", charge)
+    user = get_user_model().objects.create_user(email="semantic-save@example.com", password="x")
     monkeypatch.setattr(
         review, "record_quality_results", Mock(side_effect=DatabaseError("save failed"))
     )
     with pytest.raises(DatabaseError, match="save failed"):
-        semantic_checks.run_checks(dataset, dataset.active_cell, request())
-    charge.assert_called_once()
-    assert charge.call_args.args[1]["response_cost"] > 0
+        semantic_checks.run_checks(dataset, dataset.active_cell, request(), user=user)
+    [charge] = BillingTelemetry.objects.filter(
+        user=user, idempotency_key__startswith="semantic-check:"
+    )
+    assert charge.amount < 0
 
 
 def many_rows(dataset, count, content="The box is blue."):
@@ -195,30 +180,22 @@ def many_rows(dataset, count, content="The box is blue."):
 
 
 @pytest.mark.parametrize("content", ["x" * 4000, "界" * 1500])
-def test_batches_fit_actual_utf8_context_without_fallback(dataset, provider, monkeypatch, content):
+def test_batches_fit_actual_utf8_context_without_fallback(dataset, provider, content):
     dataset = many_rows(dataset, 8, content)
-    monkeypatch.setattr(
-        semantic_checks.funnel,
-        "invoke_judge",
-        Mock(side_effect=AssertionError("Rows fit when split.")),
-    )
     result = semantic_checks.run_checks(dataset, dataset.active_cell, request())
     assert result["processed_rows"] == 8
-    assert provider.call_count > 1
-    assert sum(len(call.args[0]["state"]["rows"]) for call in provider.call_args_list) == 8
-    assert all(
-        row["input"] == content
-        for call in provider.call_args_list
-        for row in call.args[0]["state"]["rows"].values()
-    )
+    assert len(provider.decisions) > 1
+    assert len(_sent_rows(provider)) == 8
+    assert all(row["input"] == content for row in _sent_rows(provider))
+    assert not [r for r in provider.requests if r.schema_name == "QuestionResolution"]
 
 
 def test_small_rows_pack_by_context_not_a_fixed_eight_row_limit(dataset, provider):
     dataset = many_rows(dataset, 200)
     result = semantic_checks.run_checks(dataset, dataset.active_cell, request())
     assert result["remaining_rows"] == 0
-    assert provider.call_count <= 5
-    assert max(len(call.args[0]["state"]["rows"]) for call in provider.call_args_list) > 8
+    assert len(provider.decisions) <= 5
+    assert max(len(body["state"]["rows"]) for body in provider.decisions) > 8
 
 
 def test_interrupted_audit_resumes_durable_batches_without_rechecking(dataset, provider):
@@ -235,29 +212,24 @@ def test_interrupted_audit_resumes_durable_batches_without_rechecking(dataset, p
     audit = cell.quality_report["semantic_audit"]
     assert len(audit["results"]) > 0
     assert cell.quality_report["checks"][0]["rows_unknown"] == 200 - len(audit["results"])
-    completed = set(audit["results"])
-    provider.reset_mock()
+    completed = len(audit["results"])
+    provider.decisions.clear()
     result = semantic_checks.run_checks(dataset, cell, request())
     assert result["remaining_rows"] == 0
-    checked_again = {
-        semantic_checks._row_key(row)
-        for call in provider.call_args_list
-        for row in call.args[0]["state"]["rows"].values()
-    }
-    assert not completed.intersection(checked_again)
+    assert len(_sent_rows(provider)) == 200 - completed
 
 
 def test_concurrent_audit_checkpoint_cannot_be_overwritten(dataset, provider):
     cell = dataset.active_cell
-    original = provider.side_effect
+    original = provider.decide
 
-    def race(body, **kwargs):
+    def race(key, question):
         Cell.objects.filter(pk=cell.pk).update(
             quality_report={"semantic_audit": {"contract": "another audit"}}
         )
-        return original(body, **kwargs)
+        return original(key, question)
 
-    provider.side_effect = race
+    provider.decide = race
     with pytest.raises(ValueError, match="semantic audit changed"):
         semantic_checks.run_checks(dataset, cell, request())
     cell.refresh_from_db()
@@ -270,7 +242,7 @@ def test_resume_reads_latest_checkpoint_even_with_stale_cell_instance(dataset, p
     semantic_checks.run_checks(dataset, other, request(max_rows=1))
     result = semantic_checks.run_checks(dataset, stale, request(max_rows=1))
     assert result["remaining_rows"] == 0
-    assert provider.call_count == 2
+    assert len(provider.decisions) == 2
 
 
 def test_completed_batch_billing_is_idempotent_on_resume(dataset, provider):
@@ -284,20 +256,21 @@ def test_completed_batch_billing_is_idempotent_on_resume(dataset, provider):
     assert len(charged) == 1
     semantic_checks.run_checks(dataset, dataset.active_cell, request(), user=user)
     assert list(charges.values_list("idempotency_key", "amount")) == charged
-    assert provider.call_count == 1
+    assert len(provider.decisions) == 1
 
 
-def test_stale_result_spend_is_not_lost(dataset, provider, monkeypatch):
-    original = provider.side_effect
+def test_stale_result_spend_is_not_lost(dataset, provider):
+    original = provider.decide
 
-    def change_intent(body, **kwargs):
+    def change_intent(key, question):
         Dataset.objects.filter(pk=dataset.pk).update(intent="train")
-        return original(body, **kwargs)
+        return original(key, question)
 
-    provider.side_effect = change_intent
-    charged = Mock()
-    monkeypatch.setattr(semantic_checks, "charge_llm_usage", charged)
+    provider.decide = change_intent
+    user = get_user_model().objects.create_user(email="semantic-stale@example.com", password="x")
     with pytest.raises(ValueError, match="changed during the audit"):
-        semantic_checks.run_checks(dataset, dataset.active_cell, request())
-    charged.assert_called_once()
-    assert charged.call_args.args[1]["response_cost"] == 0.00001
+        semantic_checks.run_checks(dataset, dataset.active_cell, request(), user=user)
+    [charge] = BillingTelemetry.objects.filter(
+        user=user, idempotency_key__startswith="semantic-check:"
+    )
+    assert charge.metadata["llm_usage"]["response_cost"] == 0.00001

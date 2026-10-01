@@ -4,15 +4,13 @@ import asyncio
 import uuid
 
 import pytest
+from mcp_fixtures import mcp_context
 
 from overbae.models import (
-    APIToken,
     Behaviour,
     BehaviourVersion,
     Capability,
     Project,
-    ProjectMembership,
-    User,
 )
 from overbae.services.mcp.catalog import CATALOG
 from overbae.services.mcp.context import MCPContext
@@ -20,24 +18,6 @@ from overbae.services.mcp.context import MCPContext
 pytestmark = pytest.mark.django_db(transaction=True)
 
 SHA = "a" * 40
-
-
-def _context() -> MCPContext:
-    user = User.objects.create_user(
-        email=f"plan-{uuid.uuid4().hex[:8]}@test.com",
-        password="pw",
-        clerk_user_id=f"clerk_{uuid.uuid4().hex}",
-    )
-    project = Project.objects.create(name="P", slug=f"p-{uuid.uuid4().hex[:8]}")
-    ProjectMembership.objects.create(user=user, project=project)
-    token = APIToken(
-        scope={
-            "scope": "project",
-            "resourceIds": [str(project.id)],
-            "permission": ["read"],
-        }
-    )
-    return MCPContext(user=user, token=token, project=project)
 
 
 def _capability(project: Project, name: str = "Agent") -> Capability:
@@ -99,7 +79,7 @@ def _placements(context: MCPContext, arguments: dict) -> list[dict]:
 
 
 def test_plan_uses_registry_contract_target_and_only_stable_ticket_fields():
-    context = _context()
+    context = mcp_context()
     capability = _capability(context.project)
     behaviour, version = _behaviour(
         capability,
@@ -142,7 +122,7 @@ def test_plan_uses_registry_contract_target_and_only_stable_ticket_fields():
 
 
 def test_plan_filters_by_behaviour_key_or_id_and_excludes_retired():
-    context = _context()
+    context = mcp_context()
     capability = _capability(context.project)
     first, _ = _behaviour(capability, "first", entry="app.first.run", file="app/first.py")
     second, _ = _behaviour(capability, "second", entry="app.second.run", file="app/second.py")
@@ -172,7 +152,7 @@ def test_plan_filters_by_behaviour_key_or_id_and_excludes_retired():
 
 
 def test_plan_uses_task_scope_for_fixed_turn():
-    context = _context()
+    context = mcp_context()
     capability = _capability(context.project)
     anchors = [
         {
@@ -209,7 +189,7 @@ def test_plan_uses_task_scope_for_fixed_turn():
 
 
 def test_plan_marks_shared_entry_dynamic():
-    context = _context()
+    context = mcp_context()
     capability = _capability(context.project)
     anchors = [
         {
@@ -252,7 +232,7 @@ def test_plan_marks_shared_entry_dynamic():
 
 
 def test_plan_required_spans_map_kinds_in_sequence_and_deduplicate():
-    context = _context()
+    context = mcp_context()
     capability = _capability(context.project)
     anchors = [
         {
@@ -340,7 +320,7 @@ def test_plan_required_spans_map_kinds_in_sequence_and_deduplicate():
 
 
 def test_plan_omitting_capability_tickets_all_current_capabilities():
-    context = _context()
+    context = mcp_context()
     first = _capability(context.project, "First")
     second = _capability(context.project, "Second")
     _behaviour(first, "first", entry="app.first.run", file="app/first.py")
@@ -358,8 +338,8 @@ def test_plan_omitting_capability_tickets_all_current_capabilities():
 
 
 def test_plan_rejects_foreign_capability_and_empty_registry():
-    context = _context()
-    other = _context()
+    context = mcp_context()
+    other = mcp_context()
     foreign = _capability(other.project)
 
     foreign_result = _call("get_instrumentation_plan", context, {"capability": str(foreign.id)})

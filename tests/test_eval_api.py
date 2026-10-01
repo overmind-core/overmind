@@ -5,8 +5,7 @@ from unittest import mock
 
 import pytest
 from conftest import EVAL_ROWS, frozen_dataset
-from rest_framework.test import APIClient
-from rest_framework_simplejwt.tokens import RefreshToken
+from factories import auth_client, make_user
 
 from overbae.models import (
     Behaviour,
@@ -21,7 +20,6 @@ from overbae.models import (
     Project,
     ProjectMembership,
     Score,
-    User,
 )
 from overbae.services.eval.per_turn_judge import JUDGE_NAME
 from overbae.tasks import eval as eval_tasks
@@ -29,38 +27,17 @@ from overbae.tasks import eval as eval_tasks
 pytestmark = pytest.mark.django_db
 
 
-def _user(email: str) -> User:
-    return User.objects.create_user(
-        email=email,
-        password="test-pass-123",
-        clerk_user_id=f"clerk_{uuid.uuid4().hex}",
-        projects_limit=5,
-    )
-
-
-def _auth_client(user: User) -> APIClient:
-    client = APIClient()
-    token = RefreshToken.for_user(user)
-    client.credentials(HTTP_AUTHORIZATION=f"Bearer {token.access_token}")
-    return client
-
-
 def _setup():
-    user = _user(f"u-{uuid.uuid4().hex[:6]}@example.com")
+    user = make_user(f"u-{uuid.uuid4().hex[:6]}@example.com")
     project = Project.objects.create(name="P", slug=f"p-{uuid.uuid4().hex[:8]}")
     ProjectMembership.objects.create(user=user, project=project)
-    return user, _auth_client(user), project
+    return user, auth_client(user), project
 
 
-def test_context_preview_warns_without_creating_or_blocking_a_run(monkeypatch):
-    from overbae.services.eval import context_check
-    from overbae.services.llm_context import ModelLimits
-
+def test_context_preview_warns_without_creating_or_blocking_a_run(fake_llm):
+    fake_llm.limits["openai/gpt-4.1"] = 1000
     user, client, project = _setup()
     dataset = frozen_dataset(project, [{"input": "long" * 2000, "expected_output": "a"}])
-    monkeypatch.setattr(
-        context_check, "model_limits", lambda *args, **kwargs: ModelLimits(1000, 5000)
-    )
     before = EvalRun.objects.count()
     response = client.post(
         "/api/eval-runs/context-check/",
@@ -634,31 +611,41 @@ class TestEditJudgeEvaluator:
 
 
 class TestGenerateEvaluatorPrompt:
-    def _mock_llm(self, payload: dict):
-        import json as _json
+    @pytest.fixture(autouse=True)
+    def _author(self, fake_llm):
+        self.llm = fake_llm
 
-        return mock.patch(
-            "overbae.services.eval.rubric_compiler.call_llm",
-            return_value=(_json.dumps(payload), {}),
+    def _generates(self, payload: dict):
+        self.llm.on_json(lambda r: r.schema_name == "_GeneratedEvaluator", lambda r: payload)
+
+    def _sent(self):
+        return next(
+            r for r in reversed(self.llm.requests) if r.schema_name == "_GeneratedEvaluator"
+        )
+
+    def _capability(self, project, card=None):
+        metadata = {"capability_card": card} if card else {}
+        return Capability.objects.create(
+            project=project,
+            name="A",
+            slug=f"a-{uuid.uuid4().hex[:6]}",
+            improvement_metadata=metadata,
         )
 
     def test_generic_prompt_when_no_capability(self):
         _u, client, _project = _setup()
-        with (
-            mock.patch("overbae.services.eval.rubric_compiler.resolve_model", return_value="m"),
-            self._mock_llm(
-                {
-                    "rubric_md": "Evaluate clarity and correctness.",
-                    "score_type": "numeric",
-                    "score_output_prompt": "Return 0..1.",
-                }
-            ),
-        ):
-            r = client.post(
-                "/api/evaluators/generate-prompt/",
-                {"description": "Rate how clear and correct answers are, 0 to 1."},
-                format="json",
-            )
+        self._generates(
+            {
+                "rubric_md": "Evaluate clarity and correctness.",
+                "score_type": "numeric",
+                "score_output_prompt": "Return 0..1.",
+            }
+        )
+        r = client.post(
+            "/api/evaluators/generate-prompt/",
+            {"description": "Rate how clear and correct answers are, 0 to 1."},
+            format="json",
+        )
         assert r.status_code == 200, r.content
         body = r.json()
         assert body["prompt"]
@@ -669,17 +656,12 @@ class TestGenerateEvaluatorPrompt:
 
     def test_boolean_score_type_returned(self):
         _u, client, _project = _setup()
-        with (
-            mock.patch("overbae.services.eval.rubric_compiler.resolve_model", return_value="m"),
-            self._mock_llm(
-                {"rubric_md": "Does the answer cite a source?", "score_type": "boolean"}
-            ),
-        ):
-            r = client.post(
-                "/api/evaluators/generate-prompt/",
-                {"description": "Check whether the answer cites a source or not."},
-                format="json",
-            )
+        self._generates({"rubric_md": "Does the answer cite a source?", "score_type": "boolean"})
+        r = client.post(
+            "/api/evaluators/generate-prompt/",
+            {"description": "Check whether the answer cites a source or not."},
+            format="json",
+        )
         body = r.json()
         assert body["score_type"] == "boolean"
         assert body["boolean_verdict_prompt"]  # defaulted
@@ -687,22 +669,19 @@ class TestGenerateEvaluatorPrompt:
 
     def test_categorical_score_type_returns_categories(self):
         _u, client, _project = _setup()
-        with (
-            mock.patch("overbae.services.eval.rubric_compiler.resolve_model", return_value="m"),
-            self._mock_llm(
-                {
-                    "rubric_md": "Classify the sentiment of the answer.",
-                    "score_type": "categorical",
-                    "categories": ["positive", "neutral", "negative"],
-                    "allow_multiple": False,
-                }
-            ),
-        ):
-            r = client.post(
-                "/api/evaluators/generate-prompt/",
-                {"description": "Classify sentiment as positive, neutral or negative."},
-                format="json",
-            )
+        self._generates(
+            {
+                "rubric_md": "Classify the sentiment of the answer.",
+                "score_type": "categorical",
+                "categories": ["positive", "neutral", "negative"],
+                "allow_multiple": False,
+            }
+        )
+        r = client.post(
+            "/api/evaluators/generate-prompt/",
+            {"description": "Classify sentiment as positive, neutral or negative."},
+            format="json",
+        )
         body = r.json()
         assert body["score_type"] == "categorical"
         assert len(body["categories"]) >= 2
@@ -710,150 +689,91 @@ class TestGenerateEvaluatorPrompt:
 
     def test_underspecified_categorical_falls_back_to_numeric(self):
         _u, client, _project = _setup()
-        with (
-            mock.patch("overbae.services.eval.rubric_compiler.resolve_model", return_value="m"),
-            self._mock_llm(
-                {
-                    "rubric_md": "Classify it.",
-                    "score_type": "categorical",
-                    "categories": ["only-one"],
-                }
-            ),
-        ):
-            r = client.post(
-                "/api/evaluators/generate-prompt/",
-                {"description": "Classify it somehow."},
-                format="json",
-            )
+        self._generates(
+            {
+                "rubric_md": "Classify it.",
+                "score_type": "categorical",
+                "categories": ["only-one"],
+            }
+        )
+        r = client.post(
+            "/api/evaluators/generate-prompt/",
+            {"description": "Classify it somehow."},
+            format="json",
+        )
         body = r.json()
         assert body["score_type"] == "numeric"
         assert body["categories"] == []
 
     def test_capability_grounded_prompt(self):
         _u, client, project = _setup()
-        capability = Capability.objects.create(
-            project=project, name="A", slug=f"a-{uuid.uuid4().hex[:6]}"
+        capability = self._capability(project, {"task": "This capability extracts invoice fields."})
+        self._generates(
+            {"rubric_md": "Check extracted fields against the schema.", "score_type": "numeric"}
         )
-        with (
-            mock.patch(
-                "overbae.services.eval.grounding.resolve_grounding_for_capability",
-                return_value=object(),
-            ),
-            mock.patch(
-                "overbae.services.eval.grounding.render_grounding_pack",
-                return_value="CODEBASE CARD: this capability extracts fields.",
-            ),
-            mock.patch("overbae.services.eval.rubric_compiler.resolve_model", return_value="m"),
-            self._mock_llm(
-                {"rubric_md": "Check extracted fields against the schema.", "score_type": "numeric"}
-            ) as llm,
-        ):
-            r = client.post(
-                "/api/evaluators/generate-prompt/",
-                {
-                    "description": "Check the capability extracts the right fields.",
-                    "capability": str(capability.id),
-                },
-                format="json",
-            )
+        r = client.post(
+            "/api/evaluators/generate-prompt/",
+            {
+                "description": "Check the capability extracts the right fields.",
+                "capability": str(capability.id),
+            },
+            format="json",
+        )
         assert r.status_code == 200, r.content
         body = r.json()
         assert body["prompt"]
         assert body["grounded"] is True
         assert body["score_type"] == "numeric"
-        sent_prompt = llm.call_args.args[0]
-        assert "CODEBASE CARD" in sent_prompt
+        assert "extracts invoice fields" in self._sent().text
 
     def test_grounded_generation_advertises_fields_and_repairs_unknown_vars(self):
-        from types import SimpleNamespace
-
         _u, client, project = _setup()
-        capability = Capability.objects.create(
-            project=project, name="A", slug=f"a-{uuid.uuid4().hex[:6]}"
-        )
-        grounding = SimpleNamespace(
-            codebase_card={
+        capability = self._capability(
+            project,
+            {
                 "output_fields": {
                     "extractions": {"type": "list"},
                     "extraction_class": {"description": "the class label of an extraction"},
                 }
+            },
+        )
+        self._generates(
+            {
+                "rubric_md": (
+                    "Judge {{outputs}} where each {{extraction_class}} is capitalized "
+                    "and matches {{expected_json}}."
+                ),
+                "score_type": "numeric",
             }
         )
-        with (
-            mock.patch(
-                "overbae.services.eval.grounding.resolve_grounding_for_capability",
-                return_value=grounding,
-            ),
-            mock.patch(
-                "overbae.services.eval.grounding.render_grounding_pack",
-                return_value="Output contract fields: extractions, extraction_class",
-            ),
-            mock.patch("overbae.services.eval.rubric_compiler.resolve_model", return_value="m"),
-            self._mock_llm(
-                {
-                    "rubric_md": (
-                        "Judge {{outputs}} where each {{extraction_class}} is capitalized "
-                        "and matches {{expected_json}}."
-                    ),
-                    "score_type": "numeric",
-                }
-            ) as llm,
-        ):
-            r = client.post(
-                "/api/evaluators/generate-prompt/",
-                {
-                    "description": "Check extraction_class capitalization.",
-                    "capability": str(capability.id),
-                },
-                format="json",
-            )
+        r = client.post(
+            "/api/evaluators/generate-prompt/",
+            {
+                "description": "Check extraction_class capitalization.",
+                "capability": str(capability.id),
+            },
+            format="json",
+        )
         assert r.status_code == 200, r.content
         prompt = r.json()["prompt"]
         assert "{{extraction_class}}" in prompt
         assert "{{outputs}}" not in prompt and "{{output}}" in prompt
         assert "{{expected_json}}" not in prompt and "{{reference}}" in prompt
-        from overbae.services.eval.evaluators.base import _normalize_var
-        from overbae.services.eval.rubric_compiler import (
-            _VAR_RE,
-            _bindable_variables,
-            _variable_catalog,
-        )
-
-        bindable = _bindable_variables(_variable_catalog(grounding))
-        assert all(_normalize_var(v) in bindable for v in _VAR_RE.findall(prompt))
-        sent_prompt = llm.call_args.args[0]
+        sent_prompt = self._sent().text
         assert "Template variables" in sent_prompt
         assert "{{extraction_class}}" in sent_prompt
 
     def test_grounded_generation_advertises_nested_schema(self):
-        from types import SimpleNamespace
-
         _u, client, project = _setup()
-        capability = Capability.objects.create(
-            project=project, name="A", slug=f"a-{uuid.uuid4().hex[:6]}"
+        capability = self._capability(project, _LANGEXTRACT_CARD)
+        self._generates({"rubric_md": "Check {{extractions}} alignment.", "score_type": "numeric"})
+        r = client.post(
+            "/api/evaluators/generate-prompt/",
+            {"description": "Check char_interval alignment.", "capability": str(capability.id)},
+            format="json",
         )
-        grounding = SimpleNamespace(codebase_card=_LANGEXTRACT_CARD)
-        with (
-            mock.patch(
-                "overbae.services.eval.grounding.resolve_grounding_for_capability",
-                return_value=grounding,
-            ),
-            mock.patch(
-                "overbae.services.eval.grounding.render_grounding_pack",
-                return_value="Capability extracts entities.",
-            ),
-            mock.patch("overbae.services.eval.rubric_compiler.resolve_model", return_value="m"),
-            self._mock_llm(
-                {"rubric_md": "Check {{extractions}} alignment.", "score_type": "numeric"}
-            ) as llm,
-        ):
-            r = client.post(
-                "/api/evaluators/generate-prompt/",
-                {"description": "Check char_interval alignment.", "capability": str(capability.id)},
-                format="json",
-            )
         assert r.status_code == 200, r.content
-        sent = llm.call_args.args[0]
+        sent = self._sent().text
         assert "{{extractions_char_interval_start_pos}}" in sent
         assert "$.extractions[*].char_interval.start_pos" in sent
         assert "Required output keys: extractions" in sent
@@ -865,34 +785,21 @@ class TestGenerateEvaluatorPrompt:
     def test_repairs_split_path_variable_docs(self):
         # Models often emit {{output}}.field; the canonical form is {{output.field}}.
         _u, client, project = _setup()
-        capability = Capability.objects.create(
-            project=project, name="A", slug=f"a-{uuid.uuid4().hex[:6]}"
+        capability = self._capability(project, {"task": "Answer support tickets."})
+        self._generates(
+            {
+                "rubric_md": (
+                    "Compare {{output}}.isInvoice to {{reference}}.isInvoice. "
+                    "Also grade {{output}}."
+                ),
+                "score_type": "numeric",
+            }
         )
-        with (
-            mock.patch(
-                "overbae.services.eval.grounding.resolve_grounding_for_capability",
-                return_value=object(),
-            ),
-            mock.patch(
-                "overbae.services.eval.grounding.render_grounding_pack",
-                return_value="CODEBASE CARD",
-            ),
-            mock.patch("overbae.services.eval.rubric_compiler.resolve_model", return_value="m"),
-            self._mock_llm(
-                {
-                    "rubric_md": (
-                        "Compare {{output}}.isInvoice to {{reference}}.isInvoice. "
-                        "Also grade {{output}}."
-                    ),
-                    "score_type": "numeric",
-                }
-            ),
-        ):
-            r = client.post(
-                "/api/evaluators/generate-prompt/",
-                {"description": "Check classification.", "capability": str(capability.id)},
-                format="json",
-            )
+        r = client.post(
+            "/api/evaluators/generate-prompt/",
+            {"description": "Check classification.", "capability": str(capability.id)},
+            format="json",
+        )
         assert r.status_code == 200, r.content
         prompt = r.json()["prompt"]
         assert "{{output.isInvoice}}" in prompt
@@ -905,35 +812,22 @@ class TestGenerateEvaluatorPrompt:
         from overbae.services.eval.semantic_recommender import TRACE_NO_GOLD_RULE
 
         _u, client, project = _setup()
-        capability = Capability.objects.create(
-            project=project, name="A", slug=f"a-{uuid.uuid4().hex[:6]}"
+        capability = self._capability(project, {"task": "Answer support tickets."})
+        self._generates(
+            {
+                "rubric_md": ("Compare {{output}} to {{reference}} and {{expected_json}}."),
+                "score_type": "numeric",
+            }
         )
-        with (
-            mock.patch(
-                "overbae.services.eval.grounding.resolve_grounding_for_capability",
-                return_value=object(),
-            ),
-            mock.patch(
-                "overbae.services.eval.grounding.render_grounding_pack",
-                return_value="CODEBASE CARD: live capability.",
-            ),
-            mock.patch("overbae.services.eval.rubric_compiler.resolve_model", return_value="m"),
-            self._mock_llm(
-                {
-                    "rubric_md": ("Compare {{output}} to {{reference}} and {{expected_json}}."),
-                    "score_type": "numeric",
-                }
-            ) as llm,
-        ):
-            r = client.post(
-                "/api/evaluators/generate-prompt/",
-                {
-                    "description": "Score live task success from the trace.",
-                    "capability": str(capability.id),
-                    "applicable_role": "trace_scoring",
-                },
-                format="json",
-            )
+        r = client.post(
+            "/api/evaluators/generate-prompt/",
+            {
+                "description": "Score live task success from the trace.",
+                "capability": str(capability.id),
+                "applicable_role": "trace_scoring",
+            },
+            format="json",
+        )
         assert r.status_code == 200, r.content
         body = r.json()
         prompt = body["prompt"]
@@ -941,45 +835,32 @@ class TestGenerateEvaluatorPrompt:
         assert "{{reference}}" not in prompt
         assert "{{expected_json}}" not in prompt
         assert "{{output}}" in prompt
-        sent_prompt, kwargs = llm.call_args.args[0], llm.call_args.kwargs
+        sent_prompt, system = self._sent().text, self._sent().system
         assert TRACE_NO_GOLD_RULE in sent_prompt
         assert "There is NO {{reference}}" in sent_prompt
-        assert "TRACE SCORING" in kwargs["system_prompt"]
-        assert "NO curated golden reference" in kwargs["system_prompt"]
+        assert "TRACE SCORING" in system
+        assert "NO curated golden reference" in system
 
     def test_generative_role_keeps_reference_contract(self):
         _u, client, project = _setup()
-        capability = Capability.objects.create(
-            project=project, name="A", slug=f"a-{uuid.uuid4().hex[:6]}"
+        capability = self._capability(project, {"task": "Answer support tickets."})
+        self._generates(
+            {"rubric_md": "Compare {{output}} to {{reference}}.", "score_type": "numeric"}
         )
-        with (
-            mock.patch(
-                "overbae.services.eval.grounding.resolve_grounding_for_capability",
-                return_value=object(),
-            ),
-            mock.patch(
-                "overbae.services.eval.grounding.render_grounding_pack",
-                return_value="CODEBASE CARD",
-            ),
-            mock.patch("overbae.services.eval.rubric_compiler.resolve_model", return_value="m"),
-            self._mock_llm(
-                {"rubric_md": "Compare {{output}} to {{reference}}.", "score_type": "numeric"}
-            ) as llm,
-        ):
-            r = client.post(
-                "/api/evaluators/generate-prompt/",
-                {
-                    "description": "Check correctness vs gold.",
-                    "capability": str(capability.id),
-                    "applicable_role": "generative",
-                },
-                format="json",
-            )
+        r = client.post(
+            "/api/evaluators/generate-prompt/",
+            {
+                "description": "Check correctness vs gold.",
+                "capability": str(capability.id),
+                "applicable_role": "generative",
+            },
+            format="json",
+        )
         assert r.status_code == 200, r.content
         assert "{{reference}}" in r.json()["prompt"]
-        sent_prompt = llm.call_args.args[0]
+        sent_prompt = self._sent().text
         assert "{{reference.<path>}}" in sent_prompt
-        assert "TRACE SCORING" not in llm.call_args.kwargs["system_prompt"]
+        assert "TRACE SCORING" not in self._sent().system
 
     def test_applicable_role_rejects_unknown(self):
         _u, client, _project = _setup()
@@ -999,7 +880,6 @@ class TestEvalRunApi:
     def test_run_judge_override_freezes_snapshots_without_editing_library(
         self, attachment, selection, mode, monkeypatch
     ):
-        monkeypatch.setattr("overbae.api.eval_serializers.is_model_available", lambda model: True)
         _, client, project = _setup()
         dataset = frozen_dataset(project, EVAL_ROWS)
         judge = Evaluator.objects.create(
@@ -1091,11 +971,13 @@ class TestEvalRunApi:
         assert not EvalRun.objects.exists()
         dispatch.assert_not_called()
 
-    def test_late_replay_judge_uses_frozen_run_selection(self, monkeypatch):
+    def test_late_replay_judge_uses_frozen_run_selection(self):
         _, _, project = _setup()
-        dataset = frozen_dataset(project, EVAL_ROWS)
+        capability = Capability.objects.create(project=project, name="A", slug="a")
+        dataset = frozen_dataset(project, EVAL_ROWS, capability=capability)
         evaluator = Evaluator.objects.create(
             project=project,
+            capability=capability,
             name=JUDGE_NAME,
             kind="llm_judge",
             judge_model="gpt-4.1",
@@ -1107,9 +989,6 @@ class TestEvalRunApi:
         )
         variant = EvalVariant.objects.create(
             run=run, mode="generate", params={"generation_strategy": "per_assistant_turn"}
-        )
-        monkeypatch.setattr(
-            "overbae.services.eval.per_turn_judge.author_per_turn_judge", lambda dataset: evaluator
         )
         eval_tasks._attach_per_turn_judge(run, [variant])
         eval_tasks._attach_per_turn_judge(run, [variant])
@@ -1162,39 +1041,37 @@ class TestEvalRunApi:
         assert r.status_code == 200
         assert r.json()["summary"]["metrics"] == ["acc"]
 
-    def test_create_rejects_dead_generate_model(self):
+    def test_create_rejects_dead_generate_model(self, fake_llm):
         _user_, client, project = _setup()
         capability = Capability.objects.create(
             project=project, name="A", slug=f"a-{uuid.uuid4().hex[:6]}"
         )
         dataset = frozen_dataset(capability.project, EVAL_ROWS, capability=capability)
-        catalog = ([{"id": "openai/gpt-5-mini"}, {"id": "openai/gpt-4o-2024-05-13"}], True)
-        with mock.patch("overbae.services.model_catalog.fetch_model_catalog", return_value=catalog):
-            r = client.post(
-                "/api/eval-runs/",
-                {
-                    "project": str(project.id),
-                    "name": "dead",
-                    "data_source": "dataset",
-                    "dataset": str(dataset.id),
-                    "variants_input": [
-                        {"label": "v", "model_name": "gpt-4-turbo-preview", "mode": "generate"}
-                    ],
-                },
-                format="json",
-            )
+        fake_llm.catalog_payload = [{"id": "openai/gpt-5-mini"}, {"id": "openai/gpt-4o-2024-05-13"}]
+        r = client.post(
+            "/api/eval-runs/",
+            {
+                "project": str(project.id),
+                "name": "dead",
+                "data_source": "dataset",
+                "dataset": str(dataset.id),
+                "variants_input": [
+                    {"label": "v", "model_name": "gpt-4-turbo-preview", "mode": "generate"}
+                ],
+            },
+            format="json",
+        )
         assert r.status_code == 400, r.content
         assert "not available" in str(r.json()).lower()
 
-    def test_create_accepts_valid_generate_model(self):
+    def test_create_accepts_valid_generate_model(self, fake_llm):
         _user_, client, project = _setup()
         capability = Capability.objects.create(
             project=project, name="A", slug=f"a-{uuid.uuid4().hex[:6]}"
         )
         dataset = frozen_dataset(capability.project, EVAL_ROWS, capability=capability)
-        catalog = ([{"id": "openai/gpt-5-mini"}, {"id": "openai/gpt-4o-2024-05-13"}], True)
+        fake_llm.catalog_payload = [{"id": "openai/gpt-5-mini"}, {"id": "openai/gpt-4o-2024-05-13"}]
         with (
-            mock.patch("overbae.services.model_catalog.fetch_model_catalog", return_value=catalog),
             mock.patch(
                 "overbae.tasks.eval.run_eval_run.apply_async", return_value=mock.Mock(id="t")
             ),
@@ -1218,7 +1095,7 @@ class TestEvalRunApi:
             )
         assert r.status_code == 201, r.content
 
-    def test_create_refuses_generate_eval_set_without_judges(self):
+    def test_create_refuses_generate_eval_set_without_judges(self, fake_llm):
         _user_, client, project = _setup()
         capability = Capability.objects.create(
             project=project, name="A", slug=f"a-{uuid.uuid4().hex[:6]}"
@@ -1238,26 +1115,25 @@ class TestEvalRunApi:
         EvalSetMember.objects.create(
             eval_set=eval_set, evaluator=ev, role=EvalSetMember.Role.GENERATIVE
         )
-        catalog = ([{"id": "openai/gpt-4o-2024-05-13"}], True)
-        with mock.patch("overbae.services.model_catalog.fetch_model_catalog", return_value=catalog):
-            r = client.post(
-                "/api/eval-runs/",
-                {
-                    "project": str(project.id),
-                    "name": "hollow",
-                    "data_source": "dataset",
-                    "dataset": str(dataset.id),
-                    "eval_set": str(eval_set.id),
-                    "variants_input": [
-                        {
-                            "label": "v",
-                            "model_name": "openai/gpt-4o-2024-05-13",
-                            "mode": "generate",
-                        }
-                    ],
-                },
-                format="json",
-            )
+        fake_llm.catalog_payload = [{"id": "openai/gpt-4o-2024-05-13"}]
+        r = client.post(
+            "/api/eval-runs/",
+            {
+                "project": str(project.id),
+                "name": "hollow",
+                "data_source": "dataset",
+                "dataset": str(dataset.id),
+                "eval_set": str(eval_set.id),
+                "variants_input": [
+                    {
+                        "label": "v",
+                        "model_name": "openai/gpt-4o-2024-05-13",
+                        "mode": "generate",
+                    }
+                ],
+            },
+            format="json",
+        )
         assert r.status_code == 400, r.content
         assert "no live generative judges" in str(r.json()).lower()
 

@@ -1,14 +1,11 @@
 """The profiler must find capability boundaries without relying on the CAPABILITY type."""
 
+from fakes.ledgerline import langchain_style_trace, scan_inbox_trace, triage_email_trace
+
 from overbae.services.connectors.braintrust.mapping import BRAINTRUST
 from overbae.services.connectors.langfuse.mapping import LANGFUSE
 from overbae.services.connectors.profiling import profile_capability_candidates as _profile
 from overbae.services.connectors.records import ObservationRecord
-from tests.test_langfuse_capability_traces import (
-    _langchain_style_trace,
-    scan_inbox_trace,
-    triage_email_trace,
-)
 
 
 def profile_capability_candidates(traces, conventions=LANGFUSE):
@@ -41,7 +38,7 @@ def test_repetition_within_a_trace_is_the_disqualifier():
 
 
 def test_ranks_shapes_when_no_capability_type_is_emitted():
-    ranked = _ranked([_langchain_style_trace() for _ in range(4)])
+    ranked = _ranked([langchain_style_trace() for _ in range(4)])
     assert ranked[0] == "workflow"  # the root
     assert ranked[1] == "answer-question"  # owns the model call
     assert ranked[-1] == "llm"  # a model call is never the thing making them

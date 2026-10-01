@@ -85,11 +85,16 @@ dev = [
     "modal>=0.64",
 ]
 test = [
+    "overmind[tracing]>=0.1.49",
+    "playwright>=1.63.0",
     "pytest>=7.4.0",
     "pytest-asyncio>=0.21.0",
     "pytest-cov>=4.1.0",
     "pytest-django>=4.11.0",
     "pytest-xdist>=3.8.0,<4",
+    "responses>=0.26.3",
+    "respx>=0.23.1",
+    "time-machine>=3.5.1",
 ]
 test-e2e = [
     "pytest>=7.4.0",

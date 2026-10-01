@@ -1245,38 +1245,41 @@ def _score_multi_entry(
     ]
 
     def _run_one(item: _UnitPlan) -> _UnitOutcome:
+        execution = executions.get(item.unit.span_id)
+        selected = behaviour_scoring.filter_members_for_execution(item.ctx.members, execution)
+        outcome = _score_unit(
+            unit_span=item.unit,
+            unit_spans=unit_spans_by_id[item.unit.span_id],
+            capability=item.ctx.capability,
+            members=selected,
+            project_id=project_id,
+            sample_id=f"{trace_id}:{item.unit.span_id}",
+            state=item.ctx.state,
+            is_terminal=item.is_terminal,
+            is_capability_terminal=item.is_capability_terminal,
+            turn_slice=turn_slices,
+            interrupted=item.interrupted,
+            execution=execution,
+            behaviour_skipped=_behaviour_skipped(item.ctx.members, selected, execution),
+            trace_env_corpus=trace_env_corpus,
+            trace_context={
+                **trace_context,
+                "position": {
+                    "index": item.index,
+                    "of": n_total,
+                    "operation": item.unit.operation or item.unit.name,
+                    "is_terminal": item.is_terminal,
+                },
+            },
+            record_ledger=item.record_ledger,
+        )
+        _score_execution_safe(execution, outcome.block)
+        return outcome
+
+    def _run_pooled(item: _UnitPlan) -> _UnitOutcome:
         close_old_connections()
         try:
-            execution = executions.get(item.unit.span_id)
-            selected = behaviour_scoring.filter_members_for_execution(item.ctx.members, execution)
-            outcome = _score_unit(
-                unit_span=item.unit,
-                unit_spans=unit_spans_by_id[item.unit.span_id],
-                capability=item.ctx.capability,
-                members=selected,
-                project_id=project_id,
-                sample_id=f"{trace_id}:{item.unit.span_id}",
-                state=item.ctx.state,
-                is_terminal=item.is_terminal,
-                is_capability_terminal=item.is_capability_terminal,
-                turn_slice=turn_slices,
-                interrupted=item.interrupted,
-                execution=execution,
-                behaviour_skipped=_behaviour_skipped(item.ctx.members, selected, execution),
-                trace_env_corpus=trace_env_corpus,
-                trace_context={
-                    **trace_context,
-                    "position": {
-                        "index": item.index,
-                        "of": n_total,
-                        "operation": item.unit.operation or item.unit.name,
-                        "is_terminal": item.is_terminal,
-                    },
-                },
-                record_ledger=item.record_ledger,
-            )
-            _score_execution_safe(execution, outcome.block)
-            return outcome
+            return _run_one(item)
         finally:
             connection.close()
 
@@ -1306,7 +1309,7 @@ def _score_multi_entry(
             with ThreadPoolExecutor(
                 max_workers=min(workers, len(phase)), thread_name_prefix="trace-units"
             ) as pool:
-                futures = [pool.submit(_run_one, item) for item in phase]
+                futures = [pool.submit(_run_pooled, item) for item in phase]
                 outcomes = []
                 for future in futures:
                     try:

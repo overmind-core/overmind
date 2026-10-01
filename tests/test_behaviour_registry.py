@@ -6,6 +6,7 @@ from datetime import timedelta
 
 import pytest
 from django.utils import timezone
+from factories import make_capability, make_project
 from rest_framework.test import APIClient
 from rest_framework_simplejwt.tokens import RefreshToken
 
@@ -34,14 +35,6 @@ from overbae.services.eval.grounding import EvalGroundingContext
 pytestmark = pytest.mark.django_db
 
 SHA = "a" * 40
-
-
-def _project() -> Project:
-    return Project.objects.create(name="P", slug=f"p-{uuid.uuid4().hex[:8]}")
-
-
-def _capability(project) -> Capability:
-    return Capability.objects.create(project=project, name="A", slug=f"a-{uuid.uuid4().hex[:6]}")
 
 
 def _behaviour(
@@ -134,8 +127,8 @@ def _bind(project, capability, qualnames, *, sha=SHA, extra_attrs=None):
 
 
 def test_interior_anchor_join_binds_and_records_evidence():
-    project = _project()
-    capability = _capability(project)
+    project = make_project()
+    capability = make_capability(project)
     behaviour = _behaviour(
         capability, "happy", "app.agent.run", ["app.agent.run", "app.agent.emit"]
     )
@@ -148,8 +141,8 @@ def test_interior_anchor_join_binds_and_records_evidence():
 def test_sole_behaviour_binds_despite_entry_qualname_drift():
     """Module-naming drift must not park the execution; suffix-tolerant matching
     still recovers the drifted interior anchors as evidence."""
-    project = _project()
-    capability = _capability(project)
+    project = make_project()
+    capability = make_capability(project)
     behaviour = _behaviour(
         capability, "happy", "pkg.agent.run", ["pkg.agent.run", "pkg.agent.emit"]
     )
@@ -161,8 +154,8 @@ def test_sole_behaviour_binds_despite_entry_qualname_drift():
 def test_unscanned_sha_binds_against_current_registry_with_drift_flag():
     """A local/unpushed commit never gets versions (a scan only mints the remote
     head): it binds against the current registry, flagged, instead of parking."""
-    project = _project()
-    capability = _capability(project)
+    project = make_project()
+    capability = make_capability(project)
     behaviour = _behaviour(capability, "happy", "app.agent.run", ["app.agent.run"], sha="b" * 40)
     execution = _bind(project, capability, ["app.agent.run"], sha=SHA)  # no version for SHA
     assert execution.behaviour_id == behaviour.id
@@ -173,8 +166,8 @@ def test_unscanned_sha_binds_against_current_registry_with_drift_flag():
 
 def test_missing_sha_binds_against_current_registry():
     """SHA absence is a flag, not Unbound."""
-    project = _project()
-    capability = _capability(project)
+    project = make_project()
+    capability = make_capability(project)
     behaviour = _behaviour(capability, "happy", "app.agent.run", ["app.agent.run"])
     execution = _bind(project, capability, ["app.agent.run"], sha="")
     assert execution.behaviour_id == behaviour.id
@@ -184,7 +177,7 @@ def test_missing_sha_binds_against_current_registry():
 
 
 def test_inferred_vcs_sha_is_a_noop_without_a_repo():
-    project = _project()
+    project = make_project()
     assert binder.attach_inferred_vcs_sha(str(project.id), {}) == {}
     client = {binder.VCS_SHA: "e" * 40}
     assert binder.attach_inferred_vcs_sha(str(project.id), client) == client
@@ -192,8 +185,8 @@ def test_inferred_vcs_sha_is_a_noop_without_a_repo():
 
 
 def test_exact_sha_version_beats_newer_registry_version():
-    project = _project()
-    capability = _capability(project)
+    project = make_project()
+    capability = make_capability(project)
     behaviour = _behaviour(capability, "happy", "app.agent.run", ["app.agent.run"], sha=SHA)
     newer = BehaviourVersion.objects.create(
         behaviour=behaviour,
@@ -207,16 +200,16 @@ def test_exact_sha_version_beats_newer_registry_version():
 
 
 def test_empty_registry_parks_unbound():
-    project = _project()
-    capability = _capability(project)
+    project = make_project()
+    capability = make_capability(project)
     execution = _bind(project, capability, ["app.agent.run"], sha=SHA)
     assert execution.behaviour_id is None
     assert binder.FLAG_UNANALYZED_SHA in execution.route_flags
 
 
 def test_binding_is_idempotent_one_row():
-    project = _project()
-    capability = _capability(project)
+    project = make_project()
+    capability = make_capability(project)
     _behaviour(capability, "happy", "app.agent.run", ["app.agent.run"])
     trace_id = uuid.uuid4().hex
     root = _span(project, capability, trace_id=trace_id, qualname="app.agent.run")
@@ -231,8 +224,8 @@ def test_binding_is_idempotent_one_row():
 
 
 def test_bind_reads_legacy_conversation_id_on_unit_span():
-    project = _project()
-    capability = _capability(project)
+    project = make_project()
+    capability = make_capability(project)
     _behaviour(capability, "happy", "app.agent.run", ["app.agent.run"])
     trace_id = uuid.uuid4().hex
     root = _span(project, capability, trace_id=trace_id, qualname="app.agent.run")
@@ -245,8 +238,8 @@ def test_bind_reads_legacy_conversation_id_on_unit_span():
 
 
 def test_bind_reads_conversation_id_from_child_span():
-    project = _project()
-    capability = _capability(project)
+    project = make_project()
+    capability = make_capability(project)
     _behaviour(capability, "happy", "app.agent.run", ["app.agent.run", "app.agent.emit"])
     trace_id = uuid.uuid4().hex
     root = _span(project, capability, trace_id=trace_id, qualname="app.agent.run")
@@ -267,8 +260,8 @@ def test_bind_reads_conversation_id_from_child_span():
 
 
 def test_interior_anchors_disambiguate_between_behaviours():
-    project = _project()
-    capability = _capability(project)
+    project = make_project()
+    capability = make_capability(project)
     _behaviour(capability, "path-a", "app.agent.run", ["app.agent.run", "app.agent.fast"])
     path_b = _behaviour(capability, "path-b", "app.agent.run", ["app.agent.run", "app.agent.slow"])
     execution = _bind(project, capability, ["app.agent.run", "app.agent.slow"])
@@ -277,8 +270,8 @@ def test_interior_anchors_disambiguate_between_behaviours():
 
 
 def test_interior_anchor_tie_parks_unbound():
-    project = _project()
-    capability = _capability(project)
+    project = make_project()
+    capability = make_capability(project)
     _behaviour(capability, "path-a", "app.agent.run", ["app.agent.run", "app.agent.fast"])
     _behaviour(capability, "path-b", "app.agent.run", ["app.agent.run", "app.agent.slow"])
     execution = _bind(project, capability, ["app.agent.run"])  # nothing discriminates
@@ -289,8 +282,8 @@ def test_interior_anchor_tie_parks_unbound():
 def test_ancestor_anchors_disambiguate_turn_units():
     """A turn-carved unit's subtree may expose nothing to any contract; its
     enclosing pipeline spans are the route evidence that picks the behaviour."""
-    project = _project()
-    capability = _capability(project)
+    project = make_project()
+    capability = make_capability(project)
     _behaviour(capability, "deep", "app.deep.run", ["app.deep.run"])
     standard = _behaviour(
         capability,
@@ -332,8 +325,8 @@ def test_entry_anchor_breaks_interior_tie():
     """A turn-carved unit's interior is often invisible to every contract —
     its entry qualname is the only contract-known step and must break the
     zero-overlap tie when it hits exactly one candidate."""
-    project = _project()
-    capability = _capability(project)
+    project = make_project()
+    capability = make_capability(project)
     _behaviour(capability, "research", "app.agent.plan", ["app.agent.plan", "app.agent.sub_query"])
     writing = _behaviour(
         capability, "writing", "app.agent.write", ["app.agent.write", "app.tools.render"]
@@ -348,8 +341,8 @@ def test_most_specific_inclusion_beats_parent_overlap():
     """A turn whose route includes a child contract binds the child, not the
     larger parent that also overlaps. Parent grain is run (decision_surface);
     child is turn (code_path sibling of that surface)."""
-    project = _project()
-    capability = _capability(project)
+    project = make_project()
+    capability = make_capability(project)
     capability.entrypoint_fn = "app.agent.run"
     capability.save(update_fields=["entrypoint_fn"])
     parent = _behaviour(
@@ -385,8 +378,8 @@ def test_most_specific_inclusion_beats_parent_overlap():
 
 
 def test_declared_key_wins_over_structural():
-    project = _project()
-    capability = _capability(project)
+    project = make_project()
+    capability = make_capability(project)
     _behaviour(
         capability,
         "loop",
@@ -415,7 +408,7 @@ def test_declared_key_wins_over_structural():
 
 
 def _loop_and_leaf(project):
-    capability = _capability(project)
+    capability = make_capability(project)
     capability.entrypoint_fn = "app.agent.run"
     capability.save(update_fields=["entrypoint_fn"])
     loop = _behaviour(
@@ -432,7 +425,7 @@ def _loop_and_leaf(project):
 def test_run_unit_never_declared_binds_to_turn_grain_behaviour():
     """An interior phase's key stamped on the run boundary must not grade the
     whole run against that phase — the structural join decides instead."""
-    project = _project()
+    project = make_project()
     capability, loop = _loop_and_leaf(project)
     execution = _bind(
         project,
@@ -470,7 +463,7 @@ def test_run_unit_binds_turn_grain_behaviour_when_entry_anchor_matches():
     """The scan can grade a capability's primary entrypoint as turn while
     production carves the request as one run unit — the entry anchor decides,
     in both grain directions."""
-    project = _project()
+    project = make_project()
     capability, _ = _loop_and_leaf(project)
     execution = _bind(
         project,
@@ -486,7 +479,7 @@ def test_run_unit_binds_turn_grain_behaviour_when_entry_anchor_matches():
 def test_entry_point_unit_counts_as_run_grain_for_declared_binding():
     """An entry_point span is a capability invocation even when the SDK
     predates unit_kind — the same guard applies."""
-    project = _project()
+    project = make_project()
     capability, loop = _loop_and_leaf(project)
     execution = _bind(
         project,
@@ -503,7 +496,7 @@ def test_entry_point_unit_counts_as_run_grain_for_declared_binding():
 
 
 def test_run_unit_declaring_its_run_grain_behaviour_keeps_declared_binding():
-    project = _project()
+    project = make_project()
     capability, loop = _loop_and_leaf(project)
     execution = _bind(
         project,
@@ -517,7 +510,7 @@ def test_run_unit_declaring_its_run_grain_behaviour_keeps_declared_binding():
 
 
 def test_turn_unit_declaring_turn_grain_behaviour_keeps_declared_binding():
-    project = _project()
+    project = make_project()
     capability, _ = _loop_and_leaf(project)
     startup = _behaviour(capability, "startup", "app.agent.run", ["app.agent.assemble"])
     execution = _bind(
@@ -531,8 +524,8 @@ def test_turn_unit_declaring_turn_grain_behaviour_keeps_declared_binding():
 
 
 def test_handoff_turn_binds_run_grain_behaviour_at_its_entry():
-    project = _project()
-    capability = _capability(project)
+    project = make_project()
+    capability = make_capability(project)
     capability.entrypoint_fn = "app.b.review"
     capability.save(update_fields=["entrypoint_fn"])
     review = _behaviour(
@@ -557,8 +550,8 @@ def test_handoff_turn_binds_run_grain_behaviour_at_its_entry():
 def test_span_capability_id_wins():
     """Process resource identity is the first init(); span overmind.capability.id
     is the unit's capability. Bind against that capability's tasks."""
-    project = _project()
-    agent_run = _capability(project)
+    project = make_project()
+    agent_run = make_capability(project)
     suggestions = Capability.objects.create(
         project=project, name="Follow-up Suggestions", slug="follow-up-suggestions"
     )
@@ -955,8 +948,8 @@ def _scored(outcome, step1=None, step2=None):
 
 
 def test_alternative_route_good_outcome_scores_well():
-    project = _project()
-    capability = _capability(project)
+    project = make_project()
+    capability = make_capability(project)
     behaviour = _behaviour(capability, "happy", "m.run", ["m.run", "m.mid", "m.emit"])
     _suite(capability, "happy")
     # Alternative route: skipped m.mid entirely, still emitted a great outcome.
@@ -970,8 +963,8 @@ def test_alternative_route_good_outcome_scores_well():
 
 
 def test_usual_route_bad_outcome_scores_poorly():
-    project = _project()
-    capability = _capability(project)
+    project = make_project()
+    capability = make_capability(project)
     behaviour = _behaviour(capability, "happy", "m.run", ["m.run", "m.mid", "m.emit"])
     _suite(capability, "happy")
     execution = _execution(project, capability, behaviour, ["m.run", "m.mid", "m.emit"])
@@ -987,8 +980,8 @@ def test_usual_route_bad_outcome_scores_poorly():
 
 
 def test_route_metadata_never_gates_score():
-    project = _project()
-    capability = _capability(project)
+    project = make_project()
+    capability = make_capability(project)
     behaviour = _behaviour(capability, "happy", "m.run", ["m.run", "m.mid", "m.emit"])
     _suite(capability, "happy")
     conforming = _execution(project, capability, behaviour, ["m.run", "m.mid", "m.emit"])
@@ -1005,8 +998,8 @@ def test_route_metadata_never_gates_score():
 
 
 def test_failed_step_drags_but_does_not_zero():
-    project = _project()
-    capability = _capability(project)
+    project = make_project()
+    capability = make_capability(project)
     behaviour = _behaviour(capability, "happy", "m.run", ["m.run", "m.mid", "m.emit"])
     _suite(capability, "happy")
     execution = _execution(project, capability, behaviour, ["m.run", "m.mid", "m.emit"])
@@ -1018,8 +1011,8 @@ def test_failed_step_drags_but_does_not_zero():
 def test_failed_boolean_dominates_its_scalar():
     """passed=False zeroes that verdict even when the scalar reads high;
     passed=True defers to the graded scalar."""
-    project = _project()
-    capability = _capability(project)
+    project = make_project()
+    capability = make_capability(project)
     behaviour = _behaviour(capability, "happy", "m.run", ["m.run", "m.mid", "m.emit"])
     _suite(capability, "happy")
     execution = _execution(project, capability, behaviour, ["m.run", "m.mid", "m.emit"])
@@ -1037,8 +1030,8 @@ def test_failed_boolean_dominates_its_scalar():
 
 def test_success_score_is_the_composed_block_score():
     """``success_score`` is the claim-typed composition, never a role-product over step_results."""
-    project = _project()
-    capability = _capability(project)
+    project = make_project()
+    capability = make_capability(project)
     behaviour = _behaviour(capability, "happy", "m.run", ["m.run", "m.emit"])
     _suite(capability, "happy")
     execution = _execution(project, capability, behaviour, ["m.run", "m.emit"])
@@ -1055,8 +1048,8 @@ def test_success_score_is_the_composed_block_score():
 
 
 def test_success_score_prefers_persisted_execution_composite():
-    project = _project()
-    capability = _capability(project)
+    project = make_project()
+    capability = make_capability(project)
     behaviour = _behaviour(capability, "happy", "m.run", ["m.run", "m.emit"])
     _suite(capability, "happy")
     execution = _execution(project, capability, behaviour, ["m.run", "m.emit"])
@@ -1072,8 +1065,8 @@ def test_success_score_prefers_persisted_execution_composite():
 
 
 def test_evidence_role_never_composes_into_score():
-    project = _project()
-    capability = _capability(project)
+    project = make_project()
+    capability = make_capability(project)
     behaviour = _behaviour(capability, "happy", "m.run", ["m.run", "m.emit"])
     Evaluator.objects.create(
         project=project,
@@ -1117,8 +1110,8 @@ def test_segment_ran_tolerates_module_prefix_drift():
 def test_step_segment_satisfied_by_ancestor_chain():
     """A turn unit running INSIDE a contract step must keep that step's
     member: the ancestor chain is part of the unit's route evidence."""
-    project = _project()
-    capability = _capability(project)
+    project = make_project()
+    capability = make_capability(project)
     behaviour = _behaviour(capability, "happy", "m.conduct", ["m.conduct", "m.report"])
     Evaluator.objects.create(
         project=project,
@@ -1158,8 +1151,8 @@ def test_step_segment_satisfied_by_ancestor_chain():
 
 
 def test_per_step_coverage_rollup():
-    project = _project()
-    capability = _capability(project)
+    project = make_project()
+    capability = make_capability(project)
     behaviour = _behaviour(capability, "happy", "m.run", ["m.run", "m.mid", "m.emit"])
     version = behaviour.versions.get()
     version.contract["claim"] = "code_path"
@@ -1203,8 +1196,8 @@ def test_per_step_coverage_rollup():
 
 
 def test_reanchor_carries_id_by_entry_anchor_on_rename():
-    project = _project()
-    capability = _capability(project)
+    project = make_project()
+    capability = make_capability(project)
     behaviour = _behaviour(capability, "old-key", "m.run", ["m.run", "m.emit"])
     new_sha = "c" * 40
     outcome = reanchor(
@@ -1229,8 +1222,8 @@ def test_reanchor_carries_id_by_entry_anchor_on_rename():
 
 
 def test_reanchor_carries_id_by_lineage_overlap():
-    project = _project()
-    capability = _capability(project)
+    project = make_project()
+    capability = make_capability(project)
     behaviour = _behaviour(capability, "old-key", "m.run", ["m.run", "m.mid", "m.emit"])
     outcome = reanchor(
         capability,
@@ -1252,8 +1245,8 @@ def test_reanchor_carries_id_by_lineage_overlap():
 
 
 def test_reanchor_ambiguity_mints_new_and_retires_unreproduced():
-    project = _project()
-    capability = _capability(project)
+    project = make_project()
+    capability = make_capability(project)
     old_a = _behaviour(capability, "a", "m.run", ["m.run", "m.x", "m.emit"])
     old_b = _behaviour(capability, "b", "m.run2", ["m.run2", "m.x", "m.emit"])
     # Equally similar to both (ambiguous lineage) → mints new, retires both.
@@ -1281,8 +1274,8 @@ def test_reanchor_writes_grain_from_the_scanned_contracts():
     """Grain is written at scan time: the decision surface is run-grain, an
     entry-hitting sibling of a decision surface is turn-grain, a sole
     entry-hitting path is run-grain."""
-    project = _project()
-    capability = _capability(project)
+    project = make_project()
+    capability = make_capability(project)
     capability.entrypoint_fn = "m.run"
     capability.save(update_fields=["entrypoint_fn"])
     contracts = [
@@ -1330,8 +1323,8 @@ def test_reanchor_writes_grain_from_the_scanned_contracts():
 def test_rebind_parked_executions_idempotent(monkeypatch):
     from overbae.tasks import behaviour as behaviour_tasks
 
-    project = _project()
-    capability = _capability(project)
+    project = make_project()
+    capability = make_capability(project)
     execution = _execution(
         project,
         capability,
@@ -1418,7 +1411,7 @@ def test_task_executions_list_project_filter():
         password="test-pass-123",
         clerk_user_id=f"clerk_{uuid.uuid4().hex}",
     )
-    projects = [_project(), _project()]
+    projects = [make_project(), make_project()]
     for project in projects:
         ProjectMembership.objects.create(user=user, project=project)
         TaskExecution.objects.create(
@@ -1440,9 +1433,9 @@ def test_task_executions_list_total_tokens():
         password="test-pass-123",
         clerk_user_id=f"clerk_{uuid.uuid4().hex}",
     )
-    project = _project()
+    project = make_project()
     ProjectMembership.objects.create(user=user, project=project)
-    capability = _capability(project)
+    capability = make_capability(project)
     trace_id = uuid.uuid4().hex
     root = _span(project, capability, trace_id=trace_id, qualname="app.agent.run")
     for i, tokens in enumerate((120, 80)):
@@ -1476,9 +1469,9 @@ def test_task_executions_list_cost_and_model():
         password="test-pass-123",
         clerk_user_id=f"clerk_{uuid.uuid4().hex}",
     )
-    project = _project()
+    project = make_project()
     ProjectMembership.objects.create(user=user, project=project)
-    capability = _capability(project)
+    capability = make_capability(project)
     trace_id = uuid.uuid4().hex
     root = _span(project, capability, trace_id=trace_id, qualname="app.agent.run")
     child = _span(
@@ -1509,9 +1502,9 @@ def test_task_executions_list_shared_trace_filters():
         password="test-pass-123",
         clerk_user_id=f"clerk_{uuid.uuid4().hex}",
     )
-    project = _project()
+    project = make_project()
     ProjectMembership.objects.create(user=user, project=project)
-    capability = _capability(project)
+    capability = make_capability(project)
     hit_id = uuid.uuid4().hex
     miss_id = uuid.uuid4().hex
     now = timezone.now()
@@ -1577,10 +1570,10 @@ def test_task_executions_list_marks_unscored_rows_pending_only_for_scoreable_age
         password="test-pass-123",
         clerk_user_id=f"clerk_{uuid.uuid4().hex}",
     )
-    project = _project()
+    project = make_project()
     ProjectMembership.objects.create(user=user, project=project)
 
-    scoreable = _capability(project)
+    scoreable = make_capability(project)
     eval_set = EvalSet.objects.create(project=project, capability=scoreable, name="live")
     evaluator = Evaluator.objects.create(
         project=project,
@@ -1617,7 +1610,7 @@ def test_task_executions_list_marks_unscored_rows_pending_only_for_scoreable_age
     )
     no_evaluators = TaskExecution.objects.create(
         project=project,
-        capability=_capability(project),
+        capability=make_capability(project),
         trace_id=uuid.uuid4().hex,
         unit_span_id="s4",
     )
@@ -1651,9 +1644,9 @@ def test_task_execution_detail_carries_verdict_markers():
         password="test-pass-123",
         clerk_user_id=f"clerk_{uuid.uuid4().hex}",
     )
-    project = _project()
+    project = make_project()
     ProjectMembership.objects.create(user=user, project=project)
-    capability = _capability(project)
+    capability = make_capability(project)
     trace_id = uuid.uuid4().hex
     root = _span(project, capability, trace_id=trace_id, qualname="app.agent.run")
     root.feedback_score = {
@@ -1694,9 +1687,9 @@ def test_conversation_turns_assembles_full_thread_payload():
         password="test-pass-123",
         clerk_user_id=f"clerk_{uuid.uuid4().hex}",
     )
-    project = _project()
+    project = make_project()
     ProjectMembership.objects.create(user=user, project=project)
-    capability = _capability(project)
+    capability = make_capability(project)
     trace_id = uuid.uuid4().hex
     root = _span(
         project,
@@ -1778,10 +1771,10 @@ def test_task_executions_group_by_conversation_paginates_whole_threads():
         password="test-pass-123",
         clerk_user_id=f"clerk_{uuid.uuid4().hex}",
     )
-    project = _project()
+    project = make_project()
     ProjectMembership.objects.create(user=user, project=project)
-    cap_a = _capability(project)
-    cap_b = _capability(project)
+    cap_a = make_capability(project)
+    cap_b = make_capability(project)
 
     def _exec(*, conversation_id="", trace_id=None, capability=None, started=None):
         return TaskExecution.objects.create(

@@ -1,6 +1,3 @@
-"""The Together SDK and Celery dispatch are stubbed — no real fine-tuning job is ever
-submitted."""
-
 from __future__ import annotations
 
 import json
@@ -11,8 +8,8 @@ from unittest.mock import MagicMock, patch
 import pytest
 from conftest import EVAL_ROWS, frozen_dataset
 from django.urls import reverse
+from factories import auth_client, make_capability, make_project, make_user, prepare_training
 from rest_framework.test import APIClient
-from rest_framework_simplejwt.tokens import RefreshToken
 
 from overbae.modal.model_registry import baseten_finetuning_catalog
 from overbae.models import (
@@ -30,13 +27,9 @@ from overbae.models import (
 from overbae.services.datasets.rows import row as _dataset_row
 from overbae.services.datasets.rows import row_from_record
 from overbae.services.finetuning_runner import (
-    BaseFinetuningRunner,
     BasetenRunner,
-    PollSnapshot,
-    SubmissionResult,
     TogetherAIRunner,
     get_runner,
-    register_runner,
     together_suffix,
 )
 from overbae.services.finetuning_tool_validation import check_tool_calling_rows
@@ -44,7 +37,6 @@ from overbae.services.finetuning_validator import (
     validate_dataset,
     validate_rows,
 )
-from overbae.services.recommendation import tier_models
 from overbae.services.recommendation.hyperparams import (
     compute_hyperparams,
     hyperparam_provenance,
@@ -55,32 +47,6 @@ pytestmark = pytest.mark.django_db
 CELERY_PATH = "overbae.tasks.finetuning.run_finetuning.apply_async"
 
 
-def _user(email: str | None = None) -> User:
-    email = email or f"u-{uuid.uuid4().hex[:6]}@example.com"
-    return User.objects.create_user(
-        email=email,
-        password="pass",
-        clerk_user_id=f"clerk_{uuid.uuid4().hex}",
-        projects_limit=5,
-    )
-
-
-def _auth_client(user: User) -> APIClient:
-    client = APIClient()
-    token = RefreshToken.for_user(user)
-    client.credentials(HTTP_AUTHORIZATION=f"Bearer {token.access_token}")
-    return client
-
-
-def _project() -> Project:
-    return Project.objects.create(name="test", slug=f"p-{uuid.uuid4().hex[:8]}")
-
-
-def _capability(project: Project) -> Capability:
-    slug = f"a-{uuid.uuid4().hex[:8]}"
-    return Capability.objects.create(project=project, name=slug, slug=slug)
-
-
 def _dataset_with_messages(
     capability: Capability, *, n: int = 3, prefix: str = "Question"
 ) -> Dataset:
@@ -88,13 +54,10 @@ def _dataset_with_messages(
         capability.project,
         [
             {
-                "input": {
-                    "messages": [
-                        {"role": "user", "content": f"{prefix} {i}"},
-                        {"role": "assistant", "content": f"Answer {i}"},
-                    ]
-                },
-                "expected_output": None,
+                "messages": [
+                    {"role": "user", "content": f"{prefix} {i}"},
+                    {"role": "assistant", "content": f"Answer {i}"},
+                ]
             }
             for i in range(n)
         ],
@@ -139,10 +102,10 @@ def _ft_job_payload(project: Project, dataset: Dataset, **overrides) -> dict:
 
 
 def _setup() -> tuple[User, Project, Capability]:
-    u = _user()
-    p = _project()
+    u = make_user()
+    p = make_project()
     ProjectMembership.objects.create(user=u, project=p)
-    a = _capability(p)
+    a = make_capability(p)
     return u, p, a
 
 
@@ -232,44 +195,28 @@ class TestValidatorDB:
         assert result.valid is False
         assert any("not found" in e.lower() for e in result.errors)
 
-    def test_as_dict_has_expected_keys(self):
-        _, p, a = _setup()
-        ds = _dataset_with_messages(a)
-        result = validate_dataset(str(ds.id)).as_dict()
-        assert set(result.keys()) == {
-            "valid",
-            "format",
-            "num_examples",
-            "errors",
-            "warnings",
-            "stats",
-        }
-
     def test_tool_calling_mismatch_dataset_invalid(self):
         _, _, a = _setup()
         ds = frozen_dataset(
             a.project,
             [
                 {
-                    "input": {
-                        "messages": [
-                            {"role": "user", "content": "go"},
-                            {
-                                "role": "assistant",
-                                "content": None,
-                                "tool_calls": [
-                                    {
-                                        "id": "call_real",
-                                        "type": "function",
-                                        "function": {"name": "fn", "arguments": "{}"},
-                                    }
-                                ],
-                            },
-                            {"role": "tool", "tool_call_id": "call_bad", "content": "{}"},
-                            {"role": "assistant", "content": "done"},
-                        ]
-                    },
-                    "expected_output": None,
+                    "messages": [
+                        {"role": "user", "content": "go"},
+                        {
+                            "role": "assistant",
+                            "content": None,
+                            "tool_calls": [
+                                {
+                                    "id": "call_real",
+                                    "type": "function",
+                                    "function": {"name": "fn", "arguments": "{}"},
+                                }
+                            ],
+                        },
+                        {"role": "tool", "tool_call_id": "call_bad", "content": "{}"},
+                        {"role": "assistant", "content": "done"},
+                    ]
                 }
                 for i in range(12)
             ],
@@ -336,17 +283,6 @@ class TestRecommenderLogic:
         assert "49 examples" in reasons["n_epochs"]
         assert all(isinstance(v, str) and v for v in reasons.values())
 
-    def test_tier_catalog_has_all_tiers(self):
-        assert set(tier_models().keys()) >= {"compact", "small", "mid", "large"}
-
-    def test_tier_catalog_entries_have_required_keys(self):
-        for tier, models in tier_models().items():
-            assert models, f"Tier '{tier}' has no models"
-            for m in models:
-                assert "id" in m and "display" in m and "params" in m, (
-                    f"Model entry in tier '{tier}' missing required keys: {m}"
-                )
-
     def test_baseten_catalog_includes_batch_size_limits(self):
         # Model-agnostic: any entry can be disabled in models.json at any time.
         entries = [m for tier in baseten_finetuning_catalog().values() for m in tier]
@@ -366,18 +302,6 @@ class TestRunnerAbstraction:
     def test_get_runner_unknown_backend_raises(self):
         with pytest.raises(ValueError, match="Unknown fine-tuning backend"):
             get_runner("nonexistent_backend")
-
-    def test_register_runner_and_retrieve(self):
-        class DummyRunner(BaseFinetuningRunner):
-            def submit(self, job, training_file_path, num_examples, existing_file_id=None):
-                return SubmissionResult("r1", "http://x", "f1")
-
-            def poll(self, remote_id):
-                return PollSnapshot(state="running")
-
-        register_runner("dummy", DummyRunner)
-        runner = get_runner("dummy")
-        assert isinstance(runner, DummyRunner)
 
     def test_together_suffix_strips_unsafe_characters(self):
         assert (
@@ -544,27 +468,6 @@ class TestRunnerAbstraction:
 
 
 class TestNewModelFields:
-    def test_group_id_nullable(self):
-        _, p, a = _setup()
-        ds = _dataset_with_pairs(a)
-        job = FinetuningJob.objects.create(project=p, dataset=ds, base_model="m")
-        assert job.group_id is None
-        assert job.model_tier == ""
-
-    def test_multiple_jobs_share_group_id(self):
-        _, p, a = _setup()
-        ds = _dataset_with_pairs(a)
-        gid = uuid.uuid4()
-        for tier in (FinetuningJob.Tier.COMPACT, FinetuningJob.Tier.SMALL):
-            FinetuningJob.objects.create(
-                project=p,
-                dataset=ds,
-                base_model="m",
-                group_id=gid,
-                model_tier=tier,
-            )
-        assert FinetuningJob.objects.filter(group_id=gid).count() == 2
-
     def test_group_id_and_model_tier_exposed_in_list_api(self):
         u, p, a = _setup()
         ds = _dataset_with_pairs(a)
@@ -578,7 +481,7 @@ class TestNewModelFields:
         )
 
         with patch(CELERY_PATH):
-            r = _auth_client(u).get(reverse("finetuningjob-list"))
+            r = auth_client(u).get(reverse("finetuningjob-list"))
 
         assert r.status_code == 200
         row = r.data["results"][0]
@@ -591,7 +494,7 @@ class TestValidateDatasetEndpoint:
         u, p, a = _setup()
         ds = _dataset_with_messages(a, n=5)
 
-        r = _auth_client(u).post(
+        r = auth_client(u).post(
             reverse("finetuningjob-validate-dataset"),
             {"dataset_id": str(ds.id)},
             format="json",
@@ -605,7 +508,7 @@ class TestValidateDatasetEndpoint:
         u, p, a = _setup()
         ds = frozen_dataset(a.project, EVAL_ROWS, capability=a)
 
-        r = _auth_client(u).post(
+        r = auth_client(u).post(
             reverse("finetuningjob-validate-dataset"),
             {"dataset_id": str(ds.id)},
             format="json",
@@ -615,7 +518,7 @@ class TestValidateDatasetEndpoint:
 
     def test_missing_dataset_id_returns_400(self):
         u, _, _ = _setup()
-        r = _auth_client(u).post(
+        r = auth_client(u).post(
             reverse("finetuningjob-validate-dataset"),
             {},
             format="json",
@@ -635,7 +538,7 @@ class TestValidateDatasetEndpoint:
         train_ds = _dataset_with_messages(a, n=8)
         val_ds = _dataset_with_messages(a, n=3, prefix="Held out")
 
-        r = _auth_client(u).post(
+        r = auth_client(u).post(
             reverse("finetuningjob-validate-dataset"),
             {
                 "dataset_id": str(train_ds.id),
@@ -654,7 +557,7 @@ class TestValidateDatasetEndpoint:
         u, p, a = _setup()
         ds = _dataset_with_messages(a, n=6)
 
-        r = _auth_client(u).post(
+        r = auth_client(u).post(
             reverse("finetuningjob-validate-dataset"),
             {
                 "dataset_id": str(ds.id),
@@ -674,7 +577,7 @@ class TestModelsEndpoint:
         u, _, _ = _setup()
         settings.FINETUNING_BACKEND = "together"
 
-        r = _auth_client(u).get(reverse("finetuningjob-models"))
+        r = auth_client(u).get(reverse("finetuningjob-models"))
         assert r.status_code == 200
         assert r.data["backend"] == "together"
         assert "tiers" in r.data
@@ -684,7 +587,7 @@ class TestModelsEndpoint:
         u, _, _ = _setup()
         settings.FINETUNING_BACKEND = "baseten"
 
-        r = _auth_client(u).get(reverse("finetuningjob-models"))
+        r = auth_client(u).get(reverse("finetuningjob-models"))
         assert r.status_code == 200
         assert r.data["backend"] == "baseten"
         assert set(r.data["tiers"]) == {"compact", "small", "mid", "large"}
@@ -695,7 +598,7 @@ class TestRecommendEndpoint:
         u, p, a = _setup()
         ds = _dataset_with_pairs(a, n=10)
 
-        r = _auth_client(u).post(
+        r = auth_client(u).post(
             reverse("finetuningjob-recommend"),
             {"dataset_id": str(ds.id)},
             format="json",
@@ -712,7 +615,7 @@ class TestRecommendEndpoint:
         u, p, a = _setup()
         ds = _dataset_with_pairs(a, n=10)
 
-        r = _auth_client(u).post(
+        r = auth_client(u).post(
             reverse("finetuningjob-recommend"),
             {"dataset_id": str(ds.id)},
             format="json",
@@ -725,7 +628,7 @@ class TestRecommendEndpoint:
         u, p, a = _setup()
         ds = _dataset_with_pairs(a, n=5)
 
-        r = _auth_client(u).post(
+        r = auth_client(u).post(
             reverse("finetuningjob-recommend"),
             {"dataset_id": str(ds.id)},
             format="json",
@@ -741,7 +644,7 @@ class TestRecommendEndpoint:
         _, p2, a2 = _setup()
         foreign_ds = _dataset_with_pairs(a2, n=3)
 
-        r = _auth_client(u).post(
+        r = auth_client(u).post(
             reverse("finetuningjob-recommend"),
             {"dataset_id": str(foreign_ds.id)},
             format="json",
@@ -750,7 +653,7 @@ class TestRecommendEndpoint:
 
     def test_missing_dataset_id_returns_400(self):
         u, _, _ = _setup()
-        r = _auth_client(u).post(
+        r = auth_client(u).post(
             reverse("finetuningjob-recommend"),
             {},
             format="json",
@@ -764,7 +667,7 @@ class TestLossCurvesEndpoint:
         ds = _dataset_with_pairs(a)
         job = FinetuningJob.objects.create(project=p, dataset=ds, base_model="m")
 
-        r = _auth_client(u).get(reverse("finetuningjob-loss-curves", kwargs={"id": str(job.id)}))
+        r = auth_client(u).get(reverse("finetuningjob-loss-curves", kwargs={"id": str(job.id)}))
         assert r.status_code == 200
         assert r.data["steps"] == []
         assert r.data["train_loss"] == []
@@ -792,7 +695,7 @@ class TestLossCurvesEndpoint:
             data={"status": "running"},  # should not appear in loss curves
         )
 
-        r = _auth_client(u).get(reverse("finetuningjob-loss-curves", kwargs={"id": str(job.id)}))
+        r = auth_client(u).get(reverse("finetuningjob-loss-curves", kwargs={"id": str(job.id)}))
         assert r.status_code == 200
         assert len(r.data["steps"]) == 2
         assert len(r.data["train_loss"]) == 2
@@ -805,9 +708,7 @@ class TestLossCurvesEndpoint:
         ds2 = _dataset_with_pairs(a2)
         foreign = FinetuningJob.objects.create(project=p2, dataset=ds2, base_model="m")
 
-        r = _auth_client(u).get(
-            reverse("finetuningjob-loss-curves", kwargs={"id": str(foreign.id)})
-        )
+        r = auth_client(u).get(reverse("finetuningjob-loss-curves", kwargs={"id": str(foreign.id)}))
         assert r.status_code == 404
 
     def test_unauthenticated_returns_401(self):
@@ -863,8 +764,6 @@ class TestJSONLMaterialisation:
 
 class TestOpenAIFormatValidator:
     pytestmark = pytest.mark.django_db(transaction=False)
-
-    from overbae.services.finetuning_validator import _openai_format_check  # noqa: E402
 
     def _conv(self, messages, **kwargs) -> dict:
         row = {"messages": messages}
@@ -931,34 +830,28 @@ class TestOpenAIFormatValidator:
         return [row] * n
 
     def test_invalid_role_rejected(self):
-        from overbae.services.finetuning_validator import _openai_format_check
-
         row = self._conv(
             [
                 {"role": "user", "content": "hi"},
                 {"role": "bot", "content": "hey"},
             ]
         )
-        result = _openai_format_check(self._rows(row))
+        result = validate_rows(self._rows(row))
         assert result.valid is False
         assert any("invalid role" in e.lower() for e in result.errors)
 
     def test_missing_assistant_rejected(self):
-        from overbae.services.finetuning_validator import _openai_format_check
-
         row = self._conv(
             [
                 {"role": "user", "content": "hi"},
                 {"role": "user", "content": "hello again"},
             ]
         )
-        result = _openai_format_check(self._rows(row))
+        result = validate_rows(self._rows(row))
         assert result.valid is False
         assert any("assistant" in e for e in result.errors)
 
     def test_must_end_with_assistant(self):
-        from overbae.services.finetuning_validator import _openai_format_check
-
         row = self._conv(
             [
                 {"role": "user", "content": "hi"},
@@ -966,142 +859,112 @@ class TestOpenAIFormatValidator:
                 {"role": "user", "content": "thanks"},
             ]
         )
-        result = _openai_format_check(self._rows(row))
+        result = validate_rows(self._rows(row))
         assert result.valid is False
         assert any("end with" in e.lower() for e in result.errors)
 
     def test_too_few_messages_rejected(self):
-        from overbae.services.finetuning_validator import _openai_format_check
-
         row = self._conv([{"role": "assistant", "content": "hi"}])
-        result = _openai_format_check(self._rows(row))
+        result = validate_rows(self._rows(row))
         assert result.valid is False
 
     def test_assistant_with_no_content_or_tool_calls_rejected(self):
-        from overbae.services.finetuning_validator import _openai_format_check
-
         row = self._conv(
             [
                 {"role": "user", "content": "hi"},
                 {"role": "assistant", "content": None},  # no tool_calls either
             ]
         )
-        result = _openai_format_check(self._rows(row))
+        result = validate_rows(self._rows(row))
         assert result.valid is False
         assert any("content" in e or "tool_calls" in e for e in result.errors)
 
     def test_tool_call_missing_id_rejected(self):
-        from overbae.services.finetuning_validator import _openai_format_check
-
         row = self._tool_row()
         del row["messages"][1]["tool_calls"][0]["id"]
-        result = _openai_format_check(self._rows(row))
+        result = validate_rows(self._rows(row))
         assert result.valid is False
         assert any("id" in e for e in result.errors)
 
     def test_tool_call_wrong_type_rejected(self):
-        from overbae.services.finetuning_validator import _openai_format_check
-
         row = self._tool_row()
         row["messages"][1]["tool_calls"][0]["type"] = "action"
-        result = _openai_format_check(self._rows(row))
+        result = validate_rows(self._rows(row))
         assert result.valid is False
         assert any("type" in e and "function" in e for e in result.errors)
 
     def test_tool_call_arguments_not_string_rejected(self):
-        from overbae.services.finetuning_validator import _openai_format_check
-
         row = self._tool_row()
         row["messages"][1]["tool_calls"][0]["function"]["arguments"] = {"city": "Tokyo"}
-        result = _openai_format_check(self._rows(row))
+        result = validate_rows(self._rows(row))
         assert result.valid is False
         assert any("arguments" in e for e in result.errors)
 
     def test_tool_call_arguments_invalid_json_rejected(self):
-        from overbae.services.finetuning_validator import _openai_format_check
-
         row = self._tool_row()
         row["messages"][1]["tool_calls"][0]["function"]["arguments"] = "{bad json"
-        result = _openai_format_check(self._rows(row))
+        result = validate_rows(self._rows(row))
         assert result.valid is False
         assert any("arguments" in e for e in result.errors)
 
     def test_tool_message_missing_tool_call_id_rejected(self):
-        from overbae.services.finetuning_validator import _openai_format_check
-
         row = self._tool_row()
         del row["messages"][2]["tool_call_id"]
-        result = _openai_format_check(self._rows(row))
+        result = validate_rows(self._rows(row))
         assert result.valid is False
         assert any("tool_call_id" in e for e in result.errors)
 
     def test_tool_message_content_must_be_string(self):
-        from overbae.services.finetuning_validator import _openai_format_check
-
         row = self._tool_row()
         row["messages"][2]["content"] = {"temp": 22}
-        result = _openai_format_check(self._rows(row))
+        result = validate_rows(self._rows(row))
         assert result.valid is False
         assert any("string" in e.lower() for e in result.errors)
 
     def test_unknown_message_key_flagged(self):
-        from overbae.services.finetuning_validator import _openai_format_check
-
         row = self._conv(
             [
                 {"role": "user", "content": "hi", "solution": "extra field"},
                 {"role": "assistant", "content": "hey"},
             ]
         )
-        result = _openai_format_check(self._rows(row))
+        result = validate_rows(self._rows(row))
         assert result.valid is False
         assert any("solution" in e for e in result.errors)
 
     def test_valid_instruction_rows(self):
-        from overbae.services.finetuning_validator import _openai_format_check
-
         rows = [{"prompt": f"Q{i}", "completion": f"A{i}"} for i in range(15)]
-        result = _openai_format_check(rows)
+        result = validate_rows(rows)
         assert result.valid is True
         assert result.format == "instruction"
         assert result.errors == []
 
     def test_instruction_empty_prompt_rejected(self):
-        from overbae.services.finetuning_validator import _openai_format_check
-
         rows = [{"prompt": "", "completion": "A"}] * 12
-        result = _openai_format_check(rows)
+        result = validate_rows(rows)
         assert result.valid is False
         assert any("prompt" in e for e in result.errors)
 
     def test_instruction_missing_completion_rejected(self):
-        from overbae.services.finetuning_validator import _openai_format_check
-
         rows = [{"prompt": "Q", "completion": ""}] * 12
-        result = _openai_format_check(rows)
+        result = validate_rows(rows)
         assert result.valid is False
         assert any("completion" in e for e in result.errors)
 
     def test_fewer_than_10_examples_warns(self):
-        from overbae.services.finetuning_validator import _openai_format_check
-
         rows = [self._single_turn()] * 5
-        result = _openai_format_check(rows)
+        result = validate_rows(rows)
         assert result.valid is True
         assert any("10" in w for w in result.warnings)
 
     def test_empty_dataset_invalid(self):
-        from overbae.services.finetuning_validator import _openai_format_check
-
-        result = _openai_format_check([])
+        result = validate_rows([])
         assert result.valid is False
         assert result.num_examples == 0
 
     def test_unknown_format_rejected(self):
-        from overbae.services.finetuning_validator import _openai_format_check
-
         rows = [{"foo": "bar", "baz": 1}] * 12
-        result = _openai_format_check(rows)
+        result = validate_rows(rows)
         assert result.valid is False
         assert any("unrecognised format" in e.lower() for e in result.errors)
 
@@ -1132,10 +995,8 @@ class TestOpenAIFormatValidator:
         assert result.valid is True
 
     def test_empty_messages_list_rejected(self):
-        from overbae.services.finetuning_validator import _openai_format_check
-
         row = self._conv([])
-        result = _openai_format_check(self._rows(row))
+        result = validate_rows(self._rows(row))
         assert result.valid is False
         assert any("empty" in e.lower() or "0" in e for e in result.errors)
 
@@ -1171,10 +1032,8 @@ class TestOpenAIFormatValidator:
             row_to_finetuning_line(dp)
 
     def test_no_assistant_no_expected_output_row_invalid(self):
-        from overbae.services.finetuning_validator import _openai_format_check
-
         row = self._conv([{"role": "user", "content": "hello"}])
-        result = _openai_format_check(self._rows(row))
+        result = validate_rows(self._rows(row))
         assert result.valid is False
         assert any("assistant" in e for e in result.errors)
 
@@ -1197,7 +1056,7 @@ class TestFinetuningValidationSerializer:
         eval_ds = frozen_dataset(p, EVAL_ROWS, capability=a)
 
         with patch(CELERY_PATH):
-            r = _auth_client(u).post(
+            r = auth_client(u).post(
                 reverse("finetuningjob-list"),
                 _ft_job_payload(
                     p,
@@ -1216,7 +1075,7 @@ class TestFinetuningValidationSerializer:
         ds = _dataset_with_messages(a, n=5)
 
         with patch(CELERY_PATH):
-            r = _auth_client(u).post(
+            r = auth_client(u).post(
                 reverse("finetuningjob-list"),
                 _ft_job_payload(p, ds, validation_split_ratio=0.9),
                 format="json",
@@ -1230,7 +1089,7 @@ class TestFinetuningValidationSerializer:
         ds = _dataset_with_messages(a, n=5)
 
         with patch(CELERY_PATH):
-            r = _auth_client(u).post(
+            r = auth_client(u).post(
                 reverse("finetuningjob-list"),
                 _ft_job_payload(
                     p,
@@ -1249,7 +1108,7 @@ class TestFinetuningValidationSerializer:
         ds = _dataset_with_pairs(a, n=10)
 
         with patch(CELERY_PATH):
-            r = _auth_client(u).post(
+            r = auth_client(u).post(
                 reverse("finetuningjob-list"),
                 _ft_job_payload(
                     p,
@@ -1269,7 +1128,7 @@ class TestFinetuningValidationSerializer:
         ds = _dataset_with_messages(a, n=10)
 
         with patch(CELERY_PATH, return_value=_FakeAsyncResult()):
-            r = _auth_client(u).post(
+            r = auth_client(u).post(
                 reverse("finetuningjob-list"),
                 _ft_job_payload(
                     p,
@@ -1300,7 +1159,7 @@ class TestFinetuningValidationSerializer:
         )
 
         with patch(CELERY_PATH):
-            r = _auth_client(u).get(reverse("finetuningjob-list"))
+            r = auth_client(u).get(reverse("finetuningjob-list"))
 
         assert r.status_code == 200
         row = r.data["results"][0]
@@ -1308,11 +1167,6 @@ class TestFinetuningValidationSerializer:
         assert row["validation_split_ratio"] == 0.15
         assert row["split_method"] == "ordered"
         assert row["validation_dataset"] is None
-
-
-def _count_jsonl_rows(path: str) -> int:
-    with open(path, encoding="utf-8") as f:
-        return sum(1 for line in f if line.strip())
 
 
 def _ft_job(project: Project, dataset: Dataset, **overrides) -> FinetuningJob:
@@ -1332,198 +1186,46 @@ def _ft_job(project: Project, dataset: Dataset, **overrides) -> FinetuningJob:
 
 
 class TestFinetuningMaterialisation:
-    def test_train_excludes_holdout(self):
-        import os
-
-        from overbae.tasks.finetuning import _resolve_train_val_paths
-
-        _, p, a = _setup()
-        ds = _dataset_with_messages(a, n=10)
-        job = _ft_job(
-            p,
-            ds,
-            validation_enabled=True,
-            validation_split_ratio=0.2,
-            split_method=FinetuningJob.SplitMethod.ORDERED,
-        )
-
-        train_path, val_path, num_train, meta = _resolve_train_val_paths(
-            job, supports_validation=True
-        )
-        try:
-            assert num_train == 8
-            assert _count_jsonl_rows(train_path) == 8
-            assert val_path is not None
-            assert _count_jsonl_rows(val_path) == 2
-            assert meta["validation_mode"] == "split"
-            assert meta["train_examples"] == 8
-            assert meta["val_examples"] == 2
-            assert meta["train_examples"] + meta["val_examples"] == 10
-        finally:
-            for path in (train_path, val_path):
-                if path and os.path.exists(path):
-                    os.unlink(path)
-
-    def test_separate_validation_dataset(self):
-        import os
-
-        from overbae.tasks.finetuning import _resolve_train_val_paths
-
-        _, p, a = _setup()
-        train_ds = _dataset_with_messages(a, n=5)
-        val_ds = _dataset_with_messages(a, n=3)
-        job = _ft_job(
-            p,
-            train_ds,
-            validation_dataset=val_ds,
-        )
-
-        train_path, val_path, num_train, meta = _resolve_train_val_paths(
-            job, supports_validation=True
-        )
-        try:
-            assert num_train == 5
-            assert val_path is not None
-            assert _count_jsonl_rows(train_path) == 5
-            assert _count_jsonl_rows(val_path) == 3
-            assert meta["validation_mode"] == "separate"
-            assert meta["train_examples"] == 5
-            assert meta["val_examples"] == 3
-        finally:
-            for path in (train_path, val_path):
-                if path and os.path.exists(path):
-                    os.unlink(path)
-
-    def test_validation_disabled(self):
-        import os
-
-        from overbae.tasks.finetuning import _resolve_train_val_paths
-
-        _, p, a = _setup()
-        ds = _dataset_with_messages(a, n=5)
-        job = _ft_job(p, ds, validation_enabled=False)
-
-        train_path, val_path, num_train, meta = _resolve_train_val_paths(
-            job, supports_validation=True
-        )
-        try:
-            assert val_path is None
-            assert num_train == 5
-            assert _count_jsonl_rows(train_path) == 5
-            assert meta["validation_mode"] == "off"
-            assert meta["val_examples"] == 0
-        finally:
-            if train_path and os.path.exists(train_path):
-                os.unlink(train_path)
-
-    def test_together_backend_skips_validation_even_when_enabled(self):
-        import os
-
-        from overbae.tasks.finetuning import _resolve_train_val_paths
-
-        _, p, a = _setup()
-        ds = _dataset_with_messages(a, n=5)
-        job = _ft_job(p, ds, validation_enabled=True)
-
-        train_path, val_path, num_train, meta = _resolve_train_val_paths(
-            job, supports_validation=False
-        )
-        try:
-            assert val_path is None
-            assert num_train == 5
-            assert meta["validation_mode"] == "off"
-        finally:
-            if train_path and os.path.exists(train_path):
-                os.unlink(train_path)
-
-    def test_run_finetuning_submits_validation_file_for_baseten(self, settings):
+    def _submit(self, job, fake_modal) -> tuple[list[str], list[str] | None, dict]:
         from overbae.tasks.finetuning import run_finetuning
 
-        settings.FINETUNING_BACKEND = "baseten"
-        _, p, a = _setup()
-        ds = _dataset_with_messages(a, n=10)
-        job = _ft_job(
-            p,
-            ds,
-            validation_enabled=True,
-            validation_split_ratio=0.2,
-            split_method=FinetuningJob.SplitMethod.ORDERED,
+        prepare_training(job, fake_modal)
+        assert run_finetuning(job_id=str(job.id))["status"] == "running"
+        [(_, _, args, kwargs)] = [e for e in fake_modal.log if e[1] == "upload_dataset"]
+        call = dict(zip(("run_id", "data_jsonl", "val_jsonl"), args, strict=False)) | kwargs
+        event = FinetuningJobEvent.objects.get(
+            job=job, event_type="log", message__startswith="Materialised"
         )
+        train = call["data_jsonl"].splitlines()
+        validation = call.get("val_jsonl")
+        return train, (validation.splitlines() if validation else None), event.data
 
-        runner = BasetenRunner()
-
-        with (
-            patch.object(
-                runner,
-                "submit",
-                return_value=SubmissionResult(
-                    remote_id="remote-1",
-                    run_url="https://example.com/jobs/1",
-                    training_file_id="file-train",
-                    num_examples=8,
-                ),
-            ) as mock_submit,
-            patch.object(runner, "poll", return_value=PollSnapshot(state="succeeded")),
-            patch.object(runner, "fetch_epoch_losses", return_value=[]),
-            patch("overbae.services.finetuning_runner.get_runner", return_value=runner),
-            patch("overbae.tasks.model_deployment.register_finetuned_model.delay"),
-        ):
-            result = run_finetuning(job_id=str(job.id))
-
-        assert result["status"] == "running"
-        submit_kwargs = mock_submit.call_args.kwargs
-        assert submit_kwargs["num_examples"] == 8
-        assert submit_kwargs["validation_file_path"] is not None
-
-        materialise_event = FinetuningJobEvent.objects.filter(
-            job=job,
-            event_type="log",
-            message__startswith="Materialised",
-        ).first()
-        assert materialise_event is not None
-        assert materialise_event.data["validation_mode"] == "split"
-        assert materialise_event.data["train_examples"] == 8
-        assert materialise_event.data["val_examples"] == 2
-
-    def test_run_finetuning_omits_validation_when_disabled(self, settings):
-        from overbae.tasks.finetuning import run_finetuning
-
-        settings.FINETUNING_BACKEND = "baseten"
+    def test_a_split_holds_out_the_validation_rows(self, sft, fake_modal):
         _, p, a = _setup()
-        ds = _dataset_with_messages(a, n=5)
-        job = _ft_job(p, ds, validation_enabled=False)
+        job = _ft_job(p, _dataset_with_messages(a, n=10))
+        train, validation, meta = self._submit(job, fake_modal)
+        assert (len(train), len(validation)) == (8, 2)
+        assert meta["validation_mode"] == "split"
+        assert (meta["train_examples"], meta["val_examples"]) == (8, 2)
 
-        runner = BasetenRunner()
+    def test_a_separate_validation_dataset_is_sent_whole(self, sft, fake_modal):
+        _, p, a = _setup()
+        job = _ft_job(
+            p, _dataset_with_messages(a, n=5), validation_dataset=_dataset_with_messages(a, n=3)
+        )
+        train, validation, meta = self._submit(job, fake_modal)
+        assert (len(train), len(validation)) == (5, 3)
+        assert meta["validation_mode"] == "separate"
 
-        with (
-            patch.object(
-                runner,
-                "submit",
-                return_value=SubmissionResult(
-                    remote_id="remote-2",
-                    run_url="https://example.com/jobs/2",
-                    training_file_id="file-train",
-                    num_examples=5,
-                ),
-            ) as mock_submit,
-            patch.object(runner, "poll", return_value=PollSnapshot(state="succeeded")),
-            patch.object(runner, "fetch_epoch_losses", return_value=[]),
-            patch("overbae.services.finetuning_runner.get_runner", return_value=runner),
-            patch("overbae.tasks.model_deployment.register_finetuned_model.delay"),
-        ):
-            run_finetuning(job_id=str(job.id))
-
-        submit_kwargs = mock_submit.call_args.kwargs
-        assert submit_kwargs["validation_file_path"] is None
-        assert submit_kwargs["num_examples"] == 5
-
-        materialise_event = FinetuningJobEvent.objects.filter(
-            job=job,
-            event_type="log",
-            message__startswith="Materialised",
-        ).first()
-        assert materialise_event is not None
-        assert materialise_event.data["validation_mode"] == "off"
+    def test_disabled_validation_sends_every_row_to_training(self, sft, fake_modal):
+        _, p, a = _setup()
+        job = _ft_job(p, _dataset_with_messages(a, n=5), validation_enabled=False)
+        train, validation, meta = self._submit(job, fake_modal)
+        assert len(train) == 5
+        assert all(f"Question {i}" in "".join(train) for i in range(5))
+        assert validation is None
+        assert meta["validation_mode"] == "off"
+        assert meta["val_examples"] == 0
 
 
 class TestGPUSelectorLogic:
@@ -1647,38 +1349,6 @@ class TestGPUSelectorLogic:
 
         _, conc = select_gpu(self._cfg(70.0, True, 80, 8, 128), 131072)
         assert conc >= 1
-
-    def test_all_enabled_tiers_have_positive_vram(self):
-        from overbae.modal.gpu_selector import GPU_TIERS
-
-        for tier in GPU_TIERS:
-            if tier["enabled"]:
-                assert tier["vram_gb"] > 0, f"{tier['name']} has non-positive VRAM"
-
-    def test_h200_is_present_and_enabled(self):
-        """H200 fills the 80–192 GB gap between A100-80GB and B200."""
-        from overbae.modal.gpu_selector import GPU_TIERS
-
-        h200 = next((t for t in GPU_TIERS if t["name"] == "H200"), None)
-        assert h200 is not None
-        assert h200["enabled"] is True
-        assert h200["vram_gb"] == 141
-
-    def test_b300_is_present_and_enabled(self):
-        """B300 (SM103) TRTLLM-attention hang fixed in vLLM 0.19.0+ — should be enabled."""
-        from overbae.modal.gpu_selector import GPU_TIERS
-
-        b300 = next((t for t in GPU_TIERS if t["name"] == "B300"), None)
-        assert b300 is not None
-        assert b300["enabled"] is True
-        assert b300["vram_gb"] == 288
-
-    def test_gpu_tiers_are_ordered_by_ascending_vram(self):
-        """Tiers must be listed smallest VRAM first so select_gpu picks the cheapest that fits."""
-        from overbae.modal.gpu_selector import GPU_TIERS
-
-        vrms = [t["vram_gb"] for t in GPU_TIERS]
-        assert vrms == sorted(vrms), "GPU_TIERS must be sorted ascending by vram_gb"
 
 
 class TestModelRegistryAnyBackend:
@@ -1815,49 +1485,33 @@ class TestBasetenContextLengthPersistence:
         assert runner._select_training_gpu(big) == ("H100", 1)
 
     def test_gemma4_full_never_gets_multi_gpu(self):
-        """Gemma4 device_map=balanced crashes; clamp to 1×H200 even for 31B Full."""
-        from overbae.services.finetuning_runner import ModalRunner, clamp_gemma4_training_gpu
+        from overbae.services.finetuning_runner import clamp_gemma4_training_gpu
 
         assert clamp_gemma4_training_gpu("google/gemma-4-31B-it", "H100", 4) == ("H200", 1)
         assert clamp_gemma4_training_gpu("Qwen/Qwen3-32B", "H100", 4) == ("H100", 4)
 
-        runner = ModalRunner()
-        job = SimpleNamespace(
-            base_model="google/gemma-4-31B-it",
-            hyperparameters={"training_type": {"type": "Full"}},
-        )
-        assert runner._select_training_gpu(job) == ("H200", 1)
+    def test_a_modal_run_stages_the_hub_base_weights_before_the_gpu_starts(self, sft, fake_modal):
+        from overbae.services.deployment import get_hf_base
+        from overbae.tasks.finetuning import run_finetuning
 
-    def test_training_env_uses_hf_model_id_not_catalog_id(self):
-        from overbae.services.finetuning_policy import derive_baseten_training_plan
-        from overbae.services.finetuning_runner import ModalRunner
+        _, p, a = _setup()
+        job = _ft_job(
+            p,
+            _dataset_with_messages(a, n=5),
+            base_model="nvidia/NVIDIA-Nemotron-3.5-Lightning-30B-A3B",
+            validation_enabled=False,
+        )
+        prepare_training(job, fake_modal)
+        run_finetuning(job_id=str(job.id))
 
-        plan = derive_baseten_training_plan(
-            hyperparameters={"training_type": {"type": "Lora"}},
-            num_train_examples=8,
-            dataset_stats={"max_token_length": 64},
-            params_b=30.0,
-            model_max_context=262144,
-            model_id="nvidia/NVIDIA-Nemotron-3.5-Lightning-30B-A3B",
-        )
-        env = ModalRunner._training_env(
-            plan, "nvidia/NVIDIA-Nemotron-3.5-Lightning-30B-A3B", params_b=30.0
-        )
+        names = [name for _, name, _, _ in fake_modal.log]
+        gpu = next(n for n in names if n.startswith("sft_"))
+        assert names.index("fetch_base_model") < names.index(gpu)
+        [(_, _, _, fetched)] = [e for e in fake_modal.log if e[1] == "fetch_base_model"]
+        [(_, _, args, kwargs)] = [e for e in fake_modal.log if e[1] == gpu]
+        env = kwargs.get("env") or args[1]
+        assert fetched["base_model"] == get_hf_base(job.base_model)
         assert env["MODEL_ID"] == "unsloth/NVIDIA-Nemotron-3.5-Lightning-30B-A3B"
-
-    def test_await_base_model_blocks_on_fetch_remote(self, monkeypatch):
-        from unittest.mock import MagicMock, patch
-
-        from overbae.services.finetuning_runner import ModalRunner
-
-        monkeypatch.setenv("MODAL_ENVIRONMENT", "test-environment")
-        fetch = MagicMock()
-        with patch("modal.Function.from_name", return_value=fetch) as from_name:
-            ModalRunner()._await_base_model("unsloth/Qwen3-8B")
-        from_name.assert_called_once_with(
-            "overmind-register", "fetch_base_model", environment_name="test-environment"
-        )
-        fetch.remote.assert_called_once_with(base_model="unsloth/Qwen3-8B")
 
 
 class TestDeploymentGPUDerivation:

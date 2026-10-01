@@ -42,18 +42,43 @@ def together_suffix(name: str | None, *, fallback: str) -> str:
 
 
 def resolve_modal_job_state(
-    meta_status: str, *, in_flight: bool, call_ok: bool, has_final: bool = False
+    meta_status: str,
+    *,
+    in_flight: bool,
+    call_ok: bool,
+    has_final: bool = False,
+    remote_failed: bool = False,
 ) -> str:
     """Volume success / checkpoint wins. In-flight FunctionCall beats stale ``failed``."""
     if meta_status == "cancelled":
         return "cancelled"
     if has_final or meta_status == "succeeded":
         return "succeeded"
+    if remote_failed:
+        return "failed"
     if in_flight or not call_ok:
         return "running"
     if meta_status == "failed":
         return "failed"
     return "succeeded"
+
+
+def _remote_call_failed(call_id: str) -> bool:
+    """Only Modal's call graph separates a finished failure from an observer error."""
+    import modal  # noqa: PLC0415
+    from modal.call_graph import InputStatus  # noqa: PLC0415
+
+    terminal = {
+        InputStatus.FAILURE,
+        InputStatus.INIT_FAILURE,
+        InputStatus.TERMINATED,
+        InputStatus.TIMEOUT,
+    }
+    try:
+        graph = modal.FunctionCall.from_id(call_id).get_call_graph()
+    except Exception:  # noqa: BLE001
+        return False
+    return any(node.function_call_id == call_id and node.status in terminal for node in graph)
 
 
 def clamp_gemma4_training_gpu(model_id: str, gpu_type: str, gpu_count: int) -> tuple[str, int]:
@@ -1896,6 +1921,7 @@ class ModalRunner(BaseFinetuningRunner):
         else:
             in_flight = False
             call_ok = False
+            remote_failed = False
             try:
                 call = modal.FunctionCall.from_id(call_id)
                 call.get(timeout=0)
@@ -1904,8 +1930,13 @@ class ModalRunner(BaseFinetuningRunner):
                 in_flight = True
             except Exception as exc:  # noqa: BLE001 — FunctionCall raise is not death (retries).
                 call_error = str(exc)
+                remote_failed = _remote_call_failed(call_id)
             state = resolve_modal_job_state(
-                meta_status, in_flight=in_flight, call_ok=call_ok, has_final=has_final
+                meta_status,
+                in_flight=in_flight,
+                call_ok=call_ok,
+                has_final=has_final,
+                remote_failed=remote_failed,
             )
 
         phase = self._PHASE_MAP.get(meta_status or state, "training")
@@ -2119,7 +2150,3 @@ def get_runner(backend: str | None = None) -> BaseFinetuningRunner:
             f"Unknown fine-tuning backend '{key}'. Available: {list(_RUNNER_REGISTRY)}"
         )
     return cls()
-
-
-def register_runner(key: str, cls: type[BaseFinetuningRunner]) -> None:
-    _RUNNER_REGISTRY[key] = cls

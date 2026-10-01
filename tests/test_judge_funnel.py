@@ -124,11 +124,8 @@ def test_executor_does_not_retry_permanent_errors():
     assert attempts["n"] == 1
 
 
-def test_judge_preserves_oversized_evidence(monkeypatch):
-    from unittest.mock import Mock
-
+def test_judge_preserves_oversized_evidence(fake_llm):
     prompt = "RUBRIC " + ("evidence " * 50000) + " RETURN JSON"
-    completion = Mock(return_value=('{"explanation":"ok","score":7}', {}))
-    monkeypatch.setattr(funnel, "call_llm", completion)
+    fake_llm.on(lambda r: True, '{"explanation":"ok","score":7}')
     funnel.invoke_judge(prompt, response_format=_Verdict, judge=_judge(), use_cache=False)
-    assert completion.call_args.args[0] == prompt
+    assert prompt in fake_llm.requests[-1].text

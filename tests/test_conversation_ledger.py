@@ -2,9 +2,9 @@ from __future__ import annotations
 
 import uuid
 from types import SimpleNamespace
-from unittest import mock
 
 import pytest
+from factories import classifier_replies
 
 from overbae.services.behaviour import ledger
 from overbae.services.behaviour.ledger import (
@@ -193,7 +193,7 @@ def test_validation_chains_same_turn_open_and_resolve():
     ]
 
 
-def test_validation_rejects_unknown_event_kind_and_ask():
+def test_validation_rejects_unknown_event_kind_and_ask(fake_llm):
     state = _state_with_open()
     with pytest.raises(ValueError):
         _validated_transitions(
@@ -217,20 +217,19 @@ def _mock_outcome(transitions):
     return SimpleNamespace(parsed=TurnTransitions(transitions=transitions))
 
 
-def test_classifier_confirmation_is_not_a_new_ask():
+def test_classifier_confirmation_is_not_a_new_ask(fake_llm):
     """A confirmation turn's transitions reference the OPEN ask; delivered_wrong lands on it."""
     state = _state_with_open(text="create an Eval dataset for the Train ask")
-    with mock.patch.object(
-        ledger.judging,
-        "invoke_judge",
-        return_value=_mock_outcome(
+    invoked = classifier_replies(
+        fake_llm,
+        _mock_outcome(
             [TurnTransition(event="delivered_wrong", ask_id="a1", rationale="wrong kind")]
         ),
-    ) as invoked:
-        out = ledger.classify_turn(
-            state, [], user_message="Yes — create with source-alpha", result_summary="kind=train"
-        )
-    assert invoked.call_count == 1
+    )
+    out = ledger.classify_turn(
+        state, [], user_message="Yes — create with source-alpha", result_summary="kind=train"
+    )
+    assert len(invoked) == 1
     assert out == [
         {
             "event_type": "delivered_wrong",
@@ -240,32 +239,26 @@ def test_classifier_confirmation_is_not_a_new_ask():
             "rationale": "wrong kind",
         }
     ]
-    prompt = invoked.call_args.args[0]
+    prompt = invoked[-1].text
     assert "Yes — create with source-alpha" in prompt
     assert "bare confirmation" in prompt.lower() or "confirmation" in prompt
 
 
-def test_classifier_prompt_carries_rubric_and_ledger():
+def test_classifier_prompt_carries_rubric_and_ledger(fake_llm):
     state = _state_with_open()
-    with mock.patch.object(
-        ledger.judging,
-        "invoke_judge",
-        return_value=_mock_outcome([TurnTransition(event="refused", ask_id="a1")]),
-    ) as invoked:
-        ledger.classify_turn(state, [], user_message="order me lunch", result_summary="")
-    prompt = invoked.call_args.args[0]
+    invoked = classifier_replies(
+        fake_llm, _mock_outcome([TurnTransition(event="refused", ask_id="a1")])
+    )
+    ledger.classify_turn(state, [], user_message="order me lunch", result_summary="")
+    prompt = invoked[-1].text
     assert "supersedes the open ask" in prompt
     assert "closes the ask" in prompt
     assert "a1 [produce] status=open" in prompt
 
 
-def test_classifier_parse_failure_raises():
-    with (
-        mock.patch.object(
-            ledger.judging, "invoke_judge", return_value=SimpleNamespace(parsed=None)
-        ),
-        pytest.raises(ValueError),
-    ):
+def test_classifier_parse_failure_raises(fake_llm):
+    classifier_replies(fake_llm, None)
+    with pytest.raises(ValueError):
         ledger.classify_turn(LedgerState(), [], user_message="hi", result_summary="")
 
 
@@ -295,64 +288,59 @@ def _execution(project, cid, ask, *, minutes=0, step_results=None):
     )
 
 
-def test_record_turn_classifier_failure_leaves_turn_unrecorded(project):
+def test_record_turn_classifier_failure_leaves_turn_unrecorded(project, fake_llm):
     """No lexical fallback: a classifier failure logs, records nothing, and
     the next pass retries the same turn."""
     from overbae.models import ConversationEvent
 
     cid = str(uuid.uuid4())
     row = _execution(project, cid, "create a finetune job")
-    with mock.patch.object(ledger.judging, "invoke_judge", side_effect=RuntimeError("down")):
-        entering, events = ledger.record_turn(
-            row, user_message="create a finetune job", result_summary=""
-        )
+    classifier_replies(fake_llm, RuntimeError("down"))
+    entering, events = ledger.record_turn(
+        row, user_message="create a finetune job", result_summary=""
+    )
     assert entering.asks == {}
     assert events == []
     assert ConversationEvent.objects.filter(conversation_id=cid).count() == 0
 
-    with mock.patch.object(
-        ledger.judging,
-        "invoke_judge",
-        return_value=_mock_outcome(
+    classifier_replies(
+        fake_llm,
+        _mock_outcome(
             [
                 TurnTransition(
                     event="ask_opened", ask_text="create a finetune job", ask_kind="produce"
                 )
             ]
         ),
-    ):
-        _, retried = ledger.record_turn(
-            row, user_message="create a finetune job", result_summary=""
-        )
+    )
+    _, retried = ledger.record_turn(row, user_message="create a finetune job", result_summary="")
     assert [e.event_type for e in retried] == ["ask_opened"]
     assert retried[0].source == ConversationEvent.Source.CLASSIFIER
 
 
-def test_recorded_transitions_are_never_rerun(project):
+def test_recorded_transitions_are_never_rerun(project, fake_llm):
     cid = str(uuid.uuid4())
     row = _execution(project, cid, "create a finetune job")
-    with mock.patch.object(
-        ledger.judging,
-        "invoke_judge",
-        return_value=_mock_outcome(
+    classifier_replies(
+        fake_llm,
+        _mock_outcome(
             [
                 TurnTransition(
                     event="ask_opened", ask_text="create a finetune job", ask_kind="produce"
                 )
             ]
         ),
-    ):
-        _, first = ledger.record_turn(row, user_message="create a finetune job", result_summary="")
+    )
+    _, first = ledger.record_turn(row, user_message="create a finetune job", result_summary="")
     assert [e.event_type for e in first] == ["ask_opened"]
 
-    with mock.patch.object(
-        ledger.judging, "invoke_judge", side_effect=AssertionError("must not re-run")
-    ):
-        _, second = ledger.record_turn(row, user_message="create a finetune job", result_summary="")
+    rerun = classifier_replies(fake_llm, [])
+    _, second = ledger.record_turn(row, user_message="create a finetune job", result_summary="")
     assert [e.pk for e in second] == [e.pk for e in first]
+    assert rerun == []
 
 
-def test_record_turn_backfills_prior_turns_through_classifier(project):
+def test_record_turn_backfills_prior_turns_throughclassifier_replies(project, fake_llm):
     """Unrecorded prior turns route through the SAME classifier, tagged
     source=backfill, with the persisted outcome verdict as evidence."""
     from overbae.models import ConversationEvent
@@ -380,12 +368,12 @@ def test_record_turn_backfills_prior_turns_through_classifier(project):
         ),
         _mock_outcome([TurnTransition(event="ask_reprompted", ask_id="a1")]),
     ]
-    with mock.patch.object(ledger.judging, "invoke_judge", side_effect=outcomes) as invoked:
-        entering, turn_events = ledger.record_turn(
-            current, user_message="yes, go ahead", result_summary="job started"
-        )
-    assert invoked.call_count == 2
-    assert "delivery=delivered" in invoked.call_args_list[0].args[0]
+    invoked = classifier_replies(fake_llm, *outcomes)
+    entering, turn_events = ledger.record_turn(
+        current, user_message="yes, go ahead", result_summary="job started"
+    )
+    assert len(invoked) == 2
+    assert "delivery=delivered" in invoked[0].text
     assert "a1" in entering.asks
     assert entering.asks["a1"].status == "delivered"
     prior_events = list(prior.ledger_events.all())
@@ -394,28 +382,27 @@ def test_record_turn_backfills_prior_turns_through_classifier(project):
     assert [e.source for e in turn_events] == [ConversationEvent.Source.CLASSIFIER]
 
 
-def test_record_turn_skips_empty_prior_rows_without_llm_calls(project):
+def test_record_turn_skips_empty_prior_rows_without_llm_calls(project, fake_llm):
     """A wiped/unscored prior row (no ask text, no outcome) is nothing to
     classify — no LLM call, no rows, retried when it has evidence."""
     cid = str(uuid.uuid4())
     empty_prior = _execution(project, cid, "", minutes=-5)
     current = _execution(project, cid, "list datasets")
-    with mock.patch.object(
-        ledger.judging,
-        "invoke_judge",
-        return_value=_mock_outcome(
+    invoked = classifier_replies(
+        fake_llm,
+        _mock_outcome(
             [TurnTransition(event="ask_opened", ask_text="list datasets", ask_kind="inspect")]
         ),
-    ) as invoked:
-        _, turn_events = ledger.record_turn(
-            current, user_message="list datasets", result_summary="table"
-        )
-    assert invoked.call_count == 1  # current turn only
+    )
+    _, turn_events = ledger.record_turn(
+        current, user_message="list datasets", result_summary="table"
+    )
+    assert len(invoked) == 1  # current turn only
     assert empty_prior.ledger_events.count() == 0
     assert [e.event_type for e in turn_events] == ["ask_opened"]
 
 
-def test_ensure_backfill_classifies_once_and_skips_failures(project):
+def test_ensure_backfill_classifies_once_and_skips_failures(project, fake_llm):
     from overbae.models import ConversationEvent
 
     cid = str(uuid.uuid4())
@@ -429,19 +416,17 @@ def test_ensure_backfill_classifies_once_and_skips_failures(project):
         ),
         RuntimeError("down"),
     ]
-    with mock.patch.object(ledger.judging, "invoke_judge", side_effect=outcomes):
-        events = ledger.ensure_backfill(rows)
+    classifier_replies(fake_llm, *outcomes)
+    events = ledger.ensure_backfill(rows)
     assert [e.event_type for e in events] == ["ask_opened"]
     assert events[0].source == ConversationEvent.Source.BACKFILL
     assert rows[1].ledger_events.count() == 0  # failed turn skipped, not guessed
 
-    with mock.patch.object(
-        ledger.judging,
-        "invoke_judge",
-        side_effect=[_mock_outcome([TurnTransition(event="delivered", ask_id="a1")])],
-    ) as invoked:
-        events = ledger.ensure_backfill(rows)
-    assert invoked.call_count == 1  # only the previously failed row
+    invoked = classifier_replies(
+        fake_llm, _mock_outcome([TurnTransition(event="delivered", ask_id="a1")])
+    )
+    events = ledger.ensure_backfill(rows)
+    assert len(invoked) == 1  # only the previously failed row
     assert [e.event_type for e in events] == ["ask_opened", "delivered"]
 
 

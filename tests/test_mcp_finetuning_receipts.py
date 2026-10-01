@@ -1,38 +1,20 @@
 from __future__ import annotations
 
 import asyncio
-import uuid
 from types import SimpleNamespace
 
 import pytest
-from mcp_fixtures import training_setup
+from mcp_fixtures import mcp_context, training_setup
 
 from overbae.models import (
-    APIToken,
     Dataset,
     DeployedModel,
     FinetuningJob,
-    Project,
-    ProjectMembership,
-    User,
 )
-from overbae.services.finetuning_validator import ValidationResult
 from overbae.services.mcp.catalog import CATALOG
 from overbae.services.mcp.context import MCPContext
 
 pytestmark = pytest.mark.django_db(transaction=True)
-
-
-def _context() -> MCPContext:
-    user = User.objects.create_user(
-        email=f"mcp-receipt-{uuid.uuid4().hex[:8]}@test.com",
-        password="pw",
-        clerk_user_id=f"clerk_{uuid.uuid4().hex}",
-    )
-    project = Project.objects.create(name="Fine tuning", slug=f"receipt-{uuid.uuid4().hex[:8]}")
-    ProjectMembership.objects.create(user=user, project=project)
-    token = APIToken(scope={"scope": "project", "permission": ["read", "write"]})
-    return MCPContext(user=user, token=token, project=project)
 
 
 def _call(name: str, arguments: dict, context: MCPContext):
@@ -41,22 +23,9 @@ def _call(name: str, arguments: dict, context: MCPContext):
 
 @pytest.mark.parametrize("judge_model", ["", "gpt-5.6-luna"])
 def test_start_finetune_job_receipt_has_kind_and_preserves_reference(monkeypatch, judge_model):
-    from overbae.services.mcp import tools_finetuning
 
-    context = _context()
+    context = mcp_context(["read", "write"])
     capability, train, _evaluation, _eval_set = training_setup(context)
-    monkeypatch.setattr(
-        tools_finetuning,
-        "validate_dataset",
-        lambda *_args, **_kwargs: ValidationResult(True, "conversational", 1),
-    )
-    monkeypatch.setattr(
-        tools_finetuning,
-        "stamp_hyperparameters_for_model",
-        lambda *_args: {"training_type": {"type": "Lora"}},
-    )
-    monkeypatch.setattr("overbae.api.credit_gate.require_credits", lambda _user: None)
-    monkeypatch.setattr("overbae.services.plan_limits.require_plan_quota", lambda *_args: None)
     monkeypatch.setattr(
         "overbae.tasks.finetuning.run_finetuning.apply_async",
         lambda **_kwargs: SimpleNamespace(id="celery-ft"),
@@ -88,7 +57,7 @@ def test_start_finetune_job_receipt_has_kind_and_preserves_reference(monkeypatch
 
 
 def test_retry_deployment_returns_named_deployment_job_receipt(monkeypatch):
-    context = _context()
+    context = mcp_context(["read", "write"])
     train = Dataset.objects.create(
         project=context.project,
         name="Train",
@@ -107,7 +76,6 @@ def test_retry_deployment_returns_named_deployment_job_receipt(monkeypatch):
         model_id="ft-receipt",
         status=DeployedModel.Status.FAILED,
     )
-    monkeypatch.setattr("overbae.api.credit_gate.require_credits", lambda _user: None)
     monkeypatch.setattr(
         "overbae.tasks.model_deployment.register_finetuned_model.delay",
         lambda **_kwargs: None,

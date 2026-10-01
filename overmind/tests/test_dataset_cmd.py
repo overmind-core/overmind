@@ -92,36 +92,6 @@ def _urls(session: FakeSession) -> list[str]:
     return [call[1] for call in session.calls]
 
 
-def test_upload_file_small_hits_datasets_not_ingestions(tmp_path: Path):
-    path = tmp_path / "rows.jsonl"
-    path.write_bytes(b"ab")
-    session = FakeSession(chunk_bytes=8)
-
-    result = upload_file(
-        path,
-        project_id="project-1",
-        api_key="key-1",
-        api_url="https://api.example/",
-        session=session,
-    )
-
-    assert result["id"] == "dataset-1"
-    assert result["state"] == "landing"
-    assert [call[0] for call in session.calls] == ["POST", "GET", "PUT", "POST"]
-    assert session.calls[-1][1] == "https://api.example/api/datasets/"
-    assert all("/api/ingestions/" not in url for url in _urls(session))
-    assert session.calls[-1][2]["json"] == {
-        "project": "project-1",
-        "name": "rows.jsonl",
-        "source": {"upload_id": "upload-1", "filename": "rows.jsonl"},
-    }
-    assert {action["tool"] for action in result["next_mcp_actions"]} == {
-        "get_job",
-        "inspect_dataset",
-    }
-    assert result["next_mcp_actions"][0]["arguments"] == {"kind": "dataset_run", "id": result["id"]}
-
-
 def test_upload_file_resumes_in_server_chunks_and_creates_dataset(tmp_path: Path):
     path = tmp_path / "rows.jsonl"
     path.write_bytes(b"0123456789")

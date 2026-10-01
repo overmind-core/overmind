@@ -3,7 +3,6 @@ from __future__ import annotations
 import json
 import uuid
 from types import SimpleNamespace
-from unittest.mock import AsyncMock, Mock
 
 import pytest
 from django.core.cache import cache
@@ -13,10 +12,11 @@ from starlette.testclient import TestClient
 
 from modal_shared.context_budget import DEFAULT_OUTPUT_TOKENS
 from overbae.models import APIToken, DeployedModel, InferenceCall, Project, ProjectMembership, User
-from overbae.services import inference_live
 from overbae.services.mcp.server import create_mcp_application
 
 pytestmark = pytest.mark.django_db(transaction=True)
+
+INFERENCE = "http://inference.test"
 
 
 @pytest.fixture
@@ -63,25 +63,16 @@ def infer(serving, **overrides):
     return result
 
 
-def provider_response(content="Hello", finish_reason="stop"):
-    return Mock(
-        ok=True,
-        json=lambda: {
-            "choices": [{"message": {"content": content}, "finish_reason": finish_reason}],
-            "usage": {"prompt_tokens": 8, "completion_tokens": 12, "total_tokens": 20},
-        },
-    )
+def budgets(fake_llm) -> list[int]:
+    return [r.body["max_tokens"] for r in fake_llm.requests if r.url.startswith(INFERENCE)]
 
 
 @pytest.mark.parametrize(
     "budget", [{}, {"max_tokens": None}, {"max_tokens": 4096}, {"max_tokens": 12000}]
 )
-def test_mcp_and_production_preserve_the_same_output_reservation(serving, monkeypatch, budget):
-    post = Mock(side_effect=lambda *args, **kwargs: provider_response())
-    monkeypatch.setattr("overbae.services.inference_client.requests.post", post)
+def test_mcp_and_production_preserve_the_same_output_reservation(serving, fake_llm, budget):
     result = infer(serving, **budget)
     assert not result.get("isError"), result
-    mcp_budget = post.call_args.kwargs["json"]["max_tokens"]
 
     api = APIClient()
     api.force_authenticate(user=serving.user, token=serving.token)
@@ -95,34 +86,28 @@ def test_mcp_and_production_preserve_the_same_output_reservation(serving, monkey
         format="json",
     )
     assert response.status_code == 200, response.data
-    assert mcp_budget == post.call_args.kwargs["json"]["max_tokens"]
-    assert mcp_budget == (budget.get("max_tokens") or DEFAULT_OUTPUT_TOKENS)
-    assert post.call_count == 2
+    mcp_budget, api_budget = budgets(fake_llm)
+    assert mcp_budget == api_budget == (budget.get("max_tokens") or DEFAULT_OUTPUT_TOKENS)
     assert (
         InferenceCall.objects.filter(deployed_model=serving.model, outcome="succeeded").count() == 2
     )
 
 
 @pytest.mark.parametrize("budget", [0, -1, True, "8192", 1.5])
-def test_mcp_rejects_invalid_output_reservations_before_inference(serving, monkeypatch, budget):
-    post = Mock()
-    monkeypatch.setattr("overbae.services.inference_client.requests.post", post)
+def test_mcp_rejects_invalid_output_reservations_before_inference(serving, fake_llm, budget):
     result = infer(serving, max_tokens=budget)
     assert result["isError"]
     assert result["structuredContent"]["error"]["code"] == "invalid_input"
-    post.assert_not_called()
+    assert budgets(fake_llm) == []
     assert not InferenceCall.objects.filter(deployed_model=serving.model).exists()
 
 
 def test_mcp_context_rejection_is_non_retryable_and_preserves_the_requested_budget(
-    serving, monkeypatch
+    serving, scripted
 ):
-    post = Mock(
-        return_value=Mock(
-            ok=False, status_code=400, text="maximum context length exceeded; secret provider body"
-        )
+    inference = scripted(INFERENCE).reply(
+        400, text="maximum context length exceeded; secret provider body"
     )
-    monkeypatch.setattr("overbae.services.inference_client.requests.post", post)
     result = infer(serving, max_tokens=16384)
     assert result["isError"]
     error = result["structuredContent"]["error"]
@@ -130,8 +115,8 @@ def test_mcp_context_rejection_is_non_retryable_and_preserves_the_requested_budg
     assert error["retryable"] is False
     assert "reserved output" in error["message"]
     assert "secret provider body" not in json.dumps(result)
-    assert post.call_count == 1
-    assert post.call_args.kwargs["json"]["max_tokens"] == 16384
+    [call] = inference.calls
+    assert call.json["max_tokens"] == 16384
     call = InferenceCall.objects.get(deployed_model=serving.model)
     assert call.outcome == "failed"
     assert call.error_code == "context_length_exceeded"
@@ -145,11 +130,11 @@ def test_mcp_context_rejection_is_non_retryable_and_preserves_the_requested_budg
     ],
 )
 def test_large_budgets_keep_generation_truncation_separate_from_response_clipping(
-    serving, monkeypatch, content, finish_reason, truncated, clipped
+    serving, fake_llm, content, finish_reason, truncated, clipped
 ):
-    monkeypatch.setattr(
-        "overbae.services.inference_client.requests.post",
-        Mock(return_value=provider_response(content, finish_reason)),
+    fake_llm.on(
+        lambda r: r.url.startswith(INFERENCE),
+        {"content": content, "finish_reason": finish_reason},
     )
     result = infer(serving, max_tokens=12000)
     assert not result.get("isError"), result
@@ -172,7 +157,7 @@ def test_large_budgets_keep_generation_truncation_separate_from_response_clippin
     ],
 )
 def test_read_only_mcp_deployment_exposes_current_worker_state(
-    serving, monkeypatch, runners, recent, warming, expected
+    serving, fake_modal, runners, recent, warming, expected
 ):
     serving.key, _ = APIToken.create_for_user(
         serving.user, project=serving.project, permission=["read"]
@@ -183,17 +168,11 @@ def test_read_only_mcp_deployment_exposes_current_worker_state(
     serving.model.save()
     if recent:
         InferenceCall.objects.create(deployed_model=serving.model, project=serving.project)
-    stats = AsyncMock(
-        return_value={
-            "backlog": 0,
-            "num_running_inputs": 0,
-            "num_total_runners": runners,
-            "available": True,
-        }
+    fake_modal.worker_stats = (
+        RuntimeError("provider secret body")
+        if runners is None
+        else {"backlog": 0, "num_running_inputs": 0, "num_total_runners": runners}
     )
-    if runners is None:
-        stats.side_effect = RuntimeError("provider secret body")
-    monkeypatch.setattr(inference_live, "_bounded_worker_stats", stats)
     result = rpc(
         serving,
         "resources/read",
@@ -207,19 +186,20 @@ def test_read_only_mcp_deployment_exposes_current_worker_state(
     assert payload["worker"]["recently_active"] is recent
     assert payload["metrics"]["request_count"] == 0
     assert "provider secret" not in json.dumps(payload)
-    assert stats.await_count == 1
+    assert fake_modal.called("") == ["stats"]
 
 
-def test_worker_resource_checks_project_before_remote_measurements(serving, monkeypatch):
+def test_worker_resource_checks_project_before_remote_measurements(serving, fake_modal):
     foreign = Project.objects.create(name="Other", slug="other-serving")
     model = DeployedModel.objects.create(
         project=foreign, model_id="ft-foreign-serving", status="ready"
     )
-    stats = AsyncMock()
-    monkeypatch.setattr(inference_live, "_bounded_worker_stats", stats)
+    model.gpu_type = "A100-80GB"
+    model.weights_path = "/weights/foreign"
+    model.save()
     result = rpc(serving, "resources/read", {"uri": f"overmind://deployments/{model.pk}"})
     assert result["error"]["code"] == 404
-    stats.assert_not_awaited()
+    assert fake_modal.log == []
 
 
 def test_activation_metadata_declares_external_verification(serving):

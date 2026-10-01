@@ -8,7 +8,6 @@ from botocore.exceptions import ClientError
 
 from overbae.services.finetuning_checkpoints import (
     CheckpointArchiveError,
-    _s3_key,
     get_checkpoint_download_url,
 )
 
@@ -19,11 +18,6 @@ def _job(*, provider="modal", user_id="user-1", job_id="job-1"):
         provider=provider,
         triggered_by_id=user_id,
     )
-
-
-def test_s3_key_layout():
-    assert _s3_key(_job()) == "user-1/job-1/checkpoints/checkpoint.zip"
-    assert _s3_key(_job(user_id=None)) == "unknown/job-1/checkpoints/checkpoint.zip"
 
 
 def test_get_checkpoint_download_url_requires_bucket(settings):
@@ -77,3 +71,12 @@ def test_get_checkpoint_download_url_success(settings):
         Bucket="ft-bucket",
         Key="user-1/job-1/checkpoints/checkpoint.zip",
     )
+
+
+def test_a_job_without_an_owner_keeps_its_checkpoint_under_unknown(settings):
+    settings.AWS_BUCKET_NAME = "ft-bucket"
+    mock_s3 = MagicMock()
+    mock_s3.head_object.return_value = {"ContentLength": 1}
+    with patch("boto3.client", return_value=mock_s3):
+        get_checkpoint_download_url(_job(user_id=None))
+    assert mock_s3.head_object.call_args.kwargs["Key"] == "unknown/job-1/checkpoints/checkpoint.zip"

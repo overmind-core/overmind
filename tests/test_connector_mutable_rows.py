@@ -1,48 +1,38 @@
-"""Ingest overwrites a span only when the provider row version advances.
-
-Braintrust rewrites rows in place when async scoring or human review lands —
-same id, higher _xact_id — so those updates must not be silently dropped.
-"""
-
 from __future__ import annotations
 
-import uuid
-
 import pytest
+from factories import make_connector
 
-from overbae.models import ConnectorCredential, Project, Span
-from overbae.services.connectors.braintrust.mapping import BRAINTRUST, rows_to_records
-from overbae.services.connectors.langfuse.mapping import LANGFUSE
-from overbae.services.connectors.langsmith.mapping import LANGSMITH, runs_to_records
-from overbae.services.connectors.mapping import observations_to_span_dicts
+from overbae.models import ConnectorCredential, Span
 from overbae.tasks import connector_sync
 
 pytestmark = pytest.mark.django_db
 
 
 @pytest.fixture
-def credential():
-    project = Project.objects.create(name="P", slug=f"p-{uuid.uuid4().hex[:8]}")
-    return ConnectorCredential.objects.create(
-        project=project,
-        name="BT",
-        connector_type=ConnectorCredential.ConnectorType.BRAINTRUST,
-        api_key="bt-st-key",
-    )
-
-
-@pytest.fixture(autouse=True)
-def _no_trace_scoring(monkeypatch):
-    scored = []
+def scored(monkeypatch) -> list[str]:
+    queued: list[str] = []
     monkeypatch.setattr(
-        "overbae.api.otlp.enqueue_trace_scoring",
-        lambda spans: scored.append(list(spans)),
+        "overbae.tasks.trace_scoring.score_trace.delay", lambda **kw: queued.append(kw["trace_id"])
     )
-    return scored
+    return queued
 
 
-def _span_dicts(credential, *, xact_id, scores=None, name="handler"):
-    row = {
+def _live(connector_type: str, source: str = "", **fields) -> ConnectorCredential:
+    credential = make_connector(connector_type, source_project_id=source, **fields)
+    ConnectorCredential.objects.filter(pk=credential.pk).update(
+        sync_cursor={"mode": "live"}, sync_status=ConnectorCredential.SyncStatus.LIVE
+    )
+    return credential
+
+
+def _poll(credential) -> None:
+    ConnectorCredential.objects.filter(pk=credential.pk).update(next_poll_at=None)
+    connector_sync.sync_connector_chunk(str(credential.pk))
+
+
+def _bt_row(*, xact_id, name="handler", scores=None):
+    return {
         "id": "span-1",
         "span_id": "s-1",
         "span_parents": [],
@@ -54,115 +44,69 @@ def _span_dicts(credential, *, xact_id, scores=None, name="handler"):
         "metrics": {"start": 1767312000.0, "end": 1767312001.0},
         "scores": scores or {},
     }
-    return observations_to_span_dicts(
-        rows_to_records([row]),
-        credential=credential,
-        conventions=BRAINTRUST,
-    )
 
 
-def test_higher_xact_id_overwrites_the_stored_span(credential, _no_trace_scoring):
-    created = connector_sync._upsert_spans(
-        credential.project, _span_dicts(credential, xact_id=1000), credential=credential
-    )
-    assert created == 1
+@pytest.fixture
+def braintrust(scripted, slept):
+    api = scripted("https://api.braintrust.dev")
+    return api, _live("braintrust", "bt-project", name="BT")
 
-    again = connector_sync._upsert_spans(
-        credential.project,
-        _span_dicts(credential, xact_id=2000, scores={"quality": 0.9}, name="handler-reviewed"),
-        credential=credential,
-    )
+
+def _btql(api, *rows):
+    api.reply(json_body={"data": list(rows)})
+
+
+def test_a_newer_row_version_overwrites_the_stored_span_without_rescoring(braintrust, scored):
+    api, credential = braintrust
+    _btql(api, _bt_row(xact_id=1000))
+    _btql(api, _bt_row(xact_id=2000, scores={"quality": 0.9}, name="handler-reviewed"))
+
+    _poll(credential)
+    _poll(credential)
 
     span = Span.objects.get(project=credential.project)
-    assert again == 0  # an update is not a create
     assert span.name == "handler-reviewed"
     assert span.attributes["braintrust.scores"] == {"quality": 0.9}
     assert span.attributes["connector.version"] == "2000"
+    assert scored == [span.trace_id]
 
 
-def test_same_or_lower_xact_id_leaves_the_span_alone(credential):
-    connector_sync._upsert_spans(
-        credential.project, _span_dicts(credential, xact_id=2000), credential=credential
+def test_a_same_or_older_row_version_leaves_the_span_alone(braintrust, scored):
+    api, credential = braintrust
+    _btql(api, _bt_row(xact_id=2000))
+    _btql(
+        api,
+        _bt_row(xact_id=2000, name="same-version-different-name"),
+        _bt_row(xact_id=1, name="older"),
     )
-    connector_sync._upsert_spans(
-        credential.project,
-        _span_dicts(credential, xact_id=2000, name="same-version-different-name"),
-        credential=credential,
-    )
-    connector_sync._upsert_spans(
-        credential.project,
-        _span_dicts(credential, xact_id=1, name="older"),
-        credential=credential,
-    )
+
+    _poll(credential)
+    _poll(credential)
 
     assert Span.objects.get(project=credential.project).name == "handler"
 
 
-def test_an_overwrite_picks_up_a_renamed_credential(credential, _no_trace_scoring):
-    connector_sync._upsert_spans(
-        credential.project, _span_dicts(credential, xact_id=1000), credential=credential
-    )
-    span = Span.objects.get(project=credential.project)
-    assert span.service_name == "braintrust/BT"
+def test_an_overwrite_picks_up_a_renamed_credential(braintrust, scored):
+    api, credential = braintrust
+    _btql(api, _bt_row(xact_id=1000))
+    _btql(api, _bt_row(xact_id=2000))
+    _poll(credential)
+    assert Span.objects.get(project=credential.project).service_name == "braintrust/BT"
 
-    credential.name = "Braintrust prod"
-    connector_sync._upsert_spans(
-        credential.project, _span_dicts(credential, xact_id=2000), credential=credential
-    )
+    ConnectorCredential.objects.filter(pk=credential.pk).update(name="Braintrust prod")
+    _poll(credential)
 
-    span.refresh_from_db()
-    assert span.service_name == "braintrust/Braintrust prod"
+    assert Span.objects.get(project=credential.project).service_name == "braintrust/Braintrust prod"
 
 
-def test_an_update_does_not_re_enqueue_trace_scoring(credential, _no_trace_scoring):
-    connector_sync._upsert_spans(
-        credential.project, _span_dicts(credential, xact_id=1000), credential=credential
-    )
-    assert len(_no_trace_scoring) == 1
+def test_a_pending_langsmith_run_is_replaced_once_it_completes(scripted, slept, scored):
+    api = scripted("https://api.smith.langchain.com")
+    credential = _live("langsmith", "11111111-1111-1111-1111-111111111111")
 
-    connector_sync._upsert_spans(
-        credential.project,
-        _span_dicts(credential, xact_id=3000, scores={"quality": 1.0}),
-        credential=credential,
-    )
-
-    # Rescoring an updated row would loop against a scorer that writes upstream.
-    assert len(_no_trace_scoring) == 1
-
-
-def test_a_provider_without_a_row_version_stays_insert_only(credential):
-    from overbae.services.connectors.records import ObservationRecord
-
-    record = ObservationRecord(
-        id="lf-1",
-        trace_id="t1",
-        parent_observation_id=None,
-        type="SPAN",
-        name="first",
-        start_time="2026-01-02T00:00:00Z",
-        end_time="2026-01-02T00:00:01Z",
-        is_root_observation=True,
-    )
-    connector_sync._upsert_spans(
-        credential.project,
-        observations_to_span_dicts([record], credential=credential, conventions=LANGFUSE),
-        credential=credential,
-    )
-    record.name = "second"
-    connector_sync._upsert_spans(
-        credential.project,
-        observations_to_span_dicts([record], credential=credential, conventions=LANGFUSE),
-        credential=credential,
-    )
-
-    assert Span.objects.get(project=credential.project).name == "first"
-
-
-def test_a_pending_langsmith_run_is_replaced_once_it_completes(credential, _no_trace_scoring):
-    def _spans(*, end_time, name="handler"):
-        run = {
-            "id": "run-1",
-            "trace_id": "trace-1",
+    def run(end_time, name):
+        return {
+            "id": "22222222-2222-2222-2222-222222222222",
+            "trace_id": "33333333-3333-3333-3333-333333333333",
             "parent_run_ids": [],
             "is_root": True,
             "name": name,
@@ -171,30 +115,39 @@ def test_a_pending_langsmith_run_is_replaced_once_it_completes(credential, _no_t
             "start_time": "2026-01-02T00:00:00Z",
             "end_time": end_time,
         }
-        return observations_to_span_dicts(
-            runs_to_records([run]),
-            credential=credential,
-            conventions=LANGSMITH,
-        )
 
-    created = connector_sync._upsert_spans(
-        credential.project, _spans(end_time=None), credential=credential
-    )
-    assert created == 1
-    assert Span.objects.get(project=credential.project).name == "handler"
-    assert Span.objects.get(project=credential.project).attributes["connector.version"] == "0"
+    api.reply(json_body={"runs": [run(None, "handler")]})
+    api.reply(json_body={"runs": [run("2026-01-02T00:00:01Z", "handler-done")]})
 
-    again = connector_sync._upsert_spans(
-        credential.project,
-        _spans(end_time="2026-01-02T00:00:01Z", name="handler-done"),
-        credential=credential,
-    )
+    _poll(credential)
+    pending = Span.objects.get(project=credential.project)
+    assert pending.attributes["connector.version"] == "0"
+    _poll(credential)
 
     span = Span.objects.get(project=credential.project)
-    assert again == 0
     assert span.name == "handler-done"
     assert int(span.attributes["connector.version"]) > 0
+    assert len(scored) == 1
 
 
-if __name__ == "__main__":
-    raise SystemExit(pytest.main([__file__, "-q"]))
+def test_a_vendor_without_a_row_version_stays_insert_only(scripted, slept, scored):
+    api = scripted("https://cloud.langfuse.com")
+    credential = _live("langfuse", api_secret="sk")
+
+    def observation(name):
+        return {
+            "id": "obs-1",
+            "traceId": "trace-1",
+            "type": "SPAN",
+            "name": name,
+            "startTime": "2026-01-02T00:00:00Z",
+            "isRootObservation": True,
+        }
+
+    for name in ("first", "first", "second", "second"):
+        api.reply(json_body={"data": [observation(name)], "meta": {}})
+
+    _poll(credential)
+    _poll(credential)
+
+    assert Span.objects.get(project=credential.project).name == "first"

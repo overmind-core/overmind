@@ -67,6 +67,13 @@ def _resolve(project: Project, data: dict) -> Capability | None:
     return None
 
 
+def _unclaimed_id(value) -> uuid.UUID:
+    cap_id = _as_uuid(value)
+    if cap_id is None or Capability.objects.filter(pk=cap_id).exists():
+        return uuid.uuid4()
+    return cap_id
+
+
 def _wire_status(status: str) -> str:
     """Toml / SDK wire uses ``active``; the DB uses ``current``."""
     if status == Capability.Status.CURRENT:
@@ -159,7 +166,7 @@ def apply_snapshot(project: Project, snapshot: dict) -> list[Capability]:
         )
         cap = existing or Capability(
             project=project,
-            id=_as_uuid(data.get("id")) or uuid.uuid4(),
+            id=_unclaimed_id(data.get("id")),
             slug=data.get("slug") or "",
             name=data.get("name") or data.get("slug") or "",
         )

@@ -1,15 +1,13 @@
-"""Capability-rooted trace mapping against the real ledgerline trace shapes.
-
-Shape 1 (batch scan): scan-inbox CAPABILITY > {triage-invoices CAPABILITY > analyze-email
-SPAN > classify-invoice GENERATION} + {plan-payments CAPABILITY > rank-invoices
-GENERATION}. Shape 2 (single email): triage-email CAPABILITY > classify-invoice
-GENERATION.
-"""
-
 from types import SimpleNamespace
 
+from fakes.ledgerline import (
+    langchain_style_trace,
+    observation,
+    scan_inbox_trace,
+    triage_email_trace,
+)
+
 from overbae.services.connectors.capabilities import discover_capabilities
-from overbae.services.connectors.langfuse.client import LangFuseObservation
 from overbae.services.connectors.langfuse.mapping import LANGFUSE
 from overbae.services.connectors.mapping import observations_to_span_dicts as _to_span_dicts
 from overbae.services.connectors.schema import CONNECTOR_CAPABILITY_KEY_ATTR
@@ -32,92 +30,6 @@ def _cred():
         project=SimpleNamespace(id="p", slug="p"),
         capability_mapping={},
     )
-
-
-def _obs(oid, *, type, name, parent=None, minute=0, **kw):
-    return LangFuseObservation(
-        id=oid,
-        trace_id="lf-trace",
-        parent_observation_id=parent,
-        type=type,
-        name=name,
-        start_time=f"2026-01-01T00:{minute:02d}:00Z",
-        end_time=f"2026-01-01T00:{minute:02d}:01Z",
-        is_root_observation=parent is None,
-        tags=["ledgerline", "scan-inbox", "mode:demo"],  # uniform across the trace
-        **kw,
-    )
-
-
-def scan_inbox_trace(n_emails: int, *, invoices: int = 1, plan_level: str | None = None):
-    """Shape 1. Produces 2N + 3 observations, +1 for rank-invoices when invoices > 0."""
-    obs = [
-        _obs("scan", type="CAPABILITY", name="scan-inbox", metadata={"email_count": n_emails}),
-        _obs("triage", type="CAPABILITY", name="triage-invoices", parent="scan"),
-    ]
-    for i in range(n_emails):
-        obs.append(
-            _obs(
-                f"email-{i}",
-                type="SPAN",
-                name="analyze-email",
-                parent="triage",
-                minute=i,
-                metadata={"email_id": f"e{i}"},
-            )
-        )
-        obs.append(
-            _obs(
-                f"gen-{i}",
-                type="GENERATION",
-                name="classify-invoice",
-                parent=f"email-{i}",
-                minute=i,
-                usage_details={"input": 100, "output": 50, "total": 150},
-                total_cost=0.001,
-            )
-        )
-    plan_source = "llm" if invoices else "empty"
-    if plan_level == "WARNING":
-        plan_source = "fallback"
-    obs.append(
-        _obs(
-            "plan",
-            type="CAPABILITY",
-            name="plan-payments",
-            parent="scan",
-            metadata={"invoice_count": invoices, "plan_source": plan_source},
-            level=plan_level,
-            status_message="planner LLM returned invalid JSON" if plan_level else None,
-        )
-    )
-    if invoices and plan_level is None:
-        obs.append(
-            _obs(
-                "rank",
-                type="GENERATION",
-                name="rank-invoices",
-                parent="plan",
-                usage_details={"input": 400, "output": 200, "total": 600},
-                total_cost=0.002,
-            )
-        )
-    return obs
-
-
-def triage_email_trace():
-    """Shape 2: a GENERATION directly under the root CAPABILITY, no intermediate SPAN."""
-    return [
-        _obs("root", type="CAPABILITY", name="triage-email"),
-        _obs(
-            "gen",
-            type="GENERATION",
-            name="classify-invoice",
-            parent="root",
-            usage_details={"input": 100, "output": 50, "total": 150},
-            total_cost=0.001,
-        ),
-    ]
 
 
 def _by_trace(spans):
@@ -304,10 +216,10 @@ def test_uniform_tags_do_not_collapse_the_two_capabilities():
 def test_capability_nested_under_a_span_claims_its_own_trace():
     """Depth is not fixed: a sub-capability below a plain SPAN still roots its own trace."""
     obs = [
-        _obs("root", type="CAPABILITY", name="outer"),
-        _obs("step", type="SPAN", name="step", parent="root"),
-        _obs("sub", type="CAPABILITY", name="inner", parent="step"),
-        _obs("gen", type="GENERATION", name="call", parent="sub"),
+        observation("root", type="CAPABILITY", name="outer"),
+        observation("step", type="SPAN", name="step", parent="root"),
+        observation("sub", type="CAPABILITY", name="inner", parent="step"),
+        observation("gen", type="GENERATION", name="call", parent="sub"),
     ]
     spans = observations_to_span_dicts(
         obs,
@@ -330,19 +242,9 @@ def test_parent_cycle_does_not_hang():
     assert observations_to_span_dicts(obs, credential=_cred())
 
 
-def _langchain_style_trace():
-    """Nothing declares itself a capability — the shape most SDK integrations emit."""
-    return [
-        _obs("root", type="CHAIN", name="workflow"),
-        _obs("retrieve", type="RETRIEVER", name="fetch-docs", parent="root"),
-        _obs("answer", type="CHAIN", name="answer-question", parent="root"),
-        _obs("gen", type="GENERATION", name="llm", parent="answer"),
-    ]
-
-
 def test_a_trace_with_no_matching_boundary_stays_whole():
     """No name in this trace is a mapped boundary, so nothing is regrouped."""
-    spans = observations_to_span_dicts(_langchain_style_trace(), credential=_cred())
+    spans = observations_to_span_dicts(langchain_style_trace(), credential=_cred())
     assert len(_by_trace(spans)) == 1
     root = next(s for s in spans if s["parent_span_id"] is None)
     assert root["name"] == "workflow"
@@ -350,7 +252,7 @@ def test_a_trace_with_no_matching_boundary_stays_whole():
 
 def test_observation_names_can_mark_capability_boundaries():
     spans = observations_to_span_dicts(
-        _langchain_style_trace(),
+        langchain_style_trace(),
         credential=_cred(),
         mapping={"source": "observation_name", "names": ["answer-question"]},
     )
@@ -366,7 +268,7 @@ def test_observation_names_can_mark_capability_boundaries():
 
 
 def test_metadata_key_can_mark_capability_boundaries():
-    obs = _langchain_style_trace()
+    obs = langchain_style_trace()
     obs[2].metadata = {"capability": "answerer"}
     spans = observations_to_span_dicts(
         obs,
@@ -383,7 +285,7 @@ def test_metadata_key_can_mark_capability_boundaries():
 def test_named_boundary_prunes_the_parent_subtree():
     """A promoted node must not appear in both traces."""
     spans = observations_to_span_dicts(
-        _langchain_style_trace(),
+        langchain_style_trace(),
         credential=_cred(),
         mapping={"source": "observation_name", "names": ["answer-question"]},
     )
@@ -423,15 +325,17 @@ def test_observation_name_discovery_needs_the_saved_names():
 def test_metadata_keys_report_coverage_with_discriminating_keys_first():
     """A key Langfuse copied onto every observation would make every span a boundary."""
     trace = [
-        _obs("root", type="CAPABILITY", name="scan-inbox", metadata={"feature": "inbox"}),
-        _obs(
+        observation("root", type="CAPABILITY", name="scan-inbox", metadata={"feature": "inbox"}),
+        observation(
             "a",
             type="SPAN",
             name="analyze-email",
             parent="root",
             metadata={"feature": "inbox", "email_id": "e0"},
         ),
-        _obs("b", type="SPAN", name="analyze-email", parent="root", metadata={"feature": "inbox"}),
+        observation(
+            "b", type="SPAN", name="analyze-email", parent="root", metadata={"feature": "inbox"}
+        ),
     ]
 
     entry = next(

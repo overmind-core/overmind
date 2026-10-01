@@ -1,6 +1,5 @@
 import asyncio
 import json
-from unittest.mock import Mock, patch
 
 import pytest
 
@@ -77,14 +76,14 @@ async def test_nonstream_keepalives_preserve_json_and_late_errors(status):
     )
 
 
-def test_client_rejects_late_gateway_error_and_does_not_buffer_sse():
+def test_the_client_raises_on_an_error_the_gateway_sends_after_its_keepalives(scripted):
+    gateway = scripted("https://gateway.invalid")
+    gateway.reply(json_body={"error": {"message": "failed"}})
+    gateway.reply(text='data: {"choices":[]}\n\n', headers={"content-type": "text/event-stream"})
     client = InferenceClient(base_url="https://gateway.invalid", api_key="test")
-    response = Mock(ok=True)
-    response.json.return_value = {"error": {"message": "failed"}}
-    with patch("overbae.services.inference_client.requests.post", return_value=response):
-        with pytest.raises(InferenceClientError, match="failed"):
-            client.chat_completions(model_id="test", messages=[])
-        response.iter_lines.return_value = [b'data: {"choices":[]}']
-        assert list(client.stream_chat_completions(model_id="test", messages=[]))
-    response.iter_lines.assert_called_once_with(chunk_size=1)
-    response.close.assert_called_once()
+
+    with pytest.raises(InferenceClientError, match="failed"):
+        client.chat_completions(model_id="test", messages=[])
+    assert list(client.stream_chat_completions(model_id="test", messages=[])) == [
+        'data: {"choices":[]}\n\n'
+    ]

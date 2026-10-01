@@ -4,10 +4,11 @@ import json
 import uuid
 
 import pytest
+from factories import make_user
 from mcp_fixtures import EXPECTED_TOOL_NAMES
 from starlette.testclient import TestClient
 
-from overbae.models import APIToken, Capability, Project, ProjectMembership, Span, User
+from overbae.models import APIToken, Capability, Project, ProjectMembership, Span
 from overbae.services.mcp.server import create_mcp_application
 
 pytestmark = pytest.mark.django_db(transaction=True)
@@ -15,16 +16,8 @@ pytestmark = pytest.mark.django_db(transaction=True)
 MCP_URL = "/api/mcp/"
 
 
-def _user() -> User:
-    return User.objects.create_user(
-        email=f"mcp-{uuid.uuid4().hex[:8]}@test.com",
-        password="pw",
-        clerk_user_id=f"clerk_{uuid.uuid4().hex}",
-    )
-
-
 def _token(*, permission: list[str] | None = None) -> tuple[str, APIToken]:
-    user = _user()
+    user = make_user()
     project = Project.objects.create(name="MCP", slug=f"mcp-{uuid.uuid4().hex[:8]}")
     ProjectMembership.objects.create(user=user, project=project)
     return APIToken.create_for_user(user, project=project, permission=permission)

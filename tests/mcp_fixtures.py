@@ -1,8 +1,11 @@
 import uuid
+from collections.abc import Sequence
+from typing import Any
 
 from conftest import EVAL_ROWS, TRAIN_ROWS, frozen_dataset
+from factories import make_project, make_user
 
-from overbae.models import Capability, EvalSet, EvalSetMember, Evaluator
+from overbae.models import APIToken, Capability, EvalSet, EvalSetMember, Evaluator
 from overbae.services.mcp.context import MCPContext
 
 EXPECTED_TOOL_NAMES = {
@@ -42,6 +45,19 @@ EXPECTED_TOOL_NAMES = {
     "verify_instrumentation",
     "get_model_catalog",
 }
+
+
+def mcp_context(permission: str | Sequence[str] = "read", **fields: Any) -> MCPContext:
+    user = make_user()
+    project = make_project(member=user)
+    token = APIToken(
+        scope={
+            "scope": "project",
+            "resourceIds": [str(project.id)],
+            "permission": [permission] if isinstance(permission, str) else list(permission),
+        }
+    )
+    return MCPContext(user=user, token=token, project=project, **fields)
 
 
 def training_setup(context: MCPContext):

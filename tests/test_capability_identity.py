@@ -1,17 +1,13 @@
 import uuid
 
 import pytest
+from factories import ingest_spans, make_project
 
-from overbae.api.otlp import _resolve_capability
-from overbae.models import Capability, IdentityAlias, Project
+from overbae.models import Capability, IdentityAlias, Span
 from overbae.services.capabilities import identity
 from overbae.services.connectors.capabilities import resolve_capability as connector_resolve
 
 pytestmark = pytest.mark.django_db
-
-
-def _project() -> Project:
-    return Project.objects.create(name="P", slug=f"p-{uuid.uuid4().hex[:8]}")
 
 
 def _capability(project, name, slug=None, **extra) -> Capability:
@@ -21,7 +17,7 @@ def _capability(project, name, slug=None, **extra) -> Capability:
 
 
 def test_save_records_id_name_and_slug_aliases_and_keeps_old_ones_on_rename():
-    project = _project()
+    project = make_project()
     capability = _capability(project, "Ticket Triage")
     assert set(
         IdentityAlias.objects.filter(capability=capability).values_list("value", flat=True)
@@ -42,16 +38,16 @@ def test_save_records_id_name_and_slug_aliases_and_keeps_old_ones_on_rename():
 
 
 def test_lookup_resolves_id_name_slug_and_slugified_name_case_insensitively():
-    project = _project()
+    project = make_project()
     capability = _capability(project, "Ticket Triage")
     for probe in [str(capability.id), "TICKET TRIAGE", "ticket-triage", "Ticket  Triage"]:
         assert identity.lookup(project.id, probe) == capability, probe
     assert identity.lookup(project.id, "nope") is None
-    assert identity.lookup(_project().id, "ticket-triage") is None
+    assert identity.lookup(make_project().id, "ticket-triage") is None
 
 
 def test_lookup_hides_leftover_unless_asked_and_never_returns_deleted():
-    project = _project()
+    project = make_project()
     old = _capability(project, "Old Triage", status=Capability.Status.LEFTOVER)
     gone = _capability(project, "Gone Triage", status=Capability.Status.DELETED)
 
@@ -61,33 +57,40 @@ def test_lookup_hides_leftover_unless_asked_and_never_returns_deleted():
     assert identity.lookup(project.id, str(gone.id), include_leftover=True) is None
 
 
+def _bound(project, attributes, resource=None, *, trace_id=None):
+    span_id = uuid.uuid4().hex[:16]
+    ingest_spans(
+        project,
+        [{"name": "chat", "attributes": attributes, "span_id": span_id, "trace_id": trace_id}],
+        resource,
+    )
+    return Span.objects.get(project=project, span_id=span_id).capability
+
+
 def test_ingest_binds_by_id_only_and_never_mints():
-    project = _project()
+    project = make_project()
     capability = _capability(project, "Ledgerline Invoice Triage")
 
-    assert (
-        _resolve_capability(project, {}, {"overmind.capability.id": str(capability.id)})
-        == capability
-    )
+    assert _bound(project, {"overmind.capability.id": str(capability.id)}) == capability
     # The name is a display label: it never resolves, however exact.
-    name_only = {"overmind.capability.name": "Ledgerline Invoice Triage"}
-    assert _resolve_capability(project, {}, name_only) is None
-    assert _resolve_capability(project, {}, {"overmind.capability.id": str(uuid.uuid4())}) is None
+    assert _bound(project, {"overmind.capability.name": "Ledgerline Invoice Triage"}) is None
+    assert _bound(project, {"overmind.capability.id": str(uuid.uuid4())}) is None
     assert Capability.objects.filter(project=project).count() == 1
 
 
 def test_ingest_ignores_the_name_beside_the_id():
-    project = _project()
+    project = make_project()
     pinned = _capability(project, "Pinned")
     other = _capability(project, "Other")
 
     resource = {"overmind.capability.id": str(pinned.id), "overmind.capability.name": "Other"}
-    assert _resolve_capability(project, resource, dict(resource)) == pinned
+    assert _bound(project, dict(resource), resource) == pinned
+    other.refresh_from_db()
     assert other.status == Capability.Status.CURRENT
 
 
 def test_ingest_renamed_capability_binds_via_resource_id_and_never_via_name():
-    project = _project()
+    project = make_project()
     capability = _capability(project, "Ticket Triage")
     capability.name = "Support Triage"
     capability.save(update_fields=["name"])
@@ -96,37 +99,50 @@ def test_ingest_renamed_capability_binds_via_resource_id_and_never_via_name():
         "overmind.capability.id": str(capability.id),
         "overmind.capability.name": "Ticket Triage",
     }
-    assert _resolve_capability(project, resource, dict(resource)) == capability
+    assert _bound(project, {}, resource) == capability
     name_only = {"overmind.capability.name": "Ticket Triage"}
-    assert _resolve_capability(project, name_only, dict(name_only)) is None
+    assert _bound(project, dict(name_only), name_only) is None
 
 
 def test_ingest_span_level_id_beats_resource_id():
-    project = _project()
+    project = make_project()
     process_wide = _capability(project, "Process Wide")
     scoped = _capability(project, "Scoped")
 
     # A multi-capability process: init() pinned one id on the resource, a
     # capability scope stamped a different id on the span.
     resource = {"overmind.capability.id": str(process_wide.id)}
-    tags = dict(resource) | {"overmind.capability.id": str(scoped.id)}
-    assert _resolve_capability(project, resource, tags) == scoped
+    assert _bound(project, {"overmind.capability.id": str(scoped.id)}, resource) == scoped
 
 
 def test_ingest_ignores_leftover_and_deleted_rows():
-    project = _project()
+    project = make_project()
     retired = _capability(project, "Retired", status=Capability.Status.LEFTOVER)
     gone = _capability(project, "Gone", status=Capability.Status.DELETED)
 
-    assert _resolve_capability(project, {}, {"overmind.capability.id": str(retired.id)}) is None
-    assert _resolve_capability(project, {}, {"overmind.capability.id": str(gone.id)}) is None
+    assert _bound(project, {"overmind.capability.id": str(retired.id)}) is None
+    assert _bound(project, {"overmind.capability.id": str(gone.id)}) is None
+    retired.refresh_from_db()
     assert retired.status == Capability.Status.LEFTOVER
+
+
+def test_identity_less_spans_join_the_trace_capability_only_when_unambiguous():
+    project = make_project()
+    alpha = _capability(project, "Alpha")
+    beta = _capability(project, "Beta")
+    trace_id = uuid.uuid4().hex
+    _bound(project, {"overmind.capability.id": str(alpha.id)}, trace_id=trace_id)
+
+    assert _bound(project, {}, trace_id=trace_id) == alpha
+
+    _bound(project, {"overmind.capability.id": str(beta.id)}, trace_id=trace_id)
+    assert _bound(project, {}, trace_id=trace_id) is None
 
 
 def test_resolve_capability_follows_renames():
     from overbae.services.entity_resolution import resolve_capability
 
-    project = _project()
+    project = make_project()
     capability = _capability(project, "Ticket Triage")
     capability.name = "Support Triage"
     capability.save(update_fields=["name"])
@@ -134,7 +150,7 @@ def test_resolve_capability_follows_renames():
 
 
 def test_connector_mapping_observes_reactivates_and_never_mints_a_peer():
-    project = _project()
+    project = make_project()
     mapping = {"auto_create": True, "assignments": {}}
 
     fresh = connector_resolve("Checkout Bot", mapping, project)
@@ -152,7 +168,7 @@ def test_connector_mapping_observes_reactivates_and_never_mints_a_peer():
 
 
 def test_connector_assignment_and_fallback_resolve_through_aliases():
-    project = _project()
+    project = make_project()
     capability = _capability(project, "Triage")
     capability.slug = "triage-v2"
     capability.save(update_fields=["slug"])

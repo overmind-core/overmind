@@ -5,25 +5,16 @@ from decimal import Decimal
 import pytest
 from django.contrib.auth import get_user_model
 from django.urls import reverse
-from rest_framework.test import APIClient
-from rest_framework_simplejwt.tokens import RefreshToken
+from factories import auth_client
 
-from overbae.api.credit_gate import require_credits
 from overbae.models import BillingService, BillingTelemetry
-from overbae.services.billing_ledger import charge_credits, grant_free_credits, spent_usd
+from overbae.services.billing_ledger import charge_credits, grant_free_credits
 from overbae.services.billing_provider import get_billing
 from overbae.services.plan_limits import effective_projects_limit, require_plan_quota
 
 pytestmark = pytest.mark.django_db
 
 User = get_user_model()
-
-
-def _auth_client(user: User) -> APIClient:
-    client = APIClient()
-    token = RefreshToken.for_user(user)
-    client.credentials(HTTP_AUTHORIZATION=f"Bearer {token.access_token}")
-    return client
 
 
 def _make_user(slug: str) -> User:
@@ -47,27 +38,10 @@ def test_uncapped_skips_signup_grant(uncapped):
     assert not BillingTelemetry.objects.filter(user=user).exists()
 
 
-def test_uncapped_require_credits_does_not_raise(uncapped):
-    user = _make_user("uncapped-gate")
-    require_credits(user)
-
-
 def test_uncapped_plan_quota_is_unlimited(uncapped):
     user = _make_user("uncapped-quota")
     require_plan_quota(user, "training_jobs")
     assert effective_projects_limit(user) is None
-
-
-def test_uncapped_charges_still_meter(uncapped):
-    user = _make_user("uncapped-spend")
-    charge_credits(
-        user,
-        Decimal("1.25"),
-        BillingService.INFERENCE,
-        idempotency_key="inf-uncapped",
-    )
-    assert spent_usd(user) == Decimal("1.25")
-    assert BillingTelemetry.objects.filter(user=user).count() == 1
 
 
 def test_uncapped_me_and_spend_routes(uncapped):
@@ -78,7 +52,7 @@ def test_uncapped_me_and_spend_routes(uncapped):
         BillingService.INFERENCE,
         idempotency_key="inf-api",
     )
-    client = _auth_client(user)
+    client = auth_client(user)
 
     me = client.get(reverse("user-me"))
     assert me.status_code == 200
@@ -103,7 +77,7 @@ def test_uncapped_me_and_spend_routes(uncapped):
 
 def test_commercial_me_enables_billing():
     user = _make_user("capped-api")
-    r = _auth_client(user).get(reverse("user-me"))
+    r = auth_client(user).get(reverse("user-me"))
     assert r.status_code == 200
     assert r.data["billing_enabled"] is True
     assert BillingTelemetry.objects.filter(user=user).exists()

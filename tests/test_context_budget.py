@@ -1,5 +1,4 @@
 import json
-from types import SimpleNamespace
 from unittest.mock import Mock
 
 import pytest
@@ -78,43 +77,30 @@ def test_serving_plan_uses_native_window_without_rope_scaling(monkeypatch):
     assert "reserved output need" in oversized["warnings"][0]
 
 
-@pytest.mark.parametrize("text", [None, '{"answer":'])
-def test_llm_preserves_incomplete_output_and_usage_without_json_repair(monkeypatch, text):
-    response = SimpleNamespace(
-        choices=[
-            SimpleNamespace(
-                message=SimpleNamespace(content=text, tool_calls=None), finish_reason="length"
-            )
-        ],
-        usage=SimpleNamespace(prompt_tokens=3109, completion_tokens=987),
-        model="ft-model",
+def _cut_off(fake_llm, content, **usage):
+    fake_llm.on(
+        lambda r: True,
+        {"content": content, "finish_reason": "length", "usage": usage},
     )
-    monkeypatch.setattr(llms, "_openrouter_client", Mock())
-    completion = Mock(return_value=response)
-    monkeypatch.setattr(llms, "_do_openai_completion", completion)
+
+
+@pytest.mark.parametrize("text", [None, '{"answer":'])
+def test_llm_preserves_incomplete_output_and_usage_without_json_repair(fake_llm, text):
+    _cut_off(fake_llm, text, prompt_tokens=3109, completion_tokens=987)
     with pytest.raises(llms.IncompleteCompletionError) as error:
         llms.call_llm("hello", model="gpt-4.1")
     assert error.value.content == (text or "")
     assert error.value.stats["finish_reason"] == "length"
     assert error.value.stats["completion_tokens"] == 987
-    assert completion.call_count == 1
+    assert len(fake_llm.requests) == 1
 
 
 @pytest.mark.parametrize("generate", [runner.run_capability, runner.generate_decision])
-def test_incomplete_tool_call_is_never_executed(monkeypatch, generate):
+def test_incomplete_tool_call_is_never_executed(fake_llm, generate):
     tool = Mock()
     tool.tool_definitions.return_value = []
     partial = '{"tool_calls":[{"id":"a","function":{"name":"write","arguments":"{}"}}]}'
-    monkeypatch.setattr(
-        runner,
-        "call_llm",
-        Mock(
-            side_effect=llms.IncompleteCompletionError(
-                partial,
-                {"finish_reason": "length", "prompt_tokens": 3000, "completion_tokens": 1096},
-            )
-        ),
-    )
+    _cut_off(fake_llm, partial, prompt_tokens=3000, completion_tokens=1096)
     result = generate(input_messages=[{"role": "user", "content": "work"}], tool_provider=tool)
     assert result.truncated is True
     assert result.finish_reasons == ["length"]
@@ -151,7 +137,7 @@ def test_deployment_and_eval_budget_are_independent_of_training_length():
 
 
 @pytest.mark.django_db
-def test_truncated_generation_stays_visible_but_cannot_be_a_quality_score(monkeypatch):
+def test_truncated_generation_stays_visible_but_cannot_be_a_quality_score(fake_llm):
     project = Project.objects.create(name="Incomplete eval")
     evaluation = frozen_dataset(project, [{"input": "packet", "expected_output": "report"}])
     run = EvalRun.objects.create(
@@ -174,16 +160,7 @@ def test_truncated_generation_stays_visible_but_cannot_be_a_quality_score(monkey
         project=project, dataset=train, base_model="Qwen/Qwen3.5-27B", status="succeeded"
     )
     link = FinetuningJobEval.objects.create(job=job, kind="final", eval_run=run, status="running")
-    monkeypatch.setattr(
-        runner,
-        "call_llm",
-        Mock(
-            side_effect=llms.IncompleteCompletionError(
-                '{"report":',
-                {"finish_reason": "length", "prompt_tokens": 3000, "completion_tokens": 1096},
-            )
-        ),
-    )
+    _cut_off(fake_llm, '{"report":', prompt_tokens=3000, completion_tokens=1096)
     eval_tasks.prepare_sample.run(sample_id=str(sample.pk))
     sample.refresh_from_db()
     assert sample.degraded is True
@@ -217,19 +194,13 @@ def test_per_turn_truncation_cannot_be_hidden_by_other_successful_turns():
     assert degraded and reason.startswith("output_token_limit:")
 
 
-def test_judge_does_not_repair_or_cache_truncated_json_but_keeps_usage(monkeypatch):
+def test_judge_does_not_repair_or_cache_truncated_json_but_keeps_usage(fake_llm):
+    fake_llm.catalog_models = []
+
     class Result(BaseModel):
         score: float
 
-    monkeypatch.setattr(
-        funnel,
-        "call_llm",
-        Mock(
-            side_effect=llms.IncompleteCompletionError(
-                '{"score": 1', {"finish_reason": "length", "response_cost": 0.02}
-            )
-        ),
-    )
+    _cut_off(fake_llm, '{"score": 1', prompt_tokens=10, completion_tokens=5, cost=0.02)
     outcome = funnel.invoke_judge(
         "evidence",
         response_format=Result,
@@ -242,17 +213,17 @@ def test_judge_does_not_repair_or_cache_truncated_json_but_keeps_usage(monkeypat
 
 
 @pytest.mark.parametrize("stream", [False, True])
-def test_provider_context_rejection_is_actionable_without_leaking_body(monkeypatch, stream):
-    response = Mock(ok=False, status_code=400, text="maximum context length exceeded; private body")
-    post = Mock(return_value=response)
-    monkeypatch.setattr("overbae.services.inference_client.requests.post", post)
+def test_provider_context_rejection_is_actionable_without_leaking_body(scripted, stream):
+    inference = scripted("https://inference.test").reply(
+        400, text="maximum context length exceeded; private body"
+    )
     client = InferenceClient(base_url="https://inference.test", api_key="test")
     with pytest.raises(ContextBudgetError, match="reserved output exceed") as error:
         client.chat_completions(
             model_id="model", messages=[{"role": "user", "content": "q"}], stream=stream
         )
     assert "private body" not in str(error.value)
-    assert post.call_args.kwargs["json"]["max_tokens"] == DEFAULT_OUTPUT_TOKENS
+    assert inference.calls[0].json["max_tokens"] == DEFAULT_OUTPUT_TOKENS
 
 
 def test_impossible_gpu_context_is_rejected_instead_of_selecting_an_undersized_gpu(monkeypatch):

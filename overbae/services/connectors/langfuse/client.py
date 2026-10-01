@@ -15,6 +15,7 @@ import json
 import threading
 import time
 from collections.abc import Iterator
+from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import Any, Literal
 
@@ -48,6 +49,12 @@ class LangFuseError(Exception):
         super().__init__(message)
         self.status_code = status_code
         self.retry_after = retry_after
+
+
+@dataclass(frozen=True)
+class LangFuseProject:
+    id: str
+    name: str
 
 
 class LangFuseClient:
@@ -103,6 +110,12 @@ class LangFuseClient:
             status_code=429,
             retry_after=last_retry_after,
         )
+
+    def list_projects(self) -> list[LangFuseProject]:
+        return [
+            LangFuseProject(id=str(p["id"]), name=str(p.get("name") or p["id"]))
+            for p in self._get("/api/public/projects").get("data") or []
+        ]
 
     def probe_capabilities(self) -> ApiVersion:
         """Detect v2 observations support; cache on the client instance."""

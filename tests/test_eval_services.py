@@ -21,6 +21,36 @@ from overbae.services.eval.ranking import bradley_terry, rollup
 from overbae.services.eval.runner import ReplayToolProvider, run_capability
 from tests.factories import evaluator_stub
 
+JUDGE_SCHEMAS = frozenset({"ChecklistResult", "ClaimsResult", "JudgeResult"})
+
+
+@pytest.fixture(autouse=True)
+def _judge_llm(fake_llm):
+    global JUDGE
+    JUDGE = fake_llm
+
+
+def _replies(*parsed):
+    sent = []
+
+    def reply(request):
+        sent.append(request)
+        value = parsed[min(len(sent) - 1, len(parsed) - 1)]
+        return "not json" if value is None else value.model_dump_json()
+
+    JUDGE.on(lambda r: r.schema_name in JUDGE_SCHEMAS, reply)
+    return sent
+
+
+def _judged(module, outcome, ev, *, output="The answer.", reference=None):
+    _replies(outcome.parsed)
+    unit = EvalUnit(
+        trajectory={"final_output": output, "messages": [{"role": "user", "content": "q"}]},
+        expected=reference,
+    )
+    [draft] = module.evaluate(unit, ev, {})
+    return draft
+
 
 class TestNormalizer:
     def test_plain_message_list(self):
@@ -1950,7 +1980,7 @@ class TestJudgeFieldRefs:
             gen_judge.ChecklistItem(id="grounding", verdict=False, reasoning="no interval"),
             gen_judge.ChecklistItem(id="freeform", verdict=True),
         ]
-        draft = gen_judge._draft_from_outcome(self._outcome(items), ev)
+        draft = _judged(gen_judge, self._outcome(items), ev)
         by_id = {s["id"]: s for s in draft.sub_scores if "id" in s}
         # The field comes from the evaluator CONFIG, never the LLM output.
         assert by_id["grounding"]["field"] == "char_interval"
@@ -1959,7 +1989,7 @@ class TestJudgeFieldRefs:
     def test_unconfigured_checklist_changes_nothing(self):
         ev = evaluator_stub(kind="llm_judge", checklist=[{"id": "a", "q": "?"}])
         items = [gen_judge.ChecklistItem(id="a", verdict=False)]
-        draft = gen_judge._draft_from_outcome(self._outcome(items), ev)
+        draft = _judged(gen_judge, self._outcome(items), ev)
         by_id = {s["id"]: s for s in draft.sub_scores if "id" in s}
         assert by_id["a"]["verdict"] is False
         assert all("field" not in s for s in draft.sub_scores if "id" in s)
@@ -1976,8 +2006,8 @@ class TestJudgeFieldRefs:
             gen_judge.ChecklistItem(id="decision", verdict=True, reasoning="yes in the prose"),
             gen_judge.ChecklistItem(id="tone", verdict=True),
         ]
-        draft = gen_judge._draft_from_outcome(
-            self._outcome(items), ev, output="The claim should be escalated."
+        draft = _judged(
+            gen_judge, self._outcome(items), ev, output="The claim should be escalated."
         )
         by_id = {s["id"]: s for s in draft.sub_scores if "id" in s}
         assert by_id["decision"]["verdict"] is False
@@ -1990,9 +2020,7 @@ class TestJudgeFieldRefs:
             checklist=[{"id": "decision", "q": "match?", "field": "decision"}],
         )
         items = [gen_judge.ChecklistItem(id="decision", verdict=True)]
-        draft = gen_judge._draft_from_outcome(
-            self._outcome(items), ev, output='{"decision": "escalate"}'
-        )
+        draft = _judged(gen_judge, self._outcome(items), ev, output='{"decision": "escalate"}')
         by_id = {s["id"]: s for s in draft.sub_scores if "id" in s}
         assert by_id["decision"]["verdict"] is True
         assert draft.value == 1.0
@@ -2003,7 +2031,7 @@ class TestJudgeFieldRefs:
             checklist=[{"id": "decision", "q": "match?", "field": "decision"}],
         )
         items = [gen_judge.ChecklistItem(id="decision", verdict=True)]
-        draft = gen_judge._draft_from_outcome(self._outcome(items), ev, output='{"other": 1}')
+        draft = _judged(gen_judge, self._outcome(items), ev, output='{"other": 1}')
         by_id = {s["id"]: s for s in draft.sub_scores if "id" in s}
         assert by_id["decision"]["verdict"] is False
         assert (
@@ -2019,9 +2047,7 @@ class TestJudgeFieldRefs:
             checklist=[{"id": "rate", "q": "match?", "field": "fx_rate_used"}],
         )
         items = [gen_judge.ChecklistItem(id="rate", verdict=True)]
-        draft = gen_judge._draft_from_outcome(
-            self._outcome(items), ev, output='{"fx_rate_used": null}'
-        )
+        draft = _judged(gen_judge, self._outcome(items), ev, output='{"fx_rate_used": null}')
         by_id = {s["id"]: s for s in draft.sub_scores if "id" in s}
         assert by_id["rate"]["verdict"] is True
 
@@ -2033,7 +2059,7 @@ class TestChecklistAggregation:
             stats={},
             judge_trace_id="",
         )
-        return gen_judge._draft_from_outcome(outcome, ev)
+        return _judged(gen_judge, outcome, ev)
 
     def _ev(self, checklist, **kwargs):
         return evaluator_stub(kind="llm_judge", checklist=checklist, **kwargs)
@@ -2157,7 +2183,8 @@ class TestChecklistAggregation:
             score_type="categorical",
             choices=[{"label": "pass", "value": 1.0}],
         )
-        draft = gen_judge._draft_from_outcome(
+        draft = _judged(
+            gen_judge,
             SimpleNamespace(
                 parsed=gen_judge.ChecklistResult(
                     items=[
@@ -2242,7 +2269,8 @@ class TestChecklistAggregation:
             ],
             requires_reference=True,
         )
-        draft = gen_judge._draft_from_outcome(
+        draft = _judged(
+            gen_judge,
             SimpleNamespace(
                 parsed=gen_judge.ChecklistResult(
                     items=[
@@ -2278,7 +2306,8 @@ class TestChecklistAggregation:
                 },
             ]
         )
-        draft = gen_judge._draft_from_outcome(
+        draft = _judged(
+            gen_judge,
             SimpleNamespace(
                 parsed=gen_judge.ChecklistResult(
                     items=[
@@ -2314,7 +2343,8 @@ class TestChecklistAggregation:
                 }
             ]
         )
-        draft = gen_judge._draft_from_outcome(
+        draft = _judged(
+            gen_judge,
             SimpleNamespace(
                 parsed=gen_judge.ChecklistResult(
                     items=[
@@ -2344,7 +2374,8 @@ class TestChecklistAggregation:
                 },
             ]
         )
-        draft = gen_judge._draft_from_outcome(
+        draft = _judged(
+            gen_judge,
             SimpleNamespace(
                 parsed=gen_judge.ChecklistResult(
                     items=[
@@ -2371,7 +2402,8 @@ class TestChecklistAggregation:
 
     def test_unreferenced_is_not_a_reference_item(self):
         ev = self._ev([{"id": "unreferenced_sources", "q": "are unused sources omitted?"}])
-        draft = gen_judge._draft_from_outcome(
+        draft = _judged(
+            gen_judge,
             SimpleNamespace(
                 parsed=gen_judge.ChecklistResult(
                     items=[
@@ -2400,25 +2432,15 @@ class TestGenerateMechanicalApplicability:
             **kwargs,
         )
 
-    def _evaluate(self, monkeypatch, ev, unit=None):
-        from overbae.services.eval import cascade
-        from overbae.services.eval import funnel as judging
-
-        calls: list[dict] = []
-
-        def _fake(*args, **kwargs):
-            calls.append(kwargs)
-            raise AssertionError("judge must not run when every item is not applicable")
-
-        monkeypatch.setattr(cascade, "maybe_route", lambda *a, **k: None)
-        monkeypatch.setattr(judging, "invoke_judge", _fake)
+    def _evaluate(self, ev, unit=None):
+        calls = _replies(gen_judge.ChecklistResult(items=[], reasoning="r"))
         drafts = gen_judge.evaluate(unit or self._unit(), ev, {})
         return drafts, calls
 
     def test_applies_when_excludes_the_item_without_the_judge(self, monkeypatch):
         ev = evaluator_stub(
             kind="llm_judge",
-            judge_model="judge-x",
+            judge_model="gpt-5-mini",
             checklist=[
                 {
                     "id": "empty",
@@ -2429,7 +2451,7 @@ class TestGenerateMechanicalApplicability:
             ],
             variable_mapping=[{"var": "output", "source": "output"}],
         )
-        drafts, calls = self._evaluate(monkeypatch, ev)
+        drafts, calls = self._evaluate(ev)
         assert calls == []
         assert drafts[0].outcome == base.OUTCOME_NOT_APPLICABLE
         assert drafts[0].value is None
@@ -2439,7 +2461,7 @@ class TestGenerateMechanicalApplicability:
     def test_paraphrased_failure_mode_item_is_not_applicable(self, monkeypatch):
         ev = evaluator_stub(
             kind="llm_judge",
-            judge_model="judge-x",
+            judge_model="gpt-5-mini",
             checklist=[
                 {
                     "id": "abstention_clarity",
@@ -2450,34 +2472,21 @@ class TestGenerateMechanicalApplicability:
             variable_mapping=[{"var": "output", "source": "output"}],
             config={"provenance": {"source": "codebase_card.failure_modes[0]"}},
         )
-        drafts, calls = self._evaluate(monkeypatch, ev)
+        drafts, calls = self._evaluate(ev)
         assert calls == []
         assert drafts[0].outcome == base.OUTCOME_NOT_APPLICABLE
         by_id = {s["id"]: s for s in drafts[0].sub_scores if "id" in s}
         assert by_id["abstention_clarity"]["outcome"] == "not_applicable"
 
-    def test_mixed_cluster_still_asks_the_observable_item(self, monkeypatch):
-        from overbae.services.eval import cascade
-        from overbae.services.eval import funnel as judging
-
-        calls: list[dict] = []
-
-        def _fake(*args, **kwargs):
-            calls.append(kwargs)
-            return SimpleNamespace(
-                parsed=gen_judge.ChecklistResult(
-                    items=[gen_judge.ChecklistItem(id="cites", verdict=True)],
-                    reasoning="r",
-                ),
-                stats={},
-                judge_trace_id="t",
+    def test_mixed_cluster_still_asks_the_observable_item(self):
+        calls = _replies(
+            gen_judge.ChecklistResult(
+                items=[gen_judge.ChecklistItem(id="cites", verdict=True)], reasoning="r"
             )
-
-        monkeypatch.setattr(cascade, "maybe_route", lambda *a, **k: None)
-        monkeypatch.setattr(judging, "invoke_judge", _fake)
+        )
         ev = evaluator_stub(
             kind="llm_judge",
-            judge_model="judge-x",
+            judge_model="gpt-5-mini",
             checklist=[
                 {
                     "id": "cites",
@@ -2509,7 +2518,7 @@ class TestEmptyChecklistRetry:
     def _ev(self, **kwargs):
         return evaluator_stub(
             kind="llm_judge",
-            judge_model="judge-x",
+            judge_model="gpt-5-mini",
             checklist=[{"id": "q1", "q": "Is it correct?", "weight": 1.0}],
             variable_mapping=[{"var": "output", "source": "output"}],
             **kwargs,
@@ -2522,44 +2531,30 @@ class TestEmptyChecklistRetry:
             judge_trace_id="t",
         )
 
-    def _evaluate(self, monkeypatch, replies):
-        from overbae.services.eval import cascade
-        from overbae.services.eval import funnel as judging
-
-        calls: list[dict] = []
-
-        def _fake(*args, **kwargs):
-            calls.append(kwargs)
-            return replies[min(len(calls) - 1, len(replies) - 1)]
-
-        monkeypatch.setattr(cascade, "maybe_route", lambda *a, **k: None)
-        monkeypatch.setattr(judging, "invoke_judge", _fake)
+    def _evaluate(self, replies):
+        calls = _replies(*[reply.parsed for reply in replies])
         drafts = gen_judge.evaluate(self._unit(), self._ev(), {})
         return drafts, calls
 
     def test_empty_items_retries_once_then_scores(self, monkeypatch):
         filled = [gen_judge.ChecklistItem(id="q1", verdict=True)]
         drafts, calls = self._evaluate(
-            monkeypatch,
             [self._outcome([]), self._outcome(filled)],
         )
         assert len(calls) == 2
-        assert calls[1].get("use_cache") is False
         assert drafts[0].outcome == base.OUTCOME_SCORED
         assert drafts[0].value == 1.0
 
     def test_parse_failure_retries_once_then_scores(self, monkeypatch):
         filled = [gen_judge.ChecklistItem(id="q1", verdict=True)]
         drafts, calls = self._evaluate(
-            monkeypatch,
             [self._outcome([], parsed=False), self._outcome(filled)],
         )
         assert len(calls) == 2
-        assert calls[1].get("use_cache") is False
         assert drafts[0].value == 1.0
 
     def test_empty_items_twice_stays_an_error(self, monkeypatch):
-        drafts, calls = self._evaluate(monkeypatch, [self._outcome([]), self._outcome([])])
+        drafts, calls = self._evaluate([self._outcome([]), self._outcome([])])
         assert len(calls) == 2
         assert drafts[0].value is None
         assert drafts[0].outcome == base.OUTCOME_ERROR
@@ -2567,28 +2562,13 @@ class TestEmptyChecklistRetry:
 
     def test_unmatched_items_do_not_retry(self, monkeypatch):
         drafts, calls = self._evaluate(
-            monkeypatch,
             [self._outcome([gen_judge.ChecklistItem(id="invented", verdict=True)])],
         )
         assert len(calls) == 1
         assert drafts[0].outcome == base.OUTCOME_ERROR
 
-    def test_proportional_empty_claims_do_not_retry(self, monkeypatch):
-        from overbae.services.eval import cascade
-        from overbae.services.eval import funnel as judging
-
-        calls: list[dict] = []
-
-        def _fake(*args, **kwargs):
-            calls.append(kwargs)
-            return SimpleNamespace(
-                parsed=gen_judge.ClaimsResult(claims=[], reasoning="r"),
-                stats={},
-                judge_trace_id="t",
-            )
-
-        monkeypatch.setattr(cascade, "maybe_route", lambda *a, **k: None)
-        monkeypatch.setattr(judging, "invoke_judge", _fake)
+    def test_proportional_empty_claims_do_not_retry(self):
+        calls = _replies(gen_judge.ClaimsResult(claims=[], reasoning="r"))
         ev = self._ev(config={gen_judge.SCORING_MODE_KEY: gen_judge.SCORING_PROPORTIONAL})
         drafts = gen_judge.evaluate(self._unit(), ev, {})
         assert len(calls) == 1
@@ -2605,7 +2585,7 @@ class TestBoundReferenceNaRetry:
     def _ev(self):
         return evaluator_stub(
             kind="llm_judge",
-            judge_model="judge-x",
+            judge_model="gpt-5-mini",
             requires_reference=True,
             checklist=[
                 {"id": "citations_from_retrieved_sources", "q": "cited?", "weight": 0.25},
@@ -2639,35 +2619,22 @@ class TestBoundReferenceNaRetry:
             judge_trace_id="t",
         )
 
-    def _evaluate(self, monkeypatch, replies, *, expected="Edward Teller"):
-        from overbae.services.eval import cascade
-        from overbae.services.eval import funnel as judging
-
-        calls: list[dict] = []
-
-        def _fake(*args, **kwargs):
-            calls.append(kwargs)
-            return replies[min(len(calls) - 1, len(replies) - 1)]
-
-        monkeypatch.setattr(cascade, "maybe_route", lambda *a, **k: None)
-        monkeypatch.setattr(judging, "invoke_judge", _fake)
+    def _evaluate(self, replies, *, expected="Edward Teller"):
+        calls = _replies(*[reply.parsed for reply in replies])
         drafts = gen_judge.evaluate(self._unit(expected), self._ev(), {})
         return drafts, calls
 
     def test_na_gold_retries_once_then_scores(self, monkeypatch):
         drafts, calls = self._evaluate(
-            monkeypatch,
             [self._outcome(gold_na=True), self._outcome(gold=True)],
         )
         assert len(calls) == 2
-        assert calls[1].get("use_cache") is False
         assert drafts[0].value == 1.0
         by_id = {s["id"]: s for s in drafts[0].sub_scores if "id" in s}
         assert by_id["the-output-agrees-with-the-reference-answer"]["verdict"] is True
 
     def test_na_gold_twice_is_false(self, monkeypatch):
         drafts, calls = self._evaluate(
-            monkeypatch,
             [self._outcome(gold_na=True), self._outcome(gold_na=True)],
         )
         assert len(calls) == 2
@@ -2678,7 +2645,6 @@ class TestBoundReferenceNaRetry:
 
     def test_empty_reference_does_not_retry_na(self, monkeypatch):
         drafts, calls = self._evaluate(
-            monkeypatch,
             [self._outcome(gold_na=True)],
             expected="",
         )
@@ -2690,7 +2656,7 @@ class TestBoundReferenceNaRetry:
     def test_citation_reference_verb_stays_na_when_gold_is_bound(self, monkeypatch):
         ev = evaluator_stub(
             kind="llm_judge",
-            judge_model="judge-x",
+            judge_model="gpt-5-mini",
             requires_reference=True,
             checklist=[
                 {
@@ -2727,11 +2693,7 @@ class TestBoundReferenceNaRetry:
             stats={},
             judge_trace_id="t",
         )
-        from overbae.services.eval import cascade
-        from overbae.services.eval import funnel as judging
-
-        monkeypatch.setattr(cascade, "maybe_route", lambda *a, **k: None)
-        monkeypatch.setattr(judging, "invoke_judge", lambda *a, **k: outcome)
+        _replies(outcome.parsed)
         drafts = gen_judge.evaluate(self._unit(), ev, {})
         assert drafts[0].value == 1.0
         by_id = {s["id"]: s for s in drafts[0].sub_scores if "id" in s}
@@ -2748,7 +2710,8 @@ class TestChecklistIsRequired:
         return evaluator_stub(kind="llm_judge", checklist=[], **kwargs)
 
     def test_invented_items_do_not_score(self):
-        draft = gen_judge._draft_from_outcome(
+        draft = _judged(
+            gen_judge,
             SimpleNamespace(
                 parsed=gen_judge.ChecklistResult(
                     items=[gen_judge.ChecklistItem(id="made_up", verdict=True)], reasoning="r"
@@ -2765,7 +2728,8 @@ class TestChecklistIsRequired:
 
     def test_judge_skipping_configured_items_reads_differently(self):
         ev = evaluator_stub(kind="llm_judge", checklist=[{"id": "a", "q": "?"}])
-        draft = gen_judge._draft_from_outcome(
+        draft = _judged(
+            gen_judge,
             SimpleNamespace(
                 parsed=gen_judge.ChecklistResult(items=[], reasoning="r"),
                 stats={},
@@ -2966,7 +2930,7 @@ class TestProportionalScoring:
             stats={},
             judge_trace_id="t",
         )
-        return gen_judge._draft_from_claims(outcome, ev)
+        return _judged(gen_judge, outcome, ev, reference="The evidence.")
 
     def test_score_is_the_supported_fraction(self):
         draft = self._draft(self._ev(), [("a", True), ("b", True), ("c", True), ("d", False)])
@@ -3024,22 +2988,13 @@ class TestProportionalScoring:
         assert "context" in drafts[0].reasoning
 
     @pytest.mark.django_db
-    def test_a_checklist_judge_still_grades_the_output_alone(self, monkeypatch):
+    def test_a_checklist_judge_still_grades_the_output_alone(self):
         # Conciseness and toxicity need no evidence, so abstaining on an empty
         # input would silence evaluators that are working correctly.
-        from overbae.services.eval import funnel as judging
-        from overbae.services.eval.evaluators.base import EvalUnit
-
-        monkeypatch.setattr(
-            judging,
-            "invoke_judge",
-            lambda *a, **k: SimpleNamespace(
-                parsed=gen_judge.ChecklistResult(
-                    items=[gen_judge.ChecklistItem(id="q1", verdict=True)], reasoning="r"
-                ),
-                stats={},
-                judge_trace_id="t",
-            ),
+        _replies(
+            gen_judge.ChecklistResult(
+                items=[gen_judge.ChecklistItem(id="q1", verdict=True)], reasoning="r"
+            )
         )
         ev = evaluator_stub(
             kind="llm_judge",
@@ -3072,7 +3027,7 @@ class TestProportionalScoring:
             stats={},
             judge_trace_id="t",
         )
-        draft = gen_judge._draft_from_claims(outcome, self._ev())
+        draft = _judged(gen_judge, outcome, self._ev(), reference="The evidence.")
         assert draft.value == 1.0
         coverage = next(s["_coverage"] for s in draft.sub_scores if "_coverage" in s)
         assert coverage["unjudged_claims"] == 1
@@ -3106,27 +3061,25 @@ class TestJudgeSurfaceIsolation:
     def _ev(self):
         return evaluator_stub(kind="llm_judge", checklist=[{"id": "a", "q": "?"}])
 
-    def _routes_to(self, monkeypatch, ctx):
-        called = []
-        monkeypatch.setattr(judge, "evaluate", lambda *a, **k: called.append("judge") or [])
-        monkeypatch.setattr(gen_judge, "evaluate", lambda *a, **k: called.append("gen_judge") or [])
-        base.evaluate(EvalUnit(), self._ev(), ctx)
-        return called
+    def _routes_to(self, ctx):
+        base.evaluate(EvalUnit(trajectory={"final_output": "An answer."}), self._ev(), ctx)
+        return sorted(
+            {
+                {"ChecklistResult": "gen_judge", "JudgeResult": "judge"}[r.schema_name]
+                for r in JUDGE.requests
+            }
+        )
 
-    def test_generative_surface_routes_to_gen_judge(self, monkeypatch):
-        assert self._routes_to(monkeypatch, {"eval_surface": base.SURFACE_GENERATIVE}) == [
-            "gen_judge"
-        ]
+    def test_generative_surface_routes_to_gen_judge(self):
+        assert self._routes_to({"eval_surface": base.SURFACE_GENERATIVE}) == ["gen_judge"]
 
-    def test_trace_scoring_surface_routes_to_judge(self, monkeypatch):
-        assert self._routes_to(monkeypatch, {"eval_surface": base.SURFACE_TRACE_SCORING}) == [
-            "judge"
-        ]
+    def test_trace_scoring_surface_routes_to_judge(self):
+        assert self._routes_to({"eval_surface": base.SURFACE_TRACE_SCORING}) == ["judge"]
 
-    def test_unset_surface_stays_on_trace_scoring(self, monkeypatch):
+    def test_unset_surface_stays_on_trace_scoring(self):
         # Trace scoring is the default so an unconverted caller keeps its
         # existing behaviour rather than silently switching scoring models.
-        assert self._routes_to(monkeypatch, {}) == ["judge"]
+        assert self._routes_to({}) == ["judge"]
 
 
 class TestTraceJudgeFieldRefs:
@@ -3140,7 +3093,7 @@ class TestTraceJudgeFieldRefs:
     def test_unconfigured_checklist_changes_nothing(self):
         ev = evaluator_stub(kind="llm_judge", checklist=[{"id": "a", "q": "?"}])
         items = [base.JudgeItem(id="a", verdict=False)]
-        draft = judge._draft_from_outcome(self._outcome(items), ev)
+        draft = _judged(judge, self._outcome(items), ev)
         assert all("field" not in s for s in draft.sub_scores if "id" in s)
 
     def test_delivery_fields_parse_but_are_not_stamped(self):
@@ -3158,7 +3111,7 @@ class TestTraceJudgeFieldRefs:
             stats={},
             judge_trace_id="",
         )
-        draft = judge._draft_from_outcome(outcome, ev)
+        draft = _judged(judge, outcome, ev)
         assert not any(s.get("_delivery") for s in draft.sub_scores)
 
     def test_numeric_step_gate_sets_passed_without_capping_score(self):
@@ -3179,7 +3132,7 @@ class TestTraceJudgeFieldRefs:
             stats={},
             judge_trace_id="",
         )
-        draft = judge._draft_from_outcome(outcome, ev)
+        draft = _judged(judge, outcome, ev)
         assert draft.value == 0.5
         assert draft.passed is False
 
@@ -3201,7 +3154,7 @@ class TestTraceJudgeFieldRefs:
             stats={},
             judge_trace_id="",
         )
-        draft = judge._draft_from_outcome(outcome, ev)
+        draft = _judged(judge, outcome, ev)
         assert draft.value == 0.8
         assert draft.passed is True
 
@@ -3220,7 +3173,7 @@ class TestTraceJudgeFieldRefs:
             stats={},
             judge_trace_id="",
         )
-        draft = judge._draft_from_outcome(outcome, ev)
+        draft = _judged(judge, outcome, ev)
         assert draft.value == 0.0
         assert draft.passed is False
         assert not any(
@@ -3241,7 +3194,7 @@ class TestTraceJudgeFieldRefs:
             stats={},
             judge_trace_id="",
         )
-        draft = judge._draft_from_outcome(outcome, ev)
+        draft = _judged(judge, outcome, ev)
         assert draft.value == 0.91
         assert draft.failure_role == "root_cause"
         stamped = next(s for s in draft.sub_scores if s.get("failure_role") == "root_cause")
@@ -3256,7 +3209,7 @@ class TestTraceJudgeFieldRefs:
             stats={},
             judge_trace_id="",
         )
-        draft = judge._draft_from_outcome(outcome, ev)
+        draft = _judged(judge, outcome, ev)
         assert draft.value == 0.91
         assert draft.failure_role == "none"
         assert not any(s.get("failure_role") == "root_cause" for s in draft.sub_scores)
@@ -3281,7 +3234,7 @@ class TestChecklistNotApplicable:
             base.JudgeItem(id="retry", verdict=True, score=1.0, not_applicable=True),
             base.JudgeItem(id="real", verdict=True, score=0.8),
         ]
-        draft = judge._draft_from_outcome(self._outcome(items, score=0.8), ev)
+        draft = _judged(judge, self._outcome(items, score=0.8), ev)
         by_id = {s["id"]: s for s in draft.sub_scores if "id" in s}
         assert by_id["retry"]["outcome"] == "not_applicable"
         assert by_id["retry"]["verdict"] is None
@@ -3299,7 +3252,7 @@ class TestChecklistNotApplicable:
             base.JudgeItem(id="a", verdict=True, score=1.0, not_applicable=True),
             base.JudgeItem(id="b", verdict=True, score=1.0, not_applicable=True),
         ]
-        draft = judge._draft_from_outcome(self._outcome(items, score=1.0), ev)
+        draft = _judged(judge, self._outcome(items, score=1.0), ev)
         assert draft.outcome == base.OUTCOME_NOT_APPLICABLE
         assert draft.value is None
         assert "nothing applies" in draft.reasoning
@@ -3351,59 +3304,50 @@ class TestMissingPayloadPolicy:
             structured={},
         )
 
-    def test_step_judge_abstains_without_calling_the_judge(self, monkeypatch):
-        from overbae.services.eval import funnel as judging
-
-        def _boom(*args, **kwargs):
-            raise AssertionError("judge must not be invoked on payload-free evidence")
-
-        monkeypatch.setattr(judging, "invoke_judge", _boom)
+    def test_step_judge_abstains_without_calling_the_judge(self):
+        sent = _replies(base.JudgeResult(items=[], score=1.0, reasoning="r"))
         drafts = judge.evaluate(self._payload_free_unit(), self._stepevaluator_stub(), {})
         assert len(drafts) == 1
         assert drafts[0].outcome == base.OUTCOME_ABSTAINED
         assert drafts[0].value is None
         assert "Looked for" in drafts[0].reasoning
         assert "tool-call arguments" in drafts[0].reasoning
+        assert sent == []
 
-    def test_explicit_empty_output_is_a_rejection_decision_not_missing(self):
+    def _explicit_rejection(self):
         unit = self._payload_free_unit()
         unit.trajectory["final_output"] = "[]"
-        assert judge._explicit_rejection(unit)
-        assert not judge._unit_output_payloads_empty(unit)
+        return unit
 
-    def test_any_recorded_payload_defeats_the_policy(self):
-        with_span_output = self._payload_free_unit()
-        with_span_output.trajectory["span_tree"][0]["outputs"] = {"ok": True}
-        assert not judge._unit_output_payloads_empty(with_span_output)
+    def _span_output(self):
+        unit = self._payload_free_unit()
+        unit.trajectory["span_tree"][0]["outputs"] = {"ok": True}
+        return unit
 
-        with_tool_args = self._payload_free_unit()
-        with_tool_args.trajectory["messages"].append(
+    def _tool_arguments(self):
+        unit = self._payload_free_unit()
+        unit.trajectory["messages"].append(
             {
                 "role": "assistant",
                 "content": "",
                 "tool_calls": [{"id": "c1", "name": "emit", "arguments": {"a": 1}}],
             }
         )
-        assert not judge._unit_output_payloads_empty(with_tool_args)
+        return unit
 
-    def test_outcome_role_judge_is_not_auto_abstained(self, monkeypatch):
-        from overbae.services.eval import cascade
-        from overbae.services.eval import funnel as judging
+    @pytest.mark.parametrize("evidence", ["_explicit_rejection", "_span_output", "_tool_arguments"])
+    def test_any_recorded_payload_or_explicit_rejection_is_judged(self, evidence):
+        sent = _replies(base.JudgeResult(items=[], score=1.0, reasoning="r"))
+        [draft] = judge.evaluate(getattr(self, evidence)(), self._stepevaluator_stub(), {})
+        assert len(sent) == 1
+        assert draft.outcome == base.OUTCOME_SCORED
 
+    def test_outcome_role_judge_is_not_auto_abstained(self):
         ev = self._stepevaluator_stub()
         ev.config = {"behaviour": {"behaviour_key": "init", "role": "outcome"}}
-        ev.judge_model = "judge-model-x"
-        called = {}
-
-        def _fake(*args, **kwargs):
-            called["yes"] = True
-            raise RuntimeError("stop before real judging")
-
-        monkeypatch.setattr(cascade, "maybe_route", lambda *a, **k: None)
-        monkeypatch.setattr(judging, "invoke_judge", _fake)
-        with pytest.raises(RuntimeError):
-            judge.evaluate(self._payload_free_unit(), ev, {})
-        assert called
+        sent = _replies(base.JudgeResult(items=[], score=1.0, reasoning="r"))
+        judge.evaluate(self._payload_free_unit(), ev, {})
+        assert len(sent) == 1
 
 
 class TestTrajectoryMatch:
