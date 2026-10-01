@@ -302,12 +302,6 @@ def run_init(
         configured_url = load(config_path).base_url
     mcp_url, base_url = resolve_mcp_url(env, configured_url)
 
-    if (
-        ide == "codex"
-        and env in {"local", "development", "dev"}
-        and not (api_url or os.environ.get("OVERMIND_API_URL") or os.environ.get("OVERMIND_BASE_URL"))
-    ):
-        raise typer.BadParameter("Codex setup supports production or staging", param_hint="--env")
     sync_skills(["overmind"], ide=ide)
     dest = get_destination_dir(ide)
     console.print(f"Skills → {dest}/skills/overmind")

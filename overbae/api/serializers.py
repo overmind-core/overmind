@@ -1229,6 +1229,19 @@ class FinetuningJobSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError("Must be between 0.05 and 0.5.")
         return value
 
+    def validate_hyperparameters(self, value):
+        if not isinstance(value, dict):
+            raise serializers.ValidationError("Use a JSON object for hyperparameters.")
+        training_type = value.get("training_type")
+        if training_type is not None:
+            if not isinstance(training_type, dict):
+                raise serializers.ValidationError(
+                    'training_type must be an object, for example {"type": "Lora"}.'
+                )
+            if training_type.get("type", "Lora") not in ("Lora", "Full"):
+                raise serializers.ValidationError('training_type.type must be "Lora" or "Full".')
+        return value
+
     def validate_eval_judge_model(self, value):
         if self.instance is not None and value != self.instance.eval_judge_model:
             raise serializers.ValidationError("The evaluation judge is fixed when training starts.")

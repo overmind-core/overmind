@@ -862,7 +862,7 @@ def register_finetuning_tools(catalog) -> None:
         (
             "start_finetune",
             "Start fine-tuning",
-            "Validate and queue a fine-tuning job.",
+            "Queue training; training_type is an object with type Lora or Full.",
             StartFinetuneInput,
             StartFinetuneOutput,
             _start_sync,
