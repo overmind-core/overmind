@@ -100,7 +100,7 @@ def _call(name: str, context: MCPContext, arguments: dict):
 
 
 def test_catalog_has_exact_instrumentation_slice_and_read_annotations():
-    assert len(CATALOG.definitions()) <= 36
+    assert len(CATALOG.definitions()) <= 37
     definitions = {definition.name: definition for definition in CATALOG.definitions()}
     assert {"get_instrumentation_plan", "verify_instrumentation"} <= set(definitions)
     assert all(

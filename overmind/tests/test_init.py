@@ -107,9 +107,9 @@ def test_codex_local_init_without_url_override(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     for name in ("OVERMIND_API_URL", "OVERMIND_BASE_URL", "OVERMIND_PROJECT_ID"):
         monkeypatch.delenv(name, raising=False)
-    _init(tmp_path, "codex")
-    assert 'url = "http://localhost:8000/api/mcp/"' in (tmp_path / ".codex" / "config.toml").read_text()
-    assert 'base-url = "http://localhost:8000"' in (tmp_path / "overmind.toml").read_text()
+    result = runner.invoke(app, ["init", "--ide", "codex", "--env", "local"])
+    assert result.exit_code != 0
+    assert "Codex setup supports production or staging" in result.output
 
 
 def test_init_seeds_toml_and_slash_commands(tmp_path, monkeypatch):
