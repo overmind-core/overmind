@@ -143,13 +143,22 @@ function ComponentDetail({ entry }: { entry: ComponentEntry }) {
             {isModel ? (
               <ModelProviderChip compact model={entry.signal} />
             ) : entry.signal ? (
-              <Badge className="h-5 px-1.5 text-xs font-medium" variant="outline">
-                {entry.signal}
+              <Badge
+                className="h-5 max-w-full px-1.5 text-xs font-medium"
+                title={entry.signal}
+                variant="outline"
+              >
+                <span className="truncate">{entry.signal}</span>
               </Badge>
             ) : null}
             {entry.traits.map((trait) => (
-              <Badge className="h-5 px-1.5 text-xs font-medium" key={trait} variant="outline">
-                {trait}
+              <Badge
+                className="h-5 max-w-full px-1.5 text-xs font-medium"
+                key={trait}
+                title={trait}
+                variant="outline"
+              >
+                <span className="truncate">{trait}</span>
               </Badge>
             ))}
           </div>

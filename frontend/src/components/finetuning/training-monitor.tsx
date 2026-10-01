@@ -852,7 +852,7 @@ function RunActivity({ snapshot, projectId }: { snapshot: ExperimentSnapshot; pr
 }
 
 const EXPERIMENT_CHIP_CLASS =
-  "inline-flex h-7 items-center gap-1.5 rounded-md border border-border px-2 text-xs font-medium text-muted-foreground transition-colors hover:border-border hover:bg-wash-raised hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring";
+  "inline-flex h-7 max-w-full items-center gap-1.5 whitespace-nowrap rounded-md border border-border px-2 text-xs font-medium text-muted-foreground transition-colors hover:border-border hover:bg-wash-raised hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring";
 const EXPERIMENT_CHIP_SELECTED_CLASS = "border-primary/50 bg-primary/5 text-foreground";
 
 function ExperimentChip({

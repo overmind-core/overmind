@@ -53,7 +53,7 @@ export function TuningField({
 
   return (
     <div className="flex min-w-0 flex-col gap-1.5">
-      <div className="flex h-5 items-center justify-between gap-2">
+      <div className="flex min-h-5 items-center justify-between gap-2">
         <Label className="text-xs text-muted-foreground" htmlFor={id}>
           {label}
           {hint && <span className="text-muted-foreground/60">{hint}</span>}

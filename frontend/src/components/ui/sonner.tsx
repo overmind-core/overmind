@@ -16,9 +16,9 @@ const Toaster = ({ ...props }: ToasterProps) => {
       toastOptions={{
         classNames: {
           actionButton:
-            "h-6 shrink-0 self-center rounded-sm border border-border bg-transparent px-2 text-xs font-medium text-foreground transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+            "h-6 shrink-0 self-center whitespace-nowrap rounded-sm border border-border bg-transparent px-2 text-xs font-medium text-foreground transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
           cancelButton:
-            "h-6 shrink-0 self-center rounded-sm px-2 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+            "h-6 shrink-0 self-center whitespace-nowrap rounded-sm px-2 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
           content: "flex min-w-0 flex-1 flex-col gap-0.5",
           description: "text-xs leading-relaxed text-muted-foreground",
           icon: "mt-0.5 flex size-4 shrink-0 items-center justify-center [&>svg]:size-4",

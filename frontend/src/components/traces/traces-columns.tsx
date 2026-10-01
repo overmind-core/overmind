@@ -88,7 +88,7 @@ export const tracesColumns: ColumnDef<TraceRow>[] = [
       if (status === "live") {
         return (
           <span
-            className={`chip-label inline-flex h-6 items-center rounded-sm border px-2 text-xs font-medium ${TONE_CHIP.info}`}
+            className={`chip-label inline-flex h-6 items-center whitespace-nowrap rounded-sm border px-2 text-xs font-medium ${TONE_CHIP.info}`}
           >
             Live
           </span>
@@ -97,7 +97,7 @@ export const tracesColumns: ColumnDef<TraceRow>[] = [
       if (status === "interrupted") {
         return (
           <span
-            className={`chip-label inline-flex h-6 items-center rounded-sm border px-2 text-xs font-medium ${TONE_CHIP.warning}`}
+            className={`chip-label inline-flex h-6 items-center whitespace-nowrap rounded-sm border px-2 text-xs font-medium ${TONE_CHIP.warning}`}
           >
             Interrupted
           </span>
@@ -106,7 +106,7 @@ export const tracesColumns: ColumnDef<TraceRow>[] = [
       const isError = !!row.original.error;
       return (
         <span
-          className={`chip-label inline-flex h-6 items-center rounded-sm border px-2 text-xs font-medium ${
+          className={`chip-label inline-flex h-6 items-center whitespace-nowrap rounded-sm border px-2 text-xs font-medium ${
             isError ? TONE_CHIP.error : TONE_CHIP.success
           }`}
         >
@@ -220,7 +220,7 @@ export const tracesColumns: ColumnDef<TraceRow>[] = [
       const { spanType } = row.original;
       if (!spanType) return <span className="text-muted-foreground">—</span>;
       return (
-        <span className="chip-label inline-flex h-6 items-center rounded-sm border border-muted-foreground/50 bg-wash-raised px-2 text-xs font-medium">
+        <span className="chip-label inline-flex h-6 items-center whitespace-nowrap rounded-sm border border-muted-foreground/50 bg-wash-raised px-2 text-xs font-medium">
           {spanType}
         </span>
       );

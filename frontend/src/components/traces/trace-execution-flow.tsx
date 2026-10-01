@@ -16,7 +16,8 @@ import { TONE_CHIP } from "@/lib/colors";
 import { cn } from "@/lib/utils";
 import type { TaskExecutionList } from "@/openapi";
 
-const CHIP = "chip-label inline-flex h-5 items-center rounded-sm border px-1.5 text-xs font-medium";
+const CHIP =
+  "chip-label inline-flex h-5 items-center whitespace-nowrap rounded-sm border px-1.5 text-xs font-medium";
 
 export function TraceGroupHeader({
   traceId,

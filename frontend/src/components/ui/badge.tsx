@@ -8,7 +8,7 @@ const badgeVariants = cva(
   // items-center + leading-none + non-shrinking icon slots keep glyph and label on one
   // centre line: the pixel `chip-label` face otherwise drifts the text box off the
   // icon's cross-axis centre. Focus matches Button — 2px ring, reduced opacity, no offset.
-  "chip-label inline-flex items-center leading-none rounded-sm border transition-colors outline-none focus-visible:ring-2 focus-visible:ring-ring/60 [&>svg]:shrink-0",
+  "chip-label inline-flex items-center whitespace-nowrap leading-none rounded-sm border transition-colors outline-none focus-visible:ring-2 focus-visible:ring-ring/60 [&>svg]:shrink-0",
   {
     defaultVariants: {
       size: "default",

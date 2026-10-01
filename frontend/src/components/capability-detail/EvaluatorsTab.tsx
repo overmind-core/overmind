@@ -952,7 +952,7 @@ function AddFromLibraryPopover({
                     </button>
                     <button
                       aria-label={`View ${catalogLabel(ev)} logic`}
-                      className="my-1.5 flex h-5 shrink-0 items-center rounded-sm px-1.5 text-xs font-medium text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                      className="my-1.5 flex h-5 shrink-0 items-center whitespace-nowrap rounded-sm px-1.5 text-xs font-medium text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                       onClick={() => setDetailId(ev.id)}
                       type="button"
                     >

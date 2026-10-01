@@ -11,7 +11,7 @@ import { PROSE } from "@/lib/typography";
 import { cn, scorePct } from "@/lib/utils";
 
 const SCORE_CHIP =
-  "chip-label inline-flex h-5 items-center rounded-sm border px-1.5 text-xs font-medium";
+  "chip-label inline-flex h-5 items-center whitespace-nowrap rounded-sm border px-1.5 text-xs font-medium";
 const RATIONALE_MAX = 240;
 
 type ScoreReasonChipProps = {
@@ -216,7 +216,7 @@ export function TraceExecutionScore({
           <TooltipTrigger asChild>
             <span
               className={cn(
-                "chip-label inline-flex h-5 items-center rounded-sm border px-1.5 text-xs font-medium",
+                "chip-label inline-flex h-5 items-center whitespace-nowrap rounded-sm border px-1.5 text-xs font-medium",
                 TONE_CHIP[scoreTone(pct)],
                 className
               )}
@@ -277,7 +277,7 @@ export function TraceScoreChips({
               <TooltipTrigger asChild>
                 <span
                   className={cn(
-                    "chip-label inline-flex h-5 items-center gap-1 rounded-sm border px-1.5 text-xs font-medium",
+                    "chip-label inline-flex h-5 items-center gap-1 whitespace-nowrap rounded-sm border px-1.5 text-xs font-medium",
                     isSummary ? summaryChipClass() : traceScoreChipClass(entry)
                   )}
                   onClick={(e) => e.stopPropagation()}
@@ -310,7 +310,7 @@ export function TraceScoreChips({
         {extra > 0 && (
           <span
             className={cn(
-              "chip-label inline-flex h-5 items-center rounded-sm border px-1.5 text-xs font-medium",
+              "chip-label inline-flex h-5 items-center whitespace-nowrap rounded-sm border px-1.5 text-xs font-medium",
               TONE_CHIP.neutral
             )}
           >

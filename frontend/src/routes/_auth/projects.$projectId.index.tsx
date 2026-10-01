@@ -238,7 +238,7 @@ function ProjectOverviewBand({
           </span>
         </Fact>
         <Fact label="Created">
-          <span className="flex h-6 items-center text-sm text-foreground">
+          <span className="flex h-6 items-center whitespace-nowrap text-sm text-foreground">
             <DateTime value={project.createdAt} />
           </span>
         </Fact>

@@ -167,9 +167,9 @@ function SectionHeader({
       <Icon.chevronRight
         className={cn("size-3 transition-transform duration-150", open && "rotate-90")}
       />
-      <span className="pixel-label">{label}</span>
+      <span className="pixel-label whitespace-nowrap">{label}</span>
       <span className="flex-1" />
-      {meta && <span className="font-mono tabular-nums">{meta}</span>}
+      {meta && <span className="truncate font-mono tabular-nums">{meta}</span>}
     </button>
   );
 }
@@ -453,7 +453,7 @@ function FitChip({
       <HoverCardTrigger asChild>
         <span
           className={cn(
-            "inline-flex h-6 max-w-96 cursor-default items-center gap-1 rounded-sm border px-1.5 text-xs",
+            "inline-flex h-6 min-w-0 max-w-96 cursor-default items-center gap-1 whitespace-nowrap rounded-sm border px-1.5 text-xs",
             failing
               ? "border-warning/40 bg-warning/10 text-warning"
               : "border-success/40 bg-success/10 text-success"
@@ -737,10 +737,10 @@ export function NotebookCell({
             {tableOpen && (
               <RowsGrid cellId={cell.id} datasetId={datasetId} diff={!source} pageSize={10} />
             )}
-            <footer className="flex h-8 items-center gap-1 border-t border-border/70 px-2.5">
+            <footer className="flex min-h-8 flex-wrap items-center gap-1 border-t border-border/70 px-2.5 py-1">
               {active ? (
                 <>
-                  <span className="inline-flex h-6 items-center gap-1 rounded-sm border border-success/40 bg-success/10 px-1.5 text-xs text-success">
+                  <span className="inline-flex h-6 shrink-0 items-center gap-1 whitespace-nowrap rounded-sm border border-success/40 bg-success/10 px-1.5 text-xs text-success">
                     <Icon.success className="size-3" />
                     Active
                   </span>

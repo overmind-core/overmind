@@ -430,17 +430,19 @@ export function TracesTableToolbar<TData>({
           <div className="flex flex-wrap items-center gap-2">
             {filters.map((f) => (
               <span
-                className="chip-label inline-flex h-7 items-center gap-1.5 rounded-sm border border-primary/40 bg-primary/5 px-2.5 text-xs text-primary"
+                className="chip-label inline-flex h-7 max-w-full items-center gap-1.5 whitespace-nowrap rounded-sm border border-primary/40 bg-primary/5 px-2.5 text-xs text-primary"
                 key={f.id}
               >
-                {describeFilter(
-                  f,
-                  f.field === "capability" ? capabilityNameById.get(f.value) : undefined
-                )}
+                <span className="truncate">
+                  {describeFilter(
+                    f,
+                    f.field === "capability" ? capabilityNameById.get(f.value) : undefined
+                  )}
+                </span>
                 <ToolbarTooltip label="Remove filter">
                   <button
                     aria-label={`Remove filter ${f.field}`}
-                    className="-mr-1 rounded-sm p-0.5 hover:bg-primary/20"
+                    className="-mr-1 shrink-0 rounded-sm p-0.5 hover:bg-primary/20"
                     onClick={() => removeFilter(f.id)}
                     type="button"
                   >

@@ -302,7 +302,7 @@ export function AccountBand({
     <div className={cn("rounded-md border border-border bg-card", className)}>
       <div className="flex flex-col divide-y divide-border/70 sm:flex-row sm:items-stretch sm:divide-x sm:divide-y-0">
         <Fact label="Plan">
-          <span className="flex h-6 items-center gap-2 text-sm">
+          <span className="flex min-h-6 flex-wrap items-center gap-x-2 gap-y-1 text-sm">
             {planBadge(sub)}
             {end ? (
               <span className="text-muted-foreground">

@@ -778,13 +778,15 @@ function TracesPage() {
           banner={
             session ? (
               <div className="flex flex-wrap items-center gap-2">
-                <span className="chip-label inline-flex h-7 items-center gap-1.5 rounded-sm border border-primary/40 bg-primary/5 px-2.5 text-xs text-primary">
-                  <Icon.session className="size-3.5" />
-                  Session:{" "}
-                  {sessionDetail?.name || sessionDetail?.externalId || `${session.slice(0, 8)}…`}
+                <span className="chip-label inline-flex h-7 max-w-full items-center gap-1.5 whitespace-nowrap rounded-sm border border-primary/40 bg-primary/5 px-2.5 text-xs text-primary">
+                  <Icon.session className="size-3.5 shrink-0" />
+                  <span className="truncate">
+                    Session:{" "}
+                    {sessionDetail?.name || sessionDetail?.externalId || `${session.slice(0, 8)}…`}
+                  </span>
                   <button
                     aria-label="Clear session filter"
-                    className="-mr-1 rounded-sm p-0.5 hover:bg-primary/20"
+                    className="-mr-1 shrink-0 rounded-sm p-0.5 hover:bg-primary/20"
                     onClick={() => setSearch({ page: 1, session: undefined })}
                     type="button"
                   >

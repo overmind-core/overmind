@@ -1,4 +1,5 @@
 import { HoverCard, HoverCardContent, HoverCardTrigger } from "@/components/ui/hover-card";
+import { cn } from "@/lib/utils";
 import type { Cell } from "@/openapi";
 
 interface Review {
@@ -89,11 +90,12 @@ export function QualityChip({ cell }: { cell: Cell }) {
     <HoverCard>
       <HoverCardTrigger asChild>
         <button
-          className={
+          className={cn(
+            "inline-flex h-6 shrink-0 items-center whitespace-nowrap rounded-sm border px-1.5 text-xs",
             passed
-              ? "h-6 rounded-sm border border-border px-1.5 text-xs text-muted-foreground"
-              : "h-6 rounded-sm border border-warning/40 bg-warning/10 px-1.5 text-xs text-warning"
-          }
+              ? "border-border text-muted-foreground"
+              : "border-warning/40 bg-warning/10 text-warning"
+          )}
           type="button"
         >
           {passed ? "Quality passed" : "Review recommended"}

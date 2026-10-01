@@ -401,15 +401,18 @@ export function RowsGrid({
         />
         {filters.map((f, i) => (
           <Badge
-            className="gap-1 rounded-sm border-border font-mono"
+            className="max-w-full gap-1 rounded-sm border-border font-mono"
             key={`${f.field}-${f.op}-${i}`}
             size="chip"
             variant="outline"
           >
-            {f.field} {FILTER_OPS.find((o) => o.value === f.op)?.label}
-            {f.value !== undefined ? ` "${f.value}"` : ""}
+            <span className="truncate">
+              {f.field} {FILTER_OPS.find((o) => o.value === f.op)?.label}
+              {f.value !== undefined ? ` "${f.value}"` : ""}
+            </span>
             <button
               aria-label="Remove filter"
+              className="shrink-0"
               onClick={() => setFilters(filters.filter((_, j) => j !== i))}
               type="button"
             >
@@ -418,10 +421,21 @@ export function RowsGrid({
           </Badge>
         ))}
         {sort && (
-          <Badge className="gap-1 rounded-sm border-border font-mono" size="chip" variant="outline">
+          <Badge
+            className="max-w-full gap-1 rounded-sm border-border font-mono"
+            size="chip"
+            variant="outline"
+          >
             <Icon.sort className="size-3" />
-            {sort.field} {sort.dir}
-            <button aria-label="Clear sort" onClick={() => setSort(null)} type="button">
+            <span className="truncate">
+              {sort.field} {sort.dir}
+            </span>
+            <button
+              aria-label="Clear sort"
+              className="shrink-0"
+              onClick={() => setSort(null)}
+              type="button"
+            >
               <Icon.close className="size-3" />
             </button>
           </Badge>

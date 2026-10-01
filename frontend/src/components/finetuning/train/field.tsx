@@ -68,7 +68,7 @@ export function Column({
   return (
     <section className={cn("flex flex-col gap-3", className)}>
       {(label || meta) && (
-        <header className="flex h-6 shrink-0 items-center justify-between gap-3">
+        <header className="flex min-h-6 shrink-0 items-center justify-between gap-3">
           {label ? (
             <h3 className="pixel-label shrink-0 text-xs text-muted-foreground">{label}</h3>
           ) : null}

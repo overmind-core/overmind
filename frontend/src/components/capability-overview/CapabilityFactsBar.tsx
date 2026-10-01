@@ -78,7 +78,7 @@ function ModelValue({ capability }: { capability: Capability }) {
     );
   }
   return (
-    <span className="flex h-6 flex-wrap items-center gap-1.5">
+    <span className="flex min-h-6 flex-wrap items-center gap-1.5">
       {models.map((model) => (
         <ModelProviderChip key={model} model={model} />
       ))}

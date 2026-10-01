@@ -14,7 +14,8 @@ import { TONE_CHIP } from "@/lib/colors";
 import { formatCost, formatDuration, formatNumber } from "@/lib/formatters";
 import type { TaskExecutionList } from "@/openapi";
 
-const CHIP = "chip-label inline-flex h-6 items-center rounded-sm border px-2 text-xs font-medium";
+const CHIP =
+  "chip-label inline-flex h-6 items-center whitespace-nowrap rounded-sm border px-2 text-xs font-medium";
 
 export function buildExecutionsColumns(options: {
   capabilityNameById: Map<string, string>;

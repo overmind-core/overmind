@@ -34,7 +34,8 @@ import { sentenceCase } from "@/lib/label-case";
 import { cn, scorePct } from "@/lib/utils";
 import type { TaskExecutionList } from "@/openapi";
 
-const CHIP = "chip-label inline-flex h-5 items-center rounded-sm border px-1.5 text-xs font-medium";
+const CHIP =
+  "chip-label inline-flex h-5 items-center whitespace-nowrap rounded-sm border px-1.5 text-xs font-medium";
 const SECTION_LABEL = "text-xs font-medium text-muted-foreground";
 
 function verdictName(verdict: ExecutionStepResult): string {

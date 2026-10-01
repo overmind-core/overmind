@@ -53,7 +53,7 @@ function CopyButton({ text }: { text: string }) {
 
   return (
     <button
-      className="inline-flex h-6 shrink-0 items-center gap-1 rounded-sm border border-border/60 px-1.5 text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+      className="inline-flex h-6 shrink-0 items-center gap-1 whitespace-nowrap rounded-sm border border-border/60 px-1.5 text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
       onClick={handleCopy}
       type="button"
     >
@@ -183,7 +183,7 @@ export function CapabilityPromptCard({ flow }: { flow: Flow }) {
             </span>
             {expandable && (
               <button
-                className="inline-flex h-6 items-center gap-1 rounded-sm border border-border/60 px-1.5 text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                className="inline-flex h-6 items-center gap-1 whitespace-nowrap rounded-sm border border-border/60 px-1.5 text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                 onClick={() => setOpen(true)}
                 type="button"
               >

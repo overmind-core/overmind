@@ -109,14 +109,14 @@ export function TracePanelNavigationHeader() {
         </span>
         {traceStatus === "live" && (
           <span
-            className={`chip-label inline-flex h-6 shrink-0 items-center rounded-sm border px-2 text-xs font-medium ${TONE_CHIP.info}`}
+            className={`chip-label inline-flex h-6 shrink-0 items-center whitespace-nowrap rounded-sm border px-2 text-xs font-medium ${TONE_CHIP.info}`}
           >
             Live
           </span>
         )}
         {traceStatus === "interrupted" && (
           <span
-            className={`chip-label inline-flex h-6 shrink-0 items-center rounded-sm border px-2 text-xs font-medium ${TONE_CHIP.warning}`}
+            className={`chip-label inline-flex h-6 shrink-0 items-center whitespace-nowrap rounded-sm border px-2 text-xs font-medium ${TONE_CHIP.warning}`}
           >
             Interrupted
           </span>

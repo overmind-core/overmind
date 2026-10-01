@@ -295,8 +295,13 @@ function BehaviourTaskCard({
                 <span className="truncate text-sm font-medium">{name}</span>
                 {evalCount != null ? <CountChip count={evalCount} /> : null}
                 {showOwner && capabilityName ? (
-                  <Badge size="chip" variant="secondary">
-                    {capabilityName}
+                  <Badge
+                    className="max-w-full"
+                    size="chip"
+                    title={capabilityName}
+                    variant="secondary"
+                  >
+                    <span className="truncate">{capabilityName}</span>
                   </Badge>
                 ) : null}
                 {behaviour.status === "retired" ? (
