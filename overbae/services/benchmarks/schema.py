@@ -7,6 +7,8 @@ from dataclasses import dataclass, field
 from enum import StrEnum
 from typing import Any
 
+# The out-of-repo sync builds against this module, so a shape change bumps this and
+# breaks the next sync until it follows; CI here cannot see that.
 PARSER_VERSION = 2
 
 
@@ -37,7 +39,7 @@ _REQUIRED_MATCH_KEYS = frozenset({"hf_model_id", "match_type"})
 
 # How a catalog id reached its upstream scores. ``hub_only`` means no leaderboard entry
 # joined and every score came from the HuggingFace read of that exact id. ``slug`` is an
-# explicit models.json leaderboard slug for records that carry no Hub weights URL.
+# explicit leaderboard slug for records that carry no Hub weights URL.
 MATCH_TYPES = frozenset({"exact", "normalized", "name_only", "slug", "hub_only"})
 
 

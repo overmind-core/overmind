@@ -3117,9 +3117,6 @@
       "benchmark_hf_model_ids": [
         "nvidia/NVIDIA-Nemotron-3.5-Lightning-30B-A3B-BF16"
       ],
-      "leaderboard_slugs": [
-        "nemotron-3-5-lightning"
-      ],
       "tier": "large",
       "params": "30B-A3B",
       "total_params_b": 30.0,

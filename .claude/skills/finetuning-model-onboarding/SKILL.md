@@ -104,4 +104,4 @@ If the family has no existing icon mapping, it falls through to a generic simple
 - [ ] `total_params_b` set correctly (drives auto-computed training cost — no manual rate needed)
 - [ ] `pricing.train_from_usd` + `pricing.run_from_usd_per_1m_output` set for the model library display
 - [ ] Frontend icon mapped if the family is new
-- [ ] `scripts/sync_benchmarks.py` run once the model is in `models.json`, so any Artificial Analysis / HuggingFace benchmark results for it (`overbae/services/benchmarks/sync/leaderboard.py`, `sync/huggingface.py`) join the committed artifact and feed model recommendations
+- [ ] Benchmark artifact (`overbae/services/benchmarks/data/benchmark_results.json`) refreshed by a maintainer once the model is in `models.json`, so its benchmark results feed model recommendations; the sync runs outside this repo
