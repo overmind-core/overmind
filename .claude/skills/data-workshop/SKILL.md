@@ -58,8 +58,8 @@ structural context, not a semantic audit. MCP `inspect_dataset` exposes the same
 `notebook/engines/` drives the model. `engines.select()` walks
 `core.model_registry.WORKSHOP_ENGINES` — Cursor, then OpenRouter, then the first
 of OPENAI / ANTHROPIC / GEMINI keys — and both engines take the same tools and
-emit the same events; with no key the turn lands with `engines.NOT_CONFIGURED`
-and the page stays usable. `engines/cursor.py` runs a resumable Composer session
+emit the same events. Startup requires `OPENROUTER_API_KEY`, so an engine is
+always configured. `engines/cursor.py` runs a resumable Composer session
 over a workspace `notebook/workspace.py` writes per turn (`AGENTS.md`,
 `cells/*.py`, `frames/<version>.parquet`) with the tool table as custom tools.
 Cursor SDK 1.0.31 or newer restricts the session to the `mcp` tool group,

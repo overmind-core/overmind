@@ -642,15 +642,8 @@ TRAINING_UNCONFIGURED_ERROR = (
 )
 
 
-if not any([OPENAI_API_KEY, ANTHROPIC_API_KEY, GEMINI_API_KEY, OPENROUTER_API_KEY, CURSOR_API_KEY]):
+if not OPENROUTER_API_KEY:
     raise ImproperlyConfigured(
-        "At least one of OPENAI_API_KEY, ANTHROPIC_API_KEY, GEMINI_API_KEY, OPENROUTER_API_KEY, CURSOR_API_KEY must be set"
+        "OPENROUTER_API_KEY must be set: judges, evals and the Data Workshop use it. "
+        "Get one at https://openrouter.ai/keys"
     )
-
-if not CURSOR_API_KEY:
-    logger.debug("CURSOR_API_KEY is not set, dataworkshop is going to use openrouter")
-
-    if not OPENROUTER_API_KEY:
-        raise ImproperlyConfigured(
-            "OPENROUTER_API_KEY must be set for dataworkshop to work, get it from https://openrouter.ai/workspaces/default/keys"
-        )

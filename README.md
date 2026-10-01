@@ -68,7 +68,7 @@ On first boot the API runs migrations and seeds the built-in evaluators; Swagger
 <details>
 <summary><b>What the API needs to boot</b></summary>
 
-The API needs one key to boot: `OPENROUTER_API_KEY` (or `CURSOR_API_KEY`). OpenRouter serves judges, evals and every routed model call; the Data Workshop agent uses the first of `CURSOR_API_KEY`, `OPENROUTER_API_KEY`, `OPENAI_API_KEY`, `ANTHROPIC_API_KEY` or `GEMINI_API_KEY` it finds. `.env.example` documents every other key.
+The API needs one key to boot: `OPENROUTER_API_KEY`. It serves judges, evals, the Data Workshop and every routed model call. Set `CURSOR_API_KEY` to run the Data Workshop agent on Cursor Composer instead. `.env.example` documents every other key.
 
 | Optional group | Variables                                                                         |
 | -------------- | --------------------------------------------------------------------------------- |
