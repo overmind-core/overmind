@@ -172,7 +172,8 @@ def message(text):
     }
 
 
-def test_connect_select_turn_semantic_check_and_zero_ledger(local, monkeypatch):
+@pytest.mark.parametrize("streamed_output", [False, True])
+def test_connect_select_turn_semantic_check_and_zero_ledger(local, monkeypatch, streamed_output):
     client, user, control, calls = local
     account = choose(local)
 
@@ -210,6 +211,15 @@ def test_connect_select_turn_semantic_check_and_zero_ledger(local, monkeypatch):
         [completed([message('{"answers":{"r0_c0":"pass"}}')])],
         [completed([message("The answer is supported.")])],
     ]
+    if streamed_output:
+        for events in control["events"]:
+            response = events[-1]["response"]
+            output = response["output"]
+            response["output"] = []
+            events[:0] = [
+                {"type": "response.output_item.done", "output_index": index, "item": item}
+                for index, item in enumerate(output)
+            ]
     monkeypatch.setattr(
         "overbae.core.llms.stream_llm_tools", lambda *a, **k: pytest.fail("Platform model called")
     )
@@ -345,6 +355,7 @@ def test_unfinished_stream_never_executes_tools_or_switches_provider(local, even
         [
             {
                 "type": "response.output_item.done",
+                "output_index": 0,
                 "item": {
                     "type": "function_call",
                     "name": "rename",

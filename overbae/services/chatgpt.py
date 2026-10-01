@@ -771,6 +771,7 @@ def response_stream(session, inputs, *, instructions, tools=None, text_format=No
                     code = ""
                 raise ChatGPTError(response_error(code))
             started = time.monotonic()
+            output_items = {}
             for line in response.iter_lines():
                 if time.monotonic() - started > 600:
                     raise ChatGPTError("ChatGPT timed out. Try again later.")
@@ -778,6 +779,11 @@ def response_stream(session, inputs, *, instructions, tools=None, text_format=No
                     continue
                 event = json.loads(line[5:])
                 kind = event.get("type")
+                if kind == "response.output_item.done":
+                    index, item = event.get("output_index"), event.get("item")
+                    if not isinstance(index, int) or index < 0 or not isinstance(item, dict):
+                        raise ChatGPTError("ChatGPT returned an invalid streamed output item.")
+                    output_items[index] = item
                 if kind in {"response.failed", "error"}:
                     error = (event.get("response") or event).get("error") or event
                     raise ChatGPTError(response_error(error.get("code")))
@@ -788,6 +794,11 @@ def response_stream(session, inputs, *, instructions, tools=None, text_format=No
                 if kind == "response.completed":
                     if event.get("response", {}).get("status") != "completed":
                         raise ChatGPTError("ChatGPT did not complete this response.")
+                    # ChatGPT can send completed items only in the stream, leaving terminal output empty.
+                    if not event["response"].get("output"):
+                        event["response"]["output"] = [
+                            output_items[index] for index in sorted(output_items)
+                        ]
                     yield event
                     return
                 yield event

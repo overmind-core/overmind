@@ -39,6 +39,30 @@ def _call(name: str, arguments: dict, context: MCPContext):
     return asyncio.run(CATALOG.call(name, arguments, context))
 
 
+@pytest.mark.parametrize("training_type", ["Lora", ["Lora"], 1, {"type": "unknown"}])
+def test_start_rejects_invalid_training_method_without_creating_job(monkeypatch, training_type):
+    context = _context()
+    capability, train, _, _ = training_setup(context)
+    monkeypatch.setattr("overbae.api.credit_gate.require_credits", lambda _: None)
+    monkeypatch.setattr("overbae.services.plan_limits.require_plan_quota", lambda *_: None)
+    result = _call(
+        "start_finetune",
+        {
+            "dataset": str(train.id),
+            "capability": str(capability.id),
+            "base_model": "Qwen/Qwen2.5-7B-Instruct",
+            "hyperparameters": {"training_type": training_type},
+        },
+        context,
+    )
+    assert result.isError
+    assert result.structuredContent["error"]["code"] == "finetune_invalid"
+    assert "hyperparameters" in result.structuredContent["error"]["fields"]
+    assert not FinetuningJob.objects.filter(project=context.project).exists()
+    train.refresh_from_db()
+    assert train.active_cell.used_at is None
+
+
 @pytest.mark.parametrize("judge_model", ["", "gpt-5.6-luna"])
 def test_start_finetune_job_receipt_has_kind_and_preserves_reference(monkeypatch, judge_model):
     from overbae.services.mcp import tools_finetuning

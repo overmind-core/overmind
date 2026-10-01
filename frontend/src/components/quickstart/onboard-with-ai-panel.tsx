@@ -47,7 +47,7 @@ export function OnboardWithAiPanel({
   const meta = mcpClientMeta(client);
   const Logo = mcpClientLogo(client);
   const manualCommands = manualSetupCommand(client, keyValue, apiUrl, projectId);
-  const initEnvFlag = client === "codex" ? "" : mcpInitEnvFlag(apiUrl);
+  const initEnvFlag = mcpInitEnvFlag(apiUrl);
   const { copied: manualCopied, copy: copyManual } = useCopy(manualCommands);
 
   const mintKey = async (): Promise<string | null> => {

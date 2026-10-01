@@ -57,6 +57,10 @@ spend.
    job. A multi-model sweep uses one call per base model and can share the
    returned `group_id`.
 
+Omit `hyperparameters` to derive model-specific defaults. When supplying them,
+`training_type` must be an object such as `{"type": "Lora", "lora_r": 16}`
+or `{"type": "Full"}`. A string such as `"Lora"` is rejected before job creation.
+
 Preparation is cached by data and configuration. A confirmed failed operation whose
 report has `retryable=true` can be retried with `retry_failed=true`; its saved remote
 call is cancelled first. An unacknowledged submission fails closed, not retried blindly.

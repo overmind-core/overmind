@@ -99,7 +99,8 @@ integration. Cloud plan usage needs OpenAI's separate access approval.
 
 `engines/chatgpt.py` uses the native tool loop with Responses namespace tools,
 `store=false` and streaming. Tools execute only after `response.completed`;
-encrypted reasoning is replayed within the turn and stripped from saved history.
+the transport retains completed stream items when terminal output is empty.
+Encrypted reasoning is replayed within the turn and stripped from saved history.
 The selected session is pinned for each turn, including semantic checks, which
 use that model instead of Jev. Audit identity includes account and model, so
 switching funding does not reuse a differently funded audit. The ledger records
