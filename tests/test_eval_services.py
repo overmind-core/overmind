@@ -1176,6 +1176,12 @@ class TestDeterministic:
         ev = evaluator_stub(config={"check": "exact_match"})
         assert deterministic.evaluate(u, ev, {})[0].value == 1.0
 
+    def test_exact_match_grades_an_assistant_message_as_its_completion(self):
+        message = {"role": "assistant", "content": "Photosynthesis"}
+        unit = EvalUnit(trajectory={"final_output": "Photosynthesis"}, expected=message)
+        ev = evaluator_stub(config={"check": "exact_match"})
+        assert deterministic.evaluate(unit, ev, {})[0].value == 1.0
+
     def test_regex(self):
         u = EvalUnit(trajectory={"final_output": "order #1234"})
         ev = evaluator_stub(config={"check": "regex", "pattern": r"#\d+"})
@@ -2011,6 +2017,37 @@ class TestJudgeFieldRefs:
             == "Required output field 'decision' is missing from the JSON object."
         )
         assert draft.reasoning == "Missing required output fields: decision."
+        assert draft.value == 0.0
+
+    def test_field_bound_item_skips_when_the_recording_has_no_such_field(self):
+        ev = evaluator_stub(
+            kind="llm_judge",
+            checklist=[{"id": "report", "q": "is the report grounded?", "field": "report"}],
+        )
+        items = [gen_judge.ChecklistItem(id="report", verdict=False, reasoning="no report")]
+        draft = gen_judge._draft_from_outcome(
+            self._outcome(items),
+            ev,
+            output="Photosynthesis",
+            reference="Photosynthesis",
+        )
+        assert draft.value is None
+        assert draft.outcome == gen_judge.OUTCOME_NOT_APPLICABLE
+
+    def test_field_bound_item_still_fails_when_the_recording_has_the_field(self):
+        ev = evaluator_stub(
+            kind="llm_judge",
+            checklist=[{"id": "report", "q": "is the report grounded?", "field": "report"}],
+        )
+        items = [gen_judge.ChecklistItem(id="report", verdict=True)]
+        draft = gen_judge._draft_from_outcome(
+            self._outcome(items),
+            ev,
+            output="Photosynthesis",
+            reference='{"report": "a study", "sources": []}',
+        )
+        by_id = {s["id"]: s for s in draft.sub_scores if "id" in s}
+        assert by_id["report"]["verdict"] is False
         assert draft.value == 0.0
 
     def test_field_bound_null_key_is_present(self):

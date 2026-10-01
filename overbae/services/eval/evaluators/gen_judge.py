@@ -37,6 +37,7 @@ from overbae.services.eval.evaluators.base import (
     resolve_variables_detailed,
     with_resolution,
 )
+from overbae.services.eval.normalizer import graded_text
 from overbae.services.eval.rubric_compiler import build_checklist_prompt, build_claims_prompt
 from overbae.services.eval.surface_binding import (
     is_gold_comparator_claim,
@@ -497,7 +498,15 @@ def evaluate(unit: EvalUnit, evaluator, ctx: dict[str, Any]) -> list[ScoreDraft]
         prompt = build_checklist_prompt(prompt_ev, variables)
         schema = ChecklistResult
         output_text = _bound_text(variables, ("output", "final_output"))
-        reference_text = _bound_text(variables, ("reference", "expected", "expected_output"))
+        reference_value = next(
+            (
+                variables[name]
+                for name in ("reference", "expected", "expected_output")
+                if variables.get(name) not in (None, "")
+            ),
+            "",
+        )
+        reference_text = graded_text(reference_value)
 
         def to_draft(outcome, ev):
             _attach_excluded_items(outcome, excluded)
@@ -757,8 +766,15 @@ def _json_object_keys(output: str) -> set[str] | None:
     return None
 
 
-def _fail_items_missing_output_fields(result: ChecklistResult, evaluator, output: str) -> None:
-    """Field-bound items fail when the named key is missing from a JSON-object record."""
+def _fail_items_missing_output_fields(
+    result: ChecklistResult, evaluator, output: str, reference: str = ""
+) -> None:
+    """Field-bound items fail when the named key is missing from a JSON-object record.
+
+    A field the recorded completion never carried belongs to another layer of
+    the agent. An empty reference keeps the check: a prose answer still fails
+    a contract that named the field.
+    """
     bound = {
         str(item.get("id")): str(item.get("field") or "").strip()
         for item in (evaluator.checklist or [])
@@ -767,12 +783,17 @@ def _fail_items_missing_output_fields(result: ChecklistResult, evaluator, output
     if not bound:
         return
     keys = _json_object_keys(output)
+    recorded = (reference or "").strip()
+    recorded_keys = _json_object_keys(recorded) if recorded else None
     missing = set()
     for item in result.items:
         field = bound.get(item.id)
-        if not field:
+        if not field or item.not_applicable:
             continue
-        if item.not_applicable:
+        if recorded and (recorded_keys is None or field not in recorded_keys):
+            item.not_applicable = True
+            item.verdict = None
+            item.reasoning = f"The recorded output has no '{field}' field."
             continue
         if keys is None or field not in keys:
             item.verdict = False
@@ -793,7 +814,7 @@ def _draft_from_outcome(
 
     align_checklist_items(result, evaluator)
     _refuse_bound_reference_na(result, evaluator, reference)
-    _fail_items_missing_output_fields(result, evaluator, output)
+    _fail_items_missing_output_fields(result, evaluator, output, reference)
     for item in result.items:
         if item.not_applicable:
             item.verdict = None

@@ -15,6 +15,7 @@ from overbae.services.eval.evaluators.base import (
     ResolvedVariable,
     ScoreDraft,
 )
+from overbae.services.eval.normalizer import graded_text
 from overbae.services.tool_names import canonical_tool_name
 
 # Checks reading the output text; the rest read the structured graph.
@@ -119,12 +120,7 @@ def _reference_text(unit: EvalUnit, config: dict) -> str:
         return base.resolve_one(
             unit, "reference", source="reference", jsonpath=config["reference_jsonpath"]
         ).value
-    exp = unit.expected
-    if isinstance(exp, str):
-        return exp
-    if isinstance(exp, dict):
-        return exp.get("final_output") or exp.get("output") or json.dumps(exp, default=str)
-    return "" if exp is None else json.dumps(exp, default=str)
+    return graded_text(unit.expected)
 
 
 def _exact_match(unit, config, output):

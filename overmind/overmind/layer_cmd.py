@@ -211,21 +211,32 @@ def _require_models(client: Client, models: list[str], *, finetune: bool) -> Non
         raise LayerError(f"Unknown model: {', '.join(missing)}.")
 
 
+def _judge_errors(run: dict[str, Any], label: str) -> int:
+    by_variant = ((run.get("summary") or {}).get("error_counts") or {}).get("by_variant") or {}
+    for row in by_variant.values():
+        if isinstance(row, dict) and row.get("label") == label:
+            return int(row.get("evaluator_errors") or 0)
+    return 0
+
+
 def _gate(run: dict[str, Any], models: list[str]) -> int:
     comparison = (run.get("summary") or {}).get("baseline_comparison") or {}
     rows = {row.get("label"): row for row in comparison.get("variants") or []}
-    failed = False
-    console.print(f"{'recorded':<40} baseline")
+    failed = _judge_errors(run, "recorded") > 0
+    console.print(f"{'recorded':<40} {'unscored' if failed else 'baseline'}")
     for model in models:
         row = rows.get(model)
         overall = (row or {}).get("overall") or {}
         status = overall.get("status") or "missing"
+        errors = _judge_errors(run, model)
+        if errors and status in _PASS:
+            status = "unscored"
         current = (overall.get("current") or {}).get("primary")
         delta = overall.get("delta")
         score = "" if current is None else f"{current:.3f}"
         change = "" if delta is None else f"{delta:+.3f}"
         console.print(f"{model:<40} {score:<8} {status:<12} {change}")
-        if status not in _PASS:
+        if status not in _PASS or errors:
             failed = True
     return 1 if failed else 0
 

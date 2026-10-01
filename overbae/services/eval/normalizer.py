@@ -177,6 +177,27 @@ def _is_tool_call_only_content(content: str) -> bool:
     return not any(c.isalpha() for c in remaining)
 
 
+def graded_text(value: Any) -> str:
+    """The string a grader compares. An assistant message is its completion,
+    matching ``_final_output``, so a stored tool call is not dumped as JSON.
+    """
+    if isinstance(value, str):
+        return value
+    if value is None:
+        return ""
+    if isinstance(value, dict) and value.get("role") == "assistant":
+        return _final_output([value])
+    if isinstance(value, dict):
+        for key in ("final_output", "output"):
+            inner = value.get(key)
+            if isinstance(inner, str):
+                return inner
+            if isinstance(inner, dict):
+                return json.dumps(inner, default=str)
+        return json.dumps(value, default=str)
+    return str(value)
+
+
 def _final_output(messages: list[dict[str, Any]]) -> str:
     """A real response beats a pure tool-call dispatch, which is only a fallback."""
     tool_call_fallback = ""

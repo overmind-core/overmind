@@ -147,6 +147,48 @@ def test_backtest_scores_each_model_and_exits_on_regression():
     assert created["variants_input"][0]["is_baseline"] is True
 
 
+def test_backtest_fails_when_a_judge_does_not_score():
+    session_client = _client(
+        Response({"upstream_available": True, "models": [{"id": "openai/gpt-5-mini"}]}),
+        Response({"active_eval_set": "set-1"}),
+        Response({"id": "ds-1"}),
+        Response(_dataset("ds-1")),
+        Response({"id": "run-1", "run_evaluators": [{"id": "judge"}]}),
+        Response({
+            "id": "run-1",
+            "status": "completed",
+            "summary": {
+                "baseline_comparison": {
+                    "variants": [
+                        {
+                            "label": "openai/gpt-5-mini",
+                            "overall": {
+                                "status": "unchanged",
+                                "delta": 0.0,
+                                "current": {"primary": 1.0},
+                            },
+                        }
+                    ]
+                },
+                "error_counts": {"by_variant": {"candidate": {"label": "openai/gpt-5-mini", "evaluator_errors": 1}}},
+            },
+        }),
+    )
+    code = run_backtest(
+        session_client,
+        project_id="project",
+        capability_id="cap",
+        capability_slug="support",
+        models=["openai/gpt-5-mini"],
+        since=datetime(2026, 1, 1, tzinfo=UTC),
+        until=None,
+        limit=10,
+        from_model="",
+        timeout_s=30,
+    )
+    assert code == 1
+
+
 def test_unknown_model_does_not_create_a_dataset():
     session_client = _client(Response({"upstream_available": False, "models": []}))
     with pytest.raises(LayerError, match="catalog is unavailable"):
