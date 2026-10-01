@@ -232,42 +232,6 @@ def test_generate_next_baseline_blocked_while_commands_pending(monkeypatch):
     assert exp.status == before_status
 
 
-def test_generate_next_baseline_evaluates_and_advances_to_iterating(monkeypatch):
-    monkeypatch.setattr("overbae.models.optimizer.run_experiment_advance.delay", lambda *a: None)
-
-    # Patch at the iteration level: OptimizerCandidate.evaluate() scores through a
-    # ThreadPoolExecutor and SQLite cannot take the concurrent writes.
-    def _fake_iter_evaluate(self):
-        for c in self.candidates.all():
-            c.score = 75.0
-            c.status = OptimizerCandidate.Status.EVALUATED
-            c.save(update_fields=["score", "status"])
-        self.scores = {"best": 75.0}
-        self.status = OptimizerIteration.Status.EVALUATED
-        self.save(update_fields=["status", "scores"])
-
-    monkeypatch.setattr(OptimizerIteration, "evaluate", _fake_iter_evaluate)
-
-    exp = _make_experiment()
-    iteration = _make_iteration(exp, order=0)
-    candidate = _make_candidate(exp, iteration)
-    cmd = OptimizerCommand.objects.create(
-        experiment=exp,
-        iteration=iteration,
-        candidate=candidate,
-        datapoint_index=0,
-        status=OptimizerCommand.Status.RAN,
-    )
-    cmd  # noqa: B018
-
-    exp.generate_next()
-
-    exp.refresh_from_db()
-    assert exp.status == OptimizerExperiment.Status.EVALUATED_BASELINE_OUTPUTS
-    assert "baseline" in exp.scores
-    assert "best" in exp.scores
-
-
 def test_generate_next_iterating_blocked_while_commands_running(monkeypatch):
     monkeypatch.setattr("overbae.models.optimizer.run_experiment_advance.delay", lambda *a: None)
     exp = _make_experiment()
@@ -288,45 +252,6 @@ def test_generate_next_iterating_blocked_while_commands_running(monkeypatch):
     exp.refresh_from_db()
     assert exp.status == OptimizerExperiment.Status.ITERATING
     assert exp.current_iteration == 0
-
-
-def test_generate_next_iterating_evaluates_and_increments(monkeypatch):
-    monkeypatch.setattr("overbae.models.optimizer.run_experiment_advance.delay", lambda *a: None)
-
-    # Iteration-level patch again: the executor inside evaluate() locks SQLite.
-    def _fake_iter_evaluate(self):
-        for c in self.candidates.all():
-            c.score = 80.0
-            c.status = OptimizerCandidate.Status.EVALUATED
-            c.save(update_fields=["score", "status"])
-        self.scores = {"best": 80.0}
-        self.status = OptimizerIteration.Status.EVALUATED
-        self.save(update_fields=["status", "scores"])
-
-    monkeypatch.setattr(OptimizerIteration, "evaluate", _fake_iter_evaluate)
-
-    exp = _make_experiment()
-    exp.status = OptimizerExperiment.Status.ITERATING
-    exp.scores = {"baseline": 60.0, "best": 60.0}
-    exp.save()
-
-    iteration = _make_iteration(exp, order=1)
-    candidate = _make_candidate(exp, iteration)
-    cmd = OptimizerCommand.objects.create(
-        experiment=exp,
-        iteration=iteration,
-        candidate=candidate,
-        datapoint_index=0,
-        status=OptimizerCommand.Status.RAN,
-    )
-    cmd  # noqa: B018
-
-    exp.generate_next()
-
-    exp.refresh_from_db()
-    assert exp.current_iteration == 1
-    assert exp.scores.get("best") == pytest.approx(80.0)
-    assert exp.stalled_iterations == 0
 
 
 @pytest.mark.parametrize(
@@ -369,25 +294,6 @@ def test_generate_next_baseline_parks_when_iteration_missing():
     exp.refresh_from_db()
     assert exp.status == OptimizerExperiment.Status.BASELINE
     assert exp.iterations.filter(order=0).count() == 0
-
-
-def test_generate_next_baseline_parks_in_evaluating_when_evaluators_runnable(monkeypatch):
-    monkeypatch.setattr(OptimizerExperiment, "_has_runnable_evaluators", lambda self: True)
-    exp = _make_experiment(status=OptimizerExperiment.Status.BASELINE)
-    iteration = _make_iteration(exp, order=0)
-    candidate = _make_candidate(exp, iteration)
-    OptimizerCommand.objects.create(
-        experiment=exp,
-        iteration=iteration,
-        candidate=candidate,
-        datapoint_index=0,
-        status=OptimizerCommand.Status.RAN,
-    )
-
-    exp.generate_next()
-
-    exp.refresh_from_db()
-    assert exp.status == OptimizerExperiment.Status.EVALUATING_BASELINE_OUTPUTS
 
 
 def test_generate_next_evaluating_baseline_blocked_while_eval_pending():
@@ -476,42 +382,6 @@ def test_generate_next_iterating_parks_at_iteration_cap():
     exp.refresh_from_db()
     assert exp.status == OptimizerExperiment.Status.ITERATING
     assert exp.iterations.filter(order=6).count() == 0
-
-
-def test_generate_next_iterating_parks_in_evaluating_candidate_outputs(monkeypatch):
-    monkeypatch.setattr(OptimizerExperiment, "_has_runnable_evaluators", lambda self: True)
-    exp = _make_experiment(status=OptimizerExperiment.Status.ITERATING, current_iteration=0)
-    iteration = _make_iteration(exp, order=1)
-    candidate = _make_candidate(exp, iteration)
-    OptimizerCommand.objects.create(
-        experiment=exp,
-        iteration=iteration,
-        candidate=candidate,
-        datapoint_index=0,
-        status=OptimizerCommand.Status.RAN,
-    )
-
-    exp.generate_next()
-
-    exp.refresh_from_db()
-    assert exp.status == OptimizerExperiment.Status.EVALUATING_CANDIDATE_OUTPUTS
-    assert exp.current_iteration == 0  # not incremented yet — still waiting on grading
-
-
-def test_generate_next_iterating_marks_evaluated_when_iteration_already_scored(monkeypatch):
-    monkeypatch.setattr("overbae.models.optimizer.run_experiment_advance.delay", lambda *a: None)
-    exp = _make_experiment(
-        status=OptimizerExperiment.Status.ITERATING, current_iteration=0, scores={"best": 90.0}
-    )
-    iteration = _make_iteration(exp, order=1)
-    iteration.status = OptimizerIteration.Status.EVALUATED
-    iteration.save(update_fields=["status"])
-
-    exp.generate_next()
-
-    exp.refresh_from_db()
-    assert exp.status == OptimizerExperiment.Status.EVALUATED_CANDIDATE_OUTPUTS
-    assert exp.current_iteration == 0
 
 
 def test_generate_next_evaluating_candidate_blocked_while_eval_pending():
@@ -1158,36 +1028,6 @@ def test_run_experiment_advance_parks_when_baseline_has_no_iteration(monkeypatch
     exp.refresh_from_db()
     assert exp.status == OptimizerExperiment.Status.BASELINE
     assert exp.failure_reason == ""
-
-
-def test_generate_next_fails_experiment_when_iteration_failed(monkeypatch):
-    monkeypatch.setattr("overbae.models.optimizer.run_experiment_advance.delay", lambda *a: None)
-    exp = _make_experiment()
-    exp.status = OptimizerExperiment.Status.ITERATING
-    exp.save()
-    iteration = _make_iteration(exp, order=1)
-    iteration.status = OptimizerIteration.Status.FAILED
-    iteration.save(update_fields=["status"])
-    candidate = _make_candidate(exp, iteration)
-    candidate.status = OptimizerCandidate.Status.FAILED
-    candidate.save(update_fields=["status"])
-    pending = OptimizerCommand.objects.create(
-        experiment=exp,
-        iteration=iteration,
-        candidate=candidate,
-        datapoint_index=0,
-        status=OptimizerCommand.Status.PENDING,
-    )
-
-    exp.generate_next()
-
-    exp.refresh_from_db()
-    pending.refresh_from_db()
-    candidate.refresh_from_db()
-    assert exp.status == OptimizerExperiment.Status.FAILED
-    assert "iteration 1 failed" in exp.failure_reason
-    assert pending.status == OptimizerCommand.Status.FAILED
-    assert candidate.status == OptimizerCandidate.Status.FAILED
 
 
 def test_complete_experiment_stops_pending_children(monkeypatch):

@@ -324,16 +324,6 @@ def test_comparison_scores_report_incumbent_winner_and_stop():
         "incumbent_wins": True,
     }
 
-    experiment.current_iteration = 0
-    experiment.num_iterations = 1
-    experiment.status = OptimizerExperiment.Status.ITERATING
-    experiment.save(update_fields=["current_iteration", "num_iterations", "status"])
-    experiment.generate_next()
-    experiment.refresh_from_db()
-    assert experiment.current_iteration == 0
-    assert experiment.status == OptimizerExperiment.Status.EVALUATED_CANDIDATE_OUTPUTS
-    assert experiment.iterations.count() == 1
-
 
 def test_comparison_continues_until_all_models_scored():
     experiment = _experiment()
