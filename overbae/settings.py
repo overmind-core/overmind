@@ -270,6 +270,8 @@ DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 FRONTEND_URL = os.environ.get("FRONTEND_URL", "http://localhost:5173")
 MCP_SERVER_URL = os.environ.get("MCP_SERVER_URL", "http://localhost:8000/api/mcp/" if DEBUG else "")
 OPENAI_APPS_CHALLENGE = os.environ.get("OPENAI_APPS_CHALLENGE", "")
+POSTHOG_PROJECT_TOKEN = "" if TESTING else os.environ.get("POSTHOG_PROJECT_TOKEN", "")
+POSTHOG_HOST = os.environ.get("POSTHOG_HOST", "https://eu.i.posthog.com")
 
 # A trace with no root span is "live" until it has been quiet this long, then
 # "interrupted" — the root ends last, so a killed run never exports one.

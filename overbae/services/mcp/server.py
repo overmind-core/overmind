@@ -18,6 +18,9 @@ from mcp.server.transport_security import (
     TransportSecuritySettings,
 )
 from mcp.shared.version import SUPPORTED_PROTOCOL_VERSIONS
+from posthog import Posthog
+from posthog.mcp import PostHogMcpStatelessSessionMiddleware, instrument
+from posthog.mcp.types import MCPAnalyticsOptions, UserIdentity
 from starlette.applications import Starlette
 from starlette.middleware import Middleware
 from starlette.responses import JSONResponse
@@ -108,6 +111,29 @@ async def _get_prompt(name: str, arguments: dict[str, str] | None) -> types.GetP
 @mcp_server.read_resource()
 async def _read_resource(uri):
     return await read_resource(uri)
+
+
+def _identify(_request, _extra) -> UserIdentity | None:
+    clerk_user_id = get_context().user.clerk_user_id
+    return UserIdentity(distinct_id=clerk_user_id) if clerk_user_id else None
+
+
+# The low-level server passes injected analytics arguments through to the
+# catalog, whose input models forbid extra fields.
+ANALYTICS_OPTIONS = MCPAnalyticsOptions(
+    context=False,
+    enable_conversation_id=False,
+    capture_model=False,
+    identify=_identify,
+)
+posthog_client = (
+    Posthog(settings.POSTHOG_PROJECT_TOKEN, host=settings.POSTHOG_HOST)
+    if settings.POSTHOG_PROJECT_TOKEN
+    else None
+)
+mcp_analytics = (
+    instrument(mcp_server, posthog_client, ANALYTICS_OPTIONS) if posthog_client else None
+)
 
 
 def _allowed_hosts() -> list[str]:
@@ -270,6 +296,13 @@ def create_mcp_application() -> Starlette:
     async def lifespan(_: Starlette) -> AsyncIterator[None]:
         async with manager.run():
             yield
+        if mcp_analytics:
+            await mcp_analytics.flush()
+            posthog_client.shutdown()
+
+    endpoint = _TransportEndpoint(manager)
+    if mcp_analytics:
+        endpoint = PostHogMcpStatelessSessionMiddleware(endpoint)
 
     app = Starlette(
         routes=[
@@ -277,7 +310,7 @@ def create_mcp_application() -> Starlette:
             Route("/.well-known/openai-apps-challenge", endpoint=domain_challenge, methods=["GET"]),
             Route(
                 MCP_PATH,
-                endpoint=_TransportEndpoint(manager),
+                endpoint=endpoint,
                 methods=["GET", "POST", "DELETE"],
             ),
         ],

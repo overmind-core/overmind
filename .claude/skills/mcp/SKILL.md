@@ -73,7 +73,12 @@ never runs Django's `request_started`/`request_finished`, so
 `overbae/services/mcp/server.py` owns the official MCP SDK server, stateless
 Streamable HTTP transport, protocol checks, resource and prompt callbacks, and
 middleware ordering. Do not create a second MCP app or mount a feature-specific
-server.
+server. With `POSTHOG_PROJECT_TOKEN` set, it also instruments the server with
+PostHog MCP analytics (`$mcp_*` events, a session-token wrapper on the MCP route,
+a flush at lifespan shutdown). Events identify the caller by Clerk user id, the
+Console's distinct id. Its argument injection stays off: catalog input models
+forbid extra fields. Events carry tool arguments and responses.
+`tests/test_mcp_analytics.py` holds both invariants.
 
 ## Layer ownership
 

@@ -56,6 +56,7 @@ dependencies = [
     "gunicorn>=26.2.0",
     "uvicorn-worker>=0.4.0",
     "jsonschema>=4.26.0",
+    "posthog>=7.56.0",
 ]
 description = "Overbae — unified Django API for the Overclaw / Overmind platform"
 license = { text = "AGPL-3.0" }
