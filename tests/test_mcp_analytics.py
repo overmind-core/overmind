@@ -7,6 +7,7 @@ import uuid
 from http.server import BaseHTTPRequestHandler, HTTPServer
 
 import pytest
+from mcp.server.lowlevel import Server
 from posthog import Posthog
 from posthog.mcp import instrument
 from starlette.testclient import TestClient
@@ -18,6 +19,7 @@ pytestmark = pytest.mark.django_db(transaction=True)
 
 MCP_URL = "/api/mcp/"
 INJECTED_ARGUMENTS = {"context", "conversation_id", "llm_model"}
+PAYLOAD_PROPERTIES = {"$mcp_parameters", "$mcp_response", "$mcp_error_message"}
 
 
 class _Ingest(BaseHTTPRequestHandler):
@@ -47,14 +49,32 @@ def ingest():
 @pytest.fixture
 def instrumented(ingest, monkeypatch):
     client = Posthog("phc_test", host=f"http://127.0.0.1:{ingest.server_port}", max_retries=0)
-    monkeypatch.setattr(
-        server.mcp_server, "request_handlers", dict(server.mcp_server.request_handlers)
+    # instrument() wraps a server object once per process, so each test gets a copy.
+    copy = Server(
+        server.SERVER_NAME,
+        version=server.SERVER_VERSION,
+        instructions=server.mcp_server.instructions,
     )
+    copy.request_handlers = dict(server.mcp_server.request_handlers)
+    copy.notification_handlers = dict(server.mcp_server.notification_handlers)
+    monkeypatch.setattr(server, "mcp_server", copy)
     monkeypatch.setattr(server, "posthog_client", client)
-    monkeypatch.setattr(
-        server, "mcp_analytics", instrument(server.mcp_server, client, server.ANALYTICS_OPTIONS)
-    )
+    monkeypatch.setattr(server, "mcp_analytics", instrument(copy, client, server.ANALYTICS_OPTIONS))
     return ingest
+
+
+def _member(*, project_key: bool):
+    user = User.objects.create_user(
+        email=f"mcp-analytics-{uuid.uuid4().hex[:8]}@test.com",
+        password="pw",
+        clerk_user_id=f"user_{uuid.uuid4().hex}",
+    )
+    project = Project.objects.create(name="Analytics", slug=f"analytics-{uuid.uuid4().hex[:8]}")
+    ProjectMembership.objects.create(user=user, project=project)
+    raw, _ = APIToken.create_for_user(
+        user, project=project if project_key else None, permission=["read", "write"]
+    )
+    return user, project, {"X-Api-Key": raw, "Accept": "application/json"}
 
 
 def _rpc(client, headers, method, params=None, request_id=1):
@@ -67,17 +87,9 @@ def _rpc(client, headers, method, params=None, request_id=1):
     return response
 
 
-def test_every_tool_call_reaches_posthog_attributed_and_flushed(instrumented):
-    user = User.objects.create_user(
-        email=f"mcp-analytics-{uuid.uuid4().hex[:8]}@test.com",
-        password="pw",
-        clerk_user_id=f"user_{uuid.uuid4().hex}",
-    )
-    project = Project.objects.create(name="Analytics", slug=f"analytics-{uuid.uuid4().hex[:8]}")
-    ProjectMembership.objects.create(user=user, project=project)
-    raw, _ = APIToken.create_for_user(user, permission=["read", "write"])
-    headers = {"X-Api-Key": raw, "Accept": "application/json"}
-    results = {}
+def test_every_tool_call_reaches_posthog_as_metadata_only(instrumented):
+    user, project, headers = _member(project_key=False)
+    expected = {}
 
     with TestClient(server.create_mcp_application()) as client:
         initialize = _rpc(
@@ -97,7 +109,7 @@ def test_every_tool_call_reaches_posthog_attributed_and_flushed(instrumented):
 
         listed = _rpc(client, headers, "tools/call", {"name": "list_projects", "arguments": {}})
         assert listed.json()["result"].get("isError") is not True
-        results["list_projects"] = [False]
+        expected["list_projects"] = [(False, None, None)]
         # An unknown field fails contract validation before any handler runs.
         for index, tool in enumerate(tools):
             result = _rpc(
@@ -106,12 +118,12 @@ def test_every_tool_call_reaches_posthog_attributed_and_flushed(instrumented):
                 "tools/call",
                 {
                     "name": tool["name"],
-                    "arguments": {"project_id": str(project.id), "probe": True},
+                    "arguments": {"project_id": str(project.id), "probe": "secret text"},
                 },
                 request_id=10 + index,
             ).json()["result"]
             assert result["isError"] is True
-            results.setdefault(tool["name"], []).append(True)
+            expected.setdefault(tool["name"], []).append((True, str(project.id), "invalid_input"))
         _rpc(
             client,
             headers,
@@ -119,34 +131,48 @@ def test_every_tool_call_reaches_posthog_attributed_and_flushed(instrumented):
             {"uri": f"overmind://project/current?project_id={project.id}"},
         )
 
-    tool_calls = [event for event in instrumented.events if event["event"] == "$mcp_tool_call"]
+    for event in instrumented.events:
+        assert not PAYLOAD_PROPERTIES & set(event["properties"]), event["event"]
+        assert "secret text" not in json.dumps(event)
     captured = {}
-    for event in tool_calls:
+    for event in instrumented.events:
+        if event["event"] != "$mcp_tool_call":
+            continue
         properties = event["properties"]
         assert properties["$mcp_server_name"] == "overmind-platform"
         assert properties["$mcp_client_name"] == "analytics-e2e"
         assert event["distinct_id"] == user.clerk_user_id
-        captured.setdefault(properties["$mcp_tool_name"], []).append(properties["$mcp_is_error"])
-    assert {name: sorted(errors) for name, errors in captured.items()} == {
-        name: sorted(errors) for name, errors in results.items()
+        captured.setdefault(properties["$mcp_tool_name"], []).append(
+            (
+                properties["$mcp_is_error"],
+                properties.get("project_id"),
+                properties.get("error_code"),
+            )
+        )
+    assert {name: sorted(calls, key=str) for name, calls in captured.items()} == {
+        name: sorted(calls, key=str) for name, calls in expected.items()
     }
     session_ids = {event["properties"]["$session_id"] for event in instrumented.events}
     assert len(session_ids) == 1
-    event_names = {event["event"] for event in instrumented.events}
-    assert {"$mcp_initialize", "$mcp_tools_list", "$mcp_resource_read", "$exception"} <= event_names
+    events = {event["event"]: event for event in instrumented.events}
+    assert {"$mcp_initialize", "$mcp_tools_list", "$mcp_resource_read"} <= set(events)
+    assert "$exception" not in events
+    assert events["$mcp_resource_read"]["properties"]["project_id"] == str(project.id)
+
+
+def test_project_key_events_carry_the_key_project(instrumented):
+    _, project, headers = _member(project_key=True)
+
+    with TestClient(server.create_mcp_application()) as client:
+        _rpc(client, headers, "tools/call", {"name": "list_projects", "arguments": {}})
+
+    (event,) = [event for event in instrumented.events if event["event"] == "$mcp_tool_call"]
+    assert event["properties"]["project_id"] == str(project.id)
 
 
 def test_failed_ingest_does_not_fail_tool_calls(instrumented):
     instrumented.status = 500
-    user = User.objects.create_user(
-        email=f"mcp-analytics-{uuid.uuid4().hex[:8]}@test.com",
-        password="pw",
-        clerk_user_id=f"user_{uuid.uuid4().hex}",
-    )
-    project = Project.objects.create(name="Analytics", slug=f"analytics-{uuid.uuid4().hex[:8]}")
-    ProjectMembership.objects.create(user=user, project=project)
-    raw, _ = APIToken.create_for_user(user, project=project)
-    headers = {"X-Api-Key": raw, "Accept": "application/json"}
+    _, _, headers = _member(project_key=True)
 
     with TestClient(server.create_mcp_application()) as client:
         result = _rpc(

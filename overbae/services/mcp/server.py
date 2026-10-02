@@ -6,6 +6,8 @@ import json
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from typing import Any
+from urllib.parse import parse_qs, urlsplit
+from uuid import UUID
 
 from django.conf import settings
 from django.http.request import split_domain_port, validate_host
@@ -118,13 +120,52 @@ def _identify(_request, _extra) -> UserIdentity | None:
     return UserIdentity(distinct_id=clerk_user_id) if clerk_user_id else None
 
 
+def _project_properties(request, _extra) -> dict[str, str]:
+    project = get_context().project
+    if project is not None:
+        return {"project_id": str(project.pk)}
+    params = request.get("params") if isinstance(request, dict) else None
+    params = params if isinstance(params, dict) else {}
+    arguments = params.get("arguments")
+    candidate = arguments.get("project_id") if isinstance(arguments, dict) else None
+    if candidate is None and isinstance(params.get("uri"), str):
+        candidate = parse_qs(urlsplit(params["uri"]).query).get("project_id", [None])[0]
+    try:
+        return {"project_id": str(UUID(str(candidate)))}
+    except ValueError:
+        return {}
+
+
+def _error_code(response: Any) -> str | None:
+    structured = response.get("structuredContent") if isinstance(response, dict) else None
+    error = structured.get("error") if isinstance(structured, dict) else None
+    code = error.get("code") if isinstance(error, dict) else None
+    return code if isinstance(code, str) else None
+
+
+# Tool arguments, results and error text carry customer data and stay on the server.
+_PAYLOAD_PROPERTIES = ("$mcp_parameters", "$mcp_response", "$mcp_error_message")
+
+
+def _drop_payloads(event: dict[str, Any]) -> dict[str, Any]:
+    properties = event.get("properties") or {}
+    if properties.get("$mcp_is_error") and (code := _error_code(properties.get("$mcp_response"))):
+        properties["error_code"] = code
+    for key in _PAYLOAD_PROPERTIES:
+        properties.pop(key, None)
+    return event
+
+
 # The low-level server passes injected analytics arguments through to the
 # catalog, whose input models forbid extra fields.
 ANALYTICS_OPTIONS = MCPAnalyticsOptions(
     context=False,
     enable_conversation_id=False,
     capture_model=False,
+    enable_exception_autocapture=False,
     identify=_identify,
+    event_properties=_project_properties,
+    before_send=_drop_payloads,
 )
 posthog_client = (
     Posthog(settings.POSTHOG_PROJECT_TOKEN, host=settings.POSTHOG_HOST)
