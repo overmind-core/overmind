@@ -77,9 +77,10 @@ server. With a PostHog token (`POSTHOG_PROJECT_TOKEN`, or the committed default 
 hosted Clerk deployments without DEBUG), it also instruments the server with
 PostHog MCP analytics (`$mcp_*` events, a session-token wrapper on the MCP route,
 a flush at lifespan shutdown). Events identify the caller by Clerk user id, the
-Console's distinct id. Its argument injection stays off: catalog input models
-forbid extra fields. Events carry tool arguments and responses.
-`tests/test_mcp_analytics.py` holds both invariants.
+Console's distinct id, and carry `project_id`. They are metadata only: `before_send`
+drops tool arguments, results and error text (failures keep `error_code`), and
+`$exception` capture is off. Argument injection stays off: catalog input models
+forbid extra fields. `tests/test_mcp_analytics.py` holds these invariants.
 
 ## Layer ownership
 
