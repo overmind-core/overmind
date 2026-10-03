@@ -10,6 +10,7 @@ from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
 from rest_framework.validators import UniqueTogetherValidator
 
+from modal_shared.decisions import DECISION_OBJECTIVE, TEXT_OBJECTIVE
 from overbae.api.model_activation import ModelActivationSerializer
 from overbae.api.scoping import project_ids_for
 from overbae.core.errors import InputValidationError
@@ -1381,6 +1382,54 @@ class FinetuningJobSerializer(serializers.ModelSerializer):
             attrs["cell"] = self._check_cell(
                 dataset, "train", field="dataset", explicit=attrs.get("cell")
             )
+
+        selected_cell = attrs.get("cell") or getattr(self.instance, "cell", None)
+        if selected_cell is not None:
+            objective = (
+                DECISION_OBJECTIVE
+                if (selected_cell.intent_report.get("train") or {}).get("format") == "decision"
+                else TEXT_OBJECTIVE
+            )
+            hp = dict(
+                attrs.get("hyperparameters", getattr(self.instance, "hyperparameters", {})) or {}
+            )
+            if hp.get("objective", objective) != objective:
+                raise serializers.ValidationError(
+                    {"hyperparameters": "The objective must match the pinned dataset contract."}
+                )
+            hp["objective"] = objective
+            if objective == DECISION_OBJECTIVE:
+                if (hp.get("training_type") or {}).get("type", "Lora") != "Lora":
+                    raise serializers.ValidationError(
+                        {
+                            "hyperparameters": "Native decision training currently supports LoRA only."
+                        }
+                    )
+                if settings.FINETUNING_BACKEND != "modal":
+                    raise serializers.ValidationError(
+                        {"hyperparameters": "Decision training requires Modal."}
+                    )
+                if hp.get("packing"):
+                    raise serializers.ValidationError(
+                        {
+                            "hyperparameters": "Decision training uses independent, unpacked examples."
+                        }
+                    )
+                hp["packing"] = False
+                for field in (
+                    "eval_model_before",
+                    "eval_model_after",
+                    "eval_incumbent_before",
+                    "eval_incumbent_after",
+                ):
+                    if attrs.get(field, getattr(self.instance, field, False)):
+                        raise serializers.ValidationError(
+                            {
+                                field: "Decision checkpoints require native probability evaluation, not chat generation."
+                            }
+                        )
+                    attrs[field] = False
+            attrs["hyperparameters"] = hp
 
         base_model = attrs.get("base_model") or getattr(self.instance, "base_model", None)
         entry = None

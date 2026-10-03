@@ -208,6 +208,8 @@ class ProgressCallback(TrainerCallback):
     def __init__(self, run_dir: Path | str | None = None) -> None:
         self._train_start: float | None = None
         self._total_steps: int = 0
+        self._start_step: int = 0
+        self._start_tokens: int = 0
         self._vram_static_gb: float = 0.0
         self._last_log_mono: float | None = None
         # Real tokens per micro-step (sum of input_ids lengths). Falls back to
@@ -254,6 +256,10 @@ class ProgressCallback(TrainerCallback):
         self._train_start = time.monotonic()
         self._last_log_mono = self._train_start
         self._total_steps = state.max_steps
+        self._start_step = state.global_step
+        self._start_tokens = int(
+            kwargs.get("tokens_seen", getattr(state, "num_input_tokens_seen", 0))
+        )
 
         # Static footprint (weights + adapters) before the first step. Peak −
         # static later isolates activations for ACTIVATION_BYTES calibration.
@@ -264,6 +270,8 @@ class ProgressCallback(TrainerCallback):
             "BT_MEMORY",
             {
                 "phase": "train_begin",
+                "start_step": self._start_step,
+                "start_tokens": self._start_tokens,
                 "vram_static_gb": self._vram_static_gb,
                 "host_rss_gb": _host_rss_gb(),
                 "gpu_count": torch.cuda.device_count() if torch.cuda.is_available() else 0,
@@ -298,7 +306,8 @@ class ProgressCallback(TrainerCallback):
         elapsed = now - (self._train_start or now)
         total = self._total_steps or 1
         done = state.global_step
-        eta = (elapsed / done * (total - done)) if done > 0 else 0.0
+        attempt_steps = done - self._start_step
+        eta = (elapsed / attempt_steps * (total - done)) if attempt_steps > 0 else 0.0
         step_s = now - (self._last_log_mono or now)
         self._last_log_mono = now
 
@@ -319,8 +328,9 @@ class ProgressCallback(TrainerCallback):
             record["token_accuracy"] = round(float(logs["mean_token_accuracy"]), 4)
         if "num_tokens" in logs:
             record["num_tokens"] = int(float(logs["num_tokens"]))
-            if elapsed > 0:
-                record["tokens_per_s"] = round(record["num_tokens"] / elapsed, 1)
+            attempt_tokens = record["num_tokens"] - self._start_tokens
+            if elapsed > 0 and attempt_tokens >= 0:
+                record["tokens_per_s"] = round(attempt_tokens / elapsed, 1)
 
         record["vram_peak_gb"] = _vram_gb(torch.cuda.max_memory_allocated)
         record["vram_reserved_gb"] = _vram_gb(torch.cuda.max_memory_reserved)

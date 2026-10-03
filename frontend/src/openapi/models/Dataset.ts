@@ -55,6 +55,13 @@ import {
     CellToJSON,
     CellToJSONTyped,
 } from './Cell';
+import type { PreparationPlan } from './PreparationPlan';
+import {
+    PreparationPlanFromJSON,
+    PreparationPlanFromJSONTyped,
+    PreparationPlanToJSON,
+    PreparationPlanToJSONTyped,
+} from './PreparationPlan';
 
 /**
  *
@@ -142,6 +149,12 @@ export interface Dataset {
     readonly readiness: DatasetReadiness | null;
     /**
      *
+     * @type {PreparationPlan}
+     * @memberof Dataset
+     */
+    readonly preparationPlan: PreparationPlan | null;
+    /**
+     *
      * @type {DatasetStateEnum}
      * @memberof Dataset
      */
@@ -200,6 +213,7 @@ export function instanceOfDataset(value: object): value is Dataset {
     if (!('activeVersion' in value) || value['activeVersion'] === undefined) return false;
     if (!('rows' in value) || value['rows'] === undefined) return false;
     if (!('readiness' in value) || value['readiness'] === undefined) return false;
+    if (!('preparationPlan' in value) || value['preparationPlan'] === undefined) return false;
     if (!('state' in value) || value['state'] === undefined) return false;
     if (!('error' in value) || value['error'] === undefined) return false;
     if (!('cells' in value) || value['cells'] === undefined) return false;
@@ -233,6 +247,7 @@ export function DatasetFromJSONTyped(json: any, ignoreDiscriminator: boolean): D
         'activeVersion': json['active_version'],
         'rows': json['rows'],
         'readiness': DatasetReadinessFromJSON(json['readiness']),
+        'preparationPlan': PreparationPlanFromJSON(json['preparation_plan']),
         'state': DatasetStateEnumFromJSON(json['state']),
         'error': json['error'],
         'cells': ((json['cells'] as Array<any>).map(CellFromJSON)),
@@ -247,7 +262,7 @@ export function DatasetToJSON(json: any): Dataset {
     return DatasetToJSONTyped(json, false);
 }
 
-export function DatasetToJSONTyped(value?: Omit<Dataset, 'id'|'project'|'source_kind'|'source_spec'|'capability_name'|'capability_rank'|'active_version'|'rows'|'readiness'|'state'|'error'|'cells'|'chat'|'created_by'|'created_at'|'updated_at'> | null, ignoreDiscriminator: boolean = false): any {
+export function DatasetToJSONTyped(value?: Omit<Dataset, 'id'|'project'|'source_kind'|'source_spec'|'capability_name'|'capability_rank'|'active_version'|'rows'|'readiness'|'preparation_plan'|'state'|'error'|'cells'|'chat'|'created_by'|'created_at'|'updated_at'> | null, ignoreDiscriminator: boolean = false): any {
     if (value == null) {
         return value;
     }

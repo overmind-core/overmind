@@ -336,6 +336,9 @@ def test_finetune_resource_redacts_all_checkpoint_url_styles():
         project=project,
         dataset=dataset,
         base_model="model/base",
+        cost_usd="0.2500",
+        hyperparameters={"objective": "decision_cross_entropy"},
+        result={"inference_contract": "typed_probabilities"},
         progress={
             "checkpoint_uri": signed_url,
             "checkpointUri": signed_url,
@@ -359,6 +362,9 @@ def test_finetune_resource_redacts_all_checkpoint_url_styles():
         return json.loads(contents[0].content)
 
     resource = asyncio.run(read())
+    assert resource["cost_usd"] == 0.25
+    assert resource["training_objective"] == "decision_cross_entropy"
+    assert resource["inference_contract"] == "typed_probabilities"
     encoded = json.dumps(resource)
     assert signed_url not in encoded
     assert "api-secret" not in encoded

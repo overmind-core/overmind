@@ -1,0 +1,25 @@
+{
+  "dataset": "80ef4dae-d54b-4cbe-8145-11d57f5b8c1d",
+  "source_cell": "9b7dd4ae-e41a-4971-aef5-9bb1b3230c0d",
+  "prepared_cell": "019d2ff0-a1ab-4807-b770-6218bf75d9ef",
+  "source_rows": 9,
+  "prepared_rows": 9,
+  "truncated": false,
+  "failures": [],
+  "verified": [
+    "identity",
+    "question",
+    "state",
+    "options",
+    "probabilities",
+    "weight",
+    "case_group_lineage",
+    "no_reference_in_request"
+  ],
+  "assessment": {
+    "technical": "pass",
+    "preservation": "pass",
+    "coverage": "pass",
+    "semantic": "unknown"
+  }
+}

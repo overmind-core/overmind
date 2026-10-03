@@ -11,6 +11,18 @@ from overbae.services.datasets import paths, store
 from overbae.services.datasets.profile import profile_records
 
 CONSUMERS = {
+    "decision_training": {
+        "reads": ["decision"],
+        "target": "decision.target_probabilities is the full supervision distribution. Never collapse soft targets to argmax.",
+        "wire": "decision is an object with state (text), question (nonempty text), kind (choice/noul/score), options (2–255 distinct strings), target_probabilities (matching finite probabilities summing to one), and optional positive weight. Flat noul targets expand to No/Yes options (false/true semantic order) and [1-p,p].",
+        "model_specific": "Training renders option codes and applies the selected tokenizer. Keep code tokens out of Workshop data. Preserve source/license/group identities outside decision for auditing and splitting.",
+    },
+    "decision_evaluation": {
+        "reads": ["input.decision"],
+        "target": "expected_output.probabilities retains the full publisher distribution outside the request. Use a native probability evaluator; chat generation is not a probability prediction.",
+        "wire": "input.decision contains only state, question, kind and options. Option order must match reference probabilities. Blank state is structurally valid; whether the question supplies enough evidence is a separate semantic claim.",
+        "quality": "Validate schema, probability range/sum/dimensions and preservation over every row. Do not normalize, harden, deduplicate, rebalance or drop valid blank states automatically. Publisher references are not verified truth; semantic checks are opt-in and uncertainty remains visible.",
+    },
     "sft": {
         "reads": ["messages", "tools (optional)"],
         "target": "Assistant turns in each conversation; coverage columns are not model input.",
@@ -25,6 +37,7 @@ CONSUMERS = {
         "tools": "Tool schemas advertise callable interfaces, not implementations. Tool replay needs recorded calls and results; it does not execute application tools. Missing replay evidence must be reported, never invented.",
     },
     "shared": {
+        "workshop_execution": "Large row-local transformations and audits use transform_batch(df). Global representative selection uses sample_rows with row count, seed and stratum fields; it scans bounded batches, computes quotas internally and saves a reviewed reproducible cell. Never reconstruct quota tables from clipped tool output or sample each batch independently. Sampling does not establish train/eval disjointness.",
         "task_scope": "Infer distinct source tasks from prompts, payloads, targets and tool context. A selected capability is the intended target, not evidence that every row already performs it. Transform each family using supported evidence; a prompt-only relabel is not a task transformation.",
         "split": "Keep case, content, conversation and synthetic-seed families disjoint across train/eval. Do not combine evidence across held-out boundaries.",
         "readiness": "Technical format errors require repair. Semantic quality findings are advisory; apply supported repairs, then allow progression with remaining warnings.",
@@ -48,9 +61,13 @@ def workshop_context(dataset) -> dict:
             "cell": str(cell.id),
             "version": versions.get(cell.id),
             "fingerprint": cell.fingerprint,
-            **profile_records(store.iter_rows(path)),
+            **(cell.stats.get("preparation_profile") or profile_records(store.iter_rows(path))),
         }
-    return {"consumers": CONSUMERS, "profiles": profiles}
+    return {
+        "consumers": CONSUMERS,
+        "profiles": profiles,
+        "preparation_plan": dataset.preparation_plan,
+    }
 
 
 def preparation_context(capability) -> dict:

@@ -10,7 +10,6 @@ from modal.exception import NotFoundError
 from rest_framework.test import APIClient
 
 from modal_shared.preparation import preparation_failure
-from modal_shared.training_data import materialize_tokens, row_key
 from overbae.models import FinetuningJob, Project, ProjectMembership, User
 from overbae.services import training_preparation as preparation
 from overbae.services.datasets.lifecycle import DatasetError
@@ -18,6 +17,29 @@ from overbae.services.sft_assets.preprocess import preprocess_rows
 from overbae.tasks.finetuning import run_finetuning
 
 pytestmark = pytest.mark.django_db
+
+
+@pytest.fixture(autouse=True)
+def preparation_volume(monkeypatch):
+    uploaded = []
+
+    class Batch:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            return False
+
+        def put_file(self, local, remote):
+            with open(local) as source:
+                uploaded.append((remote, [json.loads(line) for line in source]))
+
+    monkeypatch.setattr(
+        preparation.modal.Volume,
+        "from_name",
+        Mock(return_value=SimpleNamespace(batch_upload=lambda **kwargs: Batch())),
+    )
+    return uploaded
 
 
 @pytest.fixture
@@ -48,15 +70,6 @@ def test_exact_preprocessing_reports_tokens_targets_and_incompatible_rows():
     assert report["previews"][0]["supervised_content"] == "3 4"
     assert report["previews"][0]["supervised_tokens"] == 2
     assert {issue["row"] for issue in report["issues"]} == {1, 2, 3}
-
-
-def test_training_materializes_exact_artifact_and_refuses_unvalidated_rows():
-    row = TRAIN_ROWS[0]
-    tokenized = {"input_ids": [1, 2], "labels": [-100, 2]}
-    tokens = {row_key(row): tokenized}
-    assert list(materialize_tokens(json.dumps(row), tokens)) == [json.dumps(tokenized) + "\n"]
-    with pytest.raises(ValueError, match="validated"):
-        list(materialize_tokens(json.dumps(TRAIN_ROWS[1]), tokens))
 
 
 def test_preparation_caches_exact_version_and_configuration(cell):
@@ -112,7 +125,9 @@ def test_export_format_changes_invalidate_cached_preprocessing(cell, monkeypatch
     assert changed.config["data_format"] == "new-format"
 
 
-def test_worker_reconnects_to_existing_call_without_spawning_again(cell, monkeypatch):
+def test_worker_reconnects_to_existing_call_without_spawning_again(
+    cell, monkeypatch, preparation_volume
+):
     prep = preparation.request_preparation(cell, "Qwen/Qwen3-8B", 4096)
     spawn = Mock(return_value=SimpleNamespace(object_id="fc-prep"))
     monkeypatch.setattr(
@@ -134,12 +149,16 @@ def test_worker_reconnects_to_existing_call_without_spawning_again(cell, monkeyp
     prep.refresh_from_db()
     assert spawn.call_count == 1 and prep.state == "ready" and prep.remote_id == "fc-prep"
     assert prep.report["tokens"] == 20
+    assert len(preparation_volume) == 1
+    request = spawn.call_args.args[1]
+    assert "rows" not in request and request["rows_sha256"]
+    assert request["rows_path"].endswith(preparation_volume[0][0])
 
 
 def test_uncertain_submission_and_expired_operations_fail_closed(cell):
     prep = preparation.request_preparation(cell, "Qwen/Qwen3-8B", 4096)
     prep.__class__.objects.filter(pk=prep.pk).update(
-        state="starting", touched_at=timezone.now() - timedelta(minutes=3)
+        state="starting", touched_at=timezone.now() - timedelta(minutes=31)
     )
     preparation.advance(prep.id)
     prep.refresh_from_db()

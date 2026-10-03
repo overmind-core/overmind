@@ -142,10 +142,48 @@ def frozen_dataset(project, rows=None, *, capability=None, name="ds", contract=N
     return dataset
 
 
+def plan_fixture(dataset, cell=None):
+    from overbae.services.datasets.preparation import PlanRequest, save_plan
+
+    cell = cell or dataset.active_cell
+    plan = PlanRequest.model_validate(
+        {
+            "version": str(cell.id),
+            "objective": "Prepare the controlled fixture for its declared task.",
+            "consumer": "custom",
+            "understanding": "Fixture values and intended task are supplied by the test.",
+            "families": [{"name": "Fixture", "evidence": "Controlled inputs and references."}],
+            "steps": [
+                {
+                    "id": "prepare",
+                    "kind": "transform",
+                    "description": "Apply the declared fixture transformation.",
+                }
+            ],
+            "checks": [
+                {
+                    "name": name,
+                    "category": category,
+                    "method": "deterministic",
+                    "question": "Does the fixture satisfy " + name + "?",
+                }
+                for name, category in {
+                    "task_alignment": "semantic",
+                    "input_evidence": "preservation",
+                    "answer_support": "semantic",
+                    "output_schema": "technical",
+                }.items()
+            ],
+        }
+    )
+    return save_plan(dataset, cell, plan)
+
+
 def review_fixture(dataset, cell=None):
     from overbae.services.datasets import review
 
     cell = cell or dataset.active_cell
+    plan_fixture(dataset, cell)
     review.record_quality(
         dataset,
         cell,
@@ -156,7 +194,7 @@ def review_fixture(dataset, cell=None):
                 "evidence": "Known test fixture.",
                 "rows_checked": cell.rows,
             }
-            for name in review.REQUIRED_CHECKS
+            for name in ("task_alignment", "input_evidence", "answer_support", "output_schema")
         ],
         script="df = pd.DataFrame({name: [True] * len(df) for name in ('task_alignment', 'input_evidence', 'answer_support', 'output_schema')})",
     )

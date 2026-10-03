@@ -37,8 +37,13 @@ changes. Specify the target task, supplied evidence, required output shape and
 consumer. Preparation means supported transformations, audit, repairs and a
 recheck of the changed version; an audit-only request does not authorize edits.
 
-Inspect `task_alignment`, `input_evidence`, `answer_support` and `output_schema`
-findings and their measured coverage. Missing evidence remains unknown. Do not
+Inspect the saved preparation plan: source binding, interpretation, mappings,
+assumptions, unresolved questions and task-specific checks. The agent explores
+before transforming; cells snapshot the plan and step that produced them. Keep
+case/group identities separate from coverage strata. Read technical, preservation,
+coverage and semantic outcomes separately, including measured row coverage.
+Automatic semantic audits stay within the plan's row budget; unmeasured claims
+remain unknown. An unspecified purpose stays pending during exploration. Do not
 insert reference answers into inputs or relabel worker outputs as end-to-end
 capability outputs. Keep the workshop model-independent.
 

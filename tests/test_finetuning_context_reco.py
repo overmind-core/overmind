@@ -102,6 +102,15 @@ def test_baseten_bills_per_gpu_minute_not_per_token():
     assert est["usd"] > 0
 
 
+def test_modal_estimate_uses_its_per_second_gpu_rate():
+    tokens = 1_000_000
+    seconds = estimate_training_time_s(tokens, total_params_b=4, use_lora=True)
+    estimate = estimate_training_cost(tokens, total_params_b=4, use_lora=True, backend="modal")
+    assert estimate["usd"] == pytest.approx(round(seconds * 0.001097, 4))
+    baseten = estimate_training_cost(tokens, total_params_b=4, use_lora=True, backend="baseten")
+    assert baseten["usd"] == pytest.approx(round(baseten["billed_minutes"] * 0.10833, 4))
+
+
 def test_cost_estimate_applies_together_minimum_charge():
     tiny = estimate_training_cost(1000, total_params_b=8, use_lora=True, backend="together")
     assert tiny is not None

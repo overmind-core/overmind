@@ -132,7 +132,7 @@ def _ok_cell(dataset, *, intent, rows=2, title="source", position=0, active=True
                 "rows_checked": rows,
                 "evidence": "Controlled test fixture.",
             }
-            for name in review.REQUIRED_CHECKS
+            for name in ("task_alignment", "input_evidence", "answer_support", "output_schema")
         ],
         script="df = pd.DataFrame({'source_row': df.source_row, **{name: [True] * len(df) for name in ('task_alignment', 'input_evidence', 'answer_support', 'output_schema')}})",
     )

@@ -7,11 +7,13 @@ import json
 import logging
 import os
 import tempfile
+from itertools import chain
 from typing import Any
 
 from celery import shared_task
 from django.utils import timezone
 
+from modal_shared.decisions import DECISION_OBJECTIVE
 from overbae.services.training_preparation import for_job, preparation_error
 from overbae.tasks.training_preparation import inspect_preparation
 
@@ -96,17 +98,20 @@ def _resolve_train_val_paths(job, supports_validation: bool) -> tuple[str, str |
         return training_path, validation_path, num_train, meta
 
     row_store.verify(version)
-    rows = list(row_store.iter_rows(version))
     train_ids, val_ids, warnings = split_datapoint_ids(
-        rows,
+        row_store.iter_rows(version),
         job.validation_split_ratio,
         method=job.split_method,
         group_by=version.dataset.source_spec.get("split", {}).get("group_by", []),
         stratify_by=version.dataset.source_spec.get("split", {}).get("stratify_by"),
     )
-    by_id = {r.id: r for r in rows}
-    training_path, num_train = _write_rows((by_id[i] for i in train_ids), prefix="ft-train-")
-    validation_path, num_val = _write_rows((by_id[i] for i in val_ids), prefix="ft-val-")
+    train_ids, val_ids = set(train_ids), set(val_ids)
+    training_path, num_train = _write_rows(
+        (row for row in row_store.iter_rows(version) if row.id in train_ids), prefix="ft-train-"
+    )
+    validation_path, num_val = _write_rows(
+        (row for row in row_store.iter_rows(version) if row.id in val_ids), prefix="ft-val-"
+    )
     meta.update(
         {
             "train_examples": num_train,
@@ -119,16 +124,17 @@ def _resolve_train_val_paths(job, supports_validation: bool) -> tuple[str, str |
 
 
 def _validate_jsonl_or_fail(jsonl_path: str) -> None:
-    from overbae.services.finetuning_validator import validate_rows
+    from overbae.services.finetuning_validator import validate_decision_rows, validate_rows
 
-    rows: list[dict] = []
-    with open(jsonl_path, encoding="utf-8") as f:
-        for line in f:
-            line = line.strip()
-            if line:
-                rows.append(json.loads(line))
-
-    result = validate_rows(rows)
+    with open(jsonl_path, encoding="utf-8") as source:
+        rows = (json.loads(line) for line in source if line.strip())
+        first = next(rows, None)
+        selected = chain([first], rows) if first is not None else iter(())
+        result = (
+            validate_decision_rows(selected)
+            if isinstance(first, dict) and "decision" in first
+            else validate_rows(list(selected))
+        )
     if not result.valid:
         raise RuntimeError("; ".join(result.errors) or "Dataset failed validation.")
 
@@ -160,7 +166,9 @@ def _charge_modal_finetuning(job) -> None:
     if not job.started_at or not job.completed_at:
         return
     try:
-        gpu_type, gpu_count = ModalRunner()._select_training_gpu(job)
+        gpu_type, gpu_count = ModalRunner()._select_training_gpu(
+            job, context_length=int((job.hyperparameters or {}).get("context_length") or 0)
+        )
     except Exception:  # noqa: BLE001 — billing must never fail the job
         logger.exception("Modal GPU selection failed for job %s", job.pk)
         return
@@ -356,6 +364,31 @@ def _finalize_success(job, runner, snap, remote: str) -> dict[str, Any]:
         "metrics": progress.get("metrics") or {},
         "checkpoints": progress.get("checkpoints") or [],
     }
+    if (job.hyperparameters or {}).get("objective") == DECISION_OBJECTIVE:
+        claimed = FinetuningJob.objects.filter(
+            pk=job.pk,
+            status__in=(
+                FinetuningJob.Status.RUNNING,
+                FinetuningJob.Status.PREPARING,
+                FinetuningJob.Status.QUEUED,
+            ),
+        ).update(
+            status=FinetuningJob.Status.SUCCEEDED,
+            completed_at=timezone.now(),
+            model_weights_location=snap.weights_url,
+            output_model_name=snap.output_model_name,
+            progress=progress,
+            result={
+                **result_blob,
+                "objective": DECISION_OBJECTIVE,
+                "inference_contract": "typed_probabilities",
+            },
+        )
+        job.refresh_from_db()
+        if claimed:
+            _record_event(job, "status_change", "Decision checkpoint saved", {"status": job.status})
+            _charge_modal_finetuning(job)
+        return {"status": job.status, "job_id": remote}
     claimed = FinetuningJob.objects.filter(
         pk=job.pk,
         status__in=(

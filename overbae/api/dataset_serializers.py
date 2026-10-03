@@ -4,18 +4,82 @@ from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
 
 from overbae.models import Cell, Dataset
-from overbae.services.datasets import review
+from overbae.services.datasets import preparation, review
 from overbae.services.datasets.context import context_fingerprint
 from overbae.services.datasets.land import SPLIT_POSITIONS
 
 
 class DatasetReadinessSerializer(serializers.Serializer):
+    assessment = serializers.DictField(
+        child=serializers.ChoiceField(choices=["pass", "fail", "partial", "unknown"])
+    )
     format_valid = serializers.BooleanField()
     format_reason = serializers.CharField(allow_blank=True)
     quality_reviewed = serializers.BooleanField()
     quality_passed = serializers.BooleanField()
     quality_reason = serializers.CharField(allow_blank=True)
     training_configuration = serializers.CharField()
+
+
+class PreparationFamilySerializer(serializers.Serializer):
+    name = serializers.CharField()
+    evidence = serializers.CharField()
+    input_columns = serializers.ListField(child=serializers.CharField())
+    target_columns = serializers.ListField(child=serializers.CharField())
+    group_columns = serializers.ListField(child=serializers.CharField())
+    coverage_columns = serializers.ListField(child=serializers.CharField(), required=False)
+
+
+class PreparationStepSerializer(serializers.Serializer):
+    id = serializers.CharField()
+    description = serializers.CharField()
+    kind = serializers.CharField()
+
+
+class PreparationCheckSerializer(serializers.Serializer):
+    name = serializers.CharField()
+    category = serializers.CharField()
+    method = serializers.CharField()
+    question = serializers.CharField()
+
+
+class PreparationSpecificationSerializer(serializers.Serializer):
+    objective = serializers.CharField()
+    consumer = serializers.CharField()
+    understanding = serializers.CharField()
+    families = PreparationFamilySerializer(many=True)
+    mapping = serializers.DictField(child=serializers.CharField())
+    constants = serializers.DictField(child=serializers.JSONField())
+    assumptions = serializers.ListField(child=serializers.CharField())
+    unresolved_questions = serializers.ListField(child=serializers.CharField())
+    steps = PreparationStepSerializer(many=True)
+    checks = PreparationCheckSerializer(many=True)
+    semantic_row_budget = serializers.IntegerField()
+
+
+class PreparationExecutionSerializer(serializers.Serializer):
+    cell = serializers.UUIDField()
+    step_id = serializers.CharField()
+    state = serializers.CharField()
+    rows = serializers.IntegerField()
+    fingerprint = serializers.CharField()
+
+
+class PreparationPlanSerializer(serializers.Serializer):
+    id = serializers.UUIDField()
+    source_cell = serializers.UUIDField()
+    source_fingerprint = serializers.CharField()
+    intent = serializers.CharField()
+    context_fingerprint = serializers.CharField()
+    specification = PreparationSpecificationSerializer()
+    user_request = serializers.CharField(allow_blank=True)
+    exploration = serializers.ListField(child=serializers.JSONField())
+    created_at = serializers.DateTimeField()
+    stale = serializers.BooleanField(required=False)
+    executions = PreparationExecutionSerializer(many=True, required=False)
+    semantic_rows_reserved = serializers.IntegerField(required=False)
+    step_id = serializers.CharField(required=False)
+    result_fingerprint = serializers.CharField(required=False)
 
 
 class CellSerializer(serializers.ModelSerializer):
@@ -26,6 +90,7 @@ class CellSerializer(serializers.ModelSerializer):
     frozen = serializers.SerializerMethodField()
     fits = serializers.SerializerMethodField()
     readiness = serializers.SerializerMethodField()
+    preparation_plan = serializers.SerializerMethodField()
 
     class Meta:
         model = Cell
@@ -48,6 +113,7 @@ class CellSerializer(serializers.ModelSerializer):
             "stats",
             "review",
             "quality_report",
+            "preparation_plan",
             "readiness",
             "seconds",
             "used_at",
@@ -61,6 +127,10 @@ class CellSerializer(serializers.ModelSerializer):
         if versions is None:
             versions = obj.dataset.versions()
         return versions.get(obj.id, "")
+
+    @extend_schema_field(PreparationPlanSerializer(allow_null=True))
+    def get_preparation_plan(self, obj):
+        return obj.preparation_plan or None
 
     def get_frozen(self, obj) -> bool:
         frozen_before = self.context.get("frozen_before")
@@ -98,6 +168,7 @@ class ChatTurnSerializer(serializers.Serializer):
 
 
 class DatasetSerializer(serializers.ModelSerializer):
+    preparation_plan = serializers.SerializerMethodField()
     capability_name = serializers.CharField(source="capability.name", read_only=True, default=None)
     cells = serializers.SerializerMethodField()
     chat = ChatTurnSerializer(many=True, read_only=True)
@@ -121,6 +192,7 @@ class DatasetSerializer(serializers.ModelSerializer):
             "active_version",
             "rows",
             "readiness",
+            "preparation_plan",
             "state",
             "error",
             "cells",
@@ -136,6 +208,10 @@ class DatasetSerializer(serializers.ModelSerializer):
     def _chain(self, obj) -> list[Cell]:
         cached = getattr(obj, "_prefetched_objects_cache", {}).get("cells")
         return sorted(cached, key=lambda c: c.position) if cached is not None else obj.chain
+
+    @extend_schema_field(PreparationPlanSerializer(allow_null=True))
+    def get_preparation_plan(self, obj):
+        return preparation.describe(obj) or None
 
     def _context_fingerprint(self, obj):
         fingerprints = self.context.setdefault("capability_fingerprints", {})

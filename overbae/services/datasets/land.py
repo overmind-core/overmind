@@ -2,7 +2,7 @@
 
 A trace source lands one row per trace: the traces-table facts, the wire
 transcript, the delivered I/O and the trace's score. Landing never rejects a
-row and never triggers scoring. It proposes the capability rank and the intent.
+row and never triggers scoring. It proposes the capability rank.
 """
 
 from __future__ import annotations
@@ -15,6 +15,7 @@ from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Any
 
+import pandas as pd
 from django.db import transaction
 from django.utils import timezone
 
@@ -37,7 +38,7 @@ SPLIT_POSITIONS = ("head", "tail", "random")
 class Landing:
     """A source read once: the rows and how they arrived."""
 
-    rows: list[dict[str, Any]]
+    rows: Iterable[dict[str, Any]]
     kind: str = "file"
     spec: dict[str, Any] = field(default_factory=dict)
     manifest: list[dict] | None = None
@@ -65,10 +66,12 @@ class Landing:
         return replace(self, rows=train, spec=spec), replace(self, rows=evaluation, spec=spec)
 
 
-def _stamp_source_rows(rows: list[dict[str, Any]]) -> None:
+def _stamp_source_rows(rows):
     for offset, row in enumerate(rows):
+        row = dict(row)
         row[store.SOURCE_ROW] = offset
         row["_overmind_provenance"] = preserve_lineage(row)
+        yield row
 
 
 @transaction.atomic
@@ -81,8 +84,6 @@ def commit(
     infer_capability: bool = True,
 ) -> Dataset:
     """Write cell 0 without exposing an idle dataset before automatic preparation."""
-    rows = landing.rows
-    _stamp_source_rows(rows)
     source = dataset.cells.filter(position=0).first()
     if source is None:
         source = Cell.objects.create(
@@ -96,40 +97,50 @@ def commit(
     manifest = landing.manifest
     if manifest and not any(column["name"] == "_overmind_provenance" for column in manifest):
         manifest = [*manifest, {"name": "_overmind_provenance", "type": "json"}]
-    store.write_rows(path, rows, manifest)
+    store.write_rows(path, _stamp_source_rows(landing.rows), manifest)
     fields: dict[str, Any] = {
         "source_kind": landing.kind,
         "source_spec": {**landing.spec, "landed_at": timezone.now().isoformat()},
         "state": state,
         "error": "",
     }
-    df = store.read_frame(path)
+    df = pd.DataFrame.from_records(store.head(path, 500))
     fields["capability_rank"] = alignment.rank(dataset.project_id, df)
     if infer_capability and dataset.capability_id is None and fields["capability_rank"]:
         best = fields["capability_rank"][0]
         if best["score"] > 0:
             fields["capability_id"] = best["capability_id"]
-    report = contract.measure(df)
-    if dataset.intent == Dataset.Intent.PENDING:
-        fields["intent"] = contract.propose_intent(df, report)
+    report = contract.measure_path(path)
     Dataset.objects.filter(pk=dataset.pk).update(**fields, updated_at=timezone.now())
     dataset.refresh_from_db()
-    measure.frame(dataset, source, path, df=df, report=report, input_fingerprint="", seconds=0.0)
+    measure.frame(dataset, source, path, report=report, input_fingerprint="", seconds=0.0)
     return dataset
 
 
 def read_file(path: Path, *, filename: str) -> Landing:
     try:
-        rows = files.read_file_rows(path, filename=filename)
+        rows = files.FileRows(path, filename=filename)
     except files.FileError as exc:
         raise LandError(str(exc)) from exc
     if not rows:
         raise LandError("The file has no rows.")
-    return read_rows(rows, spec={"filename": filename})
+    return Landing(rows, spec={"filename": filename})
+
+
+@dataclass
+class UploadRows:
+    sources: list[files.FileRows]
+
+    def __len__(self):
+        return sum(len(source) for source in self.sources)
+
+    def __iter__(self):
+        for source in self.sources:
+            yield from source
 
 
 def read_uploads(upload_ids: list[str]) -> Landing:
-    rows: list[dict[str, Any]] = []
+    parts = []
     sources = []
     for upload_id in upload_ids:
         filename = files.upload_filename(upload_id)
@@ -138,8 +149,8 @@ def read_uploads(upload_ids: list[str]) -> Landing:
             raise LandError("An upload has expired. Start it again.")
         part = read_file(path, filename=filename)
         sources.append({"filename": filename, "bytes": path.stat().st_size, "rows": len(part.rows)})
-        rows.extend(part.rows)
-    return read_rows(rows, spec={"files": sources})
+        parts.append(part.rows)
+    return Landing(UploadRows(parts), spec={"files": sources})
 
 
 def read_rows(rows: list[dict[str, Any]], *, spec: dict[str, Any] | None = None) -> Landing:

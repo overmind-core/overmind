@@ -1,6 +1,6 @@
 import { HoverCard, HoverCardContent, HoverCardTrigger } from "@/components/ui/hover-card";
 import { cn } from "@/lib/utils";
-import type { Cell } from "@/openapi";
+import type { Cell, PreparationPlan } from "@/openapi";
 
 interface Review {
   rows_before: number;
@@ -98,10 +98,18 @@ export function QualityChip({ cell }: { cell: Cell }) {
           )}
           type="button"
         >
-          {passed ? "Quality passed" : "Review recommended"}
+          {passed ? "Checks passed" : "Review recommended"}
         </button>
       </HoverCardTrigger>
       <HoverCardContent className="max-h-80 w-80 overflow-auto text-xs">
+        <dl className="mb-3 grid grid-cols-2 gap-1">
+          {Object.entries(cell.readiness?.assessment ?? {}).map(([name, value]) => (
+            <div className="contents" key={name}>
+              <dt className="capitalize">{name}</dt>
+              <dd>{value}</dd>
+            </div>
+          ))}
+        </dl>
         {cell.readiness?.qualityReason && <p className="mb-2">{cell.readiness.qualityReason}</p>}
         {reviewed ? (
           <ul className="flex flex-col gap-2">
@@ -120,6 +128,110 @@ export function QualityChip({ cell }: { cell: Cell }) {
         <p className="mt-2 text-muted-foreground">Model and context checks run before training.</p>
       </HoverCardContent>
     </HoverCard>
+  );
+}
+
+export function PreparationPlanDetails({ plan }: { plan?: PreparationPlan | null }) {
+  if (!plan) return null;
+  const spec = plan.specification;
+  return (
+    <details className="mb-2 mr-2 rounded-md border border-border p-2.5 text-xs">
+      <summary className="cursor-pointer">
+        Preparation plan · {spec.steps.length} steps
+        {plan.stale ? " · Source or intent changed" : ""}
+      </summary>
+      <div className="mt-3 flex flex-col gap-3">
+        <p>{spec.objective}</p>
+        <p className="text-muted-foreground">{spec.understanding}</p>
+        <p>
+          Consumer: {spec.consumer.replaceAll("_", " ")} · Source: {plan.sourceCell}
+        </p>
+        <div className="flex flex-col gap-2">
+          {spec.families.map((family) => (
+            <div key={family.name}>
+              <p className="font-medium">{family.name}</p>
+              <p className="text-muted-foreground">{family.evidence}</p>
+              <p>Inputs: {family.inputColumns.join(", ") || "Unknown"}</p>
+              <p>Targets: {family.targetColumns.join(", ") || "Unknown"}</p>
+              <p>Groups: {family.groupColumns.join(", ") || "Undeclared"}</p>
+              <p>Coverage: {family.coverageColumns?.join(", ") || "Undeclared"}</p>
+            </div>
+          ))}
+        </div>
+        {!!Object.keys(spec.mapping).length && (
+          <table className="w-full text-left">
+            <caption className="mb-1 text-left font-medium">Field mapping</caption>
+            <thead>
+              <tr>
+                <th>Source</th>
+                <th>Consumer field</th>
+              </tr>
+            </thead>
+            <tbody>
+              {Object.entries(spec.mapping).map(([target, source]) => (
+                <tr key={target}>
+                  <td className="break-all pr-3">{source}</td>
+                  <td className="break-all">{target}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+        {!!Object.keys(spec.constants).length && (
+          <pre className="whitespace-pre-wrap break-all">
+            Constants: {JSON.stringify(spec.constants)}
+          </pre>
+        )}
+        <ol className="list-inside list-decimal space-y-1">
+          {spec.steps.map((step) => {
+            const executions = plan.executions?.filter((item) => item.stepId === step.id) ?? [];
+            return (
+              <li key={step.id}>
+                {step.description} ·{" "}
+                {executions.length
+                  ? executions.map((item) => `${item.state} (${item.rows} rows)`).join(", ")
+                  : step.kind === "audit"
+                    ? "Audit"
+                    : step.kind === "inspect"
+                      ? "Inspection"
+                      : "No saved cell"}
+              </li>
+            );
+          })}
+        </ol>
+        <ul className="space-y-1">
+          {spec.checks.map((check) => (
+            <li key={check.name}>
+              {check.category} · {check.method}: {check.question}
+            </li>
+          ))}
+        </ul>
+        <p>
+          Semantic audit budget: {spec.semanticRowBudget} rows · {plan.semanticRowsReserved ?? 0}{" "}
+          reserved
+        </p>
+        {!!spec.assumptions.length && (
+          <div>
+            <p className="font-medium">Assumptions</p>
+            <ul className="mt-1 list-inside list-disc">
+              {spec.assumptions.map((item) => (
+                <li key={item}>{item}</li>
+              ))}
+            </ul>
+          </div>
+        )}
+        {!!spec.unresolvedQuestions.length && (
+          <div>
+            <p className="font-medium">Unresolved</p>
+            <ul className="mt-1 list-inside list-disc">
+              {spec.unresolvedQuestions.map((item) => (
+                <li key={item}>{item}</li>
+              ))}
+            </ul>
+          </div>
+        )}
+      </div>
+    </details>
   );
 }
 

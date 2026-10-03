@@ -12,7 +12,7 @@ from urllib.parse import quote
 from pydantic import AliasChoices, Field, field_validator, model_validator
 
 from overbae.models import Cell, Dataset
-from overbae.services.datasets import review
+from overbae.services.datasets import preparation, review
 from overbae.services.datasets.context import workshop_context
 from overbae.services.datasets.contract import public_intent
 from overbae.services.mcp.contracts.common import (
@@ -121,6 +121,7 @@ class DatasetListItem(MCPModel):
 
 
 class CellSummary(MCPModel):
+    preparation_plan: dict[str, Any] = Field(default_factory=dict)
     id: str
     position: int = Field(ge=0)
     version: str = Field(min_length=1, max_length=32)
@@ -200,6 +201,7 @@ class DatasetHumanAction(MCPModel):
 
 
 class DatasetDetail(DatasetListItem):
+    preparation_plan: dict[str, Any] = Field(default_factory=dict)
     preparation_context: dict[str, Any] = Field(default_factory=dict)
     contamination_report: dict[str, Any] = Field(default_factory=dict)
     capability_rank: list[CapabilityRankItem] = Field(default_factory=list, max_length=_RANK_CAP)
@@ -334,7 +336,8 @@ class CreateDatasetFromTracesInput(MCPModel):
         description="Take at most this many matching traces, newest first.",
     )
     intent: Literal["train", "eval"] | None = Field(
-        default=None, description="Omit to let landing propose it from the rows."
+        default=None,
+        description="Omit to explore before choosing training or evaluation. Landing leaves purpose pending.",
     )
     capability: str | None = Field(
         default=None,
@@ -538,6 +541,7 @@ def _cell_summary(dataset, cell: Cell, versions: dict, frozen_before: int) -> Ce
         capability_report=_jsonable(cell.capability_report or {}),
         review=_jsonable(cell.review),
         quality_report=_jsonable(review.summary(cell.quality_report or {})),
+        preparation_plan=_jsonable(cell.preparation_plan),
         readiness=review.readiness(dataset, cell),
         fits=_fit(cell, public_intent(dataset.intent)),
         seconds=float(cell.seconds or 0),
@@ -765,6 +769,7 @@ def serialize_dataset_detail(dataset, *, chat_limit: int = _CHAT_DEFAULT) -> Dat
         {
             **fields,
             "preparation_context": _jsonable(workshop_context(dataset)),
+            "preparation_plan": _jsonable(preparation.describe(dataset)),
             "capability_rank": _rank(dataset.capability_rank),
             "contamination_report": _jsonable(dataset.source_spec.get("contamination_report", {})),
             "cells": cells,

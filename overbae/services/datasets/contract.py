@@ -1,9 +1,4 @@
-"""What a table can be used for, measured from the table itself.
-
-``train`` needs a ``messages`` column whose every row is a valid chat transcript
-with an assistant turn. ``eval`` needs an ``input`` column present on every row
-plus an ``expected_output`` column with at least one reference.
-"""
+"""Technical contracts for chat transcripts, native decisions and evaluation references."""
 
 from __future__ import annotations
 
@@ -16,6 +11,8 @@ from typing import Any
 
 import pandas as pd
 
+from modal_shared.decisions import decision_line, decision_request
+from overbae.services.datasets import store
 from overbae.services.datasets.examples import identifier_only, normalize_record
 from overbae.services.datasets.text import approx_tokens
 from overbae.services.finetuning_tool_validation import tool_schema_errors
@@ -73,10 +70,25 @@ def eval_input_type(value: Any) -> str:
     ):
         return "messages"
     if isinstance(value, dict):
+        if "decision" in value:
+            return "decision"
         if isinstance(value.get("messages"), list):
             return "messages"
         return "object"
     return "text"
+
+
+def evaluation_generation_error(report: dict) -> str:
+    evaluation = report.get("eval", {})
+    if evaluation.get("input_type") == "decision" or evaluation.get("input_types", {}).get(
+        "decision", 0
+    ):
+        return (
+            "This dataset requires native probability evaluation. "
+            "Ordinary chat generation does not produce the required probability vector. "
+            "Export this version for the native decision benchmark worker."
+        )
+    return ""
 
 
 CUT_KEY = "_truncated"
@@ -101,6 +113,8 @@ def training_line(record: dict[str, Any]) -> dict[str, Any]:
     and the training export both build it here, so neither accepts a row the
     other refuses."""
     record = normalize_record(record)
+    if "decision" in record:
+        return decision_line(record)
     messages = record.get("messages")
     if _missing(messages):
         raise ValueError("messages is empty")
@@ -124,6 +138,14 @@ def _train_check(df: pd.DataFrame) -> dict[str, Any]:
     # The validator also imports training_line for the shared export contract.
     from overbae.services.finetuning_validator import validate_rows
 
+    if "decision" in df.columns:
+        result = validate_rows(df[["decision"]].to_dict("records"))
+        return {
+            "ok": result.valid,
+            "reason": result.errors[0] if result.errors else "",
+            "failures": [{"reason": error} for error in result.errors[:_FAILURE_SAMPLES]],
+            "format": "decision",
+        }
     if "messages" not in df.columns:
         return {"ok": False, "reason": "no messages column", "failures": []}
     columns = [c for c in ("messages", "tools") if c in df.columns]
@@ -179,7 +201,18 @@ def _eval_check(df: pd.DataFrame) -> dict[str, Any]:
         }
     failures = []
     for index, value in enumerate(inputs):
-        payload = normalize_record({"input": value})["input"]
+        payload = normalize_record({"input": _as_obj(value)})["input"]
+        if isinstance(payload, dict) and "decision" in payload:
+            reference = _as_obj(df.iloc[index].get("expected_output"))
+            try:
+                request = decision_request(payload["decision"])
+                if not isinstance(reference, dict) or set(reference) != {"probabilities"}:
+                    raise ValueError("Decision evaluation requires a probability reference")
+                decision_line(
+                    {"decision": {**request, "target_probabilities": reference["probabilities"]}}
+                )
+            except (TypeError, ValueError) as exc:
+                failures.append({"row": index, "reason": str(exc)})
         if isinstance(payload, dict) and "messages" in payload:
             failures.extend(
                 {"row": index, "reason": reason}
@@ -224,6 +257,52 @@ def measure(df: pd.DataFrame) -> dict[str, Any]:
     return report
 
 
+def measure_path(path):
+    result = None
+    offset = 0
+    types = Counter()
+    references = 0
+    for df in store.iter_frames(path):
+        part = measure(df)
+        evaluation = part["eval"]
+        references += evaluation.get("reference_rows", 0)
+        types.update(evaluation.get("input_types", {}))
+        for intent in ("train", "eval"):
+            for failure in part[intent].get("failures", []):
+                if "row" in failure:
+                    failure["row"] += offset
+        if result is None:
+            result = part
+        else:
+            result["rows"] += part["rows"]
+            for intent in ("train", "eval"):
+                target, incoming = result[intent], part[intent]
+                if not incoming["ok"]:
+                    if target["ok"] or target.get("reason") == "no expected_output values":
+                        target["reason"] = incoming["reason"]
+                    target["ok"] = False
+                target["failures"] = (target.get("failures", []) + incoming.get("failures", []))[
+                    :_FAILURE_SAMPLES
+                ]
+                target["warnings"] = list(
+                    dict.fromkeys([*target.get("warnings", []), *incoming.get("warnings", [])])
+                )[:20]
+                if incoming.get("fixable") is not False:
+                    target.pop("fixable", None)
+        offset += len(df)
+    if result is None:
+        return measure(pd.DataFrame(columns=[c["name"] for c in store.read_manifest(path)]))
+    evaluation = result["eval"]
+    if references:
+        evaluation["has_reference"] = True
+        evaluation["reference_rows"] = references
+        if evaluation.get("reason") == "no expected_output values":
+            evaluation.update(ok=True, reason="")
+    if types:
+        evaluation.update(input_types=dict(types), input_type=types.most_common(1)[0][0])
+    return result
+
+
 def _has_text(df: pd.DataFrame) -> bool:
     """Whether any cell holds words or a structure. A table of numbers and ids
     has nothing a cell could shape into messages or an input."""
@@ -239,51 +318,24 @@ def _has_text(df: pd.DataFrame) -> bool:
     return False
 
 
-def propose_intent(df: pd.DataFrame, report: dict[str, Any]) -> str:
-    """What the rows look like: a transcript table is ``train``, an input with a
-    reference is ``eval``, anything else stays ``pending``."""
-    if (report.get("train") or {}).get("ok"):
-        return TRAIN
-    if (report.get("eval") or {}).get("ok"):
-        return EVAL
-    columns = set(df.columns)
-    if "messages" in columns:
-        assistant = 0
-        for value in df["messages"].head(200).tolist():
-            value = _as_obj(value)
-            if isinstance(value, list) and any(
-                isinstance(m, dict) and m.get("role") == "assistant" for m in value
-            ):
-                assistant += 1
-        if assistant >= max(1, min(200, len(df)) // 2):
-            return TRAIN
-    if {"input", "expected_output"} <= columns or {"question", "answer"} <= columns:
-        return EVAL
-    return PENDING
-
-
 def stats(df: pd.DataFrame) -> dict[str, Any]:
     """The six numbers training planners read. Input is ``messages`` when
     present, else ``input``; output is ``expected_output``."""
-    n = int(len(df))
-    if n == 0:
-        return {
-            "num_examples": 0,
-            "has_tool_calling": False,
-            "has_multi_turn_tool_calls": False,
-            "max_token_length": 0,
-            "avg_input_chars": 0,
-            "avg_output_chars": 0,
-        }
-    in_col = "messages" if "messages" in df.columns else "input" if "input" in df.columns else None
-    out_col = "expected_output" if "expected_output" in df.columns else None
+    return stats_rows(df.to_dict(orient="records"), set(df.columns))
+
+
+def stats_rows(records, columns) -> dict[str, Any]:
+    n = 0
+    in_col = "messages" if "messages" in columns else "input" if "input" in columns else None
+    out_col = "expected_output" if "expected_output" in columns else None
     total_in = total_out = max_tokens = 0
     tool_calling = multi_turn = False
-    ins = df[in_col].tolist() if in_col else [None] * n
-    outs = df[out_col].tolist() if out_col else [None] * n
-    for raw_in, raw_out in zip(ins, outs, strict=True):
-        inp = _as_obj(raw_in)
-        out = _as_obj(raw_out)
+    if "decision" in columns:
+        in_col = "decision"
+    for record in records:
+        n += 1
+        inp = _as_obj(record.get(in_col))
+        out = _as_obj(record.get(out_col))
         in_str = (
             "" if _missing(inp) else inp if isinstance(inp, str) else json.dumps(inp, default=str)
         )
@@ -303,8 +355,8 @@ def stats(df: pd.DataFrame) -> dict[str, Any]:
         "has_tool_calling": tool_calling,
         "has_multi_turn_tool_calls": multi_turn,
         "max_token_length": max_tokens,
-        "avg_input_chars": round(total_in / n),
-        "avg_output_chars": round(total_out / n),
+        "avg_input_chars": round(total_in / n) if n else 0,
+        "avg_output_chars": round(total_out / n) if n else 0,
     }
 
 

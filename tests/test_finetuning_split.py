@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import uuid
+import weakref
 from types import SimpleNamespace
 
+from overbae.services.datasets.rows import DatasetRow
 from overbae.services.finetuning_split import split_datapoint_ids
 
 
@@ -79,3 +81,18 @@ def test_training_split_keeps_reviewed_duplicate_rows():
     assert len(train) + len(validation) == 3
     assert ({0, 1} <= set(train)) or ({0, 1} <= set(validation))
     assert not any("duplicates removed" in warning for warning in warnings)
+
+
+def test_split_does_not_retain_large_input_rows():
+    references = []
+
+    def rows():
+        for index in range(30):
+            assert sum(reference() is not None for reference in references) <= 2
+            row = DatasetRow(index=index, input=str(index) + " evidence" * 1000)
+            references.append(weakref.ref(row))
+            yield row
+
+    training, validation, _ = split_datapoint_ids(rows(), 0.2, method="ordered")
+    assert training == [str(i) for i in range(24)]
+    assert validation == [str(i) for i in range(24, 30)]

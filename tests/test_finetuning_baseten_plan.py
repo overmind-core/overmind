@@ -10,6 +10,7 @@ from overbae.services.finetuning_policy import (
     qlora_learning_rate,
     should_pack,
 )
+from overbae.services.finetuning_runner import ModalRunner
 from overbae.services.recommendation.hyperparams import compute_hyperparams
 
 
@@ -50,6 +51,29 @@ class TestGapFill:
 
 
 class TestExplicitValuesWin:
+    def test_native_effective_batch_uses_length_budget_instead_of_chat_batch_ceiling(self):
+        plan = _plan(
+            hyperparameters={
+                "objective": "decision_cross_entropy",
+                "batch_size": 128,
+                "context_length": 32768,
+            },
+            num_train_examples=1_164_217,
+            params_b=4,
+            hidden_size=2560,
+            model_max_batch=16,
+        )
+        assert plan.batch_size == 128
+        assert plan.per_device_batch * plan.grad_accum == 128
+        assert plan.per_device_batch == 64
+        assert plan.token_budget == 32768
+        env = ModalRunner._training_env(plan, "Qwen/Qwen3.5-4B")
+        assert env["PADDED_TOKEN_BUDGET"] == "32768"
+
+    def test_experiment_seed_reaches_worker_environment(self):
+        plan = _plan(hyperparameters={"seed": 73491})
+        assert ModalRunner._training_env(plan, "Qwen/Qwen3-8B")["SEED"] == "73491"
+
     def test_user_hyperparameters_pass_through_verbatim(self):
         plan = _plan(
             hyperparameters={
@@ -218,6 +242,18 @@ class TestPacking:
         )
         assert packed.packing is True
         assert unpacked.packing is False
+
+    def test_native_decisions_keep_independent_sequence_boundaries(self):
+        plan = _plan(
+            hyperparameters={"objective": "decision_cross_entropy", "packing": False},
+            num_train_examples=5000,
+            dataset_stats={
+                "max_token_length": 900,
+                "avg_input_chars": 600,
+                "avg_output_chars": 300,
+            },
+        )
+        assert plan.packing is False
 
     def test_gemma4_never_packs(self):
         # flex_attention + GC-off OOMs when packing fills steps to MAX_LENGTH.

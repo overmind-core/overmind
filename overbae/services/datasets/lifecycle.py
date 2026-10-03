@@ -125,6 +125,8 @@ def edit_cell(
         fields["script"] = script
         fields["review"] = {}
         fields["quality_report"] = {}
+        fields["preparation_plan"] = {}
+        dataset.cells.filter(position__gt=cell.position).update(preparation_plan={})
         if cell.state != Cell.State.PROPOSED:
             fields["state"] = Cell.State.QUEUED
             fields["error"] = ""

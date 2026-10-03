@@ -46,6 +46,7 @@ class Dataset(models.Model):
     # [{capability_id, name, score, reason}] best first, computed at landing.
     capability_rank = models.JSONField(default=list, blank=True)
     intent = models.CharField(max_length=8, choices=Intent.choices, default=Intent.PENDING)
+    preparation_plan = models.JSONField(default=dict, blank=True)
     # The cell consumers read; null means the last cell that ran.
     active = models.ForeignKey(
         "overbae.Cell", on_delete=models.SET_NULL, related_name="+", null=True, blank=True
@@ -153,6 +154,7 @@ class Cell(models.Model):
     stats = models.JSONField(default=dict, blank=True)
     review = models.JSONField(default=dict, blank=True)
     quality_report = models.JSONField(default=dict, blank=True)
+    preparation_plan = models.JSONField(default=dict, blank=True)
     seconds = models.FloatField(default=0.0)
     used_at = models.DateTimeField(null=True, blank=True)
     created_by = models.ForeignKey(

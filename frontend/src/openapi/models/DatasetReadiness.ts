@@ -21,6 +21,12 @@ import { mapValues } from '../runtime';
 export interface DatasetReadiness {
     /**
      *
+     * @type {{ [key: string]: string; }}
+     * @memberof DatasetReadiness
+     */
+    assessment: { [key: string]: string; };
+    /**
+     *
      * @type {boolean}
      * @memberof DatasetReadiness
      */
@@ -57,10 +63,24 @@ export interface DatasetReadiness {
     trainingConfiguration: string;
 }
 
+
+/**
+ * @export
+ */
+export const DatasetReadinessAssessmentEnum = {
+    pass: 'pass',
+    fail: 'fail',
+    partial: 'partial',
+    unknown: 'unknown'
+} as const;
+export type DatasetReadinessAssessmentEnum = typeof DatasetReadinessAssessmentEnum[keyof typeof DatasetReadinessAssessmentEnum];
+
+
 /**
  * Check if a given object implements the DatasetReadiness interface.
  */
 export function instanceOfDatasetReadiness(value: object): value is DatasetReadiness {
+    if (!('assessment' in value) || value['assessment'] === undefined) return false;
     if (!('formatValid' in value) || value['formatValid'] === undefined) return false;
     if (!('formatReason' in value) || value['formatReason'] === undefined) return false;
     if (!('qualityReviewed' in value) || value['qualityReviewed'] === undefined) return false;
@@ -80,6 +100,7 @@ export function DatasetReadinessFromJSONTyped(json: any, ignoreDiscriminator: bo
     }
     return {
 
+        'assessment': json['assessment'],
         'formatValid': json['format_valid'],
         'formatReason': json['format_reason'],
         'qualityReviewed': json['quality_reviewed'],
@@ -100,6 +121,7 @@ export function DatasetReadinessToJSONTyped(value?: DatasetReadiness | null, ign
 
     return {
 
+        'assessment': value['assessment'],
         'format_valid': value['formatValid'],
         'format_reason': value['formatReason'],
         'quality_reviewed': value['qualityReviewed'],

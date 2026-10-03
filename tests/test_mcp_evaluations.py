@@ -8,6 +8,7 @@ from types import SimpleNamespace
 import pytest
 from conftest import review_fixture
 from mcp.shared.exceptions import McpError
+from rest_framework.test import APIClient
 
 from overbae.models import (
     Annotation,
@@ -25,7 +26,8 @@ from overbae.models import (
     ProjectMembership,
     User,
 )
-from overbae.services.datasets import paths, store
+from overbae.services.datasets import land, paths, store
+from overbae.services.datasets.notebook import agent
 from overbae.services.mcp.catalog import CATALOG
 from overbae.services.mcp.context import MCPContext, bind_context
 from overbae.services.mcp.resources import read_resource
@@ -225,6 +227,64 @@ def test_readiness_rejects_non_eval_dataset_clearly():
     error = result.structuredContent["error"]
     assert error["code"] == "dataset_intent_mismatch"
     assert "eval dataset" in error["message"]
+
+
+def test_native_workshop_dataset_rejects_chat_generation_in_rest_and_mcp(
+    settings, tmp_path, monkeypatch
+):
+    settings.MEDIA_ROOT = tmp_path / "media"
+    context = _context(permission=["read", "write"])
+    dataset = Dataset.objects.create(project=context.project, name="Native", intent="eval")
+    land.land_rows(
+        dataset,
+        [{"state": "", "question": "Choose", "kind": "noul", "options": [], "target": [0.7]}],
+    )
+    result = agent.Tools(dataset.pk, context.user, lambda _: None).prepare_examples({})
+    assert result["ok"], result
+    dataset.refresh_from_db()
+    cell = dataset.active_cell
+    assert cell.intent_report["eval"]["ok"]
+    readiness = _call(
+        "check_evaluation_readiness",
+        {"dataset": str(dataset.pk), "cell": str(cell.pk), "mode": "generate"},
+        context,
+    ).structuredContent
+    assert readiness["ready"] is False
+    assert readiness["dataset"]["cell"]["fits"] is False
+    assert "native probability" in readiness["dataset"]["cell"]["reason"]
+    evaluator = Evaluator.objects.create(
+        project=context.project, name="Match", kind="deterministic"
+    )
+    monkeypatch.setattr("overbae.api.eval_serializers.is_model_available", lambda _: True)
+    monkeypatch.setattr("overbae.api.credit_gate.require_credits", lambda _: None)
+    monkeypatch.setattr(
+        "overbae.tasks.eval.run_eval_run.apply_async",
+        lambda **_: pytest.fail("Native probabilities must not be sent to chat generation"),
+    )
+    payload = {
+        "name": "Native benchmark",
+        "dataset": str(dataset.pk),
+        "cell": str(cell.pk),
+        "evaluator_ids": [str(evaluator.pk)],
+        "variants": [{"mode": "generate", "model_name": "gpt-4.1", "label": "Candidate"}],
+    }
+    rejected = _call("run_evaluation", payload, context)
+    assert rejected.isError
+    assert rejected.structuredContent["error"]["code"] == "evaluation_not_ready"
+    client = APIClient()
+    client.force_authenticate(user=context.user)
+    response = client.post(
+        "/api/eval-runs/",
+        {
+            **{k: v for k, v in payload.items() if k != "variants"},
+            "project": str(context.project.pk),
+            "variants_input": payload["variants"],
+        },
+        format="json",
+    )
+    assert response.status_code == 400, response.data
+    assert "native probability" in str(response.data)
+    assert not EvalRun.objects.filter(dataset=dataset).exists()
 
 
 def test_upsert_uses_evaluator_spec_validation_and_sanitizes_text():

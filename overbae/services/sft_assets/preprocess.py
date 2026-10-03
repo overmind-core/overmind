@@ -6,18 +6,53 @@ import hashlib
 import json
 from pathlib import Path
 
+from modal_shared.decisions import DECISION_OBJECTIVE, RENDERER, DecisionTokenizer, codebook
 from modal_shared.preparation import preparation_failure, processor_fingerprint
-from modal_shared.training_data import row_key
+from modal_shared.training_data import file_digest, row_key
 
 
-def preprocess_rows(rows, tokenizer, model_id, context_length, tokenize):
+def preprocess_rows(
+    rows, tokenizer, model_id, context_length, tokenize, *, objective=None, output=None
+):
     artifacts = []
     issues = []
     previews = []
+    book = codebook(tokenizer) if objective == DECISION_OBJECTIVE else None
+    encoder = DecisionTokenizer(tokenizer, book) if book is not None else None
     total_tokens = supervised_tokens = longest = incompatible = 0
+    count = accepted = 0
+
+    def emit(artifact):
+        if output is None:
+            artifacts.append(artifact)
+        else:
+            output.write(json.dumps(artifact) + "\n")
+
     for index, row in enumerate(rows):
+        count += 1
         identity = row.get("source_row", index)
         try:
+            if book is not None:
+                result = encoder.training_row(row)
+                ids = result["input_ids"]
+                total_tokens += len(ids)
+                supervised_tokens += 1
+                longest = max(longest, len(ids))
+                if len(ids) > context_length:
+                    raise ValueError(f"{len(ids)} tokens exceeds context length {context_length}")
+                emit({"key": row_key(row), **result})
+                accepted += 1
+                if len(previews) < 3:
+                    previews.append(
+                        {
+                            "row": identity,
+                            "cell": row.get("cell"),
+                            "tokens": len(ids),
+                            "decision_options": len(result["option_token_ids"]),
+                            "target_probabilities": result["target_probabilities"],
+                        }
+                    )
+                continue
             result = tokenize(tokenizer, model_id, row.get("messages"), row.get("tools"))
             ids, labels = result["input_ids"], result["labels"]
             supervised = sum(label != -100 for label in labels[1:])
@@ -30,7 +65,8 @@ def preprocess_rows(rows, tokenizer, model_id, context_length, tokenize):
                 raise ValueError("No supervised next-token targets")
             if len(ids) > context_length:
                 raise ValueError(f"{len(ids)} tokens exceeds context length {context_length}")
-            artifacts.append({"key": row_key(row), "input_ids": ids, "labels": labels})
+            emit({"key": row_key(row), "input_ids": ids, "labels": labels})
+            accepted += 1
             if len(previews) < 3:
                 spans = []
                 current = []
@@ -57,8 +93,8 @@ def preprocess_rows(rows, tokenizer, model_id, context_length, tokenize):
             if len(issues) < 100:
                 issues.append({"row": identity, "cell": row.get("cell"), "reason": str(exc)[:500]})
     report = {
-        "ready": bool(artifacts) and incompatible == 0,
-        "rows": len(rows),
+        "ready": bool(accepted) and incompatible == 0,
+        "rows": count,
         "tokens": total_tokens,
         "supervised_tokens": supervised_tokens,
         "max_tokens": longest,
@@ -66,6 +102,8 @@ def preprocess_rows(rows, tokenizer, model_id, context_length, tokenize):
         "issues": issues,
         "previews": previews,
     }
+    if book is not None:
+        report.update(objective=DECISION_OBJECTIVE, renderer=RENDERER, codebook=book)
     return artifacts, report
 
 
@@ -86,9 +124,20 @@ def run(request_path: Path, output_dir: Path, load_tokenizer, tokenize):
     if tokenizer.pad_token is None:
         tokenizer.pad_token = tokenizer.eos_token
     serving_template = tokenizer.chat_template
-    artifacts, report = preprocess_rows(
-        request["rows"], tokenizer, request["tokenizer_model"], request["context_length"], tokenize
-    )
+    tokens_path = output_dir / "tokens.jsonl"
+    source_path = request["rows_path"]
+    if file_digest(source_path) != request["rows_sha256"]:
+        raise ValueError("The preparation input changed.")
+    with tokens_path.open("w") as target, Path(source_path).open() as source:
+        _, report = preprocess_rows(
+            (json.loads(line) for line in source),
+            tokenizer,
+            request["tokenizer_model"],
+            request["context_length"],
+            tokenize,
+            objective=request.get("objective"),
+            output=target,
+        )
     report["vocab_fingerprint"] = hashlib.sha256(
         json.dumps(tokenizer.get_vocab(), sort_keys=True).encode()
     ).hexdigest()
@@ -97,12 +146,9 @@ def run(request_path: Path, output_dir: Path, load_tokenizer, tokenize):
     report["tokenizer_revision"] = tokenizer.init_kwargs.get("_commit_hash")
     report["context_length"] = request["context_length"]
     if report["ready"]:
-        with (output_dir / "tokens.jsonl").open("w") as target:
-            for artifact in artifacts:
-                target.write(json.dumps(artifact) + "\n")
-        report["artifact_sha256"] = hashlib.sha256(
-            (output_dir / "tokens.jsonl").read_bytes()
-        ).hexdigest()
+        report["artifact_sha256"] = file_digest(tokens_path)
         tokenizer.chat_template = serving_template
         tokenizer.save_pretrained(output_dir / "tokenizer")
+    else:
+        tokens_path.unlink(missing_ok=True)
     (output_dir / "report.json").write_text(json.dumps(report))

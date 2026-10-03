@@ -2,6 +2,7 @@
 
     Together: cost = trained_tokens × price_per_million / 1e6
     Baseten:  cost = GPU count × billed minutes × per-GPU-minute rate
+    Modal:    cost = GPU count × estimated seconds × per-GPU-second rate
     trained_tokens = dataset_tokens × n_epochs
 
 Where no published rate exists the cost is an honest ``None``, never a fabricated
@@ -29,6 +30,9 @@ _TOGETHER_MIN_CHARGE_USD = 4.00
 # training per GPU-minute of active compute (H100 80GB = $0.10833/min) — there is
 # no per-token rate, so cost = GPU count × minutes × rate.
 _BASETEN_H100_USD_PER_MIN = 0.10833
+# Source: https://modal.com/pricing (retrieved 2026-10-02). GPU compute only;
+# CPU, host memory, storage and provider rate multipliers are additional.
+_MODAL_H100_USD_PER_SECOND = 0.001097
 # Mirrors BasetenRunner._GPU_TABLE (finetuning_runner.py): LoRA SFT on
 # (max_params_b, gpu_count) H100s. ≤72B is 1× via QLoRA.
 _BASETEN_GPU_COUNT_TIERS: list[tuple[float, int]] = [
@@ -88,18 +92,20 @@ def estimate_training_cost(
     dataset tokens × epochs — the quantity providers bill.
     """
     if backend in ("baseten", "modal"):
-        # Modal's per-second H100 rate differs slightly from Baseten's; this stays a
-        # same-order-of-magnitude wizard estimate, not a billing reconciliation
-        # (Modal has no cost-sync job, unlike Baseten's baseten_billing_sync).
         if trained_tokens <= 0:
             return None
         gpu_count = _baseten_gpu_count(total_params_b)
         time_s = estimate_training_time_s(
             trained_tokens, total_params_b=total_params_b, use_lora=use_lora
         )
-        billed_minutes = math.ceil(time_s / 60)
+        billed_minutes = time_s / 60 if backend == "modal" else math.ceil(time_s / 60)
+        gpu_cost = (
+            time_s * _MODAL_H100_USD_PER_SECOND
+            if backend == "modal"
+            else billed_minutes * _BASETEN_H100_USD_PER_MIN
+        )
         return {
-            "usd": round(billed_minutes * gpu_count * _BASETEN_H100_USD_PER_MIN, 4),
+            "usd": round(gpu_cost * gpu_count, 4),
             "price_per_million_usd": None,
             "trained_tokens": trained_tokens,
             "minimum_applied": False,

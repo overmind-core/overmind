@@ -3,6 +3,7 @@ from copy import deepcopy
 
 import pandas as pd
 import pytest
+from conftest import plan_fixture
 
 from overbae.models import Dataset, Project
 from overbae.services.datasets import contract, land, lifecycle, review, rows, store
@@ -134,11 +135,13 @@ def test_replacing_existing_instructions_requires_review_even_if_claimed_mechani
     land.land_rows(dataset, records.to_dict(orient="records"))
     dataset.refresh_from_db()
     tools = agent.Tools(dataset.id, None, lambda _: None)
+    plan_fixture(dataset)
     tools.automatic = automatic
     column = "messages" if intent == "train" else "input"
     transcript = "value" if intent == "train" else 'value["messages"]'
     result = tools.add_cell(
         {
+            "plan_step": "prepare",
             "title": "Replace instructions",
             "kind": "mechanical",
             "run": True,
@@ -169,7 +172,7 @@ def test_edit_and_upstream_rerun_cannot_silently_replace_instructions():
     first = tools.add_cell({"title": "Keep source", "script": "df['coverage'] = 'source'"})
     last = tools.add_cell({"title": "Keep task", "script": "df['coverage'] = 'task'"})
     rewrite = 'df["messages"].iloc[0][0]["content"] = "Different task"'
-    edited = tools.edit_cell({"id": last["id"], "script": rewrite})
+    edited = tools.edit_cell({"version": last["id"], "script": rewrite})
     assert not edited["ok"] and "instruction changes" in edited["error"]
     shaped = dataset.cells.get(pk=first["id"])
     kept = dataset.cells.get(pk=last["id"])
@@ -179,3 +182,44 @@ def test_edit_and_upstream_rerun_cannot_silently_replace_instructions():
     notebook_run.execute(dataset)
     kept.refresh_from_db()
     assert kept.state == "failed" and "task instructions" in kept.error
+
+
+def test_decision_profiles_count_raw_and_native_targets_and_source_families():
+    raw = {
+        "state": "evidence",
+        "question": "Choose",
+        "kind": "noul",
+        "options": [],
+        "target": [0.7],
+        "source": "first",
+    }
+    native = {
+        "source": "second",
+        "decision": {
+            "state": "evidence",
+            "question": "Choose",
+            "kind": "choice",
+            "options": ["A", "B"],
+            "target_probabilities": [0.2, 0.8],
+        },
+    }
+    profile = profile_records([raw, native])
+    assert profile["counts"]["without_target"] == 0
+    assert len(profile["families"]) == 2
+    assert {f["task_labels"]["source"] for f in profile["families"]} == {"first", "second"}
+    assert all("state" in f["input_shape"] for f in profile["families"])
+
+
+@pytest.mark.django_db
+def test_workshop_context_uses_profile_measured_for_the_frozen_frame(monkeypatch):
+    from overbae.services.datasets import context
+
+    project = Project.objects.create(name="Cached profile", slug="cached-profile")
+    dataset = Dataset.objects.create(project=project, name="Cached", intent="train")
+    land.land_rows(dataset, [example(), example("Second task")])
+    monkeypatch.setattr(
+        context, "profile_records", lambda *a: pytest.fail("Re-scanned immutable frame")
+    )
+    profile = context.workshop_context(dataset)["profiles"]["source"]
+    assert profile["rows_scanned"] == 2 and len(profile["families"]) == 2
+    assert profile["fingerprint"] == dataset.source.fingerprint

@@ -289,6 +289,7 @@ describe("SetupPanel", () => {
   });
   it("keeps workshop review recommendations out of training setup", () => {
     const readiness = {
+      assessment: {},
       formatReason: "",
       formatValid: true,
       qualityPassed: false,

@@ -65,6 +65,27 @@ def test_create_dataset_with_two_source_keys_raises():
         )
 
 
+def test_redelivered_landing_fails_both_split_datasets_without_reading_the_source():
+    project = _project()
+    train = _dataset(project, state=Dataset.State.LANDING)
+    evaluation = _dataset(project, state=Dataset.State.LANDING)
+    land_task.push_request(delivery_info={"redelivered": True})
+    try:
+        result = land_task.run(
+            dataset_id=str(train.id),
+            source={"rows": [{"question": "one"}, {"question": "two"}]},
+            split={"eval_dataset_id": str(evaluation.id), "eval_percent": 50, "position": "head"},
+        )
+    finally:
+        land_task.pop_request()
+    assert result["status"] == "failed"
+    for dataset in (train, evaluation):
+        dataset.refresh_from_db()
+        assert dataset.state == Dataset.State.ERROR
+        assert "interrupted" in dataset.error
+        assert dataset.source is None
+
+
 def test_message_agent_on_idle_becomes_diagnosing_and_queues_one_turn(monkeypatch):
     project, user = _project(), _user()
     dataset = _dataset(project)

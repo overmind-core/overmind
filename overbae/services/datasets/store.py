@@ -12,6 +12,10 @@ import datetime as dt
 import hashlib
 import json
 import math
+import pickle
+import tempfile
+from collections.abc import Iterable
+from itertools import batched
 from pathlib import Path
 from typing import Any
 
@@ -128,17 +132,34 @@ def _infer_kind(values: list[Any]) -> str:
     return "string"
 
 
-def infer_manifest(rows: list[dict[str, Any]]) -> list[dict[str, str]]:
-    """Column order = first appearance across rows."""
-    names: list[str] = []
-    seen: set[str] = set()
+def infer_manifest(rows: Iterable[dict[str, Any]]) -> list[dict[str, str]]:
+    builder = ManifestBuilder()
     for row in rows:
-        for key in row:
-            key = str(key)
-            if key not in seen:
-                seen.add(key)
-                names.append(key)
-    return [{"name": name, "type": _infer_kind([row.get(name) for row in rows])} for name in names]
+        builder.add(row)
+    return builder.manifest()
+
+
+class ManifestBuilder:
+    def __init__(self):
+        self.kinds = {}
+
+    def add(self, row):
+        for name, value in row.items():
+            kinds = self.kinds.setdefault(str(name), set())
+            if not _is_missing(value):
+                kinds.add(_infer_kind([value]))
+
+    def manifest(self):
+        result = []
+        for name, kinds in self.kinds.items():
+            if "json" in kinds:
+                kind = "json"
+            elif kinds and kinds <= {"integer", "number"}:
+                kind = "number" if "number" in kinds else "integer"
+            else:
+                kind = next(iter(kinds)) if len(kinds) == 1 else "string"
+            result.append({"name": name, "type": kind})
+        return result
 
 
 def manifest_from_frame(df: pd.DataFrame) -> list[dict[str, str]]:
@@ -172,11 +193,33 @@ def _table_from_columns(columns: dict[str, list[Any]], manifest: list[dict[str, 
 
 
 def write_rows(
-    path: Path, rows: list[dict[str, Any]], manifest: list[dict[str, str]] | None = None
+    path: Path, rows: Iterable[dict[str, Any]], manifest: list[dict[str, str]] | None = None
 ) -> list[dict[str, str]]:
-    manifest = manifest or infer_manifest(rows)
-    columns = {spec["name"]: [row.get(spec["name"]) for row in rows] for spec in manifest}
-    _write_table(path, _table_from_columns(columns, manifest))
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = path.with_suffix(".parquet.tmp")
+    # Infer over every row before writing Arrow's fixed schema, without retaining the corpus.
+    with tempfile.TemporaryFile(dir=path.parent) as spool:
+        builder = ManifestBuilder()
+        for batch in batched(rows, ROW_GROUP_SIZE, strict=False):
+            if manifest is None:
+                for row in batch:
+                    builder.add(row)
+            pickle.dump([dict(row) for row in batch], spool, protocol=pickle.HIGHEST_PROTOCOL)
+        manifest = manifest if manifest is not None else builder.manifest()
+        schema = _table_from_columns({c["name"]: [] for c in manifest}, manifest).schema
+        spool.seek(0)
+        try:
+            with pq.ParquetWriter(temporary, schema, compression="zstd") as writer:
+                while True:
+                    try:
+                        batch = pickle.load(spool)  # noqa: S301 — private spool written above
+                    except EOFError:
+                        break
+                    columns = {c["name"]: [r.get(c["name"]) for r in batch] for c in manifest}
+                    writer.write_table(_table_from_columns(columns, manifest))
+            temporary.replace(path)
+        finally:
+            temporary.unlink(missing_ok=True)
     return manifest
 
 
@@ -272,15 +315,33 @@ def iter_rows(path: Path, batch_size: int = ROW_GROUP_SIZE):
             yield {k: _decode(v, kinds.get(k, "string")) for k, v in record.items()}
 
 
+def iter_frames(path: Path, batch_size: int = ROW_GROUP_SIZE):
+    columns = [c["name"] for c in read_manifest(path)]
+    for batch in batched(iter_rows(path, batch_size), batch_size, strict=False):
+        yield pd.DataFrame.from_records(batch, columns=columns)
+
+
 def read_rows(path: Path, indices: list[int]) -> list[dict[str, Any]]:
     """Rows by position; the store has no other row identity."""
     if not indices:
         return []
     manifest = read_manifest(path)
     kinds = {spec["name"]: spec["type"] for spec in manifest}
-    table = pq.read_table(path)
-    wanted = [i for i in indices if 0 <= i < table.num_rows]
-    picked = table.take(pa.array(wanted, type=pa.int64())).to_pylist()
+    parquet = pq.ParquetFile(path)
+    wanted = {i for i in indices if 0 <= i < parquet.metadata.num_rows}
+    picked = {}
+    offset = 0
+    for group in range(parquet.num_row_groups):
+        count = parquet.metadata.row_group(group).num_rows
+        selected = sorted(i for i in wanted if offset <= i < offset + count)
+        if selected:
+            table = parquet.read_row_group(group)
+            records = table.take(
+                pa.array([i - offset for i in selected], type=pa.int64())
+            ).to_pylist()
+            picked.update(zip(selected, records, strict=True))
+        offset += count
+    picked = [picked[i] for i in indices if i in picked]
     return [{k: _decode(v, kinds.get(k, "string")) for k, v in rec.items()} for rec in picked]
 
 
@@ -300,11 +361,25 @@ def head(path: Path, n: int) -> list[dict[str, Any]]:
 
 def connect(**tables: Path) -> duckdb.DuckDBPyConnection:
     """An in-memory connection with each ``name=path`` registered as a view."""
-    con = duckdb.connect()
+    con = duckdb.connect(config={"memory_limit": "512MB", "threads": 2})
     for name, path in tables.items():
         literal = str(path).replace("'", "''")
         con.execute(f"CREATE VIEW \"{name}\" AS SELECT * FROM read_parquet('{literal}')")
     return con
+
+
+def null_rates(path):
+    names = [column["name"] for column in read_manifest(path)]
+    if not names:
+        return {}
+    expressions = [
+        f"avg(CASE WHEN {_quote(name)} IS NULL OR CAST({_quote(name)} AS VARCHAR) = '' "
+        "THEN 1.0 ELSE 0.0 END)"
+        for name in names
+    ]
+    with connect(t=path) as con:
+        values = con.execute("SELECT " + ", ".join(expressions) + ' FROM "t"').fetchone()
+    return dict(zip(names, (float(value or 0) for value in values), strict=True))
 
 
 def _quote(name: str) -> str:
@@ -443,12 +518,21 @@ def column_stats(path: Path, *, top: int = 5) -> list[dict[str, Any]]:
 
 
 def connect_sandboxed(**tables: Path) -> duckdb.DuckDBPyConnection:
-    """For user-written SQL: tables are loaded up front so file access can be
-    switched off before the statement runs."""
-    con = duckdb.connect()
-    for name, path in tables.items():
-        con.register(name, pq.read_table(path))
+    con = duckdb.connect(
+        config={
+            "memory_limit": "512MB",
+            "threads": 2,
+            "autoinstall_known_extensions": False,
+            "autoload_known_extensions": False,
+            "allow_community_extensions": False,
+        }
+    )
+    con.execute("SET allowed_paths = ?", [[str(path.resolve()) for path in tables.values()]])
     con.execute("SET enable_external_access = false")
+    con.execute("SET lock_configuration = true")
+    for name, path in tables.items():
+        literal = str(path.resolve()).replace("'", "''")
+        con.execute(f"CREATE VIEW {_quote(name)} AS SELECT * FROM read_parquet('{literal}')")
     return con
 
 
@@ -457,6 +541,9 @@ def query(sql: str, *, limit: int | None = 200, **tables: Path) -> dict[str, Any
     con = connect_sandboxed(**tables)
     sql = sql.strip().rstrip(";").strip()
     try:
+        statements = con.extract_statements(sql)
+        if len(statements) != 1 or statements[0].type != duckdb.StatementType.SELECT:
+            raise StoreError("Only one read-only SELECT query is allowed.")
         cur = con.execute(f"SELECT * FROM ({sql}) LIMIT {int(limit)}" if limit else sql)
         cols = [d[0] for d in cur.description]
         rows = _records(cur)

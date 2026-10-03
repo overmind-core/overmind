@@ -5,17 +5,14 @@ bound a runaway script, not an attacker."""
 from __future__ import annotations
 
 import ast
-import json
 import os
 import subprocess
 import sys
 import tempfile
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
-import pandas as pd
-
-from overbae.services.datasets import examples, store
+from overbae.services.datasets import examples, sampling, store
 from overbae.services.datasets.notebook import libraries
 
 _FORBIDDEN_CALLS = frozenset(
@@ -35,8 +32,8 @@ _FORBIDDEN_ATTRS = frozenset(
         "fork",
     }
 )
-CPU_SECONDS = 120
-WALL_SECONDS = 300
+CPU_SECONDS = 900
+WALL_SECONDS = 1100
 _ADDRESS_SPACE_BYTES = 6 * 1024**3
 _FILE_SIZE_BYTES = 2 * 1024**3
 _TAIL_CHARS = 1200
@@ -45,10 +42,15 @@ _INSPECT_TAIL_CHARS = 4000
 
 @dataclass
 class CellResult:
-    frame: pd.DataFrame | None
+    path: Path | None
     error: str = ""
     stdout: str = ""
     ok: bool = False
+    workspace: tempfile.TemporaryDirectory | None = field(default=None, repr=False)
+
+    @property
+    def frame(self):
+        return store.read_frame(self.path) if self.path is not None else None
 
 
 def audit(script: str, allowed: frozenset[str]) -> list[str]:
@@ -91,103 +93,6 @@ for _limit, _ceiling in (
 """
 
 
-_RUNNER = """\
-import json, math, sys, traceback, runpy
-extra = sys.argv[6] if len(sys.argv) > 6 else ""
-if extra:
-    sys.path.insert(0, extra)
-import pandas as pd
-import numpy as np
-
-script_path, in_path, out_path, kinds_path, mode = sys.argv[1:6]
-src = pd.read_parquet(in_path)
-kinds = json.load(open(kinds_path, encoding="utf-8"))
-for col, kind in kinds.items():
-    if kind == "json" and col in src.columns:
-        src[col] = src[col].map(lambda v: json.loads(v) if isinstance(v, str) else v)
-ns = {"pd": pd, "pandas": pd, "np": np, "numpy": np, "source": src, "df": src.copy()}
-ns["prepare_examples"] = runpy.run_path(sys.argv[7])["prepare_examples"]
-with open(script_path, encoding="utf-8") as fh:
-    code = fh.read()
-# The frames are the only files a cell touches: pandas and numpy IO is off.
-_write_parquet = pd.DataFrame.to_parquet
-def _blocked(*_a, **_k):
-    raise RuntimeError("File and network IO is not available in a cell.")
-for _name in [n for n in dir(pd) if n.startswith("read_")]:
-    setattr(pd, _name, _blocked)
-for _name in [n for n in dir(pd.DataFrame) if n.startswith("to_") and n not in ("to_dict", "to_records", "to_numpy", "to_string", "to_period", "to_timestamp", "to_xarray", "to_frame", "to_list")]:
-    setattr(pd.DataFrame, _name, _blocked)
-    if hasattr(pd.Series, _name):
-        setattr(pd.Series, _name, _blocked)
-for _name in ("load", "save", "savez", "savez_compressed", "savetxt", "loadtxt", "fromfile", "genfromtxt"):
-    setattr(np, _name, _blocked)
-try:
-    exec(compile(code, "<cell>", "exec"), ns, ns)
-except Exception:
-    tb = traceback.format_exc().splitlines()
-    keep = [
-        line for line in tb
-        if ("<cell>" in line or not line.startswith("  File")) and line.strip("~^ ")
-    ]
-    sys.stderr.write("\\n".join(keep[-12:]))
-    raise SystemExit(3)
-if mode == "inspect":
-    raise SystemExit(0)
-df = ns.get("df")
-if df is None:
-    raise SystemExit("The cell must leave a frame in df.")
-if isinstance(df, pd.Series):
-    df = df.to_frame()
-if not isinstance(df, pd.DataFrame):
-    raise SystemExit(f"df must be a pandas DataFrame, got {type(df).__name__}.")
-df = df.copy()
-if isinstance(df.columns, pd.MultiIndex):
-    raise SystemExit("df has two levels of column names. Flatten them to one name per column.")
-# A named index holds data (set_index, groupby); an unnamed one is only row labels.
-named = [n for n in df.index.names if n is not None]
-# Row identity survives a script that dropped the column but kept the index:
-# same rows in the same order, or a filter that kept the original labels. A
-# fresh RangeIndex after a reshape carries no identity.
-if "source_row" not in df.columns and "source_row" in src.columns:
-    fresh = df.index.equals(pd.RangeIndex(len(df)))
-    if df.index.isin(src.index).all() and (not fresh or len(df) == len(src)):
-        df.insert(0, "source_row", src.loc[df.index, "source_row"].values)
-df = df.reset_index(drop=not named)
-df.columns = [str(c) for c in df.columns]
-repeated = sorted({c for c in df.columns if list(df.columns).count(c) > 1})
-if repeated:
-    raise SystemExit(f"df has more than one column named {repeated[0]!r}. Rename or drop one.")
-if "source_row" in df.columns:
-    df["source_row"] = pd.to_numeric(df["source_row"], errors="coerce").astype("Int64")
-# A NaN nested in a container must become null; json.dumps would write a bare NaN token.
-def _finite(v):
-    if isinstance(v, (float, np.floating)):
-        return float(v) if math.isfinite(v) else None
-    if isinstance(v, dict):
-        return {k: _finite(x) for k, x in v.items()}
-    if isinstance(v, (list, tuple)):
-        return [_finite(x) for x in v]
-    return v
-
-def _as_json(v):
-    return json.dumps(_finite(v), ensure_ascii=False, default=str, sort_keys=True, allow_nan=False)
-
-out_kinds = {}
-for col in df.columns:
-    s = df[col]
-    if s.dtype == object and not s.dropna().empty and s.dropna().map(lambda v: isinstance(v, (bool, np.bool_))).all():
-        df[col] = s.astype("boolean")
-    elif s.dtype == object and s.map(lambda v: isinstance(v, (dict, list, tuple))).any():
-        df[col] = s.map(lambda v: _as_json(v) if isinstance(v, (dict, list, tuple)) else (None if v is None or (isinstance(v, float) and v != v) else _as_json(v)))
-        out_kinds[col] = "json"
-    elif s.dtype == object:
-        df[col] = s.map(lambda v: None if v is None or (isinstance(v, float) and v != v) else str(v) if not isinstance(v, str) else v)
-        out_kinds[col] = "string"
-_write_parquet(df, out_path, index=False)
-json.dump(out_kinds, open(out_path + ".kinds", "w", encoding="utf-8"))
-"""
-
-
 def run(
     script: str, source: Path, *, library_cache: Path, produce_frame: bool = True
 ) -> CellResult:
@@ -197,27 +102,28 @@ def run(
     violations = audit(script, libraries.allowed_imports(library_cache))
     if violations:
         return CellResult(None, error="; ".join(violations[:5]))
-    with tempfile.TemporaryDirectory(prefix="cell_") as tmp:
-        tmp_path = Path(tmp)
-        script_path = tmp_path / "cell.py"
-        runner_path = tmp_path / "_runner.py"
-        kinds_path = tmp_path / "in.kinds"
-        out_path = tmp_path / "out.parquet"
-        script_path.write_text(script, encoding="utf-8")
-        runner_path.write_text(_LIMITS + _RUNNER, encoding="utf-8")
-        kinds_path.write_text(
-            json.dumps({c["name"]: c["type"] for c in store.read_manifest(source)}),
-            encoding="utf-8",
-        )
-        env = {
-            "PATH": os.environ.get("PATH", "/usr/bin:/bin"),
-            "PYTHONDONTWRITEBYTECODE": "1",
-            "PYTHONNOUSERSITE": "1",
-            "OMP_NUM_THREADS": "2",
-            "HOME": tmp,
-            "TIKTOKEN_CACHE_DIR": str(tmp_path / "tiktoken"),
-        }
-        try:
+    workspace = tempfile.TemporaryDirectory(prefix="cell_")
+    tmp = workspace.name
+    tmp_path = Path(tmp)
+    script_path = tmp_path / "cell.py"
+    runner_path = tmp_path / "_runner.py"
+    out_path = tmp_path / "out.parquet"
+    script_path.write_text(script, encoding="utf-8")
+    runtime = Path(__file__).with_name("cell_runtime.py")
+    runner_path.write_text(
+        _LIMITS + f"\nimport runpy\nrunpy.run_path({str(runtime)!r}, run_name='__main__')\n",
+        encoding="utf-8",
+    )
+    env = {
+        "PATH": os.environ.get("PATH", "/usr/bin:/bin"),
+        "PYTHONDONTWRITEBYTECODE": "1",
+        "PYTHONNOUSERSITE": "1",
+        "OMP_NUM_THREADS": "2",
+        "HOME": tmp,
+        "TIKTOKEN_CACHE_DIR": str(tmp_path / "tiktoken"),
+    }
+    try:
+        with (tmp_path / "stdout").open("w") as stdout, (tmp_path / "stderr").open("w") as stderr:
             proc = subprocess.run(  # noqa: S603 — audited script, jailed child
                 [
                     sys.executable,
@@ -226,40 +132,48 @@ def run(
                     str(script_path),
                     str(source),
                     str(out_path),
-                    str(kinds_path),
                     mode,
                     str(library_cache) if library_cache.exists() else "",
                     str(Path(examples.__file__).resolve()),
+                    str(Path(store.__file__).resolve()),
+                    str(Path(sampling.__file__).resolve()),
                 ],
                 cwd=tmp,
                 env=env,
-                capture_output=True,
+                stdout=stdout,
+                stderr=stderr,
                 text=True,
                 timeout=WALL_SECONDS,
             )
-        except subprocess.TimeoutExpired:
-            return CellResult(
-                None, error=f"The {noun} ran longer than {WALL_SECONDS}s and was stopped."
-            )
-        except (OSError, subprocess.SubprocessError) as exc:
-            return CellResult(None, error=f"The runner could not start: {exc}")
-        if proc.returncode != 0:
-            failure = (proc.stderr or proc.stdout or "").strip()[-_TAIL_CHARS:]
-            if proc.returncode in (-9, 137):
-                failure = failure or f"The {noun} used more memory or CPU than allowed."
-            return CellResult(
-                None,
-                error=failure or f"The {noun} exited with code {proc.returncode}.",
-                stdout=proc.stdout[-stdout_tail:],
-            )
-        if not produce_frame:
-            return CellResult(None, stdout=proc.stdout[-stdout_tail:], ok=True)
-        try:
-            frame = pd.read_parquet(out_path)
-            kinds = json.loads((tmp_path / "out.parquet.kinds").read_text(encoding="utf-8"))
-        except (OSError, ValueError) as exc:
-            return CellResult(None, error=f"The cell's output could not be read: {exc}")
-        for col, kind in kinds.items():
-            if kind == "json" and col in frame.columns:
-                frame[col] = frame[col].map(lambda v: json.loads(v) if isinstance(v, str) else v)
-        return CellResult(frame, stdout=proc.stdout[-stdout_tail:], ok=True)
+    except subprocess.TimeoutExpired:
+        return CellResult(
+            None, error=f"The {noun} ran longer than {WALL_SECONDS}s and was stopped."
+        )
+    except (OSError, subprocess.SubprocessError) as exc:
+        return CellResult(None, error=f"The runner could not start: {exc}")
+    with (tmp_path / "stdout").open("rb") as stream:
+        size = stream.seek(0, 2)
+        stream.seek(max(0, size - stdout_tail))
+        output = stream.read().decode(errors="replace")
+        if size > stdout_tail:
+            output = f"[stdout truncated; showing last {stdout_tail} of {size} bytes]\n" + output
+    with (tmp_path / "stderr").open("rb") as stream:
+        stream.seek(max(0, stream.seek(0, 2) - _TAIL_CHARS))
+        error = stream.read().decode(errors="replace")
+    if proc.returncode != 0:
+        failure = (error or output).strip()[-_TAIL_CHARS:]
+        if proc.returncode in (-9, 137):
+            failure = failure or f"The {noun} used more memory or CPU than allowed."
+        return CellResult(
+            None,
+            error=failure or f"The {noun} exited with code {proc.returncode}.",
+            stdout=output,
+        )
+    if not produce_frame:
+        return CellResult(None, stdout=output, ok=True)
+    try:
+        store.read_manifest(out_path)
+        store.row_count(out_path)
+    except (OSError, ValueError) as exc:
+        return CellResult(None, error=f"The cell's output could not be read: {exc}")
+    return CellResult(out_path, stdout=output, ok=True, workspace=workspace)

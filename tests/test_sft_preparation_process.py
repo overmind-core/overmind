@@ -1,3 +1,4 @@
+import hashlib
 import json
 from pathlib import Path
 from unittest.mock import Mock
@@ -8,10 +9,35 @@ from modal_shared.preparation import (
     preparation_failure,
     processor_fingerprint,
     run_preparation_process,
+    training_fingerprint,
     validate_preparation_report,
 )
 from overbae.services.finetuning_runner import sanitize_job_error
 from overbae.services.sft_assets import preprocess
+
+
+def test_training_edits_preserve_token_cache_but_invalidate_optimizer_resume(tmp_path):
+    (tmp_path / "preprocess.py").write_text("tokenize input")
+    engine = tmp_path / "decision_engine.py"
+    engine.write_text("train input")
+    before = processor_fingerprint(tmp_path), training_fingerprint(tmp_path)
+    engine.write_text("improved batching")
+    after = processor_fingerprint(tmp_path), training_fingerprint(tmp_path)
+    assert before[0] == after[0]
+    assert before[1] != after[1]
+    (tmp_path / "preprocess.py").write_text("different tokens")
+    assert processor_fingerprint(tmp_path) != after[0]
+    assert training_fingerprint(tmp_path) != after[1]
+
+
+def test_template_edits_invalidate_prepared_tokens(tmp_path):
+    templates = tmp_path / "qwen_templates"
+    templates.mkdir()
+    template = templates / "template.jinja"
+    template.write_text("first")
+    before = processor_fingerprint(tmp_path)
+    template.write_text("second")
+    assert before != processor_fingerprint(tmp_path)
 
 
 def test_stale_worker_reports_deployment_mismatch_without_loading_tokenizer(tmp_path):
@@ -30,6 +56,8 @@ def test_stale_worker_reports_deployment_mismatch_without_loading_tokenizer(tmp_
 
 def test_current_worker_writes_exact_tokens_and_tokenizer(tmp_path):
     request = tmp_path / "request.json"
+    source = tmp_path / "rows.jsonl"
+    source.write_text(json.dumps({"messages": [{"role": "assistant", "content": "answer"}]}) + "\n")
     request.write_text(
         json.dumps(
             {
@@ -37,7 +65,8 @@ def test_current_worker_writes_exact_tokens_and_tokenizer(tmp_path):
                 "tokenizer_model": "test-tokenizer",
                 "model": "test-model",
                 "context_length": 128,
-                "rows": [{"messages": [{"role": "assistant", "content": "answer"}]}],
+                "rows_path": str(source),
+                "rows_sha256": hashlib.sha256(source.read_bytes()).hexdigest(),
             }
         )
     )

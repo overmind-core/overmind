@@ -7,9 +7,33 @@ from pathlib import Path
 
 def processor_fingerprint(assets: Path) -> str:
     digest = hashlib.sha256()
-    for path in sorted(p for p in assets.rglob("*") if p.suffix in {".py", ".jinja"}):
+    modules = {
+        "prepare_training.py",
+        "preprocess.py",
+        "pretok.py",
+        "catalog.py",
+        "training_chat_template.py",
+    }
+    for path in sorted(p for p in assets.rglob("*") if p.name in modules or p.suffix == ".jinja"):
         digest.update(str(path.relative_to(assets)).encode())
         digest.update(path.read_bytes())
+    shared = Path(__file__).parent
+    paths = [shared / name for name in ("decisions.py", "training_data.py", "preparation.py")]
+    paths.extend(sorted((shared / "modelfam").rglob("*.py")))
+    for path in paths:
+        digest.update(str(path.relative_to(shared)).encode())
+        digest.update(path.read_bytes())
+    return digest.hexdigest()
+
+
+def training_fingerprint(assets: Path) -> str:
+    digest = hashlib.sha256(processor_fingerprint(assets).encode())
+    for path in sorted(p for p in assets.rglob("*") if p.suffix in {".py", ".sh"}):
+        digest.update(str(path.relative_to(assets)).encode())
+        digest.update(path.read_bytes())
+    for name in ("decision_checkpoint.py", "decision_batching.py"):
+        digest.update(name.encode())
+        digest.update(Path(__file__).with_name(name).read_bytes())
     return digest.hexdigest()
 
 

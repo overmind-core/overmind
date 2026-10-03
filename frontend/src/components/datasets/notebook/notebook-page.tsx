@@ -7,7 +7,10 @@ import { Link, useNavigate } from "@tanstack/react-router";
 import { NotebookCell, type UsePurpose } from "@/components/datasets/notebook/cell";
 import { DatasetChat, type LiveTurn } from "@/components/datasets/notebook/chat";
 import { NotebookOutline } from "@/components/datasets/notebook/outline";
-import { ContaminationReport } from "@/components/datasets/notebook/preparation";
+import {
+  ContaminationReport,
+  PreparationPlanDetails,
+} from "@/components/datasets/notebook/preparation";
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
 import {
@@ -268,6 +271,7 @@ export function DatasetNotebook({
             />
             <div className="min-h-0 min-w-0 flex-1 overflow-y-auto pt-2 pb-6 pl-10" ref={cellsRef}>
               <ContaminationReport spec={dataset.sourceSpec} />
+              <PreparationPlanDetails plan={dataset.preparationPlan} />
               {cells.length === 0 ? (
                 <p className="p-3 text-xs text-muted-foreground">
                   {dataset.state !== "landing"

@@ -849,7 +849,7 @@ def register_finetuning_tools(catalog) -> None:
         (
             "estimate_finetune",
             "Estimate fine-tuning",
-            "Estimate real-token fine-tuning cost and duration for a project dataset and catalog base model without creating a job.",
+            "Estimate fine-tuning GPU cost and duration from dataset statistics and assumed H100 throughput without creating a job. Exact preprocessing and measured throughput are separate.",
             EstimateFinetuneInput,
             EstimateFinetuneOutput,
             _estimate_sync,
@@ -862,7 +862,7 @@ def register_finetuning_tools(catalog) -> None:
         (
             "start_finetune",
             "Start fine-tuning",
-            "Queue training; training_type is an object with type Lora or Full.",
+            "Start training on pinned dataset versions. Native decision rows use Modal LoRA, select decision_cross_entropy and preserve soft targets; set chat eval_model_before/eval_model_after false for this objective. These checkpoints use typed probability inference. Readiness and estimates precede launch.",
             StartFinetuneInput,
             StartFinetuneOutput,
             _start_sync,

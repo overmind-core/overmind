@@ -20,6 +20,13 @@ import {
     DatasetReadinessToJSON,
     DatasetReadinessToJSONTyped,
 } from './DatasetReadiness';
+import type { PreparationPlan } from './PreparationPlan';
+import {
+    PreparationPlanFromJSON,
+    PreparationPlanFromJSONTyped,
+    PreparationPlanToJSON,
+    PreparationPlanToJSONTyped,
+} from './PreparationPlan';
 import type { CellStateEnum } from './CellStateEnum';
 import {
     CellStateEnumFromJSON,
@@ -145,6 +152,12 @@ export interface Cell {
     readonly qualityReport: any | null;
     /**
      *
+     * @type {PreparationPlan}
+     * @memberof Cell
+     */
+    readonly preparationPlan: PreparationPlan | null;
+    /**
+     *
      * @type {DatasetReadiness}
      * @memberof Cell
      */
@@ -199,6 +212,7 @@ export function instanceOfCell(value: object): value is Cell {
     if (!('stats' in value) || value['stats'] === undefined) return false;
     if (!('review' in value) || value['review'] === undefined) return false;
     if (!('qualityReport' in value) || value['qualityReport'] === undefined) return false;
+    if (!('preparationPlan' in value) || value['preparationPlan'] === undefined) return false;
     if (!('readiness' in value) || value['readiness'] === undefined) return false;
     if (!('seconds' in value) || value['seconds'] === undefined) return false;
     if (!('usedAt' in value) || value['usedAt'] === undefined) return false;
@@ -235,6 +249,7 @@ export function CellFromJSONTyped(json: any, ignoreDiscriminator: boolean): Cell
         'stats': json['stats'],
         'review': json['review'],
         'qualityReport': json['quality_report'],
+        'preparationPlan': PreparationPlanFromJSON(json['preparation_plan']),
         'readiness': DatasetReadinessFromJSON(json['readiness']),
         'seconds': json['seconds'],
         'usedAt': (json['used_at'] == null ? null : new Date(json['used_at'])),
@@ -247,7 +262,7 @@ export function CellToJSON(json: any): Cell {
     return CellToJSONTyped(json, false);
 }
 
-export function CellToJSONTyped(value?: Omit<Cell, 'id'|'position'|'version'|'title'|'script'|'note'|'state'|'error'|'frozen'|'rows'|'columns'|'fingerprint'|'intent_report'|'capability_report'|'fits'|'stats'|'review'|'quality_report'|'readiness'|'seconds'|'used_at'|'created_at'|'updated_at'> | null, ignoreDiscriminator: boolean = false): any {
+export function CellToJSONTyped(value?: Omit<Cell, 'id'|'position'|'version'|'title'|'script'|'note'|'state'|'error'|'frozen'|'rows'|'columns'|'fingerprint'|'intent_report'|'capability_report'|'fits'|'stats'|'review'|'quality_report'|'preparation_plan'|'readiness'|'seconds'|'used_at'|'created_at'|'updated_at'> | null, ignoreDiscriminator: boolean = false): any {
     if (value == null) {
         return value;
     }

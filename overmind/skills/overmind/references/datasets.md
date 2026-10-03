@@ -131,7 +131,10 @@ Fine-tuning uses a train cell plus a separate eval cell. A cell's measured
 contract must fit its intent before a consumer accepts it.
 
 Format compatibility is not a claim of quality. Inspect the workshop's
-`task_alignment`, `input_evidence`, `answer_support` and `output_schema` checks.
+saved preparation plan and its task-specific checks, with separate technical,
+preservation, coverage and semantic assessments. Preparation explores first,
+then saves source-bound mappings, assumptions and steps before transforming.
+Unspecified intent remains pending; table shape cannot determine intended use.
 Failed, unknown, partial or stale reviews are advisory warnings; they do not block
 use or require an approval step. Report the remaining work from `quality_report`,
 `readiness.quality_reason` and MCP cell `warnings`. Send requested corrections to

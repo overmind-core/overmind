@@ -148,7 +148,9 @@ def add(
             user=user,
         )
     generator = cell.review.get("generator", "workshop_agent")
-    review.save_proposal(dataset, cell, previous, combined, kind="synthetic", note=instruction)
+    output = paths.cell_path(dataset.id, cell.id)
+    store.write_frame(output, combined)
+    review.save_proposal(dataset, cell, previous, output, kind="synthetic", note=instruction)
     cell.review.update(
         status="accepted",
         approval="generation",

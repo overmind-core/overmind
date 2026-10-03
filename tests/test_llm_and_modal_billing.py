@@ -157,7 +157,8 @@ def test_provider_reported_zero_cost_is_not_repriced(monkeypatch):
     ).exists()
 
 
-def test_modal_terminal_transition_charges_once():
+@pytest.mark.parametrize("context_length", [4096, 32768])
+def test_modal_terminal_transition_charges_once(context_length):
     user = _user("modal-ft@example.com")
     project = _project()
     dataset = frozen_dataset(project, TRAIN_ROWS, name="ds")
@@ -171,17 +172,19 @@ def test_modal_terminal_transition_charges_once():
         triggered_by=user,
         started_at=started,
         remote_job_id="run:fc",
+        hyperparameters={"context_length": context_length},
     )
 
     with (
         patch(
             "overbae.services.finetuning_runner.ModalRunner._select_training_gpu",
             return_value=("H100", 1),
-        ),
+        ) as select_gpu,
     ):
         completed = started + timedelta(hours=1)
         with patch("overbae.tasks.finetuning.timezone.now", return_value=completed):
             _transition(job, FinetuningJob.Status.SUCCEEDED)
+    select_gpu.assert_called_once_with(job, context_length=context_length)
 
     job.refresh_from_db()
     assert job.cost_usd == Decimal("3.9500")  # 1h × 1 × H100 $3.95/h

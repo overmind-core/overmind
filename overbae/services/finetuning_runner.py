@@ -1733,6 +1733,7 @@ class ModalRunner(BaseFinetuningRunner):
         env = {
             "MODEL_ID": hf_base,
             "BASE_MODEL_PATH": f"/weights/.base_models/{hf_base.replace('/', '--')}",
+            "PADDED_TOKEN_BUDGET": str(plan.token_budget),
             "TRAINING_TYPE": plan.training_type,
             "MAX_LENGTH": str(plan.context_length),
             "LORA_R": str(plan.lora_r),
@@ -1848,13 +1849,6 @@ class ModalRunner(BaseFinetuningRunner):
         if hidden > 0:
             env["HIDDEN_SIZE"] = str(hidden)
 
-        with open(training_file_path) as f:
-            data_text = f.read()
-        val_text = None
-        if validation_file_path:
-            with open(validation_file_path) as f:
-                val_text = f.read()
-
         logger.info(
             "ModalRunner: submitting run %s — model=%s gpu=%s×%d ctx=%d batch=%d×%d epochs=%d",
             run_id,
@@ -1872,10 +1866,14 @@ class ModalRunner(BaseFinetuningRunner):
             self._app_name, "upload_dataset", environment_name=env_name
         )
         preparation = ready_for_job(job, plan.context_length)
+        env["TRAINING_OBJECTIVE"] = preparation.config["objective"]
+        volume = modal.Volume.from_name("overmind-sft", environment_name=env_name)
+        with volume.batch_upload() as batch:
+            batch.put_file(training_file_path, f"/runs/{run_id}/selected-data.jsonl")
+            if validation_file_path:
+                batch.put_file(validation_file_path, f"/runs/{run_id}/selected-val.jsonl")
         upload_fn.remote(
             run_id=run_id,
-            data_jsonl=data_text,
-            val_jsonl=val_text,
             preparation_id=str(preparation.id),
         )
 
@@ -1889,7 +1887,10 @@ class ModalRunner(BaseFinetuningRunner):
         train_fn = modal.Function.from_name(
             self._app_name, function_name, environment_name=env_name
         )
-        call = train_fn.with_options(gpu=self._gpu_string(gpu_type, gpu_count)).spawn(
+        options = {"gpu": self._gpu_string(gpu_type, gpu_count)}
+        if preparation.config["objective"] == "decision_cross_entropy":
+            options["retries"] = modal.Retries(max_retries=10, initial_delay=0.0)
+        call = train_fn.with_options(**options).spawn(
             run_id=run_id, env=env, gpu_type=gpu_type, gpu_count=gpu_count
         )
 

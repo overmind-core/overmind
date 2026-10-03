@@ -3,6 +3,7 @@ from concurrent.futures import ThreadPoolExecutor
 from unittest.mock import patch
 
 import pytest
+from conftest import plan_fixture
 from django.db import close_old_connections
 
 from overbae.models import Behaviour, BehaviourVersion, Capability, Dataset, Project
@@ -50,9 +51,16 @@ def test_semantic_exclusions_wait_with_coverage_and_consume_reviewed_output():
 def test_initial_preparation_runs_exclusions_and_preserves_source_and_coverage():
     ds = dataset()
     tools = agent.Tools(ds.id, None, lambda _: None)
+    plan_fixture(ds)
     tools.automatic = True
     result = tools.add_cell(
-        {"title": "Clean rows", "script": "df = df.iloc[1:]", "kind": "mechanical", "run": True}
+        {
+            "plan_step": "prepare",
+            "title": "Clean rows",
+            "script": "df = df.iloc[1:]",
+            "kind": "mechanical",
+            "run": True,
+        }
     )
     assert result["ok"] and not result.get("proposed")
     assert ds.active_cell.rows == 1 and ds.source.rows == 2
@@ -65,12 +73,20 @@ def test_initial_preparation_runs_exclusions_and_preserves_source_and_coverage()
 def test_initial_preparation_still_honours_proposals_and_guards_row_additions():
     ds = dataset()
     tools = agent.Tools(ds.id, None, lambda _: None)
+    plan_fixture(ds)
     tools.automatic = True
     proposed = tools.add_cell(
-        {"title": "Optional change", "script": "df = df.iloc[1:]", "run": False}
+        {
+            "plan_step": "prepare",
+            "title": "Optional change",
+            "script": "df = df.iloc[1:]",
+            "run": False,
+        }
     )
     assert proposed["proposed"]
-    added = tools.add_cell({"title": "More rows", "script": "df = pd.concat([df, df])"})
+    added = tools.add_cell(
+        {"plan_step": "prepare", "title": "More rows", "script": "df = pd.concat([df, df])"}
+    )
     assert added["proposed"]
     assert ds.active_cell.rows == 2
 
@@ -78,9 +94,23 @@ def test_initial_preparation_still_honours_proposals_and_guards_row_additions():
 def test_preparation_cells_recalculate_impact_when_an_earlier_cell_changes():
     ds = dataset()
     tools = agent.Tools(ds.id, None, lambda _: None)
+    plan_fixture(ds)
     tools.automatic = True
-    first = tools.add_cell({"title": "Shape", "script": "df['input'] = df['input'].str.title()"})
-    last = tools.add_cell({"title": "Clean", "script": "df = df.iloc[1:]", "kind": "mechanical"})
+    first = tools.add_cell(
+        {
+            "plan_step": "prepare",
+            "title": "Shape",
+            "script": "df['input'] = df['input'].str.title()",
+        }
+    )
+    last = tools.add_cell(
+        {
+            "plan_step": "prepare",
+            "title": "Clean",
+            "script": "df = df.iloc[1:]",
+            "kind": "mechanical",
+        }
+    )
     shaped = ds.cells.get(pk=first["id"])
     cleaned = ds.cells.get(pk=last["id"])
     lifecycle.edit_cell(ds, shaped, script="df['input'] = df['input'].str.upper()")
@@ -123,9 +153,11 @@ def test_preparation_reuses_a_preview_and_checks_unchanged_rows_once():
     tools = agent.Tools(ds.id, None, lambda _: None)
     with (
         patch.object(run, "try_script", wraps=run.try_script) as execute,
-        patch.object(review, "same_frame", wraps=review.same_frame) as compare,
+        patch.object(review, "same_files", wraps=review.same_files) as compare,
     ):
-        tools.try_script({"script": "df = prepare_examples(df, intent='eval')"})
+        tools.try_script(
+            {"script": "def transform_batch(df):\n    return prepare_examples(df, intent='eval')"}
+        )
         first = tools.prepare_examples({})
         assert first["ok"] and execute.call_count == 1
         compare.reset_mock()
@@ -165,11 +197,13 @@ def test_preparation_only_waives_approval_for_exclusions(change, value):
 def test_judgement_waits_for_a_decision_without_blocking_the_current_version(initial, approve):
     ds = dataset()
     tools = agent.Tools(ds.id, None, lambda _: None)
+    plan_fixture(ds)
     tools.automatic = initial
     source_id = ds.active_cell.id
     source_fingerprint = ds.active_cell.fingerprint
     result = tools.add_cell(
         {
+            "plan_step": "prepare",
             "title": "Abstain on ambiguity",
             "script": "df['expected_output'] = 'abstain'",
             "kind": "semantic",
@@ -316,6 +350,7 @@ def test_contamination_matches_flat_and_nested_conversations():
 def test_automatic_preparation_cannot_generate_synthetic_examples():
     ds = dataset()
     tools = agent.Tools(ds.id, None, lambda _: None)
+    plan_fixture(ds)
     tools.automatic = True
     result = tools.add_synthetic_rows({})
     assert not result["ok"] and "user request" in result["error"]
@@ -403,7 +438,7 @@ def test_generation_never_changes_a_consumed_version():
         ds.active_cell,
         [
             {"name": name, "result": "pass", "evidence": "Controlled fixture.", "rows_checked": 3}
-            for name in review.REQUIRED_CHECKS
+            for name in ("task_alignment", "input_evidence", "answer_support", "output_schema")
         ],
         script="df = pd.DataFrame({name: [True] * len(df) for name in ('task_alignment', 'input_evidence', 'answer_support', 'output_schema')})",
     )

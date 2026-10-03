@@ -32,6 +32,7 @@ from overbae.models import (
     Verdict,
 )
 from overbae.services.datasets import use
+from overbae.services.datasets.contract import evaluation_generation_error
 from overbae.services.datasets.lifecycle import DatasetError
 from overbae.services.eval import decisions, evidence
 from overbae.services.eval.context import snapshot_context
@@ -1276,6 +1277,14 @@ class EvalRunSerializer(serializers.ModelSerializer):
                     attrs["cell"] = use.check(dataset, "eval", cell=attrs.get("cell"))
                 except DatasetError as exc:
                     raise serializers.ValidationError({"dataset": exc.detail}) from exc
+            if any(
+                str(variant.get("mode")) == EvalVariant.Mode.GENERATE
+                for variant in attrs.get("variants_input", [])
+            ):
+                cell = attrs.get("cell") or getattr(self.instance, "cell", None)
+                reason = evaluation_generation_error(cell.intent_report) if cell else ""
+                if reason:
+                    raise serializers.ValidationError({"dataset": reason})
         eval_set = attrs.get("eval_set")
         if (
             eval_set is not None

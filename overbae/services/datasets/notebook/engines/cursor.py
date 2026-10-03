@@ -95,26 +95,38 @@ class CursorEngine:
                 Dataset.objects.filter(pk=dataset.pk).update(agent_id=agent.agent_id)
             # The bridge rejects an idempotency_key on a local agent's Send.
             run = agent.send(system_prompt_for_turn(dataset, message))
-            for item in run.stream():
-                while pending:
-                    yield pending.pop(0)
-                if getattr(item, "type", "") == "thinking":
-                    if item.text:
-                        tools.thought(item.text)
-                    if item.thinking_duration_ms is not None:
-                        tools.stop_thinking(duration_ms=item.thinking_duration_ms)
+            finished = False
+            try:
+                for item in run.stream():
                     while pending:
                         yield pending.pop(0)
-                    continue
-                if getattr(item, "type", "") != "assistant":
-                    continue
-                for block in getattr(getattr(item, "message", None), "content", ()) or ():
-                    text = getattr(block, "text", "")
-                    if text:
-                        tools.respond(text)
+                    if getattr(item, "type", "") == "thinking":
+                        if item.text:
+                            tools.thought(item.text)
+                        if item.thinking_duration_ms is not None:
+                            tools.stop_thinking(duration_ms=item.thinking_duration_ms)
                         while pending:
                             yield pending.pop(0)
-            result = run.wait()
+                        continue
+                    if getattr(item, "type", "") != "assistant":
+                        continue
+                    for block in getattr(getattr(item, "message", None), "content", ()) or ():
+                        text = getattr(block, "text", "")
+                        if text:
+                            tools.respond(text)
+                            while pending:
+                                yield pending.pop(0)
+                result = run.wait()
+                finished = True
+            finally:
+                # Closing a local SDK handle does not clear an active provider run.
+                if not finished:
+                    try:
+                        run.cancel()
+                    except Exception:  # noqa: BLE001 — retain the original interruption
+                        logger.warning(
+                            "dataset %s: provider cancellation failed", dataset.id, exc_info=True
+                        )
             if str(getattr(result, "status", "")).lower() == "error":
                 outcome.error = "The agent stopped with an error."
             outcome.stats = _stats(getattr(run, "usage", None), self.choice.model)

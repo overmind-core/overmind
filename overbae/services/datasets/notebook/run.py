@@ -11,7 +11,7 @@ from typing import Any
 from django.utils import timezone
 
 from overbae.models import Cell, Dataset
-from overbae.services.datasets import measure, paths, review, store
+from overbae.services.datasets import measure, paths, preparation, review, store
 from overbae.services.datasets.context import context_fingerprint
 from overbae.services.datasets.notebook import events, runner
 
@@ -116,15 +116,13 @@ def iter_execute(
                     None, error="The reviewed input changed. Create a new proposal."
                 )
             else:
-                result = runner.CellResult(store.read_frame(output_path), ok=True)
+                result = runner.CellResult(output_path, ok=True)
         else:
             result = runner.run(
                 cell.script, paths.cell_path(dataset.id, previous.id), library_cache=cache
             )
-            if automatic_rerun and result.frame is not None:
-                changes = review.impact(
-                    store.read_frame(paths.cell_path(dataset.id, previous.id)), result.frame
-                )
+            if automatic_rerun and result.path is not None:
+                changes = review.impact_files(paths.cell_path(dataset.id, previous.id), result.path)
                 if review.requires_approval(
                     changes, allow_exclusions=cell.review.get("approval") == "preparation"
                 ):
@@ -132,7 +130,7 @@ def iter_execute(
                         None,
                         error="This repair now changes row membership, input evidence or task instructions. Create a proposal.",
                     )
-        if result.frame is None:
+        if result.path is None:
             failed = cell
             error = result.error or "The cell produced no frame."
             Cell.objects.filter(pk=cell.pk).update(
@@ -142,12 +140,13 @@ def iter_execute(
             yield _emit(dataset, {"type": "cell_failed", **_cell_event(cell, versions)})
             continue
         out_path = paths.cell_path(dataset.id, cell.id)
-        frame = review.preserve_provenance(
-            store.read_frame(paths.cell_path(dataset.id, previous.id)),
-            result.frame,
-            group_by=dataset.source_spec.get("split", {}).get("group_by", []),
-        )
-        store.write_frame(out_path, frame)
+        if result.path != out_path:
+            review.preserve_file_provenance(
+                paths.cell_path(dataset.id, previous.id),
+                result.path,
+                out_path,
+                group_by=preparation.group_columns(dataset, cell),
+            )
         if automatic_rerun:
             cell.review = {
                 **cell.review,
@@ -155,7 +154,7 @@ def iter_execute(
                 "output_fingerprint": store.file_sha256(out_path),
                 "context_fingerprint": context_fingerprint(dataset.capability),
                 "intent": dataset.intent,
-                **review.impact(store.read_frame(paths.cell_path(dataset.id, previous.id)), frame),
+                **review.impact_files(paths.cell_path(dataset.id, previous.id), out_path),
             }
             cell.save(update_fields=["review"])
         measure.frame(

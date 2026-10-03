@@ -68,20 +68,6 @@ def test_an_empty_table_fits_nothing():
     assert report["train"] == report["eval"] == {"ok": False, "reason": "no rows"}
 
 
-@pytest.mark.parametrize(
-    ("rows", "intent"),
-    [
-        ([{"messages": TURNS}], "train"),
-        ([{"input": "q", "expected_output": "a"}], "eval"),
-        ([{"question": "q", "answer": "a"}], "eval"),
-        ([{"sensor": 1, "temp": 20.5}], "pending"),
-    ],
-)
-def test_the_proposed_intent_follows_the_rows(rows, intent):
-    df = pd.DataFrame(rows)
-    assert contract.propose_intent(df, contract.measure(df)) == intent
-
-
 def test_a_table_without_text_is_marked_as_not_fixable():
     numbers = contract.measure(pd.DataFrame([{"sensor": 1, "temp": 20.5}]))
     words = contract.measure(pd.DataFrame([{"prompt": "hi", "completion": "hello"}]))

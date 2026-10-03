@@ -23,7 +23,6 @@ has landed and the S3 archive is confirmed.
 
 from __future__ import annotations
 
-import hashlib
 import json
 import os
 import shutil
@@ -36,8 +35,10 @@ from pathlib import Path
 
 import modal
 
+from modal_shared.decision_artifact import read_artifact, seal_artifact
+from modal_shared.decisions import DECISION_OBJECTIVE
 from modal_shared.preparation import run_preparation_process
-from modal_shared.training_data import materialize_tokens
+from modal_shared.training_data import materialize_files
 
 APP_NAME = "overmind-sft"
 VOLUME_NAME = "overmind-sft"
@@ -89,8 +90,22 @@ def _run_training(run_id: str, env: dict[str, str]) -> dict:
     run_dir = _run_dir(run_id)
     run_dir.mkdir(parents=True, exist_ok=True)
     final_dir = run_dir / "final"
+    native = env.get("TRAINING_OBJECTIVE") == DECISION_OBJECTIVE
+    candidate_dir = run_dir / "candidate" if native else final_dir
+    result = {
+        "run_id": run_id,
+        "status": "succeeded",
+        "final_dir": str(final_dir),
+        "metrics_path": str(run_dir / "metrics.jsonl"),
+        "progress_path": str(run_dir / "progress.json"),
+    }
 
     sft_vol.reload()
+    if native and final_dir.exists():
+        result["artifact_identity"] = read_artifact(final_dir)["identity"]
+        _write_meta(run_dir, status="succeeded", finished_at=time.time())
+        sft_vol.commit()
+        return result
     weights_vol.reload()
     _write_meta(run_dir, run_id=run_id, status="starting", started_at=time.time())
     sft_vol.commit()
@@ -112,7 +127,7 @@ def _run_training(run_id: str, env: dict[str, str]) -> dict:
     # next job. Build a child env instead and only set the few worker-owned keys.
     child_env = os.environ.copy()
     child_env.update(env)
-    child_env["BT_CHECKPOINT_DIR"] = str(final_dir)
+    child_env["BT_CHECKPOINT_DIR"] = str(candidate_dir)
     child_env["BT_RUN_DIR"] = str(run_dir)
     if child_env.get("UNSLOTH_IMAGE") in ("gpt_oss", TRAIN_U2026_8_GPOS):
         child_env["UNSLOTH_COMPILE_DISABLE"] = "1"
@@ -149,25 +164,32 @@ def _run_training(run_id: str, env: dict[str, str]) -> dict:
         # keeps only a short rolling window, and intermittent failures need a durable
         # per-run transcript (`modal volume get overmind-sft runs/<run_id>/train_stdout.log`).
         log_path = run_dir / "train_stdout.log"
-        with (
-            open(log_path, "wb") as log_f,
-            subprocess.Popen(  # noqa: S603
-                [sys.executable, f"{_ASSETS_REMOTE_DIR}/train.py"],
-                cwd=work_dir,
-                env=child_env,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.STDOUT,
-            ) as proc,
-        ):
-            assert proc.stdout is not None
-            for line in proc.stdout:
-                sys.stdout.buffer.write(line)
-                sys.stdout.buffer.flush()
-                log_f.write(line)
-            proc.wait()
-        sft_vol.commit()
-        if proc.returncode != 0:
-            raise RuntimeError(f"train.py exited with code {proc.returncode}")
+        for verify in [False, True] if native else [False]:
+            phase_env = {**child_env, "DECISION_VERIFY_CHECKPOINT": "1" if verify else "0"}
+            with (
+                open(log_path, "ab") as log_f,
+                subprocess.Popen(  # noqa: S603
+                    [sys.executable, f"{_ASSETS_REMOTE_DIR}/train.py"],
+                    cwd=work_dir,
+                    env=phase_env,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.STDOUT,
+                ) as proc,
+            ):
+                assert proc.stdout is not None
+                for line in proc.stdout:
+                    sys.stdout.buffer.write(line)
+                    sys.stdout.buffer.flush()
+                    log_f.write(line)
+                    log_f.flush()
+                proc.wait()
+            sft_vol.commit()
+            if proc.returncode != 0:
+                raise RuntimeError(f"train.py exited with code {proc.returncode}")
+        if native:
+            report = json.loads((run_dir / "decision-reload-verification.json").read_text())
+            result["artifact_identity"] = seal_artifact(candidate_dir, report)["identity"]
+            candidate_dir.rename(final_dir)
         status = "succeeded"
     except Exception as exc:
         _write_meta(run_dir, status="failed", error=f"{type(exc).__name__}: {exc}")
@@ -180,13 +202,7 @@ def _run_training(run_id: str, env: dict[str, str]) -> dict:
     _write_meta(run_dir, status=status, finished_at=time.time())
     sft_vol.commit()
 
-    return {
-        "run_id": run_id,
-        "status": status,
-        "final_dir": str(final_dir),
-        "metrics_path": str(run_dir / "metrics.jsonl"),
-        "progress_path": str(run_dir / "progress.json"),
-    }
+    return result
 
 
 _TRAIN_FN_KWARGS = {
@@ -231,9 +247,9 @@ def _register_train(fn_name: str, image: modal.Image) -> None:
     globals()[name] = app.function(
         image=image,
         name=name,
-        cpu=2,
+        cpu=8,
         memory=8192,
-        timeout=900,
+        timeout=23 * 60 * 60,
         volumes={DATA_MOUNT: sft_vol},
         secrets=[inference_secret],
     )(prepare)
@@ -294,11 +310,7 @@ def mark_cancelled(run_id: str) -> dict:
     timeout=3600,
     volumes={DATA_MOUNT: sft_vol},
 )
-def upload_dataset(
-    run_id: str, data_jsonl: str, val_jsonl: str | None = None, preparation_id: str | None = None
-) -> dict:
-    """Content arrives as a string rather than a batch_upload, so ModalRunner.submit needs no
-    local Modal Volume mount access — just a normal Function call."""
+def upload_dataset(run_id: str, preparation_id: str) -> dict:
     sft_vol.reload()
     run_dir = _run_dir(run_id)
     run_dir.mkdir(parents=True, exist_ok=True)
@@ -308,15 +320,14 @@ def upload_dataset(
     report = json.loads((preparation / "report.json").read_text())
     if not report.get("ready"):
         raise ValueError("This preprocessing artifact has incompatible rows.")
-    artifact = (preparation / "tokens.jsonl").read_bytes()
-    if hashlib.sha256(artifact).hexdigest() != report["artifact_sha256"]:
-        raise ValueError("The preprocessing artifact changed.")
-    tokens = {row["key"]: row for row in (json.loads(line) for line in artifact.splitlines())}
-    for name, text in (("data.jsonl", data_jsonl), ("val.jsonl", val_jsonl)):
-        if not text:
-            continue
-        with (run_dir / name).open("w") as target:
-            target.writelines(materialize_tokens(text, tokens))
+    selections = [
+        (run_dir / f"selected-{name}", run_dir / name)
+        for name in ("data.jsonl", "val.jsonl")
+        if (run_dir / f"selected-{name}").exists()
+    ]
+    if not selections or not (run_dir / "selected-data.jsonl").exists():
+        raise ValueError("Training selections have not been uploaded.")
+    materialize_files(preparation / "tokens.jsonl", report["artifact_sha256"], selections)
     shutil.copytree(preparation / "tokenizer", run_dir / "tokenizer", dirs_exist_ok=True)
     (run_dir / "preparation.json").write_text(json.dumps(report))
     sft_vol.commit()
@@ -388,7 +399,7 @@ def prune_runs(*, purge: list[str], trim: list[str], drop_final: list[str] | Non
         if not run_dir.is_dir():
             continue
         dropped = False
-        for name in ("data.jsonl", "val.jsonl"):
+        for name in ("data.jsonl", "val.jsonl", "selected-data.jsonl", "selected-val.jsonl"):
             path = run_dir / name
             if path.is_file():
                 freed += path.stat().st_size

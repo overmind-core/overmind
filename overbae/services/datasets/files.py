@@ -187,12 +187,14 @@ def _text_rows(fh: io.TextIOBase, name: str) -> list[dict[str, Any]]:
     return rows
 
 
-def read_file_rows(path: Path, *, filename: str) -> list[dict[str, Any]]:
+def iter_file_rows(path: Path, *, filename: str) -> Iterator[dict[str, Any]]:
     name = (filename or "").lower()
     bare = name.removesuffix(".gz")
     if bare.endswith(".parquet"):
         try:
-            return _normalise_names(pq.read_table(path).to_pylist())
+            for batch in pq.ParquetFile(path).iter_batches(batch_size=10_000):
+                yield from batch.to_pylist()
+            return
         except (pa.ArrowException, OSError) as exc:
             raise FileError("The file is not readable Parquet.") from exc
     if bare.endswith(".json") and os.path.getsize(path) > JSON_ARRAY_MAX_BYTES:
@@ -202,11 +204,44 @@ def read_file_rows(path: Path, *, filename: str) -> list[dict[str, Any]]:
         )
     try:
         with _open_text(path, name) as fh:
-            return _text_rows(fh, bare)
+            yield from iter_stream_rows(fh, filename=bare)
     except UnicodeDecodeError as exc:
         raise FileError("The file is not UTF-8. Save it as UTF-8 and upload it again.") from exc
     except (gzip.BadGzipFile, EOFError) as exc:
         raise FileError("The file is not readable gzip.") from exc
+
+
+class FileRows:
+    def __init__(self, path: Path, *, filename: str):
+        self.path, self.filename = path, filename
+        self.count = 0
+        names = {}
+        numeric = {}
+        delimited = filename.lower().removesuffix(".gz").endswith((".csv", ".tsv"))
+        for row in iter_file_rows(path, filename=filename):
+            self.count += 1
+            for key, value in row.items():
+                names.setdefault(key, None)
+                if delimited and value not in (None, ""):
+                    numeric.setdefault(key, set()).add(type(_number(value)))
+        self.names = dict(zip(names, _clean_names(list(names)), strict=True))
+        self.numeric = {k for k, types in numeric.items() if types in ({int}, {float})}
+
+    def __len__(self):
+        return self.count
+
+    def __iter__(self):
+        for row in iter_file_rows(self.path, filename=self.filename):
+            yield {
+                self.names[key]: (_number(value) if value not in (None, "") else None)
+                if key in self.numeric
+                else value
+                for key, value in row.items()
+            }
+
+
+def read_file_rows(path: Path, *, filename: str) -> list[dict[str, Any]]:
+    return list(FileRows(path, filename=filename))
 
 
 def inspect_upload(upload_id: str, *, size: int) -> dict[str, Any]:

@@ -130,6 +130,40 @@ def test_create_split_refuses_a_bad_cut_or_a_short_source_before_creating():
     assert Dataset.objects.filter(project=project).count() == 0
 
 
+def test_raw_decisions_split_by_evidence_and_options_without_splitting_target_variants():
+    project, user = _project(), _user()
+    rows = []
+    for i in range(6):
+        row = {
+            "question": "Which option follows from the evidence?",
+            "state": f"Case {i // 2}",
+            "options": ["yes", "no"] if i % 2 else ["allow", "deny"],
+            "target": [1.0, 0.0],
+            "source": "example",
+        }
+        rows.extend([row, {**row, "target": [0.0, 1.0], "source": "another-copy"}])
+    train, evaluation = dispatch.create_split(
+        project=project,
+        user=user,
+        name="Runtime decisions",
+        source={"rows": rows},
+        eval_percent=50,
+        position="head",
+    )
+    train.refresh_from_db()
+    evaluation.refresh_from_db()
+    assert train.state == evaluation.state == "idle"
+    frames = [store.read_frame(paths.cell_path(ds.id, ds.source.id)) for ds in (train, evaluation)]
+    assert [len(frame) for frame in frames] == [6, 6]
+    clusters = [
+        {(row["state"], tuple(row["options"])) for row in frame.to_dict("records")}
+        for frame in frames
+    ]
+    assert len(clusters[0]) == len(clusters[1]) == 3
+    assert not clusters[0] & clusters[1]
+    assert train.source_spec["contamination_report"]["content_overlap"] == 0
+
+
 def test_split_endpoint_returns_the_pair_and_validates_the_cut():
     project = _project()
     client = _client(project)
@@ -202,3 +236,37 @@ def test_mcp_create_from_traces_with_split_returns_both_datasets():
     train = Dataset.objects.get(pk=body["dataset"]["id"])
     evaluation = Dataset.objects.get(pk=body["eval_dataset"]["id"])
     assert train.source.rows == 3 and evaluation.source.rows == 1
+
+
+def test_native_decision_targets_do_not_split_identical_inputs():
+    from overbae.services.datasets.partition import content_key
+
+    decision = {
+        "state": "A coin is tossed.",
+        "question": "Which side?",
+        "kind": "choice",
+        "options": ["Heads", "Tails"],
+    }
+    first = {"decision": {**decision, "target_probabilities": [0.2, 0.8]}}
+    second = {"decision": {**decision, "target_probabilities": [0.6, 0.4], "weight": 2}}
+    assert content_key(first) == content_key(second)
+    different = {"decision": {**second["decision"], "state": "Two coins are tossed."}}
+    assert content_key(first) != content_key(different)
+
+
+def test_shared_group_identity_keeps_question_variants_together():
+    from overbae.services.datasets.partition import split_rows
+
+    records = [
+        {
+            "group_id": f"case-{case}",
+            "question": f"Question {variant}",
+            "state": f"Case {case}",
+            "target": [0, 1],
+        }
+        for case in range(10)
+        for variant in range(3)
+    ]
+    train, validation, report = split_rows(records, eval_percent=20, position="random")
+    assert not ({r["group_id"] for r in train} & {r["group_id"] for r in validation})
+    assert "group_id" in report["group_by"]

@@ -112,6 +112,7 @@ def _fail(dataset_id: Any, error: str) -> None:
 
 
 @shared_task(
+    bind=True,
     name="overbae.tasks.datasets.land",
     soft_time_limit=LAND_SOFT_LIMIT,
     time_limit=LAND_HARD_LIMIT,
@@ -119,6 +120,7 @@ def _fail(dataset_id: Any, error: str) -> None:
     reject_on_worker_lost=True,
 )
 def land(
+    self,
     *,
     dataset_id: str,
     source: dict[str, Any],
@@ -147,6 +149,12 @@ def land(
         targets.append(evaluation)
     if any(target.state != Dataset.State.LANDING for target in targets):
         return {"status": "landed"}
+    # An unacknowledged worker kill must not trigger an unbounded import retry loop.
+    if (self.request.delivery_info or {}).get("redelivered"):
+        error = "Source import was interrupted. Check worker memory and retry the upload."
+        for target in targets:
+            _fail(target.id, error)
+        return {"status": "failed", "error": error}
     user = User.objects.filter(pk=user_id).first() if user_id else None
     for target in targets:
         _emit(target.id, {"type": "land_started"})

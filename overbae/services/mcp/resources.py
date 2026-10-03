@@ -821,6 +821,12 @@ def _finetune_resource(project, value: str, uri: str) -> dict:
         "status": job.status,
         "provider": job.provider,
         "base_model": job.base_model,
+        "training_objective": (job.hyperparameters or {}).get(
+            "objective", "assistant_cross_entropy"
+        ),
+        "inference_contract": result.get("inference_contract", "chat"),
+        "cost_usd": float(job.cost_usd) if job.cost_usd is not None else None,
+        "cost_synced_at": job.cost_synced_at,
         "evaluation_plan": {
             "eval_judge_model": job.eval_judge_model,
             "eval_incumbent_before": job.eval_incumbent_before,

@@ -14,7 +14,16 @@ from pydantic import ValidationError
 
 from overbae.models import Capability, Cell, Dataset
 from overbae.services.datasets import diff as diff_svc
-from overbae.services.datasets import lifecycle, paths, review, semantic_checks, store, synthetic
+from overbae.services.datasets import (
+    lifecycle,
+    paths,
+    preparation,
+    review,
+    sampling,
+    semantic_checks,
+    store,
+    synthetic,
+)
 from overbae.services.datasets.context import context_fingerprint, workshop_context
 from overbae.services.datasets.notebook import engines, events, libraries, prompts
 from overbae.services.datasets.notebook import run as run_svc
@@ -123,6 +132,7 @@ def status(dataset: Dataset) -> dict[str, Any]:
         "capability": dataset.capability.name if dataset.capability_id else None,
         "capability_rank": dataset.capability_rank[:3],
         "state": dataset.state,
+        "preparation_plan": preparation.describe(dataset),
         "error": dataset.error,
         "active": versions.get(active.id) if active else None,
         "active_id": str(active.id) if active else None,
@@ -156,6 +166,14 @@ def _preview(frame) -> dict[str, Any]:
     }
 
 
+def _preview_path(path):
+    return {
+        "rows": store.row_count(path),
+        "columns": _visible_columns([c["name"] for c in store.read_manifest(path)]),
+        "head": _visible(store.head(path, _PREVIEW_ROWS)),
+    }
+
+
 class Tools:
     def __init__(self, dataset_id: Any, user: Any, emit: Callable[[dict[str, Any]], None]):
         self.dataset_id = dataset_id
@@ -165,6 +183,8 @@ class Tools:
         self.steps: list[dict[str, Any]] = []
         self._thinking: dict[str, Any] | None = None
         self.automatic = False
+        self.exploration = []
+        self.user_request = ""
         self.lock = RLock()
         self.turn_id = ""
         self.progress: dict[str, Any] = {}
@@ -290,6 +310,19 @@ class Tools:
     def status(self, args: dict[str, Any], _ctx: Any = None) -> dict[str, Any]:
         return status(_dataset(self.dataset_id))
 
+    def record_preparation_plan(self, args: dict[str, Any], _ctx: Any = None) -> dict[str, Any]:
+        dataset = _dataset(self.dataset_id)
+        try:
+            request = preparation.PlanRequest.model_validate(args)
+            cell = resolve_cell(dataset, request.version, ran_only=True)
+            preparation.save_plan(
+                dataset, cell, request, user_request=self.user_request, exploration=self.exploration
+            )
+        except (ValueError, lifecycle.DatasetError) as exc:
+            return {"ok": False, "error": str(exc)}
+        self.emit({"type": "dataset_changed"})
+        return {"ok": True, "plan": preparation.describe(dataset)}
+
     def query(self, args: dict[str, Any], _ctx: Any = None) -> dict[str, Any]:
         dataset = _dataset(self.dataset_id)
         cell = resolve_cell(dataset, args.get("version"), ran_only=True)
@@ -299,6 +332,16 @@ class Tools:
             )
         except Exception as exc:  # noqa: BLE001 — DuckDB raises many types; the message is the value
             return {"ok": False, "error": str(exc)[-600:]}
+        self.exploration.append(
+            {
+                "cell": str(cell.id),
+                "fingerprint": cell.fingerprint,
+                "tool": "query",
+                "sql": str(args.get("sql") or "")[:4000],
+                "preview": _clip(result),
+                "preview_bounded": True,
+            }
+        )
         return {
             "version": dataset.versions().get(cell.id),
             "rows": _visible(result["rows"]),
@@ -330,9 +373,9 @@ class Tools:
         after = resolve_cell(dataset, args.get("after"), ran_only=True)
         result = run_svc.try_script(dataset, str(args.get("script") or ""), after=after)
         self.preview = (after.id, after.fingerprint, str(args.get("script") or ""), result)
-        if result.frame is None:
+        if result.path is None:
             return {"ok": False, "error": result.error, "stdout": result.stdout}
-        return {"ok": True, **_preview(result.frame), "stdout": result.stdout}
+        return {"ok": True, **_preview_path(result.path), "stdout": result.stdout}
 
     def inspect(self, args: dict[str, Any], _ctx: Any = None) -> dict[str, Any]:
         dataset = _dataset(self.dataset_id)
@@ -340,6 +383,16 @@ class Tools:
         result = run_svc.inspect(dataset, str(args.get("script") or ""), at=at)
         if not result.ok:
             return {"ok": False, "error": result.error, "stdout": result.stdout}
+        self.exploration.append(
+            {
+                "cell": str(at.id),
+                "fingerprint": at.fingerprint,
+                "tool": "inspect",
+                "script": str(args.get("script") or "")[:4000],
+                "stdout": result.stdout[:4000],
+                "preview_bounded": True,
+            }
+        )
         return {"ok": True, "stdout": result.stdout}
 
     def add_cell(self, args: dict[str, Any], _ctx: Any = None) -> dict[str, Any]:
@@ -348,6 +401,12 @@ class Tools:
         previous = dataset.cells.exclude(state=Cell.State.PROPOSED).order_by("-position").first()
         if previous is None or not previous.ran:
             return {"ok": False, "error": "Run or fix the existing chain first."}
+        try:
+            plan = preparation.execution_plan(
+                dataset, previous, args.get("plan_step"), required=self.automatic
+            )
+        except ValueError as exc:
+            return {"ok": False, "error": str(exc)}
         script = str(args.get("script") or "")
         for pending in dataset.cells.filter(state=Cell.State.PROPOSED, script=script):
             report = pending.review
@@ -355,6 +414,8 @@ class Tools:
                 report.get("input_fingerprint") == previous.fingerprint
                 and report.get("context_fingerprint") == context_fingerprint(dataset.capability)
                 and report.get("intent") == dataset.intent
+                and pending.preparation_plan.get("id") == plan.get("id")
+                and pending.preparation_plan.get("step_id") == plan.get("step_id")
                 and paths.cell_path(dataset.id, pending.id).exists()
                 and store.file_sha256(paths.cell_path(dataset.id, pending.id))
                 == report.get("output_fingerprint")
@@ -375,18 +436,20 @@ class Tools:
             else run_svc.try_script(dataset, script, after=previous)
         )
         self.preview = None
-        if result.frame is None:
+        if result.path is None:
             return {"ok": False, "error": result.error}
-        before = store.read_frame(paths.cell_path(dataset.id, previous.id))
-        if review.same_frame(before, result.frame):
+        before = paths.cell_path(dataset.id, previous.id)
+        if review.same_files(before, result.path):
             return {
                 "ok": True,
                 "unchanged": True,
                 "proposed": False,
                 **_cell_line(dataset, previous, dataset.versions()),
             }
-        changes = review.impact(before, result.frame)
-        if self.generation and (changes["rows_added"] or len(result.frame) > len(before)):
+        changes = review.impact_files(before, result.path)
+        if self.generation and (
+            changes["rows_added"] or store.row_count(result.path) > store.row_count(before)
+        ):
             return {
                 "ok": False,
                 "error": "Generate new examples with add_synthetic_rows. Do not expand the dataset by copying rows or remapping identifiers in a script.",
@@ -409,10 +472,12 @@ class Tools:
             )
         except lifecycle.DatasetError as exc:
             return {"ok": False, "error": exc.detail}
+        cell.preparation_plan = plan
+        cell.save(update_fields=["preparation_plan"])
         self._touch(cell, "proposed" if not run else "created")
         self.emit({"type": "cells_changed"})
         report = review.save_proposal(
-            dataset, cell, previous, result.frame, kind=kind, note=str(args.get("note") or "")
+            dataset, cell, previous, result.path, kind=kind, note=str(args.get("note") or "")
         )
         if not run:
             return {
@@ -434,13 +499,38 @@ class Tools:
         dataset = _dataset(self.dataset_id)
         if dataset.intent not in {"train", "eval"}:
             return {"ok": False, "error": "Set the dataset purpose before preparing examples."}
+        spec = dataset.preparation_plan.get("specification", {}) if args.get("plan_step") else {}
+        kwargs = "".join(
+            f", {key}={spec[key]!r}" for key in ("mapping", "constants") if spec.get(key)
+        )
         return self.add_cell(
             {
+                "plan_step": args.get("plan_step"),
                 "title": "Prepare evaluation examples"
                 if dataset.intent == "eval"
                 else "Prepare training examples",
-                "script": f"df = prepare_examples(df, intent={dataset.intent!r})",
-                "note": "Preserve task instructions, evidence and tools; separate the target for evaluation.",
+                "script": f"def transform_batch(df):\n    return prepare_examples(df, intent={dataset.intent!r}{kwargs})",
+                "note": "Preserve evidence, multiplicity and native probability targets; separate evaluation references from inputs.",
+            }
+        )
+
+    def sample_rows(self, args: dict[str, Any], _ctx: Any = None) -> dict[str, Any]:
+        try:
+            request = sampling.validate_request(
+                **{k: v for k, v in args.items() if k != "plan_step"}
+            )
+        except (TypeError, ValueError) as exc:
+            return {"ok": False, "error": str(exc)}
+        return self.add_cell(
+            {
+                "title": "Representative sample",
+                "plan_step": args.get("plan_step"),
+                "script": "df = sample_rows("
+                + ", ".join(f"{key}={value!r}" for key, value in request.items())
+                + ")",
+                "note": f"Select {request['rows']} unchanged rows with seed {request['seed']}; retain minimum stratum coverage and allocate remaining capacity proportionally. This is a sample, not a train/eval split.",
+                "kind": "semantic",
+                "run": False,
             }
         )
 
@@ -592,6 +682,18 @@ class Tools:
         try:
             request = semantic_checks.SemanticReviewRequest.model_validate(args)
             cell = resolve_cell(dataset, request.version, ran_only=True)
+            if self.automatic:
+                reserved = preparation.reserve_semantic_rows(
+                    dataset, cell, [check.name for check in request.checks], request.max_rows
+                )
+                if not reserved:
+                    return {
+                        "ok": True,
+                        "skipped": True,
+                        "unverified_rows": cell.rows,
+                        "reason": "No semantic rows available for these checks in the current preparation plan. Unmeasured results remain unknown.",
+                    }
+                request = request.model_copy(update={"max_rows": reserved})
             result = semantic_checks.run_checks(dataset, cell, request, user=self.user)
         except (ValueError, ValidationError) as exc:
             return {"ok": False, "error": str(exc)}
@@ -599,9 +701,20 @@ class Tools:
         return {"ok": True, **result, "readiness": review.readiness(dataset, cell)}
 
     def edit_cell(self, args: dict[str, Any], _ctx: Any = None) -> dict[str, Any]:
+        if self.automatic:
+            return {
+                "ok": False,
+                "error": "During preparation, revise the plan and add a repair cell with plan_step. Keep earlier executed versions and their plan snapshots intact.",
+            }
+        version = args.get("version")
+        if not isinstance(version, str) or not version.strip():
+            return {
+                "ok": False,
+                "error": "version is required. Use a cell version or UUID from status.",
+            }
         dataset = _dataset(self.dataset_id)
         try:
-            cell = resolve_cell(dataset, args.get("version") or args.get("id"))
+            cell = resolve_cell(dataset, version)
             if args.get("script") is not None:
                 previous = (
                     dataset.cells.filter(position__lt=cell.position, state=Cell.State.OK)
@@ -611,11 +724,9 @@ class Tools:
                 if previous is None:
                     return {"ok": False, "error": "The source cannot be edited."}
                 result = run_svc.try_script(dataset, str(args["script"]), after=previous)
-                if result.frame is None:
+                if result.path is None:
                     return {"ok": False, "error": result.error}
-                changes = review.impact(
-                    store.read_frame(paths.cell_path(dataset.id, previous.id)), result.frame
-                )
+                changes = review.impact_files(paths.cell_path(dataset.id, previous.id), result.path)
                 if args.get("kind") == "semantic" or review.requires_approval(changes):
                     return {
                         "ok": False,
@@ -747,13 +858,38 @@ class Tools:
 _TEXT = {"type": "string"}
 
 TOOL_SPECS: dict[str, tuple[str, dict]] = {
+    "record_preparation_plan": (
+        "Save your evidence-based interpretation and preparation plan for an inspected version. Describe task families, user objective, source-to-consumer mappings, assumptions, unresolved questions, ordered steps and relevant checks. Columns may use arbitrary names or nested paths. Automatic transformations require a saved plan and plan_step. Plan checks replace a universal checklist; unmeasured claims stay unknown. Semantic row budget bounds automatic judging across turns; reserve zero unless independent evidence and a justified audit exist. Saving a plan does not approve semantic edits or sampling. Revise the plan when evidence or intent changes.",
+        preparation.PlanRequest.model_json_schema(),
+    ),
     "check_semantic_quality": (
         "Measure semantic row quality against named evidence and answer columns using Jev with a generative fallback. Never uses answers as their own evidence. Unknowns stay null; findings are advisory and do not authorize edits. Processes at most 200 unmeasured rows per call; repeat identical checks while remaining_rows is nonzero. Changing the version, task context, or checks starts a new audit. Use record_quality_review for deterministic format/schema checks.",
         semantic_checks.SemanticReviewRequest.model_json_schema(),
     ),
     "prepare_examples": (
-        "Prepare conversations for the selected purpose without losing instructions, evidence or tools. Eval separates the final answer into expected_output; train retains the full transcript. Does not change task scope or invent missing evidence. Run before projecting columns.",
-        {"type": "object", "properties": {}},
+        "Prepare typed decisions or conversations in bounded batches. Native train preserves full probability targets; native eval separates input.decision from expected_output.probabilities. Preserve blank states, duplicates, option order and weights. Conversations retain instructions, evidence and tools. Invalid data stays visible; never normalize targets or invent evidence.",
+        {"type": "object", "properties": {"plan_step": _TEXT}},
+    ),
+    "sample_rows": (
+        "Propose a deterministic sample of unchanged rows. Reads the full source in bounded passes; no quota tables or scripts needed. Stratify by scalar column paths, optionally native hard/soft targets. Reserve minimum coverage per nonempty stratum, then allocate remaining capacity proportionally by largest remainder. Preserves row order, multiplicity and lineage. Does not create train/eval splits. Fails instead of silently underfilling. Approval pins the reviewed output.",
+        {
+            "type": "object",
+            "additionalProperties": False,
+            "properties": {
+                "rows": {"type": "integer", "minimum": 1, "maximum": 1000000},
+                "plan_step": _TEXT,
+                "seed": {"type": "integer", "minimum": 0, "maximum": 4294967295},
+                "stratify_by": {
+                    "type": "array",
+                    "maxItems": 8,
+                    "uniqueItems": True,
+                    "items": {"type": "string", "minLength": 1, "maxLength": 200},
+                },
+                "target_type": {"type": "boolean", "default": False},
+                "minimum_per_stratum": {"type": "integer", "minimum": 1, "default": 1},
+            },
+            "required": ["rows", "seed"],
+        },
     ),
     "status": (
         "The dataset: intent, capability, every cell with version, state, shape, script and both contract reports.",
@@ -775,7 +911,7 @@ TOOL_SPECS: dict[str, tuple[str, dict]] = {
         {"type": "object", "properties": {"from": _TEXT, "to": _TEXT}},
     ),
     "try_script": (
-        "Run a cell script against a version's frame without landing it. Returns shape, columns, three rows, anything printed, or the error.",
+        "Run a cell script against a version's frame without landing it. Returns whole-output shape, columns, three rows, anything printed, or the error. Define transform_batch(df) returning a DataFrame for large row-local transforms; ordinary scripts operate on the entire frame.",
         {
             "type": "object",
             "properties": {
@@ -803,6 +939,7 @@ TOOL_SPECS: dict[str, tuple[str, dict]] = {
             "properties": {
                 "title": _TEXT,
                 "script": _TEXT,
+                "plan_step": _TEXT,
                 "note": {
                     **_TEXT,
                     "description": "Why this change, the evidence or rule used, and affected row count. For a proposal, state the decision the user is approving and its tradeoff.",
@@ -853,7 +990,7 @@ TOOL_SPECS: dict[str, tuple[str, dict]] = {
         },
     ),
     "record_quality_review": (
-        "Execute a read-only audit against the exact version. The script must leave df with source_row and one boolean-or-null column per named check, one result per original row. True=pass, False=fail, null=unmeasured. Counts and results are computed by the server, not supplied by you. Required checks: task_alignment, input_evidence, answer_support, output_schema. Use actual predicates, not constant passes. Use null for semantic claims you cannot verify. Repair actionable findings and rerun on the changed version. Findings never block use; this agent-authored audit is not independent proof.",
+        "Execute a read-only audit against the exact version. The script must leave df with source_row and one boolean-or-null column per named check, one result per original row. True=pass, False=fail, null=unmeasured. Counts and results are computed by the server, not supplied by you. Use the checks declared in the saved preparation plan, with real predicates for its deterministic checks and null for unmeasured claims. Use actual predicates, not constant passes. Use null for semantic claims you cannot verify. Native probability validity is output_schema, never answer_support; preserved publisher labels remain semantically unverified. Repair actionable findings and rerun on the changed version. Findings never block use; this agent-authored audit is not independent proof.",
         {
             "type": "object",
             "properties": {
@@ -930,7 +1067,9 @@ def tool_schemas() -> list[dict[str, Any]]:
 
 
 TOOL_TITLES = {
+    "record_preparation_plan": "Save preparation plan",
     "prepare_examples": "Prepare examples",
+    "sample_rows": "Sample rows",
     "seed_examples": "Read generation seeds",
     "add_synthetic_rows": "Add synthetic examples",
     "record_quality_review": "Record quality review",
@@ -1064,6 +1203,23 @@ def iter_turn(
         or any(item.get("turn_key") == turn_key for item in dataset.chat or [])
     ):
         logger.warning("dataset %s: turn %s already ran, skipping the retry", dataset_id, turn_key)
+        for item in dataset.chat or []:
+            if item.get("turn_key") == turn_key and item.get("status") == "running":
+                error = (
+                    "The worker stopped before this turn completed. Completed cells are preserved."
+                )
+                closed = {
+                    **item,
+                    "status": "error",
+                    "error": error,
+                    "progress": {
+                        "stage": "error",
+                        "label": "Preparation interrupted",
+                        "detail": error,
+                    },
+                }
+                save_turn(dataset_id, item["id"], closed)
+                yield _emit(dataset_id, {"type": "chat_turn", **closed})
         return
 
     turn_user = {"role": "user", "text": display, "at": started, "context": message}
@@ -1084,6 +1240,7 @@ def iter_turn(
     pending: list[dict[str, Any]] = []
     tools = Tools(dataset_id, user, lambda event: pending.append(_emit(dataset_id, event)))
     tools.automatic = automatic
+    tools.user_request = display or message
     tools.turn_id = turn_id
     tools.report_progress(
         "working",
@@ -1099,11 +1256,6 @@ def iter_turn(
         outcome.error = engines.NOT_CONFIGURED
     else:
         try:
-            if automatic and dataset.intent in {"train", "eval"}:
-                tools.handlers()["prepare_examples"]({})
-                while pending:
-                    yield pending.pop(0)
-                dataset = _dataset(dataset_id)
             outcome = yield from engine.run(dataset, message, tools, pending)
         except Exception as exc:  # noqa: BLE001 — the turn must land on the page either way
             logger.warning("dataset %s: agent turn failed", dataset_id, exc_info=True)

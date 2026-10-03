@@ -9,6 +9,7 @@ import types
 import uuid
 
 import pytest
+from conftest import plan_fixture
 
 from overbae.core.llms import ToolStreamDelta, ToolStreamResult
 from overbae.core.model_registry import WORKSHOP_KEY_ENVS
@@ -128,6 +129,24 @@ def test_add_cell_runs_and_reports_and_a_proposal_waits():
     assert diff["removed_examples"][0]["tag"] == "junk"
 
 
+@pytest.mark.parametrize(
+    "selector", [{}, {"cell_id": "1.0"}, {"id": "1.0"}, {"version": ""}, {"version": "   "}]
+)
+def test_edit_cell_without_explicit_version_cannot_change_active_cell(selector):
+    dataset = _dataset(intent="eval")
+    tools, _ = _tools(dataset)
+    assert tools.add_cell({"title": "Shape", "script": SHAPE})["ok"]
+    before = list(dataset.cells.order_by("position").values("id", "title", "script", "fingerprint"))
+
+    result = tools.edit_cell({**selector, "title": "Wrong target", "script": "df = df.copy()\n"})
+
+    assert result["ok"] is False
+    assert (
+        list(dataset.cells.order_by("position").values("id", "title", "script", "fingerprint"))
+        == before
+    )
+
+
 def test_edit_cell_reruns_and_set_intent_only_while_pending():
     dataset = _dataset()
     tools, _ = _tools(dataset)
@@ -185,6 +204,8 @@ def test_guarded_tools_return_json_safe_errors():
             "diff",
             "try_script",
             "prepare_examples",
+            "record_preparation_plan",
+            "sample_rows",
             "inspect",
             "add_cell",
             "edit_cell",
@@ -266,9 +287,11 @@ def test_supported_rule_derivation_can_restructure_worker_data_directly(initial)
     )
     lifecycle.set_capability(dataset, capability)
     tools, _ = _tools(dataset)
+    plan_fixture(dataset)
     tools.automatic = initial
     result = tools.add_cell(
         {
+            "plan_step": "prepare",
             "title": "Build escalation packet",
             "kind": "mechanical",
             "note": "Derive the case decision from supplied policy and validated hits; keep all evidence.",
@@ -595,6 +618,33 @@ def test_a_refused_cursor_send_still_lands_the_turn(cursor, monkeypatch):
     assert "Idempotency-Key" in events[-1]["error"]
     dataset.refresh_from_db()
     assert [t["role"] for t in dataset.chat] == ["user", "agent"] and dataset.state == "idle"
+
+
+@pytest.mark.parametrize("cancel_fails", [False, True])
+def test_interrupted_cursor_turn_cancels_provider_run_and_preserves_original_error(
+    cursor, monkeypatch, cancel_fails
+):
+    from celery.exceptions import SoftTimeLimitExceeded
+
+    cancelled = []
+
+    class InterruptedRun:
+        def stream(self):
+            raise SoftTimeLimitExceeded("audit interrupted")
+
+        def cancel(self):
+            cancelled.append(True)
+            if cancel_fails:
+                raise RuntimeError("provider unavailable")
+
+    monkeypatch.setattr(_FakeAgent, "send", lambda self, message: InterruptedRun())
+    dataset = _dataset(intent="eval")
+    list(agent.follow_up(dataset.id, "Inspect quality"))
+    dataset.refresh_from_db()
+    assert cancelled == [True]
+    assert dataset.state == "idle"
+    assert "audit interrupted" in dataset.chat[-1]["error"]
+    assert dataset.active_cell.rows == 3
 
 
 def test_a_cursor_turn_bills_composer_through_the_registry(cursor, monkeypatch):
@@ -1038,9 +1088,10 @@ def test_preparation_applies_evidence_repair_with_residual_warnings(
         },
     )
     lifecycle.set_capability(dataset, capability)
+    plan_fixture(dataset)
     before = [
         {"name": name, "result": "fail", "evidence": "Row 0 is worker-shaped.", "rows_checked": 1}
-        for name in review.REQUIRED_CHECKS
+        for name in ("task_alignment", "input_evidence", "answer_support", "output_schema")
     ]
     after = [
         {
@@ -1079,6 +1130,7 @@ def test_preparation_applies_evidence_repair_with_residual_warnings(
                         _call(
                             "add_cell",
                             {
+                                "plan_step": "prepare",
                                 "title": "Restore input evidence",
                                 "script": (
                                     "import json\n"
@@ -1142,3 +1194,25 @@ def test_preparation_applies_evidence_repair_with_residual_warnings(
     assert readiness["format_valid"] and not readiness["quality_passed"]
     assert "Output schema: fail" in readiness["quality_reason"]
     assert use.use(dataset, "eval").id == cell.id
+
+
+def test_redelivered_interrupted_turn_closes_stale_running_progress():
+    dataset = _dataset(intent="eval")
+    dataset.agent_turn_key = "lost-turn"
+    dataset.chat = [
+        {
+            "id": "partial",
+            "role": "agent",
+            "turn_key": "lost-turn",
+            "status": "running",
+            "text": "Saved progress",
+        }
+    ]
+    dataset.save(update_fields=["agent_turn_key", "chat"])
+    events = list(agent.follow_up(dataset.id, "Continue", turn_key="lost-turn"))
+    dataset.refresh_from_db()
+    assert dataset.chat[-1]["status"] == "error"
+    assert "stopped" in dataset.chat[-1]["error"]
+    assert dataset.chat[-1]["text"] == "Saved progress"
+    assert events[-1]["type"] == "chat_turn"
+    assert dataset.cells.count() == 1

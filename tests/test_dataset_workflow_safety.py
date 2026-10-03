@@ -72,7 +72,7 @@ def test_quality_claims_cannot_pass_without_a_successful_audit(dataset):
             "script": "raise ValueError('audit did not execute')",
             "checks": [
                 {"name": name, "evidence": "All rows checked", "rows_checked": 2, "result": "pass"}
-                for name in review.REQUIRED_CHECKS
+                for name in ("task_alignment", "input_evidence", "answer_support", "output_schema")
             ],
         }
     )
@@ -168,7 +168,7 @@ def test_old_unexecuted_claims_do_not_count_as_a_quality_pass(dataset):
         "intent": dataset.intent,
         "checks": [
             {"name": name, "result": "pass", "rows_checked": cell.rows}
-            for name in review.REQUIRED_CHECKS
+            for name in ("task_alignment", "input_evidence", "answer_support", "output_schema")
         ],
     }
     assert not review.readiness(dataset, cell)["quality_passed"]

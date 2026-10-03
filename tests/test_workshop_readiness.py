@@ -3,6 +3,7 @@ from types import SimpleNamespace
 
 import pandas as pd
 import pytest
+from conftest import plan_fixture
 from rest_framework.exceptions import ValidationError
 
 from overbae.api.serializers import FinetuningJobSerializer
@@ -58,6 +59,7 @@ def capability():
 
 def complete_review(dataset, *, failed=None, unknown=None):
     cell = dataset.active_cell
+    plan_fixture(dataset, cell)
     return review.record_quality(
         dataset,
         cell,
@@ -68,13 +70,13 @@ def complete_review(dataset, *, failed=None, unknown=None):
                 "rows_checked": cell.rows,
                 "evidence": "Controlled fixture: evidence and target checked.",
             }
-            for name in review.REQUIRED_CHECKS
+            for name in ("task_alignment", "input_evidence", "answer_support", "output_schema")
         ],
         script="df = pd.DataFrame("
         + repr(
             {
                 name: [False if name == failed else None if name == unknown else True] * cell.rows
-                for name in review.REQUIRED_CHECKS
+                for name in ("task_alignment", "input_evidence", "answer_support", "output_schema")
             }
         )
         + ")",

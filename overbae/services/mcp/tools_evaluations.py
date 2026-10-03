@@ -24,7 +24,7 @@ from overbae.models import (
     ModelRef,
     Prompt,
 )
-from overbae.services.datasets.contract import public_intent
+from overbae.services.datasets.contract import evaluation_generation_error, public_intent
 from overbae.services.eval import binding_check, comparison
 from overbae.services.eval.authored import persist_specs
 from overbae.services.eval.context_check import check_context
@@ -282,6 +282,11 @@ def _readiness_sync(
         intent=public_intent(dataset.intent),
         cell=mcp_cell_contract(dataset, cell, "eval"),
     )
+    if cell and dataset_data.cell and payload.mode == "generate":
+        reason = evaluation_generation_error(cell.intent_report)
+        if reason:
+            dataset_data.cell.fits = False
+            dataset_data.cell.reason = reason
     ready = ready and bool(dataset_data.cell and dataset_data.cell.fits)
     eval_set_data = (
         EvalSetReadinessContract(

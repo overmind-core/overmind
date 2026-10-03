@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import tempfile
 from datetime import timedelta
 from pathlib import Path
 
@@ -13,9 +14,11 @@ from django.utils import timezone
 from modal.exception import ConnectionError as ModalConnectionError
 from modal.exception import InternalError, NotFoundError, ServiceError
 
+from modal_shared.decisions import DECISION_OBJECTIVE, TEXT_OBJECTIVE
 from modal_shared.preparation import processor_fingerprint as asset_fingerprint
 from modal_shared.preparation import validate_preparation_report
 from modal_shared.stacks import train_function_name
+from modal_shared.training_data import file_digest
 from overbae.core.errors import InputValidationError
 from overbae.modal.model_registry import (
     get_hf_base,
@@ -71,7 +74,23 @@ def request_preparation(
             if target.dataset.project_id != cell.dataset.project_id:
                 raise InputValidationError("Both datasets must belong to the same project.")
             dataset_use.check(target.dataset, "train", cell=target)
+    objective = (
+        DECISION_OBJECTIVE
+        if (cell.intent_report.get("train") or {}).get("format") == "decision"
+        else TEXT_OBJECTIVE
+    )
+    if objective == DECISION_OBJECTIVE and training_type != "lora":
+        raise InputValidationError("Native decision training currently supports LoRA only.")
+    if validation_cell is not None:
+        validation_objective = (
+            DECISION_OBJECTIVE
+            if (validation_cell.intent_report.get("train") or {}).get("format") == "decision"
+            else TEXT_OBJECTIVE
+        )
+        if objective != validation_objective:
+            raise InputValidationError("Training and validation must use the same objective.")
     config = {
+        "objective": objective,
         "model": model,
         "tokenizer_model": get_hf_base(model),
         "context_length": context_length,
@@ -91,7 +110,7 @@ def request_preparation(
             "cell": cell,
             "validation_cell": validation_cell,
             "config": config,
-            "deadline": timezone.now() + timedelta(minutes=20),
+            "deadline": timezone.now() + timedelta(hours=24),
         },
     )
     return preparation
@@ -109,7 +128,7 @@ def retry_preparation(preparation):
         remote_id="",
         report={},
         error="",
-        deadline=timezone.now() + timedelta(minutes=20),
+        deadline=timezone.now() + timedelta(hours=24),
         touched_at=timezone.now(),
     )
     preparation.refresh_from_db()
@@ -128,11 +147,11 @@ def advance(preparation_id):
             return
         if prep.deadline <= now:
             prep.report = {"retryable": prep.state == "queued" or bool(prep.remote_id)}
-            prep.state, prep.error = "failed", "Preprocessing exceeded its 20-minute deadline."
+            prep.state, prep.error = "failed", "Preprocessing exceeded its 24-hour deadline."
             prep.save(update_fields=["state", "error", "report", "touched_at"])
             return
         if prep.state == "starting":
-            if prep.touched_at < now - timedelta(minutes=2):
+            if prep.touched_at < now - timedelta(minutes=30):
                 prep.state, prep.error = (
                     "failed",
                     "Preprocessing submission was interrupted before acknowledgement.",
@@ -145,7 +164,6 @@ def advance(preparation_id):
             prep.save(update_fields=["state", "touched_at"])
     try:
         if starting:
-            records = []
             for cell in (prep.cell, prep.validation_cell):
                 if cell is None:
                     continue
@@ -155,20 +173,38 @@ def advance(preparation_id):
                 ]
                 if cell.fingerprint != expected:
                     raise ValueError("Dataset version changed before preprocessing.")
-                for row in row_store.iter_rows(cell):
-                    records.append(
-                        {
-                            **row_to_finetuning_line(row),
-                            "source_row": row.extra.get("source_row", row.index),
-                            "cell": str(cell.id),
-                        }
-                    )
+            with tempfile.TemporaryDirectory(prefix="training-preparation-") as directory:
+                source = Path(directory) / "rows.jsonl"
+                with source.open("w") as stream:
+                    for cell in (prep.cell, prep.validation_cell):
+                        if cell is None:
+                            continue
+                        for row in row_store.iter_rows(cell):
+                            stream.write(
+                                json.dumps(
+                                    {
+                                        **row_to_finetuning_line(row),
+                                        "source_row": row.extra.get("source_row", row.index),
+                                        "cell": str(cell.id),
+                                    }
+                                )
+                                + "\n"
+                            )
+                digest = file_digest(source)
+                remote = f"/preparations/{prep.id}/rows.jsonl"
+                volume = modal.Volume.from_name(
+                    "overmind-sft", environment_name=os.environ.get("MODAL_ENVIRONMENT") or None
+                )
+                with volume.batch_upload(force=True) as batch:
+                    batch.put_file(source, remote)
             function = modal.Function.from_name(
                 "overmind-sft",
                 "prepare_" + train_function_name(prep.config["stack"]),
                 environment_name=os.environ.get("MODAL_ENVIRONMENT") or None,
             )
-            call = function.spawn(str(prep.id), {**prep.config, "rows": records})
+            call = function.spawn(
+                str(prep.id), {**prep.config, "rows_path": "/data" + remote, "rows_sha256": digest}
+            )
             TrainingPreparation.objects.filter(
                 pk=prep.pk, state="starting", deadline=prep.deadline
             ).update(state="running", remote_id=call.object_id, touched_at=timezone.now())

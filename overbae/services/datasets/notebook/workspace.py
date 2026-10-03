@@ -14,7 +14,7 @@ WORKSPACE_NOTE = """\
 
 `cells/<position>_<title>.py` holds each cell's script with its version and
 state in the header. `frames/<version>.parquet` is each version's frame; read
-one with pandas when a tool cannot answer, never write to it. Every change to
+one in bounded Parquet batches when a tool cannot answer, never write to it. Every change to
 the chain goes through the tools.
 """
 

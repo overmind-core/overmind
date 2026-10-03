@@ -23,8 +23,7 @@ MAX_EPOCHS = 10
 LARGE_DATASET_ROWS = 10_000  # ≥ this → 2 epochs
 HUGE_DATASET_ROWS = 50_000  # ≥ this → 1 epoch
 
-# Fixed training seed so re-runs are reproducible (matches finetuning_split's
-# deterministic corpus split).
+# The default matches the deterministic corpus split; explicit experiment seeds override it.
 TRAINING_SEED = 42
 
 # Packing pays off when padding waste is large AND the dataset is big enough
@@ -375,6 +374,9 @@ def derive_baseten_training_plan(
     hp = dict(hyperparameters or {})
     stats = dict(dataset_stats or {})
     notes: list[str] = []
+    seed = hp.get("seed", TRAINING_SEED)
+    if type(seed) is not int or not 0 <= seed < 2**32:
+        raise TrainingPlanError("seed must be an integer between 0 and 4,294,967,295.")
 
     if num_train_examples <= 0:
         raise TrainingPlanError("Dataset produced 0 training examples.")
@@ -437,7 +439,8 @@ def derive_baseten_training_plan(
     weight_decay = float(hp["weight_decay"]) if hp.get("weight_decay") is not None else 0.01
 
     # Never larger than the corpus — an over-sized batch degenerates to 1 step.
-    hard_max = model_max_batch if model_max_batch else 256
+    native_decisions = hp.get("objective") == "decision_cross_entropy"
+    hard_max = 256 if native_decisions else model_max_batch or 256
     hard_max = min(hard_max, num_train_examples)
     hard_max = max(hard_max, model_min_batch)
     raw_batch = hp.get("batch_size")
@@ -457,7 +460,17 @@ def derive_baseten_training_plan(
     # parallel) — effective batch is per_device × grad_accum regardless of GPU
     # count. Micro-batch grows to whatever the activation budget allows.
     per_device_batch, grad_accum = split_batch(batch_size, context_length, token_budget)
-    if per_device_batch > 1:
+    if native_decisions:
+        token_budget = max(context_length, min(token_budget or context_length, 32768))
+        per_device_batch = next(
+            size for size in range(min(64, batch_size), 0, -1) if batch_size % size == 0
+        )
+        grad_accum = batch_size // per_device_batch
+        notes.append(
+            f"Decision micro-batches use at most {per_device_batch} rows and "
+            f"{token_budget:,} padded tokens; each optimizer batch retains {batch_size} rows"
+        )
+    elif per_device_batch > 1:
         notes.append(
             f"micro-batch {per_device_batch}×{grad_accum} "
             f"(budget ≈{token_budget:,} tokens ≥ {per_device_batch}×{context_length:,})"
@@ -494,7 +507,9 @@ def derive_baseten_training_plan(
     avg_row_tokens = approx_tokens_from_chars(
         int(stats.get("avg_input_chars") or 0) + int(stats.get("avg_output_chars") or 0)
     )
-    packing = should_pack(num_train_examples, avg_row_tokens, context_length)
+    packing = hp.get("objective") != "decision_cross_entropy" and should_pack(
+        num_train_examples, avg_row_tokens, context_length
+    )
     # Gemma4/Muse: Unsloth forces GC off + flex_attention. Nemotron 3.5: hybrid mamba.
     # Packing fills every step to MAX_LENGTH → OOM on 1×H100.
     if packing and model_id:
@@ -526,5 +541,6 @@ def derive_baseten_training_plan(
         training_type=tt_name,
         load_in_4bit=load_in_4bit,
         token_budget=token_budget,
+        seed=seed,
         notes=notes,
     )
