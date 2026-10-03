@@ -23,7 +23,7 @@ def dataset():
     return dataset
 
 
-def test_approval_can_move_past_multiple_pending_proposals(dataset):
+def test_approval_supersedes_other_previews_of_the_previous_frame(dataset):
     tools = agent.Tools(dataset.id, None, lambda _: None)
     proposals = [
         tools.add_cell(
@@ -36,8 +36,6 @@ def test_approval_can_move_past_multiple_pending_proposals(dataset):
     assert list(dataset.cells.values_list("id", flat=True)) == [
         dataset.source.id,
         selected.id,
-        uuid.UUID(proposals[0]["id"]),
-        uuid.UUID(proposals[1]["id"]),
     ]
 
 

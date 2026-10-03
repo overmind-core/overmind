@@ -10,7 +10,9 @@ from __future__ import annotations
 import datetime as dt
 import json
 import logging
-from collections.abc import Iterable, Iterator
+import shutil
+import tempfile
+from collections.abc import Callable, Iterable, Iterator
 from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Any
@@ -21,7 +23,17 @@ from django.utils import timezone
 
 from overbae.models import Cell, Dataset, TaskExecution
 from overbae.models.traces import Span
-from overbae.services.datasets import alignment, contract, files, measure, paths, selection, store
+from overbae.services.datasets import (
+    alignment,
+    contract,
+    documents,
+    files,
+    measure,
+    operations,
+    paths,
+    selection,
+    store,
+)
 from overbae.services.datasets.partition import preserve_lineage, split_rows
 
 logger = logging.getLogger(__name__)
@@ -84,6 +96,14 @@ def commit(
     infer_capability: bool = True,
 ) -> Dataset:
     """Write cell 0 without exposing an idle dataset before automatic preparation."""
+    sources = []
+    for artifact in landing.spec.get("sources", []):
+        staged = artifact.get("staged_path")
+        if staged:
+            destination = paths.source_path(dataset.id, artifact["id"])
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copyfile(staged, destination)
+        sources.append({key: value for key, value in artifact.items() if key != "staged_path"})
     source = dataset.cells.filter(position=0).first()
     if source is None:
         source = Cell.objects.create(
@@ -97,10 +117,22 @@ def commit(
     manifest = landing.manifest
     if manifest and not any(column["name"] == "_overmind_provenance" for column in manifest):
         manifest = [*manifest, {"name": "_overmind_provenance", "type": "json"}]
-    store.write_rows(path, _stamp_source_rows(landing.rows), manifest)
+
+    def checked_rows():
+        for index, row in enumerate(_stamp_source_rows(landing.rows)):
+            if index % 1000 == 0:
+                operations.check_cancelled(dataset.id)
+            yield row
+
+    store.write_rows(path, checked_rows(), manifest)
+    operations.check_cancelled(dataset.id)
     fields: dict[str, Any] = {
         "source_kind": landing.kind,
-        "source_spec": {**landing.spec, "landed_at": timezone.now().isoformat()},
+        "source_spec": {
+            **landing.spec,
+            "sources": sources,
+            "landed_at": timezone.now().isoformat(),
+        },
         "state": state,
         "error": "",
     }
@@ -118,18 +150,67 @@ def commit(
 
 
 def read_file(path: Path, *, filename: str) -> Landing:
+    spool = None
     try:
-        rows = files.FileRows(path, filename=filename)
-    except files.FileError as exc:
+        if filename.lower().endswith(documents.SUFFIXES):
+            extracted, extraction = documents.extract(path, filename=filename)
+            spool = tempfile.TemporaryDirectory(prefix="overmind-document-")
+            cached = Path(spool.name) / "extracted.jsonl"
+            with cached.open("w") as output:
+                for row in extracted:
+                    output.write(json.dumps(row) + "\n")
+            rows = files.FileRows(cached, filename="extracted.jsonl")
+        else:
+            rows, extraction = files.FileRows(path, filename=filename), {}
+    except (files.FileError, documents.DocumentError) as exc:
         raise LandError(str(exc)) from exc
     if not rows:
         raise LandError("The file has no rows.")
-    return Landing(rows, spec={"filename": filename})
+    identity = store.file_sha256(path)
+    artifact = {
+        "id": identity,
+        "sha256": identity,
+        "filename": filename,
+        "bytes": path.stat().st_size,
+        "rows": len(rows),
+        "extraction": extraction,
+        "staged_path": str(path),
+    }
+    return Landing(
+        EvidenceRows(rows, identity, filename, spool),
+        spec={"filename": filename, "sources": [artifact]},
+    )
+
+
+@dataclass
+class EvidenceRows:
+    source: files.FileRows
+    identity: str
+    filename: str
+    spool: tempfile.TemporaryDirectory | None = field(default=None, repr=False)
+
+    def __len__(self):
+        return len(self.source)
+
+    def __getitem__(self, index):
+        for offset, row in enumerate(self):
+            if offset == index:
+                return row
+        raise IndexError(index)
+
+    def __iter__(self):
+        for offset, original in enumerate(self.source):
+            row = dict(original)
+            row["_overmind_provenance"] = {
+                **preserve_lineage(row),
+                "file": {"sha256": self.identity, "filename": self.filename, "row": offset},
+            }
+            yield row
 
 
 @dataclass
 class UploadRows:
-    sources: list[files.FileRows]
+    sources: list[EvidenceRows]
 
     def __len__(self):
         return sum(len(source) for source in self.sources)
@@ -139,18 +220,39 @@ class UploadRows:
             yield from source
 
 
-def read_uploads(upload_ids: list[str]) -> Landing:
+def read_uploads(
+    upload_ids: list[str], *, on_progress: Callable[[dict], None] | None = None
+) -> Landing:
     parts = []
     sources = []
-    for upload_id in upload_ids:
+    for index, upload_id in enumerate(upload_ids):
         filename = files.upload_filename(upload_id)
         path = files.upload_data_path(upload_id)
         if not filename or not path.exists():
             raise LandError("An upload has expired. Start it again.")
+        if on_progress:
+            on_progress(
+                {
+                    "filename": filename,
+                    "completed": index,
+                    "total": len(upload_ids),
+                    "stage": "extracting"
+                    if filename.lower().endswith(documents.SUFFIXES)
+                    else "reading",
+                }
+            )
         part = read_file(path, filename=filename)
-        sources.append({"filename": filename, "bytes": path.stat().st_size, "rows": len(part.rows)})
+        sources.extend(part.spec["sources"])
         parts.append(part.rows)
-    return Landing(UploadRows(parts), spec={"files": sources})
+    if on_progress:
+        on_progress({"completed": len(upload_ids), "total": len(upload_ids), "stage": "merging"})
+    return Landing(
+        UploadRows(parts),
+        spec={
+            "sources": sources,
+            "files": [{k: item[k] for k in ("filename", "bytes", "rows")} for item in sources],
+        },
+    )
 
 
 def read_rows(rows: list[dict[str, Any]], *, spec: dict[str, Any] | None = None) -> Landing:

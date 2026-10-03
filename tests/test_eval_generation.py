@@ -1861,6 +1861,7 @@ class TestAgentPathExampleUnit:
             ],
             capability=capability,
             name="rich",
+            contract="eval",
         )
         grounding = _grounding(dataset=None, capability=capability)
         rendered = semantic_recommender._render_example_unit_section(grounding)

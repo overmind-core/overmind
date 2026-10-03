@@ -21,6 +21,7 @@ class TrainingPreparationRequestSerializer(serializers.Serializer):
     dataset = serializers.UUIDField()
     cell = serializers.UUIDField(required=False)
     validation_dataset = serializers.UUIDField(required=False, allow_null=True)
+    validation_cell = serializers.UUIDField(required=False, allow_null=True)
     model = serializers.CharField(max_length=255)
     context_length = serializers.IntegerField(min_value=128, max_value=2_000_000)
     training_type = serializers.ChoiceField(choices=["lora", "full"], default="lora")
@@ -85,7 +86,11 @@ class TrainingPreparationViewSet(mixins.RetrieveModelMixin, viewsets.GenericView
             validation = get_object_or_404(
                 datasets, pk=data["validation_dataset"], project_id=dataset.project_id
             )
-            validation_cell = validation.active_cell
+            validation_cell = (
+                get_object_or_404(validation.cells, pk=data["validation_cell"])
+                if data.get("validation_cell")
+                else validation.active_cell
+            )
             if validation_cell is None:
                 raise ValidationError("Validation dataset has no completed version.")
         if cell is None:

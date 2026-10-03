@@ -35,8 +35,8 @@ def _job(*, incumbent: str = "") -> FinetuningJob:
     capability = Capability.objects.create(
         project=project, name="a", slug=f"a-{uuid.uuid4().hex[:6]}"
     )
-    dataset = frozen_dataset(project, TRAIN_ROWS, name="train")
-    eval_ds = frozen_dataset(project, EVAL_ROWS, name="eval")
+    dataset = frozen_dataset(project, TRAIN_ROWS, name="train", contract="train")
+    eval_ds = frozen_dataset(project, EVAL_ROWS, name="eval", contract="eval")
     eset = EvalSet.objects.create(project=project, capability=capability, name="set")
     return FinetuningJob.objects.create(
         project=project,
@@ -135,7 +135,7 @@ def test_resolve_baseline_prefers_snapshot_over_live_capability():
         slug=f"a-{uuid.uuid4().hex[:6]}",
         model="anthropic/claude-sonnet-5",
     )
-    dataset = frozen_dataset(project, TRAIN_ROWS, name="t")
+    dataset = frozen_dataset(project, TRAIN_ROWS, name="t", contract="train")
     job = FinetuningJob.objects.create(
         project=project,
         capability=capability,

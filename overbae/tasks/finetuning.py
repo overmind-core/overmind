@@ -14,6 +14,7 @@ from celery import shared_task
 from django.utils import timezone
 
 from modal_shared.decisions import DECISION_OBJECTIVE
+from overbae.services import training_submission
 from overbae.services.training_preparation import for_job, preparation_error
 from overbae.tasks.training_preparation import inspect_preparation
 
@@ -448,7 +449,11 @@ def run_finetuning(*, job_id: str) -> dict[str, Any]:
     except FinetuningJob.DoesNotExist:
         return {"error": f"FinetuningJob {job_id} not found"}
 
-    if job.status in (FinetuningJob.Status.CANCELLED, FinetuningJob.Status.FAILED):
+    if job.status in (
+        FinetuningJob.Status.CANCELLED,
+        FinetuningJob.Status.FAILED,
+        FinetuningJob.Status.SUBMISSION_UNKNOWN,
+    ):
         return {"status": job.status}
 
     # Pin the capability's production model at submit time, or a later prod model change
@@ -461,8 +466,12 @@ def run_finetuning(*, job_id: str) -> dict[str, Any]:
             FinetuningJob.objects.filter(pk=job.pk).update(baseline_model=incumbent)
             job.baseline_model = incumbent
 
-    runner = get_runner()
-    backend = getattr(settings, "FINETUNING_BACKEND", "baseten")
+    runner = get_runner(job=job)
+    backend = (
+        "modal"
+        if (job.requested_configuration or {}).get("runtime")
+        else getattr(settings, "FINETUNING_BACKEND", "baseten")
+    )
     # Baseten and Modal are self-hosted-script backends whose train.py reads an
     # optional val.jsonl; Together needs its own separate eval dataset API.
     supports_validation = backend in {"baseten", "modal"}
@@ -486,6 +495,15 @@ def run_finetuning(*, job_id: str) -> dict[str, Any]:
                 if preparation.state in {"failed", "incompatible"}:
                     raise ValueError(preparation_error(preparation))
                 if preparation.state != "ready":
+                    job.progress = {
+                        **(job.progress or {}),
+                        "preparation": {
+                            "id": str(preparation.id),
+                            "state": preparation.state,
+                            **(preparation.report.get("progress") or {}),
+                        },
+                    }
+                    FinetuningJob.objects.filter(pk=job.pk).update(progress=job.progress)
                     _transition(
                         job,
                         FinetuningJob.Status.PREPARING,
@@ -533,18 +551,25 @@ def run_finetuning(*, job_id: str) -> dict[str, Any]:
                 logger.exception("Baseline eval launch failed for job %s", job_id)
 
             try:
-                result = runner.submit(
-                    job=job,
-                    training_file_path=training_path,
-                    num_examples=num_examples,
-                    validation_file_path=validation_path,
-                )
+                training_submission.claim(job)
+                try:
+                    result = runner.submit(
+                        job=job,
+                        training_file_path=training_path,
+                        num_examples=num_examples,
+                        validation_file_path=validation_path,
+                    )
+                except Exception as exc:
+                    training_submission.unknown(job, exc)
+                    return {"status": "submission_unknown", "job_id": str(job.id)}
+            except training_submission.SubmissionUnresolvedError:
+                return {"status": "submission_unknown", "job_id": str(job.id)}
             finally:
                 for p in (training_path, validation_path):
                     if p and os.path.exists(p):
                         os.unlink(p)
 
-            FinetuningJob.objects.filter(pk=job.pk).update(remote_job_id=result.remote_id)
+            training_submission.acknowledge(job, result.remote_id)
             job.remote_job_id = result.remote_id
 
             val_note = ""
@@ -640,7 +665,7 @@ def observe_finetuning_job(job) -> dict[str, Any]:
     ):
         return {"status": job.status}
 
-    runner = get_runner(job.provider)
+    runner = get_runner(job.provider, job=job)
     try:
         snap = runner.poll(remote)
     except Exception as exc:  # noqa: BLE001

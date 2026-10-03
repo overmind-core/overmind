@@ -1,6 +1,13 @@
 from .behaviour import Behaviour, BehaviourVersion, ConversationEvent, TaskExecution
 from .billing import BillingService, BillingTelemetry, Subscription, SubscriptionStatus
 from .capabilities import Capability, IdentityAlias, Prompt
+from .chatgpt import (
+    ChatGPTAccount,
+    ChatGPTAuthorization,
+    ChatGPTInstallation,
+    ChatGPTLoginTicket,
+    WorkshopPreference,
+)
 from .connectors import ConnectorCredential, ConnectorSyncConfig, ConnectorSyncRun
 from .dataset_context import DatasetContext
 from .datasets import Cell, Dataset
@@ -25,6 +32,7 @@ from .finetuning import (
     FinetuningJob,
     FinetuningJobEval,
     FinetuningJobEvent,
+    NativeEvaluationPlan,
     TrainingPreparation,
 )
 from .iam import (
@@ -52,6 +60,11 @@ __all__ = [
     "MCPOAuthClient",
     "MCPOAuthGrant",
     "MCPOAuthToken",
+    "ChatGPTAccount",
+    "ChatGPTAuthorization",
+    "ChatGPTInstallation",
+    "ChatGPTLoginTicket",
+    "WorkshopPreference",
     "User",
     "UserManager",
     "SignOnMethod",
@@ -89,6 +102,7 @@ __all__ = [
     "FinetuningJobEval",
     "FinetuningJobEvent",
     "TrainingPreparation",
+    "NativeEvaluationPlan",
     "DeployedModel",
     "InferenceCall",
     "ModelActivation",

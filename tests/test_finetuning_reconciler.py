@@ -4,10 +4,12 @@ would queue a duplicate register_finetuned_model on every beat."""
 from __future__ import annotations
 
 import uuid
+from datetime import timedelta
 from unittest.mock import MagicMock, patch
 
 import pytest
 from conftest import TRAIN_ROWS, frozen_dataset
+from django.utils import timezone
 
 from overbae.models.finetuning import FinetuningJob
 from overbae.tasks.finetuning_reconciler import _reconcile
@@ -19,7 +21,7 @@ def _job(status: str) -> FinetuningJob:
     from overbae.models import Project
 
     project = Project.objects.create(name=f"reconciler-test-{uuid.uuid4().hex[:6]}")
-    dataset = frozen_dataset(project, TRAIN_ROWS, name="reconciler-test-ds")
+    dataset = frozen_dataset(project, TRAIN_ROWS, name="reconciler-test-ds", contract="train")
     return FinetuningJob.objects.create(
         project=project,
         dataset=dataset,
@@ -54,3 +56,31 @@ def test_deploying_job_rescued_with_register_task():
     _, sent = _run_reconcile(active_tasks=[])
     mine = [(n, k) for n, k in sent if k.get("job_id") == str(job.id)]
     assert mine == []
+
+
+def test_lost_submission_task_is_reconciled_without_another_gpu_dispatch():
+    job = _job("preparing")
+    job.remote_job_id = ""
+    job.celery_task_id = "lost-task"
+    job.provider_submission = {
+        "state": "submitting",
+        "run_id": f"ft-{job.id}-saved",
+        "intent_at": (timezone.now() - timedelta(hours=1)).isoformat(),
+    }
+    job.save()
+    FinetuningJob.objects.filter(pk=job.pk).update(updated_at=timezone.now() - timedelta(hours=1))
+    with patch("overbae.services.training_submission.recover") as recover:
+        _, sent = _run_reconcile(active_tasks=[])
+    job.refresh_from_db()
+    assert job.status == "submission_unknown"
+    recover.assert_called_once()
+    assert sent == []
+
+
+def test_lost_cpu_preparation_task_reuses_existing_job():
+    job = _job("preparing")
+    job.remote_job_id, job.celery_task_id = "", "lost-task"
+    job.save()
+    FinetuningJob.objects.filter(pk=job.pk).update(updated_at=timezone.now() - timedelta(hours=1))
+    _, sent = _run_reconcile(active_tasks=[])
+    assert sent == [("overbae.tasks.finetuning.run_finetuning", {"job_id": str(job.id)})]

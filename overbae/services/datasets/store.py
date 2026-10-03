@@ -24,6 +24,8 @@ import pandas as pd
 import pyarrow as pa
 import pyarrow.parquet as pq
 
+from overbae.services.datasets.statistics import StatisticsUnavailableError, profile
+
 SOURCE_ROW = "source_row"
 ROW_GROUP_SIZE = 10_000
 _MANIFEST_KEY = b"overmind.columns"
@@ -475,46 +477,11 @@ def page(
     return {"rows": rows, "total": int(total), "columns": manifest}
 
 
-def column_stats(path: Path, *, top: int = 5) -> list[dict[str, Any]]:
-    manifest = read_manifest(path)
-    con = connect(t=path)
-    out: list[dict[str, Any]] = []
+def column_stats(path: Path, *, top: int = 5, fingerprint: str = "") -> list[dict[str, Any]]:
     try:
-        n = con.execute('SELECT count(*) FROM "t"').fetchone()[0]
-        for spec in manifest:
-            name, kind = spec["name"], spec["type"]
-            col = _quote(name)
-            text = f"CAST({col} AS VARCHAR)"
-            nulls, distinct = con.execute(
-                f"SELECT count(*) FILTER (WHERE {col} IS NULL OR {text} = ''), "
-                f'count(DISTINCT {text}) FROM "t"'
-            ).fetchone()
-            entry: dict[str, Any] = {
-                "name": name,
-                "type": kind,
-                "null_rate": (nulls / n) if n else 0.0,
-                "distinct": int(distinct),
-            }
-            if kind in ("integer", "number"):
-                mn, mx, mean = con.execute(
-                    f'SELECT min({col}), max({col}), avg({col}) FROM "t"'
-                ).fetchone()
-                entry.update({"min": mn, "max": mx, "mean": mean})
-            elif kind in ("string", "json"):
-                mean_len, max_len = con.execute(
-                    f'SELECT avg(length({text})), max(length({text})) FROM "t"'
-                ).fetchone()
-                entry.update({"mean_len": mean_len, "max_len": max_len})
-            if kind in ("string", "boolean", "integer") and 0 < distinct <= 200:
-                rows = con.execute(
-                    f'SELECT {text}, count(*) AS c FROM "t" WHERE {col} IS NOT NULL '
-                    f"GROUP BY 1 ORDER BY c DESC LIMIT {int(top)}"
-                ).fetchall()
-                entry["top"] = [{"value": v, "count": int(c)} for v, c in rows]
-            out.append(entry)
-    finally:
-        con.close()
-    return out
+        return profile(path, read_manifest(path), fingerprint=fingerprint, top=top)
+    except StatisticsUnavailableError as exc:
+        raise StoreError(str(exc)) from exc
 
 
 def connect_sandboxed(**tables: Path) -> duckdb.DuckDBPyConnection:

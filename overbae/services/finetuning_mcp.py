@@ -16,6 +16,8 @@ class FineTuneDispatchError(RuntimeError):
 def launch_finetune(
     *,
     user,
+    request_key=None,
+    accepted_findings=None,
     project,
     dataset: Dataset,
     capability: Capability | None,
@@ -41,11 +43,13 @@ def launch_finetune(
     eval_judge_model: str = "",
 ) -> FinetuningJob:
     payload: dict[str, Any] = {
+        "request_key": request_key,
+        "accepted_findings": accepted_findings or [],
         "project": str(project.id),
         "dataset": str(dataset.id),
         "capability": str(capability.id) if capability else None,
-        "eval_dataset": str(eval_dataset.id),
-        "eval_set": str(eval_set.id),
+        "eval_dataset": str(eval_dataset.id) if eval_dataset else None,
+        "eval_set": str(eval_set.id) if eval_set else None,
         "eval_judge_model": eval_judge_model,
         "base_model": base_model,
         "name": name,
@@ -79,6 +83,8 @@ def launch_finetune(
     )
     serializer.is_valid(raise_exception=True)
     job = serializer.save(triggered_by=user)
+    if getattr(job, "launch_reused", False):
+        return job
 
     from overbae.tasks.finetuning import run_finetuning
 

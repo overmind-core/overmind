@@ -13,6 +13,14 @@
  */
 
 import { mapValues } from '../runtime';
+import type { SplitMethod3daEnum } from './SplitMethod3daEnum';
+import {
+    SplitMethod3daEnumFromJSON,
+    SplitMethod3daEnumFromJSONTyped,
+    SplitMethod3daEnumToJSON,
+    SplitMethod3daEnumToJSONTyped,
+} from './SplitMethod3daEnum';
+
 /**
  *
  * @export
@@ -27,6 +35,24 @@ export interface DatasetValidateRequestRequest {
     datasetId: string;
     /**
      *
+     * @type {string}
+     * @memberof DatasetValidateRequestRequest
+     */
+    cellId?: string;
+    /**
+     *
+     * @type {string}
+     * @memberof DatasetValidateRequestRequest
+     */
+    validationCellId?: string;
+    /**
+     *
+     * @type {string}
+     * @memberof DatasetValidateRequestRequest
+     */
+    validationDatasetId?: string | null;
+    /**
+     *
      * @type {boolean}
      * @memberof DatasetValidateRequestRequest
      */
@@ -39,17 +65,13 @@ export interface DatasetValidateRequestRequest {
     validationSplitRatio?: number;
     /**
      *
-     * @type {string}
+     * @type {SplitMethod3daEnum}
      * @memberof DatasetValidateRequestRequest
      */
-    validationDatasetId?: string | null;
-    /**
-     *
-     * @type {string}
-     * @memberof DatasetValidateRequestRequest
-     */
-    splitMethod?: string;
+    splitMethod?: SplitMethod3daEnum;
 }
+
+
 
 /**
  * Check if a given object implements the DatasetValidateRequestRequest interface.
@@ -70,10 +92,12 @@ export function DatasetValidateRequestRequestFromJSONTyped(json: any, ignoreDisc
     return {
 
         'datasetId': json['dataset_id'],
+        'cellId': json['cell_id'] == null ? undefined : json['cell_id'],
+        'validationCellId': json['validation_cell_id'] == null ? undefined : json['validation_cell_id'],
+        'validationDatasetId': json['validation_dataset_id'] == null ? undefined : json['validation_dataset_id'],
         'validationEnabled': json['validation_enabled'] == null ? undefined : json['validation_enabled'],
         'validationSplitRatio': json['validation_split_ratio'] == null ? undefined : json['validation_split_ratio'],
-        'validationDatasetId': json['validation_dataset_id'] == null ? undefined : json['validation_dataset_id'],
-        'splitMethod': json['split_method'] == null ? undefined : json['split_method'],
+        'splitMethod': json['split_method'] == null ? undefined : SplitMethod3daEnumFromJSON(json['split_method']),
     };
 }
 
@@ -89,9 +113,11 @@ export function DatasetValidateRequestRequestToJSONTyped(value?: DatasetValidate
     return {
 
         'dataset_id': value['datasetId'],
+        'cell_id': value['cellId'],
+        'validation_cell_id': value['validationCellId'],
+        'validation_dataset_id': value['validationDatasetId'],
         'validation_enabled': value['validationEnabled'],
         'validation_split_ratio': value['validationSplitRatio'],
-        'validation_dataset_id': value['validationDatasetId'],
-        'split_method': value['splitMethod'],
+        'split_method': SplitMethod3daEnumToJSON(value['splitMethod']),
     };
 }

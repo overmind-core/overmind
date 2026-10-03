@@ -7,6 +7,7 @@ Capability classification is cached by codebase context. Benchmark ranking is pu
 from __future__ import annotations
 
 import logging
+import math
 from typing import Any
 
 from overbae.core.errors import InputValidationError
@@ -22,7 +23,12 @@ _CLASSIFIER_INPUTS = ("output_kind", "modality", "has_tool_calls")
 
 
 def get_recommendation(
-    dataset_id: str, capability_id: str | None = None, *, eval_dataset_id: str | None = None
+    dataset_id: str,
+    capability_id: str | None = None,
+    *,
+    eval_dataset_id: str | None = None,
+    cell=None,
+    eval_cell=None,
 ) -> dict[str, Any]:
     """Ranked fine-tuning candidates for a dataset, grounded in its capability's context.
 
@@ -39,7 +45,7 @@ def get_recommendation(
     if capability_id:
         capability = Capability.objects.get(pk=capability_id, project_id=dataset.project_id)
 
-    stats = dataset_stats(dataset)
+    stats = dataset_stats(dataset, cell)
     if capability is not None:
         task_type = classify_capability_task(capability)
         source = "capability" if task_type != "unknown" else "unknown"
@@ -55,7 +61,7 @@ def get_recommendation(
     )
     if eval_dataset_id:
         evaluation = Dataset.objects.get(pk=eval_dataset_id, project_id=dataset.project_id)
-        cell = evaluation.active_cell
+        cell = eval_cell or evaluation.active_cell
         if cell is None:
             raise InputValidationError("The evaluation dataset has no readable version.")
         budget = evaluation_budget(cell, capability=capability)
@@ -82,6 +88,11 @@ def estimate_for_hyperparams(
     n_epochs: int,
     use_lora: bool,
     cell: Any = None,
+    validation_cell=None,
+    validation_enabled=True,
+    validation_split_ratio=0.2,
+    split_method="random",
+    hyperparameters=None,
 ) -> dict[str, Any]:
     """Re-estimate cost and duration for user-edited hyperparameters."""
     from overbae.modal.model_registry import context_headroom  # noqa: PLC0415
@@ -116,8 +127,58 @@ def estimate_for_hyperparams(
                 + (f" (need {max_tokens + headroom:,} with headroom)" if headroom else "")
                 + "."
             )
+    selected = cell or dataset.active_cell
+    native = (
+        selected is not None
+        and (selected.intent_report.get("train") or {}).get("format") == "decision"
+    )
+    from overbae.services.finetuning_validator import validate_dataset
+
+    checked = validate_dataset(
+        str(dataset.id),
+        cell_id=str(selected.id),
+        validation_cell_id=str(validation_cell.id) if validation_cell else None,
+        validation_dataset_id=str(validation_cell.dataset_id) if validation_cell else None,
+        validation_enabled=validation_enabled,
+        validation_split_ratio=validation_split_ratio,
+        split_method=split_method,
+    )
+    if not checked.valid:
+        raise ValueError("The selected training split is not technically compatible.")
+    count = checked.stats.get("train_examples", selected.rows)
+    selected_tokens = round(dataset_total_tokens(stats) * count / max(1, selected.rows))
+
+    if active_backend() == "modal" and native:
+        from overbae.services.finetuning_pricing import humanize_duration
+        from overbae.services.training_forecast import forecast
+
+        tokens = selected_tokens * n_epochs
+        recipe = {**(hyperparameters or {}), "objective": "decision_cross_entropy"}
+        measured = forecast(dataset.project_id, base_model, recipe, tokens=tokens, stats=stats)
+        measured["token_estimate"] = "proportional_to_selected_rows"
+        measured["selected_training_rows"] = count
+        duration = measured["training_seconds"]
+        cost = measured["training_gpu_usd"]
+        return {
+            "forecast": measured,
+            "cost_estimate": {
+                "usd": cost[1],
+                "price_per_million_usd": None,
+                "trained_tokens": tokens,
+                "minimum_applied": False,
+            }
+            if cost
+            else None,
+            "time_estimate": {
+                "seconds": math.ceil(duration[1]) if duration else None,
+                "human": humanize_duration(math.ceil(duration[1]))
+                if duration
+                else "Unmeasured recipe",
+            },
+            "trained_tokens": tokens,
+        }
     return estimate_training_run(
-        dataset_tokens=dataset_total_tokens(stats),
+        dataset_tokens=selected_tokens,
         n_epochs=n_epochs,
         total_params_b=float(params_b),
         use_lora=use_lora,

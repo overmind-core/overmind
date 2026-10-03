@@ -110,7 +110,22 @@ def test_dataset_upload_resource_describes_cli_flow_and_server_limits():
         return json.loads(contents[0].content)
 
     resource = asyncio.run(read())
-    assert resource["extensions"] == [".csv", ".tsv", ".json", ".jsonl", ".ndjson", ".parquet"]
+    assert resource["extensions"] == [
+        ".csv",
+        ".tsv",
+        ".json",
+        ".jsonl",
+        ".ndjson",
+        ".parquet",
+        ".pdf",
+        ".docx",
+        ".md",
+        ".txt",
+        ".png",
+        ".jpg",
+        ".jpeg",
+        ".webp",
+    ]
     assert resource["max_bytes"] == 2 * 1024**3
     assert resource["json_array_max_bytes"] == 256 * 1024**2
     assert "capped at 2 GiB" in resource["limits"]
@@ -537,3 +552,35 @@ def test_dataset_run_job_is_project_scoped():
         _read(project, f"overmind://datasets/{foreign.id}")
     with pytest.raises(McpError):
         _read(project, f"overmind://jobs/dataset_run/{foreign.id}")
+
+
+def test_native_running_resource_retains_latest_metrics_and_contract():
+    from conftest import TRAIN_ROWS, frozen_dataset
+
+    project, _ = _project()
+    dataset = frozen_dataset(project, TRAIN_ROWS, contract="train")
+    points = [{"step": n, "train_loss": 1 / n, "api_key": "must-redact"} for n in range(1, 251)]
+    job = FinetuningJob.objects.create(
+        project=project,
+        dataset=dataset,
+        base_model="Qwen/Qwen3.5-4B",
+        status="running",
+        hyperparameters={"objective": "decision_cross_entropy"},
+        progress={"trained_steps": 250, "metrics": {"loss": points}, "metrics_history": points},
+    )
+    context = MCPContext(
+        user=User(email="reader@example.com"),
+        token=APIToken(scope={"scope": "project", "permission": ["read"]}),
+        project=project,
+    )
+
+    async def read():
+        with bind_context(context):
+            contents = list(await read_resource(f"overmind://finetunes/{job.id}"))
+        return json.loads(contents[0].content)
+
+    resource = asyncio.run(read())
+    assert resource["inference_contract"] == "decision"
+    assert resource["loss"][-1]["step"] == 250
+    assert resource["progress"]["metrics_history"][-1]["step"] == 250
+    assert "must-redact" not in json.dumps(resource)

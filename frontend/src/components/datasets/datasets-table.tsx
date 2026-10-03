@@ -99,6 +99,7 @@ export function DatasetsToolbar({
               <SelectItem value="train">Train</SelectItem>
               <SelectItem value="eval">Eval</SelectItem>
               <SelectItem value="pending">Pending</SelectItem>
+              <SelectItem value="explore">Data exploration</SelectItem>
             </SelectContent>
           </Select>
           {setCapabilityFilter && (

@@ -1,3 +1,4 @@
+import gzip
 import hashlib
 import json
 from pathlib import Path
@@ -56,8 +57,9 @@ def test_stale_worker_reports_deployment_mismatch_without_loading_tokenizer(tmp_
 
 def test_current_worker_writes_exact_tokens_and_tokenizer(tmp_path):
     request = tmp_path / "request.json"
-    source = tmp_path / "rows.jsonl"
-    source.write_text(json.dumps({"messages": [{"role": "assistant", "content": "answer"}]}) + "\n")
+    source = tmp_path / "rows.jsonl.gz"
+    with gzip.open(source, "wt", encoding="utf-8") as stream:
+        stream.write(json.dumps({"messages": [{"role": "assistant", "content": "answer"}]}) + "\n")
     request.write_text(
         json.dumps(
             {

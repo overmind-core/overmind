@@ -126,14 +126,13 @@ class TestExplicitValuesWin:
 
 
 class TestClampsAndBatchMath:
-    def test_batch_clamped_to_model_max(self):
-        plan = _plan(hyperparameters={"batch_size": 64}, model_max_batch=8)
-        assert plan.batch_size == 8
-        assert any("clamped" in n for n in plan.notes)
+    def test_explicit_batch_above_model_max_is_rejected(self):
+        with pytest.raises(TrainingPlanError, match="batch_size"):
+            _plan(hyperparameters={"batch_size": 64}, model_max_batch=8)
 
     def test_batch_never_exceeds_corpus(self):
-        plan = _plan(hyperparameters={"batch_size": 8}, num_train_examples=3)
-        assert plan.batch_size == 3
+        with pytest.raises(TrainingPlanError, match="batch_size"):
+            _plan(hyperparameters={"batch_size": 8}, num_train_examples=3)
 
     def test_grad_accum_ignores_gpu_count(self):
         # Training is single-process model-parallel (device_map="auto"), so gpu_count
@@ -295,11 +294,10 @@ class TestPacking:
         assert plan.packing is False
         assert any("packing disabled" in n for n in plan.notes)
 
-    def test_gemma4_moe_forces_zero_dropout(self):
-        plan = _plan(
-            hyperparameters={"training_type": {"type": "Lora", "lora_dropout": 0.05}},
-            params_b=25.2,
-            model_id="google/gemma-4-26B-A4B-it",
-        )
-        assert plan.lora_dropout == 0.0
-        assert any("Gemma4 MoE" in n for n in plan.notes)
+    def test_gemma4_moe_rejects_requested_nonzero_dropout(self):
+        with pytest.raises(TrainingPlanError, match="lora_dropout"):
+            _plan(
+                hyperparameters={"training_type": {"type": "Lora", "lora_dropout": 0.05}},
+                params_b=25.2,
+                model_id="google/gemma-4-26B-A4B-it",
+            )

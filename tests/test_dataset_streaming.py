@@ -225,3 +225,80 @@ def test_sandboxed_queries_stream_only_the_registered_file(tmp_path, monkeypatch
         store.query(
             "SELECT * FROM t); SET enable_external_access=true; SELECT * FROM t --", t=source
         )
+
+
+@pytest.mark.django_db
+def test_training_validation_checks_bounded_batches_and_retains_late_errors(monkeypatch):
+    from conftest import frozen_dataset
+
+    from overbae.models import Project
+    from overbae.services import finetuning_validator as validator
+
+    project = Project.objects.create(name="Bounded validation", slug="bounded-validation")
+    source = [
+        {
+            "messages": [
+                {"role": "user", "content": str(i)},
+                {"role": "assistant", "content": "a" * 1000},
+            ]
+        }
+        for i in range(2001)
+    ]
+    dataset = frozen_dataset(project, source, contract="train")
+    original_rows, original_check = validator.row_store.iter_rows, validator.validate_rows
+    pending = 0
+    checked = 0
+
+    def read(cell):
+        nonlocal pending
+        for row in original_rows(cell):
+            pending += 1
+            assert pending <= 512, "Validation retained more than its bounded row batch"
+            if row.index == 2000:
+                row.extra["messages"][-1]["content"] = ""
+            yield row
+
+    def check(rows):
+        nonlocal pending, checked
+        checked += len(rows)
+        pending = 0
+        return original_check(rows)
+
+    monkeypatch.setattr(validator.row_store, "iter_rows", read)
+    monkeypatch.setattr(validator, "validate_rows", check)
+    result = validator.validate_dataset(str(dataset.id), validation_enabled=False)
+    assert checked == 2001
+    assert not result.valid and any("2001" in error for error in result.errors)
+
+
+@pytest.mark.django_db
+def test_attached_files_and_replay_never_materialize_existing_frame(
+    tmp_path, settings, monkeypatch
+):
+    from overbae.models import Dataset, Project
+    from overbae.services.datasets import attachments, land, paths, store
+    from overbae.services.datasets.notebook import run
+
+    settings.MEDIA_ROOT = tmp_path
+    project = Project.objects.create(name="Attachment streaming", slug="attachment-streaming")
+    dataset = Dataset.objects.create(project=project, name="Source", intent="explore")
+    land.land_rows(dataset, [{"text": f"evidence {i}", "group_id": str(i)} for i in range(3000)])
+    dataset.refresh_from_db()
+    source = dataset.source
+    monkeypatch.setattr(
+        store,
+        "read_frame",
+        lambda *a, **k: (_ for _ in ()).throw(AssertionError("whole frame materialized")),
+    )
+    added = attachments.commit(
+        dataset, land.Landing({"text": f"attached {i}", "group_id": "attachment"} for i in range(5))
+    )
+    assert added.rows == 3005
+    output = paths.cell_path(dataset.id, added.id)
+    assert store.page(output, offset=3000)["rows"][0]["text"] == "attached 0"
+    assert store.file_sha256(paths.cell_path(dataset.id, source.id)) == source.fingerprint
+    added.state = "queued"
+    added.save(update_fields=["state"])
+    run.execute(dataset)
+    added.refresh_from_db()
+    assert added.state == "ok" and added.rows == 3005

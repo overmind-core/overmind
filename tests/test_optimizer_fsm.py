@@ -56,6 +56,7 @@ def _make_dataset(experiment: OptimizerExperiment, num_datapoints: int = 2) -> D
         experiment.project,
         [{"input": {"q": order}, "expected_output": "a"} for order in range(num_datapoints)],
         capability=experiment.capability,
+        contract="eval",
     )
     experiment.dataset = dataset
     experiment.cell = dataset.active_cell
@@ -780,7 +781,7 @@ def test_optimize_capability_creates_scheduled_experiment_without_dispatch(monke
     capability = Capability.objects.create(
         project=project, name="a", slug=f"a-{uuid.uuid4().hex[:6]}", entrypoint_fn="trigger"
     )
-    dataset = frozen_dataset(project, EVAL_ROWS, capability=capability)
+    dataset = frozen_dataset(project, EVAL_ROWS, capability=capability, contract="eval")
 
     experiment = optimizer_module.optimize_capability(capability, dataset=dataset)
 

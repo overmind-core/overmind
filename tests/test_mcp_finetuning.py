@@ -338,6 +338,11 @@ def test_estimate_uses_existing_estimator_without_creating_a_job(monkeypatch):
             "n_epochs": 4,
             "use_lora": False,
             "cell": cell,
+            "validation_cell": None,
+            "validation_enabled": True,
+            "validation_split_ratio": 0.2,
+            "split_method": "random",
+            "hyperparameters": {},
         },
     }
     assert result.structuredContent["trained_tokens"] == 1000
@@ -406,8 +411,8 @@ def test_start_uses_serializer_and_worker_task(
     assert job.capability_id == (capability.id if capability_choice == "selected" else None)
     if capability_choice == "selected":
         assert job.baseline_model == capability.model
-    assert job.eval_dataset_id == _evaluation.id
-    assert job.eval_set_id == _eval_set.id
+    assert job.eval_dataset_id == (None if disable_evals else _evaluation.id)
+    assert job.eval_set_id == (None if disable_evals else _eval_set.id)
     if disable_evals:
         assert not any(
             (
@@ -913,3 +918,127 @@ def test_activation_receipt_can_be_polled_and_is_project_scoped():
     result = _call("get_job", {"kind": "model_activation", "id": receipt["id"]}, other)
     assert result.isError
     assert result.structuredContent["error"]["code"] == "resource_not_found"
+
+
+def test_native_readiness_uses_explicit_full_cell_and_external_validation_without_product_evals(
+    settings,
+):
+    settings.FINETUNING_BACKEND = "modal"
+    context = _context()
+    _, _, unrelated_eval, _ = training_setup(context)
+
+    def decision(i):
+        return {
+            "decision": {
+                "state": str(i),
+                "question": "Choose",
+                "kind": "choice",
+                "options": ["A", "B"],
+                "target_probabilities": [0.2, 0.8],
+            }
+        }
+
+    train = frozen_dataset(context.project, [decision(i) for i in range(12)], contract="train")
+    validation = frozen_dataset(
+        context.project, [decision(i + 100) for i in range(3)], contract="train"
+    )
+    result = _call(
+        "check_finetune_readiness",
+        {
+            "dataset": str(train.id),
+            "cell": str(train.active_cell.id),
+            "validation_dataset": str(validation.id),
+            "validation_cell": str(validation.active_cell.id),
+            "validation_enabled": True,
+            "eval_model_before": False,
+            "eval_model_after": False,
+        },
+        context,
+    )
+    assert not result.isError, result.structuredContent
+    body = result.structuredContent
+    assert body["eval_dataset"] is None
+    assert body["dataset"]["validation"]["stats"]["train_examples"] == 12
+    assert body["dataset"]["validation"]["stats"]["val_examples"] == 3
+    assert body["training_contract"]["inference_contract"] == "decision"
+    assert body["selection"]["validation_cell"] == str(validation.active_cell.id)
+    assert str(unrelated_eval.id) not in json.dumps(body["selection"])
+
+
+def test_repeated_launch_key_returns_one_job_and_rejects_changed_recipe(monkeypatch):
+    context = _context(permission=["read", "write"])
+    _, train, _, _ = training_setup(context)
+    dispatch = Mock(return_value=SimpleNamespace(id="one-dispatch"))
+    monkeypatch.setattr("overbae.tasks.finetuning.run_finetuning.apply_async", dispatch)
+    monkeypatch.setattr("overbae.api.credit_gate.require_credits", lambda _: None)
+    monkeypatch.setattr("overbae.services.plan_limits.require_plan_quota", lambda *_: None)
+    arguments = {
+        "dataset": str(train.id),
+        "cell": str(train.active_cell.id),
+        "base_model": "Qwen/Qwen2.5-7B-Instruct",
+        "request_key": "one-experiment",
+        "hyperparameters": {"training_type": {"type": "Lora"}, "seed": 17},
+        "eval_model_before": False,
+        "eval_model_after": False,
+    }
+    first = _call("start_finetune", arguments, context)
+    second = _call("start_finetune", arguments, context)
+    assert not first.isError and not second.isError, (
+        first.structuredContent,
+        second.structuredContent,
+    )
+    assert first.structuredContent["job"]["id"] == second.structuredContent["job"]["id"]
+    assert dispatch.call_count == 1
+    assert FinetuningJob.objects.filter(project=context.project).count() == 1
+    changed = _call("start_finetune", {**arguments, "hyperparameters": {"seed": 18}}, context)
+    assert changed.isError
+    assert dispatch.call_count == 1
+
+
+def test_native_evaluation_is_shared_by_mcp_rest_and_scoped_resources(settings):
+    from overbae.services.native_evaluation import schedule
+
+    settings.STRIPE_SECRET_KEY = ""
+    context = _context(permission=["read", "write", "train"])
+    train = frozen_dataset(context.project, TRAIN_ROWS, contract="train")
+    job = FinetuningJob.objects.create(
+        project=context.project,
+        dataset=train,
+        cell=train.active_cell,
+        base_model="fixture",
+        hyperparameters={"objective": "decision_cross_entropy"},
+    )
+    cells = []
+    for role in ("calibration", "final"):
+        dataset = frozen_dataset(
+            context.project,
+            [
+                {
+                    "input": {
+                        "decision": {
+                            "kind": "choice",
+                            "state": role,
+                            "question": "Choose",
+                            "options": ["a", "b"],
+                        }
+                    },
+                    "expected_output": {"probabilities": [1, 0]},
+                }
+            ],
+            contract="eval",
+        )
+        cells.append(dataset.active_cell)
+    arguments = {
+        "job": str(job.id),
+        "calibration_cell": str(cells[0].id),
+        "final_cell": str(cells[1].id),
+    }
+    first = _call("schedule_native_evaluation", arguments, context)
+    assert not first.isError, first.structuredContent
+    plan = schedule(job, calibration_cell=cells[0], final_cell=cells[1])
+    assert first.structuredContent["plan"]["id"] == str(plan.id)
+    receipt = _call("get_job", {"kind": "native_evaluation", "id": str(plan.id)}, context)
+    assert not receipt.isError, receipt.structuredContent
+    other = _context(permission=["read", "write", "train"])
+    assert _call("get_job", {"kind": "native_evaluation", "id": str(plan.id)}, other).isError
+    assert _call("schedule_native_evaluation", arguments, other).isError

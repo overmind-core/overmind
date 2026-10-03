@@ -27,6 +27,7 @@ import {
   BehavioursApi,
   BillingApi,
   CapabilitiesApi,
+  ChatGPTApi,
   Configuration,
   ConnectorCredentialsApi,
   DatasetsApi,
@@ -87,7 +88,13 @@ export function clearTokens() {
   localStorage.removeItem(EMAIL_KEY);
   clearGuestSession();
 }
-const BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8000";
+const configuredBaseURL = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8000";
+const BASE_URL =
+  import.meta.env.VITE_SELF_HOSTED === "true" &&
+  typeof window !== "undefined" &&
+  window.location.hostname === "127.0.0.1"
+    ? configuredBaseURL.replace(/^http:\/\/localhost(?=[:/]|$)/, "http://127.0.0.1")
+    : configuredBaseURL;
 
 const LOGIN_REDIRECT_GUARD_KEY = "login_redirect_at";
 
@@ -402,6 +409,7 @@ export async function request<T>(path: string, init?: RequestInit): Promise<T> {
 
 export class API {
   mcpOauth: McpOauthApi;
+  chatgpt: ChatGPTApi;
   agent: AgentApi;
   capabilities: CapabilitiesApi;
   auth: AuthApi;
@@ -433,6 +441,7 @@ export class API {
 
   constructor(private cfg: Configuration) {
     this.mcpOauth = new McpOauthApi(this.cfg);
+    this.chatgpt = new ChatGPTApi(this.cfg);
     this.agent = new AgentApi(this.cfg);
     this.capabilities = new CapabilitiesApi(this.cfg);
     this.auth = new AuthApi(this.cfg);

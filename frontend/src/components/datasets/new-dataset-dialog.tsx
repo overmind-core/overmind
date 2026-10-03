@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { useNavigate } from "@tanstack/react-router";
 
+import { Attachment } from "@/components/datasets/attachment";
 import { evaluationRows } from "@/components/datasets/dataset-split";
 import type { DatasetSource } from "@/components/datasets/new-dataset-button";
 import {
@@ -13,6 +14,7 @@ import {
   Dialog,
   DialogBody,
   DialogContent,
+  DialogDescription,
   DialogFooter,
   DialogHeader,
   DialogTitle,
@@ -42,8 +44,10 @@ import { errorMessage } from "@/lib/notify";
 import { cn } from "@/lib/utils";
 import type { Dataset, SourceRequest } from "@/openapi";
 
-type Purpose = "train" | "eval" | "split";
+type Purpose = "train" | "eval" | "explore" | "split" | "pending";
 const PURPOSES: Array<{ value: Purpose; label: string }> = [
+  { label: "Choose in workshop", value: "pending" },
+  { label: "Data exploration", value: "explore" },
   { label: "Evaluation", value: "eval" },
   { label: "Training", value: "train" },
   { label: "Train + eval", value: "split" },
@@ -56,15 +60,7 @@ const POSITIONS: Array<{ value: SplitPosition; label: string }> = [
 const AUTO_CAPABILITY = "__auto__";
 const NO_CAPABILITY = "__none__";
 const stripExtension = (name: string) =>
-  name.replace(/\.(csv|tsv|json|jsonl|ndjson|parquet)(\.gz)?$/i, "");
-const fileType = (name: string) =>
-  name.toLowerCase().replace(/\.gz$/, "").split(".").at(-1)?.toUpperCase() || "FILE";
-const fileSize = (bytes: number) => {
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 ** 2) return `${(bytes / 1024).toFixed(1)} KB`;
-  if (bytes < 1024 ** 3) return `${(bytes / 1024 ** 2).toFixed(1)} MB`;
-  return `${(bytes / 1024 ** 3).toFixed(1)} GB`;
-};
+  name.replace(/\.(csv|tsv|json|jsonl|ndjson|parquet|pdf|docx|md|txt|png|jpe?g|webp)(\.gz)?$/i, "");
 
 type Readiness = { source: SourceRequest; rows?: number } | { hint: string };
 
@@ -97,9 +93,10 @@ export function NewDatasetDialog({
   const fromTraces = (initialTraceIds?.length ?? 0) > 0 || !!initialSelection;
   const sourceType = fromTraces ? "traces" : initialSource;
   const [name, setName] = useState("");
+  const [brief, setBrief] = useState("");
   const [nameTouched, setNameTouched] = useState(false);
   const [capabilityId, setCapabilityId] = useState(initialCapabilityId ?? AUTO_CAPABILITY);
-  const [purpose, setPurpose] = useState<Purpose | "">("");
+  const [purpose, setPurpose] = useState<Purpose>("pending");
   const [percentInput, setPercentInput] = useState("30");
   const [position, setPosition] = useState<SplitPosition>("tail");
   const [picked, setPicked] = useState<TraceSelectionState>({ status: "counting" });
@@ -126,7 +123,8 @@ export function NewDatasetDialog({
     setName("");
     setNameTouched(false);
     setCapabilityId(initialCapabilityId ?? AUTO_CAPABILITY);
-    setPurpose("");
+    setPurpose("pending");
+    setBrief("");
     setPercentInput("30");
     setPosition("tail");
     setPicked({ status: "counting" });
@@ -157,7 +155,9 @@ export function NewDatasetDialog({
       if (upload.files.some((file) => file.status !== "ready"))
         return { hint: "Uploading and counting rows" };
       return {
-        rows: upload.files.reduce((sum, file) => sum + (file.rows ?? 0), 0),
+        rows: upload.files.every((file) => file.rows != null)
+          ? upload.files.reduce((sum, file) => sum + (file.rows ?? 0), 0)
+          : undefined,
         source: { uploads: upload.files.map((file) => file.uploadId!) },
       };
     }
@@ -175,6 +175,7 @@ export function NewDatasetDialog({
     return { rows: picked.count, source: { traces: traceSelectionBody(picked.selection) } };
   }, [sourceType, upload.files, initialTraceIds, initialSelection, initialSelectionCount, picked]);
   const ready = "source" in readiness;
+  const canStart = ready || (sourceType === "file" && upload.files.length === 0 && !!brief.trim());
   const rows = ready ? readiness.rows : undefined;
   const splitError =
     purpose === "split"
@@ -212,9 +213,10 @@ export function NewDatasetDialog({
   );
 
   const handleSubmit = async () => {
-    if (!ready || !purpose || busy || splitError) return;
+    if (!canStart || busy || splitError || (purpose === "split" && !ready)) return;
     setError(null);
     const base = {
+      brief: brief.trim(),
       capabilityId:
         capabilityId === AUTO_CAPABILITY
           ? undefined
@@ -223,7 +225,7 @@ export function NewDatasetDialog({
             : capabilityId,
       name: name.trim() || suggestedName || "Untitled dataset",
       projectId,
-      source: readiness.source,
+      source: ready ? readiness.source : undefined,
     };
     try {
       if (purpose === "split") {
@@ -232,6 +234,7 @@ export function NewDatasetDialog({
           deduplicate: true,
           evalPercent,
           position,
+          source: ready ? readiness.source : {},
         });
         finish(pair.train);
       } else {
@@ -244,13 +247,23 @@ export function NewDatasetDialog({
 
   return (
     <Dialog onOpenChange={(next) => !busy && onOpenChange(next)} open={open}>
-      <DialogContent size="lg">
+      <DialogContent size="md">
         <DialogHeader>
           <DialogTitle>New dataset</DialogTitle>
+          {fromTraces && (
+            <DialogDescription>
+              {initialTraceIds?.length
+                ? `${initialTraceIds.length.toLocaleString()} selected ${initialTraceIds.length === 1 ? "trace" : "traces"}`
+                : `${(initialSelectionCount ?? 0).toLocaleString()} matching traces`}
+              {" · One row per trace"}
+            </DialogDescription>
+          )}
         </DialogHeader>
-        <DialogBody className="flex flex-col gap-5">
+        <DialogBody className="flex flex-col gap-4">
           <div className="flex flex-col gap-1.5">
-            <Label htmlFor="dataset-name">Dataset name</Label>
+            <Label className="text-xs text-muted-foreground" htmlFor="dataset-name">
+              Dataset name
+            </Label>
             <Input
               disabled={busy}
               id="dataset-name"
@@ -267,7 +280,7 @@ export function NewDatasetDialog({
             <section
               aria-label="Upload files"
               className={cn(
-                "flex flex-col gap-3 rounded-md border border-dashed p-4 transition-colors",
+                "flex flex-col gap-3 rounded-md border border-dashed p-3 transition-colors",
                 dragging ? "border-primary bg-accent" : "border-border"
               )}
               onDragLeave={(e) => {
@@ -286,82 +299,30 @@ export function NewDatasetDialog({
               }}
             >
               {upload.files.length > 0 && (
-                <ul aria-label="Selected files" className="flex flex-col gap-2">
+                <ul aria-label="Selected files" className="flex flex-wrap gap-2">
                   {upload.files.map((entry) => (
-                    <li
-                      className="flex items-center gap-3 rounded-sm border border-border bg-muted px-3 py-2"
+                    <Attachment
+                      detailed
+                      disabled={busy}
+                      entry={entry}
                       key={entry.id}
-                    >
-                      <Icon.file className="size-4 shrink-0 text-muted-foreground" />
-                      <div className="min-w-0 flex-1">
-                        <p className="truncate text-sm" title={entry.file.name}>
-                          {entry.file.name}
-                        </p>
-                        <p
-                          className={cn(
-                            "text-xs",
-                            entry.status === "error" ? "text-destructive" : "text-muted-foreground"
-                          )}
-                        >
-                          {entry.status === "ready"
-                            ? `${entry.rows?.toLocaleString()} rows`
-                            : entry.status === "error"
-                              ? entry.error
-                              : entry.status === "counting"
-                                ? "Counting rows"
-                                : entry.status === "queued"
-                                  ? "Queued"
-                                  : `Uploading ${entry.percent}%`}
-                        </p>
-                      </div>
-                      <span className="shrink-0 rounded-sm border border-border px-1.5 py-0.5 text-xs text-muted-foreground">
-                        {fileType(entry.file.name)}
-                      </span>
-                      <span className="shrink-0 text-xs tabular-nums text-muted-foreground">
-                        {fileSize(entry.file.size)}
-                      </span>
-                      {entry.status === "error" && (
-                        <Button
-                          disabled={busy}
-                          onClick={() => upload.retry(entry)}
-                          size="sm"
-                          variant="secondary"
-                        >
-                          Retry
-                        </Button>
-                      )}
-                      {entry.status !== "ready" && entry.status !== "error" && (
-                        <Spinner className="size-3.5" />
-                      )}
-                      <Button
-                        aria-label={`Remove ${entry.file.name}`}
-                        disabled={busy}
-                        onClick={() => upload.remove(entry.id)}
-                        size="icon-sm"
-                        type="button"
-                        variant="ghost"
-                      >
-                        <Icon.close className="size-4" />
-                      </Button>
-                    </li>
+                      onRemove={() => upload.remove(entry.id)}
+                      onRetry={() => upload.retry(entry)}
+                    />
                   ))}
                 </ul>
               )}
-              <div
-                className={cn(
-                  "flex items-center gap-3",
-                  upload.files.length ? "justify-between" : "flex-col py-5 text-center"
-                )}
-              >
-                {!upload.files.length && <Icon.upload className="size-6 text-muted-foreground" />}
-                <div className="flex flex-col gap-1">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div className="flex min-w-0 flex-col gap-1">
                   <p className="text-sm">
                     {upload.files.length ? "Drop more files here" : "Drop files here"}
                   </p>
-                  <p className="text-xs text-muted-foreground">CSV, TSV, JSON, JSONL or Parquet</p>
+                  <p className="text-xs text-muted-foreground">
+                    Tables, documents, PNG, JPEG or WebP images
+                  </p>
                 </div>
                 <input
-                  accept=".csv,.tsv,.json,.jsonl,.ndjson,.parquet,.gz"
+                  accept=".csv,.tsv,.json,.jsonl,.ndjson,.parquet,.gz,.pdf,.docx,.md,.txt,.png,.jpg,.jpeg,.webp"
                   aria-label="Choose dataset files"
                   className="hidden"
                   disabled={busy}
@@ -385,22 +346,15 @@ export function NewDatasetDialog({
                 </Button>
               </div>
             </section>
-          ) : fromTraces ? (
-            <div className="rounded-md border border-border bg-muted px-3 py-3">
-              <p className="text-sm">
-                {initialTraceIds?.length
-                  ? `${initialTraceIds.length.toLocaleString()} selected traces`
-                  : `${(initialSelectionCount ?? 0).toLocaleString()} matching traces`}
-              </p>
-              <p className="text-xs text-muted-foreground">One row per trace</p>
-            </div>
-          ) : (
+          ) : !fromTraces ? (
             <TraceBulkSourcePicker onChange={setPicked} projectId={projectId} />
-          )}
+          ) : null}
 
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-            <div className="flex flex-col gap-1.5">
-              <Label htmlFor="dataset-capability">Capability</Label>
+          <div className="grid grid-cols-1 gap-x-5 gap-y-3 sm:grid-cols-2">
+            <div className="flex min-w-0 flex-col gap-1.5">
+              <Label className="text-xs text-muted-foreground" htmlFor="dataset-capability">
+                Capability
+              </Label>
               <Select disabled={busy} onValueChange={setCapabilityId} value={capabilityId}>
                 <SelectTrigger className="w-full" id="dataset-capability">
                   <SelectValue />
@@ -416,8 +370,10 @@ export function NewDatasetDialog({
                 </SelectContent>
               </Select>
             </div>
-            <div className="flex flex-col gap-1.5">
-              <Label htmlFor="dataset-purpose">Purpose</Label>
+            <div className="flex min-w-0 flex-col gap-1.5">
+              <Label className="text-xs text-muted-foreground" htmlFor="dataset-purpose">
+                Purpose
+              </Label>
               <Select
                 disabled={busy}
                 onValueChange={(value) => setPurpose(value as Purpose)}
@@ -439,13 +395,12 @@ export function NewDatasetDialog({
           </div>
 
           {purpose === "split" && (
-            <section
-              aria-label="Data split"
-              className="flex flex-col gap-4 border-t border-border pt-4"
-            >
-              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <section aria-label="Data split" className="flex flex-col gap-3">
+              <div className="grid grid-cols-1 gap-x-5 gap-y-3 sm:grid-cols-2">
                 <div className="flex flex-col gap-1.5">
-                  <Label htmlFor="eval-share">Data split</Label>
+                  <Label className="text-xs text-muted-foreground" htmlFor="eval-share">
+                    Data split
+                  </Label>
                   <div className="flex items-center gap-2">
                     <Input
                       aria-describedby={splitError ? "dataset-split-error" : undefined}
@@ -464,8 +419,10 @@ export function NewDatasetDialog({
                     <span className="text-sm text-muted-foreground">%</span>
                   </div>
                 </div>
-                <div className="flex flex-col gap-1.5">
-                  <Label htmlFor="eval-position">Evaluation rows</Label>
+                <div className="flex min-w-0 flex-col gap-1.5">
+                  <Label className="text-xs text-muted-foreground" htmlFor="eval-position">
+                    Evaluation rows
+                  </Label>
                   <Select
                     disabled={busy}
                     onValueChange={(value) => setPosition(value as SplitPosition)}
@@ -487,22 +444,22 @@ export function NewDatasetDialog({
               <div
                 aria-atomic="true"
                 aria-live="polite"
-                className="grid grid-cols-2 gap-3 rounded-md bg-muted p-3"
+                className="flex flex-wrap gap-x-5 gap-y-1 text-xs text-muted-foreground"
               >
-                <div>
-                  <p className="text-xs text-muted-foreground">Training dataset</p>
-                  <p className="text-sm tabular-nums">
+                <p>
+                  Training dataset{" "}
+                  <span className="tabular-nums text-foreground">
                     {heldRows === undefined || rows === undefined
                       ? "—"
                       : `${(rows - heldRows).toLocaleString()} rows`}
-                  </p>
-                </div>
-                <div>
-                  <p className="text-xs text-muted-foreground">Evaluation dataset</p>
-                  <p className="text-sm tabular-nums">
+                  </span>
+                </p>
+                <p>
+                  Evaluation dataset{" "}
+                  <span className="tabular-nums text-foreground">
                     {heldRows === undefined ? "—" : `${heldRows.toLocaleString()} rows`}
-                  </p>
-                </div>
+                  </span>
+                </p>
               </div>
               {splitError && (
                 <p className="text-xs text-destructive" id="dataset-split-error" role="alert">
@@ -511,21 +468,41 @@ export function NewDatasetDialog({
               )}
             </section>
           )}
+          <div className="flex flex-col gap-1.5">
+            <Label className="text-xs text-muted-foreground" htmlFor="dataset-brief">
+              Intent (optional)
+            </Label>
+            <textarea
+              className="min-h-16 max-h-40 w-full resize-y rounded-sm border border-border bg-background px-3 py-2 text-sm outline-none transition-colors focus-visible:border-primary placeholder:text-muted-foreground"
+              disabled={busy}
+              id="dataset-brief"
+              maxLength={8000}
+              onChange={(event) => setBrief(event.target.value)}
+              placeholder="e.g. Prepare support conversations for fine-tuning."
+              rows={2}
+              value={brief}
+            />
+          </div>
           <DismissibleAlert message={error} variant="destructive" />
         </DialogBody>
-        <DialogFooter className="items-center">
-          <span aria-live="polite" className="mr-auto text-xs text-muted-foreground">
-            {ready
-              ? rows === undefined
-                ? null
-                : `${rows.toLocaleString()} ${rows === 1 ? "row" : "rows"}`
-              : readiness.hint}
-          </span>
+        <DialogFooter className="flex-wrap">
+          {(!ready || sourceType === "file") && (
+            <span
+              aria-live="polite"
+              className="w-full text-xs text-muted-foreground sm:mr-auto sm:w-auto"
+            >
+              {ready
+                ? rows === undefined
+                  ? null
+                  : `${rows.toLocaleString()} ${rows === 1 ? "row" : "rows"}`
+                : readiness.hint}
+            </span>
+          )}
           <Button disabled={busy} onClick={() => onOpenChange(false)} variant="secondary">
             Cancel
           </Button>
           <Button
-            disabled={!ready || !purpose || busy || !!splitError}
+            disabled={!canStart || busy || !!splitError || (purpose === "split" && !ready)}
             onClick={() => void handleSubmit()}
           >
             {busy ? <Spinner className="size-4" /> : <Icon.datasetAdd />}

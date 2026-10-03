@@ -190,7 +190,7 @@ def test_sweep_keeps_going_past_a_protected_project():
     User.objects.filter(pk__in=[blocked.pk, plain.pk]).update(
         date_joined=timezone.now() - timedelta(days=8)
     )
-    dataset = frozen_dataset(blocked_project, EVAL_ROWS, name="d")
+    dataset = frozen_dataset(blocked_project, EVAL_ROWS, name="d", contract="eval")
     FinetuningJob.objects.create(project=blocked_project, dataset=dataset)
 
     result = sweep_guest_workspaces()

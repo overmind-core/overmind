@@ -26,6 +26,10 @@ from overbae.api.filters import (
     SessionFilter,
     SpanFilter,
 )
+from overbae.api.native_evaluation import (
+    NativeEvaluationRequestSerializer,
+    NativeEvaluationSerializer,
+)
 from overbae.api.scoping import project_ids_for
 from overbae.api.serializers import (
     ConnectorCapabilityMappingResponseSerializer,
@@ -39,6 +43,7 @@ from overbae.api.serializers import (
     ConnectorSyncRunSerializer,
     ConnectorVerifyResponseSerializer,
     DatasetOverlapResponseSerializer,
+    DatasetValidateRequestSerializer,
     DatasetValidationResponseSerializer,
     DeployedModelSerializer,
     FeedbackCreateSerializer,
@@ -83,6 +88,7 @@ from overbae.api.span_ordering import (
 from overbae.core.errors import InputValidationError
 from overbae.models import (
     APIToken,
+    Cell,
     ConnectorCredential,
     Conversation,
     Dataset,
@@ -98,6 +104,8 @@ from overbae.models import (
     TaskExecution,
     User,
 )
+from overbae.services import native_evaluation as native_evaluation_service
+from overbae.services.datasets.lifecycle import DatasetError
 from overbae.services.deployment import ensure_training_deployment, retry_deployment
 from overbae.services.inference_live import live_worker_stats
 from overbae.services.inference_metrics import model_activity, model_metrics, percentile
@@ -681,6 +689,28 @@ _FINETUNING_FACET_PARAMETERS = [
     destroy=extend_schema(summary="Delete finetuning job"),
 )
 class FinetuningJobViewSet(viewsets.ModelViewSet):
+    @extend_schema(
+        request=NativeEvaluationRequestSerializer, responses={202: NativeEvaluationSerializer}
+    )
+    @action(detail=True, methods=["post"], url_path="native-evaluation")
+    def native_evaluation(self, request, id=None):
+        from overbae.api.credit_gate import require_credits
+
+        require_credits(request.user)
+        job = self.get_object()
+        body = NativeEvaluationRequestSerializer(data=request.data)
+        body.is_valid(raise_exception=True)
+        cells = Cell.objects.select_related("dataset").filter(dataset__project_id=job.project_id)
+        calibration = get_object_or_404(cells, pk=body.validated_data["calibration_cell"])
+        final = get_object_or_404(cells, pk=body.validated_data["final_cell"])
+        try:
+            plan = native_evaluation_service.schedule(
+                job, calibration_cell=calibration, final_cell=final
+            )
+        except (ValueError, DatasetError) as exc:
+            raise drf_serializers.ValidationError(str(exc)) from exc
+        return Response(NativeEvaluationSerializer(plan).data, status=202)
+
     queryset = FinetuningJob.objects.all()
     filterset_class = FinetuningJobFilter
     search_fields = ["name", "use_case", "base_model"]
@@ -703,6 +733,9 @@ class FinetuningJobViewSet(viewsets.ModelViewSet):
             "capability",
             "dataset",
             "cell__dataset",
+            "eval_cell__dataset",
+            "eval_set",
+            "native_evaluation",
             "validation_cell__dataset",
             "triggered_by",
             "deployed_model",
@@ -717,6 +750,8 @@ class FinetuningJobViewSet(viewsets.ModelViewSet):
         require_plan_quota(self.request.user, "training_jobs")
 
         job = serializer.save(triggered_by=self.request.user)
+        if getattr(job, "launch_reused", False):
+            return
         try:
             result = run_finetuning.apply_async(kwargs={"job_id": str(job.id)})
         except Exception:  # noqa: BLE001 — broker hiccup shouldn't 500 post-create
@@ -885,7 +920,7 @@ class FinetuningJobViewSet(viewsets.ModelViewSet):
         remote_error = ""
         if job.remote_job_id:
             try:
-                get_runner(backend).cancel(job.remote_job_id)
+                get_runner(backend, job=job).cancel(job.remote_job_id)
             except Exception as exc:  # noqa: BLE001 — still flip local status
                 remote_error = str(exc)
                 logger.warning(
@@ -1138,6 +1173,7 @@ class FinetuningJobViewSet(viewsets.ModelViewSet):
                     "current_epoch": progress.get("current_epoch"),
                     "phase": progress.get("phase"),
                     "stage": progress.get("stage"),
+                    "diagnostics": progress.get("diagnostics") or {},
                     "download": progress.get("download"),
                     "lifecycle_stage": current_lifecycle,
                     "judge_evals": judge_evals,
@@ -1195,16 +1231,7 @@ class FinetuningJobViewSet(viewsets.ModelViewSet):
 
     @extend_schema(
         summary="Validate a dataset for fine-tuning",
-        request=inline_serializer(
-            "DatasetValidateRequest",
-            fields={
-                "dataset_id": drf_serializers.UUIDField(),
-                "validation_enabled": drf_serializers.BooleanField(required=False),
-                "validation_split_ratio": drf_serializers.FloatField(required=False),
-                "validation_dataset_id": drf_serializers.UUIDField(required=False, allow_null=True),
-                "split_method": drf_serializers.CharField(required=False),
-            },
-        ),
+        request=DatasetValidateRequestSerializer,
         responses={200: DatasetValidationResponseSerializer},
     )
     @action(detail=False, methods=["post"], url_path="validate-dataset")
@@ -1212,49 +1239,45 @@ class FinetuningJobViewSet(viewsets.ModelViewSet):
         """Check whether a dataset's datapoints conform to Together AI's format."""
         from overbae.services.finetuning_validator import validate_dataset
 
-        dataset_id = request.data.get("dataset_id")
-        if not dataset_id:
-            return Response({"detail": "dataset_id is required."}, status=400)
-
-        project_ids = _user_project_ids(request.user)
-
-        try:
-            dataset = Dataset.objects.get(
-                pk=dataset_id,
-                project_id__in=project_ids,
+        body = DatasetValidateRequestSerializer(data=request.data)
+        body.is_valid(raise_exception=True)
+        data = body.validated_data
+        dataset = get_object_or_404(
+            Dataset, pk=data["dataset_id"], project_id__in=_user_project_ids(request.user)
+        )
+        cell = (
+            get_object_or_404(dataset.cells, pk=data["cell_id"])
+            if data.get("cell_id")
+            else dataset.active_cell
+        )
+        validation = (
+            get_object_or_404(
+                Dataset, pk=data["validation_dataset_id"], project_id=dataset.project_id
             )
-        except (Dataset.DoesNotExist, ValidationError, ValueError):
-            return Response({"detail": "Dataset not found."}, status=404)
-
-        validation_dataset_id = request.data.get("validation_dataset_id")
-        if validation_dataset_id:
-            try:
-                Dataset.objects.get(
-                    pk=validation_dataset_id,
-                    project_id__in=project_ids,
-                )
-            except (Dataset.DoesNotExist, ValidationError, ValueError):
-                return Response({"detail": "Validation dataset not found."}, status=404)
-
-        validation_enabled = request.data.get("validation_enabled", True)
-        if isinstance(validation_enabled, str):
-            validation_enabled = validation_enabled.lower() in {"true", "1", "yes"}
-
-        try:
-            split_ratio = float(request.data.get("validation_split_ratio", 0.2) or 0.2)
-        except (TypeError, ValueError):
-            return Response(
-                {"detail": "validation_split_ratio must be a number."},
-                status=status.HTTP_400_BAD_REQUEST,
+            if data.get("validation_dataset_id")
+            else None
+        )
+        validation_cell = (
+            get_object_or_404(validation.cells, pk=data["validation_cell_id"])
+            if validation and data.get("validation_cell_id")
+            else validation.active_cell
+            if validation
+            else None
+        )
+        if data.get("validation_cell_id") and not validation:
+            raise drf_serializers.ValidationError(
+                {"validation_cell_id": "Select its validation dataset."}
             )
         result = validate_dataset(
             str(dataset.id),
-            validation_enabled=validation_enabled,
-            validation_split_ratio=split_ratio,
-            validation_dataset_id=str(validation_dataset_id) if validation_dataset_id else None,
-            split_method=request.data.get("split_method", "random"),
+            cell_id=str(cell.id) if cell else None,
+            validation_cell_id=str(validation_cell.id) if validation_cell else None,
+            validation_enabled=data["validation_enabled"],
+            validation_split_ratio=data["validation_split_ratio"],
+            validation_dataset_id=str(validation.id) if validation else None,
+            split_method=data["split_method"],
         )
-        return Response(result.as_dict())
+        return Response(DatasetValidationResponseSerializer(result.as_dict()).data)
 
     @extend_schema(
         summary="Rank trainable models for a dataset + capability",
@@ -1335,7 +1358,7 @@ class FinetuningJobViewSet(viewsets.ModelViewSet):
         data = ser.validated_data
 
         try:
-            Dataset.objects.get(
+            selected_dataset = Dataset.objects.get(
                 pk=data["dataset_id"],
                 project_id__in=_user_project_ids(request.user),
             )
@@ -1348,6 +1371,20 @@ class FinetuningJobViewSet(viewsets.ModelViewSet):
                 base_model=data["base_model"],
                 n_epochs=data["n_epochs"],
                 use_lora=data["use_lora"],
+                cell=get_object_or_404(selected_dataset.cells, pk=data["cell"])
+                if data.get("cell")
+                else selected_dataset.active_cell,
+                validation_cell=get_object_or_404(
+                    Cell.objects.select_related("dataset"),
+                    pk=data["validation_cell"],
+                    dataset__project=selected_dataset.project,
+                )
+                if data.get("validation_cell")
+                else None,
+                validation_enabled=data["validation_enabled"],
+                validation_split_ratio=data["validation_split_ratio"],
+                split_method=data["split_method"],
+                hyperparameters=data["hyperparameters"],
             )
         except ValueError as exc:
             return Response({"detail": str(exc)}, status=400)

@@ -60,6 +60,7 @@ export interface ExperimentSnapshot {
 }
 
 export function experimentLabel(job: FinetuningJobList): string {
+  if (job.name?.trim()) return job.name.trim();
   const info = getModelProviderInfo(job.baseModel);
   return info.modelLabel || job.baseModel;
 }
@@ -125,7 +126,8 @@ export function buildExperimentSnapshot(
     liveProgress:
       (live?.metrics_history?.length ?? 0) > 0 ||
       (live?.eval_history?.length ?? 0) > 0 ||
-      (live?.activity?.length ?? 0) > 0
+      (live?.activity?.length ?? 0) > 0 ||
+      live?.diagnostics != null
         ? parseFinetuningProgress(live)
         : parseFinetuningProgress(job.progress),
     lrPoints: (curves?.learning_rate ?? [])

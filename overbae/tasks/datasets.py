@@ -25,6 +25,8 @@ def _landed(targets: list) -> dict[str, Any]:
     rows = 0
     for target in targets:
         target.refresh_from_db()
+        if target.operation.get("state") == "cancelled":
+            continue
         source_cell = target.source
         landed = source_cell.rows if source_cell else 0
         rows += landed
@@ -127,6 +129,8 @@ def land(
     user_id: str | None = None,
     split: dict[str, Any] | None = None,
     infer_capability: bool = True,
+    attachment_request: str = "",
+    message: str = "",
 ) -> dict[str, Any]:
     """``source`` is ``{"uploads": [...]}``, ``{"upload_id", "filename"}``, ``{"rows": [...]}``,
     ``{"traces": {trace_ids | filters}}`` or ``{"llm_calls": {...}}``. With ``split``
@@ -134,7 +138,7 @@ def land(
     in two. Trace, file and row sources then start diagnosis. An LLM-call source already
     matches its contract, so it settles to idle instead."""
     from overbae.models import Dataset, User
-    from overbae.services.datasets import files
+    from overbae.services.datasets import attachments, files, operations
     from overbae.services.datasets import land as landing
     from overbae.services.datasets.notebook import agent
 
@@ -149,12 +153,17 @@ def land(
         targets.append(evaluation)
     if any(target.state != Dataset.State.LANDING for target in targets):
         return {"status": "landed"}
+    if attachment_request and dataset.source_spec.get("attachment_request") != attachment_request:
+        return {"status": "landed"}
+    appended = None
     # An unacknowledged worker kill must not trigger an unbounded import retry loop.
     if (self.request.delivery_info or {}).get("redelivered"):
         error = "Source import was interrupted. Check worker memory and retry the upload."
         for target in targets:
             _fail(target.id, error)
         return {"status": "failed", "error": error}
+    for target in targets:
+        operations.started(target.id, self.request.id or "")
     user = User.objects.filter(pk=user_id).first() if user_id else None
     for target in targets:
         _emit(target.id, {"type": "land_started"})
@@ -162,11 +171,19 @@ def land(
     def progress(done: int) -> None:
         _emit(dataset_id, {"type": "land_progress", "traces": done})
 
+    def file_progress(detail: dict) -> None:
+        for target in targets:
+            target.source_spec = {**target.source_spec, "landing_progress": detail}
+            Dataset.objects.filter(pk=target.id, state=Dataset.State.LANDING).update(
+                source_spec=target.source_spec, updated_at=timezone.now()
+            )
+            _emit(target.id, {"type": "land_progress", **detail})
+
     upload_id = source.get("upload_id")
     upload_ids = source.get("uploads") or []
     try:
         if upload_ids:
-            read = landing.read_uploads(upload_ids)
+            read = landing.read_uploads(upload_ids, on_progress=file_progress)
         elif upload_id:
             filename = source.get("filename") or files.upload_filename(upload_id) or "upload"
             path = files.upload_data_path(upload_id)
@@ -215,6 +232,22 @@ def land(
                         state=Dataset.State.DIAGNOSING,
                         infer_capability=infer_capability,
                     )
+        elif attachment_request:
+            with transaction.atomic():
+                dataset = Dataset.objects.select_for_update().get(pk=dataset_id)
+                if dataset.source_spec.get("attachment_request") != attachment_request:
+                    return {"status": "landed"}
+                if dataset.cells.exists():
+                    appended = attachments.commit(dataset, read, user=user)
+                else:
+                    landing.commit(
+                        dataset,
+                        read,
+                        user=user,
+                        state=Dataset.State.DIAGNOSING,
+                        infer_capability=False,
+                    )
+                targets = [dataset]
         else:
             landing.commit(
                 dataset,
@@ -233,6 +266,8 @@ def land(
             _fail(target.id, "Landing failed on the server. The file was not the cause.")
         return {"status": "failed", "error": str(exc)}
     finally:
+        for target in targets:
+            operations.finished(target.id, task_id=self.request.id or "")
         if upload_id:
             files.discard_upload(upload_id)
         for uploaded_id in upload_ids:
@@ -242,11 +277,37 @@ def land(
     for target in targets:
         target.refresh_from_db()
         source_cell = target.source
-        landed = source_cell.rows if source_cell else 0
+        landed = (
+            appended.review["added_rows"] if appended else source_cell.rows if source_cell else 0
+        )
         rows += landed
         _emit(target.id, {"type": "land_done", "rows": landed})
         try:
-            diagnose.apply_async(kwargs={"dataset_id": str(target.id), "user_id": user_id})
+            if appended or (attachment_request and message):
+                filenames = [item["filename"] for item in read.spec.get("sources", [])]
+                display = message.strip() or "Merge the attached data into this dataset."
+                if filenames:
+                    display += "\n\nAttached: " + ", ".join(filenames)
+                context = display
+                if appended:
+                    context += (
+                        f"\n\nThe files have already been merged in cell {appended.id}: "
+                        f"{landed} added rows. Inspect that cell and the current data before "
+                        "continuing. Do not append these files again. Preserve existing work; "
+                        "semantic changes still require a reviewed proposal."
+                    )
+                turn.apply_async(
+                    kwargs={
+                        "dataset_id": str(target.id),
+                        "user_id": user_id,
+                        "message": context,
+                        "display": display,
+                        "preparation_turn": True,
+                    },
+                    task_id=attachment_request,
+                )
+            else:
+                diagnose.apply_async(kwargs={"dataset_id": str(target.id), "user_id": user_id})
         except Exception:  # noqa: BLE001 — a broker failure must not strand the dataset
             logger.exception("could not queue the first scan for dataset %s", target.id)
             agent.settle(target.id)
@@ -254,6 +315,7 @@ def land(
 
 
 @shared_task(
+    bind=True,
     name="overbae.tasks.datasets.run",
     soft_time_limit=RUN_SOFT_LIMIT,
     time_limit=RUN_HARD_LIMIT,
@@ -261,12 +323,12 @@ def land(
     reject_on_worker_lost=True,
 )
 def run(
-    *, dataset_id: str, user_id: str | None = None, proposal_id: str | None = None
+    self, *, dataset_id: str, user_id: str | None = None, proposal_id: str | None = None
 ) -> dict[str, Any]:
     from celery.exceptions import SoftTimeLimitExceeded
 
     from overbae.models import Dataset, User
-    from overbae.services.datasets import dispatch
+    from overbae.services.datasets import dispatch, operations
     from overbae.services.datasets.notebook import run as run_svc
 
     dataset = Dataset.objects.filter(pk=dataset_id).first()
@@ -275,6 +337,7 @@ def run(
     if proposal_id and any(proposal_id in item.get("decisions", {}) for item in dataset.chat):
         return {"status": dataset.state}
     user = User.objects.filter(pk=user_id).first() if user_id else None
+    operations.started(dataset.id, self.request.id or "")
     try:
         run_svc.execute(
             dataset,
@@ -286,6 +349,7 @@ def run(
             Dataset.objects.filter(pk=dataset_id).update(state=Dataset.State.ERROR)
             dataset.state = Dataset.State.ERROR
         elif proposal_id:
+            operations.finished(dataset.id, task_id=self.request.id or "")
             proposal = dataset.cells.get(pk=proposal_id)
             dispatch.resume_after_decision(
                 dataset.id, proposal.id, proposal.title, "approved", user_id=user_id
@@ -305,6 +369,8 @@ def run(
         )
         _emit(dataset_id, {"type": "run_failed", "error": str(exc)[:4000]})
         return {"status": "failed", "error": str(exc)}
+    finally:
+        operations.finished(dataset.id, task_id=self.request.id or "")
     return {"status": dataset.state}
 
 
@@ -341,7 +407,13 @@ def diagnose(self, *, dataset_id: str, user_id: str | None = None) -> dict[str, 
     reject_on_worker_lost=True,
 )
 def turn(
-    self, *, dataset_id: str, message: str, user_id: str | None = None, display: str | None = None
+    self,
+    *,
+    dataset_id: str,
+    message: str,
+    user_id: str | None = None,
+    display: str | None = None,
+    preparation_turn: bool = False,
 ) -> dict[str, Any]:
     from overbae.models import User
     from overbae.services.datasets.notebook import agent
@@ -349,7 +421,12 @@ def turn(
     user = User.objects.filter(pk=user_id).first() if user_id else None
     try:
         for _event in agent.follow_up(
-            dataset_id, message, user=user, turn_key=self.request.id or "", display=display
+            dataset_id,
+            message,
+            user=user,
+            turn_key=self.request.id or "",
+            display=display,
+            preparation_turn=preparation_turn,
         ):
             pass
     except Exception as exc:  # noqa: BLE001
@@ -369,6 +446,10 @@ def reap_stuck_runs() -> dict[str, Any]:
     from overbae.models import Cell, Dataset
 
     now = timezone.now()
+    from overbae.services.datasets import operations
+
+    for pending in Dataset.objects.filter(operation__state="cancel_pending").only("id"):
+        operations.reconcile(pending.id)
     ids: list[Any] = []
     for state, limit in (
         (Dataset.State.LANDING, LAND_HARD_LIMIT),
@@ -384,6 +465,11 @@ def reap_stuck_runs() -> dict[str, Any]:
             error="The worker stopped before this finished.",
             updated_at=now,
         )
+        for dataset_id in found:
+            dataset = Dataset.objects.get(pk=dataset_id)
+            if dataset.operation.get("provider", {}).get("state") in {"submitting", "running"}:
+                operations.change(dataset_id, state="cancel_pending", local_stopped=True)
+                operations.reconcile(dataset_id, local_stopped=True)
         ids += found
     Cell.objects.filter(dataset_id__in=ids, state=Cell.State.RUNNING).update(
         state=Cell.State.QUEUED

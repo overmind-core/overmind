@@ -212,7 +212,7 @@ class TestJobSerializerContextValidation:
         )
         project = Project.objects.create(name="ctx", slug=f"ctx-{uuid.uuid4().hex[:8]}")
         ProjectMembership.objects.create(user=user, project=project)
-        dataset = frozen_dataset(project, TRAIN_ROWS)
+        dataset = frozen_dataset(project, TRAIN_ROWS, contract="train")
         evaluation = frozen_dataset(
             project,
             [{**row, "input": "held-out-" + row["input"]} for row in EVAL_ROWS],
@@ -262,8 +262,9 @@ class TestJobSerializerContextValidation:
 
     @pytest.mark.parametrize("field", ["eval_dataset", "eval_set"])
     @pytest.mark.parametrize("omit", [True, False])
-    def test_training_requires_evaluation_inputs_without_capability(self, field, omit):
+    def test_enabled_training_evaluations_require_inputs_without_capability(self, field, omit):
         s = self._serializer(max_token_length=100, base_model="Qwen/Qwen3-8B")
+        s.initial_data["eval_model_before"] = True
         if omit:
             s.initial_data.pop(field)
         else:

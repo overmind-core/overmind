@@ -13,12 +13,56 @@
  */
 
 import { mapValues } from '../runtime';
+import type { SplitMethod3daEnum } from './SplitMethod3daEnum';
+import {
+    SplitMethod3daEnumFromJSON,
+    SplitMethod3daEnumFromJSONTyped,
+    SplitMethod3daEnumToJSON,
+    SplitMethod3daEnumToJSONTyped,
+} from './SplitMethod3daEnum';
+
 /**
  *
  * @export
  * @interface FinetuningEstimateRequestRequest
  */
 export interface FinetuningEstimateRequestRequest {
+    /**
+     *
+     * @type {string}
+     * @memberof FinetuningEstimateRequestRequest
+     */
+    cell?: string;
+    /**
+     *
+     * @type {string}
+     * @memberof FinetuningEstimateRequestRequest
+     */
+    validationCell?: string;
+    /**
+     *
+     * @type {boolean}
+     * @memberof FinetuningEstimateRequestRequest
+     */
+    validationEnabled?: boolean;
+    /**
+     *
+     * @type {number}
+     * @memberof FinetuningEstimateRequestRequest
+     */
+    validationSplitRatio?: number;
+    /**
+     *
+     * @type {SplitMethod3daEnum}
+     * @memberof FinetuningEstimateRequestRequest
+     */
+    splitMethod?: SplitMethod3daEnum;
+    /**
+     *
+     * @type {any}
+     * @memberof FinetuningEstimateRequestRequest
+     */
+    hyperparameters?: any | null;
     /**
      *
      * @type {string}
@@ -45,6 +89,8 @@ export interface FinetuningEstimateRequestRequest {
     useLora: boolean;
 }
 
+
+
 /**
  * Check if a given object implements the FinetuningEstimateRequestRequest interface.
  */
@@ -66,6 +112,12 @@ export function FinetuningEstimateRequestRequestFromJSONTyped(json: any, ignoreD
     }
     return {
 
+        'cell': json['cell'] == null ? undefined : json['cell'],
+        'validationCell': json['validation_cell'] == null ? undefined : json['validation_cell'],
+        'validationEnabled': json['validation_enabled'] == null ? undefined : json['validation_enabled'],
+        'validationSplitRatio': json['validation_split_ratio'] == null ? undefined : json['validation_split_ratio'],
+        'splitMethod': json['split_method'] == null ? undefined : SplitMethod3daEnumFromJSON(json['split_method']),
+        'hyperparameters': json['hyperparameters'] == null ? undefined : json['hyperparameters'],
         'datasetId': json['dataset_id'],
         'baseModel': json['base_model'],
         'nEpochs': json['n_epochs'],
@@ -84,6 +136,12 @@ export function FinetuningEstimateRequestRequestToJSONTyped(value?: FinetuningEs
 
     return {
 
+        'cell': value['cell'],
+        'validation_cell': value['validationCell'],
+        'validation_enabled': value['validationEnabled'],
+        'validation_split_ratio': value['validationSplitRatio'],
+        'split_method': SplitMethod3daEnumToJSON(value['splitMethod']),
+        'hyperparameters': value['hyperparameters'],
         'dataset_id': value['datasetId'],
         'base_model': value['baseModel'],
         'n_epochs': value['nEpochs'],

@@ -63,6 +63,7 @@ def _dataset_of(rows: list[tuple[str, str]]) -> Dataset:
             for prompt, expected in rows
         ],
         capability=capability,
+        contract="eval",
     )
 
 

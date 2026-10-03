@@ -24,6 +24,15 @@ from overbae.api.billing import (
     SubscriptionView,
 )
 from overbae.api.capabilities import AgentGraphView, CapabilityViewSet
+from overbae.api.chatgpt import (
+    ChatGPTCallbackView,
+    ChatGPTDisconnectView,
+    ChatGPTLoginSessionView,
+    ChatGPTLoginView,
+    ChatGPTModelsView,
+    ChatGPTStartView,
+    WorkshopFundingView,
+)
 from overbae.api.completions import chat_completions, model_detail, models_list
 from overbae.api.datasets import DatasetViewSet
 from overbae.api.eval_views import (
@@ -101,6 +110,13 @@ router.register(r"task-executions", TaskExecutionViewSet, basename="taskexecutio
 
 urlpatterns = [
     path("api/mcp-oauth/consent/", MCPConsentView.as_view(), name="mcp-oauth-consent"),
+    path("api/chatgpt/", WorkshopFundingView.as_view()),
+    path("api/chatgpt/start/", ChatGPTStartView.as_view()),
+    path("api/chatgpt/login/", ChatGPTLoginView.as_view()),
+    path("api/chatgpt/callback/session/", ChatGPTLoginSessionView.as_view()),
+    path("api/chatgpt/callback/", ChatGPTCallbackView.as_view()),
+    path("api/chatgpt/models/", ChatGPTModelsView.as_view()),
+    path("api/chatgpt/disconnect/", ChatGPTDisconnectView.as_view()),
     path(settings.ADMIN_URL_PATH, admin.site.urls),
     path("health", health_check, name="health"),
     path("api/v1/traces", otlp_traces, name="otlp-traces"),

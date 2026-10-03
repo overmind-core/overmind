@@ -5,6 +5,7 @@ from __future__ import annotations
 import contextlib
 import json
 import math
+import random
 import re
 from collections import Counter
 from typing import Any
@@ -20,6 +21,7 @@ from overbae.services.finetuning_tool_validation import tool_schema_errors
 TRAIN = "train"
 EVAL = "eval"
 PENDING = "pending"
+EXPLORE = "explore"
 _LEGACY_INTENT = {"ft": TRAIN, "unstructured": EVAL}
 _FAILURE_SAMPLES = 10
 
@@ -27,7 +29,7 @@ _FAILURE_SAMPLES = 10
 def public_intent(value: str | None) -> str:
     """``ft`` → train, ``unstructured`` → eval; leftover rows were never rewritten."""
     raw = (value or "").strip()
-    if raw in (TRAIN, EVAL, PENDING):
+    if raw in (TRAIN, EVAL, PENDING, EXPLORE):
         return raw
     return _LEGACY_INTENT.get(raw, PENDING)
 
@@ -39,7 +41,7 @@ def stored_intents(public: str) -> tuple[str, ...]:
         return (TRAIN, "ft")
     if mapped == EVAL:
         return (EVAL, "unstructured")
-    return (PENDING,)
+    return (mapped,)
 
 
 def _missing(value: Any) -> bool:
@@ -86,7 +88,7 @@ def evaluation_generation_error(report: dict) -> str:
         return (
             "This dataset requires native probability evaluation. "
             "Ordinary chat generation does not produce the required probability vector. "
-            "Export this version for the native decision benchmark worker."
+            "Select this version in the training job’s native evaluation plan."
         )
     return ""
 
@@ -330,6 +332,8 @@ def stats_rows(records, columns) -> dict[str, Any]:
     out_col = "expected_output" if "expected_output" in columns else None
     total_in = total_out = max_tokens = 0
     tool_calling = multi_turn = False
+    lengths = []
+    rng = random.Random(0)
     if "decision" in columns:
         in_col = "decision"
     for record in records:
@@ -344,7 +348,14 @@ def stats_rows(records, columns) -> dict[str, Any]:
         )
         total_in += len(in_str)
         total_out += len(out_str)
-        max_tokens = max(max_tokens, approx_tokens(in_str + out_str))
+        length = approx_tokens(in_str + out_str)
+        max_tokens = max(max_tokens, length)
+        if len(lengths) < 10000:
+            lengths.append(length)
+        else:
+            index = rng.randrange(n)
+            if index < len(lengths):
+                lengths[index] = length
         turns = _tool_call_turns(inp)
         if turns:
             tool_calling = True
@@ -355,6 +366,8 @@ def stats_rows(records, columns) -> dict[str, Any]:
         "has_tool_calling": tool_calling,
         "has_multi_turn_tool_calls": multi_turn,
         "max_token_length": max_tokens,
+        "p95_token_length": sorted(lengths)[math.ceil(len(lengths) * 0.95) - 1] if lengths else 0,
+        "length_profile_method": "deterministic_reservoir_10000_character_estimate",
         "avg_input_chars": round(total_in / n) if n else 0,
         "avg_output_chars": round(total_out / n) if n else 0,
     }

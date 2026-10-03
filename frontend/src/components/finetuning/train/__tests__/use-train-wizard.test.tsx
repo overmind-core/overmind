@@ -12,7 +12,12 @@ const mocks = vi.hoisted(() => ({
     isError: false,
   },
   create: vi.fn(),
-  evals: { results: [{ capability: null, id: "eval", name: "Evaluation", project: "project" }] },
+  estimate: vi.fn(),
+  evals: {
+    results: [
+      { active: "eval-cell", capability: null, id: "eval", name: "Evaluation", project: "project" },
+    ],
+  },
   overlapCount: 0,
   queries: vi.fn(),
   recommend: vi.fn(),
@@ -37,8 +42,11 @@ const mocks = vi.hoisted(() => ({
       { capability: null, id: "set", name: "General", project: "project" },
     ],
   },
-  train: { results: [{ capability: "cap", id: "train", name: "Training" }] },
+  train: { results: [{ active: "train-cell", capability: "cap", id: "train", name: "Training" }] },
   validate: vi.fn(),
+}));
+vi.mock("@/client", () => ({
+  default: { finetuningJobs: { finetuningJobsEstimateCreate: mocks.estimate } },
 }));
 vi.mock("@tanstack/react-query", () => ({
   useQueries: (options: { queries: unknown[] }) => {
@@ -130,6 +138,7 @@ it("launches Modal jobs without starting or waiting for setup preprocessing", as
   expect(queries.length).toBeGreaterThan(0);
   expect(queries.every((query) => query.queryKey[0] === "finetuning-estimate")).toBe(true);
   expect(mocks.validate).toHaveBeenCalledExactlyOnceWith({
+    cellId: "train-cell",
     datasetId: "train",
     splitMethod: "random",
     validationDatasetId: null,
@@ -142,7 +151,9 @@ it("launches Modal jobs without starting or waiting for setup preprocessing", as
   expect(mocks.create).toHaveBeenCalledWith([
     expect.objectContaining({
       baseModel: "model",
+      cell: "train-cell",
       dataset: "train",
+      evalCell: "eval-cell",
       evalDataset: "eval",
       splitMethod: "random",
       validationDataset: null,
@@ -237,7 +248,9 @@ it("launches with no capability and a project-scoped unassigned eval set", async
   expect(mocks.create).toHaveBeenCalledWith([
     expect.objectContaining({
       capability: null,
+      cell: "train-cell",
       dataset: "train",
+      evalCell: "eval-cell",
       evalDataset: "eval",
       evalIncumbentAfter: false,
       evalIncumbentBefore: false,
@@ -302,7 +315,8 @@ it("does not infer a capability from dataset picks and keeps unassigned eval set
 });
 
 it.each(["evals", "sets"] as const)("still requires %s when capability is none", async (field) => {
-  const saved = mocks[field];
+  const savedEvals = mocks.evals;
+  const savedSets = mocks.sets;
   mocks[field] = { results: [] };
   try {
     const { result } = renderHook(() => useTrainWizard(args));
@@ -312,6 +326,95 @@ it.each(["evals", "sets"] as const)("still requires %s when capability is none",
       field === "evals" ? "Select an eval dataset" : "Select an eval set"
     );
   } finally {
-    mocks[field] = saved;
+    mocks.evals = savedEvals;
+    mocks.sets = savedSets;
+  }
+});
+
+it("launches a native contract without unrelated chat evaluations and reuses its request identity", async () => {
+  mocks.catalog.backend = "modal";
+  mocks.validate.mockResolvedValue({ format: "decision", valid: true });
+  const { result } = renderHook(() => useTrainWizard(args));
+  await waitFor(() => expect(result.current.drafts.length).toBeGreaterThan(0));
+  act(() =>
+    result.current.updateDraft(result.current.drafts[0].id, {
+      ...result.current.drafts[0],
+      useLora: true,
+    })
+  );
+  await waitFor(() => expect(result.current.canLaunch).toBe(true));
+  act(() => {
+    result.current.setEvalDatasetId("");
+    result.current.setEvalSetId("");
+  });
+  await act(() => result.current.launch());
+  await act(() => result.current.launch());
+  expect(mocks.create).toHaveBeenCalledTimes(2);
+  const first = mocks.create.mock.calls[0][0][0];
+  expect(first).toEqual(
+    expect.objectContaining({
+      evalDataset: null,
+      evalModelAfter: false,
+      evalModelBefore: false,
+      evalSet: null,
+      hyperparameters: expect.objectContaining({ objective: "decision_cross_entropy" }),
+    })
+  );
+  expect(first.requestKey).toBe(mocks.create.mock.calls[1][0][0].requestKey);
+});
+
+it("pins separate validation identically for checks, estimates and launch", async () => {
+  const saved = mocks.train;
+  mocks.train = {
+    results: [
+      ...saved.results,
+      { active: "validation-cell", capability: "cap", id: "holdout", name: "Holdout" },
+    ],
+  };
+  try {
+    const { result } = renderHook(() => useTrainWizard(args));
+    await waitFor(() => expect(result.current.canLaunch).toBe(true));
+    act(() => result.current.setValidationMode("external"));
+    expect(result.current.canLaunch).toBe(false);
+    act(() => result.current.setValidationDatasetId("holdout"));
+    await waitFor(() => expect(result.current.canLaunch).toBe(true));
+    expect(mocks.validate).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        cellId: "train-cell",
+        validationCellId: "validation-cell",
+        validationDatasetId: "holdout",
+        validationEnabled: true,
+      })
+    );
+    const options = mocks.queries.mock.lastCall?.[0];
+    await options.queries[0].queryFn();
+    expect(mocks.estimate).toHaveBeenLastCalledWith({
+      finetuningEstimateRequestRequest: expect.objectContaining({
+        cell: "train-cell",
+        validationCell: "validation-cell",
+        validationEnabled: true,
+      }),
+    });
+    await act(() => result.current.launch());
+    expect(mocks.create).toHaveBeenLastCalledWith([
+      expect.objectContaining({
+        cell: "train-cell",
+        validationCell: "validation-cell",
+        validationDataset: "holdout",
+        validationEnabled: true,
+      }),
+    ]);
+    act(() => result.current.setValidationMode("none"));
+    await waitFor(() => expect(result.current.canLaunch).toBe(true));
+    await act(() => result.current.launch());
+    expect(mocks.create).toHaveBeenLastCalledWith([
+      expect.objectContaining({
+        validationCell: undefined,
+        validationDataset: null,
+        validationEnabled: false,
+      }),
+    ]);
+  } finally {
+    mocks.train = saved;
   }
 });

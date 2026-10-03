@@ -7,6 +7,10 @@ import { DatasetChat } from "@/components/datasets/notebook/chat";
 import { type ChatTurn, chatOf } from "@/hooks/use-datasets";
 import { type Cell, DatasetFromJSON } from "@/openapi";
 
+vi.mock("@/hooks/use-workshop-funding", () => ({
+  useWorkshopFunding: () => ({ data: undefined }),
+}));
+
 const source = { fingerprint: "source-hash", id: "source", state: "ok", title: "Source" } as Cell;
 const proposal = {
   id: "proposal",
@@ -32,9 +36,11 @@ const generated = {
 } as unknown as Cell;
 const callbacks = () => ({
   onAccept: vi.fn(),
+  onChooseIntent: vi.fn(),
   onDiscard: vi.fn(),
   onSelect: vi.fn(),
   onSend: vi.fn(),
+  renderCell: (cell: Cell) => <div data-testid={`notebook-cell-${cell.id}`}>{cell.title}</div>,
   state: "idle",
 });
 
@@ -55,6 +61,82 @@ afterEach(() => {
 });
 
 describe("Workshop chat", () => {
+  it("keeps a streamed sentence intact across tool activity and reload", async () => {
+    const prefix = 'Treating "Extraing training data" as an';
+    const text = `${prefix} explicit training request.`;
+    const steps = [
+      {
+        id: "inspect",
+        phase: "tool_start" as const,
+        text_offset: prefix.length,
+        title: "Inspect rows",
+        type: "activity" as const,
+      },
+    ];
+    const props = { ...callbacks(), cells: [source], turns: [] };
+    const { rerender } = render(
+      <DatasetChat {...props} busy live={{ cells: [], steps, text: prefix }} />
+    );
+    rerender(<DatasetChat {...props} busy live={{ cells: [], steps, text }} />);
+    const paragraph = await screen.findByText(text, { selector: "p" });
+    expect(paragraph.contains(screen.getByRole("region", { name: "Thinking and steps" }))).toBe(
+      false
+    );
+    rerender(
+      <DatasetChat
+        {...props}
+        busy={false}
+        live={null}
+        turns={[{ at: new Date().toISOString(), role: "agent", status: "complete", steps, text }]}
+      />
+    );
+    expect(await screen.findByText(text, { selector: "p" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "View steps" })).toBeTruthy();
+  });
+
+  it("restores an unanswered intent question with no default and keeps it on submission failure", async () => {
+    const onChooseIntent = vi.fn().mockResolvedValueOnce(false).mockResolvedValueOnce(true);
+    const turns = chatOf(
+      DatasetFromJSON({
+        cells: [],
+        chat: [
+          {
+            at: new Date().toISOString(),
+            id: "intent-question",
+            role: "agent",
+            status: "awaiting_intent",
+            text: "What will you use this data for?",
+          },
+        ],
+      })
+    );
+    render(
+      <DatasetChat
+        {...callbacks()}
+        busy={false}
+        cells={[source]}
+        live={null}
+        onChooseIntent={onChooseIntent}
+        turns={turns}
+      />
+    );
+    expect(screen.queryByText("Incomplete")).toBeNull();
+    expect(screen.getAllByRole("radio")).toHaveLength(3);
+    expect(
+      screen.getAllByRole("radio").every((radio) => !(radio as HTMLInputElement).checked)
+    ).toBe(true);
+    expect((screen.getByRole("button", { name: "Continue" }) as HTMLButtonElement).disabled).toBe(
+      true
+    );
+    fireEvent.click(screen.getByRole("radio", { name: "Data exploration" }));
+    await act(async () => fireEvent.click(screen.getByRole("button", { name: "Continue" })));
+    expect(onChooseIntent).toHaveBeenCalledWith("explore", "intent-question");
+    expect(
+      (screen.getByRole("radio", { name: "Data exploration" }) as HTMLInputElement).checked
+    ).toBe(true);
+    expect(screen.getByRole("button", { name: "Continue" })).toBeTruthy();
+  });
+
   it.each([
     "running",
     "awaiting_approval",
@@ -138,18 +220,24 @@ describe("Workshop chat", () => {
     expect(screen.getByRole("button", { name: /Exclude invalid rows.*250 rows/ })).toBeTruthy();
   });
 
-  it("shows unreferenced proposals and applies one complete result", () => {
+  it("keeps unreferenced proposals beside the composer and applies the collapsed result", () => {
     const actions = callbacks();
     render(
       <DatasetChat busy={false} cells={[source, proposal]} live={null} turns={[]} {...actions} />
     );
-    expect(screen.getByText("Needs review")).toBeTruthy();
+    const suggestions = screen.getByRole("region", { name: "Proposed changes" });
+    expect(screen.getByLabelText("Notebook flow").contains(suggestions)).toBe(false);
+    expect(
+      within(suggestions)
+        .getByRole("button", { name: "Review Exclude invalid rows" })
+        .getAttribute("aria-expanded")
+    ).toBe("false");
     fireEvent.click(screen.getByRole("button", { name: "Approve" }));
     expect(actions.onAccept).toHaveBeenCalledWith("proposal");
     expect(screen.queryByRole("button", { name: "Generate examples" })).toBeNull();
   });
 
-  it("shows before and after examples and denies a recommendation without applying it", () => {
+  it("expands before and after examples and rejects a recommendation without applying it", () => {
     const actions = callbacks();
     const recommendation = {
       ...proposal,
@@ -170,11 +258,13 @@ describe("Workshop chat", () => {
         {...actions}
       />
     );
+    expect(screen.queryByText("Input examples")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Review Exclude invalid rows" }));
     expect(screen.getByText("Input examples")).toBeTruthy();
     expect(screen.getByText("Output examples")).toBeTruthy();
     expect(screen.getByText(/"expected_output": "yes"/)).toBeTruthy();
     expect(screen.getByText(/"expected_output": "abstain"/)).toBeTruthy();
-    fireEvent.click(screen.getByRole("button", { name: "Deny" }));
+    fireEvent.click(screen.getByRole("button", { name: "Reject" }));
     expect(actions.onDiscard).toHaveBeenCalledWith("proposal");
     expect(actions.onAccept).not.toHaveBeenCalled();
   });
@@ -248,18 +338,63 @@ describe("Workshop chat", () => {
     expect(actions.onSend).toHaveBeenCalledWith("Continue to 500 rows");
   });
 
-  it("blocks stale proposal approval", () => {
-    render(
+  it("removes an outdated suggestion and shows its replacement", () => {
+    const actions = callbacks();
+    const { rerender } = render(
       <DatasetChat
         busy={false}
         cells={[{ ...source, fingerprint: "changed" }, proposal]}
         live={null}
         turns={[]}
+        {...actions}
+      />
+    );
+    expect(screen.queryByRole("region", { name: "Proposed changes" })).toBeNull();
+    expect(screen.queryByText("Out of date")).toBeNull();
+    rerender(
+      <DatasetChat
+        busy={false}
+        cells={[
+          { ...source, fingerprint: "changed" },
+          { ...proposal, review: { ...proposal.review, input_fingerprint: "changed" } },
+        ]}
+        live={null}
+        turns={[]}
+        {...actions}
+      />
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Approve" }));
+    expect(actions.onAccept).toHaveBeenCalledWith(proposal.id);
+  });
+
+  it.each([
+    "queued",
+    "running",
+    "failed",
+  ] as const)("hides suggestions while the chain is %s", (state) => {
+    render(
+      <DatasetChat
+        busy={false}
+        cells={[{ ...source, state }, proposal]}
+        live={null}
+        turns={[]}
         {...callbacks()}
       />
     );
-    expect(screen.getByText("Out of date")).toBeTruthy();
-    expect(screen.getByRole("button", { name: "Approve" }).hasAttribute("disabled")).toBe(true);
+    expect(screen.queryByRole("region", { name: "Proposed changes" })).toBeNull();
+  });
+
+  it("waits for a preview before suggesting a change", () => {
+    render(
+      <DatasetChat
+        busy={false}
+        cells={[source, { ...proposal, review: {} }]}
+        live={null}
+        turns={[]}
+        {...callbacks()}
+      />
+    );
+    expect(screen.queryByRole("region", { name: "Proposed changes" })).toBeNull();
   });
 
   it("reports silent periods without inventing progress", () => {
@@ -307,7 +442,7 @@ describe("Workshop chat", () => {
     expect(screen.queryByLabelText("Workshop activity")).toBeNull();
   });
 
-  it("opens thinking prose above the answer while working and collapses it on completion", () => {
+  it("keeps thinking collapsed during work and completion until opened", () => {
     const explanation =
       "The source is missing rare cases. I will check label coverage before generating variants.";
     const turn: ChatTurn = {
@@ -346,7 +481,7 @@ describe("Workshop chat", () => {
     );
     const thinking = screen.getByRole("region", { name: "Thinking and steps" });
     const toggle = within(thinking).getByRole("button", { name: "Thinking…" });
-    expect(toggle.getAttribute("aria-expanded")).toBe("true");
+    expect(toggle.getAttribute("aria-expanded")).toBe("false");
     expect(within(thinking).getByText(explanation).closest("pre")).toBeNull();
     expect(within(thinking).getByText("Check label coverage")).toBeTruthy();
     expect(thinking.querySelectorAll(".sidebar-elbow")).toHaveLength(2);
@@ -389,7 +524,7 @@ describe("Workshop chat", () => {
       <DatasetChat busy cells={[source]} live={live} turns={[]} {...callbacks()} />
     );
     const toggle = screen.getByRole("button", { name: "Thinking…" });
-    fireEvent.click(toggle);
+    expect(toggle.getAttribute("aria-expanded")).toBe("false");
     rerender(
       <DatasetChat
         busy
@@ -480,6 +615,40 @@ describe("Workshop chat", () => {
     );
     expect(screen.getByRole("button", { name: /Build messages.*891 rows.*1.1.*ran/ })).toBe(result);
     expect(screen.queryByRole("button", { name: "Thinking…" })).toBeNull();
+  });
+
+  it("collapses the previous response when a new prompt starts and expands the new response", () => {
+    const props = { ...callbacks(), busy: false, cells: [source, generated], live: null };
+    const turn: ChatTurn = {
+      at: "first",
+      id: "first",
+      role: "agent",
+      status: "complete",
+      text: "The dataset is ready.",
+    };
+    const { rerender } = render(<DatasetChat {...props} turns={[turn]} />);
+    const response = screen.getByRole("button", { name: "Agent response" });
+    expect(response.getAttribute("aria-expanded")).toBe("true");
+    fireEvent.change(screen.getByRole("textbox", { name: "Message the agent" }), {
+      target: { value: "Check duplicates" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Send" }));
+    expect(response.getAttribute("aria-expanded")).toBe("false");
+    rerender(
+      <DatasetChat
+        {...props}
+        turns={[
+          turn,
+          { at: "next", role: "user", text: "Check duplicates" },
+          { at: "done", id: "done", role: "agent", status: "complete", text: "No duplicate rows." },
+        ]}
+      />
+    );
+    expect(
+      screen.getByRole("button", { name: "Agent response" }).getAttribute("aria-expanded")
+    ).toBe("true");
+    expect(screen.getByText("No duplicate rows.")).toBeTruthy();
+    expect(screen.getAllByTestId("notebook-cell-generated")).toHaveLength(1);
   });
 
   it("sends the prompt", () => {

@@ -91,8 +91,12 @@ function wizard(over: Partial<TrainWizard>): TrainWizard {
     setEvalSetId: () => {},
     setEvaluationChoice: () => {},
     setRunName: () => {},
+    setValidationDatasetId: vi.fn(),
+    setValidationMode: vi.fn(),
     validating: false,
     validation: VALIDATION,
+    validationDatasetId: "",
+    validationMode: "split",
     ...over,
   } as unknown as TrainWizard;
 }
@@ -388,4 +392,21 @@ describe("SetupPanel", () => {
     expect(screen.getByText("No eval datasets for this capability.")).toBeTruthy();
     expect(screen.queryByText(/also appear in the training set/)).toBeNull();
   });
+});
+
+it("offers a separate validation source and displays its exact version", () => {
+  setup({
+    datasets: [
+      TRAIN_SET,
+      { ...TRAIN_SET, activeVersion: "v4", id: "holdout", name: "Loss holdout" },
+    ],
+    validationDataset: { ...TRAIN_SET, activeVersion: "v4", id: "holdout", name: "Loss holdout" },
+    validationDatasetId: "holdout",
+    validationMode: "external",
+  });
+  expect(screen.getByRole("combobox", { name: "Validation source" })).toBeTruthy();
+  expect(screen.getByRole("combobox", { name: "Validation dataset" }).textContent).toContain(
+    "Loss holdout"
+  );
+  expect(screen.getByText("v4", { exact: false })).toBeTruthy();
 });

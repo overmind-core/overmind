@@ -190,3 +190,80 @@ describe("TrainingMonitorPanel deployed-model lookup", () => {
     });
   });
 });
+
+it("shows native validation progress and named experiments without chat token accuracy", () => {
+  const nativeJobs = ["Pilot", "Full corpus"].map((name, i) => ({
+    ...job,
+    id: `native-${i}`,
+    name,
+    progress: {
+      diagnostics: {
+        completed: 600,
+        heartbeat_at: Date.now() / 1000,
+        stage: "initial_validation",
+        total: 1200,
+        unit: "decisions",
+      },
+      eval_history: [
+        {
+          brier: 0.4,
+          decisions: 1200,
+          eval_loss: 1.2,
+          hard_label_accuracy: 0.65,
+          hard_label_decisions: 1000,
+          step: 0,
+        },
+      ],
+      phase: "training",
+    },
+    status: "running",
+    trainingContract: { objective: "decision_cross_entropy" },
+  })) as unknown as FinetuningJobList[];
+  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  render(
+    <QueryClientProvider client={queryClient}>
+      <TrainingMonitorPanel
+        focusJobId={null}
+        groupJobs={nativeJobs}
+        onFocusJob={vi.fn()}
+        projectId={PROJECT_ID}
+      />
+    </QueryClientProvider>
+  );
+  expect(screen.getAllByText("Full corpus").length).toBeGreaterThan(0);
+  expect(screen.getAllByText(/Initial validation · 600 \/ 1,200 decisions/)).toHaveLength(2);
+  expect(screen.queryByText("Token accuracy")).toBeNull();
+  expect(screen.getAllByText("Validation cross entropy").length).toBeGreaterThan(0);
+  expect(screen.getAllByText("1.2000")).toHaveLength(2);
+});
+
+it("shows the frozen native plan beside its training job", () => {
+  const native = {
+    ...job,
+    nativeEvaluation: {
+      calibration: {},
+      calls: {},
+      config: {
+        suites: { calibration: { cell: "cal", rows: 12 }, final: { cell: "final", rows: 48 } },
+      },
+      error: "",
+      id: "native-plan",
+      results: {},
+      state: "waiting_for_checkpoint",
+    },
+    trainingContract: { objective: "decision_cross_entropy" },
+  } as unknown as FinetuningJobList;
+  render(
+    <QueryClientProvider client={new QueryClient()}>
+      <TrainingMonitorPanel
+        focusJobId={native.id}
+        groupJobs={[native]}
+        onFocusJob={vi.fn()}
+        projectId={PROJECT_ID}
+      />
+    </QueryClientProvider>
+  );
+  expect(screen.getByText("Scheduled after checkpoint verification")).toBeTruthy();
+  expect(screen.getByText(/48 decisions/)).toBeTruthy();
+  expect(screen.queryByText(/No eval dataset or eval set linked/)).toBeNull();
+});

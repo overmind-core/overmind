@@ -14,6 +14,7 @@ import { ServingStatusBadge } from "@/components/inference/serving-status";
 import { DetailErrorState } from "@/components/route-error";
 import {
   AlertDialog,
+  AlertDialogBody,
   AlertDialogCancel,
   AlertDialogContent,
   AlertDialogDescription,
@@ -447,7 +448,7 @@ function DeleteModelButton({ id, modelId }: { id: string; modelId: string }) {
             requests to this model will start failing.
           </AlertDialogDescription>
         </AlertDialogHeader>
-        <div className="space-y-1.5">
+        <AlertDialogBody className="space-y-1.5">
           <p className="flex flex-wrap items-center gap-1.5 text-sm text-muted-foreground">
             Type
             <span className="font-mono text-xs text-foreground">{modelId}</span>
@@ -460,7 +461,7 @@ function DeleteModelButton({ id, modelId }: { id: string; modelId: string }) {
             placeholder={modelId}
             value={confirm}
           />
-        </div>
+        </AlertDialogBody>
         <AlertDialogFooter>
           <AlertDialogCancel>Cancel</AlertDialogCancel>
           <Button disabled={!canDelete} onClick={handleDelete} variant="destructive">

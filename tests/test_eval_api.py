@@ -57,7 +57,9 @@ def test_context_preview_warns_without_creating_or_blocking_a_run(monkeypatch):
     from overbae.services.llm_context import ModelLimits
 
     user, client, project = _setup()
-    dataset = frozen_dataset(project, [{"input": "long" * 2000, "expected_output": "a"}])
+    dataset = frozen_dataset(
+        project, [{"input": "long" * 2000, "expected_output": "a"}], contract="eval"
+    )
     monkeypatch.setattr(
         context_check, "model_limits", lambda *args, **kwargs: ModelLimits(1000, 5000)
     )
@@ -81,7 +83,7 @@ def test_context_preview_warns_without_creating_or_blocking_a_run(monkeypatch):
 def test_context_preview_cannot_read_another_projects_dataset():
     user, client, project = _setup()
     other = Project.objects.create(name="Other")
-    dataset = frozen_dataset(other, EVAL_ROWS)
+    dataset = frozen_dataset(other, EVAL_ROWS, contract="eval")
     response = client.post(
         "/api/eval-runs/context-check/",
         {"project": str(project.pk), "dataset": str(dataset.pk)},
@@ -93,7 +95,7 @@ def test_context_preview_cannot_read_another_projects_dataset():
 
 def test_context_preview_uses_run_judge_and_returns_dropdown_without_mutation():
     _, client, project = _setup()
-    dataset = frozen_dataset(project, EVAL_ROWS)
+    dataset = frozen_dataset(project, EVAL_ROWS, contract="eval")
     evaluator = Evaluator.objects.create(
         project=project,
         name="Quality",
@@ -1001,7 +1003,7 @@ class TestEvalRunApi:
     ):
         monkeypatch.setattr("overbae.api.eval_serializers.is_model_available", lambda model: True)
         _, client, project = _setup()
-        dataset = frozen_dataset(project, EVAL_ROWS)
+        dataset = frozen_dataset(project, EVAL_ROWS, contract="eval")
         judge = Evaluator.objects.create(
             project=project,
             name="Quality",
@@ -1074,7 +1076,7 @@ class TestEvalRunApi:
 
     def test_run_rejects_invalid_judge_before_creating_or_dispatching(self):
         _, client, project = _setup()
-        dataset = frozen_dataset(project, EVAL_ROWS)
+        dataset = frozen_dataset(project, EVAL_ROWS, contract="eval")
         with mock.patch("overbae.tasks.eval.run_eval_run.apply_async") as dispatch:
             response = client.post(
                 "/api/eval-runs/",
@@ -1093,7 +1095,7 @@ class TestEvalRunApi:
 
     def test_late_replay_judge_uses_frozen_run_selection(self, monkeypatch):
         _, _, project = _setup()
-        dataset = frozen_dataset(project, EVAL_ROWS)
+        dataset = frozen_dataset(project, EVAL_ROWS, contract="eval")
         evaluator = Evaluator.objects.create(
             project=project,
             name=JUDGE_NAME,
@@ -1121,7 +1123,9 @@ class TestEvalRunApi:
     def test_create_dispatches_task(self):
         _user_, client, project = _setup()
         capability = Capability.objects.create(project=project, name="A", slug="a")
-        dataset = frozen_dataset(capability.project, EVAL_ROWS, capability=capability)
+        dataset = frozen_dataset(
+            capability.project, EVAL_ROWS, capability=capability, contract="eval"
+        )
         ev = Evaluator.objects.create(project=project, name="E", kind="deterministic", version=1)
         with mock.patch(
             "overbae.tasks.eval.run_eval_run.apply_async", return_value=mock.Mock(id="task-1")
@@ -1167,7 +1171,9 @@ class TestEvalRunApi:
         capability = Capability.objects.create(
             project=project, name="A", slug=f"a-{uuid.uuid4().hex[:6]}"
         )
-        dataset = frozen_dataset(capability.project, EVAL_ROWS, capability=capability)
+        dataset = frozen_dataset(
+            capability.project, EVAL_ROWS, capability=capability, contract="eval"
+        )
         catalog = ([{"id": "openai/gpt-5-mini"}, {"id": "openai/gpt-4o-2024-05-13"}], True)
         with mock.patch("overbae.services.model_catalog.fetch_model_catalog", return_value=catalog):
             r = client.post(
@@ -1191,7 +1197,9 @@ class TestEvalRunApi:
         capability = Capability.objects.create(
             project=project, name="A", slug=f"a-{uuid.uuid4().hex[:6]}"
         )
-        dataset = frozen_dataset(capability.project, EVAL_ROWS, capability=capability)
+        dataset = frozen_dataset(
+            capability.project, EVAL_ROWS, capability=capability, contract="eval"
+        )
         catalog = ([{"id": "openai/gpt-5-mini"}, {"id": "openai/gpt-4o-2024-05-13"}], True)
         with (
             mock.patch("overbae.services.model_catalog.fetch_model_catalog", return_value=catalog),
@@ -1269,8 +1277,12 @@ class TestEvalRunApi:
         capability_b = Capability.objects.create(
             project=project, name="B", slug=f"b-{uuid.uuid4().hex[:6]}"
         )
-        ds_a = frozen_dataset(capability_a.project, EVAL_ROWS, capability=capability_a, name="ds-a")
-        ds_b = frozen_dataset(capability_b.project, EVAL_ROWS, capability=capability_b, name="ds-b")
+        ds_a = frozen_dataset(
+            capability_a.project, EVAL_ROWS, capability=capability_a, name="ds-a", contract="eval"
+        )
+        ds_b = frozen_dataset(
+            capability_b.project, EVAL_ROWS, capability=capability_b, name="ds-b", contract="eval"
+        )
         EvalRun.objects.create(project=project, name="zeta", dataset=ds_a)
         EvalRun.objects.create(project=project, name="alpha", dataset=ds_a)
         EvalRun.objects.create(project=project, name="other", dataset=ds_b)
@@ -1296,7 +1308,11 @@ class TestEvalRunApi:
             project=project, name="A", slug=f"a-{uuid.uuid4().hex[:6]}"
         )
         used = frozen_dataset(
-            capability.project, EVAL_ROWS, capability=capability, name="used-dataset"
+            capability.project,
+            EVAL_ROWS,
+            capability=capability,
+            name="used-dataset",
+            contract="eval",
         )
         EvalRun.objects.create(project=project, name="r", dataset=used)
         Dataset.objects.bulk_create(
@@ -1310,7 +1326,11 @@ class TestEvalRunApi:
             project=other_project, name="O", slug=f"o-{uuid.uuid4().hex[:6]}"
         )
         other_dataset = frozen_dataset(
-            other_capability.project, EVAL_ROWS, capability=other_capability, name="foreign"
+            other_capability.project,
+            EVAL_ROWS,
+            capability=other_capability,
+            name="foreign",
+            contract="eval",
         )
         EvalRun.objects.create(project=other_project, name="foreign-run", dataset=other_dataset)
 
@@ -2393,7 +2413,7 @@ class TestEvalSetMemberScores:
         capability = Capability.objects.create(
             project=project, name="A", slug=f"a-{uuid.uuid4().hex[:6]}"
         )
-        dataset = frozen_dataset(project, EVAL_ROWS, capability=capability)
+        dataset = frozen_dataset(project, EVAL_ROWS, capability=capability, contract="eval")
         evaluator = Evaluator.objects.create(
             project=project, capability=capability, name="Quality", kind="llm_judge", rubric_md="x"
         )

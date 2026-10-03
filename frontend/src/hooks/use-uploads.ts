@@ -82,7 +82,7 @@ export interface DatasetUpload {
   status: "queued" | "uploading" | "counting" | "ready" | "error";
   percent: number;
   uploadId?: string;
-  rows?: number;
+  rows?: number | null;
   error?: string;
 }
 

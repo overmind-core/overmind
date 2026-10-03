@@ -36,7 +36,7 @@ def test_twenty_thousand_transcripts_land_run_page_and_diff_within_budget():
         for i in range(ROWS)
     ]
     project = Project.objects.create(name="P", slug=f"p-{uuid.uuid4().hex[:8]}")
-    dataset = Dataset.objects.create(project=project, name="big", intent="pending")
+    dataset = Dataset.objects.create(project=project, name="big", intent="train")
     _timed(20, lambda: land.land_rows(dataset, rows))
     dataset.refresh_from_db()
     assert dataset.intent == "train" and dataset.source.fits("train") == (True, "")

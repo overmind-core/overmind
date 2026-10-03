@@ -10,16 +10,16 @@ dead — the serving copy is ``.adapters/`` or ``/weights/{id}/``, and S3 covers
 from __future__ import annotations
 
 import logging
-import os
 from collections.abc import Mapping
 from datetime import UTC, datetime, timedelta
 
 from celery import shared_task
 from django.utils import timezone
 
+from overbae.services import training_release
+
 logger = logging.getLogger(__name__)
 
-_SFT_APP = "overmind-sft"
 _REGISTER_APP = "overmind-register"
 
 _TRIM_AFTER = timedelta(days=3)
@@ -61,12 +61,20 @@ def plan_run_retention(runs: Mapping[str, float], *, now=None) -> dict[str, list
     from overbae.models import FinetuningJob
 
     now = now or timezone.now()
-    jobs = (
-        FinetuningJob.objects.filter(provider=FinetuningJob.Provider.MODAL)
-        .exclude(remote_job_id="")
-        .only("id", "status", "completed_at", "updated_at", "remote_job_id", "triggered_by_id")
+    jobs = FinetuningJob.objects.filter(provider=FinetuningJob.Provider.MODAL).only(
+        "id",
+        "status",
+        "completed_at",
+        "updated_at",
+        "remote_job_id",
+        "provider_submission",
+        "triggered_by_id",
     )
-    by_run = {job.remote_job_id.split(":", 1)[0]: job for job in jobs}
+    by_run = {}
+    for job in jobs:
+        for run_id in (job.remote_job_id.split(":", 1)[0], job.provider_submission.get("run_id")):
+            if run_id:
+                by_run[run_id] = job
 
     purge: list[str] = []
     trim: list[str] = []
@@ -102,10 +110,11 @@ def plan_run_retention(runs: Mapping[str, float], *, now=None) -> dict[str, list
 def prune_modal_sft_volume() -> dict:
     import modal
 
-    env = os.environ.get("MODAL_ENVIRONMENT") or None
+    release = training_release.current()
+    env = release["environment"]
 
     def _fn(name: str):
-        return modal.Function.from_name(_SFT_APP, name, environment_name=env)
+        return modal.Function.from_name(release["app"], name, environment_name=env)
 
     try:
         runs = _fn("list_run_ids").remote()

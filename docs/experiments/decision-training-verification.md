@@ -1,5 +1,7 @@
 # Native decision training verification
 
+> Historical experiment record. Current implementation and qualification are tracked in [the platform verification report](platform-improvements/verification-plan.md). Earlier launch holds, runtime limitations and estimates below describe their recorded point in time. The authorized full run is `a356c75d-788a-4a35-bd30-1d24ae7afab8`; its existing completion protocol remains authoritative. New platform changes are isolated and have not been deployed over it.
+
 Failure modes to qualify before a paid full run:
 
 - A soft target is collapsed to argmax, ignored, renormalized silently, or included in the input prompt.

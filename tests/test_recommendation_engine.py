@@ -38,6 +38,7 @@ def dataset(db) -> Dataset:
             }
             for i in range(3)
         ],
+        contract="eval",
     )
     _set_stats(dataset)
     return dataset

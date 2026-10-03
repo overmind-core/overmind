@@ -80,7 +80,11 @@ def _dataset(
             row["trace_id"] = tid
         rows.append(row)
     return frozen_dataset(
-        project, rows, capability=capability, name=f"{intent}-{uuid.uuid4().hex[:6]}"
+        project,
+        rows,
+        capability=capability,
+        name=f"{intent}-{uuid.uuid4().hex[:6]}",
+        contract=intent,
     )
 
 
@@ -433,6 +437,7 @@ def test_job_create_allows_evaluation_that_may_exceed_serving_context():
         project,
         [{"input": "x" * 120000, "expected_output": "answer"}],
         capability=capability,
+        contract="eval",
     )
     with patch(CELERY_PATH) as submit:
         submit.return_value.id = "context-warning-task"
@@ -461,6 +466,7 @@ def test_recommendation_warns_without_excluding_models_for_evaluation_context():
         project,
         [{"input": "x" * 120000, "expected_output": "answer"}],
         capability=capability,
+        contract="eval",
     )
     response = _auth_client(u).post(
         reverse("finetuningjob-recommend"),

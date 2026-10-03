@@ -23,7 +23,7 @@ def _job(
 ) -> str:
     """Returns the run_id, which is the stable half of remote_job_id."""
     project = Project.objects.create(name="P", slug=f"p-{uuid.uuid4().hex[:8]}")
-    dataset = frozen_dataset(project, TRAIN_ROWS, name="ds")
+    dataset = frozen_dataset(project, TRAIN_ROWS, name="ds", contract="train")
     run_id = f"run-{uuid.uuid4().hex[:8]}"
     job = FinetuningJob.objects.create(
         project=project,
@@ -199,3 +199,31 @@ def test_orphan_is_aged_off_the_volume_not_the_job_table():
 
     assert plan["purge"] == [stale]
     assert plan["orphans"] == [fresh]
+
+
+def test_unacknowledged_provider_run_is_not_an_orphan():
+    run_id = _job(status=FinetuningJob.Status.SUBMISSION_UNKNOWN, age_days=30)
+    job = FinetuningJob.objects.get(remote_job_id__startswith=run_id)
+    job.remote_job_id = ""
+    job.provider_submission = {"state": "unknown", "run_id": run_id}
+    job.save(update_fields=["remote_job_id", "provider_submission"])
+    assert _plan([run_id], age_days=30) == {
+        "purge": [],
+        "trim": [],
+        "drop_final": [],
+        "orphans": [],
+    }
+
+
+def test_retention_uses_explicit_current_worker_release(monkeypatch):
+    from overbae.services import training_release
+    from overbae.tasks.cleanup_modal import prune_modal_sft_volume
+
+    monkeypatch.setenv("MODAL_ENVIRONMENT", "qualification")
+    release = training_release.current()
+    with patch("modal.Function.from_name") as function:
+        function.return_value.remote.return_value = {}
+        prune_modal_sft_volume()
+    calls = function.call_args_list
+    assert calls[0].args == (release["app"], "list_run_ids")
+    assert all(call.kwargs["environment_name"] == "qualification" for call in calls)

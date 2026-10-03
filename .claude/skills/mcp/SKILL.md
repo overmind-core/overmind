@@ -261,3 +261,5 @@ Before shipping an agent-relevant change, verify all applicable items:
 - [ ] The curated catalog, prompt list, resource list, user-facing Overmind
   skill (`overmind/skills/overmind/`), and MCP tests are updated together.
   Regenerate API clients when the API contract changed.
+
+Training experiment changes expose `request_key`, explicit selection and contract receipts in readiness/estimate/start, recent metric-window metadata in `get_job`, and the generated run record in the finetune resource. `schedule_native_evaluation` is a metered GPU operation with train scope; its paired plan is a `native_evaluation` job/resource. `cancel_dataset` requests durable local/provider cancellation; pending acknowledgement must not be presented as finished. Both routes share Console domain services and project scoping.

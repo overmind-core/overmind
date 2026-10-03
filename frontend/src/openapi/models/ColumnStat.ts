@@ -21,6 +21,30 @@ import { mapValues } from '../runtime';
 export interface ColumnStat {
     /**
      *
+     * @type {boolean}
+     * @memberof ColumnStat
+     */
+    approximate: boolean;
+    /**
+     *
+     * @type {number}
+     * @memberof ColumnStat
+     */
+    sampleRows: number;
+    /**
+     *
+     * @type {number}
+     * @memberof ColumnStat
+     */
+    totalRows: number;
+    /**
+     *
+     * @type {string}
+     * @memberof ColumnStat
+     */
+    method: string;
+    /**
+     *
      * @type {string}
      * @memberof ColumnStat
      */
@@ -85,6 +109,10 @@ export interface ColumnStat {
  * Check if a given object implements the ColumnStat interface.
  */
 export function instanceOfColumnStat(value: object): value is ColumnStat {
+    if (!('approximate' in value) || value['approximate'] === undefined) return false;
+    if (!('sampleRows' in value) || value['sampleRows'] === undefined) return false;
+    if (!('totalRows' in value) || value['totalRows'] === undefined) return false;
+    if (!('method' in value) || value['method'] === undefined) return false;
     if (!('name' in value) || value['name'] === undefined) return false;
     if (!('type' in value) || value['type'] === undefined) return false;
     if (!('nullRate' in value) || value['nullRate'] === undefined) return false;
@@ -102,6 +130,10 @@ export function ColumnStatFromJSONTyped(json: any, ignoreDiscriminator: boolean)
     }
     return {
 
+        'approximate': json['approximate'],
+        'sampleRows': json['sample_rows'],
+        'totalRows': json['total_rows'],
+        'method': json['method'],
         'name': json['name'],
         'type': json['type'],
         'nullRate': json['null_rate'],
@@ -126,6 +158,10 @@ export function ColumnStatToJSONTyped(value?: ColumnStat | null, ignoreDiscrimin
 
     return {
 
+        'approximate': value['approximate'],
+        'sample_rows': value['sampleRows'],
+        'total_rows': value['totalRows'],
+        'method': value['method'],
         'name': value['name'],
         'type': value['type'],
         'null_rate': value['nullRate'],

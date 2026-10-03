@@ -8,7 +8,7 @@ import logging
 
 from django.conf import settings
 from django.db.models import Prefetch
-from django.http import StreamingHttpResponse
+from django.http import FileResponse, StreamingHttpResponse
 from django.shortcuts import get_object_or_404
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import OpenApiParameter, extend_schema, extend_schema_view
@@ -30,11 +30,20 @@ from overbae.api.dataset_serializers import (
     DatasetSplitCreateSerializer,
     DetailSerializer,
     RowsPageSerializer,
+    SourceSerializer,
 )
 from overbae.api.scoping import project_ids_for
 from overbae.models import Capability, Cell, Dataset, Project
 from overbae.services.datasets import diff as diff_svc
-from overbae.services.datasets import dispatch, files, lifecycle, paths, selection, store
+from overbae.services.datasets import (
+    dispatch,
+    files,
+    lifecycle,
+    operations,
+    paths,
+    selection,
+    store,
+)
 from overbae.services.datasets import export as export_svc
 from overbae.services.datasets.notebook import events
 from overbae.services.datasets.notebook.agent import resolve_cell
@@ -106,7 +115,7 @@ class DatasetViewSet(viewsets.ModelViewSet):
             qs = qs.filter(project_id=params["project"])
         if params.get("capability"):
             qs = qs.filter(capability_id=params["capability"])
-        if params.get("intent") in ("train", "eval", "pending"):
+        if params.get("intent") in Dataset.Intent.values:
             qs = qs.filter(intent=params["intent"])
         if params.get("search"):
             qs = qs.filter(name__icontains=params["search"])
@@ -130,6 +139,7 @@ class DatasetViewSet(viewsets.ModelViewSet):
             user=request.user if request.user.is_authenticated else None,
             name=data["name"].strip(),
             source=source,
+            brief=data["brief"],
             intent=data.get("intent"),
             capability=capability,
             infer_capability="capability" not in data,
@@ -153,6 +163,7 @@ class DatasetViewSet(viewsets.ModelViewSet):
                 user=request.user if request.user.is_authenticated else None,
                 name=data["name"].strip(),
                 source=source,
+                brief=data["brief"],
                 eval_percent=data["eval_percent"],
                 position=data["position"],
                 group_by=data["group_by"],
@@ -177,7 +188,7 @@ class DatasetViewSet(viewsets.ModelViewSet):
             if data.get("capability")
             else None
         )
-        source = self._source_payload(data["source"], project)
+        source = self._source_payload(data["source"], project) if data.get("source") else {}
         if capability is None and source.get("llm_calls"):
             capability = get_object_or_404(
                 Capability, pk=source["llm_calls"]["capability_id"], project=project
@@ -191,6 +202,34 @@ class DatasetViewSet(viewsets.ModelViewSet):
                 {"capability": "The capability does not match the LLM call selection."}
             )
         return project, capability, source
+
+    @extend_schema(request=SourceSerializer, responses={202: DatasetSerializer})
+    @action(detail=True, methods=["post"], url_path="source")
+    def source(self, request, id=None):
+        dataset = self.get_object()
+        body = SourceSerializer(data=request.data)
+        body.is_valid(raise_exception=True)
+        source = self._source_payload(body.validated_data, dataset.project)
+        try:
+            dispatch.attach_source(dataset, request.user, source)
+        except lifecycle.DatasetError as exc:
+            return _error(exc)
+        return Response(DatasetSerializer(dataset).data, status=202)
+
+    @extend_schema(responses={(200, "application/octet-stream"): OpenApiTypes.BINARY})
+    @action(detail=True, methods=["get"], url_path=r"sources/(?P<artifact_id>[0-9a-f]{64})")
+    def source_file(self, request, id=None, artifact_id=None):
+        dataset = self.get_object()
+        artifact = next(
+            (item for item in dataset.source_spec.get("sources", []) if item["id"] == artifact_id),
+            None,
+        )
+        if artifact is None:
+            raise NotFound("No such source file.")
+        path = paths.source_path(dataset.id, artifact_id)
+        if not path.is_file():
+            raise NotFound("The source file is unavailable.")
+        return FileResponse(path.open("rb"), as_attachment=True, filename=artifact["filename"])
 
     @staticmethod
     def _source_payload(source: dict, project: Project) -> dict:
@@ -365,6 +404,14 @@ class DatasetViewSet(viewsets.ModelViewSet):
             return _error(exc)
         return Response(DatasetSerializer(dataset).data, status=status.HTTP_202_ACCEPTED)
 
+    @extend_schema(request=None, responses={202: DatasetSerializer})
+    @action(detail=True, methods=["post"], url_path="cancel")
+    def cancel(self, request, id=None):
+        dataset = self.get_object()
+        operations.cancel(dataset.pk)
+        dataset.refresh_from_db()
+        return Response(DatasetSerializer(dataset).data, status=202)
+
     @extend_schema(
         summary="Send a message to the dataset's agent",
         request=ChatSerializer,
@@ -380,6 +427,11 @@ class DatasetViewSet(viewsets.ModelViewSet):
                 dataset,
                 request.user if request.user.is_authenticated else None,
                 body.validated_data["message"],
+                intent_choice=body.validated_data.get("intent_choice"),
+                intent_turn_id=str(body.validated_data.get("intent_turn_id") or ""),
+                source=self._source_payload(body.validated_data["source"], dataset.project)
+                if body.validated_data.get("source")
+                else None,
             )
         except lifecycle.DatasetError as exc:
             return _error(exc)
@@ -481,7 +533,13 @@ class DatasetViewSet(viewsets.ModelViewSet):
     def columns(self, request, id=None):
         dataset = self.get_object()
         path, _cell = self._table(dataset, request)
-        return Response(store.column_stats(path))
+        try:
+            values = store.column_stats(path, fingerprint=_cell.fingerprint)
+        except store.StoreError as exc:
+            raise ValidationError(
+                {"detail": "Dataset statistics are unavailable. Retry shortly."}
+            ) from exc
+        return Response(ColumnStatSerializer(values, many=True).data)
 
     @extend_schema(
         summary="Download a cell's frame as JSONL or CSV; a raw stream, never a use",

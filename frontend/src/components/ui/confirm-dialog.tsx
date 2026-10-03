@@ -3,6 +3,7 @@ import type { ReactNode } from "react";
 import {
   AlertDialog,
   AlertDialogAction,
+  AlertDialogBody,
   AlertDialogCancel,
   AlertDialogContent,
   AlertDialogDescription,
@@ -11,10 +12,8 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
-import { buttonVariants } from "@/components/ui/button";
 import { DismissibleAlert } from "@/components/ui/dismissible-alert";
 import { Spinner } from "@/components/ui/spinner";
-import { cn } from "@/lib/utils";
 
 function ConfirmDialog({
   trigger,
@@ -54,11 +53,14 @@ function ConfirmDialog({
           <AlertDialogTitle>{title}</AlertDialogTitle>
           {description ? <AlertDialogDescription>{description}</AlertDialogDescription> : null}
         </AlertDialogHeader>
-        <DismissibleAlert error={error} variant="warning" />
+        {error && (
+          <AlertDialogBody>
+            <DismissibleAlert error={error} variant="warning" />
+          </AlertDialogBody>
+        )}
         <AlertDialogFooter>
           <AlertDialogCancel disabled={isPending}>{cancelLabel}</AlertDialogCancel>
           <AlertDialogAction
-            className={cn(destructive && buttonVariants({ variant: "destructive" }), "gap-1.5")}
             disabled={isPending}
             onClick={(e) => {
               // Block the default auto-close so the `isPending` spinner stays visible.
@@ -75,6 +77,7 @@ function ConfirmDialog({
               }
               void onConfirm();
             }}
+            variant={destructive ? "destructive" : "default"}
           >
             {isPending ? <Spinner className="text-current" size="sm" /> : null}
             {confirmLabel}

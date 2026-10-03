@@ -15,6 +15,7 @@ import { PUBLIC_PRICING_URL } from "@/lib/marketing";
 export const Route = createFileRoute("/login")({
   component: RouteComponent,
   validateSearch: z.object({
+    chatgpt: z.enum(["start", "complete"]).optional().catch(undefined),
     mode: z.enum(["signup"]).optional().catch(undefined),
     next: z.string().optional(),
   }),
@@ -30,7 +31,7 @@ const CLERK_APPEARANCE = {
 
 function RouteComponent() {
   const { isSignedIn, isLoaded, isGuest, refreshAuth } = useAuthContext();
-  const { mode } = Route.useSearch();
+  const { mode, chatgpt } = Route.useSearch();
   // Read once: the claim clears the flag before the redirect below runs.
   const [wasGuest] = useState(hasGuestSession);
   // `?next=` may carry its own query string; `//` is rejected as an open redirect.
@@ -59,8 +60,12 @@ function RouteComponent() {
   if (!config.clerkReady) {
     return (
       <SplashBackground>
-        <div className="flex flex-col items-center justify-center gap-5">
-          <LocalLoginForm onSignedIn={() => refreshAuth()} />
+        <div className="mx-4 flex w-full max-w-sm flex-col items-center justify-center gap-5">
+          <LocalLoginForm
+            chatgptComplete={chatgpt === "complete"}
+            chatgptStart={chatgpt === "start"}
+            onSignedIn={refreshAuth}
+          />
         </div>
       </SplashBackground>
     );

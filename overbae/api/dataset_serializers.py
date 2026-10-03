@@ -107,6 +107,7 @@ class CellSerializer(serializers.ModelSerializer):
             "rows",
             "columns",
             "fingerprint",
+            "input_fingerprint",
             "intent_report",
             "capability_report",
             "fits",
@@ -153,6 +154,9 @@ class CellSerializer(serializers.ModelSerializer):
 
 
 class ChatTurnSerializer(serializers.Serializer):
+    funding_source = serializers.ChoiceField(choices=["platform", "chatgpt"], required=False)
+    model = serializers.CharField(required=False, allow_blank=True)
+    engine = serializers.CharField(required=False, allow_blank=True)
     id = serializers.CharField(required=False)
     role = serializers.ChoiceField(choices=["user", "agent"])
     text = serializers.CharField(allow_blank=True)
@@ -161,8 +165,17 @@ class ChatTurnSerializer(serializers.Serializer):
     steps = serializers.ListField(child=serializers.JSONField(), required=False)
     ms = serializers.IntegerField(required=False)
     status = serializers.ChoiceField(
-        choices=["running", "awaiting_approval", "resolved", "complete", "error"], required=False
+        choices=[
+            "running",
+            "awaiting_approval",
+            "awaiting_intent",
+            "resolved",
+            "complete",
+            "error",
+        ],
+        required=False,
     )
+    intent_choice = serializers.ChoiceField(choices=["train", "eval", "explore"], required=False)
     progress = serializers.JSONField(required=False)
     at = serializers.CharField()
 
@@ -182,6 +195,7 @@ class DatasetSerializer(serializers.ModelSerializer):
             "id",
             "project",
             "name",
+            "brief",
             "source_kind",
             "source_spec",
             "capability",
@@ -193,6 +207,7 @@ class DatasetSerializer(serializers.ModelSerializer):
             "rows",
             "readiness",
             "preparation_plan",
+            "operation",
             "state",
             "error",
             "cells",
@@ -310,15 +325,18 @@ class SourceSerializer(serializers.Serializer):
 
 
 class DatasetCreateSerializer(serializers.Serializer):
-    name = serializers.CharField(max_length=255)
+    name = serializers.CharField(max_length=255, required=False, default="Untitled dataset")
+    brief = serializers.CharField(max_length=8000, required=False, allow_blank=True, default="")
     project = serializers.UUIDField()
     capability = serializers.UUIDField(
         required=False, allow_null=True, help_text="Omit to infer from the rows; null means none."
     )
     intent = serializers.ChoiceField(choices=Dataset.Intent.choices, required=False)
-    source = SourceSerializer()
+    source = SourceSerializer(required=False)
 
     def validate(self, attrs):
+        if not attrs.get("source") and not attrs.get("brief"):
+            raise serializers.ValidationError("Describe what you want to do or add source data.")
         if (attrs.get("source") or {}).get("llm_calls") and attrs.get("intent") not in (
             Dataset.Intent.TRAIN,
             Dataset.Intent.EVAL,
@@ -332,6 +350,7 @@ class DatasetSplitCreateSerializer(serializers.Serializer):
     ``eval_percent`` of the rows taken at ``position``."""
 
     name = serializers.CharField(max_length=249)
+    brief = serializers.CharField(max_length=8000, required=False, allow_blank=True, default="")
     project = serializers.UUIDField()
     capability = serializers.UUIDField(
         required=False, allow_null=True, help_text="Omit to infer from the rows; null means none."
@@ -365,7 +384,23 @@ class CellCreateSerializer(CellWriteSerializer):
 
 
 class ChatSerializer(serializers.Serializer):
-    message = serializers.CharField(max_length=8000)
+    message = serializers.CharField(max_length=8000, required=False, allow_blank=True, default="")
+    source = SourceSerializer(required=False)
+    intent_choice = serializers.ChoiceField(choices=["train", "eval", "explore"], required=False)
+    intent_turn_id = serializers.UUIDField(required=False)
+
+    def validate(self, attrs):
+        if bool(attrs.get("intent_choice")) != bool(attrs.get("intent_turn_id")):
+            raise serializers.ValidationError(
+                "Provide the intent choice and its question id together."
+            )
+        if attrs.get("intent_choice") and (attrs.get("message") or attrs.get("source")):
+            raise serializers.ValidationError(
+                "Answer the intent question before sending another message or files."
+            )
+        if not attrs.get("message") and not attrs.get("source") and not attrs.get("intent_choice"):
+            raise serializers.ValidationError("Write a message or attach files.")
+        return attrs
 
 
 class RowsPageSerializer(serializers.Serializer):
@@ -378,6 +413,10 @@ class RowsPageSerializer(serializers.Serializer):
 
 
 class ColumnStatSerializer(serializers.Serializer):
+    approximate = serializers.BooleanField()
+    sample_rows = serializers.IntegerField()
+    total_rows = serializers.IntegerField()
+    method = serializers.CharField()
     name = serializers.CharField()
     type = serializers.CharField()
     null_rate = serializers.FloatField()

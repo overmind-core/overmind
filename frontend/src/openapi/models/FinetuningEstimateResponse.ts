@@ -36,6 +36,12 @@ import {
 export interface FinetuningEstimateResponse {
     /**
      *
+     * @type {any}
+     * @memberof FinetuningEstimateResponse
+     */
+    forecast?: any | null;
+    /**
+     *
      * @type {FinetuningCostEstimate}
      * @memberof FinetuningEstimateResponse
      */
@@ -74,6 +80,7 @@ export function FinetuningEstimateResponseFromJSONTyped(json: any, ignoreDiscrim
     }
     return {
 
+        'forecast': json['forecast'] == null ? undefined : json['forecast'],
         'costEstimate': FinetuningCostEstimateFromJSON(json['cost_estimate']),
         'timeEstimate': FinetuningTimeEstimateFromJSON(json['time_estimate']),
         'trainedTokens': json['trained_tokens'],
@@ -91,6 +98,7 @@ export function FinetuningEstimateResponseToJSONTyped(value?: FinetuningEstimate
 
     return {
 
+        'forecast': value['forecast'],
         'cost_estimate': FinetuningCostEstimateToJSON(value['costEstimate']),
         'time_estimate': FinetuningTimeEstimateToJSON(value['timeEstimate']),
         'trained_tokens': value['trainedTokens'],

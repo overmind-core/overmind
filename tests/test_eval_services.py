@@ -4525,6 +4525,7 @@ def test_var_catalog_grounded_in_real_datapoint_shape():
             }
         ],
         capability=capability,
+        contract="eval",
     )
 
     ctx = _build_var_context(resolve_grounding_for_capability(capability))

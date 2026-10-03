@@ -88,12 +88,12 @@ def test_library_resolve_and_refusal():
         libraries.resolve("requests")
 
 
-def test_landing_writes_cell_zero_and_proposes_the_intent():
+def test_landing_writes_cell_zero_and_keeps_unspecified_intent_pending():
     dataset = _landed(_project(), [dict(r) for r in TRAIN_ROWS])
     source = dataset.source
     assert source is not None and source.position == 0 and source.state == "ok"
     assert source.rows == len(TRAIN_ROWS)
-    assert dataset.intent == "train"
+    assert dataset.intent == "pending"
     assert dataset.state == "idle"
     assert dataset.versions()[source.id] == "1.0"
     assert paths.cell_path(dataset.id, source.id).exists()

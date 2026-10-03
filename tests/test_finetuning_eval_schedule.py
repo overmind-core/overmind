@@ -47,7 +47,7 @@ def job(monkeypatch):
     capability = Capability.objects.create(
         project=project, name="Support", slug="support", model="openai/gpt-5.6-sol"
     )
-    training = frozen_dataset(project, TRAIN_ROWS, capability=capability)
+    training = frozen_dataset(project, TRAIN_ROWS, capability=capability, contract="train")
     evaluation = frozen_dataset(
         project,
         [
@@ -55,6 +55,7 @@ def job(monkeypatch):
             {"input": "held-out-2", "expected_output": "answer-2"},
         ],
         capability=capability,
+        contract="eval",
     )
     eval_set = EvalSet.objects.create(project=project, name="Quality")
     evaluator = Evaluator.objects.create(
@@ -127,7 +128,7 @@ def test_every_training_evaluation_uses_the_complete_dataset(job, hyperparameter
         {"input": {"case": i, "mode": f"worker-{i // 300}"}, "expected_output": f"answer-{i}"}
         for i in range(900)
     ]
-    evaluation = frozen_dataset(job.project, source, capability=job.capability)
+    evaluation = frozen_dataset(job.project, source, capability=job.capability, contract="eval")
     job.eval_dataset = evaluation
     job.eval_cell = evaluation.active_cell
     job.hyperparameters = hyperparameters
@@ -230,7 +231,7 @@ def test_submission_starts_training_while_baseline_eval_is_running(job, monkeypa
     settings.FINETUNING_BACKEND = "together"
     runner = Mock()
     runner.submit.return_value = SimpleNamespace(remote_id="training-task", num_examples=None)
-    monkeypatch.setattr("overbae.services.finetuning_runner.get_runner", lambda: runner)
+    monkeypatch.setattr("overbae.services.finetuning_runner.get_runner", lambda **kwargs: runner)
     result = run_finetuning(job_id=str(job.id))
     job.refresh_from_db()
     assert result["status"] == job.status == "running"
@@ -245,7 +246,7 @@ def test_failed_baseline_eval_does_not_block_training(job, monkeypatch, settings
     job.job_evals.update(status=FinetuningJobEval.Status.FAILED)
     runner = Mock()
     runner.submit.return_value = SimpleNamespace(remote_id="training-task", num_examples=None)
-    monkeypatch.setattr("overbae.services.finetuning_runner.get_runner", lambda: runner)
+    monkeypatch.setattr("overbae.services.finetuning_runner.get_runner", lambda **kwargs: runner)
     result = run_finetuning(job_id=str(job.id))
     job.refresh_from_db()
     assert result["status"] == job.status == "running"
@@ -256,7 +257,7 @@ def test_baseline_launch_error_does_not_block_training(job, monkeypatch, setting
     settings.FINETUNING_BACKEND = "together"
     runner = Mock()
     runner.submit.return_value = SimpleNamespace(remote_id="training-task", num_examples=None)
-    monkeypatch.setattr("overbae.services.finetuning_runner.get_runner", lambda: runner)
+    monkeypatch.setattr("overbae.services.finetuning_runner.get_runner", lambda **kwargs: runner)
     monkeypatch.setattr(
         "overbae.services.finetuning_eval.start_before_evals",
         Mock(side_effect=RuntimeError("eval queue unavailable")),
@@ -272,10 +273,10 @@ def test_baseline_launch_error_does_not_block_training(job, monkeypatch, setting
 @pytest.mark.parametrize("state", ["queued", "running"])
 def test_launched_modal_job_prepares_data_before_gpu_submission(job, monkeypatch, settings, state):
     settings.FINETUNING_BACKEND = "modal"
-    preparation = SimpleNamespace(id="preparation-id", state=state)
+    preparation = SimpleNamespace(id="preparation-id", state=state, report={})
     monkeypatch.setattr("overbae.tasks.finetuning.for_job", lambda _: preparation)
     runner = Mock()
-    monkeypatch.setattr("overbae.services.finetuning_runner.get_runner", lambda: runner)
+    monkeypatch.setattr("overbae.services.finetuning_runner.get_runner", lambda **kwargs: runner)
     inspect = Mock()
     monkeypatch.setattr("overbae.tasks.finetuning.inspect_preparation.delay", inspect)
     resume = Mock(return_value=SimpleNamespace(id="resume-task"))
@@ -298,7 +299,7 @@ def test_preprocessing_worker_failure_preserves_actionable_error_and_never_submi
     prep = SimpleNamespace(state="failed", error=failure["error"], report=failure)
     monkeypatch.setattr("overbae.tasks.finetuning.for_job", lambda _: prep)
     runner = Mock()
-    monkeypatch.setattr("overbae.services.finetuning_runner.get_runner", lambda: runner)
+    monkeypatch.setattr("overbae.services.finetuning_runner.get_runner", lambda **kwargs: runner)
     job.max_retries = 0
     job.save(update_fields=["max_retries"])
 
@@ -339,7 +340,7 @@ def test_unresolved_baseline_does_not_change_running_training(
         baseline.deployment_waiters.add(job)
     runner = Mock()
     runner.submit.return_value = SimpleNamespace(remote_id="training-task", num_examples=None)
-    monkeypatch.setattr("overbae.services.finetuning_runner.get_runner", lambda: runner)
+    monkeypatch.setattr("overbae.services.finetuning_runner.get_runner", lambda **kwargs: runner)
     monkeypatch.setattr("overbae.tasks.model_deployment.deploy_base_model_for_eval.delay", Mock())
     cancel = Mock(return_value=False)
     monkeypatch.setattr(deployment, "cancel_operation", cancel)
@@ -795,7 +796,7 @@ def test_overlap_is_recorded_without_blocking_submission(job, monkeypatch, setti
     settings.FINETUNING_BACKEND = "together"
     runner = Mock()
     runner.submit.return_value = SimpleNamespace(remote_id="training-task", num_examples=None)
-    monkeypatch.setattr("overbae.services.finetuning_runner.get_runner", lambda: runner)
+    monkeypatch.setattr("overbae.services.finetuning_runner.get_runner", lambda **kwargs: runner)
     overlap = Mock(return_value={"overlap_count": 2})
     monkeypatch.setattr("overbae.services.datasets.rows.contamination", overlap)
     assert run_finetuning(job_id=str(job.id))["status"] == "running"
@@ -839,8 +840,7 @@ def test_all_evaluations_can_be_disabled(job):
 
 
 @pytest.mark.parametrize("field", ["eval_dataset", "eval_set"])
-def test_evaluation_inputs_remain_required_with_all_checks_off(job, field):
+def test_disabled_evaluations_do_not_require_evaluation_inputs(job, field):
     serializer = serializer_for(job, **dict.fromkeys(FIELDS, False))
     serializer.initial_data.pop(field)
-    assert not serializer.is_valid()
-    assert field in serializer.errors
+    assert serializer.is_valid(), serializer.errors

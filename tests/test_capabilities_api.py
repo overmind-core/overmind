@@ -23,7 +23,7 @@ pytestmark = pytest.mark.django_db
 
 
 def _trained_model(project, capability, *, status="ready"):
-    dataset = frozen_dataset(project, EVAL_ROWS, capability=capability)
+    dataset = frozen_dataset(project, EVAL_ROWS, capability=capability, contract="eval")
     job = FinetuningJob.objects.create(
         project=project, capability=capability, dataset=dataset, base_model="Qwen/Qwen3-8B"
     )
@@ -149,7 +149,9 @@ def test_delete_hides_the_row_and_keeps_its_data():
         start_time_ns=1,
         end_time_ns=2,
     )
-    dataset = frozen_dataset(project, EVAL_ROWS, capability=capability, name="rows")
+    dataset = frozen_dataset(
+        project, EVAL_ROWS, capability=capability, name="rows", contract="eval"
+    )
     client = _client(project)
 
     assert client.delete(f"/api/capabilities/{capability.id}/").status_code == 204
@@ -195,7 +197,7 @@ def test_agent_graph_endpoint_returns_current_rows_without_a_scan_report():
 def test_list_reads_the_dataset_product_off_the_active_cell():
     project = _project()
     capability = _capability(project, "Brain")
-    frozen_dataset(project, EVAL_ROWS, capability=capability, name="rows")
+    frozen_dataset(project, EVAL_ROWS, capability=capability, name="rows", contract="eval")
     client = _client(project)
 
     row = client.get("/api/capabilities/", {"project": project.id}).json()["results"][0]

@@ -129,6 +129,7 @@ const ACRONYMS =
 // whole phrases, so "Data" clears only inside "Data Workshop". Add terms here
 // rather than loosening the word-level check.
 const PRODUCT_TERMS = [
+  "ChatGPT",
   "Data Workshop",
   "Agent Testing",
   "Model Training",

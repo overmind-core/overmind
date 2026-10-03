@@ -14,7 +14,7 @@ pytestmark = pytest.mark.django_db
 def test_prerequisite_report_ready_when_dataset_and_eval_set_present():
     project = Project.objects.create(name="P", slug=f"p-{uuid.uuid4().hex[:8]}")
     capability = Capability.objects.create(project=project, name="a", slug="a")
-    dataset = frozen_dataset(project, EVAL_ROWS, capability=capability)
+    dataset = frozen_dataset(project, EVAL_ROWS, capability=capability, contract="eval")
     eval_set = EvalSet.objects.create(project=project, capability=capability, name="Default")
     capability.active_eval_set = eval_set
     capability.save(update_fields=["active_eval_set"])

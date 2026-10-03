@@ -16,6 +16,7 @@ from mcp.server.lowlevel.helper_types import ReadResourceContents
 from mcp.shared.exceptions import McpError
 from pydantic import AnyUrl
 
+from modal_shared.decisions import DECISION_OBJECTIVE
 from overbae.api.eval_serializers import compute_run_progress
 from overbae.core.errors import InputValidationError
 from overbae.models import (
@@ -26,11 +27,13 @@ from overbae.models import (
     EvalSet,
     FinetuningJob,
     ModelActivation,
+    NativeEvaluationPlan,
     OptimizerCandidate,
     OptimizerExperiment,
     Span,
     TrainingPreparation,
 )
+from overbae.services import native_evaluation
 from overbae.services.deployment import deployment_progress
 from overbae.services.entity_resolution import (
     resolve_capability,
@@ -50,6 +53,7 @@ from overbae.services.mcp.contracts.instrumentation import MAX_INSTRUMENTATION_S
 from overbae.services.mcp.errors import MCPError, error_payload, internal_error
 from overbae.services.mcp.references import project_references
 from overbae.services.model_activation import activation_progress
+from overbae.services.training_record import run_record
 
 JSON_MIME = "application/json"
 _MAX_EVENTS = 20
@@ -164,6 +168,9 @@ def _dataset_upload_resource(uri: str) -> dict:
         ),
         "chunk_bytes": files.CHUNK_BYTES,
         "command": "overmind dataset upload FILE --json",
+        "written_intent": "Use start_dataset with a brief before choosing data or a capability. Attach a file later with overmind dataset upload FILE --dataset DATASET --json. For a new upload, --brief records the original request.",
+        "existing_dataset": "Use overmind dataset upload FILE --dataset DATASET --json to add files to an existing workshop. Each upload appends a recorded import cell after the current chain, preserving earlier versions and source evidence. Inspect the dataset and poll get_job(kind=dataset_run) for completion. REST chat accepts source.uploads with an optional message.",
+        "documents": "PDF, DOCX, Markdown, UTF-8 text and PNG/JPEG/WebP images are extracted by the batch worker (100 MB per document). Original bytes and element/page evidence are retained. PDF extraction preserves native text and automatically runs local English Tesseract OCR on scanned pages and embedded images. Direct images are capped at 64 megapixels; animated images are rejected. OCR engine/version, page regions, upright image coordinates and recognition confidence are retained. Reading order and visual table structure are not reconstructed. Upload inspection returns rows=null until extraction.",
         "auth": "Project-scoped API key from --api-key, .overmind/credentials.toml, or OVERMIND_API_KEY.",
         "config": (
             "project-id from overmind.toml or --project-id; base URL from OVERMIND_API_URL, "
@@ -260,17 +267,34 @@ def safe_json(value, *, max_chars: int = 12_000):
     return str(value)[:max_chars]
 
 
-def _safe_finetune_progress(value):
+def safe_finetune_progress(value):
     if isinstance(value, dict):
         result = {}
         for key, item in list(value.items())[:100]:
             key_text = str(key)
-            if _contains_key_part(key_text, _FINETUNE_PROGRESS_REDACTED_PARTS):
+            numeric_metric = key_text in {
+                "checkpoint_step",
+                "restored_step",
+                "tokens_per_second",
+                "tokens_processed",
+                "total_tokens",
+                "num_tokens",
+            } and isinstance(item, (int, float))
+            if not numeric_metric and _contains_key_part(
+                key_text, _FINETUNE_PROGRESS_REDACTED_PARTS
+            ):
                 continue
-            result[key_text] = _safe_finetune_progress(item)
+            result[key_text] = safe_finetune_progress(item)
+            if isinstance(item, (list, tuple)) and len(item) > 100:
+                result[key_text + "_window"] = {
+                    "total": len(item),
+                    "returned": 100,
+                    "order": "latest",
+                    "truncated": True,
+                }
         return result
     if isinstance(value, (list, tuple)):
-        return [_safe_finetune_progress(item) for item in list(value)[:100]]
+        return [safe_finetune_progress(item) for item in list(value)[-100:]]
     return safe_json(value)
 
 
@@ -591,6 +615,8 @@ def _chat_turn(raw) -> dict | None:
     cells = raw.get("cells") if isinstance(raw.get("cells"), list) else []
     ms = raw.get("ms")
     return {
+        "id": raw.get("id"),
+        "intent_choice": raw.get("intent_choice"),
         "role": _clip_text(raw.get("role"), 16),
         "text": _clip_text(raw.get("text"), _CHAT_TEXT_CAP),
         "error": _clip_text(raw.get("error"), _ERROR_CAP) or None,
@@ -800,7 +826,16 @@ def _finetune_resource(project, value: str, uri: str) -> dict:
     normalized_id = _uuid_ref(value)
     job = (
         FinetuningJob.objects.filter(project=project, id=normalized_id)
-        .select_related("capability", "dataset", "deployed_model")
+        .select_related(
+            "capability",
+            "dataset",
+            "deployed_model",
+            "cell",
+            "validation_cell",
+            "eval_cell",
+            "eval_set",
+            "native_evaluation",
+        )
         .first()
         if normalized_id
         else None
@@ -821,10 +856,16 @@ def _finetune_resource(project, value: str, uri: str) -> dict:
         "status": job.status,
         "provider": job.provider,
         "base_model": job.base_model,
+        "record": safe_json(run_record(job)),
         "training_objective": (job.hyperparameters or {}).get(
             "objective", "assistant_cross_entropy"
         ),
-        "inference_contract": result.get("inference_contract", "chat"),
+        "inference_contract": result.get("inference_contract")
+        or (
+            "decision"
+            if (job.hyperparameters or {}).get("objective") == DECISION_OBJECTIVE
+            else "chat"
+        ),
         "cost_usd": float(job.cost_usd) if job.cost_usd is not None else None,
         "cost_synced_at": job.cost_synced_at,
         "evaluation_plan": {
@@ -838,8 +879,8 @@ def _finetune_resource(project, value: str, uri: str) -> dict:
         "dataset": str(job.dataset_id) if job.dataset_id else None,
         "cell": str(job.cell_id) if job.cell_id else None,
         "eval_cell": str(job.eval_cell_id) if job.eval_cell_id else None,
-        "progress": _safe_finetune_progress(progress),
-        "loss": safe_json(loss[:100] if isinstance(loss, list) else []),
+        "progress": safe_finetune_progress(progress),
+        "loss": safe_json(loss[-100:] if isinstance(loss, list) else []),
         "error": job.error_message[:1_000],
         "deployed_model": str(deployment.id) if deployment is not None else None,
         "events": [
@@ -1088,6 +1129,14 @@ def _job_resource(project, kind: str, value: str, uri: str) -> dict:
             "status": activation.stage,
             **activation_progress(activation),
         }
+    if kind == "native_evaluation":
+        plan = NativeEvaluationPlan.objects.filter(
+            pk=_uuid_ref(value), job__project=project
+        ).first()
+        if plan is None:
+            raise _not_found("native evaluation", value)
+
+        return {"uri": uri, "kind": kind, **safe_json(native_evaluation.describe(plan))}
     if kind == "training_preparation":
         prep = TrainingPreparation.objects.filter(
             pk=_uuid_ref(value), cell__dataset__project=project

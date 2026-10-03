@@ -192,9 +192,9 @@ cell, chip, metric, paragraph and button is set in Geist Pixel. The result is
 a CRT-era workshop typeset with care: warm where developer tools are usually
 cold, and pixel-sharp where SaaS consoles are usually soft.
 
-The constraints are the design. Shadows do not exist as an option: every
-`--shadow-*` token resolves to `none`, so depth comes from tonal layering and
-hairline borders alone. Corners top out at 3px. Colour is rationed: the copper
+The constraints are the design. Standard shadow tokens resolve to `none`;
+depth comes from tonal layering and hairline borders. Confirmation dialogs
+alone use a subtle drop shadow. Corners top out at 3px. Colour is rationed: the copper
 brand mark is the only saturated element in the product, and orange anywhere
 else means warning. `check:design`, `check:contrast` and `check:controls` fail
 the build on a violation.
@@ -202,8 +202,8 @@ the build on a violation.
 In short:
 
 - Warm neutral throughout: cream canvas, warm-black ink, sand borders.
-- Flat: zero shadows, tonal layering and hairlines only.
-- Pixel geometry: a 1px / 2px / 3px radius ramp and nothing above it.
+- Flat surfaces, with a subtle drop shadow reserved for confirmation dialogs.
+- Pixel geometry: a 1px / 2px / 3px radius ramp, including the Workshop bezel and composers.
 - Mondwest for titles, Geist Pixel for everything else, NeueBit for navigation.
 - Sentence case everywhere; uppercase and wide tracking are banned.
 - The copper eye carries the brand, so nothing else has to.
@@ -500,9 +500,18 @@ a fourth.
 
 ## Elevation and depth
 
-There are no shadows. Every `--shadow-*` token resolves to `none` in both
-themes, so `shadow-lg` is dead code, and `check:design` flags it as such.
-Nothing in this product is lifted off the page.
+Standard shadow tokens resolve to `none` in both themes, so `shadow-lg`
+is dead code, and `check:design` flags it as such. Confirmation dialogs are
+the user-requested exception: `shadow-confirmation` uses the theme-aware
+`--elevation-confirmation` token, with a faint contact shadow and a soft,
+downward cast. No other surface uses it.
+
+Confirmations follow the shared small-dialog frame: background surface, a 26rem
+natural width within the 75vw/75vh ceiling, 20px horizontal insets, a 16px header
+inset and a 12px footer inset. Header and footer rules span the frame. Titles
+and descriptions use the shared typography and compact spacing. Actions use
+standard button variants, including the filled destructive button and its
+theme-aware foreground; they wrap only when needed. Cancel keeps initial focus.
 
 Depth is carried three ways instead. Tonal layering: dark mode steps
 background `#0e0c09` to card `#151311` to popover `#1e1c1a`, and light mode
@@ -515,7 +524,8 @@ edge sits inside the layout box and never shifts child positions.
 
 **The Flat Room rule.** Selection, elevation and emphasis read through border,
 ring and background tone. If a surface needs to read as closer, change its tone
-or its edge. Never add a shadow, a scale transform or a lift.
+or its edge. Only confirmation dialogs use the named shadow token; never add
+a scale transform or hover lift.
 
 ## Shapes
 
@@ -642,14 +652,66 @@ reflows content.
 
 ### Data Workshop notebook
 
-The dataset page fills its frame: the cells on the left and the dataset's
-agent on the right in a resizable split, on app tokens only, with no parallel
-palette. There is no page header: the breadcrumb names the dataset, and the
+Existing-email ChatGPT callbacks return to the login card for a single local
+password confirmation, with an explicit Connect and sign in action and Start
+again link. They retain the verified provider connection through that step.
+
+The self-hosted login card puts **Continue with ChatGPT**, with the OpenAI mark,
+above the email/password form. A remembered registration shows its email and
+**Use another account**. OAuth returns to the login screen to establish the
+local session; the Workshop composer handles model selection.
+
+Self-hosted Workshop composers place the OpenAI-marked **Use ChatGPT** toggle
+beside the plus button at the bottom of the input. Enabling it reveals the
+shared model selector, populated from the connected account's catalogue.
+Turning it off restores server models without disconnecting the account.
+Requests wait for funding changes to finish saving. Settings retains account
+connection, selection and disconnection, with ChatGPT plan limits and zero
+Overmind credits shown separately from the server-model choice.
+
+Workshop composers, their inner input panels and the content bezel use the standard
+`rounded-md` (3px), matching other pages. Composers have a 4px inset. The landing
+composer has no footer row; its plus menu offers **Add files** and **Select from traces**.
+The notebook retains its 32px activity chin. Send requires nonblank prompt text and at least one
+attachment, with every retained file ready; button and keyboard submission share this guard. Image attachments include a thumbnail and an expandable preview; upload readiness is labeled separately from OCR, which starts after submission. During landing, the composer shows the current file and extraction count. Landing attachments are single-line chips beside
+the plus control; send shares that row. Existing workshop chats reuse those attachment chips with an Add files button, drag/drop and paste. Uploads must be ready before sending; attachments can be sent with an optional instruction. Failed requests retain the draft and attachments. Added files appear as a recorded import cell in the existing chain. Both composers sit at the bottom. The landing empty state centres
+“Ready to train?” in Mondwest, scaled from 36px to 56px with the available content
+width, beneath the supplied 16px line-chart mark. The title reserves its full width
+while letters type in at 45ms intervals, completing within 750ms; the letters default to visible after the reveal. A block cursor follows and blinks four
+times after completion. The mark uses foreground and card tokens in both themes.
+Reduced motion shows the full title immediately without a cursor. On landing,
+workspace navigation and content share a continuous outer bezel (`rounded-md`, 3px).
+The 248px workspace column has an 8px horizontal inset and a 1px divider beside
+the content. Its grid column expands over 300ms and closes over 200ms with the
+shell ease-out curve; reduced motion switches immediately. Closed navigation is
+inert and stops polling workspace datasets. Project headers and workspace rows
+share a 32px grid, aligned label starts and a 24px trailing control slot. Full
+names, file types and row counts appear
+in hover/focus details. Search uses the shared input outline. Status and hover actions
+share a trailing slot; touch layouts keep actions visible. Show more aligns with
+workspace names. It has no page heading or New workspace button, and tucks away when
+a dataset opens. On mobile, Workspaces reveals the same navigation inside the
+bezel, temporarily hiding the mounted notebook; its folder button returns to the content.
+
+Dataset creation uses the medium 40rem dialog frame and training setup's compact
+field labels. Selected traces appear once beneath the title. The name leads,
+capability and purpose share a row, and a two-line Intent field is explicitly
+optional with an example placeholder. Split controls appear only for Train + eval;
+their row counts stay inline. On narrow screens, fields stack and only the body scrolls.
+
+The dataset page fills its frame with one notebook canvas on app tokens.
+An unanswered purpose appears in a compact panel above the composer: “What will you use this data for?” with Training, Eval, and Data exploration radio choices and Continue. No choice is preselected. The question survives reloads; failed submissions retain the choice, and submission disables duplicate actions. Data exploration is neutral rather than a missing-intent warning.
+Requests, cells and agent responses share the vertical flow. Cells appear once
+in canonical order; later revisions link back without moving the chain. There is no page header: the breadcrumb names the dataset, and the
 name, the intent and the capability change through the chat (the agent's
 `rename`, `set_intent` and `set_capability` tools). The rail on the left holds
+a folder button that expands or collapses the existing workspace column,
 a search button (a jump list of version, title and rows) and one small mark
 per cell: outlined when selected, `success/20` for the active one,
-`destructive` when failed.
+`destructive` when failed. The folder changes to its open state while expanded.
+The sidebar closes on workspace selection or leaving the route; toggling it
+preserves the notebook and its draft message. It uses the existing grid animation,
+with no separate pane, dialog or scrim.
 
 Each cell is a rounded frame with a chip on its top border. The chip is
 sticky: while a cell scrolls through the column its chip stays at the top and
@@ -667,7 +729,7 @@ word-level diff in place: removed on `destructive/15` struck through, added on
 and wrap to their full text (objects as indented JSON), and a second click
 closes it. No extra row, no sheet, no per-type rendering.
 
-The footer is one 32px line. First an **Active** indicator (`success` chip
+The footer has a 32px minimum height and wraps at narrow widths. First an **Active** indicator (`success` chip
 with a tick). Then a contract chip that names the first failure (**Not a
 train table**, **Does not match Research Agent**, **Intent pending**, else
 **Fits**). Its hover card gives each contract as Needs / Columns / Found / Fix
@@ -692,11 +754,13 @@ Overlap is advisory in setup.
 Unreadable data, invalid technical formats and incompatible model settings still
 block execution. There is no extra quality-approval step.
 
-The chat on the right has no header or repeated agent-name labels.
-Explanations, thinking/tool sections and cell results appear in execution order.
-The current activity section opens while work runs; earlier sections collapse
-into **Thought for…** when narration resumes. The user can expand or collapse
-them at any time. Provider-exposed thinking text reads as Markdown prose, not
+Agent responses sit beside their resulting cells in the notebook flow.
+Thinking/tool sections are collapsed by default, including while running.
+The latest final summary stays expanded; earlier narration folds into
+Preparation activity. Starting a new prompt collapses earlier
+responses into a one-line disclosure. Every disclosure remains reopenable.
+Vendored pixel icons show working, completion, review and failure; stepped
+working motion and a brief completion animation respect reduced motion. Provider-exposed thinking text reads as Markdown prose, not
 a clipped code block. Tool calls keep their inputs and results in individual
 disclosures. Shared elbow connectors group the steps; no enclosing status card.
 Generation counts remain secondary below the live conversation.
@@ -704,7 +768,7 @@ A quiet-period notice reports time since the last activity, never invented
 progress. Thinking snapshots and progress survive a reload. Assistant responses
 explain the approach, findings and caveats in normal paragraphs rather than a
 fixed one-line result; verified generation counts accompany that explanation.
-One full-width result row per non-proposed cell shows its title, row count,
+Compact result links inside responses show cell title, row count,
 version and current state: `ran` on `success/10`,
 `failed` on `destructive/10`, `edited` on `info/10`, `removed` struck through,
 and discarded proposals dashed and struck through. A result row jumps to its cell.
@@ -717,10 +781,14 @@ adds validated rows directly, without a draft or Apply step. Batches accumulate
 in one active cell; progress shows rows added. An interrupted run keeps the
 added rows, and a follow-up prompt resumes generation.
 
-All pending proposals appear in the chat's review section as shared bordered
-cards with impact counts and expandable input/output examples. **Approve** consumes
-the saved transformation preview; **Deny** removes it. Stale proposals
-cannot be applied. Generated data uses the normal cell-result row instead.
+Only current, complete previews appear as compact rows in one inset panel anchored above
+the composer, outside the cell scroll flow. Each row has a title, brief description
+and **Approve** / **Reject** actions. Clicking the description expands the full note,
+impact counts, coverage and input/output examples. One row expands at a time; the
+panel scrolls at 40% of the viewport height, keeping the input in place and the
+expanded row's description and actions pinned above its details.
+**Approve** consumes the saved transformation preview; **Reject** removes it.
+Suggestions are retired when their input or task context changes; the interface has no out-of-date suggestion state. Busy datasets disable both actions. Generated data uses the normal cell-result row instead.
 Chat Markdown has no horizontal rules or heading underlines; tables and thinking
 elbows keep their borders. No divider sits above the composer or proposal actions.
 The composer has an input and vendored pixel Send icon, without helper subtext. It stays
@@ -791,8 +859,8 @@ they name a symbol or quote a wire value.
   (`bg-blue-500`, `text-zinc-400`) anywhere in app code.
 - Use the brand copper outside `overmind-eye-copper.svg`. Orange in the UI
   means warning.
-- Add a shadow. Every shadow token resolves to `none`; use tone, border or
-  ring.
+- Add a shadow outside confirmation dialogs. Use tone, border or ring for
+  every other surface; the only elevation token is `shadow-confirmation`.
 - Use `rounded-lg`, `rounded-xl`, `rounded-full`, bare `rounded`, or an
   arbitrary `rounded-[Npx]`.
 - Pair a title class with a `text-*` size or a weight utility. Mondwest has one

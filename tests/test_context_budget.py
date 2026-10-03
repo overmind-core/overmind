@@ -126,8 +126,10 @@ def test_incomplete_tool_call_is_never_executed(monkeypatch, generate):
 @pytest.mark.django_db
 def test_deployment_and_eval_budget_are_independent_of_training_length():
     project = Project.objects.create(name="Context")
-    train = frozen_dataset(project, TRAIN_ROWS)
-    evaluation = frozen_dataset(project, [{"input": "i" * 9000, "expected_output": "o" * 18000}])
+    train = frozen_dataset(project, TRAIN_ROWS, contract="train")
+    evaluation = frozen_dataset(
+        project, [{"input": "i" * 9000, "expected_output": "o" * 18000}], contract="eval"
+    )
     job = FinetuningJob.objects.create(
         project=project,
         dataset=train,
@@ -153,7 +155,9 @@ def test_deployment_and_eval_budget_are_independent_of_training_length():
 @pytest.mark.django_db
 def test_truncated_generation_stays_visible_but_cannot_be_a_quality_score(monkeypatch):
     project = Project.objects.create(name="Incomplete eval")
-    evaluation = frozen_dataset(project, [{"input": "packet", "expected_output": "report"}])
+    evaluation = frozen_dataset(
+        project, [{"input": "packet", "expected_output": "report"}], contract="eval"
+    )
     run = EvalRun.objects.create(
         project=project,
         dataset=evaluation,
@@ -169,7 +173,7 @@ def test_truncated_generation_stays_visible_but_cannot_be_a_quality_score(monkey
     run_evaluator = RunEvaluator.objects.create(
         run=run, evaluator=evaluator, snapshot=snapshots.build_snapshot(evaluator)
     )
-    train = frozen_dataset(project, TRAIN_ROWS)
+    train = frozen_dataset(project, TRAIN_ROWS, contract="train")
     job = FinetuningJob.objects.create(
         project=project, dataset=train, base_model="Qwen/Qwen3.5-27B", status="succeeded"
     )

@@ -1,0 +1,306 @@
+import json
+import math
+from unittest.mock import Mock, patch
+
+import pytest
+from conftest import EVAL_ROWS, frozen_dataset
+from django.urls import reverse
+from rest_framework.test import APIClient
+
+from overbae.models import Dataset, FinetuningJob, Project
+from overbae.services import native_evaluation
+from overbae.services.datasets import land
+
+pytestmark = pytest.mark.django_db
+
+
+def setup_plan():
+    project = Project.objects.create(name="Research", slug="research")
+    train = Dataset.objects.create(project=project, name="Training", intent="train")
+    job = FinetuningJob.objects.create(
+        project=project,
+        dataset=train,
+        base_model="fixture",
+        hyperparameters={"objective": "decision_cross_entropy"},
+        status="running",
+    )
+    cells = []
+    for name in ("calibration", "final"):
+        dataset = Dataset.objects.create(project=project, name=name, intent="eval")
+        land.land_rows(
+            dataset,
+            [
+                {
+                    "input": {
+                        "decision": {
+                            "state": f"{name} evidence {i}",
+                            "question": "Choose",
+                            "kind": "choice",
+                            "options": ["yes", "no"],
+                        }
+                    },
+                    "expected_output": {"probabilities": [1, 0]},
+                    "benchmark": "fixture",
+                    "group": str(i),
+                }
+                for i in range(3)
+            ],
+        )
+        dataset.refresh_from_db()
+        cells.append(dataset.active_cell)
+    with patch(
+        "overbae.services.native_evaluation.runtime",
+        return_value={"app": "eval-release", "environment": "test"},
+    ):
+        plan = native_evaluation.schedule(job, calibration_cell=cells[0], final_cell=cells[1])
+        assert (
+            native_evaluation.schedule(job, calibration_cell=cells[0], final_cell=cells[1]).id
+            == plan.id
+        )
+    return plan
+
+
+def test_plan_keeps_references_local_and_freezes_calibration_before_final_predictions(
+    tmp_path, settings
+):
+    settings.MEDIA_ROOT = tmp_path
+    plan = setup_plan()
+    assert plan.state == "waiting_for_checkpoint"
+    uploaded = native_evaluation.seal_suite(plan, "calibration")
+    rows = [json.loads(line) for line in uploaded.read_text().splitlines()]
+    assert len(rows) == 3
+    assert all(set(row) == {"key", "input_sha256", "decision"} for row in rows)
+    assert "probabilities" not in uploaded.read_text()
+    assert native_evaluation.stage_sequence(plan).index(
+        "fit_calibration"
+    ) < native_evaluation.stage_sequence(plan).index("final_base")
+    predictions = uploaded.parent / "candidate.jsonl"
+    predictions.write_text(
+        "".join(
+            json.dumps(
+                {
+                    **{k: v for k, v in row.items() if k != "decision"},
+                    "kind": "choice",
+                    "model_identity": "candidate",
+                    "probabilities": [0.8, 0.2],
+                    "log_probabilities": [math.log(0.8), math.log(0.2)],
+                }
+            )
+            + "\n"
+            for row in rows
+        )
+    )
+    (uploaded.parent / "base.jsonl").write_bytes(predictions.read_bytes())
+    fitted = native_evaluation.fit_calibration(plan)
+    assert fitted["fitted_on"] == "calibration"
+    assert fitted["decisions"] == 3
+    assert native_evaluation.fit_calibration(plan) == fitted
+    assert not native_evaluation.directory(plan, "final").exists()
+
+
+def test_unknown_submission_is_not_repeated(tmp_path, settings):
+    settings.MEDIA_ROOT = tmp_path
+    plan = setup_plan()
+    plan.job.status = "succeeded"
+    plan.job.remote_job_id = "run:call"
+    plan.job.save()
+    with patch(
+        "overbae.services.native_evaluation.submit", side_effect=ConnectionError("lost response")
+    ) as submit:
+        native_evaluation.advance(plan.pk)
+        native_evaluation.advance(plan.pk)
+    assert submit.call_count == 1
+    plan.refresh_from_db()
+    assert plan.state == "submission_unknown"
+    assert plan.calls["calibration_prepare"]["state"] == "submitting"
+
+
+def test_retry_keeps_pinned_evaluation_release(tmp_path, settings):
+    settings.MEDIA_ROOT = tmp_path
+    plan = setup_plan()
+    with patch(
+        "overbae.services.native_evaluation.runtime",
+        return_value={"app": "changed", "environment": "wrong"},
+    ):
+        again = native_evaluation.schedule(
+            plan.job, calibration_cell=plan.calibration_cell, final_cell=plan.final_cell
+        )
+    assert again.pk == plan.pk
+    assert again.config["runtime"]["app"] == "eval-release"
+
+
+def test_complete_plan_uses_six_provider_calls_and_retains_paired_coverage(tmp_path, settings):
+    settings.MEDIA_ROOT = tmp_path
+    plan = setup_plan()
+    plan.config["bootstrap_samples"] = 10
+    plan.save()
+    plan.job.status = "succeeded"
+    plan.job.remote_job_id = "run:call"
+    plan.job.save()
+    submitted = []
+
+    def submit(plan, stage):
+        role, arm = stage.split("_", 1)
+        if role == "final":
+            assert plan.calibration and plan.calibration["fitted_on"] == "calibration"
+        source = native_evaluation.seal_suite(plan, role)
+        if arm != "prepare":
+            probability = 0.8 if arm == "candidate" else 0.6
+            with (source.parent / f"{arm}.jsonl").open("w") as output:
+                for line in source.read_text().splitlines():
+                    row = json.loads(line)
+                    output.write(
+                        json.dumps(
+                            {
+                                "key": row["key"],
+                                "input_sha256": row["input_sha256"],
+                                "kind": "choice",
+                                "model_identity": arm,
+                                "probabilities": [probability, 1 - probability],
+                                "log_probabilities": [
+                                    math.log(probability),
+                                    math.log(1 - probability),
+                                ],
+                            }
+                        )
+                        + "\n"
+                    )
+        submitted.append(stage)
+        return "call-" + stage
+
+    with (
+        patch.object(native_evaluation, "submit", side_effect=submit),
+        patch.object(native_evaluation, "collect"),
+        patch("modal.FunctionCall.from_id", return_value=Mock(get=Mock(return_value={}))),
+    ):
+        for _ in range(18):
+            native_evaluation.advance(plan.id)
+    plan.refresh_from_db()
+    assert plan.state == "completed", plan.error
+    assert len(submitted) == len(set(submitted)) == 6
+    result = plan.results["raw"]["benchmarks"]["fixture"]
+    assert result["expected"] == result["paired_decisions"] == 3
+    assert result["metrics"]["cross_entropy"]["candidate_minus_baseline"] < 0
+
+
+def test_incomplete_calibration_cannot_fit_or_start_final(tmp_path, settings):
+    settings.MEDIA_ROOT = tmp_path
+    plan = setup_plan()
+    source = native_evaluation.seal_suite(plan, "calibration").parent
+    (source / "base.jsonl").write_text("")
+    (source / "candidate.jsonl").write_text("")
+    with pytest.raises(ValueError, match="coverage"):
+        native_evaluation.fit_calibration(plan)
+    plan.refresh_from_db()
+    assert plan.calibration == {}
+    assert not native_evaluation.directory(plan, "final").exists()
+
+
+def test_embedded_probability_target_is_never_uploaded(tmp_path, settings):
+    settings.MEDIA_ROOT = tmp_path
+    plan = setup_plan()
+    from types import SimpleNamespace
+
+    malicious = SimpleNamespace(
+        index=0,
+        extra={},
+        input={
+            "decision": {
+                "state": "evidence",
+                "question": "Choose",
+                "kind": "choice",
+                "options": ["yes", "no"],
+                "probabilities": [1, 0],
+            }
+        },
+        expected_output={"probabilities": [1, 0]},
+    )
+    with patch.object(native_evaluation.rows, "iter_rows", return_value=iter([malicious])):
+        source = native_evaluation.seal_suite(plan, "calibration")
+    assert source.read_text() == ""
+    assert len((source.parent / "failures.jsonl").read_text().splitlines()) == 1
+
+
+def test_native_plan_rejects_chat_suite_before_any_use():
+    plan = setup_plan()
+    chat = frozen_dataset(plan.job.project, EVAL_ROWS, contract="eval")
+    with pytest.raises(ValueError, match="native decision"):
+        native_evaluation.schedule(
+            plan.job, calibration_cell=chat.active_cell, final_cell=plan.final_cell
+        )
+    plan.refresh_from_db()
+    assert plan.calibration_cell_id != chat.active_cell.id
+
+
+def test_native_plan_api_is_idempotent_and_project_scoped(settings):
+    from overbae.models import NativeEvaluationPlan, ProjectMembership, User
+
+    settings.STRIPE_SECRET_KEY = ""
+    plan = setup_plan()
+    user = User.objects.create_user(email="native-api@example.com", password="fixture")
+    ProjectMembership.objects.create(project=plan.job.project, user=user)
+    client = APIClient()
+    client.force_authenticate(user=user)
+    url = reverse("finetuningjob-native-evaluation", kwargs={"id": plan.job_id})
+    body = {
+        "calibration_cell": str(plan.calibration_cell_id),
+        "final_cell": str(plan.final_cell_id),
+    }
+    for _ in range(2):
+        response = client.post(url, body, format="json")
+        assert response.status_code == 202, response.content
+        assert response.json()["id"] == str(plan.pk)
+    other = Project.objects.create(name="Other", slug="other-native-api")
+    foreign = frozen_dataset(other, EVAL_ROWS, contract="eval")
+    response = client.post(url, {**body, "final_cell": str(foreign.active_cell.id)}, format="json")
+    assert response.status_code == 404
+    assert NativeEvaluationPlan.objects.filter(job=plan.job).count() == 1
+    ProjectMembership.objects.filter(user=user).delete()
+    assert client.post(url, body, format="json").status_code == 404
+
+
+def test_overlapping_reconciliation_observes_provider_call_once(tmp_path, settings):
+    settings.MEDIA_ROOT = tmp_path
+    plan = setup_plan()
+    plan.job.status = "succeeded"
+    plan.job.remote_job_id = "run:call"
+    plan.job.save()
+    with patch.object(native_evaluation, "submit", return_value="call-existing"):
+        native_evaluation.advance(plan.id)
+
+    def get_result(timeout):
+        native_evaluation.advance(plan.id)
+        return {"ready": True}
+
+    provider = Mock(get=Mock(side_effect=get_result))
+    with (
+        patch("modal.FunctionCall.from_id", return_value=provider),
+        patch.object(native_evaluation, "collect") as collect,
+    ):
+        native_evaluation.advance(plan.id)
+    provider.get.assert_called_once_with(timeout=0)
+    collect.assert_called_once()
+    plan.refresh_from_db()
+    assert plan.calls["calibration_prepare"]["state"] == "completed"
+
+
+def test_pending_provider_observation_can_be_polled_again(tmp_path, settings):
+    settings.MEDIA_ROOT = tmp_path
+    plan = setup_plan()
+    plan.job.status = "succeeded"
+    plan.job.remote_job_id = "run:call"
+    plan.job.save()
+    with patch.object(native_evaluation, "submit", return_value="call-existing") as submit:
+        native_evaluation.advance(plan.id)
+        provider = Mock(get=Mock(side_effect=[TimeoutError(), {"ready": True}]))
+        with (
+            patch("modal.FunctionCall.from_id", return_value=provider),
+            patch.object(native_evaluation, "collect") as collect,
+        ):
+            native_evaluation.advance(plan.id)
+            native_evaluation.advance(plan.id)
+    assert submit.call_count == 1
+    assert provider.get.call_count == 2
+    collect.assert_called_once()
+    plan.refresh_from_db()
+    assert plan.calls["calibration_prepare"]["state"] == "completed"

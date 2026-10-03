@@ -11,8 +11,17 @@ from typing import Any
 from django.utils import timezone
 
 from overbae.models import Cell, Dataset
-from overbae.services.datasets import measure, paths, preparation, review, store
+from overbae.services.datasets import (
+    attachments,
+    measure,
+    operations,
+    paths,
+    preparation,
+    review,
+    store,
+)
 from overbae.services.datasets.context import context_fingerprint
+from overbae.services.datasets.lifecycle import DatasetError
 from overbae.services.datasets.notebook import events, runner
 
 logger = logging.getLogger(__name__)
@@ -61,6 +70,7 @@ def execute(
 def iter_execute(
     dataset: Dataset, *, user: Any = None, hold: str | None = None, activate_cell_id=None
 ) -> Iterator[dict[str, Any]]:
+    operations.check_cancelled(dataset.id)
     chain = [c for c in dataset.chain if c.state != Cell.State.PROPOSED]
     if activate_cell_id and not any(str(c.id) == str(activate_cell_id) for c in chain):
         raise ValueError("The approved version is no longer in this dataset's chain.")
@@ -104,7 +114,14 @@ def iter_execute(
             cell.review.get("approval") in {"mechanical", "preparation"}
             and cell.review.get("input_fingerprint") != previous.fingerprint
         )
-        if cell.review.get("status") == "accepted" and not automatic_rerun:
+        if cell.review.get("kind") == "attachment":
+            try:
+                result = runner.CellResult(
+                    attachments.merge(dataset, cell, previous, output_path), ok=True
+                )
+            except DatasetError as exc:
+                result = runner.CellResult(None, error=str(exc))
+        elif cell.review.get("status") == "accepted" and not automatic_rerun:
             if (
                 cell.review.get("input_fingerprint") != previous.fingerprint
                 or cell.review.get("intent") != dataset.intent
@@ -119,7 +136,10 @@ def iter_execute(
                 result = runner.CellResult(output_path, ok=True)
         else:
             result = runner.run(
-                cell.script, paths.cell_path(dataset.id, previous.id), library_cache=cache
+                cell.script,
+                paths.cell_path(dataset.id, previous.id),
+                library_cache=cache,
+                cancelled=lambda: operations.cancellation_requested(dataset.id),
             )
             if automatic_rerun and result.path is not None:
                 changes = review.impact_files(paths.cell_path(dataset.id, previous.id), result.path)
@@ -139,6 +159,7 @@ def iter_execute(
             cell.state, cell.error = Cell.State.FAILED, error
             yield _emit(dataset, {"type": "cell_failed", **_cell_event(cell, versions)})
             continue
+        operations.check_cancelled(dataset.id)
         out_path = paths.cell_path(dataset.id, cell.id)
         if result.path != out_path:
             review.preserve_file_provenance(
@@ -200,6 +221,7 @@ def try_script(dataset: Dataset, script: str, *, after: Cell) -> runner.CellResu
         script,
         paths.cell_path(dataset.id, after.id),
         library_cache=paths.library_cache(dataset.project_id),
+        cancelled=lambda: operations.cancellation_requested(dataset.id),
     )
 
 
@@ -208,5 +230,6 @@ def inspect(dataset: Dataset, script: str, *, at: Cell) -> runner.CellResult:
         script,
         paths.cell_path(dataset.id, at.id),
         library_cache=paths.library_cache(dataset.project_id),
+        cancelled=lambda: operations.cancellation_requested(dataset.id),
         produce_frame=False,
     )

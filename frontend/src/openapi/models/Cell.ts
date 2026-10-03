@@ -116,6 +116,12 @@ export interface Cell {
     readonly fingerprint: string;
     /**
      *
+     * @type {string}
+     * @memberof Cell
+     */
+    readonly inputFingerprint: string;
+    /**
+     *
      * @type {any}
      * @memberof Cell
      */
@@ -206,6 +212,7 @@ export function instanceOfCell(value: object): value is Cell {
     if (!('rows' in value) || value['rows'] === undefined) return false;
     if (!('columns' in value) || value['columns'] === undefined) return false;
     if (!('fingerprint' in value) || value['fingerprint'] === undefined) return false;
+    if (!('inputFingerprint' in value) || value['inputFingerprint'] === undefined) return false;
     if (!('intentReport' in value) || value['intentReport'] === undefined) return false;
     if (!('capabilityReport' in value) || value['capabilityReport'] === undefined) return false;
     if (!('fits' in value) || value['fits'] === undefined) return false;
@@ -243,6 +250,7 @@ export function CellFromJSONTyped(json: any, ignoreDiscriminator: boolean): Cell
         'rows': json['rows'],
         'columns': json['columns'],
         'fingerprint': json['fingerprint'],
+        'inputFingerprint': json['input_fingerprint'],
         'intentReport': json['intent_report'],
         'capabilityReport': json['capability_report'],
         'fits': json['fits'],
@@ -262,7 +270,7 @@ export function CellToJSON(json: any): Cell {
     return CellToJSONTyped(json, false);
 }
 
-export function CellToJSONTyped(value?: Omit<Cell, 'id'|'position'|'version'|'title'|'script'|'note'|'state'|'error'|'frozen'|'rows'|'columns'|'fingerprint'|'intent_report'|'capability_report'|'fits'|'stats'|'review'|'quality_report'|'preparation_plan'|'readiness'|'seconds'|'used_at'|'created_at'|'updated_at'> | null, ignoreDiscriminator: boolean = false): any {
+export function CellToJSONTyped(value?: Omit<Cell, 'id'|'position'|'version'|'title'|'script'|'note'|'state'|'error'|'frozen'|'rows'|'columns'|'fingerprint'|'input_fingerprint'|'intent_report'|'capability_report'|'fits'|'stats'|'review'|'quality_report'|'preparation_plan'|'readiness'|'seconds'|'used_at'|'created_at'|'updated_at'> | null, ignoreDiscriminator: boolean = false): any {
     if (value == null) {
         return value;
     }

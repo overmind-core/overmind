@@ -9,6 +9,8 @@ import os
 import subprocess
 import sys
 import tempfile
+import time
+from contextlib import suppress
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -94,7 +96,7 @@ for _limit, _ceiling in (
 
 
 def run(
-    script: str, source: Path, *, library_cache: Path, produce_frame: bool = True
+    script: str, source: Path, *, library_cache: Path, produce_frame: bool = True, cancelled=None
 ) -> CellResult:
     mode = "cell" if produce_frame else "inspect"
     noun = "cell" if produce_frame else "script"
@@ -124,7 +126,7 @@ def run(
     }
     try:
         with (tmp_path / "stdout").open("w") as stdout, (tmp_path / "stderr").open("w") as stderr:
-            proc = subprocess.run(  # noqa: S603 — audited script, jailed child
+            proc = subprocess.Popen(  # noqa: S603 — audited script, jailed child
                 [
                     sys.executable,
                     "-I",
@@ -143,8 +145,22 @@ def run(
                 stdout=stdout,
                 stderr=stderr,
                 text=True,
-                timeout=WALL_SECONDS,
             )
+            deadline = time.monotonic() + WALL_SECONDS
+            try:
+                while proc.poll() is None:
+                    if cancelled and cancelled():
+                        proc.kill()
+                        proc.wait()
+                        return CellResult(None, error="Cancellation requested.")
+                    if time.monotonic() >= deadline:
+                        raise subprocess.TimeoutExpired(proc.args, WALL_SECONDS)
+                    with suppress(subprocess.TimeoutExpired):
+                        proc.wait(timeout=0.5)
+            finally:
+                if proc.poll() is None:
+                    proc.kill()
+                    proc.wait()
     except subprocess.TimeoutExpired:
         return CellResult(
             None, error=f"The {noun} ran longer than {WALL_SECONDS}s and was stopped."

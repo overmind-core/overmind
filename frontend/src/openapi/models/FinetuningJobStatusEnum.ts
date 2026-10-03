@@ -14,6 +14,7 @@
 
 
 /**
+ * * `submission_unknown` - Submission Unknown
  * * `queued` - Queued
  * * `preparing` - Preparing
  * * `running` - Running
@@ -24,6 +25,7 @@
  * @export
  */
 export const FinetuningJobStatusEnum = {
+    submission_unknown: 'submission_unknown',
     queued: 'queued',
     preparing: 'preparing',
     running: 'running',

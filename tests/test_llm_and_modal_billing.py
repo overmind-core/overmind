@@ -161,7 +161,7 @@ def test_provider_reported_zero_cost_is_not_repriced(monkeypatch):
 def test_modal_terminal_transition_charges_once(context_length):
     user = _user("modal-ft@example.com")
     project = _project()
-    dataset = frozen_dataset(project, TRAIN_ROWS, name="ds")
+    dataset = frozen_dataset(project, TRAIN_ROWS, name="ds", contract="train")
     started = datetime(2026, 7, 28, 12, 0, tzinfo=UTC)
     job = FinetuningJob.objects.create(
         project=project,

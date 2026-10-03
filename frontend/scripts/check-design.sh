@@ -103,8 +103,8 @@ report "font-sidebar outside the nav surfaces (NeueBit is an accent)" \
 report "arbitrary tracking (use tracking-cell, one Geist Pixel grid cell)" \
   'tracking-\[' \
   'routes/login\.tsx'
-# Dead shadow utilities (all --shadow-* resolve to none).
-report "shadow-* utilities (shadows are off)" \
+# Standard shadows are disabled; confirmations use the named shadow-confirmation token.
+report "standard shadow utilities (use flat surfaces or the confirmation token)" \
   '\bshadow-(2xs|xs|sm|md|lg|xl|2xl)\b'
 # The ramp is three steps and nothing above them:
 #   rounded-xs (1px)  things under ~8px — status dots, progress bars, switch

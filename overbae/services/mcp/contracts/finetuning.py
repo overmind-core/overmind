@@ -15,7 +15,24 @@ from overbae.services.mcp.contracts.common import (
 )
 
 
-class CheckFinetuneReadinessInput(MCPModel):
+class FinetuneSelectionInput(MCPModel):
+    validation_dataset: str | None = None
+    validation_cell: str | None = None
+    validation_version: str | None = None
+    validation_enabled: bool = True
+    validation_split_ratio: float = Field(default=0.2, ge=0.05, le=0.5)
+    split_method: Literal["random", "ordered"] = "random"
+    eval_dataset: str | None = None
+    eval_cell: str | None = None
+    eval_version: str | None = None
+    eval_set: str | None = None
+    eval_incumbent_before: bool = False
+    eval_incumbent_after: bool = False
+    eval_model_before: bool | None = None
+    eval_model_after: bool | None = None
+
+
+class CheckFinetuneReadinessInput(FinetuneSelectionInput):
     dataset: str = Field(min_length=1, max_length=255)
     capability: str | None = Field(
         default=None, max_length=255, description="Optional capability; omit or null for none."
@@ -65,6 +82,8 @@ class FineTuneCreditReadiness(MCPModel):
 
 
 class CheckFinetuneReadinessOutput(MCPModel):
+    selection: dict[str, Any] = Field(default_factory=dict)
+    training_contract: dict[str, Any] = Field(default_factory=dict)
     summary: str = Field(min_length=1, max_length=240)
     ready: bool
     missing: list[str] = Field(default_factory=list, max_length=20)
@@ -87,7 +106,8 @@ class CheckFinetuneReadinessOutput(MCPModel):
     resource_links: list[ResourceLinkContract] = Field(max_length=4)
 
 
-class EstimateFinetuneInput(MCPModel):
+class EstimateFinetuneInput(FinetuneSelectionInput):
+    hyperparameters: dict[str, Any] = Field(default_factory=dict)
     dataset: str = Field(min_length=1, max_length=255)
     base_model: str = Field(min_length=1, max_length=255)
     n_epochs: int = Field(default=3, ge=1, le=20)
@@ -97,11 +117,14 @@ class EstimateFinetuneInput(MCPModel):
 
 
 class FineTuneTimeEstimate(MCPModel):
-    seconds: int = Field(ge=0)
+    seconds: int | None = Field(default=None, ge=0)
     human: str = Field(min_length=1, max_length=80)
 
 
 class EstimateFinetuneOutput(MCPModel):
+    forecast: dict[str, Any] | None = None
+    selection: dict[str, Any] = Field(default_factory=dict)
+    training_contract: dict[str, Any] = Field(default_factory=dict)
     summary: str = Field(min_length=1, max_length=240)
     cost_estimate: dict[str, Any] | None = None
     time_estimate: FineTuneTimeEstimate
@@ -112,6 +135,7 @@ class EstimateFinetuneOutput(MCPModel):
 
 class PrepareTrainingInput(MCPModel):
     retry_failed: bool = False
+    validation_cell: str | None = None
     training_type: Literal["lora", "full"] = "lora"
     dataset: str = Field(min_length=1, max_length=255)
     base_model: str = Field(min_length=1, max_length=255)
@@ -130,6 +154,14 @@ class PrepareTrainingOutput(MCPModel):
 
 
 class StartFinetuneInput(MCPModel):
+    request_key: str | None = Field(
+        default=None,
+        min_length=1,
+        max_length=128,
+        description="Stable client launch identity. Repeat the same request to recover its job; changed recipes are rejected.",
+    )
+    accepted_findings: list[str] = Field(default_factory=list, max_length=100)
+
     dataset: str = Field(min_length=1, max_length=255)
     base_model: str = Field(min_length=1, max_length=255)
     baseline_model: str | None = Field(
@@ -161,7 +193,7 @@ class StartFinetuneInput(MCPModel):
         default=None,
         description="Evaluate the untouched training base model for a matched comparison; defaults on.",
     )
-    eval_model_after: bool = True
+    eval_model_after: bool | None = None
     validation_split_ratio: float = Field(default=0.2, ge=0.05, le=0.5)
     split_method: Literal["random", "ordered"] = "random"
     name: str | None = Field(default=None, max_length=255)
@@ -228,3 +260,15 @@ class SetBenchmarkModelOutput(MCPModel):
     model_id: str
     source: Literal["codebase", "trained"]
     resource_links: list[ResourceLinkContract] = Field(max_length=2)
+
+
+class ScheduleNativeEvaluationInput(MCPModel):
+    job: UUID
+    calibration_cell: UUID
+    final_cell: UUID
+
+
+class NativeEvaluationOutput(MCPModel):
+    summary: str
+    plan: dict[str, Any]
+    resource_links: list[ResourceLinkContract]

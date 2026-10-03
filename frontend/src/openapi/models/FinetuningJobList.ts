@@ -27,6 +27,13 @@ import {
     ProviderEnumToJSON,
     ProviderEnumToJSONTyped,
 } from './ProviderEnum';
+import type { SplitMethodE87Enum } from './SplitMethodE87Enum';
+import {
+    SplitMethodE87EnumFromJSON,
+    SplitMethodE87EnumFromJSONTyped,
+    SplitMethodE87EnumToJSON,
+    SplitMethodE87EnumToJSONTyped,
+} from './SplitMethodE87Enum';
 import type { FinetuningJobStatusEnum } from './FinetuningJobStatusEnum';
 import {
     FinetuningJobStatusEnumFromJSON,
@@ -34,13 +41,13 @@ import {
     FinetuningJobStatusEnumToJSON,
     FinetuningJobStatusEnumToJSONTyped,
 } from './FinetuningJobStatusEnum';
-import type { SplitMethodEnum } from './SplitMethodEnum';
+import type { NativeEvaluation } from './NativeEvaluation';
 import {
-    SplitMethodEnumFromJSON,
-    SplitMethodEnumFromJSONTyped,
-    SplitMethodEnumToJSON,
-    SplitMethodEnumToJSONTyped,
-} from './SplitMethodEnum';
+    NativeEvaluationFromJSON,
+    NativeEvaluationFromJSONTyped,
+    NativeEvaluationToJSON,
+    NativeEvaluationToJSONTyped,
+} from './NativeEvaluation';
 
 /**
  *
@@ -48,6 +55,18 @@ import {
  * @interface FinetuningJobList
  */
 export interface FinetuningJobList {
+    /**
+     *
+     * @type {any}
+     * @memberof FinetuningJobList
+     */
+    readonly trainingContract: any | null;
+    /**
+     *
+     * @type {NativeEvaluation}
+     * @memberof FinetuningJobList
+     */
+    readonly nativeEvaluation: NativeEvaluation | null;
     /**
      *
      * @type {string}
@@ -152,10 +171,10 @@ export interface FinetuningJobList {
     readonly validationCell: string | null;
     /**
      *
-     * @type {SplitMethodEnum}
+     * @type {SplitMethodE87Enum}
      * @memberof FinetuningJobList
      */
-    readonly splitMethod: SplitMethodEnum;
+    readonly splitMethod: SplitMethodE87Enum;
     /**
      *
      * @type {string}
@@ -290,6 +309,8 @@ export interface FinetuningJobList {
  * Check if a given object implements the FinetuningJobList interface.
  */
 export function instanceOfFinetuningJobList(value: object): value is FinetuningJobList {
+    if (!('trainingContract' in value) || value['trainingContract'] === undefined) return false;
+    if (!('nativeEvaluation' in value) || value['nativeEvaluation'] === undefined) return false;
     if (!('id' in value) || value['id'] === undefined) return false;
     if (!('project' in value) || value['project'] === undefined) return false;
     if (!('capability' in value) || value['capability'] === undefined) return false;
@@ -342,6 +363,8 @@ export function FinetuningJobListFromJSONTyped(json: any, ignoreDiscriminator: b
     }
     return {
 
+        'trainingContract': json['training_contract'],
+        'nativeEvaluation': NativeEvaluationFromJSON(json['native_evaluation']),
         'id': json['id'],
         'project': json['project'],
         'capability': json['capability'],
@@ -359,7 +382,7 @@ export function FinetuningJobListFromJSONTyped(json: any, ignoreDiscriminator: b
         'cell': json['cell'],
         'cellInfo': json['cell_info'],
         'validationCell': json['validation_cell'],
-        'splitMethod': SplitMethodEnumFromJSON(json['split_method']),
+        'splitMethod': SplitMethodE87EnumFromJSON(json['split_method']),
         'name': json['name'],
         'useCase': json['use_case'],
         'baseModel': json['base_model'],
@@ -388,7 +411,7 @@ export function FinetuningJobListToJSON(json: any): FinetuningJobList {
     return FinetuningJobListToJSONTyped(json, false);
 }
 
-export function FinetuningJobListToJSONTyped(value?: Omit<FinetuningJobList, 'id'|'project'|'capability'|'dataset'|'eval_dataset'|'eval_cell'|'eval_set'|'eval_incumbent_before'|'eval_incumbent_after'|'eval_model_before'|'eval_model_after'|'validation_enabled'|'validation_split_ratio'|'validation_dataset'|'cell'|'cell_info'|'validation_cell'|'split_method'|'name'|'use_case'|'base_model'|'status'|'group_id'|'model_tier'|'provider'|'output_model_name'|'deployed_model_id'|'model_weights_location'|'progress'|'retry_count'|'max_retries'|'error_message'|'cost_usd'|'billed_minutes'|'cost_synced_at'|'created_at'|'updated_at'|'started_at'|'completed_at'> | null, ignoreDiscriminator: boolean = false): any {
+export function FinetuningJobListToJSONTyped(value?: Omit<FinetuningJobList, 'training_contract'|'native_evaluation'|'id'|'project'|'capability'|'dataset'|'eval_dataset'|'eval_cell'|'eval_set'|'eval_incumbent_before'|'eval_incumbent_after'|'eval_model_before'|'eval_model_after'|'validation_enabled'|'validation_split_ratio'|'validation_dataset'|'cell'|'cell_info'|'validation_cell'|'split_method'|'name'|'use_case'|'base_model'|'status'|'group_id'|'model_tier'|'provider'|'output_model_name'|'deployed_model_id'|'model_weights_location'|'progress'|'retry_count'|'max_retries'|'error_message'|'cost_usd'|'billed_minutes'|'cost_synced_at'|'created_at'|'updated_at'|'started_at'|'completed_at'> | null, ignoreDiscriminator: boolean = false): any {
     if (value == null) {
         return value;
     }

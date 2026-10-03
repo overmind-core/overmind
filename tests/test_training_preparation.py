@@ -1,3 +1,4 @@
+import gzip
 import json
 from datetime import timedelta
 from types import SimpleNamespace
@@ -21,6 +22,7 @@ pytestmark = pytest.mark.django_db
 
 @pytest.fixture(autouse=True)
 def preparation_volume(monkeypatch):
+    monkeypatch.setattr(preparation.training_release, "verify", lambda release: release)
     uploaded = []
 
     class Batch:
@@ -31,13 +33,17 @@ def preparation_volume(monkeypatch):
             return False
 
         def put_file(self, local, remote):
-            with open(local) as source:
+            with gzip.open(local, "rt", encoding="utf-8") as source:
                 uploaded.append((remote, [json.loads(line) for line in source]))
 
     monkeypatch.setattr(
         preparation.modal.Volume,
         "from_name",
-        Mock(return_value=SimpleNamespace(batch_upload=lambda **kwargs: Batch())),
+        Mock(
+            return_value=SimpleNamespace(
+                batch_upload=lambda **kwargs: Batch(), read_file=lambda _: iter([])
+            )
+        ),
     )
     return uploaded
 
@@ -46,7 +52,7 @@ def preparation_volume(monkeypatch):
 def cell(settings):
     settings.FINETUNING_BACKEND = "modal"
     project = Project.objects.create(name="Prep", slug="prep")
-    return frozen_dataset(project, TRAIN_ROWS).active_cell
+    return frozen_dataset(project, TRAIN_ROWS, contract="train").active_cell
 
 
 def test_exact_preprocessing_reports_tokens_targets_and_incompatible_rows():
@@ -85,7 +91,7 @@ def test_preparation_caches_exact_version_and_configuration(cell):
 
 
 def test_preparation_verifies_each_target_once_then_rechecks_in_worker(cell, monkeypatch):
-    validation = frozen_dataset(cell.dataset.project, TRAIN_ROWS).active_cell
+    validation = frozen_dataset(cell.dataset.project, TRAIN_ROWS, contract="train").active_cell
     with patch.object(
         preparation.row_store, "verify", wraps=preparation.row_store.verify
     ) as verify:
@@ -119,7 +125,11 @@ def test_preparation_keeps_validation_dataset_boundaries(cell, problem):
 
 def test_export_format_changes_invalidate_cached_preprocessing(cell, monkeypatch):
     first = preparation.request_preparation(cell, "Qwen/Qwen3-8B", 4096)
-    monkeypatch.setattr(preparation, "data_format_fingerprint", lambda: "new-format")
+    monkeypatch.setattr(
+        preparation.training_release,
+        "current",
+        lambda: {**first.config["runtime"], "data_format": "new-format"},
+    )
     changed = preparation.request_preparation(cell, "Qwen/Qwen3-8B", 4096)
     assert changed.id != first.id
     assert changed.config["data_format"] == "new-format"
@@ -205,7 +215,11 @@ def test_processor_update_does_not_reuse_failed_preparation(cell, monkeypatch):
     previous = preparation.request_preparation(cell, "Qwen/Qwen3-8B", 4096)
     previous.state, previous.report = "failed", preparation_failure("worker_out_of_date")
     previous.save()
-    monkeypatch.setattr(preparation, "processor_fingerprint", lambda: "updated-processor")
+    monkeypatch.setattr(
+        preparation.training_release,
+        "current",
+        lambda: {**previous.config["runtime"], "processor": "updated-processor"},
+    )
     current = preparation.request_preparation(cell, "Qwen/Qwen3-8B", 4096)
     assert current.id != previous.id and current.state == "queued"
     previous.refresh_from_db()
@@ -259,6 +273,7 @@ def retry_job(cell, monkeypatch, settings):
     )
     ProjectMembership.objects.create(project=cell.dataset.project, user=user)
     job = FinetuningJob.objects.create(
+        requested_configuration={"runtime": preparation.training_release.current()},
         project=cell.dataset.project,
         dataset=cell.dataset,
         cell=cell,
@@ -369,7 +384,7 @@ def test_job_preparation_sizes_pinned_rows_despite_smaller_requested_context(ret
 @pytest.mark.parametrize("enabled", [False, True])
 def test_job_preparation_includes_only_enabled_validation_rows(retry_job, enabled):
     job, _, _, _ = retry_job
-    validation = frozen_dataset(job.project, TRAIN_ROWS).active_cell
+    validation = frozen_dataset(job.project, TRAIN_ROWS, contract="train").active_cell
     validation.stats = {**validation.stats, "max_token_length": 10_000}
     job.validation_enabled = enabled
     job.validation_cell = validation
@@ -476,3 +491,52 @@ def test_overestimated_lengths_do_not_reject_data_before_exact_preparation(retry
         preparation.get_model_config_any_backend(job.base_model), "lora"
     )
     assert current.config["context_length"] == maximum and current.state == "queued"
+
+
+def test_preparation_timeout_exposes_committed_counters_without_restarting(cell, monkeypatch):
+    prep = preparation.request_preparation(cell, "Qwen/Qwen3-8B", 4096)
+    prep.state, prep.remote_id = "running", "fc-existing"
+    prep.save()
+    monkeypatch.setattr(
+        preparation.modal.FunctionCall,
+        "from_id",
+        Mock(return_value=SimpleNamespace(get=Mock(side_effect=TimeoutError()))),
+    )
+    monkeypatch.setattr(
+        preparation.modal.Volume,
+        "from_name",
+        Mock(
+            return_value=SimpleNamespace(
+                read_file=lambda _: iter(
+                    [
+                        json.dumps(
+                            {
+                                "stage": "tokenizing",
+                                "completed_rows": 1,
+                                "reused_rows": 1,
+                                "committed_shards": 1,
+                                "updated_at": 123,
+                            }
+                        ).encode()
+                    ]
+                )
+            )
+        ),
+    )
+    preparation.advance(prep.id)
+    prep.refresh_from_db()
+    assert prep.state == "running" and prep.remote_id == "fc-existing"
+    assert prep.report["progress"]["completed_rows"] == 1
+    assert prep.report["progress"]["total_rows"] == cell.rows
+
+
+def test_exact_preparation_never_expands_an_explicit_frozen_recipe(retry_job):
+    job, _, _, _ = retry_job
+    job.requested_configuration["configuration"] = {"hyperparameters": {"context_length": 4096}}
+    job.save(update_fields=["requested_configuration"])
+    job.cell.stats = {**job.cell.stats, "max_token_length": 7145}
+    first = preparation.for_job(job)
+    assert first.config["context_length"] == 4096
+    first.state, first.report = "incompatible", {"max_tokens": 7190, "incompatible_rows": 3}
+    first.save()
+    assert preparation.for_job(job).id == first.id

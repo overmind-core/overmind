@@ -1,5 +1,7 @@
 # Typed decision preparation and representative sampling
 
+> Historical experiment record. Current implementation and qualification are tracked in [the platform verification report](platform-improvements/verification-plan.md). Earlier launch holds, runtime limitations and estimates below describe their recorded point in time. The authorized full run is `a356c75d-788a-4a35-bd30-1d24ae7afab8`; its existing completion protocol remains authoritative. New platform changes are isolated and have not been deployed over it.
+
 The quality pilot exposed two preparation failures: evaluation intent selected a chat playbook that removed valid blank states and normalized publisher probabilities, and stratification required the agent to reconstruct a large quota table from truncated tool output. The two affected preparation turns were cancelled through their provider, then interrupted through Celery's soft-limit path because the local stream did not settle. Both datasets returned to idle. Their source versions remain intact. No quality-pilot or full-corpus training job was launched.
 
 ## Scope and acceptance evidence

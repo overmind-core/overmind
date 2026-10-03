@@ -21,7 +21,9 @@ pytestmark = pytest.mark.django_db
 def sample():
     project = Project.objects.create(name="Sample IO", slug="sample-io")
     dataset = frozen_dataset(
-        project, [{"input": {"documents": ["evidence"]}, "expected_output": "reference"}]
+        project,
+        [{"input": {"documents": ["evidence"]}, "expected_output": "reference"}],
+        contract="eval",
     )
     run = EvalRun.objects.create(project=project, dataset=dataset, cell=dataset.active_cell)
     variant = EvalVariant.objects.create(run=run, label="model", mode="generate")

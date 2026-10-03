@@ -13,9 +13,12 @@ from django.utils import timezone
 from pydantic import ValidationError
 
 from overbae.models import Capability, Cell, Dataset
+from overbae.services.billing_ledger import record_workshop_usage
+from overbae.services.chatgpt import ChatGPTError
 from overbae.services.datasets import diff as diff_svc
 from overbae.services.datasets import (
     lifecycle,
+    operations,
     paths,
     preparation,
     review,
@@ -27,6 +30,7 @@ from overbae.services.datasets import (
 from overbae.services.datasets.context import context_fingerprint, workshop_context
 from overbae.services.datasets.notebook import engines, events, libraries, prompts
 from overbae.services.datasets.notebook import run as run_svc
+from overbae.services.datasets.proposals import retire_outdated
 
 logger = logging.getLogger(__name__)
 
@@ -36,6 +40,7 @@ _SCRIPT_CHARS = 4000
 _PREVIEW_ROWS = 3
 _VALUE_CHARS = 400
 PREPARE_DISPLAY = "Prepare this dataset for its purpose and capability, then check its quality."
+INTENT_QUESTION = "What will you use this data for?"
 
 
 def _clip(value: Any) -> Any:
@@ -103,6 +108,9 @@ def _cell_line(
         "state": cell.state,
         "frozen": cell.frozen if frozen_before is None else cell.position <= frozen_before,
         "rows": cell.rows,
+        "fingerprint": cell.fingerprint,
+        "input_fingerprint": cell.input_fingerprint,
+        "seconds": cell.seconds,
         "columns": _visible_columns([c["name"] for c in (cell.columns or [])]),
         "note": cell.note,
         "error": cell.error,
@@ -128,6 +136,8 @@ def status(dataset: Dataset) -> dict[str, Any]:
     context = context_fingerprint(dataset.capability)
     return {
         "dataset": dataset.name,
+        "brief": dataset.brief,
+        "source": dataset.source_spec,
         "intent": dataset.intent,
         "capability": dataset.capability.name if dataset.capability_id else None,
         "capability_rank": dataset.capability_rank[:3],
@@ -177,12 +187,14 @@ def _preview_path(path):
 class Tools:
     def __init__(self, dataset_id: Any, user: Any, emit: Callable[[dict[str, Any]], None]):
         self.dataset_id = dataset_id
+        self.operation_id: str | None = None
         self.user = user
         self.emit = emit
         self.touched: list[dict[str, Any]] = []
         self.steps: list[dict[str, Any]] = []
         self._thinking: dict[str, Any] | None = None
         self.automatic = False
+        self.preparation_turn = False
         self.exploration = []
         self.user_request = ""
         self.lock = RLock()
@@ -195,6 +207,12 @@ class Tools:
         self.step_offsets: dict[str, int] = {}
         self.response_break = False
         self.preview = None
+        self.user_request = ""
+
+    def requires_preparation_plan(self, dataset: Dataset) -> bool:
+        return dataset.intent in {Dataset.Intent.TRAIN, Dataset.Intent.EVAL} and (
+            self.automatic or self.preparation_turn
+        )
 
     def report_progress(self, stage: str, label: str, detail: str, **values: Any) -> None:
         self.progress = {
@@ -242,6 +260,9 @@ class Tools:
                 self.progress.get("label", "Working"),
                 self.progress.get("detail", ""),
             )
+
+    def start_response(self) -> None:
+        self.response_break = True
 
     def think(self) -> None:
         if self._thinking is not None:
@@ -291,8 +312,10 @@ class Tools:
         self._thinking = None
 
     def step(self, part: dict[str, Any]) -> None:
-        part["text_offset"] = self.step_offsets.setdefault(part["id"], self.text_offset)
-        self.response_break = True
+        if part["id"] not in self.step_offsets:
+            self.step_offsets[part["id"]] = self.text_offset
+        # A late completion belongs at the step's start, not between current text chunks.
+        part["text_offset"] = self.step_offsets[part["id"]]
         self.steps.append(part)
         self.emit({"type": "chat_step", **part})
 
@@ -403,7 +426,10 @@ class Tools:
             return {"ok": False, "error": "Run or fix the existing chain first."}
         try:
             plan = preparation.execution_plan(
-                dataset, previous, args.get("plan_step"), required=self.automatic
+                dataset,
+                previous,
+                args.get("plan_step"),
+                required=self.requires_preparation_plan(dataset),
             )
         except ValueError as exc:
             return {"ok": False, "error": str(exc)}
@@ -470,6 +496,8 @@ class Tools:
                 proposed=not run,
                 user=self.user,
             )
+        except ChatGPTError:
+            raise
         except lifecycle.DatasetError as exc:
             return {"ok": False, "error": exc.detail}
         cell.preparation_plan = plan
@@ -682,7 +710,7 @@ class Tools:
         try:
             request = semantic_checks.SemanticReviewRequest.model_validate(args)
             cell = resolve_cell(dataset, request.version, ran_only=True)
-            if self.automatic:
+            if self.requires_preparation_plan(dataset):
                 reserved = preparation.reserve_semantic_rows(
                     dataset, cell, [check.name for check in request.checks], request.max_rows
                 )
@@ -694,14 +722,20 @@ class Tools:
                         "reason": "No semantic rows available for these checks in the current preparation plan. Unmeasured results remain unknown.",
                     }
                 request = request.model_copy(update={"max_rows": reserved})
-            result = semantic_checks.run_checks(dataset, cell, request, user=self.user)
+            result = semantic_checks.run_checks(
+                dataset,
+                cell,
+                request,
+                user=self.user,
+                chatgpt_session=getattr(self, "chatgpt_session", None),
+            )
         except (ValueError, ValidationError) as exc:
             return {"ok": False, "error": str(exc)}
         self.emit({"type": "cells_changed"})
         return {"ok": True, **result, "readiness": review.readiness(dataset, cell)}
 
     def edit_cell(self, args: dict[str, Any], _ctx: Any = None) -> dict[str, Any]:
-        if self.automatic:
+        if self.requires_preparation_plan(_dataset(self.dataset_id)):
             return {
                 "ok": False,
                 "error": "During preparation, revise the plan and add a repair cell with plan_step. Keep earlier executed versions and their plan snapshots intact.",
@@ -739,6 +773,8 @@ class Tools:
                 title=args.get("title"),
                 note=args.get("note"),
             )
+        except ChatGPTError:
+            raise
         except lifecycle.DatasetError as exc:
             return {"ok": False, "error": exc.detail}
         self._touch(cell, "edited")
@@ -776,6 +812,8 @@ class Tools:
             cell = dataset.cells.filter(pk=ref).first()
             lifecycle.discard_proposal(dataset, ref)
             self._touch(cell, "removed")
+        except ChatGPTError:
+            raise
         except lifecycle.DatasetError as exc:
             return {"ok": False, "error": exc.detail}
         self.emit({"type": "cells_changed"})
@@ -790,6 +828,8 @@ class Tools:
         try:
             cell = resolve_cell(dataset, args.get("version"), ran_only=True)
             lifecycle.set_active(dataset, cell)
+        except ChatGPTError:
+            raise
         except lifecycle.DatasetError as exc:
             return {"ok": False, "error": exc.detail}
         self.emit({"type": "dataset_changed"})
@@ -797,12 +837,20 @@ class Tools:
 
     def set_intent(self, args: dict[str, Any], _ctx: Any = None) -> dict[str, Any]:
         dataset = _dataset(self.dataset_id)
+        evidence = str(args.get("evidence") or "").strip()
+        if not evidence or evidence.casefold() not in self.user_request.casefold():
+            return {
+                "ok": False,
+                "error": "Intent requires an exact quote from the user's request explicitly choosing its purpose. Otherwise ask the intent question and stop.",
+            }
         try:
             lifecycle.set_intent(dataset, str(args.get("intent") or ""))
+        except ChatGPTError:
+            raise
         except lifecycle.DatasetError as exc:
             return {"ok": False, "error": exc.detail}
         self.emit({"type": "dataset_changed"})
-        return {"ok": True, "intent": dataset.intent}
+        return {"ok": True, "intent": dataset.intent, "playbook": prompts.PLAYBOOKS[dataset.intent]}
 
     def set_capability(self, args: dict[str, Any], _ctx: Any = None) -> dict[str, Any]:
         dataset = _dataset(self.dataset_id)
@@ -827,6 +875,8 @@ class Tools:
                 }
         try:
             lifecycle.set_capability(dataset, capability)
+        except ChatGPTError:
+            raise
         except lifecycle.DatasetError as exc:
             return {"ok": False, "error": exc.detail}
         self.emit({"type": "dataset_changed"})
@@ -863,7 +913,7 @@ TOOL_SPECS: dict[str, tuple[str, dict]] = {
         preparation.PlanRequest.model_json_schema(),
     ),
     "check_semantic_quality": (
-        "Measure semantic row quality against named evidence and answer columns using Jev with a generative fallback. Never uses answers as their own evidence. Unknowns stay null; findings are advisory and do not authorize edits. Processes at most 200 unmeasured rows per call; repeat identical checks while remaining_rows is nonzero. Changing the version, task context, or checks starts a new audit. Use record_quality_review for deterministic format/schema checks.",
+        "Measure semantic row quality against named evidence and answer columns using the selected Workshop funding source. Never uses answers as their own evidence. Unknowns stay null; findings are advisory and do not authorize edits. Processes at most 200 unmeasured rows per call; repeat identical checks while remaining_rows is nonzero. Changing the version, task context, or checks starts a new audit. Use record_quality_review for deterministic format/schema checks.",
         semantic_checks.SemanticReviewRequest.model_json_schema(),
     ),
     "prepare_examples": (
@@ -1034,11 +1084,17 @@ TOOL_SPECS: dict[str, tuple[str, dict]] = {
         {"type": "object", "properties": {"version": _TEXT}, "required": ["version"]},
     ),
     "set_intent": (
-        "Set the intent to train or eval. Fixed once a version was used.",
+        "Record the purpose explicitly requested by the user, never inferred from data. Include their exact words as evidence. Fixed once a version was used.",
         {
             "type": "object",
-            "properties": {"intent": {"type": "string", "enum": ["train", "eval"]}},
-            "required": ["intent"],
+            "properties": {
+                "intent": {"type": "string", "enum": ["train", "eval", "explore"]},
+                "evidence": {
+                    "type": "string",
+                    "description": "Exact quote from the user's request explicitly choosing this purpose; not a filename, row, assistant message, or generic instruction to prepare data.",
+                },
+            },
+            "required": ["intent", "evidence"],
         },
     ),
     "set_capability": (
@@ -1124,6 +1180,8 @@ def _guarded(tools: Tools, name: str, fn: Callable[..., Any]) -> Callable[..., A
         started = time.monotonic()
         try:
             result = _safe(fn(args, ctx))
+        except ChatGPTError:
+            raise
         except lifecycle.DatasetError as exc:
             result = {"ok": False, "error": exc.detail}
         except Exception as exc:  # noqa: BLE001
@@ -1161,6 +1219,19 @@ def _guarded(tools: Tools, name: str, fn: Callable[..., Any]) -> Callable[..., A
 
     def serial_call(args: dict[str, Any], ctx: Any = None) -> Any:
         with tools.lock:
+            if tools.operation_id is not None:
+                operations.check_cancelled(tools.dataset_id, task_id=tools.operation_id)
+            if _dataset(tools.dataset_id).intent == Dataset.Intent.PENDING and name not in {
+                "status",
+                "query",
+                "inspect",
+                "diff",
+                "set_intent",
+            }:
+                return {
+                    "ok": False,
+                    "error": "Choose the user's explicit intent before preparing data. Read-only exploration is available; ask for the intended use before making changes.",
+                }
             return call(args, ctx)
 
     return serial_call
@@ -1178,11 +1249,18 @@ def save_turn(dataset_id: Any, turn_id: str, changes: dict[str, Any]) -> None:
 
 
 def system_prompt(dataset: Dataset) -> str:
-    return prompts.system(
+    system = prompts.system(
         dataset.intent,
         capability=prompts.capability_section(dataset),
         libraries=libraries.describe(paths.library_cache(dataset.project_id)),
         sample=prompts.context_section(workshop_context(dataset)),
+    )
+    return (
+        system
+        + "\n\n## Original user request\n"
+        + json.dumps(dataset.brief)
+        + "\n"
+        + prompts.DOCUMENTS
     )
 
 
@@ -1194,6 +1272,7 @@ def iter_turn(
     user: Any = None,
     turn_key: str = "",
     automatic: bool = False,
+    preparation_turn: bool = False,
 ) -> Iterator[dict[str, Any]]:
     dataset = _dataset(dataset_id)
     started = timezone.now().isoformat()
@@ -1222,6 +1301,9 @@ def iter_turn(
                 yield _emit(dataset_id, {"type": "chat_turn", **closed})
         return
 
+    operation_id = turn_key or str(uuid.uuid4())
+    operations.started(dataset_id, operation_id)
+    retire_outdated(dataset)
     turn_user = {"role": "user", "text": display, "at": started, "context": message}
     turn_id = str(uuid.uuid4())
     draft = {
@@ -1233,41 +1315,59 @@ def iter_turn(
         "turn_key": turn_key,
     }
     Dataset.objects.filter(pk=dataset_id).update(
-        chat=[*(dataset.chat or []), turn_user, draft], agent_turn_key=turn_key or ""
+        chat=[*(dataset.chat or []), turn_user, draft], agent_turn_key=operation_id
     )
+    dataset.agent_turn_key = operation_id
     yield _emit(dataset_id, {"type": "chat_turn", **turn_user})
 
     pending: list[dict[str, Any]] = []
     tools = Tools(dataset_id, user, lambda event: pending.append(_emit(dataset_id, event)))
+    tools.operation_id = operation_id
     tools.automatic = automatic
-    tools.user_request = display or message
+    tools.preparation_turn = preparation_turn
     tools.turn_id = turn_id
+    tools.user_request = "\n".join(
+        part for part in (dataset.brief, display if display != PREPARE_DISPLAY else "") if part
+    )
     tools.report_progress(
         "working",
         "Reading your request",
         "Checking the dataset and deciding the next step.",
         started_at=started,
     )
-    engine = engines.select()
+    engine = engines.select(user)
+    tools.chatgpt_session = getattr(engine, "session", None)
     outcome = engines.Outcome()
     turn_started = time.monotonic()
     tools.think()
     if engine is None:
         outcome.error = engines.NOT_CONFIGURED
+        operations.finished(dataset_id, task_id=operation_id)
     else:
         try:
             outcome = yield from engine.run(dataset, message, tools, pending)
         except Exception as exc:  # noqa: BLE001 — the turn must land on the page either way
             logger.warning("dataset %s: agent turn failed", dataset_id, exc_info=True)
             outcome.error = engine.describe_error(exc)
+            outcome.stats = getattr(engine, "usage", outcome.stats)
+        finally:
+            operations.finished(dataset_id, task_id=operation_id)
     tools.stop_thinking()
+    retire_outdated(_dataset(dataset_id))
+    awaiting_intent = _dataset(dataset_id).intent == Dataset.Intent.PENDING
     generated = tools.progress.get("generated_rows", 0)
     awaiting_approval = Cell.objects.filter(
         dataset_id=dataset_id,
         pk__in=[ref["id"] for ref in tools.touched],
         state=Cell.State.PROPOSED,
     ).exists()
-    if awaiting_approval and not outcome.error:
+    if awaiting_intent and (not outcome.error or engine is None):
+        outcome.text = INTENT_QUESTION
+        outcome.error = ""
+        tools.report_progress(
+            "awaiting_intent", "Awaiting intent", "Choose Training, Eval, or Data exploration."
+        )
+    elif awaiting_approval and not outcome.error:
         tools.report_progress(
             "awaiting_approval", "Awaiting approval", "Choose Approve or Deny to continue."
         )
@@ -1311,9 +1411,13 @@ def iter_turn(
         "ms": int((time.monotonic() - turn_started) * 1000),
         "at": timezone.now().isoformat(),
         "engine": engine.name if engine else "",
+        "preparation_turn": preparation_turn or automatic,
+        "funding_source": "chatgpt" if engine and engine.name == "chatgpt" else "platform",
         "model": outcome.stats.get("served_model", "") if engine else "",
         "status": "error"
         if outcome.error
+        else "awaiting_intent"
+        if awaiting_intent
         else "awaiting_approval"
         if awaiting_approval
         else "complete",
@@ -1333,22 +1437,19 @@ def iter_turn(
     dataset = Dataset.objects.get(pk=dataset_id)
     save_turn(dataset_id, turn_id, turn_agent)
     _bill(dataset, user, outcome.stats, turn_agent, started)
-    yield _emit(dataset_id, {"type": "chat_turn", **turn_agent})
+    yield _emit(dataset_id, {"type": "chat_turn", "id": turn_id, **turn_agent})
 
 
 def _bill(
     dataset: Dataset, user: Any, stats: dict[str, Any], turn: dict[str, Any], started: str
 ) -> None:
-    if not stats or not getattr(user, "pk", None):
+    if not getattr(user, "pk", None):
         return
     try:
-        from overbae.models import BillingService
-        from overbae.services.billing_ledger import charge_llm_usage
-
-        charge_llm_usage(
+        record_workshop_usage(
             user,
             stats,
-            service=BillingService.DATA_WORKSHOP,
+            funding_source=turn.get("funding_source", "platform"),
             project_id=dataset.project_id,
             idempotency_key=f"data-workshop:{dataset.id}:{started}",
             metadata={
@@ -1371,6 +1472,9 @@ def settle(dataset_id: Any) -> None:
     dataset = Dataset.objects.filter(pk=dataset_id).first()
     if dataset is None or dataset.state != Dataset.State.DIAGNOSING:
         return
+    if dataset.operation.get("state") == "cancel_pending":
+        operations.reconcile(dataset_id, local_stopped=True)
+        return
     state = Dataset.State.ERROR if dataset.error else Dataset.State.IDLE
     Dataset.objects.filter(pk=dataset_id, state=Dataset.State.DIAGNOSING).update(
         state=state, updated_at=timezone.now()
@@ -1387,11 +1491,15 @@ def diagnose(dataset_id: Any, *, user: Any = None, turn_key: str = "") -> Iterat
     ):
         return
     try:
+        dataset = _dataset(dataset_id)
         yield from iter_turn(
             dataset_id,
-            prompts.PREPARE,
-            display=PREPARE_DISPLAY,
-            automatic=True,
+            f"{prompts.PREPARE}\n\nUser request: {dataset.brief}"
+            if dataset.brief
+            else prompts.PREPARE,
+            display=dataset.brief or PREPARE_DISPLAY,
+            automatic=not bool(dataset.brief),
+            preparation_turn=True,
             user=user,
             turn_key=turn_key,
         )
@@ -1406,6 +1514,7 @@ def follow_up(
     user: Any = None,
     turn_key: str = "",
     display: str | None = None,
+    preparation_turn: bool = False,
 ) -> Iterator[dict[str, Any]]:
     if not lifecycle.enter_busy(
         dataset_id,
@@ -1418,6 +1527,7 @@ def follow_up(
             dataset_id,
             prompts.FOLLOW_UP.format(message=message.strip()),
             display=display if display is not None else message.strip(),
+            preparation_turn=preparation_turn,
             user=user,
             turn_key=turn_key,
         )

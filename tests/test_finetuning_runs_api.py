@@ -25,7 +25,7 @@ def _setup() -> tuple[APIClient, Project, Dataset]:
     )
     project = Project.objects.create(name="P", slug=f"p-{uuid.uuid4().hex[:8]}")
     ProjectMembership.objects.create(user=user, project=project)
-    dataset = frozen_dataset(project, TRAIN_ROWS, name="ds")
+    dataset = frozen_dataset(project, TRAIN_ROWS, name="ds", contract="train")
     client = APIClient()
     token = RefreshToken.for_user(user)
     client.credentials(HTTP_AUTHORIZATION=f"Bearer {token.access_token}")
@@ -147,7 +147,7 @@ def test_status_filter_selects_runs_with_any_matching_job_and_still_returns_them
 
 def test_runs_honour_the_jobs_list_filters_and_search():
     client, project, dataset = _setup()
-    other_dataset = frozen_dataset(project, TRAIN_ROWS, name="other")
+    other_dataset = frozen_dataset(project, TRAIN_ROWS, name="other", contract="train")
     wanted = uuid.uuid4()
     _job(project, dataset, group_id=wanted, name="checkout tuning")
     _job(project, other_dataset, group_id=uuid.uuid4(), name="refund tuning")
@@ -163,7 +163,7 @@ def test_runs_never_reach_another_projects_jobs():
     client, project, dataset = _setup()
     _job(project, dataset, group_id=uuid.uuid4())
     stranger = Project.objects.create(name="X", slug=f"x-{uuid.uuid4().hex[:8]}")
-    stranger_dataset = frozen_dataset(stranger, TRAIN_ROWS, name="ds")
+    stranger_dataset = frozen_dataset(stranger, TRAIN_ROWS, name="ds", contract="train")
     _job(stranger, stranger_dataset, group_id=uuid.uuid4())
 
     assert client.get(RUNS_URL).json()["count"] == 1
@@ -171,7 +171,7 @@ def test_runs_never_reach_another_projects_jobs():
 
 def test_dataset_facet_offers_every_dataset_with_a_job_not_just_the_loaded_page():
     client, project, dataset = _setup()
-    old_dataset = frozen_dataset(project, TRAIN_ROWS, name="aardvark")
+    old_dataset = frozen_dataset(project, TRAIN_ROWS, name="aardvark", contract="train")
     _job(project, old_dataset, group_id=uuid.uuid4())
     for _ in range(30):
         _job(project, dataset, group_id=uuid.uuid4())
@@ -187,7 +187,7 @@ def test_dataset_facet_offers_every_dataset_with_a_job_not_just_the_loaded_page(
 
 def test_base_model_facet_is_distinct_and_scoped_to_the_callers_filters():
     client, project, dataset = _setup()
-    other_dataset = frozen_dataset(project, TRAIN_ROWS, name="other")
+    other_dataset = frozen_dataset(project, TRAIN_ROWS, name="other", contract="train")
     _job(project, dataset, base_model="a-model")
     _job(project, dataset, base_model="a-model")
     _job(project, other_dataset, base_model="z-model")
@@ -204,8 +204,26 @@ def test_facets_never_leak_another_projects_values():
     client, project, dataset = _setup()
     _job(project, dataset, base_model="mine")
     stranger = Project.objects.create(name="X", slug=f"x-{uuid.uuid4().hex[:8]}")
-    stranger_dataset = frozen_dataset(stranger, TRAIN_ROWS, name="secret")
+    stranger_dataset = frozen_dataset(stranger, TRAIN_ROWS, name="secret", contract="train")
     _job(stranger, stranger_dataset, base_model="theirs")
 
     assert client.get(reverse("finetuningjob-base-models")).json() == ["mine"]
     assert [row["name"] for row in client.get(reverse("finetuningjob-datasets")).json()] == ["ds"]
+
+
+def test_validation_pins_the_requested_cell_and_rejects_another_dataset_cell():
+    client, project, dataset = _setup()
+    other = frozen_dataset(project, TRAIN_ROWS, contract="train")
+    url = reverse("finetuningjob-validate-dataset")
+    body = {
+        "dataset_id": str(dataset.id),
+        "cell_id": str(dataset.active_cell.id),
+        "validation_enabled": False,
+    }
+    response = client.post(url, body, format="json")
+    assert response.status_code == 200, response.content
+    assert response.json()["stats"]["checkpoint"] == str(dataset.active_cell.id)
+    assert (
+        client.post(url, {**body, "cell_id": str(other.active_cell.id)}, format="json").status_code
+        == 404
+    )

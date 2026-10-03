@@ -24,7 +24,7 @@ export interface FinetuningTimeEstimate {
      * @type {number}
      * @memberof FinetuningTimeEstimate
      */
-    seconds: number;
+    seconds: number | null;
     /**
      *
      * @type {string}

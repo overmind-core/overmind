@@ -364,7 +364,7 @@ def derive_baseten_training_plan(
 ) -> BasetenTrainingPlan:
     """Derive the full Baseten training plan from data + catalog context.
 
-    Explicit hyperparameters are honoured verbatim after safety clamps; anything absent
+    Explicit hyperparameters are preserved or rejected; anything absent
     is gap-filled from the same heuristics the recommender uses, never a hardcoded
     constant. Raises :class:`TrainingPlanError` when the combination cannot work, so a
     job fails pre-submission instead of mid-run on Baseten.
@@ -407,6 +407,11 @@ def derive_baseten_training_plan(
         max_row_tokens, model_max=model_max_context, requested=requested_ctx
     )
 
+    if requested_ctx is not None and context_length != requested_ctx:
+        raise TrainingPlanError(
+            f"context_length={requested_ctx} is unsupported; choose {context_length} or another model."
+        )
+
     load_in_4bit, token_budget = _resolve_memory_plan(
         params_b=params_b,
         hidden_size=hidden_size,
@@ -435,7 +440,7 @@ def derive_baseten_training_plan(
             f"{'QLoRA' if use_lora else 'full-FT'} heuristic ({params_b:g}B)"
         )
 
-    warmup_ratio = float(hp.get("warmup_ratio") or 0.05)
+    warmup_ratio = float(hp["warmup_ratio"]) if hp.get("warmup_ratio") is not None else 0.05
     weight_decay = float(hp["weight_decay"]) if hp.get("weight_decay") is not None else 0.01
 
     # Never larger than the corpus — an over-sized batch degenerates to 1 step.
@@ -448,8 +453,9 @@ def derive_baseten_training_plan(
         batch_size = int(raw_batch)
         clamped = min(max(batch_size, model_min_batch), hard_max)
         if clamped != batch_size:
-            notes.append(f"batch_size clamped {batch_size} → {clamped} (model/dataset bounds)")
-            batch_size = clamped
+            raise TrainingPlanError(
+                f"batch_size={batch_size} is outside model/dataset bounds; choose {model_min_batch}–{hard_max}."
+            )
     else:
         batch_size = openai_batch_size(
             num_train_examples, min_batch=model_min_batch, max_batch=hard_max, use_lora=use_lora
@@ -487,7 +493,9 @@ def derive_baseten_training_plan(
         lora_dropout = float(qlora["lora_dropout"])
     # Gemma4 MoE (26B-A4B): PEFT ParamWrapper on expert params rejects dropout ≠ 0.
     if model_id and lora_dropout and "a4b" in model_id.lower():
-        notes.append(f"lora_dropout forced to 0 for Gemma4 MoE (was {lora_dropout})")
+        if "lora_dropout" in training_type or "lora_dropout" in hp:
+            raise TrainingPlanError("lora_dropout must be 0 for Gemma4 MoE.")
+        notes.append("lora_dropout=0 required for Gemma4 MoE")
         lora_dropout = 0.0
     lora_target_modules = str(
         training_type.get("lora_trainable_modules")
@@ -507,9 +515,16 @@ def derive_baseten_training_plan(
     avg_row_tokens = approx_tokens_from_chars(
         int(stats.get("avg_input_chars") or 0) + int(stats.get("avg_output_chars") or 0)
     )
-    packing = hp.get("objective") != "decision_cross_entropy" and should_pack(
-        num_train_examples, avg_row_tokens, context_length
+    packing = (
+        bool(hp["packing"])
+        if "packing" in hp
+        else hp.get("objective") != "decision_cross_entropy"
+        and should_pack(num_train_examples, avg_row_tokens, context_length)
     )
+    if packing and native_decisions:
+        raise TrainingPlanError(
+            "packing is unsupported for native decision training; choose packing=false."
+        )
     # Gemma4/Muse: Unsloth forces GC off + flex_attention. Nemotron 3.5: hybrid mamba.
     # Packing fills every step to MAX_LENGTH → OOM on 1×H100.
     if packing and model_id:
@@ -517,6 +532,8 @@ def derive_baseten_training_plan(
 
         fam = family_key(model_id)
         if fam in ("gemma4", "muse_glimmer", "nemotron35"):
+            if hp.get("packing"):
+                raise TrainingPlanError(f"packing is unsupported for {fam}; choose packing=false.")
             packing = False
             notes.append(
                 "packing disabled for Gemma4/Muse/Nemotron 3.5 (hybrid / no gradient checkpointing)"

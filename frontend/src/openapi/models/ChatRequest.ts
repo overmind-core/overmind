@@ -13,6 +13,21 @@
  */
 
 import { mapValues } from '../runtime';
+import type { IntentChoiceEnum } from './IntentChoiceEnum';
+import {
+    IntentChoiceEnumFromJSON,
+    IntentChoiceEnumFromJSONTyped,
+    IntentChoiceEnumToJSON,
+    IntentChoiceEnumToJSONTyped,
+} from './IntentChoiceEnum';
+import type { SourceRequest } from './SourceRequest';
+import {
+    SourceRequestFromJSON,
+    SourceRequestFromJSONTyped,
+    SourceRequestToJSON,
+    SourceRequestToJSONTyped,
+} from './SourceRequest';
+
 /**
  *
  * @export
@@ -24,14 +39,33 @@ export interface ChatRequest {
      * @type {string}
      * @memberof ChatRequest
      */
-    message: string;
+    message?: string;
+    /**
+     *
+     * @type {SourceRequest}
+     * @memberof ChatRequest
+     */
+    source?: SourceRequest;
+    /**
+     *
+     * @type {IntentChoiceEnum}
+     * @memberof ChatRequest
+     */
+    intentChoice?: IntentChoiceEnum;
+    /**
+     *
+     * @type {string}
+     * @memberof ChatRequest
+     */
+    intentTurnId?: string;
 }
+
+
 
 /**
  * Check if a given object implements the ChatRequest interface.
  */
 export function instanceOfChatRequest(value: object): value is ChatRequest {
-    if (!('message' in value) || value['message'] === undefined) return false;
     return true;
 }
 
@@ -45,7 +79,10 @@ export function ChatRequestFromJSONTyped(json: any, ignoreDiscriminator: boolean
     }
     return {
 
-        'message': json['message'],
+        'message': json['message'] == null ? undefined : json['message'],
+        'source': json['source'] == null ? undefined : SourceRequestFromJSON(json['source']),
+        'intentChoice': json['intent_choice'] == null ? undefined : IntentChoiceEnumFromJSON(json['intent_choice']),
+        'intentTurnId': json['intent_turn_id'] == null ? undefined : json['intent_turn_id'],
     };
 }
 
@@ -61,5 +98,8 @@ export function ChatRequestToJSONTyped(value?: ChatRequest | null, ignoreDiscrim
     return {
 
         'message': value['message'],
+        'source': SourceRequestToJSON(value['source']),
+        'intent_choice': IntentChoiceEnumToJSON(value['intentChoice']),
+        'intent_turn_id': value['intentTurnId'],
     };
 }

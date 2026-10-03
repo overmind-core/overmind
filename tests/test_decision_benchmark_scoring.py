@@ -5,7 +5,7 @@ import pytest
 
 from modal_shared.decision_inference import input_digest
 from modal_shared.training_data import file_digest
-from scripts.score_decision_benchmarks import compare_suite, score_suite
+from overbae.services.decision_benchmark_scoring import compare_suite, score_suite
 
 
 def fixture(tmp_path):

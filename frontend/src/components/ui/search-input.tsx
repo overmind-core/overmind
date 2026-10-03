@@ -27,6 +27,7 @@ export interface SearchInputProps
   onClear?: () => void;
   /** Defaults to the enclosing toolbar's size, then to 32px. */
   size?: ControlSize;
+  variant?: "default" | "subtle";
   /** Layout only (width, flex). Glyph offset and padding belong to the primitive. */
   className?: string;
   ref?: React.Ref<HTMLInputElement>;
@@ -38,6 +39,7 @@ export function SearchInput({
   onClear,
   ref,
   size,
+  variant = "default",
   value,
   ...props
 }: SearchInputProps) {
@@ -67,7 +69,8 @@ export function SearchInput({
           // WebKit paints its own cancel glyph on a search input.
           "[&::-webkit-search-cancel-button]:appearance-none [&::-webkit-search-decoration]:appearance-none",
           (resolvedSize === "sm" || resolvedSize === "xs") && "text-xs",
-          (showClear || hint) && (resolvedSize === "xs" ? "data-[size=xs]:pr-7" : "pr-8")
+          (showClear || hint) && (resolvedSize === "xs" ? "data-[size=xs]:pr-7" : "pr-8"),
+          variant === "subtle" && "border-transparent hover:bg-accent/40 focus-visible:bg-card"
         )}
         ref={(el) => {
           toolbar?.register(el);

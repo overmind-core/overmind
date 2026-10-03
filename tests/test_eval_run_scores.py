@@ -40,7 +40,7 @@ def _summary(name: str, mean: float) -> dict:
 def test_resolve_scores_returns_latest_previous_delta():
     project = Project.objects.create(name="scores", slug="scores")
     capability = Capability.objects.create(project=project, name="A", slug="a")
-    dataset = frozen_dataset(project, EVAL_ROWS, capability=capability)
+    dataset = frozen_dataset(project, EVAL_ROWS, capability=capability, contract="eval")
     evaluator = Evaluator.objects.create(
         project=project,
         capability=capability,
@@ -77,7 +77,7 @@ def test_resolve_scores_returns_latest_previous_delta():
 def test_resolve_scores_single_run_has_no_delta():
     project = Project.objects.create(name="single", slug="single")
     capability = Capability.objects.create(project=project, name="B", slug="b")
-    dataset = frozen_dataset(project, EVAL_ROWS, capability=capability)
+    dataset = frozen_dataset(project, EVAL_ROWS, capability=capability, contract="eval")
     EvalRun.objects.create(
         project=project,
         name="only",
@@ -131,7 +131,7 @@ def test_member_serializer_resolves_generic_evaluator_via_owning_capability():
     owning capability — ``evaluator.capability_id`` is null for library graders."""
     project = Project.objects.create(name="mem", slug="mem")
     capability = Capability.objects.create(project=project, name="A", slug="a")
-    dataset = frozen_dataset(project, EVAL_ROWS, capability=capability)
+    dataset = frozen_dataset(project, EVAL_ROWS, capability=capability, contract="eval")
 
     bespoke = Evaluator.objects.create(
         project=project,
@@ -189,7 +189,7 @@ def test_member_serializer_resolves_generic_evaluator_via_owning_capability():
 def test_score_history_returns_ordered_points_per_evaluator():
     project = Project.objects.create(name="hist", slug="hist")
     capability = Capability.objects.create(project=project, name="H", slug="h")
-    dataset = frozen_dataset(project, EVAL_ROWS, capability=capability)
+    dataset = frozen_dataset(project, EVAL_ROWS, capability=capability, contract="eval")
     evaluator = Evaluator.objects.create(
         project=project,
         capability=capability,

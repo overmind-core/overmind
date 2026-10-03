@@ -141,7 +141,7 @@ def test_pro_can_invite_members():
 def test_training_quota_blocks_free_at_cap():
     user = _user()
     project = _project(user)
-    dataset = frozen_dataset(project, TRAIN_ROWS, name="ds")
+    dataset = frozen_dataset(project, TRAIN_ROWS, name="ds", contract="train")
     for i in range(FREE_LIMITS["training_jobs"]):
         FinetuningJob.objects.create(
             project=project,
@@ -159,7 +159,7 @@ def test_pro_ignores_training_cap():
     user = _user()
     _make_pro(user)
     project = _project(user)
-    dataset = frozen_dataset(project, TRAIN_ROWS, name="ds")
+    dataset = frozen_dataset(project, TRAIN_ROWS, name="ds", contract="train")
     for i in range(FREE_LIMITS["training_jobs"] + 3):
         FinetuningJob.objects.create(
             project=project,
@@ -186,7 +186,7 @@ def test_base_model_deploy_does_not_count_toward_deploy_quota():
 def test_finetuned_deploy_counts_toward_deploy_quota():
     user = _user()
     project = _project(user)
-    dataset = frozen_dataset(project, TRAIN_ROWS, name="ds")
+    dataset = frozen_dataset(project, TRAIN_ROWS, name="ds", contract="train")
     job = FinetuningJob.objects.create(
         project=project,
         dataset=dataset,
@@ -209,7 +209,7 @@ def test_finetuned_deploy_counts_toward_deploy_quota():
 def test_register_finetuned_skips_deploy_when_over_cap(_modal):
     user = _user()
     project = _project(user)
-    dataset = frozen_dataset(project, TRAIN_ROWS, name="ds")
+    dataset = frozen_dataset(project, TRAIN_ROWS, name="ds", contract="train")
 
     for i in range(FREE_LIMITS["deploy_jobs"]):
         j = FinetuningJob.objects.create(

@@ -410,6 +410,7 @@ CELERY_TIMEZONE = "UTC"
 CELERY_TASK_DEFAULT_QUEUE = "control"
 
 CELERY_TASK_ROUTES = {
+    "overbae.tasks.native_evaluation.advance_plan": {"queue": "batch"},
     "overbae.tasks.training_preparation.inspect_preparation": {"queue": "io"},
     "overbae.tasks.datasets.run": {"queue": "interactive"},
     "overbae.tasks.datasets.turn": {"queue": "interactive"},
@@ -427,6 +428,10 @@ CELERY_TASK_ROUTES = {
 }
 
 CELERY_BEAT_SCHEDULE = {
+    "native-evaluation-reconciliation": {
+        "task": "overbae.tasks.native_evaluation.reconcile",
+        "schedule": 30.0,
+    },
     "training-preparation": {
         "task": "overbae.tasks.training_preparation.reconcile",
         "schedule": 15.0,
@@ -559,6 +564,9 @@ LOGGING = {
         },
     },
     "filters": {
+        "redact_chatgpt_callback": {
+            "()": "overbae.core.logging.RedactChatGPTCallback",
+        },
         "skip_health": {
             "()": "django.utils.log.CallbackFilter",
             "callback": lambda record: "GET /health" not in record.getMessage(),
@@ -568,6 +576,7 @@ LOGGING = {
         "console": {
             "class": "logging.StreamHandler",
             "formatter": "verbose" if DEBUG else "json",
+            "filters": ["redact_chatgpt_callback"],
         },
     },
     "root": {
@@ -628,7 +637,6 @@ AWS_SECRET_ACCESS_KEY = os.environ.get("AWS_SECRET_ACCESS_KEY", "")
 FINETUNING_BACKEND = os.environ.get("FINETUNING_BACKEND", "modal")
 
 # Must be `modal deploy`-ed before FINETUNING_BACKEND=modal can submit jobs.
-MODAL_SFT_APP_NAME = os.environ.get("MODAL_SFT_APP_NAME", "overmind-sft")
 
 if FINETUNING_BACKEND != "modal":
     raise ImproperlyConfigured("FINETUNING_BACKEND must be modal")
@@ -660,3 +668,11 @@ if _missing_keys:
         + "; ".join(_missing_keys)
         + ". .env.example describes each one."
     )
+CHATGPT_PLAN_USAGE_ENABLED = os.environ.get("CHATGPT_PLAN_USAGE_ENABLED", "true").lower() == "true"
+CHATGPT_REDIRECT_URI = os.environ.get(
+    "CHATGPT_REDIRECT_URI", "http://127.0.0.1:8000/api/chatgpt/callback/"
+)
+# The local OAuth state cookie must accompany the Console’s authenticated start request.
+CORS_ALLOW_CREDENTIALS = (
+    CHATGPT_PLAN_USAGE_ENABLED and not CLERK_API_SECRET_KEY and not STRIPE_SECRET_KEY
+)

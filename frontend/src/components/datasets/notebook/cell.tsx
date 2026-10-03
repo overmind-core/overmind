@@ -1,8 +1,9 @@
-import { useEffect, useState } from "react";
+import { type ReactNode, useEffect, useState } from "react";
 
 import { QualityChip } from "@/components/datasets/notebook/preparation";
 import { RowsGrid } from "@/components/datasets/notebook/rows-grid";
 import { ScriptCode } from "@/components/datasets/notebook/script-code";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import {
@@ -358,6 +359,12 @@ function FitChip({
   /** Absent while the dataset is busy or frozen: the card then only reports. */
   actions?: Pick<CellActions, "onFix" | "onIntent" | "onCapability">;
 }) {
+  if (intent === "explore")
+    return (
+      <Badge size="chip" variant="neutral">
+        Data exploration
+      </Badge>
+    );
   const reports = (cell.intentReport as Record<string, Report> | null) ?? {};
   const shape = (reports[intent] ?? {}) as Report;
   const ran = cell.state === "ok" && !!cell.fingerprint;
@@ -534,6 +541,7 @@ export function NotebookCell({
   selected,
   onSelect,
   actions,
+  sourceDetails,
 }: {
   datasetId: string;
   cell: Cell;
@@ -546,11 +554,13 @@ export function NotebookCell({
   selected: boolean;
   onSelect: () => void;
   actions: CellActions;
+  sourceDetails?: ReactNode;
 }) {
   const source = cell.position === 0;
+  const attachment = (cell.review as { kind?: string } | undefined)?.kind === "attachment";
   const ran = cell.state === "ok" && !!cell.fingerprint;
   const frozen = !!cell.frozen;
-  const canEdit = editable && !frozen && !source;
+  const canEdit = editable && !frozen && !source && !attachment;
   const [scriptOpen, setScriptOpen] = useState(!ran);
   const [tableOpen, setTableOpen] = useState(true);
   const [script, setScript] = useState(cell.script);
@@ -570,15 +580,18 @@ export function NotebookCell({
         ? "border-info/60"
         : active
           ? "border-[1.5px] border-success/60"
-          : "border-border";
+          : selected
+            ? "border-primary/60"
+            : "border-border";
 
   return (
     <article
       aria-current={selected ? "true" : undefined}
       aria-label={cell.title}
-      className="group/cell relative px-3 py-3"
+      className="group/cell relative px-3 py-3 outline-none focus-visible:bg-wash-raised"
       id={`cell-${cell.id}`}
       onClick={onSelect}
+      onFocus={onSelect}
       onKeyDown={(e) => {
         if (e.key === "Enter" && e.target === e.currentTarget) onSelect();
       }}
@@ -596,9 +609,17 @@ export function NotebookCell({
           >
             <span className="inline-flex items-center gap-1.5 pr-1.5 pl-2">
               {active && <span className="size-1.5 rounded-xs bg-success" />}
-              <span className={cn("font-mono", active && "font-semibold text-foreground")}>
+              <button
+                aria-label={`Focus version ${version}`}
+                className={cn(
+                  "font-mono hover:underline",
+                  active && "font-semibold text-foreground"
+                )}
+                onClick={onSelect}
+                type="button"
+              >
                 {version}
-              </span>
+              </button>
               {source ? (
                 <span>Source</span>
               ) : (
@@ -679,8 +700,13 @@ export function NotebookCell({
           )}
         </div>
       </div>
-      <div className={cn("relative -mt-3 w-full min-w-0 rounded-md border", stateTone)}>
-        {!source && (
+      <div
+        className={cn(
+          "relative -mt-3 w-full min-w-0 rounded-md border transition-colors duration-200 motion-reduce:transition-none",
+          stateTone
+        )}
+      >
+        {!source && !attachment && (
           <div className="pt-3">
             <SectionHeader
               label="Script"
@@ -689,7 +715,7 @@ export function NotebookCell({
             />
           </div>
         )}
-        {!source && scriptOpen && (
+        {!source && !attachment && scriptOpen && (
           <div className="px-3 pt-1 pb-2.5">
             <ScriptCode
               aria-label={`Script of ${cell.title}`}
@@ -713,6 +739,32 @@ export function NotebookCell({
           </div>
         )}
         {source && <div className="h-3" />}
+        {attachment && <p className="px-3 pt-4 pb-2 text-xs text-muted-foreground">{cell.note}</p>}
+        {source && sourceDetails}
+        {!source && ran && (
+          <details className="border-t border-border/70 px-2.5 py-2 text-xs">
+            <summary className="cursor-pointer text-muted-foreground hover:text-foreground">
+              {cell.note || "Execution details"}
+            </summary>
+            <dl className="mt-2 grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-muted-foreground">
+              <dt>Input</dt>
+              <dd className="truncate font-mono" title={cell.inputFingerprint}>
+                {cell.inputFingerprint?.slice(0, 12) || "—"}
+              </dd>
+              <dt>Output</dt>
+              <dd className="truncate font-mono" title={cell.fingerprint}>
+                {cell.fingerprint?.slice(0, 12)}
+              </dd>
+              <dt>Duration</dt>
+              <dd>{cell.seconds.toFixed(2)}s</dd>
+              <dt>Version</dt>
+              <dd>
+                {cell.version}
+                {frozen ? " · frozen" : ""}
+              </dd>
+            </dl>
+          </details>
+        )}
 
         {cell.state === "failed" && cell.error && (
           <div className="mx-3 mb-2.5 flex flex-col gap-1">
@@ -737,7 +789,7 @@ export function NotebookCell({
             {tableOpen && (
               <RowsGrid cellId={cell.id} datasetId={datasetId} diff={!source} pageSize={10} />
             )}
-            <footer className="flex min-h-8 flex-wrap items-center gap-1 border-t border-border/70 px-2.5 py-1">
+            <footer className="flex min-h-8 flex-wrap items-center gap-1 border-t border-border/70 px-2.5 py-1 [&>*]:shrink-0">
               {active ? (
                 <>
                   <span className="inline-flex h-6 shrink-0 items-center gap-1 whitespace-nowrap rounded-sm border border-success/40 bg-success/10 px-1.5 text-xs text-success">

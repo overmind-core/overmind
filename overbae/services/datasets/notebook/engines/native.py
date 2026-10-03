@@ -196,6 +196,7 @@ class NativeEngine:
         tools: Any,
         pending: list[dict[str, Any]],
     ) -> Generator[dict[str, Any], None, ToolStreamResult]:
+        tools.start_response()
         for attempt in range(1, STREAM_ATTEMPTS + 1):
             current = _Attempt(self, tools, pending)
             try:

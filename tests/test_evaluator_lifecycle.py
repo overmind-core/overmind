@@ -244,7 +244,9 @@ def test_non_baseline_run_copies_baseline_snapshots(capability, django_assert_nu
     from overbae.models import FinetuningJob, FinetuningJobEval
     from overbae.services.finetuning_eval import _copy_baseline_snapshots
 
-    dataset = frozen_dataset(capability.project, EVAL_ROWS, capability=capability, name="d")
+    dataset = frozen_dataset(
+        capability.project, EVAL_ROWS, capability=capability, name="d", contract="eval"
+    )
     ev = Evaluator.objects.create(
         project=capability.project,
         capability=capability,
@@ -302,6 +304,7 @@ def test_behaviour_rollup_groups_by_datapoint_key(capability):
         [{"input": {}, **{"behaviour_key": "happy-path"}}, {"input": {}, **{}}],
         capability=capability,
         name="d",
+        contract="eval",
     )
     dp1 = _row(dataset, 0)
     dp2 = _row(dataset, 1)
@@ -340,8 +343,12 @@ def test_behaviour_rollup_groups_by_datapoint_key(capability):
 def test_pinned_train_version_blocks_delete_but_eval_holdout_does_not(capability):
     from overbae.models import FinetuningJob
 
-    train = frozen_dataset(capability.project, EVAL_ROWS, capability=capability, name="train")
-    holdout = frozen_dataset(capability.project, EVAL_ROWS, capability=capability, name="holdout")
+    train = frozen_dataset(
+        capability.project, EVAL_ROWS, capability=capability, name="train", contract="train"
+    )
+    holdout = frozen_dataset(
+        capability.project, EVAL_ROWS, capability=capability, name="holdout", contract="eval"
+    )
     FinetuningJob.objects.create(
         project=capability.project,
         capability=capability,

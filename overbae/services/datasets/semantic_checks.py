@@ -10,7 +10,8 @@ from django.db import transaction
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from overbae.core.decisions import DecisionError, question_batches
-from overbae.services.billing_ledger import charge_llm_usage, ensure_credits
+from overbae.services import chatgpt
+from overbae.services.billing_ledger import ensure_credits, record_workshop_usage
 from overbae.services.datasets import paths, review, rows, store
 from overbae.services.datasets.context import context_fingerprint, preparation_context
 from overbae.services.eval import decisions, funnel
@@ -100,17 +101,19 @@ def _row_batches(selected, checks, context_data):
 
 
 def _charge_batch(user, dataset, cell, batch, contract):
-    charge_llm_usage(
+    record_workshop_usage(
         user,
         batch["usage"],
-        service="data-workshop",
+        funding_source=batch["usage"].get("funding_source", "platform"),
         project_id=dataset.project_id,
         idempotency_key=f"semantic-check:{dataset.id}:{batch['id']}",
         metadata={"cell_id": str(cell.id), "workload": "semantic_checks", "contract": contract},
     )
 
 
-def run_checks(dataset, cell, request: SemanticReviewRequest, *, user=None, progress=None) -> dict:
+def run_checks(
+    dataset, cell, request: SemanticReviewRequest, *, user=None, progress=None, chatgpt_session=None
+) -> dict:
     if cell.dataset_id != dataset.id:
         raise ValueError("The version belongs to a different dataset.")
     cell.refresh_from_db(fields=["quality_report", "fingerprint"])
@@ -128,10 +131,23 @@ def run_checks(dataset, cell, request: SemanticReviewRequest, *, user=None, prog
         raise ValueError(f"Missing check columns: {', '.join(sorted(missing))}.")
     context = context_fingerprint(dataset.capability)
     policy = decisions.DecisionPolicy(backend="jev", min_confidence=request.min_confidence)
+    audit_policy = (
+        {"backend": "chatgpt", "model": chatgpt_session.model}
+        if chatgpt_session
+        else policy.model_dump()
+    )
     definitions = [check.model_dump() for check in request.checks]
     contract = hashlib.sha256(
         json.dumps(
-            [definitions, policy.model_dump(), decisions.ADAPTER_VERSION], sort_keys=True
+            [
+                definitions,
+                audit_policy,
+                decisions.ADAPTER_VERSION,
+                {"account": str(chatgpt_session.account_id), "model": chatgpt_session.model}
+                if chatgpt_session
+                else "platform",
+            ],
+            sort_keys=True,
         ).encode()
     ).hexdigest()
     previous = cell.quality_report or {}
@@ -159,7 +175,7 @@ def run_checks(dataset, cell, request: SemanticReviewRequest, *, user=None, prog
     )
     selected = [row for row in records if _row_key(row) not in audit["results"]][: request.max_rows]
     context_data = preparation_context(dataset.capability)
-    if selected and user is not None:
+    if selected and user is not None and chatgpt_session is None:
         ensure_credits(user)
     completed = 0
     report = previous
@@ -196,19 +212,31 @@ def run_checks(dataset, cell, request: SemanticReviewRequest, *, user=None, prog
             resolved.raw = resolved.parsed.model_dump_json()
             return resolved
 
-        outcome = decisions.invoke(
-            state,
-            questions,
-            convert=lambda answers: _Checks(
-                answers={key: answer.choice or "insufficient" for key, answer in answers.items()}
-            ),
-            fallback=fallback,
-            project_id=str(dataset.project_id),
-            workload="workshop_semantic_checks",
-            contract=contract,
-            policy=policy,
-            independent=True,
-        )
+        if chatgpt_session is not None:
+            answers, stats = chatgpt.semantic_questions(chatgpt_session, state, questions)
+            parsed = _Checks(answers=answers)
+            outcome = funnel.JudgeOutcome(
+                parsed=parsed,
+                raw=parsed.model_dump_json(),
+                stats=stats,
+                judge_trace_id=uuid.uuid4().hex,
+            )
+        else:
+            outcome = decisions.invoke(
+                state,
+                questions,
+                convert=lambda answers: _Checks(
+                    answers={
+                        key: answer.choice or "insufficient" for key, answer in answers.items()
+                    }
+                ),
+                fallback=fallback,
+                project_id=str(dataset.project_id),
+                workload="workshop_semantic_checks",
+                contract=contract,
+                policy=policy,
+                independent=True,
+            )
         checked = getattr(outcome.parsed, "answers", {}) or {}
         if set(checked) != set(questions):
             checked = dict.fromkeys(questions, "insufficient")
@@ -248,7 +276,7 @@ def run_checks(dataset, cell, request: SemanticReviewRequest, *, user=None, prog
                     audit={
                         "method": "semantic_decisions",
                         "contract": contract,
-                        "policy": policy.model_dump(),
+                        "policy": audit_policy,
                     },
                     reviewer="semantic_decision_engine",
                     context=context,

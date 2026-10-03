@@ -53,8 +53,8 @@ def _setup(*, with_eval_link=True):
     p = Project.objects.create(name="p")
     ProjectMembership.objects.create(user=u, project=p)
     capability = Capability.objects.create(project=p, name="a", slug=f"a-{uuid.uuid4().hex[:6]}")
-    train = frozen_dataset(p, EVAL_ROWS, name="train")
-    eval_ds = frozen_dataset(p, EVAL_ROWS, name="eval")
+    train = frozen_dataset(p, EVAL_ROWS, name="train", contract="train")
+    eval_ds = frozen_dataset(p, EVAL_ROWS, name="eval", contract="eval")
     ev = Evaluator.objects.create(
         project=p,
         capability=capability,
@@ -339,6 +339,7 @@ def test_dataset_is_classification_gate():
             for i, label in enumerate(["refund", "fraud", "refund", "chargeback"])
         ],
         name="labels",
+        contract="eval",
     )
     run = EvalRun.objects.create(
         project=job.project,
@@ -363,6 +364,7 @@ def test_dataset_is_classification_gate():
             for i in range(4)
         ],
         name="ft-refs",
+        contract="eval",
     )
     run_ft = EvalRun.objects.create(
         project=job.project,

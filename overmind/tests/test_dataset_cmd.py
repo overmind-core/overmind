@@ -122,6 +122,22 @@ def test_upload_file_small_hits_datasets_not_ingestions(tmp_path: Path):
     assert result["next_mcp_actions"][0]["arguments"] == {"kind": "dataset_run", "id": result["id"]}
 
 
+def test_upload_attaches_to_an_existing_draft_without_creating_another_dataset(tmp_path: Path):
+    path = tmp_path / "handbook.txt"
+    path.write_bytes(b"evidence")
+    session = FakeSession()
+    upload_file(
+        path,
+        project_id="project-1",
+        api_key="key-1",
+        api_url="https://api.example",
+        dataset="2d23d030-e704-42b8-919c-6fd5f830ec7b",
+        session=session,
+    )
+    assert session.calls[-1][1] == "https://api.example/api/datasets/2d23d030-e704-42b8-919c-6fd5f830ec7b/source/"
+    assert session.calls[-1][2]["json"] == {"upload_id": "upload-1", "filename": "handbook.txt"}
+
+
 def test_upload_file_resumes_in_server_chunks_and_creates_dataset(tmp_path: Path):
     path = tmp_path / "rows.jsonl"
     path.write_bytes(b"0123456789")
@@ -202,7 +218,7 @@ def test_upload_file_rejects_ft_intent_before_network(tmp_path: Path):
     path.write_bytes(b"{}\n")
     session = FakeSession()
 
-    with pytest.raises(DatasetUploadError, match="train or eval"):
+    with pytest.raises(DatasetUploadError, match="train, eval or explore"):
         upload_file(
             path,
             project_id="project-1",

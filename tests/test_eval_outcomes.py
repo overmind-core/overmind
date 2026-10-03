@@ -224,7 +224,7 @@ def _dataset(project) -> Dataset:
     capability = Capability.objects.create(
         project=project, name="A", slug=f"a-{uuid.uuid4().hex[:6]}"
     )
-    return frozen_dataset(capability.project, EVAL_ROWS, capability=capability)
+    return frozen_dataset(capability.project, EVAL_ROWS, capability=capability, contract="eval")
 
 
 def _attach(run, evaluator) -> RunEvaluator:

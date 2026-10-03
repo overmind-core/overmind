@@ -36,7 +36,7 @@ class InspectUploadSerializer(serializers.Serializer):
 class UploadInspectionSerializer(serializers.Serializer):
     filename = serializers.CharField()
     bytes = serializers.IntegerField()
-    rows = serializers.IntegerField()
+    rows = serializers.IntegerField(allow_null=True)
 
 
 class OctetStreamParser(BaseParser):

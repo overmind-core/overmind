@@ -9,7 +9,7 @@ import duckdb
 from asgiref.sync import sync_to_async
 
 from overbae.models import Capability, Dataset
-from overbae.services.datasets import dispatch, paths, store
+from overbae.services.datasets import dispatch, operations, paths, store
 from overbae.services.datasets.contract import stored_intents
 from overbae.services.datasets.lifecycle import DatasetError
 from overbae.services.datasets.notebook.agent import resolve_cell
@@ -28,6 +28,7 @@ from overbae.services.mcp.contracts.datasets import (
     QueryDatasetInput,
     QueryDatasetOutput,
     RunDatasetInput,
+    StartDatasetInput,
     dataset_resource_link,
     mutation_output,
     sanitize_error,
@@ -169,6 +170,7 @@ def _create_dataset_from_traces_sync(
                 project=context.project,
                 user=context.user,
                 name=payload.name,
+                brief=payload.brief,
                 source={"traces": source.spec()},
                 eval_percent=payload.split.eval_percent,
                 position=payload.split.position,
@@ -183,6 +185,7 @@ def _create_dataset_from_traces_sync(
                 project=context.project,
                 user=context.user,
                 name=payload.name,
+                brief=payload.brief,
                 source={"traces": source.spec()},
                 intent=payload.intent,
                 capability=capability,
@@ -268,13 +271,34 @@ def _message_dataset_agent_sync(
 ) -> DatasetMutationOutput:
     dataset = _resolve_dataset(context, payload.dataset)
     message = payload.message.strip()
-    if not message:
-        raise MCPError("invalid_input", "A non-empty message is required.")
     try:
-        dispatch.message_agent(dataset, context.user, message)
+        dispatch.message_agent(
+            dataset,
+            context.user,
+            message,
+            intent_choice=payload.intent_choice,
+            intent_turn_id=payload.intent_turn_id or "",
+        )
     except DatasetError as exc:
         raise dataset_mcp_error(exc) from exc
     return mutation_output(dataset, summary="Dataset agent queued.")
+
+
+def _start_dataset_sync(payload: StartDatasetInput, context: MCPContext) -> DatasetMutationOutput:
+    capability = _resolve_capability(context, payload.capability) if payload.capability else None
+    try:
+        dataset = dispatch.create_dataset(
+            project=context.project,
+            user=context.user,
+            name=payload.name,
+            brief=payload.brief,
+            intent=payload.intent,
+            capability=capability,
+            infer_capability=False,
+        )
+    except DatasetError as exc:
+        raise dataset_mcp_error(exc) from exc
+    return mutation_output(dataset, summary="Dataset started from the written request.")
 
 
 def _run_dataset_sync(payload: RunDatasetInput, context: MCPContext) -> DatasetMutationOutput:
@@ -294,6 +318,16 @@ def _run_dataset_sync(payload: RunDatasetInput, context: MCPContext) -> DatasetM
     return mutation_output(dataset, summary="Dataset run queued.")
 
 
+def _cancel_dataset_sync(payload, context):
+    dataset = _resolve_dataset(context, payload.dataset)
+    operations.cancel(dataset.pk)
+    dataset.refresh_from_db()
+    return mutation_output(
+        dataset,
+        summary="Cancellation requested; provider and local acknowledgement are tracked in the dataset operation.",
+    )
+
+
 def _async_handler(function):
     async def handler(payload, context):
         return await sync_to_async(function, thread_sensitive=True)(payload, context)
@@ -305,6 +339,26 @@ def register_dataset_tools(catalog) -> None:
     from overbae.services.mcp.catalog import ToolDefinition
 
     definitions = [
+        (
+            "cancel_dataset",
+            "Cancel dataset operation",
+            "Cancel an operation; stays pending until local and provider acknowledgement.",
+            InspectDatasetInput,
+            DatasetMutationOutput,
+            _cancel_dataset_sync,
+            False,
+            "job",
+        ),
+        (
+            "start_dataset",
+            "Start dataset",
+            "Start from a written request; source, capability and training intent are optional. Inspect for next steps.",
+            StartDatasetInput,
+            DatasetMutationOutput,
+            _start_dataset_sync,
+            False,
+            "job",
+        ),
         (
             "list_datasets",
             "List datasets",
@@ -318,7 +372,7 @@ def register_dataset_tools(catalog) -> None:
         (
             "inspect_dataset",
             "Inspect dataset",
-            "Inspect one project dataset, its bounded cell chain, source/active task-family profiles, downstream consumer requirements, sample, recent agent chat, and next actions.",
+            "Inspect dataset versions, task-family profiles, consumer requirements, sample, agent chat and next actions.",
             InspectDatasetInput,
             DatasetDetail,
             _inspect_dataset_sync,
@@ -360,7 +414,7 @@ def register_dataset_tools(catalog) -> None:
         (
             "message_dataset_agent",
             "Message dataset agent",
-            "Queue one agent turn for an idle project dataset.",
+            "Message an idle dataset agent. For awaiting_intent, ask the user, then send intent_choice (train/eval/explore) and intent_turn_id instead of message. Never infer intent from data.",
             MessageDatasetAgentInput,
             DatasetMutationOutput,
             _message_dataset_agent_sync,
@@ -396,12 +450,15 @@ def register_dataset_tools(catalog) -> None:
                 input_model=input_model,
                 output_model=output_model,
                 read_only=read_only,
-                idempotent=read_only,
+                destructive=name == "cancel_dataset",
+                idempotent=read_only or name == "cancel_dataset",
                 open_world=False,
                 required_scopes=frozenset(
                     {"overmind:read"} if read_only else {"overmind:data:write"}
                 ),
-                cost_class="llm" if name == "run_dataset" else "free",
+                cost_class="llm"
+                if name in {"run_dataset", "message_dataset_agent", "start_dataset"}
+                else "free",
                 async_mode=mode,
             ),
             _async_handler(function),

@@ -42,6 +42,7 @@ import {
 import type { MetricPoint, MetricSeries } from "@/components/finetuning/loss-chart";
 import { liveSeriesPoints } from "@/components/finetuning/loss-series";
 import { ModelLiveAction } from "@/components/finetuning/model-live-action";
+import { NativeEvaluationPanel } from "@/components/finetuning/native-evaluation-panel";
 import { scrubInfraLeak, userFacingJobError } from "@/components/finetuning/train/model-config";
 import { ModelProviderChip } from "@/components/model-provider-chip";
 import { Alert } from "@/components/ui/alert";
@@ -70,7 +71,7 @@ import {
 import { useDeployedModelsQuery } from "@/hooks/use-inference";
 import { seriesColor } from "@/lib/colors";
 import { groupCostUsd, jobCostUsd } from "@/lib/finetuning-cost";
-import { downloadStatusLine, progressPhaseLabel } from "@/lib/finetuning-progress";
+import { downloadStatusLine, progressPhaseLabel, stageStatusLine } from "@/lib/finetuning-progress";
 import { formatElapsed } from "@/lib/formatters";
 import { errorMessage } from "@/lib/notify";
 import { PROSE } from "@/lib/typography";
@@ -404,27 +405,31 @@ export function TrainingMonitorPanel({
             ) : null}
           </MonitorChartCard>
 
-          <MonitorChartCard
-            emptyHint="No token accuracy from the training callback yet"
-            help={METRIC_HELP.accuracy}
-            isLoading={metricsLoading}
-            subtitle={isAll ? "train · one line per experiment" : "train token accuracy · per step"}
-            title="Token accuracy"
-          >
-            {isAll ? (
-              hasPoints(accSeries) ? (
-                <MultiSeriesChart height={180} series={accSeries} valueFormatter={pct} />
-              ) : null
-            ) : accTrainPoints(focus).length > 0 ? (
-              <MetricSeriesChart
-                color={seriesColor(2)}
-                data={accTrainPoints(focus)}
-                height={180}
-                name="train accuracy"
-                valueFormatter={pct}
-              />
-            ) : null}
-          </MonitorChartCard>
+          {!snapshots.every((s) => isNativeJob(s.job)) && (
+            <MonitorChartCard
+              emptyHint="No token accuracy from the training callback yet"
+              help={METRIC_HELP.accuracy}
+              isLoading={metricsLoading}
+              subtitle={
+                isAll ? "train · one line per experiment" : "train token accuracy · per step"
+              }
+              title="Token accuracy"
+            >
+              {isAll ? (
+                hasPoints(accSeries) ? (
+                  <MultiSeriesChart height={180} series={accSeries} valueFormatter={pct} />
+                ) : null
+              ) : accTrainPoints(focus).length > 0 ? (
+                <MetricSeriesChart
+                  color={seriesColor(2)}
+                  data={accTrainPoints(focus)}
+                  height={180}
+                  name="train accuracy"
+                  valueFormatter={pct}
+                />
+              ) : null}
+            </MonitorChartCard>
+          )}
 
           <MonitorChartCard
             emptyHint="No grad norm from provider yet"
@@ -506,58 +511,67 @@ export function TrainingMonitorPanel({
         </div>
       </div>
 
-      <Card className="flex flex-col gap-3 overflow-hidden p-4 pb-0">
-        <div className="flex items-center gap-2">
-          <Icon.successDouble className="size-4 text-muted-foreground" />
-          <h3 className="text-xs">Evals</h3>
-          <CountChip className="ml-auto" count={judgeEvalRows.length} />
-        </div>
-        {judgeEvalRows.length === 0 ? (
-          <p className={cn(PROSE, "pb-4 text-sm text-muted-foreground")}>
-            {job.evalDataset && job.evalSet
-              ? "No evaluations selected."
-              : "No eval dataset or eval set linked. Judge scores stay empty."}
-          </p>
-        ) : (
-          // No outer overflow-x-auto: Table already scrolls; a second nested
-          // scroller fights it. -mx-4 cancels the Card padding so the separators
-          // reach the card edges.
-          <div className="-mx-4">
-            {/* min-w-0 overrides Table's min-w-max; Model is the only column
-                without a width, so it absorbs the leftover card width. */}
-            <Table className="w-full min-w-0 table-fixed">
-              <TableHeader className="border-t border-border">
-                <TableRow>
-                  {/* border-r-0: merge with the next header so the chevron
-                      gutter doesn't read as an empty column. */}
-                  <TableHead aria-label="Expand" className="w-10 border-r-0 px-1" />
-                  {isAll && (
-                    <TableHead className="w-48 whitespace-nowrap px-2">Experiment</TableHead>
-                  )}
-                  <TableHead className="w-56 whitespace-nowrap px-2">Evaluation</TableHead>
-                  <TableHead className="w-44 whitespace-nowrap px-2">Status</TableHead>
-                  <TableHead className="w-36 whitespace-nowrap px-2">Score</TableHead>
-                  <TableHead className="px-2">Model</TableHead>
-                  <TableHead className="w-20 whitespace-nowrap px-2 text-center">Samples</TableHead>
-                  <TableHead className="w-28 whitespace-nowrap px-2">Created</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {judgeEvalRows.map(({ row, snapshots: rowSnapshots }) => (
-                  <JudgeEvalTableRow
-                    deployedUuidByServingId={deployedUuidByServingId}
-                    isAll={isAll}
-                    key={`${row.kind}-${row.eval_run_id ?? `${rowSnapshots[0].job.id}-${row.id}`}`}
-                    projectId={projectId}
-                    row={row}
-                    snapshots={rowSnapshots}
-                  />
-                ))}
-              </TableBody>
-            </Table>
+      {snapshots
+        .filter((s) => isNativeJob(s.job))
+        .map((s) => (
+          <NativeEvaluationPanel job={s.job} key={s.job.id} projectId={projectId} />
+        ))}
+      {!snapshots.every((s) => isNativeJob(s.job)) && (
+        <Card className="flex flex-col gap-3 overflow-hidden p-4 pb-0">
+          <div className="flex items-center gap-2">
+            <Icon.successDouble className="size-4 text-muted-foreground" />
+            <h3 className="text-xs">Evals</h3>
+            <CountChip className="ml-auto" count={judgeEvalRows.length} />
           </div>
-        )}
-      </Card>
+          {judgeEvalRows.length === 0 ? (
+            <p className={cn(PROSE, "pb-4 text-sm text-muted-foreground")}>
+              {job.evalDataset && job.evalSet
+                ? "No evaluations selected."
+                : "No eval dataset or eval set linked. Judge scores stay empty."}
+            </p>
+          ) : (
+            // No outer overflow-x-auto: Table already scrolls; a second nested
+            // scroller fights it. -mx-4 cancels the Card padding so the separators
+            // reach the card edges.
+            <div className="-mx-4">
+              {/* min-w-0 overrides Table's min-w-max; Model is the only column
+                without a width, so it absorbs the leftover card width. */}
+              <Table className="w-full min-w-0 table-fixed">
+                <TableHeader className="border-t border-border">
+                  <TableRow>
+                    {/* border-r-0: merge with the next header so the chevron
+                      gutter doesn't read as an empty column. */}
+                    <TableHead aria-label="Expand" className="w-10 border-r-0 px-1" />
+                    {isAll && (
+                      <TableHead className="w-48 whitespace-nowrap px-2">Experiment</TableHead>
+                    )}
+                    <TableHead className="w-56 whitespace-nowrap px-2">Evaluation</TableHead>
+                    <TableHead className="w-44 whitespace-nowrap px-2">Status</TableHead>
+                    <TableHead className="w-36 whitespace-nowrap px-2">Score</TableHead>
+                    <TableHead className="px-2">Model</TableHead>
+                    <TableHead className="w-20 whitespace-nowrap px-2 text-center">
+                      Samples
+                    </TableHead>
+                    <TableHead className="w-28 whitespace-nowrap px-2">Created</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {judgeEvalRows.map(({ row, snapshots: rowSnapshots }) => (
+                    <JudgeEvalTableRow
+                      deployedUuidByServingId={deployedUuidByServingId}
+                      isAll={isAll}
+                      key={`${row.kind}-${row.eval_run_id ?? `${rowSnapshots[0].job.id}-${row.id}`}`}
+                      projectId={projectId}
+                      row={row}
+                      snapshots={rowSnapshots}
+                    />
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          )}
+        </Card>
+      )}
     </div>
   );
 }
@@ -577,15 +591,18 @@ function ExperimentRunCard({
   const { progress, percent, terminal, currentLoss, latestScored, baselineScore } = snapshot;
   const stepsLabel = stepsLabelFor(progress);
   const tokens = progress.tokens_processed;
-  const percentLabel = percent != null ? `${percent.toFixed(0)}%` : terminal ? "100%" : "—";
+  const percentLabel =
+    percent != null ? `${percent.toFixed(0)}%` : job.status === "succeeded" ? "100%" : "—";
   const timeLabel = experimentTimeLabel(snapshot);
-  const tokenAcc = experimentTokenAccLabel(snapshot);
+  const native = isNativeJob(job);
+  const validation = snapshot.liveProgress?.eval_history?.at(-1);
+  const tokenAcc = native ? null : experimentTokenAccLabel(snapshot);
 
   return (
     <Card className="flex flex-col gap-4 p-4">
       <div className="flex flex-wrap items-start justify-between gap-x-6 gap-y-3">
         <div className="flex min-w-0 flex-col gap-2">
-          <h3 className="text-xs text-foreground">Model</h3>
+          <h3 className="text-sm font-medium text-foreground">{experimentLabel(job)}</h3>
           <ModelProviderChip className="max-w-[260px]" model={job.baseModel} />
         </div>
         <dl className="flex shrink-0 flex-col items-end gap-1 text-xs">
@@ -639,9 +656,17 @@ function ExperimentRunCard({
         )}
         <span aria-hidden className="mx-5 w-px shrink-0 self-stretch bg-border/60" />
         <HeaderStat
-          label={latestScored?.baseline_delta != null ? "Score vs baseline" : "Eval score"}
+          label={
+            native
+              ? "Validation cross entropy"
+              : latestScored?.baseline_delta != null
+                ? "Score vs baseline"
+                : "Eval score"
+          }
         >
-          {latestScored?.aggregate_score != null ? (
+          {native ? (
+            (validation?.eval_loss?.toFixed(4) ?? "Not measured")
+          ) : latestScored?.aggregate_score != null ? (
             <span className="inline-flex items-center gap-2">
               {scorePct(latestScored.aggregate_score)}%
               {latestScored.baseline_delta != null && (
@@ -677,6 +702,33 @@ function ExperimentRunCard({
         <ProgressBar label="Training progress" percent={percent} terminal={terminal} />
       </div>
 
+      {native && validation && (
+        <dl className="flex flex-wrap gap-x-6 gap-y-2 text-xs tabular-nums">
+          <div>
+            <dt className="text-muted-foreground">Validation decisions</dt>
+            <dd>{validation.decisions?.toLocaleString() ?? "Not reported"}</dd>
+          </div>
+          <div>
+            <dt className="text-muted-foreground">Brier score</dt>
+            <dd>{validation.brier?.toFixed(4) ?? "Not measured"}</dd>
+          </div>
+          <div>
+            <dt className="text-muted-foreground">Hard-label accuracy</dt>
+            <dd>
+              {validation.hard_label_accuracy == null
+                ? "Not measured"
+                : `${(validation.hard_label_accuracy * 100).toFixed(1)}% · ${validation.hard_label_decisions?.toLocaleString() ?? "?"} decisions`}
+            </dd>
+          </div>
+        </dl>
+      )}
+      {native && (
+        <p className="text-xs text-muted-foreground">
+          Batch losses use different examples. Fixed validation measures change on the same
+          decisions.
+        </p>
+      )}
+      <RunDiagnostics projectId={projectId} snapshot={snapshot} />
       <RunActivity projectId={projectId} snapshot={snapshot} />
     </Card>
   );
@@ -700,7 +752,7 @@ function experimentTimeLabel(s: ExperimentSnapshot): string | null {
   return (
     [
       elapsed != null && elapsed > 0 ? `${formatElapsed(elapsed)} elapsed` : null,
-      eta != null && eta > 0 ? `~${formatElapsed(eta)} left` : null,
+      eta != null && eta > 0 ? `~${formatElapsed(eta)} training remaining` : null,
     ]
       .filter(Boolean)
       .join(" · ") || null
@@ -724,6 +776,8 @@ function experimentStatusLine(s: ExperimentSnapshot): string {
     }
     return activity.at(-1)?.message ?? "";
   }
+  const stageLine = stageStatusLine(progress);
+  if (stageLine) return stageLine;
   if (isTraining) {
     const { trained_steps, total_steps } = s.progress;
     return `Training — step ${trained_steps}${total_steps != null ? ` / ${total_steps}` : ""}`;
@@ -731,9 +785,7 @@ function experimentStatusLine(s: ExperimentSnapshot): string {
   if (downloadLine) return downloadLine;
   const label = isDeploying ? "Deploying" : progressPhaseLabel(progress, status);
   const latest = activity.at(-1)?.message;
-  return latest
-    ? `${label} — ${scrubInfraLeak(latest)}`
-    : `${label} — waiting for provider activity…`;
+  return latest ? `${label} — ${scrubInfraLeak(latest)}` : `${label} · provider stage not reported`;
 }
 
 function RunActivity({ snapshot, projectId }: { snapshot: ExperimentSnapshot; projectId: string }) {
@@ -929,5 +981,115 @@ function MonitorChartCard({
         </div>
       )}
     </Card>
+  );
+}
+
+function isNativeJob(job: FinetuningJobList): boolean {
+  return (
+    (job.trainingContract as Record<string, unknown> | undefined)?.objective ===
+    "decision_cross_entropy"
+  );
+}
+
+function RunDiagnostics({
+  snapshot,
+  projectId,
+}: {
+  snapshot: ExperimentSnapshot;
+  projectId: string;
+}) {
+  const { job } = snapshot;
+  const recordQuery = useFinetuningJobQuery(job.id);
+  const record = recordQuery.data?.record;
+  const downloadRecord = () => {
+    if (!record) return;
+    const url = URL.createObjectURL(
+      new Blob([JSON.stringify(record, null, 2)], { type: "application/json" })
+    );
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `training-${job.id}.json`;
+    link.click();
+    URL.revokeObjectURL(url);
+  };
+  const detail = snapshot.liveProgress?.diagnostics;
+  const heartbeat = detail?.heartbeat_at;
+  const age = heartbeat == null ? null : Math.max(0, Math.round(Date.now() / 1000 - heartbeat));
+  const datasetUrl = `/datasets/${encodeURIComponent(job.dataset)}?projectId=${encodeURIComponent(projectId)}${job.cell ? `&cell=${encodeURIComponent(job.cell)}` : ""}`;
+  return (
+    <details className="border-t border-border/70 pt-3 text-xs">
+      <summary className="cursor-pointer text-foreground focus-visible:outline focus-visible:outline-ring">
+        Run evidence
+      </summary>
+      <dl className="mt-3 grid gap-3 sm:grid-cols-2">
+        <div>
+          <dt className="text-muted-foreground">Selected data</dt>
+          <dd>
+            <a className="underline underline-offset-2" href={datasetUrl}>
+              Open dataset{job.cell ? ` · ${job.cell.slice(0, 8)}` : ""}
+            </a>
+          </dd>
+        </div>
+        <div>
+          <dt className="text-muted-foreground">Last worker heartbeat</dt>
+          <dd>{age == null ? "Not reported" : `${formatElapsed(age)} ago`}</dd>
+        </div>
+        <div>
+          <dt className="text-muted-foreground">Provider attempt</dt>
+          <dd>
+            {detail?.attempt ?? "Not reported"}
+            {detail?.attempt_started_at
+              ? ` · ${formatElapsed(Math.max(0, Date.now() / 1000 - detail.attempt_started_at))} elapsed`
+              : ""}
+          </dd>
+        </div>
+        <div>
+          <dt className="text-muted-foreground">Latest checkpoint</dt>
+          <dd>
+            {detail?.checkpoint_step == null
+              ? "Not reported"
+              : `Step ${detail.checkpoint_step.toLocaleString()}`}
+          </dd>
+        </div>
+        <div>
+          <dt className="text-muted-foreground">Verified continuation</dt>
+          <dd>
+            {detail?.restored_step == null
+              ? "Not reported"
+              : `Restored step ${detail.restored_step.toLocaleString()}`}
+          </dd>
+        </div>
+        <div>
+          <dt className="text-muted-foreground">Recorded training cost</dt>
+          <dd>
+            {jobCostUsd(job) == null ? "Pending" : <CreditsAmount usd={jobCostUsd(job) ?? 0} />}
+            {job.provider === "modal" && " · GPU only"}
+          </dd>
+        </div>
+        <div>
+          <dt className="text-muted-foreground">All-in cost</dt>
+          <dd>Awaiting complete preparation, training and evaluation charges</dd>
+        </div>
+      </dl>
+      <Button
+        className="mt-3"
+        disabled={!record}
+        onClick={downloadRecord}
+        size="sm"
+        variant="outline"
+      >
+        Download run record
+      </Button>
+      {record && (
+        <details className="mt-3">
+          <summary className="cursor-pointer focus-visible:outline focus-visible:outline-ring">
+            Requested and effective configuration
+          </summary>
+          <pre className="mt-2 max-h-72 overflow-auto whitespace-pre-wrap text-xs">
+            {JSON.stringify({ effective: record.effective, requested: record.requested }, null, 2)}
+          </pre>
+        </details>
+      )}
+    </details>
   );
 }

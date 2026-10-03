@@ -208,13 +208,17 @@ def test_mechanical_tool_prepares_eval_without_llm_and_context_loss_requires_rev
     dataset.refresh_from_db()
     tools = agent.Tools(dataset.id, None, lambda _: None)
     tools.automatic = True
-    result = tools.prepare_examples({})
+    from conftest import plan_fixture
+
+    plan_fixture(dataset)
+    result = tools.prepare_examples({"plan_step": "prepare"})
     assert result["ok"] and not result.get("proposed"), result
     active = dataset.active_cell
     assert contract.measure(store.read_frame(paths.cell_path(dataset.id, active.id)))["eval"]["ok"]
     lost = tools.add_cell(
         {
             "title": "Identifier projection",
+            "plan_step": "prepare",
             "script": "df['input'] = [{'onboarding_packet_id': 'case-1'} for _ in range(len(df))]",
         }
     )
@@ -226,7 +230,9 @@ def test_mechanical_tool_prepares_eval_without_llm_and_context_loss_requires_rev
 def test_sampling_covers_the_whole_dataset_and_matches_across_runs():
     project = Project.objects.create(name="Sampling", slug="sampling-contract")
     source = pd.DataFrame([example(i, f"worker-{i // 30}") for i in range(90)])
-    dataset = frozen_dataset(project, prepare_examples(source, "eval").to_dict(orient="records"))
+    dataset = frozen_dataset(
+        project, prepare_examples(source, "eval").to_dict(orient="records"), contract="eval"
+    )
     selected = select_rows(dataset.active_cell, limit=12)
     assert len(selected) == 12
     assert {row.extra["mode"] for row in selected} == {"worker-0", "worker-1", "worker-2"}
@@ -258,7 +264,10 @@ def test_prompt_snapshot_does_not_follow_capability_edits():
         improvement_metadata={"system_prompt": "Canonical instruction"},
     )
     dataset = frozen_dataset(
-        project, [{"input": "Evidence", "expected_output": "Entity"}], capability=capability
+        project,
+        [{"input": "Evidence", "expected_output": "Entity"}],
+        capability=capability,
+        contract="eval",
     )
     run = EvalRun.objects.create(project=project, dataset=dataset, cell=dataset.active_cell)
     variant = EvalVariant.objects.create(run=run, mode="generate")

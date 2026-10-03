@@ -181,6 +181,7 @@ describe("JobsHistory filters", () => {
       "all",
       "queued",
       "preparing",
+      "submission_unknown",
       "running",
       "deploying",
       "succeeded",

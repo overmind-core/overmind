@@ -16,12 +16,14 @@
 /**
  * * `train` - Train
  * * `eval` - Eval
+ * * `explore` - Explore
  * * `pending` - Pending
  * @export
  */
 export const IntentEnum = {
     train: 'train',
     eval: 'eval',
+    explore: 'explore',
     pending: 'pending'
 } as const;
 export type IntentEnum = typeof IntentEnum[keyof typeof IntentEnum];

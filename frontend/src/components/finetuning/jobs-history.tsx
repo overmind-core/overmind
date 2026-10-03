@@ -82,6 +82,7 @@ function HistoryModelsCell({ jobs }: { jobs: FinetuningJobList[] }) {
 const FT_STATUS_FILTER_ORDER: FinetuningJobsListStatusEnum[] = [
   "queued",
   "preparing",
+  "submission_unknown",
   "running",
   "deploying",
   "succeeded",

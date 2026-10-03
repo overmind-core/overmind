@@ -66,7 +66,7 @@ def _dataset(capability: Capability, *, n_points: int = 2) -> Dataset:
         }
         for i in range(n_points)
     ]
-    return frozen_dataset(capability.project, rows, capability=capability)
+    return frozen_dataset(capability.project, rows, capability=capability, contract="train")
 
 
 def _job_payload(*, project_id: str, dataset_id: str, **overrides) -> dict:
@@ -145,7 +145,11 @@ def test_create_dispatches_celery_and_persists_job():
     assert job.triggered_by_id == u.id
     assert job.celery_task_id == "celery-xyz"
     assert job.base_model == "meta-llama/Llama-3.2-3B-Instruct"
-    assert job.hyperparameters == {"learning_rate": 3e-4, "epochs": 2}
+    assert job.hyperparameters == {
+        "learning_rate": 3e-4,
+        "epochs": 2,
+        "objective": "assistant_cross_entropy",
+    }
 
     mock_apply.assert_called_once()
     kwargs = mock_apply.call_args.kwargs

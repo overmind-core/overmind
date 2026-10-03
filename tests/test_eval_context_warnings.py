@@ -130,7 +130,9 @@ def test_generation_warning_does_not_skip_provider_call(monkeypatch):
 @pytest.mark.django_db
 def test_preflight_profiles_generation_and_judge_from_selected_version(monkeypatch):
     project = Project.objects.create(name="Context")
-    dataset = frozen_dataset(project, [{"input": "input" * 5000, "expected_output": "answer"}])
+    dataset = frozen_dataset(
+        project, [{"input": "input" * 5000, "expected_output": "answer"}], contract="eval"
+    )
     evaluator = Evaluator.objects.create(
         project=project,
         name="Quality",
@@ -202,7 +204,9 @@ def test_exhausted_judge_does_not_retry_without_known_extra_capacity(monkeypatch
 def test_preflight_includes_custom_judge_bindings(monkeypatch):
     project = Project.objects.create(name="Bindings")
     dataset = frozen_dataset(
-        project, [{"input": "question", "expected_output": "answer", "evidence": "x" * 30000}]
+        project,
+        [{"input": "question", "expected_output": "answer", "evidence": "x" * 30000}],
+        contract="eval",
     )
     evaluator = Evaluator.objects.create(
         project=project,

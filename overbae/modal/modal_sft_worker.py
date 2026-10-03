@@ -6,7 +6,7 @@ Modal cannot branch installs at job runtime, so each training Function pins its 
 time. All share ``_run_training``.
 
 Volume ``overmind-sft`` at /data holds, per run:
-  /data/runs/{run_id}/data.jsonl     training rows (uploaded by ModalRunner.submit)
+  /data/runs/{run_id}/data.jsonl     validated tokens materialized from the preparation artifact
   /data/runs/{run_id}/val.jsonl      optional validation rows
   /data/runs/{run_id}/progress.json  latest snapshot (ModalRunner.poll)
   /data/runs/{run_id}/metrics.jsonl  full BT_PROGRESS/BT_EVAL/BT_CHECKPOINT history
@@ -31,6 +31,7 @@ import sys
 import tempfile
 import threading
 import time
+from collections import deque
 from pathlib import Path
 
 import modal
@@ -39,8 +40,15 @@ from modal_shared.decision_artifact import read_artifact, seal_artifact
 from modal_shared.decisions import DECISION_OBJECTIVE
 from modal_shared.preparation import run_preparation_process
 from modal_shared.training_data import materialize_files
+from modal_shared.training_release import identity
+from modal_shared.training_telemetry import read_telemetry, record_heartbeat, record_stage
 
-APP_NAME = "overmind-sft"
+RELEASE = (
+    identity(Path(__file__).resolve().parents[2])
+    if modal.is_local()
+    else json.loads(os.environ["OVERMIND_TRAINING_RELEASE"])
+)
+APP_NAME = RELEASE["app"]
 VOLUME_NAME = "overmind-sft"
 WEIGHTS_VOLUME_NAME = "overmind-weights"
 DATA_MOUNT = "/data"
@@ -59,7 +67,15 @@ from modal_shared.stacks import (  # noqa: E402
     TRAIN_U2026_8_GPOS,
 )
 
+light_image = light_image.env({"OVERMIND_TRAINING_RELEASE": json.dumps(RELEASE)})
 app = modal.App(APP_NAME)
+
+
+@app.function(image=light_image)
+def release_identity():
+    return RELEASE
+
+
 sft_vol = modal.Volume.from_name(VOLUME_NAME, create_if_missing=True)
 weights_vol = modal.Volume.from_name(WEIGHTS_VOLUME_NAME, create_if_missing=True)
 inference_secret = modal.Secret.from_name("overmind-inference")
@@ -86,7 +102,7 @@ def _write_meta(run_dir: Path, **fields) -> None:
 
 
 def _run_training(run_id: str, env: dict[str, str]) -> dict:
-    """Shared body of every training Function — only the container image differs between them."""
+    record_stage(_run_dir(run_id), "loading_model")
     run_dir = _run_dir(run_id)
     run_dir.mkdir(parents=True, exist_ok=True)
     final_dir = run_dir / "final"
@@ -107,7 +123,13 @@ def _run_training(run_id: str, env: dict[str, str]) -> dict:
         sft_vol.commit()
         return result
     weights_vol.reload()
-    _write_meta(run_dir, run_id=run_id, status="starting", started_at=time.time())
+    _write_meta(
+        run_dir,
+        run_id=run_id,
+        status="starting",
+        started_at=time.time(),
+        call_id=modal.current_function_call_id(),
+    )
     sft_vol.commit()
 
     # transformers/trl write to CWD-relative "data.jsonl"/"val.jsonl", so stage a local
@@ -139,11 +161,13 @@ def _run_training(run_id: str, env: dict[str, str]) -> dict:
     # ProgressCallback writes to run_dir on every logged step but has no Modal
     # awareness, so commit the Volume on a timer instead of coupling the training
     # script to Modal internals.
+    record_heartbeat(run_dir, new_attempt=True)
     stop_commit = threading.Event()
 
     def _commit_loop() -> None:
         while not stop_commit.wait(_VOLUME_COMMIT_INTERVAL_S):
             try:
+                record_heartbeat(run_dir)
                 sft_vol.commit()
             except Exception as exc:  # noqa: BLE001 — best-effort background commit
                 print(f"[modal_sft_worker] volume commit skipped: {exc!r}")
@@ -237,7 +261,9 @@ def _register_train(fn_name: str, image: modal.Image) -> None:
             with tempfile.TemporaryDirectory(prefix="sft-prepare-") as workspace:
                 request_path = Path(workspace) / "request.json"
                 request_path.write_text(json.dumps(request))
-                return run_preparation_process(Path(_ASSETS_REMOTE_DIR), request_path, destination)
+                return run_preparation_process(
+                    Path(_ASSETS_REMOTE_DIR), request_path, destination, commit=sft_vol.commit
+                )
         finally:
             sft_vol.commit()
 
@@ -256,7 +282,9 @@ def _register_train(fn_name: str, image: modal.Image) -> None:
 
 
 for _stack, _fn_name in TRAIN_FUNCTION_NAMES.items():
-    _register_train(_fn_name, TRAIN_IMAGES[_stack])
+    _register_train(
+        _fn_name, TRAIN_IMAGES[_stack].env({"OVERMIND_TRAINING_RELEASE": json.dumps(RELEASE)})
+    )
 
 
 @app.function(
@@ -278,10 +306,21 @@ def get_progress(run_id: str) -> dict:
                 out[key] = json.loads(p.read_text())
             except Exception:  # noqa: BLE001
                 out[key] = None
+    out["telemetry"] = read_telemetry(run_dir)
     metrics_path = run_dir / "metrics.jsonl"
     if metrics_path.exists():
-        lines = [line for line in metrics_path.read_text().splitlines() if line.strip()]
-        out["metrics"] = [json.loads(line) for line in lines]
+        with metrics_path.open() as source:
+            recent, evaluations = deque(maxlen=2000), []
+            for line in source:
+                try:
+                    event = json.loads(line)
+                except ValueError:
+                    continue
+                if event.get("event") in {"BT_EVAL", "BT_CHECKPOINT"}:
+                    evaluations.append(event)
+                else:
+                    recent.append(event)
+        out["metrics"] = [*evaluations, *recent]
     else:
         out["metrics"] = []
     final_dir = run_dir / "final"
@@ -310,7 +349,9 @@ def mark_cancelled(run_id: str) -> dict:
     timeout=3600,
     volumes={DATA_MOUNT: sft_vol},
 )
-def upload_dataset(run_id: str, preparation_id: str) -> dict:
+def upload_dataset(
+    run_id: str, preparation_id: str, artifact_sha256: str, selections: dict
+) -> dict:
     sft_vol.reload()
     run_dir = _run_dir(run_id)
     run_dir.mkdir(parents=True, exist_ok=True)
@@ -320,14 +361,17 @@ def upload_dataset(run_id: str, preparation_id: str) -> dict:
     report = json.loads((preparation / "report.json").read_text())
     if not report.get("ready"):
         raise ValueError("This preprocessing artifact has incompatible rows.")
-    selections = [
-        (run_dir / f"selected-{name}", run_dir / name)
-        for name in ("data.jsonl", "val.jsonl")
-        if (run_dir / f"selected-{name}").exists()
+    if report.get("artifact_sha256") != artifact_sha256:
+        raise ValueError("The preprocessing artifact differs from the approved preparation.")
+    if "data" not in selections or set(selections) - {"data", "val"}:
+        raise ValueError("Training selections must contain training and optional validation rows.")
+    if not selections["data"].get("rows"):
+        raise ValueError("The training selection is empty.")
+    files = [
+        (run_dir / f"selected-{name}.keys", run_dir / f"{name}.jsonl", selection)
+        for name, selection in selections.items()
     ]
-    if not selections or not (run_dir / "selected-data.jsonl").exists():
-        raise ValueError("Training selections have not been uploaded.")
-    materialize_files(preparation / "tokens.jsonl", report["artifact_sha256"], selections)
+    materialize_files(preparation / "tokens.jsonl", artifact_sha256, files)
     shutil.copytree(preparation / "tokenizer", run_dir / "tokenizer", dirs_exist_ok=True)
     (run_dir / "preparation.json").write_text(json.dumps(report))
     sft_vol.commit()
@@ -399,7 +443,7 @@ def prune_runs(*, purge: list[str], trim: list[str], drop_final: list[str] | Non
         if not run_dir.is_dir():
             continue
         dropped = False
-        for name in ("data.jsonl", "val.jsonl", "selected-data.jsonl", "selected-val.jsonl"):
+        for name in ("data.jsonl", "val.jsonl", "selected-data.keys", "selected-val.keys"):
             path = run_dir / name
             if path.is_file():
                 freed += path.stat().st_size

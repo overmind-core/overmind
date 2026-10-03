@@ -18,10 +18,10 @@ def test_optimizer_rejects_ft_and_missing_datasets():
     capability = Capability.objects.create(
         project=project, name="A", slug=f"a-{uuid.uuid4().hex[:6]}"
     )
-    ft_dataset = frozen_dataset(project, TRAIN_ROWS, name="D")
+    ft_dataset = frozen_dataset(project, TRAIN_ROWS, name="D", contract="train")
 
     assert optimizer_dataset_error(capability, ft_dataset) is not None
     assert optimizer_dataset_error(capability, None) is not None
 
-    eval_dataset = frozen_dataset(project, EVAL_ROWS, name="D2")
+    eval_dataset = frozen_dataset(project, EVAL_ROWS, name="D2", contract="eval")
     assert optimizer_dataset_error(capability, eval_dataset) is None

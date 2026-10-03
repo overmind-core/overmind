@@ -112,8 +112,8 @@ class ActiveVersion(MCPModel):
 class DatasetListItem(MCPModel):
     id: str
     name: str = Field(default="", max_length=255)
-    intent: Literal["train", "eval", "pending"]
-    source_kind: Literal["file", "traces"]
+    intent: Literal["train", "eval", "explore", "pending"]
+    source_kind: Literal["file", "traces", "pending"]
     state: Literal["landing", "diagnosing", "idle", "running", "error"]
     capability: CapabilityRef | None = None
     active: ActiveVersion | None = None
@@ -135,6 +135,7 @@ class CellSummary(MCPModel):
     rows: int = Field(ge=0)
     columns: list[dict[str, Any]] = Field(default_factory=list, max_length=100)
     fingerprint: str = Field(default="", max_length=64)
+    input_fingerprint: str = Field(default="", max_length=64)
     intent_report: dict[str, Any] = Field(default_factory=dict)
     capability_report: dict[str, Any] = Field(default_factory=dict)
     fits: FitReport
@@ -179,13 +180,21 @@ class AgentProgress(MCPModel):
 
 
 class ChatTurn(MCPModel):
+    funding_source: Literal["platform", "chatgpt"] | None = None
+    model: str | None = None
+    engine: str | None = None
+    id: str | None = None
+    intent_choice: Literal["train", "eval", "explore"] | None = None
     role: Literal["user", "agent"]
     text: str = Field(default="", max_length=_SCRIPT_CHARS)
     error: str | None = None
     cells: list[TouchedCell] = Field(default_factory=list, max_length=20)
     at: str | None = Field(default=None, max_length=80)
     ms: int | None = Field(default=None, ge=0)
-    status: Literal["running", "awaiting_approval", "resolved", "complete", "error"] | None = None
+    status: (
+        Literal["running", "awaiting_approval", "awaiting_intent", "resolved", "complete", "error"]
+        | None
+    ) = None
     progress: AgentProgress | None = None
 
 
@@ -201,7 +210,11 @@ class DatasetHumanAction(MCPModel):
 
 
 class DatasetDetail(DatasetListItem):
+    operation: dict[str, Any] = Field(default_factory=dict)
     preparation_plan: dict[str, Any] = Field(default_factory=dict)
+    brief: str = Field(default="", max_length=8000)
+    sources: list[dict[str, Any]] = Field(default_factory=list, max_length=100)
+    sources_total: int = Field(default=0, ge=0)
     preparation_context: dict[str, Any] = Field(default_factory=dict)
     contamination_report: dict[str, Any] = Field(default_factory=dict)
     capability_rank: list[CapabilityRankItem] = Field(default_factory=list, max_length=_RANK_CAP)
@@ -241,7 +254,7 @@ class DatasetMutationOutput(MCPModel):
 
 class ListDatasetsInput(MCPModel):
     capability: str | None = Field(default=None, min_length=1, max_length=255)
-    intent: Literal["train", "eval", "pending"] | None = None
+    intent: Literal["train", "eval", "explore", "pending"] | None = None
     state: Literal["landing", "diagnosing", "idle", "running", "error"] | None = None
     search: str | None = Field(default=None, min_length=1, max_length=255)
     limit: int = Field(default=20, ge=1, le=_LIST_CAP)
@@ -308,6 +321,7 @@ class CreateDatasetFromTracesInput(MCPModel):
     """One row lands per trace. Either ``trace_ids`` or a filter selection, never both."""
 
     name: str = Field(min_length=1, max_length=255, description="Dataset name.")
+    brief: str = Field(default="", max_length=8000)
     trace_ids: list[str] | None = Field(
         default=None,
         max_length=10_000,
@@ -399,7 +413,19 @@ class MessageDatasetAgentInput(MCPModel):
         max_length=255,
         validation_alias=AliasChoices("dataset", "dataset_id"),
     )
-    message: str = Field(min_length=1, max_length=_SCRIPT_CHARS)
+    message: str = Field(default="", max_length=_SCRIPT_CHARS)
+    intent_choice: Literal["train", "eval", "explore"] | None = None
+    intent_turn_id: str | None = Field(default=None, min_length=1, max_length=80)
+
+    @model_validator(mode="after")
+    def valid_message(self):
+        if bool(self.intent_choice) != bool(self.intent_turn_id):
+            raise ValueError("Provide the intent choice and question id together.")
+        if self.intent_choice and self.message.strip():
+            raise ValueError("Answer the intent question separately from a message.")
+        if not self.intent_choice and not self.message.strip():
+            raise ValueError("Write a message or answer the intent question.")
+        return self
 
 
 class RunDatasetInput(MCPModel):
@@ -445,6 +471,13 @@ def mutation_output(
         calls=calls,
         resource_links=links,
     )
+
+
+class StartDatasetInput(MCPModel):
+    brief: str = Field(min_length=1, max_length=8000)
+    name: str = Field(default="Untitled dataset", min_length=1, max_length=255)
+    intent: Literal["train", "eval", "explore", "pending"] = "pending"
+    capability: str | None = Field(default=None, max_length=255)
 
 
 def _chain(dataset) -> list[Cell]:
@@ -537,6 +570,7 @@ def _cell_summary(dataset, cell: Cell, versions: dict, frozen_before: int) -> Ce
         rows=int(cell.rows or 0),
         columns=columns,
         fingerprint=cell.fingerprint or "",
+        input_fingerprint=cell.input_fingerprint or "",
         intent_report=_jsonable(cell.intent_report or {}),
         capability_report=_jsonable(cell.capability_report or {}),
         review=_jsonable(cell.review),
@@ -626,6 +660,11 @@ def _chat(raw, limit: int) -> list[ChatTurn]:
         ms = item.get("ms")
         out.append(
             ChatTurn(
+                funding_source=item.get("funding_source"),
+                model=item.get("model"),
+                engine=item.get("engine"),
+                id=item.get("id"),
+                intent_choice=item.get("intent_choice"),
                 role=role,
                 text=_clip(str(item.get("text") or "")),
                 error=error,
@@ -646,10 +685,10 @@ def _human_action(dataset, active: Cell | None) -> DatasetHumanAction | None:
             command="overmind dataset export DATASET --json",
             arguments={"dataset": str(dataset.id), "project_id": project_id},
         )
-    if dataset.source_kind == Dataset.SourceKind.FILE:
+    if dataset.source_kind in {Dataset.SourceKind.FILE, Dataset.SourceKind.PENDING}:
         return DatasetHumanAction(
-            command="overmind dataset upload FILE --json",
-            arguments={"file": "<path>", "project_id": project_id},
+            command="overmind dataset upload FILE --dataset DATASET --json",
+            arguments={"file": "<path>", "project_id": project_id, "dataset": str(dataset.id)},
         )
     return None
 
@@ -768,6 +807,10 @@ def serialize_dataset_detail(dataset, *, chat_limit: int = _CHAT_DEFAULT) -> Dat
     return DatasetDetail.model_validate(
         {
             **fields,
+            "operation": _jsonable(dataset.operation),
+            "brief": dataset.brief,
+            "sources": _jsonable(dataset.source_spec.get("sources", [])[:100]),
+            "sources_total": len(dataset.source_spec.get("sources", [])),
             "preparation_context": _jsonable(workshop_context(dataset)),
             "preparation_plan": _jsonable(preparation.describe(dataset)),
             "capability_rank": _rank(dataset.capability_rank),

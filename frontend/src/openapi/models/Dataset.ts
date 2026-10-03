@@ -89,6 +89,12 @@ export interface Dataset {
     name: string;
     /**
      *
+     * @type {string}
+     * @memberof Dataset
+     */
+    readonly brief: string;
+    /**
+     *
      * @type {DatasetSourceKindEnum}
      * @memberof Dataset
      */
@@ -155,6 +161,12 @@ export interface Dataset {
     readonly preparationPlan: PreparationPlan | null;
     /**
      *
+     * @type {any}
+     * @memberof Dataset
+     */
+    readonly operation: any | null;
+    /**
+     *
      * @type {DatasetStateEnum}
      * @memberof Dataset
      */
@@ -206,6 +218,7 @@ export function instanceOfDataset(value: object): value is Dataset {
     if (!('id' in value) || value['id'] === undefined) return false;
     if (!('project' in value) || value['project'] === undefined) return false;
     if (!('name' in value) || value['name'] === undefined) return false;
+    if (!('brief' in value) || value['brief'] === undefined) return false;
     if (!('sourceKind' in value) || value['sourceKind'] === undefined) return false;
     if (!('sourceSpec' in value) || value['sourceSpec'] === undefined) return false;
     if (!('capabilityName' in value) || value['capabilityName'] === undefined) return false;
@@ -214,6 +227,7 @@ export function instanceOfDataset(value: object): value is Dataset {
     if (!('rows' in value) || value['rows'] === undefined) return false;
     if (!('readiness' in value) || value['readiness'] === undefined) return false;
     if (!('preparationPlan' in value) || value['preparationPlan'] === undefined) return false;
+    if (!('operation' in value) || value['operation'] === undefined) return false;
     if (!('state' in value) || value['state'] === undefined) return false;
     if (!('error' in value) || value['error'] === undefined) return false;
     if (!('cells' in value) || value['cells'] === undefined) return false;
@@ -237,6 +251,7 @@ export function DatasetFromJSONTyped(json: any, ignoreDiscriminator: boolean): D
         'id': json['id'],
         'project': json['project'],
         'name': json['name'],
+        'brief': json['brief'],
         'sourceKind': DatasetSourceKindEnumFromJSON(json['source_kind']),
         'sourceSpec': json['source_spec'],
         'capability': json['capability'] == null ? undefined : json['capability'],
@@ -248,6 +263,7 @@ export function DatasetFromJSONTyped(json: any, ignoreDiscriminator: boolean): D
         'rows': json['rows'],
         'readiness': DatasetReadinessFromJSON(json['readiness']),
         'preparationPlan': PreparationPlanFromJSON(json['preparation_plan']),
+        'operation': json['operation'],
         'state': DatasetStateEnumFromJSON(json['state']),
         'error': json['error'],
         'cells': ((json['cells'] as Array<any>).map(CellFromJSON)),
@@ -262,7 +278,7 @@ export function DatasetToJSON(json: any): Dataset {
     return DatasetToJSONTyped(json, false);
 }
 
-export function DatasetToJSONTyped(value?: Omit<Dataset, 'id'|'project'|'source_kind'|'source_spec'|'capability_name'|'capability_rank'|'active_version'|'rows'|'readiness'|'preparation_plan'|'state'|'error'|'cells'|'chat'|'created_by'|'created_at'|'updated_at'> | null, ignoreDiscriminator: boolean = false): any {
+export function DatasetToJSONTyped(value?: Omit<Dataset, 'id'|'project'|'brief'|'source_kind'|'source_spec'|'capability_name'|'capability_rank'|'active_version'|'rows'|'readiness'|'preparation_plan'|'operation'|'state'|'error'|'cells'|'chat'|'created_by'|'created_at'|'updated_at'> | null, ignoreDiscriminator: boolean = false): any {
     if (value == null) {
         return value;
     }

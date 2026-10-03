@@ -10,6 +10,7 @@ import type { Dataset } from "@/openapi";
 export const SOURCE_KIND_LABEL: Record<string, string> = {
   file: "File",
   llm_calls: "LLM calls",
+  pending: "Pending",
   traces: "Traces",
 };
 
@@ -23,7 +24,11 @@ export function IntentBadge({
 }) {
   if (!intent) return null;
   return (
-    <Badge className={className} size="chip" variant={intent === "pending" ? "neutral" : "success"}>
+    <Badge
+      className={className}
+      size="chip"
+      variant={intent === "pending" || intent === "explore" ? "neutral" : "success"}
+    >
       {INTENT_LABEL[intent] ?? intent}
     </Badge>
   );

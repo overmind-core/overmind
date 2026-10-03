@@ -31,7 +31,7 @@ def training_fingerprint(assets: Path) -> str:
     for path in sorted(p for p in assets.rglob("*") if p.suffix in {".py", ".sh"}):
         digest.update(str(path.relative_to(assets)).encode())
         digest.update(path.read_bytes())
-    for name in ("decision_checkpoint.py", "decision_batching.py"):
+    for name in ("decision_checkpoint.py", "decision_batching.py", "training_telemetry.py"):
         digest.update(name.encode())
         digest.update(Path(__file__).with_name(name).read_bytes())
     return digest.hexdigest()
@@ -66,7 +66,9 @@ def validate_preparation_report(report) -> dict:
     return report
 
 
-def run_preparation_process(assets: Path, request_path: Path, destination: Path) -> dict:
+def run_preparation_process(
+    assets: Path, request_path: Path, destination: Path, *, commit=None
+) -> dict:
     destination.mkdir(parents=True, exist_ok=True)
     report_path = destination / "report.json"
     # A retry must not accept the previous attempt's report after a subprocess failure.
@@ -92,6 +94,13 @@ def run_preparation_process(assets: Path, request_path: Path, destination: Path)
             print(line, end="", flush=True)
             log.write(line)
             log.flush()
+            if commit is not None:
+                try:
+                    event = json.loads(line)
+                except ValueError:
+                    continue
+                if isinstance(event, dict) and event.get("preparation_shard_committed") is True:
+                    commit()
         process.wait()
     if process.returncode:
         report = preparation_failure("process_failed")

@@ -28,7 +28,7 @@ def _setup():
         projects_limit=5,
     )
     ProjectMembership.objects.create(user=user, project=project)
-    dataset = frozen_dataset(project, TRAIN_ROWS, name="ds")
+    dataset = frozen_dataset(project, TRAIN_ROWS, name="ds", contract="train")
     capability = Capability.objects.create(
         project=project,
         name="support-bot",

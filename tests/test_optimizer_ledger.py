@@ -31,7 +31,10 @@ def _capability_with_eval_dataset():
         project=project, name="a", slug=f"a-{uuid.uuid4().hex[:6]}"
     )
     dataset = frozen_dataset(
-        project, [{"input": {"q": 1}, "expected_output": "one"}], capability=capability
+        project,
+        [{"input": {"q": 1}, "expected_output": "one"}],
+        capability=capability,
+        contract="eval",
     )
     return capability, dataset
 

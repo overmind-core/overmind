@@ -29,6 +29,8 @@ import type {
   FinetuningRecommendRequestRequest,
   FinetuningRecommendationResponse,
   ModelSwapPrompt,
+  NativeEvaluation,
+  NativeEvaluationRequestRequest,
   PaginatedFinetuningJobEventList,
   PaginatedFinetuningJobListList,
   PaginatedFinetuningJobRunList,
@@ -63,6 +65,10 @@ import {
     FinetuningRecommendationResponseToJSON,
     ModelSwapPromptFromJSON,
     ModelSwapPromptToJSON,
+    NativeEvaluationFromJSON,
+    NativeEvaluationToJSON,
+    NativeEvaluationRequestRequestFromJSON,
+    NativeEvaluationRequestRequestToJSON,
     PaginatedFinetuningJobEventListFromJSON,
     PaginatedFinetuningJobEventListToJSON,
     PaginatedFinetuningJobListListFromJSON,
@@ -161,6 +167,11 @@ export interface FinetuningJobsModelSwapPromptRetrieveRequest {
 export interface FinetuningJobsModelsRetrieveRequest {
     hasToolCalling?: boolean;
     maxContext?: number;
+}
+
+export interface FinetuningJobsNativeEvaluationCreateRequest {
+    id: string;
+    nativeEvaluationRequestRequest: NativeEvaluationRequestRequest;
 }
 
 export interface FinetuningJobsPartialUpdateRequest {
@@ -1098,6 +1109,71 @@ export class FinetuningJobsApi extends runtime.BaseAPI {
     }
 
     /**
+     */
+    async finetuningJobsNativeEvaluationCreateRaw(requestParameters: FinetuningJobsNativeEvaluationCreateRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<NativeEvaluation>> {
+        if (requestParameters['id'] == null) {
+            throw new runtime.RequiredError(
+                'id',
+                'Required parameter "id" was null or undefined when calling finetuningJobsNativeEvaluationCreate().'
+            );
+        }
+
+        if (requestParameters['nativeEvaluationRequestRequest'] == null) {
+            throw new runtime.RequiredError(
+                'nativeEvaluationRequestRequest',
+                'Required parameter "nativeEvaluationRequestRequest" was null or undefined when calling finetuningJobsNativeEvaluationCreate().'
+            );
+        }
+
+        const queryParameters: any = {};
+
+        const headerParameters: runtime.HTTPHeaders = {};
+
+        headerParameters['Content-Type'] = 'application/json';
+
+        if (this.configuration && this.configuration.accessToken) {
+            const token = this.configuration.accessToken;
+            const tokenString = await token("ClerkBearerAuth", []);
+
+            if (tokenString) {
+                headerParameters["Authorization"] = `Bearer ${tokenString}`;
+            }
+        }
+        if (this.configuration && this.configuration.apiKey) {
+            headerParameters["X-Api-Key"] = await this.configuration.apiKey("X-Api-Key"); // ApiKeyAuth authentication
+        }
+
+        if (this.configuration && this.configuration.accessToken) {
+            const token = this.configuration.accessToken;
+            const tokenString = await token("BearerAuth", []);
+
+            if (tokenString) {
+                headerParameters["Authorization"] = `Bearer ${tokenString}`;
+            }
+        }
+
+        let urlPath = `/api/finetuning-jobs/{id}/native-evaluation/`;
+        urlPath = urlPath.replace(`{${"id"}}`, encodeURIComponent(String(requestParameters['id'])));
+
+        const response = await this.request({
+            path: urlPath,
+            method: 'POST',
+            headers: headerParameters,
+            query: queryParameters,
+            body: NativeEvaluationRequestRequestToJSON(requestParameters['nativeEvaluationRequestRequest']),
+        }, initOverrides);
+
+        return new runtime.JSONApiResponse(response, (jsonValue) => NativeEvaluationFromJSON(jsonValue));
+    }
+
+    /**
+     */
+    async finetuningJobsNativeEvaluationCreate(requestParameters: FinetuningJobsNativeEvaluationCreateRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<NativeEvaluation> {
+        const response = await this.finetuningJobsNativeEvaluationCreateRaw(requestParameters, initOverrides);
+        return await response.value();
+    }
+
+    /**
      * Update finetuning job metadata
      */
     async finetuningJobsPartialUpdateRaw(requestParameters: FinetuningJobsPartialUpdateRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<FinetuningJob>> {
@@ -1519,6 +1595,7 @@ export const FinetuningJobsEventsListStatusEnum = {
     preparing: 'preparing',
     queued: 'queued',
     running: 'running',
+    submission_unknown: 'submission_unknown',
     succeeded: 'succeeded'
 } as const;
 export type FinetuningJobsEventsListStatusEnum = typeof FinetuningJobsEventsListStatusEnum[keyof typeof FinetuningJobsEventsListStatusEnum];
@@ -1543,6 +1620,7 @@ export const FinetuningJobsListStatusEnum = {
     preparing: 'preparing',
     queued: 'queued',
     running: 'running',
+    submission_unknown: 'submission_unknown',
     succeeded: 'succeeded'
 } as const;
 export type FinetuningJobsListStatusEnum = typeof FinetuningJobsListStatusEnum[keyof typeof FinetuningJobsListStatusEnum];
@@ -1567,6 +1645,7 @@ export const FinetuningJobsRunsListStatusEnum = {
     preparing: 'preparing',
     queued: 'queued',
     running: 'running',
+    submission_unknown: 'submission_unknown',
     succeeded: 'succeeded'
 } as const;
 export type FinetuningJobsRunsListStatusEnum = typeof FinetuningJobsRunsListStatusEnum[keyof typeof FinetuningJobsRunsListStatusEnum];

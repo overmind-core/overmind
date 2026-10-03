@@ -41,6 +41,7 @@ def _experiment(*, mode=MODE, model_ids=None, status=None, openrouter_key_source
             {"input": {"question": "world"}, "expected_output": "b"},
         ],
         capability=capability,
+        contract="eval",
     )
     kwargs = {}
     if openrouter_key_source is not None:

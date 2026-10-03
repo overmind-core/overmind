@@ -14,11 +14,17 @@ from modal_shared.images.train import TRAIN_IMAGES
 from modal_shared.preparation import training_fingerprint
 from modal_shared.serving.artifacts import atomic_json, digest_file
 from modal_shared.stacks import TRAIN_U2026_8_18
+from modal_shared.training_release import evaluation_identity
 
-app = modal.App("overmind-decision-evaluation")
+RELEASE = (
+    evaluation_identity(Path(__file__).resolve().parents[2])
+    if modal.is_local()
+    else json.loads(os.environ["OVERMIND_EVALUATION_RELEASE"])
+)
+app = modal.App(RELEASE["app"])
 volume = modal.Volume.from_name("overmind-sft")
 weights = modal.Volume.from_name("overmind-weights")
-image = TRAIN_IMAGES[TRAIN_U2026_8_18]
+image = TRAIN_IMAGES[TRAIN_U2026_8_18].env({"OVERMIND_EVALUATION_RELEASE": json.dumps(RELEASE)})
 assets = Path("/root/sft_assets")
 
 

@@ -1,5 +1,7 @@
 # Native decision models in Overmind
 
+> Historical experiment record. Current implementation and qualification are tracked in [the platform verification report](platform-improvements/verification-plan.md). Earlier launch holds, runtime limitations and estimates below describe their recorded point in time. The authorized full run is `a356c75d-788a-4a35-bd30-1d24ae7afab8`; its existing completion protocol remains authoritative. New platform changes are isolated and have not been deployed over it.
+
 The working model is a pretrained Qwen3.5-4B backbone with one shared LoRA adapter and runtime option scoring. It returns a probability for every supplied option. Weighted soft-target cross-entropy trains choices, binary probabilities and ordinal distributions without converting labels into generated text. This is an independent Jev-style design; it does not claim to reproduce proprietary Jev architecture or training.
 
 The user has placed a hold on the full training launch pending cost and time estimates. The current throughput pilot and exact preparation may finish; do not execute the saved full-run request without renewed user instruction to proceed.

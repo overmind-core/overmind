@@ -63,6 +63,7 @@ export const Icon = {
   finetuning: BarbellVertical,
   folder: glyph("folder"),
   folderAdd: glyph("folder-plus"),
+  folderOpen: glyph("folder-open"),
   forward: glyph("arrow-right"),
   gitBranch: glyph("git-branch"),
   grid: glyph("grid-3x3"),
@@ -126,6 +127,7 @@ export const Icon = {
   view: glyph("eye"),
   warning: glyph("warning-diamond"),
   workshop: glyph("settings-cog-2"),
+  workshopTitle: TitleChart,
   zap: glyph("zap"),
 } as const;
 

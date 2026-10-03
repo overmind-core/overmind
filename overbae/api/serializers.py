@@ -12,6 +12,7 @@ from rest_framework.validators import UniqueTogetherValidator
 
 from modal_shared.decisions import DECISION_OBJECTIVE, TEXT_OBJECTIVE
 from overbae.api.model_activation import ModelActivationSerializer
+from overbae.api.native_evaluation import NativeEvaluationSerializer
 from overbae.api.scoping import project_ids_for
 from overbae.core.errors import InputValidationError
 from overbae.core.model_registry import judge_picker_models
@@ -50,6 +51,8 @@ from overbae.services.deployment import deployment_progress
 from overbae.services.eval.trace_scoring import STATUS_ERROR
 from overbae.services.model_activation import start_activation
 from overbae.services.serving_context import evaluation_budget, serving_plan
+from overbae.services.training_contract import contract
+from overbae.services.training_record import requested_configuration, run_record
 
 logger = logging.getLogger(__name__)
 
@@ -1067,12 +1070,21 @@ def _describe_cell(job: FinetuningJob) -> dict | None:
 
 
 class FinetuningJobListSerializer(serializers.ModelSerializer):
+    native_evaluation = NativeEvaluationSerializer(read_only=True, allow_null=True)
+    training_contract = serializers.SerializerMethodField()
+
+    @extend_schema_field(serializers.JSONField())
+    def get_training_contract(self, obj):
+        return contract(obj.cell, obj.hyperparameters)
+
     deployed_model_id = serializers.SerializerMethodField()
     cell_info = serializers.SerializerMethodField()
 
     class Meta:
         model = FinetuningJob
         fields = [
+            "training_contract",
+            "native_evaluation",
             "id",
             "project",
             "capability",
@@ -1134,17 +1146,45 @@ class FinetuningJobRunSerializer(serializers.Serializer):
 
 
 class FinetuningJobSerializer(serializers.ModelSerializer):
+    native_evaluation = NativeEvaluationSerializer(read_only=True, allow_null=True)
+    record = serializers.SerializerMethodField()
+
+    @extend_schema_field(serializers.JSONField())
+    def get_record(self, obj):
+        return run_record(obj)
+
+    def validate_accepted_findings(self, value):
+        if (
+            not isinstance(value, list)
+            or len(value) > 100
+            or any(
+                not isinstance(item, str) or not item.strip() or len(item) > 2000 for item in value
+            )
+        ):
+            raise serializers.ValidationError("Provide at most 100 nonblank finding descriptions.")
+        return value
+
     eval_judge_model = serializers.ChoiceField(choices=["", *judge_picker_models()], required=False)
     events = FinetuningJobEventSerializer(many=True, read_only=True)
     deployed_model_id = serializers.SerializerMethodField()
     cell_info = serializers.SerializerMethodField()
-    eval_dataset = serializers.PrimaryKeyRelatedField(queryset=Dataset.objects.all())
-    eval_set = serializers.PrimaryKeyRelatedField(queryset=EvalSet.objects.all())
+    eval_dataset = serializers.PrimaryKeyRelatedField(
+        queryset=Dataset.objects.all(), required=False, allow_null=True
+    )
+    eval_set = serializers.PrimaryKeyRelatedField(
+        queryset=EvalSet.objects.all(), required=False, allow_null=True
+    )
     baseline_model = serializers.CharField(required=False, max_length=255)
 
     class Meta:
         model = FinetuningJob
+        validators = []
         fields = [
+            "request_key",
+            "requested_configuration",
+            "accepted_findings",
+            "record",
+            "native_evaluation",
             "id",
             "project",
             "capability",
@@ -1193,6 +1233,9 @@ class FinetuningJobSerializer(serializers.ModelSerializer):
             "events",
         ]
         read_only_fields = [
+            "requested_configuration",
+            "record",
+            "native_evaluation",
             "id",
             "triggered_by",
             "status",
@@ -1254,8 +1297,34 @@ class FinetuningJobSerializer(serializers.ModelSerializer):
         except DatasetError as exc:
             raise serializers.ValidationError({field: exc.detail}) from exc
 
+    def validate_request_key(self, value):
+        return value.strip() or None if value is not None else None
+
     @transaction.atomic
     def create(self, validated_data):
+        Project.objects.select_for_update().get(pk=validated_data["project"].pk)
+        key = validated_data.get("request_key")
+        prior = (
+            FinetuningJob.objects.filter(project=validated_data["project"], request_key=key).first()
+            if key
+            else None
+        )
+        requested = requested_configuration(
+            validated_data,
+            runtime=(prior.requested_configuration or {}).get("runtime") if prior else None,
+        )
+        if key:
+            existing = FinetuningJob.objects.filter(
+                project=validated_data["project"], request_key=key
+            ).first()
+            if existing is not None:
+                if existing.requested_configuration.get("fingerprint") != requested["fingerprint"]:
+                    raise serializers.ValidationError(
+                        {"request_key": "This launch key already belongs to a different recipe."}
+                    )
+                existing.launch_reused = True
+                return existing
+        validated_data["requested_configuration"] = requested
         datasets = [
             validated_data.get(key) for key in ("dataset", "validation_dataset", "eval_dataset")
         ]
@@ -1289,6 +1358,18 @@ class FinetuningJobSerializer(serializers.ModelSerializer):
         attrs = super().validate(attrs)
         if self.instance is not None:
             for field in (
+                "request_key",
+                "base_model",
+                "hyperparameters",
+                "validation_enabled",
+                "validation_split_ratio",
+                "split_method",
+                "eval_set",
+                "eval_model_before",
+                "eval_model_after",
+                "eval_incumbent_before",
+                "eval_incumbent_after",
+                "accepted_findings",
                 "project",
                 "capability",
                 "dataset",
@@ -1399,6 +1480,9 @@ class FinetuningJobSerializer(serializers.ModelSerializer):
                 )
             hp["objective"] = objective
             if objective == DECISION_OBJECTIVE:
+                for choice in ("eval_model_before", "eval_model_after"):
+                    if self.instance is None and choice not in self.initial_data:
+                        attrs[choice] = False
                 if (hp.get("training_type") or {}).get("type", "Lora") != "Lora":
                     raise serializers.ValidationError(
                         {
@@ -1430,6 +1514,23 @@ class FinetuningJobSerializer(serializers.ModelSerializer):
                         )
                     attrs[field] = False
             attrs["hyperparameters"] = hp
+
+        if any(
+            attrs.get(field, getattr(self.instance, field, False))
+            for field in (
+                "eval_model_before",
+                "eval_model_after",
+                "eval_incumbent_before",
+                "eval_incumbent_after",
+            )
+        ):
+            missing = {
+                field: "Select this input when training evaluations are enabled."
+                for field in ("eval_dataset", "eval_set")
+                if not attrs.get(field, getattr(self.instance, field, None))
+            }
+            if missing:
+                raise serializers.ValidationError(missing)
 
         base_model = attrs.get("base_model") or getattr(self.instance, "base_model", None)
         entry = None
@@ -1590,7 +1691,7 @@ class FinetuningCostEstimateSerializer(serializers.Serializer):
 
 
 class FinetuningTimeEstimateSerializer(serializers.Serializer):
-    seconds = serializers.IntegerField()
+    seconds = serializers.IntegerField(allow_null=True)
     human = serializers.CharField()
 
 
@@ -1716,6 +1817,12 @@ class FinetuningRecommendationResponseSerializer(serializers.Serializer):
 
 
 class FinetuningEstimateRequestSerializer(serializers.Serializer):
+    cell = serializers.UUIDField(required=False)
+    validation_cell = serializers.UUIDField(required=False)
+    validation_enabled = serializers.BooleanField(default=True)
+    validation_split_ratio = serializers.FloatField(default=0.2, min_value=0.05, max_value=0.5)
+    split_method = serializers.ChoiceField(choices=["random", "ordered"], default="random")
+    hyperparameters = serializers.JSONField(default=dict)
     dataset_id = serializers.UUIDField()
     base_model = serializers.CharField()
     n_epochs = serializers.IntegerField(min_value=1)
@@ -1728,6 +1835,7 @@ class FinetuningModelDefaultsRequestSerializer(serializers.Serializer):
 
 
 class FinetuningEstimateResponseSerializer(serializers.Serializer):
+    forecast = serializers.JSONField(required=False, allow_null=True)
     cost_estimate = FinetuningCostEstimateSerializer(allow_null=True)
     time_estimate = FinetuningTimeEstimateSerializer()
     trained_tokens = serializers.IntegerField()
@@ -1769,9 +1877,20 @@ class FinetuningModelCatalogResponseSerializer(serializers.Serializer):
     max_context = serializers.IntegerField(allow_null=True)
 
 
+class DatasetValidateRequestSerializer(serializers.Serializer):
+    dataset_id = serializers.UUIDField()
+    cell_id = serializers.UUIDField(required=False)
+    validation_cell_id = serializers.UUIDField(required=False)
+    validation_dataset_id = serializers.UUIDField(required=False, allow_null=True)
+    validation_enabled = serializers.BooleanField(default=True)
+    validation_split_ratio = serializers.FloatField(default=0.2, min_value=0.05, max_value=0.5)
+    split_method = serializers.ChoiceField(choices=["random", "ordered"], default="random")
+
+
 class DatasetValidationStatsSerializer(serializers.Serializer):
     """``ValidationResult.stats`` — sparse; keys depend on validation path."""
 
+    checkpoint = serializers.UUIDField(required=False)
     total_examples = serializers.IntegerField(required=False)
     trainable_examples = serializers.IntegerField(required=False)
     train_examples = serializers.IntegerField(required=False)

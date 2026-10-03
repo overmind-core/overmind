@@ -89,13 +89,23 @@ def present(value) -> bool:
 
 def contamination_keys(row: dict, group_by=()) -> set[tuple[str, str]]:
     keys = {("content", content_key(row))}
-    for column in {"trace_id", "source_trace_id", "conversation_id", "group_id", *group_by}:
+    for column in {
+        "trace_id",
+        "source_trace_id",
+        "conversation_id",
+        "group_id",
+        "document_id",
+        "_overmind_document_id",
+        *group_by,
+    }:
         try:
             value = field_value(row, column)
         except ValueError:
             continue
         if present(value):
-            kind = "trace_id" if column == "source_trace_id" else column
+            kind = {"source_trace_id": "trace_id", "_overmind_document_id": "document_id"}.get(
+                column, column
+            )
             keys.add((kind, _canonical(value)))
     for value in input_objects(row):
         for column in ("packet_id", "onboarding_packet_id", "case_id", "example_id"):

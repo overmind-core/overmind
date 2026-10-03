@@ -21,8 +21,7 @@ the exact train and held-out eval cells. Inspect whole-frame task families and
 workshop findings rather than assuming a sample describes the whole corpus.
 
 Use `get_model_catalog` for initial model discovery, then
-`check_finetune_readiness` for the selected dataset. A capability is optional;
-held-out evaluation data and an applicable eval set are required. Use the
+`check_finetune_readiness` for the selected dataset. A capability is optional. Ordinary held-out evaluation data and an applicable eval set are required only when those chat evaluations are selected. Native decision training has a separate native suite plan. Use the
 returned requirements to identify technical blockers. Quality findings,
 overlap and incomplete semantic reviews remain visible advisory warnings.
 
@@ -60,3 +59,11 @@ or a repository model swap. For requested checkpoint export, use
 
 Open `training` under the project's Console base with its `projectId` for the
 visual job dashboard. Retain the exact job and deployment IDs in the report.
+
+## Durable experiment receipts
+
+Pass the same explicit train/validation/evaluation cell IDs and evaluation choices to readiness, estimate and launch. Supply one stable `request_key` per intended experiment and reuse it after an uncertain client response. A changed recipe needs a new deliberate experiment; do not work around a conflict by generating another key automatically. Inspect the job's requested/effective settings and run record. Unresolved provider submission must be reconciled, never relaunched.
+
+For a native decision checkpoint, use `schedule_native_evaluation` with separate frozen calibration and final decision cells. This authorizes paid paired unchanged-base/candidate evaluation after verified checkpoint completion. Poll `get_job(kind=native_evaluation)` and follow its links. References stay local; known incompatible inputs remain visible in coverage. Calibration is frozen before final results. Report raw and calibrated metrics, source slices, paired confidence intervals and regressions separately from training loss.
+
+An unknown native forecast is not a zero-dollar quote. GPU ledger spend excludes unreported preparation, CPU/memory, evaluation and storage. Compare measured work and forecast ranges without describing them as a spending cap. Native checkpoints are probability artifacts and do not enter chat deployment or activation.

@@ -62,6 +62,8 @@ cp .env.example .env    # set the required keys below
 docker compose up -d    # Postgres, Redis, API on :8000, Console on :5173, Celery workers, beat, Grafana on :3001
 ```
 
+Document uploads include local English OCR for scanned PDFs, embedded images and direct PNG/JPEG/WebP uploads. Direct images are capped at 100 MB and 64 megapixels; animated images are not supported. The Docker image includes Tesseract and its English/orientation data. For workers or backend tests outside Docker, install `tesseract-ocr`, `tesseract-ocr-eng` and `tesseract-ocr-osd` on Debian/Ubuntu, or `brew install tesseract` on macOS. No external OCR service is required.
+
 On first boot the API runs migrations and seeds the built-in evaluators; Swagger is at `/api/docs/`. Sign in at `http://localhost:5173` with any email and password. `docker compose exec api python manage.py seed_demo --owner <your email>` loads a full demo workspace.
 
 <details>
@@ -72,7 +74,7 @@ The API refuses to start until every required key is set, and the error names ea
 | Required                                                        | Used for                                                                               |
 | --------------------------------------------------------------- | -------------------------------------------------------------------------------------- |
 | `OPENROUTER_API_KEY`                                            | Judges, evals, trace scoring, the Data Workshop, optimiser scoring, frontier inference |
-| `MODAL_TOKEN_ID`, `MODAL_TOKEN_SECRET`                          | Modal training and serving workers (`MODAL_ENVIRONMENT` defaults to `overmind-dev`)    |
+| `MODAL_TOKEN_ID`, `MODAL_TOKEN_SECRET`                          | Modal training and serving workers (set `MODAL_ENVIRONMENT` explicitly)                |
 | `INFERENCE_API_URL`, `INFERENCE_API_KEY`                        | Serving trained models — the endpoint printed by `modal deploy` and its shared secret  |
 | `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_BUCKET_NAME` | The fine-tuning checkpoint archive                                                     |
 | `HF_TOKEN`                                                      | Gated Hugging Face base models; also set it in the Modal secret                        |
@@ -85,6 +87,18 @@ The API refuses to start until every required key is set, and the error names ea
 | `STRIPE_SECRET_KEY`                   | Paid plans and the credit cap; without it, usage is metered with no cap                |
 
 Fine-tuning and serving also need the Modal workers deployed (`modal deploy overbae/modal/modal_vllm_worker.py`, `register_model.py` and `modal_sft_worker.py`) and a Modal secret named `overmind-inference` with the AWS keys, `INFERENCE_API_KEY` and `HF_TOKEN`.
+
+Self-hosted users can choose **Continue with ChatGPT** on the initial login
+screen, creating their local account without a password. Existing local accounts
+confirm their Overmind password once in the same flow. Plan permission enables
+ChatGPT funding with an available account model; the Workshop picker can change it.
+Settings also supports connecting and managing ChatGPT accounts. Open the
+Console at `http://127.0.0.1:5173`; the default OAuth callback is
+`http://127.0.0.1:8000/api/chatgpt/callback/`. Keep Clerk and Stripe secrets blank.
+ChatGPT-funded turns and semantic checks record zero Overmind credit charges;
+plan limits stop the request. Evaluation runs, training and serving keep their
+existing billing. See [self-hosting](https://docs.overmindlab.ai/platform/self-hosting)
+for configuration and private VM setup.
 
 </details>
 

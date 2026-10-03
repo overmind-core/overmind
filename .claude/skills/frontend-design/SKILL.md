@@ -5,7 +5,7 @@ description: Overmind Console design system — semantic tokens, shared primitiv
 
 # Frontend design conventions
 
-The Console is "a quiet workshop for agent improvement" — warm minimalism, copper/gold brand, NeueBit (pixel, display + labels) and PP Neue Montreal (body), small radii, no shadows. Keep it; don't drift toward default Tailwind.
+The Console is "a quiet workshop for agent improvement" — warm minimalism, copper/gold brand, NeueBit (pixel, display + labels) and PP Neue Montreal (body), small radii, flat surfaces. Keep it; don't drift toward default Tailwind.
 
 The token spec is the root `DESIGN.md` — extend its values, don't restructure it. Tokens are declared in `frontend/src/styles.css` under `@theme inline`.
 
@@ -40,8 +40,8 @@ Anything below `/60` is invisible. Never lower a border opacity without running 
 
 ## Geometry, type, icons
 
-- **No box-shadows** — every `--shadow-*` is `none`, so `shadow-*` utilities are dead no-ops. Depth = surface layering + 1px borders.
-- Radii: `rounded-sm` for interactive primitives, `rounded-md` for containers. `rounded-lg/xl/2xl/3xl` are off-system.
+- **Flat surfaces** — standard `shadow-*` utilities remain disabled. Depth = surface layering + 1px borders. Shared confirmation dialogs alone use `shadow-confirmation`, a subtle theme-aware drop shadow requested by the user.
+- Radii: `rounded-sm` for interactive primitives, `rounded-md` for containers. `rounded-lg/xl/2xl/3xl` are off-system. The Workshop bezel, landing and notebook composer frames and inner input panels use the same `rounded-md` (3px) as other pages. Workspace navigation shares the outer bezel with the content; its 248px grid column expands and collapses on route changes or the notebook's folder toggle, with a reduced-motion alternative. Mobile reveals the same navigation in the bezel while retaining the hidden notebook; it does not create a separate pane.
 - Headings use `font-display` (NeueBit, unweighted). `font-mono` is the loaded system stack — Fira Code is not shipped, don't reference it.
 - Icons: **always the central registry** — `import { Icon } from "@/components/ui/icons"` → `<Icon.name className="size-4" />`. The glyphs are pixelarticons paths vendored into `ui/icons/glyphs.ts` (24×24 grid, 2px inset, `currentColor`); never import that module or `lucide-react` in app code; both fail `check:design`. One concept = one glyph (`Icon.delete` = trash, `Icon.close`/`Icon.failed` = the "X"). Missing a glyph? Add `name: glyph("<svg-name>")` to `ui/icons/index.ts`, the only file that may read the table, then `bun run icons:vendor` with `PIXELARTICONS_LICENSE_KEY` set (or `--source <svg dir>` of an unlocked package) — typecheck fails until the table is regenerated. Removing one is the reverse. There is no icon package to install. Sizes: `size-4` in buttons, `size-[17px]` in nav, `size-3` for dense chips.
 

@@ -12,7 +12,16 @@ from rest_framework.exceptions import ValidationError as DRFValidationError
 
 from overbae.api.serializers import CapabilitySerializer
 from overbae.core.errors import InputValidationError
-from overbae.models import Capability, Dataset, DeployedModel, EvalSet, EvalSetMember, FinetuningJob
+from overbae.models import (
+    Capability,
+    Cell,
+    Dataset,
+    DeployedModel,
+    EvalSet,
+    EvalSetMember,
+    FinetuningJob,
+)
+from overbae.services import native_evaluation
 from overbae.services.capabilities import identity
 from overbae.services.datasets import review
 from overbae.services.datasets import use as dataset_use
@@ -47,10 +56,12 @@ from overbae.services.mcp.contracts.finetuning import (
     FineTuneEvaluatorReadiness,
     FineTuneJobReference,
     FineTuneTimeEstimate,
+    NativeEvaluationOutput,
     PrepareTrainingInput,
     PrepareTrainingOutput,
     RetryDeploymentInput,
     RetryDeploymentOutput,
+    ScheduleNativeEvaluationInput,
     SetActiveModelInput,
     SetActiveModelOutput,
     SetBenchmarkModelInput,
@@ -74,6 +85,7 @@ from overbae.services.mcp.errors import (
 )
 from overbae.services.mcp.resources import resource_link, safe_json
 from overbae.services.recommendation import estimate_for_hyperparams, find_catalog_model
+from overbae.services.training_contract import contract, selection_record
 from overbae.services.training_preparation import request_preparation, retry_preparation
 from overbae.tasks.training_preparation import inspect_preparation
 
@@ -290,6 +302,75 @@ def _evaluator_readiness(
     )
 
 
+def resolve_selection(payload, context, cell, capability=None):
+    native = contract(cell)["inference_contract"] == "decision"
+    evaluations = {
+        key: getattr(payload, key, None)
+        for key in (
+            "eval_model_before",
+            "eval_model_after",
+            "eval_incumbent_before",
+            "eval_incumbent_after",
+        )
+    }
+    for key in ("eval_model_before", "eval_model_after"):
+        if evaluations[key] is None:
+            evaluations[key] = not native
+    evaluations = {key: bool(value) for key, value in evaluations.items()}
+    evaluate = any(evaluations.values())
+    evaluation = (
+        _resolve_dataset(context, payload.eval_dataset)
+        if payload.eval_dataset
+        else (default_eval_dataset(context.project, capability) if evaluate else None)
+    )
+    eval_cell = (
+        mcp_check(evaluation, "eval", _cell_ref(payload.eval_cell, payload.eval_version))
+        if evaluation
+        else None
+    )
+    eval_set = (
+        _resolve_eval_set(context, payload.eval_set, capability=capability)
+        if payload.eval_set
+        else (default_eval_set(context.project, capability) if evaluate else None)
+    )
+    validation = (
+        _resolve_dataset(context, payload.validation_dataset)
+        if payload.validation_dataset
+        else None
+    )
+    validation_cell = (
+        mcp_check(
+            validation, "train", _cell_ref(payload.validation_cell, payload.validation_version)
+        )
+        if validation
+        else None
+    )
+    if not payload.validation_enabled and validation is not None:
+        raise MCPError("invalid_input", "Enable validation to select a validation dataset.")
+    return dict(
+        eval_dataset=evaluation,
+        eval_cell=eval_cell,
+        eval_set=eval_set,
+        validation_dataset=validation,
+        validation_cell=validation_cell,
+        evaluations=evaluations,
+        evaluate=evaluate,
+    )
+
+
+def describe_selection(payload, cell, selected):
+    return selection_record(
+        cell,
+        validation_cell=selected["validation_cell"],
+        eval_cell=selected["eval_cell"],
+        validation_enabled=payload.validation_enabled,
+        validation_split_ratio=payload.validation_split_ratio,
+        split_method=payload.split_method,
+        eval_set=selected["eval_set"],
+        evaluations=selected["evaluations"],
+    )
+
+
 def _readiness_sync(
     payload: CheckFinetuneReadinessInput, context: MCPContext
 ) -> CheckFinetuneReadinessOutput:
@@ -302,8 +383,22 @@ def _readiness_sync(
         )
     cell = mcp_cell(dataset, _cell_ref(payload.cell, payload.version)) or dataset.active_cell
     capability = _resolve_capability(context, payload.capability) if payload.capability else None
+    selected = resolve_selection(payload, context, cell, capability)
     try:
-        report = finetune_prerequisite_report(context.project, dataset, capability=capability)
+        report = finetune_prerequisite_report(
+            context.project,
+            dataset,
+            capability=capability,
+            cell=cell,
+            validation_cell=selected["validation_cell"],
+            validation_enabled=payload.validation_enabled,
+            validation_split_ratio=payload.validation_split_ratio,
+            split_method=payload.split_method,
+            eval_dataset=selected["eval_dataset"],
+            eval_cell=selected["eval_cell"],
+            eval_set=selected["eval_set"],
+            evaluate=selected["evaluate"],
+        )
     except RowStoreError:
         report = {
             "missing": [],
@@ -313,8 +408,7 @@ def _readiness_sync(
             "has_tool_calling": False,
             "excluded": [],
         }
-    eval_dataset = default_eval_dataset(context.project, capability)
-    eval_set = default_eval_set(context.project, capability)
+    eval_dataset, eval_set = selected["eval_dataset"], selected["eval_set"]
     evaluator_readiness = _evaluator_readiness(capability, eval_set)
     credits = FineTuneCreditReadiness(required=True, available=_credits_available(context))
     missing = [
@@ -332,13 +426,25 @@ def _readiness_sync(
         missing.insert(0, f"training dataset — {reason}")
         validation = ValidationResult(False, "unknown", 0, errors=[reason])
     else:
-        validation = validate_dataset(str(dataset.id), cell_id=str(cell.id))
+        validation = validate_dataset(
+            str(dataset.id),
+            cell_id=str(cell.id),
+            validation_enabled=payload.validation_enabled,
+            validation_split_ratio=payload.validation_split_ratio,
+            split_method=payload.split_method,
+            validation_dataset_id=str(selected["validation_dataset"].id)
+            if selected["validation_dataset"]
+            else None,
+            validation_cell_id=str(selected["validation_cell"].id)
+            if selected["validation_cell"]
+            else None,
+        )
         if not validation.valid:
             missing.insert(
                 0,
                 "training dataset — fix the rows the validator lists, then run the notebook again",
             )
-    if not evaluator_readiness.ready:
+    if selected["evaluate"] and not evaluator_readiness.ready:
         missing.append("evaluator — select at least one active generative evaluator")
     if not credits.available:
         missing.append("credits — add credits before starting fine-tuning")
@@ -350,7 +456,7 @@ def _readiness_sync(
         cell=mcp_cell_contract(dataset, cell, "train"),
         validation=safe_json(validation.as_dict()),
     )
-    eval_cell = eval_dataset.active_cell if eval_dataset is not None else None
+    eval_cell = selected["eval_cell"]
     eval_dataset_data = (
         FineTuneEvalDatasetReadiness(
             id=str(eval_dataset.id),
@@ -369,6 +475,8 @@ def _readiness_sync(
             resource_link("datasets", str(eval_dataset.id), eval_dataset.name or "Eval dataset")
         )
     return CheckFinetuneReadinessOutput(
+        selection=describe_selection(payload, cell, selected),
+        training_contract=contract(cell),
         summary="Fine-tuning is ready." if ready else "Fine-tuning is not ready.",
         ready=ready,
         missing=missing,
@@ -428,6 +536,7 @@ def _estimate_sync(payload: EstimateFinetuneInput, context: MCPContext) -> Estim
         )
     if find_catalog_model(payload.base_model) is None:
         raise MCPError("model_not_found", "The base model is not in the trainable model catalog.")
+    selected = resolve_selection(payload, context, cell)
     try:
         estimate = estimate_for_hyperparams(
             str(dataset.id),
@@ -435,12 +544,20 @@ def _estimate_sync(payload: EstimateFinetuneInput, context: MCPContext) -> Estim
             n_epochs=payload.n_epochs,
             use_lora=payload.use_lora,
             cell=cell,
+            validation_cell=selected["validation_cell"],
+            validation_enabled=payload.validation_enabled,
+            validation_split_ratio=payload.validation_split_ratio,
+            split_method=payload.split_method,
+            hyperparameters=payload.hyperparameters,
         )
     except ValueError as error:
         raise MCPError(
             "finetune_invalid", "The fine-tuning estimate could not be calculated."
         ) from error
     return EstimateFinetuneOutput(
+        forecast=estimate.get("forecast"),
+        selection=describe_selection(payload, cell, selected),
+        training_contract=contract(cell),
         summary="Fine-tuning estimate calculated.",
         cost_estimate=safe_json(estimate.get("cost_estimate")),
         time_estimate=FineTuneTimeEstimate.model_validate(estimate["time_estimate"]),
@@ -459,34 +576,21 @@ def _start_sync(payload: StartFinetuneInput, context: MCPContext) -> StartFinetu
     if find_catalog_model(payload.base_model) is None:
         raise MCPError("model_not_found", "The base model is not in the trainable model catalog.")
 
-    eval_dataset = (
-        _resolve_dataset(context, payload.eval_dataset)
-        if payload.eval_dataset
-        else default_eval_dataset(context.project, capability)
+    selected = resolve_selection(payload, context, cell, capability)
+    eval_dataset, eval_cell, eval_set = (
+        selected["eval_dataset"],
+        selected["eval_cell"],
+        selected["eval_set"],
     )
-    if eval_dataset is None:
-        raise MCPError("finetune_not_ready", "An eval dataset is required to start fine-tuning.")
-    eval_cell = mcp_check(eval_dataset, "eval", _cell_ref(payload.eval_cell, payload.eval_version))
-    eval_set = (
-        _resolve_eval_set(context, payload.eval_set, capability=capability)
-        if payload.eval_set
-        else default_eval_set(context.project, capability)
-    )
-    if eval_set is None:
-        raise MCPError("finetune_not_ready", "An eval set is required to start fine-tuning.")
-
-    validation_dataset = (
-        _resolve_dataset(context, payload.validation_dataset)
-        if payload.validation_dataset
-        else None
-    )
-    validation_cell = None
-    if validation_dataset is not None:
-        validation_cell = mcp_check(
-            validation_dataset,
-            "train",
-            _cell_ref(payload.validation_cell, payload.validation_version),
+    if selected["evaluate"] and (eval_dataset is None or eval_set is None):
+        raise MCPError(
+            "finetune_not_ready",
+            "Select an evaluation dataset and set for the requested evaluations.",
         )
+    validation_dataset, validation_cell = (
+        selected["validation_dataset"],
+        selected["validation_cell"],
+    )
     validation = validate_dataset(
         str(dataset.id),
         validation_enabled=payload.validation_enabled,
@@ -525,6 +629,8 @@ def _start_sync(payload: StartFinetuneInput, context: MCPContext) -> StartFinetu
     _require_training_quota(context)
     try:
         job = launch_finetune(
+            request_key=payload.request_key,
+            accepted_findings=payload.accepted_findings,
             user=context.user,
             project=context.project,
             dataset=dataset,
@@ -543,10 +649,10 @@ def _start_sync(payload: StartFinetuneInput, context: MCPContext) -> StartFinetu
             cell=cell,
             validation_cell=validation_cell,
             eval_cell=eval_cell,
-            eval_incumbent_before=payload.eval_incumbent_before,
-            eval_incumbent_after=payload.eval_incumbent_after,
-            eval_model_before=payload.eval_model_before,
-            eval_model_after=payload.eval_model_after,
+            eval_incumbent_before=selected["evaluations"]["eval_incumbent_before"],
+            eval_incumbent_after=selected["evaluations"]["eval_incumbent_after"],
+            eval_model_before=selected["evaluations"]["eval_model_before"],
+            eval_model_after=selected["evaluations"]["eval_model_after"],
             baseline_model=payload.baseline_model,
             eval_judge_model=payload.eval_judge_model,
         )
@@ -783,7 +889,11 @@ def _prepare_training_sync(payload, context):
             cell,
             payload.base_model,
             payload.context_length,
-            validation_cell=validation.active_cell if validation else None,
+            validation_cell=(
+                mcp_cell(validation, payload.validation_cell) or validation.active_cell
+            )
+            if validation
+            else None,
             training_type=payload.training_type,
         )
         if payload.retry_failed and prep.state == "failed":
@@ -816,10 +926,47 @@ def _async_handler(function):
     return handler
 
 
+def _schedule_native_evaluation_sync(payload, context):
+    _require_credits(context)
+    job = FinetuningJob.objects.filter(pk=payload.job, project=context.project).first()
+    if job is None:
+        raise MCPError("not_found", "Training job not found in this project.")
+    cells = Cell.objects.select_related("dataset").filter(dataset__project=context.project)
+    calibration = cells.filter(pk=payload.calibration_cell).first()
+    final = cells.filter(pk=payload.final_cell).first()
+    if calibration is None or final is None:
+        raise MCPError("not_found", "Select calibration and final cells in this project.")
+    try:
+        plan = native_evaluation.schedule(job, calibration_cell=calibration, final_cell=final)
+    except (ValueError, DatasetError) as exc:
+        raise MCPError("invalid_input", str(exc)) from exc
+    return NativeEvaluationOutput(
+        summary="Native paired evaluation scheduled after verified checkpoint completion.",
+        plan=native_evaluation.describe(plan),
+        resource_links=[
+            resource_link("jobs", f"native_evaluation/{plan.id}", "Native evaluation"),
+            resource_link("finetunes", str(job.id), "Training experiment"),
+        ],
+    )
+
+
 def register_finetuning_tools(catalog) -> None:
     from overbae.services.mcp.catalog import ToolDefinition
 
     definitions = [
+        (
+            "schedule_native_evaluation",
+            "Schedule native evaluation",
+            "Schedule paid paired base/candidate GPU evaluation with frozen calibration/final suites after checkpoint verification. No serving activation.",
+            ScheduleNativeEvaluationInput,
+            NativeEvaluationOutput,
+            _schedule_native_evaluation_sync,
+            False,
+            True,
+            "gpu",
+            "job",
+            {"overmind:train"},
+        ),
         (
             "prepare_training_data",
             "Prepare training data",
@@ -849,7 +996,7 @@ def register_finetuning_tools(catalog) -> None:
         (
             "estimate_finetune",
             "Estimate fine-tuning",
-            "Estimate fine-tuning GPU cost and duration from dataset statistics and assumed H100 throughput without creating a job. Exact preprocessing and measured throughput are separate.",
+            "Estimate the selected split without launching. Native forecasts need matching measurements; unknown costs stay unknown.",
             EstimateFinetuneInput,
             EstimateFinetuneOutput,
             _estimate_sync,
@@ -862,7 +1009,7 @@ def register_finetuning_tools(catalog) -> None:
         (
             "start_finetune",
             "Start fine-tuning",
-            "Start training on pinned dataset versions. Native decision rows use Modal LoRA, select decision_cross_entropy and preserve soft targets; set chat eval_model_before/eval_model_after false for this objective. These checkpoints use typed probability inference. Readiness and estimates precede launch.",
+            "Train pinned versions. Native decisions require Modal LoRA and all chat eval flags false; preserve distributions and return typed probabilities. training_type: {type:Lora|Full}. Check readiness and cost first.",
             StartFinetuneInput,
             StartFinetuneOutput,
             _start_sync,

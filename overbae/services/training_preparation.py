@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+import gzip
 import hashlib
+import io
 import json
-import os
+import math
 import tempfile
 from datetime import timedelta
 from pathlib import Path
@@ -19,6 +21,7 @@ from modal_shared.preparation import processor_fingerprint as asset_fingerprint
 from modal_shared.preparation import validate_preparation_report
 from modal_shared.stacks import train_function_name
 from modal_shared.training_data import file_digest
+from modal_shared.training_release import data_format_identity
 from overbae.core.errors import InputValidationError
 from overbae.modal.model_registry import (
     get_hf_base,
@@ -27,8 +30,7 @@ from overbae.modal.model_registry import (
 )
 from overbae.modal.training_type import training_context_length, training_enabled
 from overbae.models import TrainingPreparation
-from overbae.services import finetuning_tool_validation, finetuning_validator
-from overbae.services.datasets import examples
+from overbae.services import training_release
 from overbae.services.datasets import rows as row_store
 from overbae.services.datasets import use as dataset_use
 from overbae.services.finetuning_policy import (
@@ -43,16 +45,19 @@ def processor_fingerprint():
 
 
 def data_format_fingerprint():
-    digest = hashlib.sha256()
-    for module in (examples, finetuning_validator, finetuning_tool_validation):
-        digest.update(Path(module.__file__).read_bytes())
-    return digest.hexdigest()
+    return data_format_identity(Path(__file__).resolve().parents[2])
 
 
 def request_preparation(
-    cell, model: str, context_length: int, *, validation_cell=None, training_type="lora"
+    cell,
+    model: str,
+    context_length: int,
+    *,
+    validation_cell=None,
+    training_type="lora",
+    runtime=None,
 ):
-    if settings.FINETUNING_BACKEND != "modal":
+    if runtime is None and settings.FINETUNING_BACKEND != "modal":
         raise InputValidationError(
             "Exact preprocessing is available for the Modal training backend."
         )
@@ -89,7 +94,9 @@ def request_preparation(
         )
         if objective != validation_objective:
             raise InputValidationError("Training and validation must use the same objective.")
+    runtime = runtime or training_release.current()
     config = {
+        "runtime": runtime,
         "objective": objective,
         "model": model,
         "tokenizer_model": get_hf_base(model),
@@ -99,8 +106,8 @@ def request_preparation(
         "fingerprint": cell.fingerprint,
         "validation_cell": str(validation_cell.id) if validation_cell else None,
         "validation_fingerprint": validation_cell.fingerprint if validation_cell else None,
-        "processor": processor_fingerprint(),
-        "data_format": data_format_fingerprint(),
+        "processor": runtime["processor"] if runtime else processor_fingerprint(),
+        "data_format": runtime["data_format"],
         "stack": get_unsloth_image(model),
     }
     signature = hashlib.sha256(json.dumps(config, sort_keys=True).encode()).hexdigest()
@@ -135,6 +142,41 @@ def retry_preparation(preparation):
     return preparation
 
 
+def observe_progress(prep):
+    try:
+        volume = modal.Volume.from_name(
+            "overmind-sft", environment_name=prep.config["runtime"]["environment"]
+        )
+        content = bytearray()
+        for chunk in volume.read_file(f"/preparations/{prep.id}/progress.json"):
+            content.extend(chunk)
+            if len(content) > 65536:
+                return
+        raw = json.loads(content)
+        progress = {
+            key: raw[key]
+            for key in ("completed_rows", "reused_rows", "committed_shards", "updated_at")
+            if isinstance(raw.get(key), (int, float)) and math.isfinite(raw[key]) and raw[key] >= 0
+        }
+        progress["stage"] = str(raw.get("stage", "tokenizing"))[:80]
+        progress["total_rows"] = prep.cell.rows + (
+            prep.validation_cell.rows if prep.validation_cell_id else 0
+        )
+        TrainingPreparation.objects.filter(
+            pk=prep.pk, state="running", remote_id=prep.remote_id
+        ).update(report={"progress": progress}, touched_at=timezone.now())
+    except (
+        OSError,
+        ValueError,
+        TypeError,
+        ModalConnectionError,
+        InternalError,
+        ServiceError,
+        NotFoundError,
+    ):
+        return
+
+
 def advance(preparation_id):
     now = timezone.now()
     with transaction.atomic():
@@ -164,6 +206,7 @@ def advance(preparation_id):
             prep.save(update_fields=["state", "touched_at"])
     try:
         if starting:
+            training_release.verify(prep.config["runtime"])
             for cell in (prep.cell, prep.validation_cell):
                 if cell is None:
                     continue
@@ -174,8 +217,14 @@ def advance(preparation_id):
                 if cell.fingerprint != expected:
                     raise ValueError("Dataset version changed before preprocessing.")
             with tempfile.TemporaryDirectory(prefix="training-preparation-") as directory:
-                source = Path(directory) / "rows.jsonl"
-                with source.open("w") as stream:
+                source = Path(directory) / "rows.jsonl.gz"
+                with (
+                    source.open("wb") as raw,
+                    gzip.GzipFile(
+                        filename="", fileobj=raw, mode="wb", compresslevel=1, mtime=0
+                    ) as compressed,
+                    io.TextIOWrapper(compressed, encoding="utf-8") as stream,
+                ):
                     for cell in (prep.cell, prep.validation_cell):
                         if cell is None:
                             continue
@@ -191,16 +240,16 @@ def advance(preparation_id):
                                 + "\n"
                             )
                 digest = file_digest(source)
-                remote = f"/preparations/{prep.id}/rows.jsonl"
+                remote = f"/preparations/{prep.id}/rows.jsonl.gz"
                 volume = modal.Volume.from_name(
-                    "overmind-sft", environment_name=os.environ.get("MODAL_ENVIRONMENT") or None
+                    "overmind-sft", environment_name=prep.config["runtime"]["environment"]
                 )
                 with volume.batch_upload(force=True) as batch:
                     batch.put_file(source, remote)
             function = modal.Function.from_name(
-                "overmind-sft",
+                prep.config["runtime"]["app"],
                 "prepare_" + train_function_name(prep.config["stack"]),
-                environment_name=os.environ.get("MODAL_ENVIRONMENT") or None,
+                environment_name=prep.config["runtime"]["environment"],
             )
             call = function.spawn(
                 str(prep.id), {**prep.config, "rows_path": "/data" + remote, "rows_sha256": digest}
@@ -224,6 +273,8 @@ def advance(preparation_id):
                 touched_at=timezone.now(),
             )
     except TimeoutError:
+        if not starting:
+            observe_progress(prep)
         return
     except (ModalConnectionError, InternalError, ServiceError):
         # An observer failure is not a remote failure. Keep its handle until the deadline.
@@ -244,6 +295,7 @@ def ready_for_job(job, context_length):
         job.cell,
         job.base_model,
         context_length,
+        runtime=training_release.for_job(job),
         validation_cell=job.validation_cell if job.validation_enabled else None,
         training_type="full"
         if (job.hyperparameters or {}).get("training_type", {}).get("type") == "Full"
@@ -267,21 +319,33 @@ def for_job(job):
         for cell in (job.cell, validation)
         if cell is not None
     )
-    context = estimated_training_context_length(
-        estimated_tokens,
-        model_max=maximum,
-        requested=int(hp.get("context_length") or 0) or None,
+    explicit_context = (
+        (getattr(job, "requested_configuration", {}) or {})
+        .get("configuration", {})
+        .get("hyperparameters", {})
+        or {}
+    ).get("context_length")
+    context = (
+        int(explicit_context)
+        if explicit_context
+        else estimated_training_context_length(
+            estimated_tokens,
+            model_max=maximum,
+            requested=int(hp.get("context_length") or 0) or None,
+        )
     )
     prep = request_preparation(
         job.cell,
         job.base_model,
         context,
         validation_cell=validation,
+        runtime=training_release.for_job(job),
         training_type=kind,
     )
     exact_tokens = int(prep.report.get("max_tokens") or 0)
     if (
         prep.state == "incompatible"
+        and not explicit_context
         and exact_tokens > context
         and (maximum is None or exact_tokens <= maximum)
     ):
@@ -292,6 +356,7 @@ def for_job(job):
             job.base_model,
             context,
             validation_cell=validation,
+            runtime=training_release.for_job(job),
             training_type=kind,
         )
     return prep

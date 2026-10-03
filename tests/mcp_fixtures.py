@@ -13,6 +13,7 @@ EXPECTED_TOOL_NAMES = {
     "query_task_executions",
     "get_job",
     "list_datasets",
+    "start_dataset",
     "inspect_dataset",
     "query_dataset",
     "create_dataset_from_traces",
@@ -43,6 +44,8 @@ EXPECTED_TOOL_NAMES = {
     "get_instrumentation_plan",
     "verify_instrumentation",
     "get_model_catalog",
+    "cancel_dataset",
+    "schedule_native_evaluation",
 }
 
 

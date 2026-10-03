@@ -125,7 +125,8 @@ Follow these for ALL Overmind work:
    (omit to clear), then poll the returned `model_activation` job until verification and routing complete. See [references/capabilities.md](references/capabilities.md).
 1. **Behaviours have no resource.** There is no
    `overmind://behaviours/...`; read them from `query_task_executions`.
-1. **Contracts gate every dataset workflow.** Intent is **`train`**,
+1. **Datasets may start from written intent.** Use `start_dataset` with a brief when no source or capability is chosen. Attach data later with `overmind dataset upload FILE --dataset ID --json`. Original documents and row evidence remain inspectable; extraction does not establish answer correctness.
+1. **Contracts gate dataset consumption.** Intent is **`train`**,
    **`eval`**, or **`pending`** — never `ft` or `surface`. Fine-tuning needs
    `train`; eval runs and optimizer experiments need `eval`. `pending` is
    refused. There is no reingest tool and no dual-intent dataset. Set intent
@@ -224,8 +225,8 @@ Observability:
 Datasets:
 
 `list_datasets`, `inspect_dataset`, `query_dataset`,
-`create_dataset_from_traces`, `create_dataset_from_llm_calls`,
-`message_dataset_agent`, `run_dataset`.
+`start_dataset`, `create_dataset_from_traces`, `create_dataset_from_llm_calls`,
+`message_dataset_agent`, `cancel_dataset`, `run_dataset`.
 
 Evaluations:
 
@@ -266,7 +267,7 @@ older endpoint-shaped names.
 
 A dataset is a landed source and a linear chain of cells; every cell that
 ran is a **version** (1.0 is the source, then 1.1, 1.2, …), the dataset has
-an **intent** (`train` or `eval`, proposed at landing) and a **capability**,
+an **intent** (`train`, `eval`, or `explore`, chosen by the user) and a **capability**,
 and every version carries two measured contracts (`list_datasets` shows the
 active version's):
 
@@ -274,7 +275,8 @@ active version's):
   transcript with an assistant turn (`tools` optional).
 - **`eval`** ("Eval") — an `input` on every row plus an `expected_output`
   column with at least one reference.
-- **`pending`** — the intent is not decided yet; refused by every run.
+- **`explore`** — data exploration, without automatic train/eval preparation.
+- **`pending`** — no user purpose yet. The workshop asks Training / Eval / Data exploration. Read the `awaiting_intent` turn id and answer with `message_dataset_agent(intent_choice=..., intent_turn_id=...)` only after the user chooses.
 - There is no `ft` intent. A leftover stored `ft` is **train**.
 
 Capability prompt/schema mismatches, incomplete quality reviews and train/eval

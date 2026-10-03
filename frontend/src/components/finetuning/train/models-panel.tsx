@@ -430,6 +430,17 @@ function ModelRow({
               matchPool={draft.matchPool}
               matchRank={draft.matchRank}
             />
+            {estimate?.forecast && (
+              <span
+                className="text-xs text-muted-foreground"
+                title={JSON.stringify(estimate.forecast)}
+              >
+                {estimate.forecast.basis === "unmeasured_recipe"
+                  ? "Cost uncalibrated for this recipe"
+                  : `${estimate.forecast.gpu_count} × ${estimate.forecast.gpu_type} · training GPU estimate`}{" "}
+                · other costs pending
+              </span>
+            )}
             {estimate?.costEstimate && (
               <span className="shrink-0 font-mono text-xs tabular-nums text-muted-foreground">
                 <CreditsAmount usd={estimate.costEstimate.usd} />

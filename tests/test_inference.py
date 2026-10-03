@@ -48,7 +48,9 @@ def _capability(project: Project) -> Capability:
 
 
 def _dataset(capability: Capability) -> Dataset:
-    ds = frozen_dataset(capability.project, [{"input": {"q": "test"}}], capability=capability)
+    ds = frozen_dataset(
+        capability.project, [{"input": {"q": "test"}}], capability=capability, contract="eval"
+    )
     return ds
 
 

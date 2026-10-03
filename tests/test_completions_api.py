@@ -1123,7 +1123,7 @@ class TestActiveModelValidation:
         m.finetuning_job = FinetuningJob.objects.create(
             project=p,
             capability=sibling,
-            dataset=frozen_dataset(p, TRAIN_ROWS, name="t"),
+            dataset=frozen_dataset(p, TRAIN_ROWS, name="t", contract="train"),
             base_model="Qwen/Qwen3-8B",
             provider=FinetuningJob.Provider.BASETEN,
         )
@@ -1144,7 +1144,7 @@ class TestBenchmarkSelection:
         return FinetuningJob.objects.create(
             project=project,
             capability=capability,
-            dataset=frozen_dataset(project, TRAIN_ROWS, name="t"),
+            dataset=frozen_dataset(project, TRAIN_ROWS, name="t", contract="train"),
             base_model="Qwen/Qwen3-8B",
             provider=FinetuningJob.Provider.BASETEN,
             baseline_model="",  # not snapshotted yet → resolve live

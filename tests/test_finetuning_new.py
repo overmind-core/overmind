@@ -99,6 +99,7 @@ def _dataset_with_messages(
             for i in range(n)
         ],
         capability=capability,
+        contract="train",
     )
     return ds
 
@@ -108,12 +109,13 @@ def _dataset_with_pairs(capability: Capability, *, n: int = 3) -> Dataset:
         capability.project,
         [{"input": f"input {i}", "expected_output": f"output {i}"} for i in range(n)],
         capability=capability,
+        contract="eval",
     )
     return ds
 
 
 def _ft_job_payload(project: Project, dataset: Dataset, **overrides) -> dict:
-    evaluation = frozen_dataset(project, EVAL_ROWS)
+    evaluation = frozen_dataset(project, EVAL_ROWS, contract="eval")
     eval_set = EvalSet.objects.create(project=project, name="Training evals")
     evaluator = Evaluator.objects.create(
         project=project,
@@ -222,7 +224,7 @@ class TestValidatorDB:
 
     def test_eval_rows_are_not_training_rows(self):
         _, p, a = _setup()
-        ds = frozen_dataset(a.project, EVAL_ROWS, capability=a)
+        ds = frozen_dataset(a.project, EVAL_ROWS, capability=a, contract="eval")
         result = validate_dataset(str(ds.id))
         assert result.valid is False
         assert any("messages is empty" in e for e in result.errors)
@@ -274,6 +276,7 @@ class TestValidatorDB:
                 for i in range(12)
             ],
             capability=a,
+            contract="train",
         )
         result = validate_dataset(str(ds.id))
         assert result.valid is False
@@ -603,7 +606,7 @@ class TestValidateDatasetEndpoint:
 
     def test_empty_dataset_returns_valid_false(self):
         u, p, a = _setup()
-        ds = frozen_dataset(a.project, EVAL_ROWS, capability=a)
+        ds = frozen_dataset(a.project, EVAL_ROWS, capability=a, contract="eval")
 
         r = _auth_client(u).post(
             reverse("finetuningjob-validate-dataset"),
@@ -1194,7 +1197,7 @@ class TestFinetuningValidationSerializer:
     def test_serializer_rejects_eval_validation_dataset(self):
         u, p, a = _setup()
         train_ds = _dataset_with_messages(a, n=5)
-        eval_ds = frozen_dataset(p, EVAL_ROWS, capability=a)
+        eval_ds = frozen_dataset(p, EVAL_ROWS, capability=a, contract="eval")
 
         with patch(CELERY_PATH):
             r = _auth_client(u).post(
@@ -1821,7 +1824,7 @@ class TestBasetenContextLengthPersistence:
         assert clamp_gemma4_training_gpu("google/gemma-4-31B-it", "H100", 4) == ("H200", 1)
         assert clamp_gemma4_training_gpu("Qwen/Qwen3-32B", "H100", 4) == ("H100", 4)
 
-        runner = ModalRunner()
+        runner = ModalRunner(release={"environment": "overmind-dev", "app": "qualified-fixture"})
         job = SimpleNamespace(
             base_model="google/gemma-4-31B-it",
             hyperparameters={"training_type": {"type": "Full"}},
@@ -1853,9 +1856,11 @@ class TestBasetenContextLengthPersistence:
         monkeypatch.setenv("MODAL_ENVIRONMENT", "test-environment")
         fetch = MagicMock()
         with patch("modal.Function.from_name", return_value=fetch) as from_name:
-            ModalRunner()._await_base_model("unsloth/Qwen3-8B")
+            ModalRunner(
+                release={"environment": "overmind-dev", "app": "qualified-fixture"}
+            )._await_base_model("unsloth/Qwen3-8B")
         from_name.assert_called_once_with(
-            "overmind-register", "fetch_base_model", environment_name="test-environment"
+            "overmind-register", "fetch_base_model", environment_name="overmind-dev"
         )
         fetch.remote.assert_called_once_with(base_model="unsloth/Qwen3-8B")
 

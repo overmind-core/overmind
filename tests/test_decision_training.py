@@ -85,7 +85,7 @@ def test_native_readiness_scans_without_retaining_large_input_rows(monkeypatch):
         row = example()
         row["decision"]["state"] = str(index) + " evidence" * 1000
         records.append(row)
-    dataset = frozen_dataset(project, records)
+    dataset = frozen_dataset(project, records, contract="train")
     original = row_store.iter_rows
 
     def bounded(cell):
@@ -106,6 +106,6 @@ def test_native_readiness_scans_without_retaining_large_input_rows(monkeypatch):
 def test_native_full_weight_training_is_rejected_before_gpu_allocation(settings):
     settings.FINETUNING_BACKEND = "modal"
     project = Project.objects.create(name="Native method", slug="native-method")
-    dataset = frozen_dataset(project, [example()])
+    dataset = frozen_dataset(project, [example()], contract="train")
     with pytest.raises(ValueError, match="decision training currently supports LoRA"):
         request_preparation(dataset.active_cell, "Qwen/Qwen3-8B", 4096, training_type="full")

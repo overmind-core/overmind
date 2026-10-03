@@ -13,7 +13,7 @@ from django.db import transaction
 from django.utils import timezone
 
 from overbae.models import Cell, Dataset
-from overbae.services.datasets import paths, preparation, rows, store
+from overbae.services.datasets import operations, paths, preparation, rows, store
 from overbae.services.datasets.context import context_fingerprint
 from overbae.services.datasets.contract import public_intent
 from overbae.services.datasets.examples import (
@@ -95,6 +95,7 @@ def preserve_provenance(before: pd.DataFrame, after: pd.DataFrame, *, group_by=(
         "source_trace_id",
         "conversation_id",
         "human_reviewed",
+        "_overmind_document_id",
         *group_by,
     }:
         if column not in indexed:
@@ -513,6 +514,7 @@ def record_quality(dataset, cell, checks: list[dict], *, script: str) -> dict:
         script,
         paths.cell_path(dataset.id, cell.id),
         library_cache=paths.library_cache(dataset.project_id),
+        cancelled=lambda: operations.cancellation_requested(dataset.id),
     )
     if result.path is None:
         raise ValueError(result.error or "The audit produced no row results.")

@@ -3,7 +3,7 @@
 A dataset is a landed source and a linear chain of Python cells. Every ran
 cell is a version: 1.0 is the source, then 1.1, 1.2, and so on. A consumer
 freezes the chosen cell and every cell before it. The dataset carries an
-intent (`train`, `eval`, or `pending`) and an optional capability. Every ran
+intent (`train`, `eval`, `explore`, or `pending`) and an optional capability. Every ran
 cell carries measured intent and capability contracts.
 
 Dataset names are not unique. Call `list_datasets` first and pass its dataset
@@ -14,7 +14,7 @@ UUID to every later dataset tool.
 ```
 list_datasets
 → inspect_dataset
-→ create_dataset_from_traces | CLI upload
+→ start_dataset | create_dataset_from_traces | CLI upload
 → get_job(kind=dataset_run)
 → inspect_dataset
 → message_dataset_agent when changes are needed
@@ -32,7 +32,20 @@ The latest chat turn includes a persisted `status` and `progress`: stage,
 reason, activity timestamp and, for generation, validated rows saved against
 the requested target. An unchanged count is not proof that the provider stopped.
 
+Recent turns also identify their `funding_source`, `engine` and `model` when
+available. Self-hosted users can select a personal ChatGPT account/model in the
+Console under Settings → Data Workshop models. MCP requests use that caller's
+saved choice for the Workshop agent and semantic checks, with zero Overmind
+credit charges. Limits and disconnected accounts stop the turn. Account consent
+and funding changes stay in the Console; never request tokens through MCP or
+switch to server-funded models implicitly. Evaluation runs, training and serving
+retain their own billing.
+
 ## Landing
+
+Use `start_dataset(brief=...)` when the user has an idea or question before data or a capability. Inspect its response and attach the first source with `overmind dataset upload FILE --dataset ID --json`. The same `--dataset ID` command adds more files to an existing workshop as a new import cell; earlier and used versions remain unchanged. Poll the dataset run and inspect the resulting active cell. For new file uploads, `--brief` records the user's request. Use `explore` for data exploration; `pending` means the user has not chosen a purpose.
+
+PDF, DOCX, Markdown, UTF-8 text and PNG/JPEG/WebP images are supported alongside tables. Documents are extracted in the batch worker, with original files, parser metadata and row evidence retained. PDF landing preserves native text and automatically runs local English Tesseract OCR on scanned pages and embedded images. Direct images are capped at 64 megapixels; animated images are rejected. OCR engine/version, page regions, upright image coordinates and recognition confidence are retained; visual layouts and tables are not reconstructed. Inspection returns rows=null until extraction. Document identities keep related rows in the same split.
 
 For REST creation and `create_dataset_from_traces`, omit `capability` to infer
 it from the rows, pass its UUID to bind it, or pass `null` to leave the dataset
@@ -52,10 +65,10 @@ unbound. The choice applies to both datasets when splitting.
   `query_failures` first when the selection should be a capability's recent
   failures.
 - For a local CSV, TSV, JSON, JSONL, NDJSON, or Parquet file, run
-  `overmind dataset upload FILE --json --intent train|eval`. Add
+  `overmind dataset upload FILE --json --intent train|eval|explore`. Add
   `--project-id` only when needed. The command returns the dataset UUID.
-  `--intent` is `train` or `eval` only (`ft` is rejected). Omit it and the
-  server lands as `pending`, then proposes from row shape. `--split PERCENT`
+  `--intent` is `train`, `eval`, or `explore` (`ft` is rejected). Omit it and the
+  server lands as `pending`. The agent uses an explicit purpose in the brief or pauses to ask; it never infers intent from row shape. `--split PERCENT`
   replaces `--intent` and lands two datasets.
 - Multiple files can form one source in their selected order. Read
   `overmind://dataset-upload` for the REST upload and inspection steps: stage
@@ -92,6 +105,8 @@ are structural evidence, not a semantic quality audit. Replacing existing task
 instructions requires a reviewed proposal; capability binding is not permission
 to overwrite a mixed-task corpus with one prompt.
 
+When recent_chat contains `awaiting_intent`, ask the user to choose Training, Eval, or Data exploration. Answer with `message_dataset_agent(dataset=UUID, intent_choice="train"|"eval"|"explore", intent_turn_id=TURN_ID)`; omit message. This resumes the original request.
+
 Use `message_dataset_agent(dataset=UUID, message=...)` for name, intent,
 capability, and cell changes. Poll `get_job(kind=dataset_run, id=UUID)`, then
 inspect again.
@@ -109,7 +124,7 @@ continuation uses the configured workshop engine and may incur model charges.
 Requested generation must produce new examples through `add_synthetic_rows`.
 Do not propose script-based replication or identifier remapping to reach a target.
 
-Mechanical repairs include complex evidence-preserving restructuring and deterministic derivation from supplied facts and declared rules. They can apply automatically. Initial preparation runs measured cleaning and justified exclusions, with source rows and coverage effects preserved. Judgement calls require a concrete proposal even during initial preparation; follow-up exclusions also require review. The Console offers Approve/Deny with identity-matched input/output examples, before/after counts and categorical coverage. Explain the decision, supporting evidence and tradeoff, not just the new row count. Approval is tied to the exact preview and its source/context; stale proposals must be regenerated.
+Mechanical repairs include complex evidence-preserving restructuring and deterministic derivation from supplied facts and declared rules. They can apply automatically. Initial preparation runs measured cleaning and justified exclusions, with source rows and coverage effects preserved. Judgement calls require a concrete proposal even during initial preparation; follow-up exclusions also require review. The Console offers Approve/Deny with identity-matched input/output examples, before/after counts and categorical coverage. Explain the decision, supporting evidence and tradeoff, not just the new row count. Approval is tied to the exact preview and its source/context; changed input or context retires the proposal; any replacement requires a fresh preview.
 
 Preparation requests mean transform, audit, repair actionable findings and recheck the changed version, not just report failures. A selected capability already defines the target. Map each target field to supplied evidence, a deterministic derivation, a representation change, missing evidence or a user decision; audit all four checks against that same target. Ask the workshop to inspect nested source payloads and recover supplied evidence before declaring it missing, and apply supported improvements even when other findings cannot be resolved. Do not join unrelated worker cases, cross held-out boundaries, fabricate missing evidence or relabel worker answers as orchestrator deliverables. Finish independent repairs before proposing a decision; approval cannot make unsupported facts true. Once supported repairs are exhausted, report remaining affected rows and let the user continue with warnings. Audit-only questions do not authorise transformations.
 
@@ -125,7 +140,7 @@ evaluation, fine-tuning, or optimisation tools.
 
 - `eval` cells are for evaluation and optimisation.
 - `train` cells are for fine-tuning.
-- `pending` is refused by every consumer.
+- `pending` and `explore` are refused by training/evaluation consumers until the user selects that purpose.
 
 Fine-tuning uses a train cell plus a separate eval cell. A cell's measured
 contract must fit its intent before a consumer accepts it.

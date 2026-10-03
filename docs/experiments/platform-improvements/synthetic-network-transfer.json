@@ -1,0 +1,40 @@
+{
+  "fixture": "synthetic choices; generated locally, no source dataset",
+  "rows": 8320,
+  "environment": "overmind-dev",
+  "volume": "overmind-transfer-qualification-0b0f5751aea2",
+  "samples": [
+    {
+      "artifact": "synthetic.jsonl.gz",
+      "bytes": 4172762,
+      "sha256": "2fe4df8abb4a6399ae6bf6e7f5ce2f8bd748b99da3c380c2fc56c4248bdf8691",
+      "state": "verified_and_removed",
+      "upload_seconds": 5.315749624976888,
+      "download_seconds": 3.6018246660241857,
+      "sha256_matches": true,
+      "decompressed_sha256_matches": true
+    },
+    {
+      "artifact": "synthetic.jsonl",
+      "bytes": 9633220,
+      "sha256": "c6fea4929d3a3bcefd6a46edb67664079b7a62320a1156f8d31c62c9d912cee2",
+      "state": "verified_and_removed",
+      "upload_seconds": 7.8089059999911115,
+      "download_seconds": 5.678718583018053,
+      "sha256_matches": true
+    },
+    {
+      "artifact": "selection.keys",
+      "bytes": 266240,
+      "sha256": "21eab2fe2240e96a08ed723c005a91a785665306ff78531c5845e54f91a1dad8",
+      "state": "verified_and_removed",
+      "upload_seconds": 1.548870792001253,
+      "download_seconds": 1.4284662919817492,
+      "sha256_matches": true
+    }
+  ],
+  "limits": "One observation per artifact; provider caching, ordering and SDK overhead are uncontrolled. No GPU calls, live volumes or training jobs are changed.",
+  "compression_seconds": 0.04941149998921901,
+  "source_sha256": "c6fea4929d3a3bcefd6a46edb67664079b7a62320a1156f8d31c62c9d912cee2",
+  "passed": true
+}

@@ -44,6 +44,7 @@ def _setup(*, with_evaluator: bool = True):
         project,
         [{"input": inp, "expected_output": expected} for inp, expected in _ROWS],
         capability=capability,
+        contract="eval",
     )
     if with_evaluator:
         # Capability-scoped, non-sentinel grader -> runnable_capability_evaluators returns it.

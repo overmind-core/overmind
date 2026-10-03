@@ -36,7 +36,7 @@ export interface UploadInspection {
      * @type {number}
      * @memberof UploadInspection
      */
-    rows: number;
+    rows: number | null;
 }
 
 /**

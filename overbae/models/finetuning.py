@@ -33,6 +33,7 @@ class FinetuningJob(models.Model):
     """
 
     class Status(models.TextChoices):
+        SUBMISSION_UNKNOWN = "submission_unknown"
         QUEUED = "queued"
         PREPARING = "preparing"
         RUNNING = "running"
@@ -144,6 +145,11 @@ class FinetuningJob(models.Model):
     eval_model_before = models.BooleanField(default=True)
     eval_model_after = models.BooleanField(default=True)
 
+    request_key = models.CharField(max_length=128, null=True, blank=True)
+    requested_configuration = models.JSONField(default=dict, blank=True)
+    effective_configuration = models.JSONField(default=dict, blank=True)
+    provider_submission = models.JSONField(default=dict, blank=True)
+    accepted_findings = models.JSONField(default=list, blank=True)
     name = models.CharField(max_length=255, blank=True, default="")
     use_case = models.TextField(blank=True, default="")
 
@@ -206,6 +212,11 @@ class FinetuningJob(models.Model):
 
     class Meta:
         ordering = ["-created_at"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["project", "request_key"], name="finetune_project_request_unique"
+            )
+        ]
         indexes = [
             models.Index(fields=["project", "-created_at"]),
             models.Index(fields=["status", "-created_at"]),
@@ -328,3 +339,24 @@ class FinetuningJobEval(models.Model):
 
     def __str__(self):
         return f"FinetuningJobEval {self.kind} job={self.job_id} ({self.status})"
+
+
+class NativeEvaluationPlan(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    job = models.OneToOneField(
+        FinetuningJob, on_delete=models.CASCADE, related_name="native_evaluation"
+    )
+    calibration_cell = models.ForeignKey(
+        "overbae.Cell", on_delete=models.PROTECT, related_name="native_calibration_plans"
+    )
+    final_cell = models.ForeignKey(
+        "overbae.Cell", on_delete=models.PROTECT, related_name="native_final_plans"
+    )
+    config = models.JSONField(default=dict)
+    state = models.CharField(max_length=32, default="waiting_for_checkpoint", db_index=True)
+    calls = models.JSONField(default=dict)
+    calibration = models.JSONField(default=dict)
+    results = models.JSONField(default=dict)
+    error = models.TextField(blank=True, default="")
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)

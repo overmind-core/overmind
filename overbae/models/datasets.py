@@ -7,9 +7,10 @@ from django.db import models
 class Dataset(models.Model):
     """A source and a linear chain of cells. Every cell is a version of the
     table; rows live only as Parquet under the media volume. The intent and
-    the capability are proposed at landing and fixed by the first use."""
+    the capability are fixed by the first use."""
 
     class SourceKind(models.TextChoices):
+        PENDING = "pending"
         FILE = "file"
         TRACES = "traces"
         LLM_CALLS = "llm_calls"
@@ -17,6 +18,7 @@ class Dataset(models.Model):
     class Intent(models.TextChoices):
         TRAIN = "train"
         EVAL = "eval"
+        EXPLORE = "explore"
         PENDING = "pending"
 
     class State(models.TextChoices):
@@ -31,6 +33,7 @@ class Dataset(models.Model):
         "overbae.Project", on_delete=models.CASCADE, related_name="datasets"
     )
     name = models.CharField(max_length=255)
+    brief = models.TextField(blank=True, default="")
     source_kind = models.CharField(
         max_length=16, choices=SourceKind.choices, default=SourceKind.FILE
     )
@@ -55,6 +58,7 @@ class Dataset(models.Model):
     error = models.TextField(blank=True, default="")
     # [{role: user|agent, text, cells: [cell ids], at}] — the one conversation.
     chat = models.JSONField(default=list, blank=True)
+    operation = models.JSONField(default=dict, blank=True)
     agent_id = models.CharField(max_length=128, blank=True, default="")
     agent_messages = models.JSONField(default=list, blank=True)
     agent_turn_key = models.CharField(max_length=255, blank=True, default="")
@@ -192,6 +196,8 @@ class Cell(models.Model):
 
     def fits(self, intent: str) -> tuple[bool, str]:
         """Whether a consumer can read this version; quality findings are advisory."""
+        if intent == Dataset.Intent.EXPLORE:
+            return False, "Data exploration has no training or evaluation format."
         if intent not in (Dataset.Intent.TRAIN, Dataset.Intent.EVAL):
             return False, "The intent is still pending. Choose train or eval."
         if not self.ran:

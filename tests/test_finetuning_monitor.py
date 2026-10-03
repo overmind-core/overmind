@@ -36,7 +36,7 @@ def _setup():
     )
     p = Project.objects.create(name="p")
     ProjectMembership.objects.create(user=u, project=p)
-    ds = frozen_dataset(p, TRAIN_ROWS, name="ds")
+    ds = frozen_dataset(p, TRAIN_ROWS, name="ds", contract="train")
     return u, p, ds
 
 

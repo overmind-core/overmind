@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import time
+import uuid
 from contextlib import suppress
 from email.parser import Parser
 from pathlib import Path
@@ -24,7 +25,7 @@ EXPORT_PATH = "/api/datasets/{dataset_id}/export/"
 DEFAULT_TIMEOUT = 60
 CHUNK_TIMEOUT = 120
 EXPORT_CHUNK_SIZE = 8_192
-ALLOWED_INTENTS = {"train", "eval"}
+ALLOWED_INTENTS = {"train", "eval", "explore"}
 SPLIT_POSITIONS = ("head", "tail", "random")
 EXPORT_HEADERS = (
     ("cell", "X-Overmind-Cell"),
@@ -108,7 +109,7 @@ def _normalize_intent(intent: str | None) -> str | None:
     if not value:
         return None
     if value not in ALLOWED_INTENTS:
-        raise DatasetUploadError("intent must be train or eval.")
+        raise DatasetUploadError("intent must be train, eval or explore.")
     return value
 
 
@@ -170,6 +171,8 @@ def upload_file(
     capability: str | None = None,
     split: int | None = None,
     split_position: str = "tail",
+    brief: str = "",
+    dataset: str | None = None,
     session: requests.Session | None = None,
 ) -> dict[str, Any]:
     """Stream one local file through /api/uploads/ then land it as a dataset, or
@@ -178,6 +181,12 @@ def upload_file(
     split, split_position = _normalize_split(split, split_position)
     if split is not None and intent:
         raise DatasetUploadError("split fixes the intents; drop --intent.")
+    if dataset:
+        dataset = str(uuid.UUID(dataset))
+        if split is not None or intent or capability or brief:
+            raise DatasetUploadError(
+                "Attaching source uses the existing dataset settings; omit brief, intent, capability and split."
+            )
     capability = (capability or "").strip() or None
     try:
         total = path.stat().st_size
@@ -251,12 +260,17 @@ def upload_file(
         }
         if intent:
             body["intent"] = intent
+        if brief:
+            body["brief"] = brief
         if capability:
             body["capability"] = capability
         if split is not None:
             body["eval_percent"] = split
             body["position"] = split_position
         create_path = SPLIT_PATH if split is not None else DATASETS_PATH
+        if dataset:
+            create_path = f"{DATASETS_PATH}{dataset}/source/"
+            body = body["source"]
         try:
             dataset_response = client.post(f"{base_url}{create_path}", json=body, timeout=DEFAULT_TIMEOUT)
         except requests.RequestException as exc:
@@ -428,6 +442,8 @@ def upload(
         typer.Argument(exists=True, file_okay=True, dir_okay=False, readable=True),
     ],
     project_id: Annotated[str, typer.Option("--project-id", help="Project UUID")] = "",
+    dataset: Annotated[str | None, typer.Option("--dataset", help="Add files to an existing dataset")] = None,
+    brief: Annotated[str, typer.Option("--brief", help="What to do with the source data")] = "",
     api_key: Annotated[
         str,
         typer.Option("--api-key", envvar="OVERMIND_API_KEY", help="Overmind API key", show_default=False),
@@ -439,7 +455,7 @@ def upload(
     path: Annotated[Path, typer.Option("--path", help="Path to overmind.toml")] = DEFAULT_PATH,
     intent: Annotated[
         str | None,
-        typer.Option("--intent", help="Dataset intent: train or eval"),
+        typer.Option("--intent", help="Dataset intent: train, eval or explore"),
     ] = None,
     capability: Annotated[
         str | None,
@@ -478,6 +494,8 @@ def upload(
             capability=capability,
             split=split,
             split_position=split_position,
+            dataset=dataset,
+            brief=brief,
         )
         if wait:
             for id_key, state_key in (("id", "state"), ("eval_id", "eval_state")):

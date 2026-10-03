@@ -149,7 +149,7 @@ export function SetupPanel({ wizard, projectId }: { wizard: TrainWizard; project
         </Field>
 
         <Field
-          hint="Split by trace into training and validation rows. Validation rows measure loss and never reach the weights."
+          hint="The selected version is pinned for preparation and training."
           htmlFor="train-dataset"
           label="Training Dataset"
         >
@@ -225,276 +225,340 @@ export function SetupPanel({ wizard, projectId }: { wizard: TrainWizard; project
         </Field>
 
         <Field
-          hint="Used for the selected model evaluations."
-          htmlFor="train-eval-dataset"
-          label="Eval Dataset"
+          hint="Validation measures loss without updating model weights."
+          htmlFor="train-validation-mode"
+          label="Validation source"
         >
-          {evalDatasetsQuery.isLoading ? (
-            <Skeleton className="h-8 w-full" />
-          ) : evalDatasets.length === 0 ? (
-            <EmptyField>
-              {capabilityId
-                ? "No eval datasets for this capability."
-                : "No eval datasets in this project."}
-            </EmptyField>
-          ) : (
-            <Select onValueChange={setEvalDatasetId} value={evalDatasetId}>
-              <SelectTrigger className="w-full" id="train-eval-dataset" size="default">
-                <SelectValue placeholder="Select an eval dataset">
-                  <span className="truncate">{evalDataset?.name || "Untitled"}</span>
+          <Select
+            onValueChange={(value) =>
+              wizard.setValidationMode(value as TrainWizard["validationMode"])
+            }
+            value={wizard.validationMode}
+          >
+            <SelectTrigger className="w-full" id="train-validation-mode">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="split">20% grouped split</SelectItem>
+              <SelectItem value="external">Separate dataset</SelectItem>
+              <SelectItem value="none">No validation</SelectItem>
+            </SelectContent>
+          </Select>
+        </Field>
+        {wizard.validationMode === "external" && (
+          <Field htmlFor="train-validation-dataset" label="Validation dataset">
+            <Select
+              onValueChange={wizard.setValidationDatasetId}
+              value={wizard.validationDatasetId}
+            >
+              <SelectTrigger className="w-full" id="train-validation-dataset">
+                <SelectValue placeholder="Select a validation dataset">
+                  {wizard.validationDataset?.name}
                 </SelectValue>
               </SelectTrigger>
               <SelectContent>
-                {evalDatasets.map((d) => (
-                  <SelectItem key={d.id} value={d.id}>
-                    <span className="truncate">{d.name || "Untitled"}</span>
-                    <span className="text-xs text-muted-foreground">
-                      {d.activeVersion} · {count(d.rows ?? 0, "row")}
-                    </span>
-                    <IntentBadge intent={d.intent} />
-                  </SelectItem>
-                ))}
+                {datasets
+                  .filter((d) => d.id !== datasetId)
+                  .map((d) => (
+                    <SelectItem key={d.id} value={d.id}>
+                      {d.name} · {d.activeVersion} · {count(d.rows ?? 0, "row")}
+                    </SelectItem>
+                  ))}
               </SelectContent>
             </Select>
-          )}
+            {wizard.validationDataset && (
+              <p className="text-xs text-muted-foreground">
+                {wizard.validationDataset.activeVersion} ·{" "}
+                {count(wizard.validationDataset.rows ?? 0, "row")}
+              </p>
+            )}
+          </Field>
+        )}
 
-          {shownEvalDataset && overlapCount > 0 && (
-            <p className="flex items-start gap-1.5 text-xs text-warning">
-              <Icon.warning className="mt-0.5 size-3 shrink-0" />
-              {overlapCount.toLocaleString()} training rows overlap this eval dataset. Review the
-              split before training.
+        {wizard.nativeDecision ? (
+          <div className="sm:col-span-2 lg:col-span-3 text-sm">
+            <p className="font-medium">Native probability training · Modal LoRA</p>
+            <p className="text-muted-foreground">
+              Full probability targets · decision cross entropy · typed probability output. Select
+              separate calibration and final suites on the run page.
             </p>
-          )}
-        </Field>
-
-        <div className="sm:col-span-2 lg:col-span-3">
-          <SetupGrid>
+          </div>
+        ) : (
+          <>
             <Field
-              className="sm:col-start-1 sm:row-start-1"
-              hint="Graders used for each selected evaluation."
-              htmlFor="train-eval-set"
-              label="Eval set"
+              hint="Used for the selected model evaluations."
+              htmlFor="train-eval-dataset"
+              label="Eval Dataset"
             >
-              {evalSetsQuery.isLoading ? (
+              {evalDatasetsQuery.isLoading ? (
                 <Skeleton className="h-8 w-full" />
-              ) : evalSets.length === 0 && capabilityId ? (
-                <EvalSetEmptyWizardState
-                  capabilityId={capabilityId}
-                  error={evalPreload.data?.error}
-                  projectId={projectId}
-                  status={evalPreload.data?.status ?? null}
-                  variant="compact"
-                />
-              ) : evalSets.length === 0 ? (
-                <EmptyField>No eval sets in this project.</EmptyField>
+              ) : evalDatasets.length === 0 ? (
+                <EmptyField>
+                  {capabilityId
+                    ? "No eval datasets for this capability."
+                    : "No eval datasets in this project."}
+                </EmptyField>
               ) : (
-                <Select onValueChange={setEvalSetId} value={evalSetId}>
-                  <SelectTrigger className="w-full" id="train-eval-set" size="default">
-                    <SelectValue placeholder="Select an eval set">
-                      <span className="truncate">{evalSet?.name}</span>
+                <Select onValueChange={setEvalDatasetId} value={evalDatasetId}>
+                  <SelectTrigger className="w-full" id="train-eval-dataset" size="default">
+                    <SelectValue placeholder="Select an eval dataset">
+                      <span className="truncate">{evalDataset?.name || "Untitled"}</span>
                     </SelectValue>
                   </SelectTrigger>
                   <SelectContent>
-                    {evalSets.map((set) => (
-                      <SelectItem key={set.id} value={set.id}>
-                        <span className="truncate">{set.name}</span>
-                        {!capabilityId && (
-                          <span className="text-xs text-muted-foreground">
-                            {capabilities.find((c) => c.id === set.capability)?.name}
-                          </span>
-                        )}
-                        {set.isActive && (
-                          <span className="text-xs text-muted-foreground">Active</span>
-                        )}
+                    {evalDatasets.map((d) => (
+                      <SelectItem key={d.id} value={d.id}>
+                        <span className="truncate">{d.name || "Untitled"}</span>
                         <span className="text-xs text-muted-foreground">
-                          {count(set.generativeCount, "grader")}
+                          {d.activeVersion} · {count(d.rows ?? 0, "row")}
                         </span>
+                        <IntentBadge intent={d.intent} />
                       </SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
               )}
-            </Field>
 
-            <JudgeModelSelect
-              checking={wizard.contextQuery?.isFetching}
-              className="sm:col-start-1 sm:row-start-2"
-              disabled={!wizard.evalSetId}
-              id="train-judge-model"
-              onChange={wizard.setJudgeModel}
-              report={wizard.contextQuery?.data}
-              value={wizard.judgeModel}
-            />
-            <Field
-              className="sm:col-start-2 sm:row-start-1"
-              hint="Model to evaluate and compare against in this run."
-              htmlFor="train-benchmark-model"
-              label="Benchmark model"
-            >
-              <Select onValueChange={wizard.setBenchmarkModel} value={wizard.benchmarkModel}>
-                <SelectTrigger
-                  className={cn("w-full", benchmarkWarning && WARNING_SELECT)}
-                  id="train-benchmark-model"
-                  size="default"
-                  title={wizard.selectedBenchmark?.label}
-                >
-                  <SelectValue
-                    className="min-w-0 flex-1"
-                    placeholder="Select a model to compare against"
-                  >
-                    {wizard.selectedBenchmark && (
-                      <ModelOptionLabel
-                        baseModel={wizard.selectedBenchmark.baseModelId}
-                        model={wizard.selectedBenchmark.value}
-                      />
-                    )}
-                  </SelectValue>
-                  {benchmarkWarning && <Icon.warning className="size-3 text-warning" />}
-                </SelectTrigger>
-                <SelectContent>
-                  {wizard.benchmarkOptions.map((option) => {
-                    const status = benchmarkContextStatus(wizard, option.value);
-                    const muted = status === "warning";
-                    return (
-                      <SelectItem
-                        className={cn(
-                          "[&>span:last-child]:min-w-0 [&>span:last-child]:flex-1",
-                          muted && MUTED_MODEL_OPTION
-                        )}
-                        key={option.value}
-                        textValue={option.label}
-                        value={option.value}
-                      >
-                        <span className="flex min-w-0 flex-1 flex-col gap-0.5">
-                          <ModelOptionLabel baseModel={option.baseModelId} model={option.value}>
-                            <span className="ml-auto shrink-0 text-xs text-muted-foreground">
-                              {option.kind}
-                            </span>
-                          </ModelOptionLabel>
-                          <span className="flex min-w-0 items-center gap-2 pl-5.5">
-                            {option.kind === "Trained model" && (
-                              <span className="truncate text-xs text-muted-foreground">
-                                {option.label}
-                              </span>
-                            )}
-                            {status && (
-                              <span
-                                className={
-                                  status === "fits"
-                                    ? "ml-auto shrink-0 text-xs text-success"
-                                    : "ml-auto shrink-0 text-xs text-muted-foreground"
-                                }
-                              >
-                                {contextStatusLabel(status)}
-                              </span>
-                            )}
-                          </span>
-                        </span>
-                      </SelectItem>
-                    );
-                  })}
-                  {wizard.benchmarksQuery.isLoading && (
-                    <div className="p-2">
-                      <Spinner size="sm" />
-                    </div>
-                  )}
-                  {!wizard.benchmarksQuery.isLoading && wizard.benchmarkOptions.length === 0 && (
-                    <div className="p-2 text-sm text-muted-foreground">
-                      No benchmark models available.
-                    </div>
-                  )}
-                </SelectContent>
-              </Select>
-              {wizard.benchmarksQuery.isError && (
-                <p className="text-xs text-destructive">Couldn't load trained models.</p>
+              {shownEvalDataset && overlapCount > 0 && (
+                <p className="flex items-start gap-1.5 text-xs text-warning">
+                  <Icon.warning className="mt-0.5 size-3 shrink-0" />
+                  {overlapCount.toLocaleString()} training rows overlap this eval dataset. Review
+                  the split before training.
+                </p>
               )}
-              <BenchmarkContextEstimate wizard={wizard} />
-            </Field>
-            <Field
-              className="sm:col-start-2 sm:row-start-2"
-              hint="Evaluate the selected benchmark before or after training."
-              label="Benchmark evals"
-            >
-              <div
-                aria-label="Incumbent evaluations"
-                className="grid grid-cols-2 gap-2"
-                role="group"
-              >
-                <Label
-                  className="h-8 rounded-sm bg-control px-3 has-disabled:cursor-not-allowed has-disabled:opacity-50 [&:not(:has(:disabled))]:cursor-pointer [&:not(:has(:disabled))]:hover:bg-control-hover"
-                  htmlFor="train-eval-incumbent-before"
-                >
-                  <Checkbox
-                    aria-label="Evaluate incumbent baseline"
-                    checked={wizard.evaluationPlan.evalIncumbentBefore}
-                    disabled={!wizard.hasIncumbent}
-                    id="train-eval-incumbent-before"
-                    onCheckedChange={(value) =>
-                      wizard.setEvaluationChoice("evalIncumbentBefore", value === true)
-                    }
-                  />
-                  Baseline
-                </Label>
-                <Label
-                  className="h-8 rounded-sm bg-control px-3 has-disabled:cursor-not-allowed has-disabled:opacity-50 [&:not(:has(:disabled))]:cursor-pointer [&:not(:has(:disabled))]:hover:bg-control-hover"
-                  htmlFor="train-eval-incumbent-after"
-                >
-                  <Checkbox
-                    aria-label="Evaluate incumbent after training"
-                    checked={wizard.evaluationPlan.evalIncumbentAfter}
-                    disabled={!wizard.hasIncumbent}
-                    id="train-eval-incumbent-after"
-                    onCheckedChange={(value) =>
-                      wizard.setEvaluationChoice("evalIncumbentAfter", value === true)
-                    }
-                  />
-                  After
-                </Label>
-              </div>
             </Field>
 
-            <Field
-              className="sm:col-start-2 sm:row-start-3 lg:col-start-3 lg:row-start-2"
-              hint="Compare the untouched base model with the trained checkpoint."
-              label="Training model evals"
-            >
-              <div
-                aria-label="Training model evaluations"
-                className="grid grid-cols-2 gap-2"
-                role="group"
-              >
-                <Label
-                  className="h-8 cursor-pointer rounded-sm bg-control px-3 hover:bg-control-hover"
-                  htmlFor="train-eval-model-before"
+            <div className="sm:col-span-2 lg:col-span-3">
+              <SetupGrid>
+                <Field
+                  className="sm:col-start-1 sm:row-start-1"
+                  hint="Graders used for each selected evaluation."
+                  htmlFor="train-eval-set"
+                  label="Eval set"
                 >
-                  <Checkbox
-                    aria-label="Evaluate base model"
-                    checked={wizard.evaluationPlan.evalModelBefore}
-                    id="train-eval-model-before"
-                    onCheckedChange={(value) =>
-                      wizard.setEvaluationChoice("evalModelBefore", value === true)
-                    }
-                  />
-                  Base
-                </Label>
-                <Label
-                  className="h-8 cursor-pointer rounded-sm bg-control px-3 hover:bg-control-hover"
-                  htmlFor="train-eval-model-after"
+                  {evalSetsQuery.isLoading ? (
+                    <Skeleton className="h-8 w-full" />
+                  ) : evalSets.length === 0 && capabilityId ? (
+                    <EvalSetEmptyWizardState
+                      capabilityId={capabilityId}
+                      error={evalPreload.data?.error}
+                      projectId={projectId}
+                      status={evalPreload.data?.status ?? null}
+                      variant="compact"
+                    />
+                  ) : evalSets.length === 0 ? (
+                    <EmptyField>No eval sets in this project.</EmptyField>
+                  ) : (
+                    <Select onValueChange={setEvalSetId} value={evalSetId}>
+                      <SelectTrigger className="w-full" id="train-eval-set" size="default">
+                        <SelectValue placeholder="Select an eval set">
+                          <span className="truncate">{evalSet?.name}</span>
+                        </SelectValue>
+                      </SelectTrigger>
+                      <SelectContent>
+                        {evalSets.map((set) => (
+                          <SelectItem key={set.id} value={set.id}>
+                            <span className="truncate">{set.name}</span>
+                            {!capabilityId && (
+                              <span className="text-xs text-muted-foreground">
+                                {capabilities.find((c) => c.id === set.capability)?.name}
+                              </span>
+                            )}
+                            {set.isActive && (
+                              <span className="text-xs text-muted-foreground">Active</span>
+                            )}
+                            <span className="text-xs text-muted-foreground">
+                              {count(set.generativeCount, "grader")}
+                            </span>
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  )}
+                </Field>
+
+                <JudgeModelSelect
+                  checking={wizard.contextQuery?.isFetching}
+                  className="sm:col-start-1 sm:row-start-2"
+                  disabled={!wizard.evalSetId}
+                  id="train-judge-model"
+                  onChange={wizard.setJudgeModel}
+                  report={wizard.contextQuery?.data}
+                  value={wizard.judgeModel}
+                />
+                <Field
+                  className="sm:col-start-2 sm:row-start-1"
+                  hint="Model to evaluate and compare against in this run."
+                  htmlFor="train-benchmark-model"
+                  label="Benchmark model"
                 >
-                  <Checkbox
-                    aria-label="Evaluate trained model"
-                    checked={wizard.evaluationPlan.evalModelAfter}
-                    id="train-eval-model-after"
-                    onCheckedChange={(value) =>
-                      wizard.setEvaluationChoice("evalModelAfter", value === true)
-                    }
-                  />
-                  Trained
-                </Label>
-              </div>
-            </Field>
-          </SetupGrid>
-        </div>
+                  <Select onValueChange={wizard.setBenchmarkModel} value={wizard.benchmarkModel}>
+                    <SelectTrigger
+                      className={cn("w-full", benchmarkWarning && WARNING_SELECT)}
+                      id="train-benchmark-model"
+                      size="default"
+                      title={wizard.selectedBenchmark?.label}
+                    >
+                      <SelectValue
+                        className="min-w-0 flex-1"
+                        placeholder="Select a model to compare against"
+                      >
+                        {wizard.selectedBenchmark && (
+                          <ModelOptionLabel
+                            baseModel={wizard.selectedBenchmark.baseModelId}
+                            model={wizard.selectedBenchmark.value}
+                          />
+                        )}
+                      </SelectValue>
+                      {benchmarkWarning && <Icon.warning className="size-3 text-warning" />}
+                    </SelectTrigger>
+                    <SelectContent>
+                      {wizard.benchmarkOptions.map((option) => {
+                        const status = benchmarkContextStatus(wizard, option.value);
+                        const muted = status === "warning";
+                        return (
+                          <SelectItem
+                            className={cn(
+                              "[&>span:last-child]:min-w-0 [&>span:last-child]:flex-1",
+                              muted && MUTED_MODEL_OPTION
+                            )}
+                            key={option.value}
+                            textValue={option.label}
+                            value={option.value}
+                          >
+                            <span className="flex min-w-0 flex-1 flex-col gap-0.5">
+                              <ModelOptionLabel baseModel={option.baseModelId} model={option.value}>
+                                <span className="ml-auto shrink-0 text-xs text-muted-foreground">
+                                  {option.kind}
+                                </span>
+                              </ModelOptionLabel>
+                              <span className="flex min-w-0 items-center gap-2 pl-5.5">
+                                {option.kind === "Trained model" && (
+                                  <span className="truncate text-xs text-muted-foreground">
+                                    {option.label}
+                                  </span>
+                                )}
+                                {status && (
+                                  <span
+                                    className={
+                                      status === "fits"
+                                        ? "ml-auto shrink-0 text-xs text-success"
+                                        : "ml-auto shrink-0 text-xs text-muted-foreground"
+                                    }
+                                  >
+                                    {contextStatusLabel(status)}
+                                  </span>
+                                )}
+                              </span>
+                            </span>
+                          </SelectItem>
+                        );
+                      })}
+                      {wizard.benchmarksQuery.isLoading && (
+                        <div className="p-2">
+                          <Spinner size="sm" />
+                        </div>
+                      )}
+                      {!wizard.benchmarksQuery.isLoading &&
+                        wizard.benchmarkOptions.length === 0 && (
+                          <div className="p-2 text-sm text-muted-foreground">
+                            No benchmark models available.
+                          </div>
+                        )}
+                    </SelectContent>
+                  </Select>
+                  {wizard.benchmarksQuery.isError && (
+                    <p className="text-xs text-destructive">Couldn't load trained models.</p>
+                  )}
+                  <BenchmarkContextEstimate wizard={wizard} />
+                </Field>
+                <Field
+                  className="sm:col-start-2 sm:row-start-2"
+                  hint="Evaluate the selected benchmark before or after training."
+                  label="Benchmark evals"
+                >
+                  <div
+                    aria-label="Incumbent evaluations"
+                    className="grid grid-cols-2 gap-2"
+                    role="group"
+                  >
+                    <Label
+                      className="h-8 rounded-sm bg-control px-3 has-disabled:cursor-not-allowed has-disabled:opacity-50 [&:not(:has(:disabled))]:cursor-pointer [&:not(:has(:disabled))]:hover:bg-control-hover"
+                      htmlFor="train-eval-incumbent-before"
+                    >
+                      <Checkbox
+                        aria-label="Evaluate incumbent baseline"
+                        checked={wizard.evaluationPlan.evalIncumbentBefore}
+                        disabled={!wizard.hasIncumbent}
+                        id="train-eval-incumbent-before"
+                        onCheckedChange={(value) =>
+                          wizard.setEvaluationChoice("evalIncumbentBefore", value === true)
+                        }
+                      />
+                      Baseline
+                    </Label>
+                    <Label
+                      className="h-8 rounded-sm bg-control px-3 has-disabled:cursor-not-allowed has-disabled:opacity-50 [&:not(:has(:disabled))]:cursor-pointer [&:not(:has(:disabled))]:hover:bg-control-hover"
+                      htmlFor="train-eval-incumbent-after"
+                    >
+                      <Checkbox
+                        aria-label="Evaluate incumbent after training"
+                        checked={wizard.evaluationPlan.evalIncumbentAfter}
+                        disabled={!wizard.hasIncumbent}
+                        id="train-eval-incumbent-after"
+                        onCheckedChange={(value) =>
+                          wizard.setEvaluationChoice("evalIncumbentAfter", value === true)
+                        }
+                      />
+                      After
+                    </Label>
+                  </div>
+                </Field>
+
+                <Field
+                  className="sm:col-start-2 sm:row-start-3 lg:col-start-3 lg:row-start-2"
+                  hint="Compare the untouched base model with the trained checkpoint."
+                  label="Training model evals"
+                >
+                  <div
+                    aria-label="Training model evaluations"
+                    className="grid grid-cols-2 gap-2"
+                    role="group"
+                  >
+                    <Label
+                      className="h-8 cursor-pointer rounded-sm bg-control px-3 hover:bg-control-hover"
+                      htmlFor="train-eval-model-before"
+                    >
+                      <Checkbox
+                        aria-label="Evaluate base model"
+                        checked={wizard.evaluationPlan.evalModelBefore}
+                        id="train-eval-model-before"
+                        onCheckedChange={(value) =>
+                          wizard.setEvaluationChoice("evalModelBefore", value === true)
+                        }
+                      />
+                      Base
+                    </Label>
+                    <Label
+                      className="h-8 cursor-pointer rounded-sm bg-control px-3 hover:bg-control-hover"
+                      htmlFor="train-eval-model-after"
+                    >
+                      <Checkbox
+                        aria-label="Evaluate trained model"
+                        checked={wizard.evaluationPlan.evalModelAfter}
+                        id="train-eval-model-after"
+                        onCheckedChange={(value) =>
+                          wizard.setEvaluationChoice("evalModelAfter", value === true)
+                        }
+                      />
+                      Trained
+                    </Label>
+                  </div>
+                </Field>
+              </SetupGrid>
+            </div>
+          </>
+        )}
       </SetupGrid>
     </Column>
   );

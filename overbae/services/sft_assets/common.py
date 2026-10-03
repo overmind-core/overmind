@@ -18,6 +18,8 @@ from typing import Any
 import torch
 from transformers import TrainerCallback, TrainerControl, TrainerState, TrainingArguments
 
+from modal_shared.training_telemetry import record_stage
+
 _GB = 1024**3
 
 
@@ -196,6 +198,7 @@ def bt(prefix: str, payload: dict) -> None:
 
 def emit_stage(stage: str, **extra) -> None:
     bt("BT_STAGE", {"stage": stage, **extra})
+    record_stage(RUN_DIR, stage, **extra)
 
 
 class ProgressCallback(TrainerCallback):
@@ -245,6 +248,14 @@ class ProgressCallback(TrainerCallback):
             with self.metrics_path.open("a") as f:
                 f.write(json.dumps(payload) + "\n")
             self.progress_path.write_text(json.dumps(payload, indent=2) + "\n")
+            if prefix == "BT_PROGRESS":
+                record_stage(
+                    self.run_dir,
+                    "training",
+                    completed=record.get("step"),
+                    total=record.get("total_steps"),
+                    unit="steps",
+                )
 
     def on_train_begin(
         self,
@@ -357,6 +368,16 @@ class ProgressCallback(TrainerCallback):
         }
         if "eval_mean_token_accuracy" in metrics:
             record["eval_token_accuracy"] = round(float(metrics["eval_mean_token_accuracy"]), 4)
+        for key in (
+            "argmax_target_agreement",
+            "hard_label_accuracy",
+            "hard_label_decisions",
+            "brier",
+            "decisions",
+            "runtime_seconds",
+        ):
+            if metrics.get(key) is not None:
+                record[key] = metrics[key]
         self._emit("BT_EVAL", record)
 
     def on_train_end(

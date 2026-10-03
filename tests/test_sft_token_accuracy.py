@@ -13,6 +13,8 @@ from unittest.mock import Mock
 import numpy as np
 import pytest
 
+from modal_shared.training_telemetry import record_stage
+
 ASSETS = Path(__file__).resolve().parents[1] / "overbae/services/sft_assets"
 
 
@@ -225,6 +227,7 @@ def test_accuracy_logs_reach_persisted_training_and_validation_records(tmp_path)
         "common.py",
         "ProgressCallback",
         {
+            "record_stage": record_stage,
             "TrainerCallback": object,
             "TrainingArguments": object,
             "TrainerState": object,
@@ -263,6 +266,7 @@ def test_progress_rates_use_only_work_since_this_attempt_started(
         "common.py",
         "ProgressCallback",
         {
+            "record_stage": record_stage,
             "TrainerCallback": object,
             "TrainingArguments": object,
             "TrainerState": object,

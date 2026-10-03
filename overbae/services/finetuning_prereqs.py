@@ -119,15 +119,33 @@ def finetune_prerequisite_report(
     dataset: Dataset,
     *,
     capability: Capability | None = None,
+    cell=None,
+    validation_cell=None,
+    validation_enabled=True,
+    validation_split_ratio=0.2,
+    split_method="random",
+    eval_dataset=None,
+    eval_cell=None,
+    eval_set=None,
+    evaluate=True,
 ) -> dict[str, Any]:
     """Readiness checklist before create_finetune_job (wizard-equivalent gates)."""
-    validation = validate_dataset(str(dataset.id))
-    eval_dataset = default_eval_dataset(project, capability)
-    eval_set = default_eval_set(project, capability)
+    validation = validate_dataset(
+        str(dataset.id),
+        cell_id=str(cell.id) if cell else None,
+        validation_enabled=validation_enabled,
+        validation_split_ratio=validation_split_ratio,
+        validation_dataset_id=str(validation_cell.dataset_id) if validation_cell else None,
+        validation_cell_id=str(validation_cell.id) if validation_cell else None,
+        split_method=split_method,
+    )
+    if evaluate:
+        eval_dataset = eval_dataset or default_eval_dataset(project, capability)
+        eval_set = eval_set or default_eval_set(project, capability)
 
     missing: list[str] = []
     warnings: list[str] = []
-    product = dataset.active_cell
+    product = cell or dataset.active_cell
     if product is None:
         missing.append("training dataset — no version has run yet")
     elif not product.fits("train")[0]:
@@ -136,16 +154,16 @@ def finetune_prerequisite_report(
         missing.append(
             "training dataset — fix the rows the validator lists, then run the notebook again"
         )
-    if eval_dataset is None:
+    if evaluate and eval_dataset is None:
         missing.append(
             "eval dataset — create an eval dataset whose version fits the eval contract "
             "(wizard needs it for in-training judge evals)"
         )
-    if eval_set is None:
+    if evaluate and eval_set is None:
         missing.append("eval set — create an eval set with generative evaluators in this project")
 
     overlap_count = None
-    eval_product = eval_dataset.active_cell if eval_dataset is not None else None
+    eval_product = eval_cell or (eval_dataset.active_cell if eval_dataset is not None else None)
     for ds, cell, intent, label in (
         (dataset, product, "train", "training dataset"),
         (eval_dataset, eval_product, "eval", "eval dataset"),
@@ -171,6 +189,8 @@ def finetune_prerequisite_report(
     try:
         analysis = get_recommendation(
             str(dataset.id),
+            cell=product,
+            eval_cell=eval_product,
             capability_id=str(capability.id) if capability is not None else None,
             eval_dataset_id=str(eval_dataset.id) if eval_dataset is not None else None,
         )

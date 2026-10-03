@@ -14,11 +14,13 @@ import type {
 } from "@/openapi";
 
 export interface ValidateDatasetParams {
+  cellId?: string;
+  validationCellId?: string;
   datasetId: string;
   validationEnabled?: boolean;
   validationSplitRatio?: number;
   validationDatasetId?: string | null;
-  splitMethod?: string;
+  splitMethod?: DatasetValidateRequestRequest["splitMethod"];
 }
 
 export const useTrainingBenchmarksQuery = (projectId: string) =>
@@ -62,10 +64,17 @@ export function defaultFinetuneName({
 
 /** Derived from the cached data alone, so every observer of the key agrees. */
 export function finetuningJobsPollInterval(
-  results: Array<{ status: string }> | undefined
+  results: Array<{ status: string; nativeEvaluation?: { state?: string } | null }> | undefined
 ): number | false {
   if (!results) return 5_000;
-  return results.some((j) => !isTerminalFinetuningStatus(j.status)) ? 5_000 : false;
+  return results.some(
+    (j) =>
+      !isTerminalFinetuningStatus(j.status) ||
+      (j.nativeEvaluation?.state != null &&
+        !["completed", "failed", "submission_unknown"].includes(String(j.nativeEvaluation.state)))
+  )
+    ? 5_000
+    : false;
 }
 
 export const useFinetuningJobsQuery = (projectId: string | undefined) =>
@@ -249,8 +258,10 @@ export const useValidateDatasetMutation = () =>
         typeof params === "string"
           ? { datasetId: params }
           : {
+              cellId: params.cellId,
               datasetId: params.datasetId,
               splitMethod: params.splitMethod,
+              validationCellId: params.validationCellId,
               validationDatasetId: params.validationDatasetId,
               validationEnabled: params.validationEnabled,
               validationSplitRatio: params.validationSplitRatio,
@@ -387,6 +398,7 @@ export interface FinetuningCheckpointRow {
 }
 
 interface FinetuningProgressSnapshot {
+  diagnostics?: Record<string, unknown> | null;
   trained_steps?: number | null;
   total_steps?: number | null;
   percent?: number | null;

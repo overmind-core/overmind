@@ -1,5 +1,7 @@
 # Jev-style training: findings, changes and remaining work
 
+> Historical experiment record. Current implementation and qualification are tracked in [the platform verification report](platform-improvements/verification-plan.md). Earlier launch holds, runtime limitations and estimates below describe their recorded point in time. The authorized full run is `a356c75d-788a-4a35-bd30-1d24ae7afab8`; its existing completion protocol remains authoritative. New platform changes are isolated and have not been deployed over it.
+
 Snapshot: October 2, 2026. Repository branch: `codex/general-decision-training`. This report describes the current implementation; the earlier architecture-and-experiment-plan document is a historical proposal and contains superseded counts and implementation status.
 
 The native training mechanism works in small GPU qualifications. Full-corpus training has not started, the independent final benchmark predictions have not run, and model quality across tasks remains unproven. The user has explicitly held the full launch pending cost/time review. The already running representative pilot and CPU preparation may finish; their completion does not release that hold. At the status check for this review, the pilot had completed 31 of 65 optimizer steps and full preparation was still running.

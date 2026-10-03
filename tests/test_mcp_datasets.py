@@ -26,6 +26,23 @@ from overbae.services.mcp.context import MCPContext
 pytestmark = pytest.mark.django_db(transaction=True)
 
 
+def test_start_dataset_preserves_brief_and_exposes_source_handoff():
+    context = _context()
+    result = _call(
+        "start_dataset", {"brief": "Explore source documents before choosing a task."}, context
+    )
+    assert not result.isError, result.structuredContent
+    dataset_id = result.structuredContent["dataset"]["id"]
+    dataset = Dataset.objects.get(pk=dataset_id)
+    agent.settle(dataset.id)
+    inspected = _call("inspect_dataset", {"dataset": dataset_id}, context)
+    assert not inspected.isError, inspected.structuredContent
+    detail = inspected.structuredContent
+    assert detail["brief"] == "Explore source documents before choosing a task."
+    assert detail["source_kind"] == "pending" and detail["capability"] is None
+    assert detail["human_action"]["arguments"]["dataset"] == dataset_id
+
+
 def _context(*, permission: str | list[str] = ("read", "write")) -> MCPContext:
     user = User.objects.create_user(
         email=f"mcp-dataset-{uuid.uuid4().hex[:8]}@test.com",
@@ -75,7 +92,7 @@ def _ran_cell(dataset: Dataset, *, position: int = 0, title: str = "Source") -> 
     )
 
 
-def test_approving_a_later_proposal_preserves_earlier_proposals_and_saved_data():
+def test_approving_a_later_proposal_retires_old_previews_and_preserves_saved_data():
     context = _context()
     dataset = _dataset(context)
     land.land_rows(
@@ -99,8 +116,8 @@ def test_approving_a_later_proposal_preserves_earlier_proposals_and_saved_data()
     dataset.refresh_from_db()
     assert str(dataset.active_cell.id) == selected["id"]
     assert dataset.active_cell.rows == 1
-    assert dataset.cells.get(pk=earlier["id"]).state == Cell.State.PROPOSED
-    assert list(dataset.cells.values_list("position", flat=True)) == [0, 1, 2]
+    assert not dataset.cells.filter(pk=earlier["id"]).exists()
+    assert list(dataset.cells.values_list("position", flat=True)) == [0, 1]
     assert store.file_sha256(paths.cell_path(dataset.id, source.id)) == fingerprint
 
 
@@ -204,7 +221,7 @@ def test_requested_generation_is_active_and_queryable_without_an_mcp_approval_st
             yield from pending
             return engines.Outcome(text="One example added.")
 
-    monkeypatch.setattr(engines, "select", lambda: GeneratingEngine())
+    monkeypatch.setattr(engines, "select", lambda user=None: GeneratingEngine())
     list(agent.follow_up(dataset.id, "Generate and add one example"))
     result = _call("inspect_dataset", {"dataset": str(dataset.id)}, context)
     assert not result.isError

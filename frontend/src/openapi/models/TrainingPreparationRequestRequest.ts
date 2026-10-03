@@ -50,6 +50,12 @@ export interface TrainingPreparationRequestRequest {
      * @type {string}
      * @memberof TrainingPreparationRequestRequest
      */
+    validationCell?: string | null;
+    /**
+     *
+     * @type {string}
+     * @memberof TrainingPreparationRequestRequest
+     */
     model: string;
     /**
      *
@@ -90,6 +96,7 @@ export function TrainingPreparationRequestRequestFromJSONTyped(json: any, ignore
         'dataset': json['dataset'],
         'cell': json['cell'] == null ? undefined : json['cell'],
         'validationDataset': json['validation_dataset'] == null ? undefined : json['validation_dataset'],
+        'validationCell': json['validation_cell'] == null ? undefined : json['validation_cell'],
         'model': json['model'],
         'contextLength': json['context_length'],
         'trainingType': json['training_type'] == null ? undefined : TrainingTypeEnumFromJSON(json['training_type']),
@@ -110,6 +117,7 @@ export function TrainingPreparationRequestRequestToJSONTyped(value?: TrainingPre
         'dataset': value['dataset'],
         'cell': value['cell'],
         'validation_dataset': value['validationDataset'],
+        'validation_cell': value['validationCell'],
         'model': value['model'],
         'context_length': value['contextLength'],
         'training_type': TrainingTypeEnumToJSON(value['trainingType']),

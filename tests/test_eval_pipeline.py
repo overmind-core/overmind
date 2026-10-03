@@ -60,6 +60,7 @@ def test_statistical_pipeline_accuracy():
             },
         ],
         capability=capability,
+        contract="eval",
     )
 
     evaluator = Evaluator.objects.create(
@@ -120,6 +121,7 @@ def test_normalize_datapoint_propagates_row_extra():
             {"input": "q2"},
         ],
         capability=capability,
+        contract="eval",
     )
     dp = _row(dataset, 0)
     normalized = eval_tasks.normalize_datapoint(dp)
@@ -175,6 +177,7 @@ def test_resolve_items_reads_reference_from_expected_output():
             }
         ],
         capability=capability,
+        contract="eval",
     )
     run = EvalRun.objects.create(
         project=project,
@@ -205,6 +208,7 @@ def test_generate_prompt_excludes_reference(monkeypatch):
             }
         ],
         capability=capability,
+        contract="eval",
     )
     dp = _row(dataset, 0)
     run = EvalRun.objects.create(
@@ -259,6 +263,7 @@ def test_generate_multi_turn_keeps_history_strips_final_assistant(monkeypatch):
             }
         ],
         capability=capability,
+        contract="eval",
     )
     dp = _row(dataset, 0)
     run = EvalRun.objects.create(
@@ -300,6 +305,7 @@ def test_existing_mode_reference_synthesized_for_scoring():
         capability.project,
         [{"input": {"input": "summarize", "status": "ACTIVE"}, "expected_output": "GT-ANSWER"}],
         capability=capability,
+        contract="eval",
     )
     dp = _row(dataset, 0)
 
@@ -319,7 +325,10 @@ def test_generate_mode_total_failure_sets_sample_error(monkeypatch):
     project = _project()
     capability = Capability.objects.create(project=project, name="A", slug="a")
     dataset = frozen_dataset(
-        capability.project, [{"input": "q1", "expected_output": "a1"}], capability=capability
+        capability.project,
+        [{"input": "q1", "expected_output": "a1"}],
+        capability=capability,
+        contract="eval",
     )
     dp = _row(dataset, 0)
     run = EvalRun.objects.create(
@@ -374,6 +383,7 @@ def test_generate_max_steps_scales_with_recorded_tool_calls(monkeypatch):
         capability.project,
         [{"input": _tool_calling_input(8), "expected_output": "TARGET"}],
         capability=capability,
+        contract="eval",
     )
     dp = _row(dataset, 0)
     run = EvalRun.objects.create(
@@ -414,6 +424,7 @@ def test_generate_max_steps_override_from_variant_params(monkeypatch):
         capability.project,
         [{"input": _tool_calling_input(8), "expected_output": "TARGET"}],
         capability=capability,
+        contract="eval",
     )
     dp = _row(dataset, 0)
     run = EvalRun.objects.create(
@@ -449,7 +460,10 @@ def test_generate_tool_loop_without_final_answer_degrades(monkeypatch):
     project = _project()
     capability = Capability.objects.create(project=project, name="A", slug="a")
     dataset = frozen_dataset(
-        capability.project, [{"input": "q1", "expected_output": "a1"}], capability=capability
+        capability.project,
+        [{"input": "q1", "expected_output": "a1"}],
+        capability=capability,
+        contract="eval",
     )
     dp = _row(dataset, 0)
     run = EvalRun.objects.create(
@@ -492,7 +506,10 @@ def test_generate_mode_partial_failure_keeps_output(monkeypatch):
     project = _project()
     capability = Capability.objects.create(project=project, name="A", slug="a")
     dataset = frozen_dataset(
-        capability.project, [{"input": "q1", "expected_output": "a1"}], capability=capability
+        capability.project,
+        [{"input": "q1", "expected_output": "a1"}],
+        capability=capability,
+        contract="eval",
     )
     dp = _row(dataset, 0)
     run = EvalRun.objects.create(
@@ -525,6 +542,7 @@ def test_execute_evaluator_idempotent():
         capability.project,
         [{"input": [{"role": "user", "content": "hi"}], "expected_output": "x"}],
         capability=capability,
+        contract="eval",
     )
     evaluator = Evaluator.objects.create(
         project=project,
@@ -563,7 +581,7 @@ def test_run_evaluator_snapshot_is_independent():
     """A run's bound rubric snapshot survives edits/deletes to the library."""
     project = _project()
     capability = Capability.objects.create(project=project, name="A", slug="a")
-    dataset = frozen_dataset(capability.project, EVAL_ROWS, capability=capability)
+    dataset = frozen_dataset(capability.project, EVAL_ROWS, capability=capability, contract="eval")
     evaluator = Evaluator.objects.create(
         project=project,
         name="Corr",
@@ -609,7 +627,7 @@ def _harness_artifact_evaluator(project):
 def test_harness_artifact_evaluator_not_applicable_in_generate_mode():
     project = _project()
     capability = Capability.objects.create(project=project, name="A", slug="a")
-    dataset = frozen_dataset(capability.project, EVAL_ROWS, capability=capability)
+    dataset = frozen_dataset(capability.project, EVAL_ROWS, capability=capability, contract="eval")
     evaluator = _harness_artifact_evaluator(project)
     run = EvalRun.objects.create(
         project=project,
@@ -933,7 +951,7 @@ def test_count_sample_errors_surfaces_evaluator_errors_not_abstains():
     a legitimate abstain."""
     project = _project()
     capability = Capability.objects.create(project=project, name="A", slug="a")
-    dataset = frozen_dataset(capability.project, EVAL_ROWS, capability=capability)
+    dataset = frozen_dataset(capability.project, EVAL_ROWS, capability=capability, contract="eval")
     evaluator = Evaluator.objects.create(
         project=project,
         name="J",
@@ -994,7 +1012,7 @@ def test_execute_evaluator_error_uses_countable_prefix(monkeypatch):
     """A raising evaluator persists a None score whose reasoning is counted."""
     project = _project()
     capability = Capability.objects.create(project=project, name="A", slug="a")
-    dataset = frozen_dataset(capability.project, EVAL_ROWS, capability=capability)
+    dataset = frozen_dataset(capability.project, EVAL_ROWS, capability=capability, contract="eval")
     evaluator = Evaluator.objects.create(
         project=project,
         name="J",
@@ -1035,7 +1053,7 @@ def test_execute_evaluator_error_uses_countable_prefix(monkeypatch):
 def test_harness_artifact_evaluator_scores_in_existing_mode():
     project = _project()
     capability = Capability.objects.create(project=project, name="A", slug="a")
-    dataset = frozen_dataset(capability.project, EVAL_ROWS, capability=capability)
+    dataset = frozen_dataset(capability.project, EVAL_ROWS, capability=capability, contract="eval")
     evaluator = _harness_artifact_evaluator(project)
     run = EvalRun.objects.create(
         project=project,
@@ -1096,6 +1114,7 @@ def test_sample_units_for_dataset_and_dry_run():
             for i in range(3)
         ],
         capability=capability,
+        contract="eval",
     )
 
     units = binding_check.sample_units_for_dataset(dataset)
@@ -1132,6 +1151,7 @@ def test_generate_mode_prefers_recent_run_samples():
             for i in range(2)
         ],
         capability=capability,
+        contract="eval",
     )
     run = EvalRun.objects.create(
         project=project,
@@ -1179,6 +1199,7 @@ def test_generate_mode_skips_output_binding_without_run_samples():
             for i in range(2)
         ],
         capability=capability,
+        contract="eval",
     )
 
     units = binding_check.sample_units_for_dataset(dataset, mode=evidence.GENERATE)
@@ -1202,7 +1223,10 @@ def test_prepare_sample_generation_timeout_marks_sample_errored(monkeypatch):
         project=project, name="A", slug=f"a-{uuid.uuid4().hex[:8]}"
     )
     dataset = frozen_dataset(
-        capability.project, [{"input": "q1", "expected_output": "a1"}], capability=capability
+        capability.project,
+        [{"input": "q1", "expected_output": "a1"}],
+        capability=capability,
+        contract="eval",
     )
     dp = _row(dataset, 0)
     run = EvalRun.objects.create(
@@ -1238,7 +1262,7 @@ def test_cancel_run_revokes_inflight_tasks():
     capability = Capability.objects.create(
         project=project, name="A", slug=f"a-{uuid.uuid4().hex[:8]}"
     )
-    dataset = frozen_dataset(capability.project, EVAL_ROWS, capability=capability)
+    dataset = frozen_dataset(capability.project, EVAL_ROWS, capability=capability, contract="eval")
     run = EvalRun.objects.create(
         project=project,
         name="r",

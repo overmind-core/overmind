@@ -40,7 +40,9 @@ def _job(**kwargs) -> FinetuningJob:
         name=f"billing-{uuid.uuid4().hex[:6]}",
         slug=f"billing-{uuid.uuid4().hex[:8]}",
     )
-    dataset = kwargs.pop("dataset", None) or frozen_dataset(project, TRAIN_ROWS, name="ds")
+    dataset = kwargs.pop("dataset", None) or frozen_dataset(
+        project, TRAIN_ROWS, name="ds", contract="train"
+    )
     defaults = {
         "project": project,
         "dataset": dataset,
@@ -188,8 +190,8 @@ def test_sync_accumulates_across_real_chunks():
 def test_project_finetuning_costs_sums_only_that_project():
     p1 = Project.objects.create(name="p1", slug=f"p1-{uuid.uuid4().hex[:8]}")
     p2 = Project.objects.create(name="p2", slug=f"p2-{uuid.uuid4().hex[:8]}")
-    ds1 = frozen_dataset(p1, TRAIN_ROWS, name="d1")
-    ds2 = frozen_dataset(p2, TRAIN_ROWS, name="d2")
+    ds1 = frozen_dataset(p1, TRAIN_ROWS, name="d1", contract="train")
+    ds2 = frozen_dataset(p2, TRAIN_ROWS, name="d2", contract="train")
 
     _job(project=p1, dataset=ds1, cost_usd=Decimal("10.5"), billed_minutes=50, remote_job_id="a:1")
     _job(project=p1, dataset=ds1, cost_usd=Decimal("2.25"), billed_minutes=10, remote_job_id="a:2")

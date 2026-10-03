@@ -21,6 +21,12 @@ import { mapValues } from '../runtime';
 export interface DatasetValidationStats {
     /**
      *
+     * @type {string}
+     * @memberof DatasetValidationStats
+     */
+    checkpoint?: string;
+    /**
+     *
      * @type {number}
      * @memberof DatasetValidationStats
      */
@@ -92,6 +98,7 @@ export function DatasetValidationStatsFromJSONTyped(json: any, ignoreDiscriminat
     }
     return {
 
+        'checkpoint': json['checkpoint'] == null ? undefined : json['checkpoint'],
         'totalExamples': json['total_examples'] == null ? undefined : json['total_examples'],
         'trainableExamples': json['trainable_examples'] == null ? undefined : json['trainable_examples'],
         'trainExamples': json['train_examples'] == null ? undefined : json['train_examples'],
@@ -115,6 +122,7 @@ export function DatasetValidationStatsToJSONTyped(value?: DatasetValidationStats
 
     return {
 
+        'checkpoint': value['checkpoint'],
         'total_examples': value['totalExamples'],
         'trainable_examples': value['trainableExamples'],
         'train_examples': value['trainExamples'],

@@ -311,6 +311,117 @@ code {
   --instrument-cat-6: #a4988b;
 }
 
+.workshop-intro {
+  container-type: inline-size;
+}
+.workshop-intro-title {
+  font-size: clamp(2.25rem, 7cqi, 3.5rem);
+  line-height: 1.05;
+}
+.workshop-intro-mark path[fill="white"] {
+  fill: var(--foreground);
+}
+.workshop-intro-mark path:not([fill="white"]) {
+  fill: var(--card);
+}
+.workshop-intro-text {
+  white-space: pre;
+}
+.workshop-intro-letter {
+  position: relative;
+  display: inline-block;
+  opacity: 1;
+  animation: workshop-type-letter 1ms step-end backwards;
+  animation-delay: calc(100ms + var(--letter-index) * 45ms);
+}
+.workshop-intro-letter::after {
+  position: absolute;
+  bottom: 0.12em;
+  left: calc(100% + 0.04em);
+  width: 0.32em;
+  height: 0.7em;
+  pointer-events: none;
+  content: "";
+  background: currentColor;
+  opacity: 0;
+  animation: workshop-type-cursor 45ms step-end;
+  animation-delay: inherit;
+}
+.workshop-intro-letter:last-child::after {
+  animation-name: workshop-cursor-blink;
+  animation-duration: 600ms;
+  animation-iteration-count: 4;
+}
+@keyframes workshop-type-letter {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+@keyframes workshop-type-cursor {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+  }
+}
+@keyframes workshop-cursor-blink {
+  0%,
+  49% {
+    opacity: 1;
+  }
+  50%,
+  100% {
+    opacity: 0;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .workshop-intro-letter,
+  .workshop-intro-letter::after,
+  .workshop-intro-letter:last-child::after {
+    animation: none;
+  }
+}
+
+.workshop-flow {
+  -webkit-mask-image: linear-gradient(to bottom, #000 calc(100% - 2rem), transparent);
+  mask-image: linear-gradient(to bottom, #000 calc(100% - 2rem), transparent);
+}
+
+@keyframes workshop-working {
+  to {
+    transform: rotate(360deg);
+  }
+}
+@keyframes workshop-finished {
+  0% {
+    transform: scale(0.7);
+    opacity: 0.5;
+  }
+  45% {
+    transform: scale(1.15);
+    opacity: 1;
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+.workshop-working {
+  animation: workshop-working 1.2s steps(8, end) infinite;
+}
+.workshop-finished {
+  animation: workshop-finished 400ms ease-out both;
+}
+@media (prefers-reduced-motion: reduce) {
+  .workshop-working,
+  .workshop-finished {
+    animation: none;
+  }
+}
+
 @keyframes progress-sweep {
   0% {
     left: -35%;
@@ -372,6 +483,7 @@ code {
   /* Tinted from the ink, not black: pure black at 50% over the warm canvas
      composites to a dead olive-brown. */
   --scrim: rgb(32 27 21 / 0.42);
+  --elevation-confirmation: 0 2px 4px rgb(32 27 21 / 0.05), 0 12px 32px -8px rgb(32 27 21 / 0.16);
   --destructive: #b91c1c;
   --destructive-foreground: #ffffff;
   /* Status hues, shared with the workshop `--instrument-*` scale. Canonical usage
@@ -495,6 +607,7 @@ code {
   --wash-subtle: #1b1917;
   --wash-raised: #211f1c;
   --scrim: rgb(0 0 0 / 0.5);
+  --elevation-confirmation: 0 2px 4px rgb(0 0 0 / 0.14), 0 12px 32px -8px rgb(0 0 0 / 0.36);
   /* Held in the status family's L* 67–73 band, so error doesn't read hotter and
      heavier than every other state. */
   --destructive: #f65d57;
@@ -655,6 +768,7 @@ code {
   --shadow-lg: var(--shadow-lg);
   --shadow-xl: var(--shadow-xl);
   --shadow-2xl: var(--shadow-2xl);
+  --shadow-confirmation: var(--elevation-confirmation);
 }
 
 body {

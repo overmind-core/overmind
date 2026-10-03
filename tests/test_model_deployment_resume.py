@@ -18,7 +18,7 @@ pytestmark = pytest.mark.django_db
 @pytest.fixture
 def deployed():
     project = Project.objects.create(name="Deployment recovery")
-    dataset = frozen_dataset(project, TRAIN_ROWS, name="train")
+    dataset = frozen_dataset(project, TRAIN_ROWS, name="train", contract="train")
     job = FinetuningJob.objects.create(
         project=project,
         dataset=dataset,

@@ -3,6 +3,7 @@ apis/AuthApi.ts
 apis/BehavioursApi.ts
 apis/BillingApi.ts
 apis/CapabilitiesApi.ts
+apis/ChatGPTApi.ts
 apis/ConnectorCredentialsApi.ts
 apis/DatasetsApi.ts
 apis/DeployedModelsApi.ts
@@ -78,6 +79,16 @@ models/CatalogModel.ts
 models/Cell.ts
 models/CellCreateRequest.ts
 models/CellStateEnum.ts
+models/ChatGPTAccount.ts
+models/ChatGPTAccountRequestRequest.ts
+models/ChatGPTDisconnect.ts
+models/ChatGPTLogin.ts
+models/ChatGPTLoginConfirmRequest.ts
+models/ChatGPTLoginHandoff.ts
+models/ChatGPTLoginRequestRequest.ts
+models/ChatGPTModel.ts
+models/ChatGPTStart.ts
+models/ChatGPTStartRequestRequest.ts
 models/ChatRequest.ts
 models/ChatTurn.ts
 models/ChatTurnRequest.ts
@@ -212,6 +223,7 @@ models/FinetuningRecommendationResponse.ts
 models/FinetuningSkillScore.ts
 models/FinetuningTimeEstimate.ts
 models/FinetuningTrainingMethod.ts
+models/FundingSourceEnum.ts
 models/GenerateEvaluatorPromptRequestRequest.ts
 models/GenerateEvaluatorPromptResponse.ts
 models/GraphEdge.ts
@@ -227,6 +239,7 @@ models/InferenceMetrics.ts
 models/InputSourceEnum.ts
 models/InspectUploadRequest.ts
 models/IntegrationTypeEnum.ts
+models/IntentChoiceEnum.ts
 models/IntentEnum.ts
 models/JudgeModelEnum.ts
 models/LocalSessionRequest.ts
@@ -237,6 +250,8 @@ models/ModelCheckpoints.ts
 models/ModelDefaults.ts
 models/ModelSwapPrompt.ts
 models/ModelTierEnum.ts
+models/NativeEvaluation.ts
+models/NativeEvaluationRequestRequest.ts
 models/NullEnum.ts
 models/OpenrouterKeySourceEnum.ts
 models/OptimizerCandidate.ts
@@ -288,6 +303,7 @@ models/PatchedEvaluatorRequest.ts
 models/PatchedFinetuningJobRequest.ts
 models/PatchedProjectRequest.ts
 models/PatchedUserOnboardingRequest.ts
+models/PatchedWorkshopFundingRequestRequest.ts
 models/PermissionEnum.ts
 models/PhaseEnum.ts
 models/PlanEnum.ts
@@ -340,7 +356,8 @@ models/Session.ts
 models/SetCommandTemplateRequest.ts
 models/SourceRequest.ts
 models/Span.ts
-models/SplitMethodEnum.ts
+models/SplitMethod3daEnum.ts
+models/SplitMethodE87Enum.ts
 models/StageEnum.ts
 models/Status1b7Enum.ts
 models/StatusFbaEnum.ts
@@ -371,5 +388,6 @@ models/UserMe.ts
 models/UserOnboarding.ts
 models/Verdict.ts
 models/VerdictOutcomeEnum.ts
+models/WorkshopFunding.ts
 models/index.ts
 runtime.ts

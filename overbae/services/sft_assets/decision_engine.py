@@ -33,6 +33,7 @@ from modal_shared.decision_batching import microbatches
 from modal_shared.decision_checkpoint import restore_resume, save_resume, training_base_identity
 from modal_shared.decisions import compare_predictions
 from modal_shared.preparation import training_fingerprint
+from modal_shared.training_telemetry import record_stage
 
 PADDED_TOKEN_BUDGET = int(os.environ.get("PADDED_TOKEN_BUDGET", MAX_LENGTH))
 
@@ -80,10 +81,14 @@ def epoch_order(data, seed):
 
 
 @torch.no_grad()
-def evaluate(model, data, tokenizer, destination):
+def evaluate(model, data, tokenizer, destination, *, stage=None):
     was_training = model.training
     model.eval()
-    total_loss = total_weight = correct = count = 0.0
+    total_loss = total_weight = correct = count = brier = hard_correct = hard_count = 0.0
+    if stage:
+        record_stage(
+            Path(destination).parent, stage, completed=0, total=len(data), unit="decisions"
+        )
     device = model.get_input_embeddings().weight.device
     started = time.monotonic()
     with Path(destination).open("w") as stream:
@@ -107,6 +112,13 @@ def evaluate(model, data, tokenizer, destination):
                     max(range(len(p)), key=p.__getitem__) == max(range(len(q)), key=q.__getitem__)
                 )
                 count += 1
+                brier += sum((a - b) ** 2 for a, b in zip(p, q, strict=True))
+                if max(q) == 1.0:
+                    hard_count += 1
+                    hard_correct += int(
+                        max(range(len(p)), key=p.__getitem__)
+                        == max(range(len(q)), key=q.__getitem__)
+                    )
                 stream.write(
                     json.dumps(
                         {
@@ -118,10 +130,21 @@ def evaluate(model, data, tokenizer, destination):
                     )
                     + "\n"
                 )
+            if stage:
+                record_stage(
+                    Path(destination).parent,
+                    stage,
+                    completed=int(count),
+                    total=len(data),
+                    unit="decisions",
+                )
     model.train(was_training)
     return {
         "eval_loss": total_loss / total_weight,
-        "decision_accuracy": correct / count,
+        "argmax_target_agreement": correct / count,
+        "hard_label_accuracy": hard_correct / hard_count if hard_count else None,
+        "hard_label_decisions": int(hard_count),
+        "brier": brier / count,
         "decisions": int(count),
         "eval_runtime": time.monotonic() - started,
     }
@@ -186,20 +209,29 @@ def train(model, tokenizer):
         num_training_steps=total_steps,
     )
     step = tokens_seen = 0
+    callback = ProgressCallback(run)
     resume_path = run / "decision-resume.pt"
     if resume_path.exists():
         step, tokens_seen = restore_resume(
             resume_path, model, optimizer, scheduler, signature=signature
         )
+        record_stage(run, "training", restored_step=step, restored_tokens=tokens_seen)
         print(f"Resumed native decision training at step {step}", flush=True)
     else:
         signature_path = run / "decision-training.json"
         signature_path.write_text(json.dumps(signature, indent=2))
         if validation and len(validation):
-            (run / "decision-before.json").write_text(
-                json.dumps(evaluate(model, validation, tokenizer, run / "decision-before.jsonl"))
+            metrics = evaluate(
+                model,
+                validation,
+                tokenizer,
+                run / "decision-before.jsonl",
+                stage="initial_validation",
             )
-    callback = ProgressCallback(run)
+            (run / "decision-before.json").write_text(json.dumps(metrics))
+            callback.on_evaluate(
+                None, SimpleNamespace(global_step=0, epoch=0), None, metrics=metrics
+            )
     callback.set_measured_tokens_per_step(round(sum(data.lengths) / len(data) * PER_DEVICE_BATCH))
     state = SimpleNamespace(global_step=step, max_steps=total_steps, epoch=step / steps_per_epoch)
     args = SimpleNamespace(num_train_epochs=N_EPOCHS)
@@ -255,11 +287,21 @@ def train(model, tokenizer):
                 step=step,
                 tokens_seen=tokens_seen,
             )
+            record_stage(
+                run,
+                "training",
+                checkpoint_step=step,
+                checkpoint_at=time.time(),
+                checkpoint_bytes=resume_path.stat().st_size,
+            )
             saved_at = now
     if validation and len(validation):
-        metrics = evaluate(model, validation, tokenizer, run / "decision-after.jsonl")
+        metrics = evaluate(
+            model, validation, tokenizer, run / "decision-after.jsonl", stage="final_validation"
+        )
         (run / "decision-after.json").write_text(json.dumps(metrics))
         callback.on_evaluate(args, state, None, metrics=metrics)
+    record_stage(run, "verifying_checkpoint")
     probe_indices = sorted(range(len(data)), key=lambda i: data.lengths[i])
     selected = sorted({probe_indices[round(i * (len(data) - 1) / 63)] for i in range(64)})
     probe = run / "decision-reload-inputs.jsonl"
