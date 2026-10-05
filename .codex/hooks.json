@@ -6,7 +6,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "\"$(git rev-parse --show-toplevel)/.agents/hooks/bash_guard.py\"",
+            "command": "\"$(git rev-parse --show-toplevel)/.agents/hooks/bash_guard.py\" --deny-ask",
             "timeout": 5
           }
         ]

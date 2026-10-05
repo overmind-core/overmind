@@ -2,6 +2,7 @@
 """PreToolUse guard for shell commands."""
 
 import json
+import sys
 
 import payload
 from guards import check_command
@@ -12,6 +13,9 @@ def main():
     if not verdict:
         return
     decision, reason = verdict
+    # Codex fails an "ask" PreToolUse hook and runs the command anyway.
+    if decision == "ask" and "--deny-ask" in sys.argv:
+        decision, reason = "deny", f"{reason} Ask the user to run it."
     print(
         json.dumps(
             {
