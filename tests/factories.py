@@ -128,21 +128,24 @@ def prepare_training(job, fake_modal):
 def reconcile_training(active_tasks: list[dict] | None = None) -> list[tuple[str, dict]]:
     from unittest.mock import MagicMock, patch
 
+    from overbae.celery import get_celery_app
     from overbae.tasks.finetuning_reconciler import reconcile_finetuning_jobs
 
     sent: list[tuple[str, dict]] = []
-    app = MagicMock()
-    app.control.inspect.return_value.active.return_value = {"w1": active_tasks or []}
-    app.control.inspect.return_value.reserved.return_value = {}
-    app.control.inspect.return_value.scheduled.return_value = {}
+    broker = MagicMock()
+    broker.active.return_value = {"w1": active_tasks or []}
+    broker.reserved.return_value = {}
+    broker.scheduled.return_value = {}
 
     def _send(name, kwargs=None):
         sent.append((name, kwargs or {}))
         return MagicMock(id=str(uuid.uuid4()))
 
-    app.send_task.side_effect = _send
+    app = get_celery_app()
+    # Celery's dispatch and broker inspection, not our code: capture sends, fake the workers.
     with (
-        patch("overbae.celery.get_celery_app", return_value=app),
+        patch.object(app, "send_task", side_effect=_send),
+        patch.object(app.control, "inspect", return_value=broker),
         patch("overbae.tasks.model_deployment.register_finetuned_model.delay"),
     ):
         reconcile_finetuning_jobs()

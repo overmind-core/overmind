@@ -9,9 +9,11 @@ listed: a file fails only when a change adds one.
 from __future__ import annotations
 
 import ast
+import os
 import re
 import subprocess
 import sys
+from pathlib import Path
 
 PATCH_TARGET = re.compile(r"""(?:patch|setattr)\(\s*["'](overbae\.[\w.]+)["']""")
 CELERY_CAPTURES = (".delay", ".apply_async")
@@ -20,6 +22,13 @@ CELERY_CAPTURES = (".delay", ".apply_async")
 def _source(ref: str, path: str) -> str:
     result = subprocess.run(["git", "show", f"{ref}:{path}"], capture_output=True, text=True)
     return result.stdout if result.returncode == 0 else ""
+
+
+def _working(path: str) -> str:
+    try:
+        return Path(path).read_text(encoding="utf-8")
+    except OSError:
+        return ""
 
 
 def _patches(source: str) -> list[str]:
@@ -43,7 +52,8 @@ def _private_imports(source: str) -> list[str]:
 def main(paths: list[str]) -> int:
     failures = []
     for path in paths:
-        before, after = _source("HEAD", path), _source("", path)
+        before = _source(os.environ.get("PRE_COMMIT_FROM_REF") or "HEAD", path)
+        after = _working(path)
         for kind, count in (("patch of", _patches), ("private import of", _private_imports)):
             added = sorted(set(count(after)) - set(count(before)))
             if len(count(after)) > len(count(before)):
