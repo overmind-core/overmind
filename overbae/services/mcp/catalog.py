@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import inspect
+import json
 import logging
+import time
 from collections.abc import Awaitable, Callable, Iterable
 from typing import Any, Literal
 
@@ -23,7 +25,7 @@ CostClass = Literal["free", "compute", "llm", "gpu"]
 AsyncMode = Literal["sync", "job", "task"]
 _TOOL_NAME = r"^[a-z][a-z0-9_]{0,63}$"
 _FORBIDDEN_NAME_PARTS = ("delete", "remove", "cancel", "retry", "undeploy")
-_ALLOWED_LIFECYCLE_TOOLS = frozenset({"retry_deployment", "cancel_dataset"})
+_ALLOWED_LIFECYCLE_TOOLS = frozenset({"retry_deployment", "cancel_dataset", "retry_data_partition"})
 _SCHEMA_NOISE_KEYS = frozenset({"default", "discriminator", "title"})
 _KNOWN_SCOPES = frozenset(
     {
@@ -161,7 +163,19 @@ class ToolCatalog:
             if self._visible(entry.definition, permissions)
         ]
 
-    async def call(
+    async def call(self, name, arguments, context):
+        started = time.monotonic()
+        result = await self.invoke(name, arguments, context)
+        logger.info(
+            "MCP operation name=%s elapsed_ms=%.1f response_bytes=%d is_error=%s",
+            name,
+            (time.monotonic() - started) * 1000,
+            len(json.dumps(result.model_dump(mode="json"), separators=(",", ":")).encode()),
+            result.isError,
+        )
+        return result
+
+    async def invoke(
         self,
         name: str,
         arguments: dict[str, Any],
@@ -267,3 +281,7 @@ from overbae.services.mcp.tools_instrumentation import (  # noqa: E402
 )
 
 register_instrumentation_tools(CATALOG)
+
+from overbae.services.mcp.tools_model_workflows import register_model_workflow_tools  # noqa: E402
+
+register_model_workflow_tools(CATALOG)

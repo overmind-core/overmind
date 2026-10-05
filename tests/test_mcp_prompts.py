@@ -50,6 +50,7 @@ def _arguments(prompt: types.Prompt) -> dict[str, str]:
         "project_id": "project-id",
         "capability": "capability-id",
         "dataset": "dataset-id",
+        "task": "Predict a calibrated distribution over support categories.",
         "eval_set": "eval-set-id",
         "baseline": "baseline-run-id",
         "model_ids": "openai/model-a, anthropic/model-b",
@@ -70,7 +71,7 @@ def test_lists_the_small_prompt_manifest_over_transport():
     assert {prompt["name"] for prompt in response.json()["result"]["prompts"]} == {
         prompt.name for prompt in PROMPTS
     }
-    assert len(PROMPTS) == 12
+    assert len(PROMPTS) == 13
 
 
 def test_upload_prompt_requires_local_path_and_keeps_optional_shape():

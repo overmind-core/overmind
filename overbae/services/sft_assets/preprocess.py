@@ -7,10 +7,16 @@ import hashlib
 import json
 import shutil
 import time
-from itertools import batched, islice
+from itertools import islice
 from pathlib import Path
 
-from modal_shared.decisions import DECISION_OBJECTIVE, RENDERER, DecisionTokenizer, codebook
+from modal_shared.decisions import (
+    DECISION_OBJECTIVES,
+    RENDERER,
+    TARGET_FIELDS,
+    DecisionTokenizer,
+    codebook,
+)
 from modal_shared.preparation import preparation_failure, processor_fingerprint
 from modal_shared.serving.artifacts import atomic_json
 from modal_shared.training_data import file_digest, row_key
@@ -32,7 +38,7 @@ def preprocess_rows(
     artifacts = []
     issues = []
     previews = []
-    book = codebook(tokenizer) if objective == DECISION_OBJECTIVE else None
+    book = codebook(tokenizer) if objective in DECISION_OBJECTIVES else None
     encoder = DecisionTokenizer(tokenizer, book) if book is not None else None
     total_tokens = supervised_tokens = longest = incompatible = 0
     count = accepted = 0
@@ -64,7 +70,7 @@ def preprocess_rows(
                             "cell": row.get("cell"),
                             "tokens": len(ids),
                             "decision_options": len(result["option_token_ids"]),
-                            "target_probabilities": result["target_probabilities"],
+                            **{key: result[key] for key in TARGET_FIELDS if key in result},
                         }
                     )
                 continue
@@ -118,7 +124,7 @@ def preprocess_rows(
         "previews": previews,
     }
     if book is not None:
-        report.update(objective=DECISION_OBJECTIVE, renderer=RENDERER, codebook=book)
+        report.update(objective=objective, renderer=RENDERER, codebook=book)
     return artifacts, report
 
 
@@ -207,7 +213,7 @@ def prepare_shards(request, output_dir, tokenizer, tokenize):
         rows = (json.loads(line) for line in source)
         for _ in islice(rows, offset):
             pass
-        for batch in batched(rows, SHARD_ROWS, strict=False):
+        while batch := tuple(islice(rows, SHARD_ROWS)):
             path = directory / f"{offset:012d}.jsonl"
             temporary = path.with_suffix(".partial")
             with temporary.open("w") as output:

@@ -33,7 +33,7 @@ export function jobElapsedSeconds(job: FinetuningJobList): number | null {
 
 export interface ExperimentProgress {
   elapsed_seconds: number | null;
-  eta_seconds: number | null;
+  eta_range_seconds: [number, number] | null;
   percent: number | null;
   tokens_processed: number | null;
   total_steps: number | null;
@@ -77,8 +77,9 @@ export function buildExperimentSnapshot(
       live?.elapsed_seconds ??
       (progressFromJob.elapsed_seconds as number | null | undefined) ??
       jobElapsedSeconds(job),
-    eta_seconds:
-      live?.eta_seconds ?? (progressFromJob.eta_seconds as number | null | undefined) ?? null,
+    eta_range_seconds: live
+      ? (live.eta_range_seconds ?? null)
+      : ((progressFromJob.eta_range_seconds as [number, number] | null | undefined) ?? null),
     percent: live?.percent ?? (progressFromJob.percent as number | null | undefined) ?? null,
     tokens_processed:
       live?.tokens_processed ??

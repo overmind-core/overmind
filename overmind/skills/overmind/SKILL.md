@@ -23,6 +23,7 @@ reference and follow it:
 - `setup` — [references/setup.md](references/setup.md)
 - `ensure-tracing` — [references/telemetry.md](references/telemetry.md)
 - `dataset` — [references/datasets.md](references/datasets.md)
+- `model-workflows` — [references/model-workflows.md](references/model-workflows.md)
 - `finetune` — [references/finetuning.md](references/finetuning.md)
 - `optimise` — [references/optimizer.md](references/optimizer.md)
 - `backtest` — [references/backtest.md](references/backtest.md)
@@ -37,6 +38,7 @@ Route guided work to these exact prompt names:
 - `export-dataset` — download a dataset version through the local CLI; MCP carries guidance, not file bytes.
 - `download-checkpoint` — download an archived fine-tuned deployment checkpoint through the local CLI; MCP carries guidance, not checkpoint bytes.
 - `connect-traces` — connect a tracing provider, review capability boundaries and verify imported traces.
+- `develop-model-from-data` — explore uploaded data, freeze partitions, compare decision models and save training/performance experiments.
 - `prepare-evaluation` — check evaluation dataset, evaluators, eval set, bindings, and credits.
 - `evaluate-change` — run an evaluation and compare it with a supplied baseline.
 - `finetune-capability` — check, estimate, launch, and verify fine-tuning.
@@ -78,36 +80,15 @@ Each works directly with the configured MCP connection and can be used on its ow
 
 ## Connection and safety
 
-- `overmind sync` stores the **project-scoped API key** locally and configures
-  each initialized MCP client with `X-Api-Key`. Plugin connections use OAuth;
-  account API keys also work. Never ask the user to paste a key into chat.
-- The public server supports read and write permissions for the curated
-  surface and returns structured errors as values. Start with `list_projects`.
-  Account connections require `project_id` for every project operation and
-  resource URI query. Follow returned resource links; selection is per request.
-  Project keys remain limited to their configured project.
-- There are no public product tools for deletion, cancellation, or removal.
-  Deployment recovery is limited to `retry_deployment` for failed or deleted
-  deployments; do not invent other lifecycle tools.
-- Treat dataset landing, evaluator writes, job starts, deployment changes, and
-  active-model changes as mutations. Confirm user intent where the workflow
-  requires approval; the server does not add a confirmation dialog.
+Use the connected catalog and `overmind://interface/current` as the authority for available operations (contract version 2.0). OAuth/account API keys discover projects with `list_projects` and pass `project_id` on every operation and resource; project API keys retain narrower scope. Never put credentials in chat.
+
+Data-first projects do not require repository scanning, capabilities or instrumentation. Use `develop-model-from-data` when starting with uploaded data. Repository discovery remains a local workflow only for code-backed projects. Installed skills assist discovery; they are not a correctness prerequisite.
+
+The catalog exposes deliberate lifecycle operations including `cancel_dataset`, `retry_data_partition`, and comparison pause/resume. Follow their schemas. Pausing a comparison stops new work; it does not acknowledge cancellation of an already-submitted provider call. Stopping observation does not stop execution.
 
 ## Core principles
 
-Follow these for ALL Overmind work:
-
-1. **Local setup, then MCP.** Capability discovery is local: scan the repo,
-   write `overmind.toml`, run `overmind sync` — see
-   [references/setup.md](references/setup.md). After that, all platform work
-   goes through the Overmind
-   MCP server. Do not curl REST endpoints, do not invent base URLs, and do not
-   hardcode hosts. The server is already configured (plugin, or `overmind init`)
-   and authenticated through OAuth or an account/project API key. Call the named
-   tools; inspect each tool's schema for arguments. If tools are missing, tell
-   the user to run `overmind init` for the IDE and `overmind sync` to install
-   its project credential. Do not paste a URL or ask them to paste the raw key
-   into chat.
+1. **Discover the connected product.** Read `overmind://interface/current`, select an authorized project, and use named MCP operations. Do not reconstruct workflows with direct provider scripts. Use the upload/export CLI only for local file transport. Draft comparisons and experiments do not submit paid work; preparation returns a background receipt, and launch records the authorized saved scope. Check actual schemas rather than assuming an installed skill has the newest catalog.
 1. **Reference file per use case.** Check the relevant reference below before
    implementing. This file holds conventions that apply everywhere; the
    workflow lives in the reference.
@@ -138,11 +119,7 @@ Follow these for ALL Overmind work:
    on `overmind dataset upload`. A used cell freezes intent:
    upload a second dataset with the other `--intent` instead of retagging.
    Read the contracts section below.
-1. **Errors are values; mutations run immediately.** Every tool returns
-   `{"error": "..."}` instead of raising — follow `fields` when present.
-   There is no confirmation gate, so verify arguments (and ask the user when
-   destructive) before create/delete/cancel. There are no delete or cancel
-   tools.
+1. **Follow structured errors and durable receipts.** Read the error code, fields and retryability. Creation and paid launch are separate where the schema specifies a draft. Authorization already granted for an unchanged saved scope persists through routine continuation. Unresolved provider submissions require receipt recovery; never blindly repeat them.
 1. **Ticketed instrumentation.** Call `get_instrumentation_plan` with no
    capability for project-wide work, or with a capability for scoped work, and
    treat each placement as an edit ticket. If the result has `human_action` or

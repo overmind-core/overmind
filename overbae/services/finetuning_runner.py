@@ -9,22 +9,26 @@ from __future__ import annotations
 
 import json
 import logging
+import math
 import re
 import tempfile
 import time
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
+from datetime import datetime
 from pathlib import Path
 from typing import Any, ClassVar
 
 from django.conf import settings
 
+from modal_shared.decisions import DECISION_OBJECTIVES
 from modal_shared.training_data import write_selection
 from overbae.services.finetuning_policy import (
     BasetenTrainingPlan,
     baseten_context_length,  # noqa: F401 — re-exported; tests/consumers import it from here
     derive_baseten_training_plan,
 )
+from overbae.services.training_policies import profile_options
 from overbae.services.training_preparation import ready_for_job
 
 logger = logging.getLogger(__name__)
@@ -487,11 +491,46 @@ def thin_series(points: list[dict[str, Any]], cap: int = MAX_PERSISTED_SERIES_PO
     return thinned
 
 
+def native_time_range(snap):
+    intervals, previous = [], None
+    for row in snap.raw.get("metrics", []):
+        if row.get("event") != "BT_PROGRESS":
+            continue
+        step, elapsed = row.get("step"), row.get("elapsed_s")
+        if any(
+            not isinstance(value, (int, float)) or not math.isfinite(value)
+            for value in (step, elapsed)
+        ):
+            intervals, previous = [], None
+            continue
+        if previous:
+            steps, seconds = step - previous[0], elapsed - previous[1]
+            if steps < 0 or seconds < 0:
+                intervals = []
+            elif steps > 0 and seconds > 0:
+                intervals.append((seconds / steps, seconds, steps))
+        previous = (step, elapsed)
+    intervals = intervals[-30:]
+    window = {"intervals": len(intervals), "seconds": sum(item[1] for item in intervals)}
+    if (
+        len(intervals) < 5
+        or window["seconds"] < 30
+        or not snap.total_steps
+        or snap.step is None
+        or (snap.stage and snap.stage != "training")
+    ):
+        return None, window
+    remaining = max(0, snap.total_steps - snap.step)
+    speeds = sorted(item[0] for item in intervals)
+    average = window["seconds"] / sum(item[2] for item in intervals)
+    # Sparse slow batches still contribute to the elapsed-time average.
+    low = min(speeds[int((len(speeds) - 1) * 0.1)], average * 0.8)
+    high = max(speeds[math.ceil((len(speeds) - 1) * 0.9)], average * 1.3)
+    return [math.floor(low * remaining), math.ceil(high * remaining)], window
+
+
 def progress_from_snapshot(snap: PollSnapshot, *, started_at=None) -> dict[str, Any]:
     """The durable ``FinetuningJob.progress`` blob for one poll snapshot."""
-    import time as _time
-    from datetime import datetime
-
     trained = snap.step if snap.step is not None else snap.epochs_completed
     total = snap.total_steps
     percent: float | None = None
@@ -499,7 +538,7 @@ def progress_from_snapshot(snap: PollSnapshot, *, started_at=None) -> dict[str, 
         percent = min(100.0, round(100.0 * float(trained) / float(total), 2))
 
     eta_seconds: int | None = None
-    now = int(_time.time())
+    now = int(time.time())
     if snap.estimated_finish and snap.estimated_finish > now:
         eta_seconds = int(snap.estimated_finish - now)
     elif (
@@ -508,11 +547,18 @@ def progress_from_snapshot(snap: PollSnapshot, *, started_at=None) -> dict[str, 
         and started_at is not None
         and isinstance(started_at, datetime)
     ):
-        elapsed = max(1.0, (_time.time() - started_at.timestamp()))
+        elapsed = max(1.0, (time.time() - started_at.timestamp()))
         eta_seconds = int(elapsed * (100.0 - percent) / percent)
     elapsed_seconds: int | None = None
     if started_at is not None and isinstance(started_at, datetime):
-        elapsed_seconds = max(0, int(_time.time() - started_at.timestamp()))
+        elapsed_seconds = max(0, int(time.time() - started_at.timestamp()))
+    native = isinstance(snap.raw, dict) and "run_id" in snap.raw
+    eta_range, eta_window = None, None
+    if native:
+        eta_seconds = None
+        eta_range, eta_window = native_time_range(snap)
+        if snap.state in {"succeeded", "failed", "cancelled"}:
+            eta_seconds, eta_range = None, None
 
     return {
         "epochs_completed": snap.epochs_completed,
@@ -521,8 +567,14 @@ def progress_from_snapshot(snap: PollSnapshot, *, started_at=None) -> dict[str, 
         "trained_steps": trained,
         "total_steps": total,
         "percent": percent,
-        "estimated_finish": snap.estimated_finish,
+        "estimated_finish": None if native else snap.estimated_finish,
         "eta_seconds": eta_seconds,
+        "eta_range_seconds": eta_range,
+        "eta_window": eta_window,
+        "eta_basis": "recent_step_window; elapsed-time average with 0.8–1.3 planning margin, widened by observed step-time quantiles; training steps only, excludes final validation/reload; not confidence bounds"
+        if native
+        else "provider_or_elapsed_progress",
+        "compute_usage": (snap.raw.get("meta") or {}).get("compute_usage", []) if native else [],
         "elapsed_seconds": elapsed_seconds,
         "phase": snap.phase or "",
         "stage": snap.stage or "",
@@ -539,7 +591,7 @@ def progress_from_snapshot(snap: PollSnapshot, *, started_at=None) -> dict[str, 
         "token_accuracy": snap.token_accuracy,
         "eval_token_accuracy": snap.eval_token_accuracy,
         "current_epoch": snap.current_epoch,
-        "eta_s": snap.eta_s,
+        "eta_s": eta_seconds if native else snap.eta_s,
         "metrics_history": thin_series(snap.metrics_history),
         "eval_history": thin_series(snap.eval_history),
         "activity": snap.activity,
@@ -1850,6 +1902,8 @@ class ModalRunner(BaseFinetuningRunner):
             params_b=float(model_cfg.get("total_params_b") or 0),
             max_steps=max_steps,
         )
+        if (job.hyperparameters or {}).get("runtime_profile"):
+            env["RUNTIME_PROFILE"] = json.dumps(job.hyperparameters["runtime_profile"])
         hidden = int(model_cfg.get("hidden_size") or 0)
         if hidden > 0:
             env["HIDDEN_SIZE"] = str(hidden)
@@ -1905,6 +1959,8 @@ class ModalRunner(BaseFinetuningRunner):
         )
         preparation = ready_for_job(job, plan.context_length)
         env["TRAINING_OBJECTIVE"] = preparation.config["objective"]
+        if hp.get("checkpoint_policy"):
+            env["DECISION_CHECKPOINT_POLICY"] = json.dumps(hp["checkpoint_policy"])
         volume = modal.Volume.from_name("overmind-sft", environment_name=env_name)
         paths = {"data": training_file_path}
         if validation_file_path:
@@ -1947,8 +2003,9 @@ class ModalRunner(BaseFinetuningRunner):
             self._app_name, function_name, environment_name=env_name
         )
         options = {"gpu": self._gpu_string(gpu_type, gpu_count)}
-        if preparation.config["objective"] == "decision_cross_entropy":
+        if preparation.config["objective"] in DECISION_OBJECTIVES:
             options["retries"] = modal.Retries(max_retries=10, initial_delay=0.0)
+        options.update(profile_options(hp))
         from overbae.services.training_submission import dispatching
 
         dispatching(job, run_id)

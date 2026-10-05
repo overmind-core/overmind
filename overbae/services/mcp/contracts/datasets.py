@@ -179,6 +179,62 @@ class AgentProgress(MCPModel):
     proposal_id: str | None = None
 
 
+class ToolFailure(MCPModel):
+    id: str = Field(max_length=120)
+    tool: str = Field(max_length=80)
+    detail: str = Field(max_length=600)
+    request: str = Field(default="", max_length=600)
+
+
+class ToolActivity(MCPModel):
+    recorded: bool = False
+    completed: int = Field(default=0, ge=0)
+    succeeded: int = Field(default=0, ge=0)
+    failed: int = Field(default=0, ge=0)
+    unclassified: int = Field(default=0, ge=0)
+    pending: int = Field(default=0, ge=0)
+    failures: list[ToolFailure] = Field(default_factory=list, max_length=10)
+    failures_truncated: bool = False
+
+
+def tool_activity(raw: dict) -> ToolActivity:
+    steps = raw.get("steps")
+    if not isinstance(steps, list):
+        return ToolActivity()
+    started = {}
+    completed = {}
+    for index, step in enumerate(steps):
+        if not isinstance(step, dict):
+            continue
+        identity = str(step.get("id") or f"event-{index}")
+        if step.get("phase") == "tool_start":
+            started[identity] = step
+        elif step.get("phase") == "tool_done":
+            completed[identity] = step
+    failures = [step for step in completed.values() if step.get("ok") is False]
+    succeeded = sum(step.get("ok") is True for step in completed.values())
+    return ToolActivity(
+        recorded=True,
+        completed=len(completed),
+        succeeded=succeeded,
+        failed=len(failures),
+        unclassified=len(completed) - succeeded - len(failures),
+        pending=len(started.keys() - completed.keys()),
+        failures=[
+            ToolFailure(
+                id=str(step.get("id") or "")[:120],
+                tool=str(step.get("tool") or "")[:80],
+                detail=sanitize_error(str(step.get("preview") or ""))[:600],
+                request=sanitize_error(
+                    str(started.get(str(step.get("id")), {}).get("summary") or "")
+                )[:600],
+            )
+            for step in failures[:10]
+        ],
+        failures_truncated=len(failures) > 10,
+    )
+
+
 class ChatTurn(MCPModel):
     funding_source: Literal["platform", "chatgpt"] | None = None
     model: str | None = None
@@ -196,6 +252,7 @@ class ChatTurn(MCPModel):
         | None
     ) = None
     progress: AgentProgress | None = None
+    tool_activity: ToolActivity = Field(default_factory=ToolActivity)
 
 
 class NextAction(MCPModel):
@@ -286,7 +343,7 @@ class QueryDatasetInput(MCPModel):
     sql: str = Field(
         min_length=1,
         max_length=8_000,
-        description="One SELECT over the table `t`, the chosen cell. DuckDB dialect. "
+        description="One SELECT over the table `t`, the chosen cell. DuckDB dialect; nested columns have JSON type. "
         "`source_row` is the row's identity in the source, not data.",
     )
     cell: str | None = Field(default=None, min_length=1, max_length=80)
@@ -673,6 +730,7 @@ def _chat(raw, limit: int) -> list[ChatTurn]:
                 ms=int(ms) if isinstance(ms, (int, float)) and ms >= 0 else None,
                 status=item.get("status"),
                 progress=item.get("progress"),
+                tool_activity=tool_activity(item),
             )
         )
     return out

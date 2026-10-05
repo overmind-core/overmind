@@ -90,6 +90,9 @@ def main():
     code = Path(script_path).read_text()
     tree = ast.parse(code)
     batched = any(isinstance(n, ast.FunctionDef) and n.name == "transform_batch" for n in tree.body)
+    inspected = mode == "inspect" and any(
+        isinstance(n, ast.FunctionDef) and n.name == "inspect_batch" for n in tree.body
+    )
     sampled = (
         len(tree.body) == 1
         and isinstance(tree.body[0], ast.Assign)
@@ -111,12 +114,21 @@ def main():
         namespace["sample_rows"] = lambda **kwargs: sample(
             lambda: storage["iter_frames"](Path(in_path)), examples["native_decision"], **kwargs
         )
-    elif not batched:
+    elif not batched and not inspected:
         source = storage["read_frame"](Path(in_path))
         namespace.update(source=source, df=source.copy())
     block_io()
     exec(compile(tree, "<cell>", "exec"), namespace, namespace)
     if mode == "inspect":
+        if inspected:
+            offset = 0
+            for batch in storage["iter_frames"](Path(in_path)):
+                batch.index = pd.RangeIndex(offset, offset + len(batch))
+                offset += len(batch)
+                namespace["inspect_batch"](batch)
+            if "finish_inspection" in namespace:
+                namespace["finish_inspection"]()
+            return
         if batched or sampled:
             raise ValueError(
                 "Use a batch cell to return results; inspect executes a whole-frame script."

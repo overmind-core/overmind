@@ -61,6 +61,24 @@ def _offline_model_resolution(monkeypatch):
 
 
 @pytest.fixture(autouse=True)
+def _offline_compute_prices(monkeypatch):
+    monkeypatch.setattr(
+        "overbae.services.provider_pricing.current_rates",
+        lambda: {
+            "source": "offline-test-fixture",
+            "status": "current",
+            "fetched_at": "2026-10-04T00:00:00+00:00",
+            "rates": {
+                "gpu_hour_cost_h100": 3.95,
+                "gpu_hour_cost_h200": 4.54,
+                "cpu_hour_cost": 0.0473,
+                "mem_gib_hour_cost": 0.008,
+            },
+        },
+    )
+
+
+@pytest.fixture(autouse=True)
 def _commercial_billing(settings):
     """Remaining-credit billing is on in tests unless a case clears the key."""
     settings.STRIPE_SECRET_KEY = "sk_test_billing"

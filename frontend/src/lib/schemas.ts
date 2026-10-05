@@ -113,7 +113,7 @@ export const evaluationsSearchSchema = projectIdSearchSchema.extend({
     .optional()
     .default("all")
     .catch("all"),
-  view: z.enum(["runs", "sets", "library"]).optional().default("runs"),
+  view: z.enum(["runs", "sets", "library", "decisions"]).optional().default("runs"),
 });
 
 export type EvaluationsSearch = z.infer<typeof evaluationsSearchSchema>;
@@ -156,6 +156,7 @@ export const trainingSearchSchema = projectIdSearchSchema.extend({
   page: z.coerce.number().min(1).optional().default(1),
   page_size: z.coerce.number().min(5).max(100).optional().default(25),
   train: z.boolean().optional(),
+  view: z.enum(["jobs", "experiments"]).optional().default("jobs"),
 });
 
 export type TrainingSearch = z.infer<typeof trainingSearchSchema>;

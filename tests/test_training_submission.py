@@ -63,6 +63,22 @@ def test_reconcile_discovers_call_from_own_provider_metadata_without_resubmissio
     assert job.status == "running" and job.remote_job_id == f"{run_id}:fc-test"
 
 
+def test_replaced_staging_owner_cannot_dispatch_gpu_work():
+    project = Project.objects.create(name="Fenced staging", slug="fenced-staging")
+    dataset = Dataset.objects.create(project=project)
+    job = FinetuningJob.objects.create(project=project, dataset=dataset, base_model="fixture")
+    training_submission.claim(job)
+    FinetuningJob.objects.filter(pk=job.pk).update(provider_submission={})
+    replacement = FinetuningJob.objects.get(pk=job.pk)
+    training_submission.claim(replacement)
+    with pytest.raises(training_submission.SubmissionUnresolvedError):
+        training_submission.dispatching(job, f"ft-{job.id}-stale")
+    training_submission.unknown(job, RuntimeError("stale staging owner returned"))
+    replacement.refresh_from_db()
+    assert replacement.provider_submission["state"] == "submitting"
+    training_submission.dispatching(replacement, f"ft-{job.id}-current")
+
+
 @pytest.mark.parametrize(
     "requested,field",
     [

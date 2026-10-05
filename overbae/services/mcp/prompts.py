@@ -36,6 +36,42 @@ def _optional_argument(name: str, description: str) -> types.PromptArgument:
 
 PROMPTS = (
     PromptDefinition(
+        name="develop-model-from-data",
+        title="Develop a model from data",
+        description="Prepare uploaded data, freeze partitions and compare explicit training candidates without a repository scan.",
+        arguments=(
+            _argument("dataset", "Uploaded dataset UUID."),
+            _argument("task", "The user's written task and intended outcome."),
+        ),
+        template=(
+            "Develop models from dataset {dataset} for this task: {task}. A repository and capability are optional. "
+            "Read overmind://interface/current. Use explore_dataset for bounded profiles and sampling feasibility; derive_dataset preserves historical parents in a separate chain. Use inspect_dataset and message_dataset_agent for "
+            "task-family interpretation and a source-bound preparation plan. Do not infer intent or target "
+            "meaning from numeric shape. Preserve the original request, full probability targets, mean-only "
+            "ratings and unknown semantics. Reinterpretation requires a concrete reviewed proposal. "
+            "After preparation, use create_data_partition with a unique request_key, source_cell and recipe: "
+            "seed, fractions keyed by train/development/calibration/final, group_by, optional stratify_by, "
+            "and holdouts containing field, values and role. Inspect get_job(kind=data_partition) for actual "
+            "coverage and assignments. Prepare each member for its intended consumer through the Workshop. "
+            "Use list_decision_models to discover eligible foundations, trained artifacts and external models. "
+            "Eligibility does not establish measured hardware fit. Use create_native_evaluation with frozen "
+            "final_cell, optional calibration_cell, named participants and baseline key. Creation saves a draft without inference. prepare_native_evaluation verifies inputs; launch_native_evaluation starts the authorized saved scope. "
+            "Temperature fitting requires probability targets; omit it for a mean-only suite. Inspect all "
+            "coverage, overlap and identity evidence through get_job(kind=native_evaluation). "
+            "Use create_training_experiment to save purpose, explicit variants (base_model, cell, optional "
+            "development_cell, hyperparameters) and optional evaluation protocol. Hyperparameters use n_epochs, "
+            'learning_rate, lora_r and seed; LoRA uses training_type={{"type":"Lora"}}. checkpoint_policy has fractions ending at 1 and selection last '
+            "or development_loss; final scores never select checkpoints. Inspect requested/effective settings "
+            "and authorization after prepare_training_experiment returns a configuration-bound forecast. Pass its quote_id to launch_training_experiment where saved constraints require it. Novel recipes can use create_training_profile for explicitly authorized bounded measurement. Reuse completed compatible predictions only through reuse_evaluation_predictions or an explicit experiment reuse_existing_predictions choice. Poll existing jobs without duplicate starts. "
+            "Use resume_native_evaluation only for stopped work, retaining saved call IDs and unknown submissions. "
+            "pause_native_evaluation stops new claims, not in-flight provider work. After model/runtime qualification, measure_decision_performance can run an authorized bounded workload before final quality scoring with "
+            "sample_size, repetitions, concurrency, questions_per_request, seed and amortization_decisions. "
+            "Report raw/calibrated metrics, in-sample calibration, paired uncertainty, missing/incompatible "
+            "cases, recorded versus unknown costs, client latency and provider conditions. Unknown identity, "
+            "pretraining contamination and hardware qualification remain unknown. Do not activate a model."
+        ),
+    ),
+    PromptDefinition(
         name="investigate-capability",
         title="Investigate capability",
         description="Gather bounded evidence about a capability's health, failures, traces, and instrumentation.",
@@ -156,7 +192,7 @@ PROMPTS = (
             "launch without quality approval. Only unreadable or technically incompatible data blocks use. "
             "Begin with get_model_catalog for dataset-independent model discovery. "
             "Capability is optional. An eval dataset and eval set with generative evaluators "
-            "are required; use create_eval_set to group existing evaluators if needed. "
+            "are required for chat training; native decision training instead uses typed targets and standalone decision comparisons through develop-model-from-data. Use create_eval_set to group existing evaluators if needed. "
             "For incumbent comparisons, read benchmark_model on the capability resource. "
             "It selects the codebase incumbent or a trained benchmark independently of the live "
             "serving model; new jobs pin this choice. Change it with set_benchmark_model only "

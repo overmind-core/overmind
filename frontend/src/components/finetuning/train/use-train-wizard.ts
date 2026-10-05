@@ -159,6 +159,9 @@ export function useTrainWizard({
   const datasetsQuery = useProjectDatasetsQuery(projectId);
   const datasets = useMemo(() => datasetsQuery.data?.results ?? [], [datasetsQuery.data]);
   const dataset = datasets.find((d) => d.id === datasetId);
+  const decisionObjective =
+    dataset?.cells?.find((cell) => cell.id === dataset.active)?.intentReport?.train?.objective ??
+    "decision_cross_entropy";
   const validationDataset =
     validationMode === "external"
       ? datasets.find((d) => d.id === validationDatasetId && d.id !== datasetId)
@@ -428,7 +431,7 @@ export function useTrainWizard({
             ...validationSelection,
             hyperparameters: {
               ...buildHyperparameters(draft),
-              ...(nativeDecision ? { objective: "decision_cross_entropy" } : {}),
+              ...(nativeDecision ? { objective: decisionObjective } : {}),
             },
           },
         }),
@@ -458,12 +461,33 @@ export function useTrainWizard({
   const totals = useMemo(() => {
     const rows = selectedDrafts.map((d) => estimates.get(d.id));
     const priced = rows.filter((e) => e?.costEstimate != null);
+    const timings = rows.map((row) => {
+      const range = row?.forecast?.training_seconds;
+      if (
+        Array.isArray(range) &&
+        range.length === 2 &&
+        range.every((n) => typeof n === "number" && Number.isFinite(n) && n >= 0) &&
+        range[1] >= range[0]
+      ) {
+        return { human: row?.timeEstimate.human, lower: range[0], range: true, upper: range[1] };
+      }
+      const seconds = row?.timeEstimate.seconds;
+      return typeof seconds === "number" && Number.isFinite(seconds) && seconds >= 0
+        ? { human: row?.timeEstimate.human, lower: seconds, range: false, upper: seconds }
+        : null;
+    });
+    let longest: string | null = null;
+    if (timings.length && timings.every((time) => time !== null)) {
+      if (timings.some((time) => time.range)) {
+        const lower = Math.floor(Math.max(...timings.map((time) => time.lower)) / 60);
+        const upper = Math.ceil(Math.max(...timings.map((time) => time.upper)) / 60);
+        longest = `${lower === upper ? lower : `${lower}–${upper}`} min`;
+      } else {
+        longest = timings.sort((a, b) => b.upper - a.upper)[0].human ?? null;
+      }
+    }
     return {
-      longest:
-        rows
-          .map((e) => e?.timeEstimate)
-          .filter(Boolean)
-          .sort((a, b) => (b?.seconds ?? 0) - (a?.seconds ?? 0))[0]?.human ?? null,
+      longest,
       pricedCount: priced.length,
       usd: priced.reduce((sum, e) => sum + (e?.costEstimate?.usd ?? 0), 0),
     };
@@ -580,7 +604,7 @@ export function useTrainWizard({
           groupId,
           hyperparameters: {
             ...buildHyperparameters(fixed),
-            ...(nativeDecision ? { objective: "decision_cross_entropy" } : {}),
+            ...(nativeDecision ? { objective: decisionObjective } : {}),
           },
           modelTier: fixed.tier as FinetuningJobRequestModelTierEnum,
           // Job names are `base · dataset · capability`: the run name is
@@ -606,6 +630,7 @@ export function useTrainWizard({
     }
   }, [
     canLaunch,
+    decisionObjective,
     validationSelection,
     validationDataset?.id,
     dataset?.active,
@@ -657,6 +682,7 @@ export function useTrainWizard({
     datasetId,
     datasets,
     datasetsQuery,
+    decisionObjective,
     dirty,
     drafts,
     estimates,

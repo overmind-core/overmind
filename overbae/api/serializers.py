@@ -10,7 +10,8 @@ from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
 from rest_framework.validators import UniqueTogetherValidator
 
-from modal_shared.decisions import DECISION_OBJECTIVE, TEXT_OBJECTIVE
+from modal_shared.decision_checkpoint_policy import validate_policy
+from modal_shared.decisions import DECISION_OBJECTIVES
 from overbae.api.model_activation import ModelActivationSerializer
 from overbae.api.native_evaluation import NativeEvaluationSerializer
 from overbae.api.scoping import project_ids_for
@@ -51,7 +52,8 @@ from overbae.services.deployment import deployment_progress
 from overbae.services.eval.trace_scoring import STATUS_ERROR
 from overbae.services.model_activation import start_activation
 from overbae.services.serving_context import evaluation_budget, serving_plan
-from overbae.services.training_contract import contract
+from overbae.services.training_contract import contract, dataset_objective
+from overbae.services.training_policies import profile_options
 from overbae.services.training_record import requested_configuration, run_record
 
 logger = logging.getLogger(__name__)
@@ -1293,7 +1295,9 @@ class FinetuningJobSerializer(serializers.ModelSerializer):
 
     def _check_cell(self, dataset: Dataset, intent: str, *, field: str, explicit=None):
         try:
-            return dataset_use.check(dataset, intent, cell=explicit)
+            return dataset_use.check(
+                dataset, intent, cell=explicit, verify=self.context.get("verify_source_files", True)
+            )
         except DatasetError as exc:
             raise serializers.ValidationError({field: exc.detail}) from exc
 
@@ -1311,7 +1315,9 @@ class FinetuningJobSerializer(serializers.ModelSerializer):
         )
         requested = requested_configuration(
             validated_data,
-            runtime=(prior.requested_configuration or {}).get("runtime") if prior else None,
+            runtime=(prior.requested_configuration or {}).get("runtime")
+            if prior
+            else self.context.get("training_runtime"),
         )
         if key:
             existing = FinetuningJob.objects.filter(
@@ -1349,6 +1355,7 @@ class FinetuningJobSerializer(serializers.ModelSerializer):
                     locked[dataset.pk],
                     intent,
                     cell=validated_data.get(cell_field),
+                    verify=self.context.get("verify_source_files", True),
                 )
             except DatasetError as exc:
                 raise serializers.ValidationError({field: exc.detail}) from exc
@@ -1466,11 +1473,7 @@ class FinetuningJobSerializer(serializers.ModelSerializer):
 
         selected_cell = attrs.get("cell") or getattr(self.instance, "cell", None)
         if selected_cell is not None:
-            objective = (
-                DECISION_OBJECTIVE
-                if (selected_cell.intent_report.get("train") or {}).get("format") == "decision"
-                else TEXT_OBJECTIVE
-            )
+            objective = dataset_objective(selected_cell)
             hp = dict(
                 attrs.get("hyperparameters", getattr(self.instance, "hyperparameters", {})) or {}
             )
@@ -1479,7 +1482,7 @@ class FinetuningJobSerializer(serializers.ModelSerializer):
                     {"hyperparameters": "The objective must match the pinned dataset contract."}
                 )
             hp["objective"] = objective
-            if objective == DECISION_OBJECTIVE:
+            if objective in DECISION_OBJECTIVES:
                 for choice in ("eval_model_before", "eval_model_after"):
                     if self.instance is None and choice not in self.initial_data:
                         attrs[choice] = False
@@ -1582,6 +1585,36 @@ class FinetuningJobSerializer(serializers.ModelSerializer):
             if dataset and validation_dataset.id == dataset.id:
                 raise serializers.ValidationError(
                     {"validation_dataset": "Validation dataset must differ from training dataset."}
+                )
+
+        hp = attrs.get("hyperparameters", getattr(self.instance, "hyperparameters", {})) or {}
+        try:
+            profile_options(hp)
+        except ValueError as exc:
+            raise serializers.ValidationError({"hyperparameters": str(exc)}) from exc
+        if "checkpoint_policy" in hp:
+            if hp.get("objective") not in DECISION_OBJECTIVES:
+                raise serializers.ValidationError(
+                    {
+                        "hyperparameters": "Retained checkpoint selection currently requires native decision training"
+                    }
+                )
+            try:
+                validate_policy(
+                    hp["checkpoint_policy"], has_development=attrs.get("validation_enabled", True)
+                )
+            except ValueError as exc:
+                raise serializers.ValidationError({"hyperparameters": str(exc)}) from exc
+            development = attrs.get("validation_cell")
+            if development and (
+                development.partition_memberships.filter(role__in=["calibration", "final"]).exists()
+                or development.native_final_plans.exists()
+                or development.native_calibration_plans.exists()
+            ):
+                raise serializers.ValidationError(
+                    {
+                        "validation_cell": "Calibration and final data cannot select training checkpoints"
+                    }
                 )
 
         eval_dataset = attrs.get("eval_dataset") or getattr(self.instance, "eval_dataset", None)

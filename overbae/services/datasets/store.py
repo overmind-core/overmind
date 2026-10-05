@@ -3,7 +3,7 @@
 Every table carries a column manifest ``[{name, type}]`` where ``type`` is one of
 ``string | integer | number | boolean | datetime | json``. Nested values are
 stored as JSON text so a messy upload never fails schema unification; readers
-decode them back to Python objects, and DuckDB sees them as VARCHAR.
+decode them back to Python objects. Sandboxed SQL views restore their declared JSON type.
 """
 
 from __future__ import annotations
@@ -499,7 +499,16 @@ def connect_sandboxed(**tables: Path) -> duckdb.DuckDBPyConnection:
     con.execute("SET lock_configuration = true")
     for name, path in tables.items():
         literal = str(path.resolve()).replace("'", "''")
-        con.execute(f"CREATE VIEW {_quote(name)} AS SELECT * FROM read_parquet('{literal}')")
+        nested = [column["name"] for column in read_manifest(path) if column["type"] == "json"]
+        projection = "*"
+        if nested:
+            replacements = ", ".join(
+                f"CAST({_quote(column)} AS JSON) AS {_quote(column)}" for column in nested
+            )
+            projection += f" REPLACE ({replacements})"
+        con.execute(
+            f"CREATE VIEW {_quote(name)} AS SELECT {projection} FROM read_parquet('{literal}')"
+        )
     return con
 
 

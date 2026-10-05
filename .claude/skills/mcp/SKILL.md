@@ -69,7 +69,9 @@ MCP client
 The entrypoint is `overbae/api/mcp.py`; ASGI mounts it through
 `overbae/asgi.py` as the outer Starlette app with Django at `/`. `/api/mcp/`
 never runs Django's `request_started`/`request_finished`, so
-`MCPAuthMiddleware` recycles the thread-local DB connection itself.
+`MCPAuthMiddleware` gives each request its own thread-sensitive executor and
+closes that executor's DB connections on exit. A slow tool must not serialize
+unrelated authentication, job reads or prompt discovery behind it.
 `overbae/services/mcp/server.py` owns the official MCP SDK server, stateless
 Streamable HTTP transport, protocol checks, resource and prompt callbacks, and
 middleware ordering. Do not create a second MCP app or mount a feature-specific
@@ -135,11 +137,9 @@ currently enforces the public `read_only`/`read` versus mutation/`write`
 boundary. If more granular API-key enforcement is introduced, implement it in
 the catalog/auth layer for every tool—do not add one-off handler checks.
 
-The public surface remains read and write only. The catalog rejects destructive
-tool names and destructive metadata. Do not add delete, remove, cancel, or
-undeploy operations without an explicit public-surface decision. The sole
-documented lifecycle exception is `retry_deployment`; do not add other retry
-operations without an explicit public-surface decision.
+The public surface remains permission-scoped read/write. Deliberate lifecycle operations are `cancel_dataset`, `retry_deployment`, `retry_data_partition`, native-comparison pause/resume, and performance resume. Do not infer generic destructive operations from these exceptions. A comparison pause prevents new claims; in-flight work may complete and retain receipts. Unknown provider submissions cannot be replayed without reconciliation.
+
+Contract 2.0 exposes draft → optional background preparation → explicit launch. `overmind://interface/current` and `list_projects` return the request-derived MCP endpoint, Console origin and permission-scoped tool count/catalog fingerprint. Compare these with the intended environment and refresh `tools/list` on a mismatch; never silently change endpoints or credentials. The interface resource also returns lifecycle rules; it does not attest that remote GPU images are deployed. Ordinary action receipts stay compact and point to detailed resources. Nested partition, sampling, workload and inference settings are typed; training hyperparameters are an intentional model-dependent extension validated by the training serializer/catalog. Manifest budget is 64 KiB including the added domain operations and nested schemas.
 
 ## Adding or changing a tool
 
@@ -205,6 +205,16 @@ resume, or inspect. Implement its project-filtered payload in
 removes sensitive fields. Keep access tokens, credentials, API keys, cookies,
 private material, presigned URLs, and checkpoint URLs out of both tool and
 resource output.
+Known numeric token measurements (such as `trained_tokens`, `max_tokens`, and
+`padded_tokens`) remain visible; strings, containers, and nonfinite values under
+those keys do not bypass credential redaction.
+
+Native evaluation job reads summarize every benchmark's coverage and macro
+metrics before bounding the response. They omit duplicated score receipts and
+per-benchmark details, and expose authenticated `report.json_path` and
+`report.markdown_path` downloads on the same server. The complete report retains
+all benchmarks, paired intervals and diagnostic slices; calibration results stay
+marked in-sample. Never present a bounded benchmark preview as complete results.
 
 MCP carries JSON state, not local binary bytes. For uploads, exports,
 checkpoints, repository edits, or local execution, return or link the
@@ -262,4 +272,4 @@ Before shipping an agent-relevant change, verify all applicable items:
   skill (`overmind/skills/overmind/`), and MCP tests are updated together.
   Regenerate API clients when the API contract changed.
 
-Training experiment changes expose `request_key`, explicit selection and contract receipts in readiness/estimate/start, recent metric-window metadata in `get_job`, and the generated run record in the finetune resource. `schedule_native_evaluation` is a metered GPU operation with train scope; its paired plan is a `native_evaluation` job/resource. `cancel_dataset` requests durable local/provider cancellation; pending acknowledgement must not be presented as finished. Both routes share Console domain services and project scoping.
+Training experiment changes expose `request_key`, explicit selection and contract receipts in readiness/estimate/start, elapsed time and remaining-time ranges with their recent metric-window evidence in `get_job`, and the generated run record in the finetune resource. `schedule_native_evaluation` is a metered GPU operation with train scope; its paired plan is a `native_evaluation` job/resource. `cancel_dataset` requests durable local/provider cancellation; pending acknowledgement must not be presented as finished. Both routes share Console domain services and project scoping.

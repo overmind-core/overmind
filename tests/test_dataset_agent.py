@@ -4,6 +4,7 @@ fake native stream."""
 
 from __future__ import annotations
 
+import hashlib
 import json
 import types
 import uuid
@@ -74,6 +75,43 @@ def test_query_reads_one_version_as_table_t():
     assert "error" in tools.query({"sql": "SELECT nope FROM t"})
 
 
+def test_decimal_query_evidence_can_be_saved_in_a_preparation_plan():
+    dataset = _dataset(intent="train")
+    tools, _ = _tools(dataset)
+    handlers = tools.handlers()
+    result = handlers["query"](
+        {
+            "sql": "SELECT 1.25::DECIMAL(10,2) AS mean, "
+            "struct_pack(bounds := [0.10::DECIMAL(10,2), 0.90::DECIMAL(10,2)]) AS detail "
+            "FROM t LIMIT 1"
+        }
+    )
+    assert result["rows"] == [{"mean": "1.25", "detail": {"bounds": ["0.10", "0.90"]}}]
+    saved = handlers["record_preparation_plan"](
+        {
+            "version": "1.0",
+            "objective": "Inspect source statistics without changing targets",
+            "consumer": "sft",
+            "understanding": "Questions and supplied answers; target quality remains unknown",
+            "families": [
+                {"name": "questions", "evidence": "Inspected source question/answer rows"}
+            ],
+            "checks": [
+                {
+                    "name": "source_preservation",
+                    "category": "preservation",
+                    "method": "deterministic",
+                    "question": "Are the supplied questions and answers unchanged?",
+                }
+            ],
+        }
+    )
+    assert saved["ok"], saved
+    dataset.refresh_from_db()
+    assert dataset.preparation_plan["exploration"][0]["preview"]["rows"] == result["rows"]
+    assert dataset.cells.count() == 1
+
+
 def test_a_cell_that_nests_a_missing_value_writes_valid_json():
     dataset = _dataset(intent="eval")
     tools, _ = _tools(dataset)
@@ -111,6 +149,41 @@ def test_inspect_reads_back_what_the_script_printed_and_lands_nothing():
     assert tools.inspect({"script": "total = len(df)\n"})["ok"] is True
     bad = tools.inspect({"script": "print(df['nope'])\n"})
     assert bad["ok"] is False and "nope" in bad["error"]
+
+
+def test_streamed_inspection_visits_every_row_without_changing_the_source():
+    dataset = _dataset(
+        [{"number": i, "payload": {"probabilities": [0.25, 0.75]}} for i in range(10005)]
+    )
+    tools, events = _tools(dataset)
+    source = dataset.cells.get()
+    original = hashlib.sha256(paths.cell_path(dataset.id, source.id).read_bytes()).hexdigest()
+    script = """
+totals = {'rows': 0, 'sum': 0, 'batches': 0, 'largest': 0}
+def inspect_batch(df):
+    totals['rows'] += len(df)
+    totals['sum'] += int(df['number'].sum())
+    totals['batches'] += 1
+    totals['largest'] = max(totals['largest'], len(df))
+    assert df['payload'].iloc[0]['probabilities'] == [0.25, 0.75]
+    df['number'] = -1
+def finish_inspection():
+    print(totals)
+"""
+    result = tools.inspect({"script": script})
+    assert result["ok"], result
+    assert "'rows': 10005" in result["stdout"]
+    assert f"'sum': {10005 * 10004 // 2}" in result["stdout"]
+    assert "'batches': 2" in result["stdout"] and "'largest': 10000" in result["stdout"]
+    assert dataset.cells.count() == 1 and events == []
+    assert (
+        hashlib.sha256(paths.cell_path(dataset.id, source.id).read_bytes()).hexdigest() == original
+    )
+    failed = tools.inspect(
+        {"script": script.replace("df['number'] = -1", "raise ValueError('failed inspection')")}
+    )
+    assert failed["ok"] is False and "failed inspection" in failed["error"]
+    assert dataset.cells.count() == 1
 
 
 def test_add_cell_runs_and_reports_and_a_proposal_waits():
@@ -1392,3 +1465,12 @@ def test_cursor_cancels_a_created_run_when_recording_ownership_fails(cursor, mon
     assert cancelled == ["unrecorded-run"]
     dataset.refresh_from_db()
     assert "ownership" in dataset.chat[-1]["error"]
+
+
+def test_workshop_rejects_unknown_source_selector_before_executing():
+    dataset = _dataset(intent="eval")
+    tools, _ = _tools(dataset)
+    result = tools.handlers()["try_script"]({"after": "1.0", "script": "df = df.iloc[:1]"})
+    assert result["ok"] is False
+    assert "after" in result["error"]
+    assert tools.preview is None

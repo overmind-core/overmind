@@ -68,3 +68,7 @@ workers to re-drive seeded rows against **real providers** and spend credits:
   `run.scores`, never recomputed from the summary.
 - When building the file in parts, formatter tooling can prune imports that are
   only used by later parts — restore the import block at the end.
+
+## Saved model workflows
+
+`seed_model_workflows` uses synthetic support inputs, real local exploration/partitioning and the common offline scorer. Its comparison is labelled synthetic, and its saved performance workload explicitly has no measurements. All exploration/run/partition states are terminal; the historical training group is wrapped without dispatch. Reset deletes data explorations, performance runs, training experiments, native evaluations and partition plans before protected cells/jobs. No provider adapter is called.

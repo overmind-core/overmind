@@ -99,6 +99,7 @@ from common import (  # noqa: E402
 from datasets import Dataset  # noqa: E402
 from decision_engine import (  # noqa: E402
     predict_checkpoint,
+    serve_decisions,
     verify_checkpoint,
 )
 from decision_engine import train as train_decisions  # noqa: E402
@@ -108,7 +109,7 @@ from transformers import AutoTokenizer  # noqa: E402
 from trl import SFTConfig, SFTTrainer  # noqa: E402
 from truncation import refuse_truncation  # noqa: E402
 
-from modal_shared.decisions import DECISION_OBJECTIVE  # noqa: E402
+from modal_shared.decisions import DECISION_OBJECTIVES  # noqa: E402
 
 apply_shared_patches()
 
@@ -470,7 +471,10 @@ def main() -> None:
     except (ImportError, AttributeError):
         pass  # transformers.integrations.moe not present/shaped this way — no-op
 
-    if os.environ.get("TRAINING_OBJECTIVE") == DECISION_OBJECTIVE:
+    if os.environ.get("TRAINING_OBJECTIVE") in DECISION_OBJECTIVES:
+        if os.environ.get("DECISION_SERVICE_SOCKET"):
+            serve_decisions(model, _inner_tok)
+            return
         if os.environ.get("DECISION_INPUTS_PATH"):
             predict_checkpoint(model, _inner_tok)
             return

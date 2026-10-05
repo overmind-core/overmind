@@ -20,6 +20,7 @@ from . import (  # noqa: E402
     model_deployment,
     optimizer_reconciler,
     trace_scoring,
+    training_experiments,
     training_preparation,
 )
 from .dataset_context import refresh_dataset_context
@@ -44,5 +45,6 @@ __all__ = [
     "process_span",
     "refresh_dataset_context",
     "trace_scoring",
+    "training_experiments",
     "training_preparation",
 ]

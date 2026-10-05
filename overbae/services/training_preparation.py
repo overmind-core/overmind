@@ -16,7 +16,7 @@ from django.utils import timezone
 from modal.exception import ConnectionError as ModalConnectionError
 from modal.exception import InternalError, NotFoundError, ServiceError
 
-from modal_shared.decisions import DECISION_OBJECTIVE, TEXT_OBJECTIVE
+from modal_shared.decisions import DECISION_OBJECTIVES
 from modal_shared.preparation import processor_fingerprint as asset_fingerprint
 from modal_shared.preparation import validate_preparation_report
 from modal_shared.stacks import train_function_name
@@ -38,6 +38,7 @@ from overbae.services.finetuning_policy import (
     estimated_training_context_length,
 )
 from overbae.services.finetuning_validator import row_to_finetuning_line
+from overbae.services.training_contract import dataset_objective
 
 
 def processor_fingerprint():
@@ -79,21 +80,18 @@ def request_preparation(
             if target.dataset.project_id != cell.dataset.project_id:
                 raise InputValidationError("Both datasets must belong to the same project.")
             dataset_use.check(target.dataset, "train", cell=target)
-    objective = (
-        DECISION_OBJECTIVE
-        if (cell.intent_report.get("train") or {}).get("format") == "decision"
-        else TEXT_OBJECTIVE
-    )
-    if objective == DECISION_OBJECTIVE and training_type != "lora":
+    objective = dataset_objective(cell)
+    if objective in DECISION_OBJECTIVES and training_type != "lora":
         raise InputValidationError("Native decision training currently supports LoRA only.")
     if validation_cell is not None:
-        validation_objective = (
-            DECISION_OBJECTIVE
-            if (validation_cell.intent_report.get("train") or {}).get("format") == "decision"
-            else TEXT_OBJECTIVE
-        )
-        if objective != validation_objective:
-            raise InputValidationError("Training and validation must use the same objective.")
+        validation_objective = dataset_objective(validation_cell)
+        if (
+            objective != validation_objective
+            and not {objective, validation_objective} <= DECISION_OBJECTIVES
+        ):
+            raise InputValidationError(
+                "Training and validation must use the same inference contract."
+            )
     runtime = runtime or training_release.current()
     config = {
         "runtime": runtime,

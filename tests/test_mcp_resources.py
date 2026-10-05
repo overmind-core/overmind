@@ -55,6 +55,31 @@ def _rpc(method: str, params: dict | None = None) -> dict:
     return payload
 
 
+def test_discovery_reports_the_connected_endpoint_and_permission_scoped_catalog():
+    project, key = _project()
+    headers = {"X-Api-Key": key, "Accept": "application/json"}
+    with TestClient(create_mcp_application()) as client:
+        tools = client.post("/api/mcp/", json=_rpc("tools/list"), headers=headers).json()["result"][
+            "tools"
+        ]
+        projects = client.post(
+            "/api/mcp/",
+            json=_rpc("tools/call", {"name": "list_projects", "arguments": {}}),
+            headers=headers,
+        ).json()["result"]["structuredContent"]
+        interface = client.post(
+            "/api/mcp/",
+            json=_rpc("resources/read", {"uri": "overmind://interface/current"}),
+            headers=headers,
+        ).json()["result"]
+    identity = json.loads(interface["contents"][0]["text"])
+    assert identity["connection"]["mcp_url"] == "http://testserver/api/mcp/"
+    assert identity["tool_count"] == len(tools)
+    assert projects["connection"] == identity["connection"]
+    assert projects["catalog_sha256"] == identity["catalog_sha256"]
+    assert key not in json.dumps(identity)
+
+
 def test_project_resource_exposes_scan_provenance():
     project, _ = _project()
     project.settings = {
@@ -93,6 +118,7 @@ def test_resource_templates_cover_the_public_resource_surface():
         "overmind://deployments/{deployment}",
         "overmind://optimizer-runs/{experiment}",
         "overmind://jobs/{kind}/{id}",
+        "overmind://jobs/data_exploration/{id}/strata",
         "overmind://connectors/{connector}",
     }
 
@@ -213,7 +239,7 @@ def test_connector_setup_resource_describes_human_cli_boundary():
 def test_static_resource_manifest_includes_checkpoint_download_guidance():
     resources = resource_list()
 
-    assert len(resources) == 5
+    assert len(resources) == 6
     uris = {str(resource.uri) for resource in resources}
     assert "overmind://checkpoint-download" in uris
     assert "overmind://connector-setup" in uris
@@ -341,6 +367,13 @@ def test_safe_json_redacts_nested_secret_key_styles():
     for secret in secret_values:
         assert secret not in encoded
     assert redacted == {"nested": [{"label": "kept"}]}
+
+
+def test_token_measurements_remain_visible_without_exposing_credentials():
+    measurements = {"trained_tokens": 54000, "max_tokens": 8192, "padded_tokens": 32768}
+    assert safe_json({"forecast": measurements}) == {"forecast": measurements}
+    for value in ("credential-value", {"value": 12}, [12], True, float("nan")):
+        assert safe_json({"trained_tokens": value, "access_token": 1234}) == {}
 
 
 def test_finetune_resource_redacts_all_checkpoint_url_styles():

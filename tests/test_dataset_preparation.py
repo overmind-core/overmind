@@ -132,7 +132,7 @@ def test_cell_creation_reuses_an_identical_preview_but_not_a_changed_input():
         tools.try_script({"script": script})
         result = tools.add_cell({"title": "Prepared rows", "script": script})
         assert result["ok"] and execute.call_count == 1
-        tools.try_script({"script": script, "after": "1.0"})
+        tools.try_script({"script": script, "version": "1.0"})
         result = tools.add_cell({"title": "Current rows", "script": script})
         assert result["ok"] and execute.call_count == 3
 

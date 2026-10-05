@@ -7,18 +7,42 @@ from transformers import AutoTokenizer
 
 from modal_shared.decision_artifact import read_artifact
 from modal_shared.decision_inference import prepare_requests
-from modal_shared.serving.artifacts import atomic_json, digest_file
+from modal_shared.decisions import DECISION_OBJECTIVE, RENDERER, codebook
+from modal_shared.serving.artifacts import atomic_json, digest_file, read_base_manifest
 
 
 def main(directory, model_directory):
     request = json.loads((directory / "request.json").read_text())
-    artifact = read_artifact(model_directory / "final")
+    foundation = request.get("foundation")
+    if foundation:
+        base = read_base_manifest(Path(foundation["base_path"]))
+        if (
+            base["identity"] != foundation["base_identity"]
+            or base["repo"] != foundation["hf_model"]
+        ):
+            raise ValueError("Foundation base identity changed")
+        tokenizer = AutoTokenizer.from_pretrained(
+            foundation["base_path"], local_files_only=True, trust_remote_code=True
+        )
+        if tokenizer.pad_token is None:
+            tokenizer.pad_token = tokenizer.eos_token
+        artifact = {
+            "identity": "base:" + base["identity"],
+            "codebook": codebook(tokenizer),
+            "vocab_fingerprint": hashlib.sha256(
+                json.dumps(tokenizer.get_vocab(), sort_keys=True).encode()
+            ).hexdigest(),
+        }
+        prepared = {"context_length": request["context_length"]}
+        tokenizer.save_pretrained(directory / "tokenizer")
+    else:
+        artifact = read_artifact(model_directory / "final")
+        prepared = json.loads((model_directory / "preparation.json").read_text())
+        tokenizer = AutoTokenizer.from_pretrained(model_directory / "final", local_files_only=True)
     if artifact["identity"] != request["artifact_identity"]:
         raise ValueError("Prediction model identity changed")
     if digest_file(directory / "inputs.jsonl") != request["input_sha256"]:
         raise ValueError("Prediction input file changed")
-    prepared = json.loads((model_directory / "preparation.json").read_text())
-    tokenizer = AutoTokenizer.from_pretrained(model_directory / "final", local_files_only=True)
     vocab = hashlib.sha256(json.dumps(tokenizer.get_vocab(), sort_keys=True).encode()).hexdigest()
     if vocab != artifact["vocab_fingerprint"]:
         raise ValueError("Prediction tokenizer differs from the trained artifact")
@@ -40,6 +64,14 @@ def main(directory, model_directory):
         {
             **report,
             **request,
+            "objective": DECISION_OBJECTIVE,
+            "renderer": RENDERER,
+            "codebook": artifact["codebook"],
+            "vocab_fingerprint": vocab,
+            "chat_template_sha256": hashlib.sha256(
+                str(tokenizer.chat_template).encode()
+            ).hexdigest(),
+            "tokenizer_revision": tokenizer.init_kwargs.get("_commit_hash"),
             "context_length": prepared["context_length"],
             "tokens_sha256": digest_file(directory / "tokens.jsonl"),
             "failures_sha256": digest_file(directory / "failures.jsonl"),
@@ -48,4 +80,4 @@ def main(directory, model_directory):
 
 
 if __name__ == "__main__":
-    main(Path(sys.argv[1]), Path(sys.argv[2]))
+    main(Path(sys.argv[1]), Path(sys.argv[2]) if len(sys.argv) > 2 else None)

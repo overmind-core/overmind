@@ -106,6 +106,13 @@ def native_decision(record):
     payload = decode(record.get("input"))
     if isinstance(payload, dict) and isinstance(payload.get("decision"), dict):
         reference = decode(record.get("expected_output"))
+        if isinstance(reference, dict) and set(reference) == {"mean", "values"}:
+            return {
+                **payload["decision"],
+                "target_mean": reference["mean"],
+                "option_values": reference["values"],
+                "target_semantics": "ordinal_mean",
+            }
         return {
             **payload["decision"],
             "target_probabilities": reference.get("probabilities")
@@ -144,7 +151,18 @@ MAPPING_FIELDS = {
     "decision.kind",
     "decision.options",
     "decision.target_probabilities",
+    "decision.target_mean",
+    "decision.option_values",
+    "decision.target_semantics",
+    "decision.target_provenance",
     "decision.weight",
+}
+
+TEXT_MAPPING_FIELDS = {
+    "decision.state",
+    "decision.question",
+    "decision.kind",
+    "decision.target_semantics",
 }
 
 
@@ -161,28 +179,41 @@ def validate_mapping(mapping, constants):
         for path in mapping.values()
     ):
         raise ValueError("Each mapped source must be a nonempty column path.")
-    if any(key not in {"decision.state", "decision.kind", "decision.options"} for key in constants):
+    if any(
+        key
+        not in {
+            "decision.state",
+            "decision.kind",
+            "decision.options",
+            "decision.option_values",
+            "decision.target_semantics",
+        }
+        for key in constants
+    ):
         raise ValueError(
-            "Constants may declare decision state, kind or ordered options; never targets."
+            "Constants may declare decision state, kind, ordered options, scale or target meaning; never targets."
         )
 
 
-def field_value(record, path):
+def field_value(record, path, *, decode_result=True):
     if path in record:
-        return decode(record[path])
+        return decode(record[path]) if decode_result else record[path]
     value = record
     for part in path.split("."):
         value = decode(value)
         if not isinstance(value, dict) or part not in value:
             raise ValueError(f"Missing mapped field: {path}")
         value = value[part]
-    return decode(value)
+    return decode(value) if decode_result else value
 
 
 def mapped_record(record, mapping, constants):
     row = copy.deepcopy(record)
     assignments = {
-        **{target: field_value(record, source) for target, source in mapping.items()},
+        **{
+            target: field_value(record, source, decode_result=target not in TEXT_MAPPING_FIELDS)
+            for target, source in mapping.items()
+        },
         **constants,
     }
     for target, value in assignments.items():
@@ -198,7 +229,10 @@ def mapped_record(record, mapping, constants):
                 raise ValueError(f"Mapping conflicts with existing {part}.")
             parent = parent[part]
         key = parts[-1]
-        if key in parent and not missing(parent[key]) and decode(parent[key]) != value:
+        existing = parent.get(key)
+        if target not in TEXT_MAPPING_FIELDS:
+            existing = decode(existing)
+        if key in parent and not missing(parent[key]) and existing != value:
             raise ValueError(f"Mapping conflicts with existing {target}.")
         parent[key] = value
     return row
@@ -223,7 +257,11 @@ def prepare_examples(
                         key: decision.get(key) for key in ("state", "question", "kind", "options")
                     }
                 }
-                row["expected_output"] = {"probabilities": decision.get("target_probabilities")}
+                row["expected_output"] = (
+                    {"mean": decision["target_mean"], "values": decision.get("option_values")}
+                    if "target_mean" in decision
+                    else {"probabilities": decision.get("target_probabilities")}
+                )
             prepared.append(row)
             continue
         transcript = messages(row.get("messages"))

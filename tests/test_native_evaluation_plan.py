@@ -14,7 +14,7 @@ from overbae.services.datasets import land
 pytestmark = pytest.mark.django_db
 
 
-def setup_plan():
+def setup_plan(*, prepare=True):
     project = Project.objects.create(name="Research", slug="research")
     train = Dataset.objects.create(project=project, name="Training", intent="train")
     job = FinetuningJob.objects.create(
@@ -57,6 +57,9 @@ def setup_plan():
             native_evaluation.schedule(job, calibration_cell=cells[0], final_cell=cells[1]).id
             == plan.id
         )
+    if prepare:
+        native_evaluation.advance(plan.pk, stage="verify_inputs")
+    plan.refresh_from_db()
     return plan
 
 
@@ -65,7 +68,7 @@ def test_plan_keeps_references_local_and_freezes_calibration_before_final_predic
 ):
     settings.MEDIA_ROOT = tmp_path
     plan = setup_plan()
-    assert plan.state == "waiting_for_checkpoint"
+    assert plan.state == "running"
     uploaded = native_evaluation.seal_suite(plan, "calibration")
     rows = [json.loads(line) for line in uploaded.read_text().splitlines()]
     assert len(rows) == 3
@@ -95,7 +98,7 @@ def test_plan_keeps_references_local_and_freezes_calibration_before_final_predic
     assert fitted["fitted_on"] == "calibration"
     assert fitted["decisions"] == 3
     assert native_evaluation.fit_calibration(plan) == fitted
-    assert not native_evaluation.directory(plan, "final").exists()
+    assert not (native_evaluation.directory(plan, "final") / "candidate.jsonl").exists()
 
 
 def test_unknown_submission_is_not_repeated(tmp_path, settings):
@@ -112,7 +115,30 @@ def test_unknown_submission_is_not_repeated(tmp_path, settings):
     assert submit.call_count == 1
     plan.refresh_from_db()
     assert plan.state == "submission_unknown"
-    assert plan.calls["calibration_prepare"]["state"] == "submitting"
+    assert plan.calls["calibration_prepare"]["state"] == "submission_unknown"
+
+
+def test_recovery_requires_existing_call_identity_and_does_not_submit_again(settings):
+    plan = setup_plan()
+    plan.job.status = "succeeded"
+    plan.job.remote_job_id = "run:call"
+    plan.job.save()
+    plan.state = "submission_unknown"
+    plan.calls = {
+        "verify_inputs": {"state": "completed", "receipt": {}},
+        "calibration_prepare": {"state": "submission_unknown"},
+    }
+    plan.save()
+    with pytest.raises(ValueError, match="call"):
+        native_evaluation.resume(plan)
+    native_evaluation.resume(plan, stage="calibration_prepare", call_id="fc-existing")
+    with (
+        patch.object(native_evaluation, "submit", side_effect=AssertionError("no new call")),
+        patch.object(native_evaluation.modal.FunctionCall, "from_id") as lookup,
+    ):
+        lookup.return_value.get.side_effect = TimeoutError
+        native_evaluation.advance(plan.pk)
+    lookup.assert_called_once_with("fc-existing")
 
 
 def test_retry_keeps_pinned_evaluation_release(tmp_path, settings):
@@ -193,12 +219,12 @@ def test_incomplete_calibration_cannot_fit_or_start_final(tmp_path, settings):
         native_evaluation.fit_calibration(plan)
     plan.refresh_from_db()
     assert plan.calibration == {}
-    assert not native_evaluation.directory(plan, "final").exists()
+    assert not (native_evaluation.directory(plan, "final") / "candidate.jsonl").exists()
 
 
 def test_embedded_probability_target_is_never_uploaded(tmp_path, settings):
     settings.MEDIA_ROOT = tmp_path
-    plan = setup_plan()
+    plan = setup_plan(prepare=False)
     from types import SimpleNamespace
 
     malicious = SimpleNamespace(
@@ -304,3 +330,14 @@ def test_pending_provider_observation_can_be_polled_again(tmp_path, settings):
     collect.assert_called_once()
     plan.refresh_from_db()
     assert plan.calls["calibration_prepare"]["state"] == "completed"
+
+
+def test_failed_training_dependency_does_not_wait_forever():
+    plan = setup_plan()
+    FinetuningJob.objects.filter(pk=plan.job_id).update(status="failed")
+    with patch.object(native_evaluation, "submit") as submit:
+        native_evaluation.advance(plan.pk)
+    plan.refresh_from_db()
+    assert plan.state == "failed"
+    assert plan.calls["calibration_candidate"]["dependency_state"] == "failed"
+    submit.assert_not_called()

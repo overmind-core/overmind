@@ -27,7 +27,8 @@ production traces.
 **The agent model is the product.** Overmind builds a model of a team's
 agents (capabilities, behaviours, prompts, and tools) by scanning their repo,
 pinning every component to the file and line that defines it. Telemetry binds
-to that model; everything else runs on it. The public framing: Overmind builds
+to that model. Teams can also start with uploaded data and a written task,
+without scanning a repository. The public framing: Overmind builds
 a model of the agent and uses traces to validate it.
 
 That model is what the rest depends on:
@@ -47,9 +48,22 @@ That model is what the rest depends on:
   private per-team fine-tuned models, benchmarked against the incumbent model
   running in production and served on an OpenAI-compatible endpoint.
 
-Each stage feeds the next, and every stage reads the graph.
+Each stage feeds the next. Repository workflows use the graph; data-first
+model workflows use a saved task interpretation, data lineage and comparison
+protocol.
 
 ## Operating context
+
+- Data-first onboarding leads to the existing Workshop, where the agent explores
+  the source and proposes target meaning before preparation. Saved group-preserving
+  partitions, standalone decision comparisons, explicit training experiments and
+  reproducible performance workloads make this path available through Console
+  and MCP. Calibration and development selection stay separate from final results;
+  coverage, identity uncertainty and partial cost accounting remain inspectable.
+  Frozen-source derivation, bounded exploration and sampling feasibility precede
+  draft/prepare/launch workflows. Saved receipts recover after reconnects; explicit
+  compatible prediction reuse avoids duplicate work. Runtime profiles and user-defined
+  planning constraints separate measured evidence from unknown costs.
 
 - Teams instrument agents with the `overmind` SDK (PyPI) or
   `@overmind-lab/trace-sdk` (npm), or send existing telemetry via OTLP ingest
@@ -58,16 +72,20 @@ Each stage feeds the next, and every stage reads the graph.
   The public promise is "no wrapper classes, no rewrites, no proprietary wire
   format": one SDK setup auto-instruments the LLM libraries already in use,
   over OpenTelemetry.
+
 - Capability discovery is local (`overmind setup` → `overmind.toml` →
   `overmind sync`). After a fine-tune, the Console and MCP return a copy-paste
   prompt that points the capability's code at the new model.
+
 - Optimisation runs from the agent's own repo after `overmind sync`: paste
   `/overmind optimise` in the coding agent; the skill drives the SDK, the server
   scores candidates, and results return as scores and diffs.
+
 - The Console (console.overmindlab.ai) is where teams manage projects, inspect
   agents, browse observability data, build datasets, run evaluations and
   optimisation experiments, train and deploy models, monitor jobs, and chat
   with frontier or deployed models.
+
 - Separate web properties: the Console, a public marketing site at
   www.overmindlab.ai, docs at docs.overmindlab.ai, and a public Discord. The
   SDK/CLI lives in the sibling `overmind` repo.

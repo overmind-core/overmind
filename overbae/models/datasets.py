@@ -124,6 +124,71 @@ class Dataset(models.Model):
         return out
 
 
+class DataExploration(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    project = models.ForeignKey("overbae.Project", on_delete=models.CASCADE)
+    name = models.CharField(max_length=255)
+    request_key = models.CharField(max_length=128)
+    kind = models.CharField(max_length=16)
+    source_cell = models.ForeignKey(
+        "overbae.Cell", on_delete=models.PROTECT, related_name="explorations"
+    )
+    source_fingerprint = models.CharField(max_length=64)
+    config = models.JSONField(default=dict)
+    report = models.JSONField(default=dict)
+    output_dataset = models.ForeignKey(
+        "overbae.Dataset", on_delete=models.PROTECT, null=True, related_name="derivations"
+    )
+    state = models.CharField(max_length=16, default="queued", db_index=True)
+    error = models.TextField(blank=True, default="")
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["project", "request_key"], name="unique_exploration_request"
+            )
+        ]
+
+
+class DataPartitionPlan(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    project = models.ForeignKey("overbae.Project", on_delete=models.CASCADE)
+    name = models.CharField(max_length=255)
+    request_key = models.CharField(max_length=128)
+    source_cell = models.ForeignKey(
+        "overbae.Cell", on_delete=models.PROTECT, related_name="partition_plans"
+    )
+    source_fingerprint = models.CharField(max_length=64)
+    recipe = models.JSONField(default=dict)
+    report = models.JSONField(default=dict)
+    state = models.CharField(max_length=16, default="queued", db_index=True)
+    error = models.TextField(blank=True, default="")
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["project", "request_key"], name="unique_partition_request"
+            )
+        ]
+
+
+class DataPartitionMember(models.Model):
+    plan = models.ForeignKey(DataPartitionPlan, on_delete=models.CASCADE, related_name="members")
+    role = models.CharField(max_length=16)
+    cell = models.ForeignKey(
+        "overbae.Cell", on_delete=models.PROTECT, related_name="partition_memberships"
+    )
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(fields=["plan", "role"], name="unique_partition_role")
+        ]
+
+
 class Cell(models.Model):
     """One transformation and the frame it left. Position 0 is the source. A
     used cell is frozen; consumers PROTECT it."""

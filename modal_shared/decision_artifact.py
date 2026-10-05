@@ -2,6 +2,7 @@ import json
 import math
 from pathlib import Path
 
+from modal_shared.decisions import DECISION_OBJECTIVES
 from modal_shared.serving.artifacts import atomic_json, digest_file, digest_json, file_state
 
 MANIFEST = "artifact.json"
@@ -69,7 +70,7 @@ def seal_artifact(directory, verification):
     files = inventory(directory)
     contract = json.loads((directory / "decision.json").read_text())
     adapter = json.loads((directory / "adapter_config.json").read_text())
-    if contract.get("objective") != "decision_cross_entropy":
+    if contract.get("objective") not in DECISION_OBJECTIVES:
         raise ValueError("Checkpoint does not have the native decision objective")
     if not contract.get("training", {}).get("base_identity"):
         raise ValueError("Decision artifact requires an immutable base identity")

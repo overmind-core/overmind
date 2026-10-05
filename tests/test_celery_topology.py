@@ -5,7 +5,10 @@ worker is a silent no-op: the task is accepted into a queue nobody reads.
 
 from __future__ import annotations
 
+import json
 import re
+import subprocess
+import sys
 from pathlib import Path
 
 import yaml
@@ -78,6 +81,30 @@ def test_docker_compose_drains_every_routed_queue():
         f"docker-compose worker drains them — tasks sent there will silently never run. "
         f"Workers found: { {k: sorted(v) for k, v in workers.items()} }"
     )
+
+
+def test_fresh_worker_registers_every_routed_and_scheduled_task():
+    # Test collection imports task modules that a fresh worker may never discover.
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            "import django, json; django.setup(); "
+            "from overbae.celery import app; app.loader.import_default_modules(); "
+            "print(json.dumps(sorted(app.tasks)))",
+        ],
+        cwd=REPO_ROOT,
+        capture_output=True,
+        text=True,
+        timeout=30,
+        check=True,
+    )
+    registered = set(json.loads(result.stdout.splitlines()[-1]))
+    configured = set(settings.CELERY_TASK_ROUTES) | {
+        entry["task"] for entry in settings.CELERY_BEAT_SCHEDULE.values()
+    }
+    missing = configured - registered
+    assert not missing, f"Fresh workers cannot execute configured tasks: {sorted(missing)}"
 
 
 def _prefork_queues() -> set[str]:

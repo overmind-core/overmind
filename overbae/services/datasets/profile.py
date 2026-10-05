@@ -115,8 +115,12 @@ def profile_records(records) -> dict:
                 totals["invalid_decision_rows"] += 1
             else:
                 totals["valid_decision_rows"] += 1
-                totals["soft_target_rows"] += max(probabilities) < 1
-                totals["hard_target_rows"] += max(probabilities) == 1
+                if probabilities is not None:
+                    totals["soft_target_rows"] += max(probabilities) < 1
+                    totals["hard_target_rows"] += max(probabilities) == 1
+                else:
+                    totals["mean_target_rows"] += 1
+                labels["target_semantics"] = decision.get("target_semantics", "unknown")
             payload = {key: decision.get(key) for key in ("state", "question", "kind", "options")}
             labels["kind"] = str(decision.get("kind", ""))
             if record.get("source"):
@@ -133,7 +137,9 @@ def profile_records(records) -> dict:
         if missing(target):
             target = record.get("output", record.get("response", record.get("completion")))
         if missing(target) and isinstance(decision, dict):
-            target = decision.get("target_probabilities", decision.get("target"))
+            target = decision.get(
+                "target_probabilities", decision.get("target_mean", decision.get("target"))
+            )
         output_shape = _shape(target)
         input_shape = (
             [_shape(turn.get("content")) for turn in transcript if turn["role"] == "user"][:4]

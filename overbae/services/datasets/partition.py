@@ -67,11 +67,16 @@ def content_key(row: dict, *, include_output: bool = False) -> str:
             turns[0].get("content") if len(turns) == 1 and turns[0].get("role") == "user" else turns
         )
     else:
-        value = row.get("input")
-        if value is None and isinstance(row.get("decision"), dict):
-            value = {
-                key: row["decision"].get(key) for key in ("state", "question", "kind", "options")
-            }
+        value = source
+        decision = (
+            source.get("decision")
+            if isinstance(source, dict) and set(source) == {"decision"}
+            else row.get("decision")
+            if source is None
+            else None
+        )
+        if isinstance(decision, dict):
+            value = {key: decision.get(key) for key in ("state", "question", "kind", "options")}
         if value is None:
             fields = {k: row[k] for k in _RAW_INPUT if row.get(k) is not None}
             # A generic question alone can be shared by millions of distinct cases.

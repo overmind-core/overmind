@@ -18,9 +18,53 @@ class PlanModel(BaseModel):
     model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
 
 
+class InterpretationEvidence(PlanModel):
+    kind: Literal["source_documentation", "observation", "user_statement"]
+    reference: str = Field(min_length=1, max_length=2000)
+    observation: str = Field(min_length=1, max_length=2000)
+    rows: list[Annotated[int, Field(ge=0)]] = Field(default_factory=list, max_length=30)
+
+
 class Family(PlanModel):
     name: str = Field(min_length=1, max_length=200)
     evidence: str = Field(min_length=1, max_length=2000)
+    target_meaning: Literal[
+        "unknown",
+        "categorical_gold",
+        "annotator_distribution",
+        "posterior",
+        "ordinal_mean",
+        "ordinal_histogram",
+        "pairwise_preference",
+        "teacher_distribution",
+        "assistant_response",
+    ] = "unknown"
+    interpretation_status: Literal["hypothesis", "supported", "conflicted"] = "hypothesis"
+    evidence_references: list[InterpretationEvidence] = Field(default_factory=list, max_length=20)
+    interpretation_scope: str = Field(default="", max_length=2000)
+    conflicts: list[Annotated[str, Field(min_length=1, max_length=2000)]] = Field(
+        default_factory=list, max_length=20
+    )
+    target_evidence: str = Field(
+        default="",
+        max_length=2000,
+        description="Source documentation, inspected observations or user clarification supporting the target interpretation. Column names and numeric shape alone are insufficient.",
+    )
+
+    @model_validator(mode="after")
+    def target_interpretation(self):
+        if self.target_meaning != "unknown" and not self.target_evidence:
+            raise ValueError("A target interpretation requires source or user evidence")
+        if self.interpretation_status == "supported" and (
+            not self.evidence_references or not self.interpretation_scope or self.conflicts
+        ):
+            raise ValueError(
+                "A supported interpretation needs scoped evidence references and no unresolved conflicts"
+            )
+        if self.interpretation_status == "conflicted" and not self.conflicts:
+            raise ValueError("Record the conflicting evidence")
+        return self
+
     input_columns: list[Annotated[str, Field(min_length=1, max_length=300)]] = Field(
         default_factory=list, max_length=30
     )
@@ -70,7 +114,7 @@ class PlanRequest(PlanModel):
     constants: dict = Field(
         default_factory=dict,
         max_length=10,
-        description="Declared constants for decision.kind, decision.state or decision.options only. Never invent target probabilities. Native kinds are choice, noul or score.",
+        description="Declared constants for decision.kind, decision.state, decision.options, decision.option_values or decision.target_semantics. Support meaning and scale with source evidence; ask when unknown. Never invent target probabilities or means.",
     )
     assumptions: list[str] = Field(default_factory=list, max_length=30)
     unresolved_questions: list[str] = Field(default_factory=list, max_length=30)

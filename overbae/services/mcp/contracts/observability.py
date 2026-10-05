@@ -224,6 +224,10 @@ class QueryTaskExecutionsOutput(MCPModel):
 
 
 JobKind = Literal[
+    "decision_performance",
+    "data_exploration",
+    "data_partition",
+    "training_experiment",
     "native_evaluation",
     "training_preparation",
     "dataset_run",

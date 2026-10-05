@@ -36,9 +36,11 @@ from pathlib import Path
 
 import modal
 
+from modal_shared.compute_usage import ComputeMeter
 from modal_shared.decision_artifact import read_artifact, seal_artifact
-from modal_shared.decisions import DECISION_OBJECTIVE
+from modal_shared.decisions import DECISION_OBJECTIVES
 from modal_shared.preparation import run_preparation_process
+from modal_shared.serving.artifacts import atomic_json
 from modal_shared.training_data import materialize_files
 from modal_shared.training_release import identity
 from modal_shared.training_telemetry import read_telemetry, record_heartbeat, record_stage
@@ -67,8 +69,10 @@ from modal_shared.stacks import (  # noqa: E402
     TRAIN_U2026_8_GPOS,
 )
 
-light_image = light_image.env({"OVERMIND_TRAINING_RELEASE": json.dumps(RELEASE)})
-app = modal.App(APP_NAME)
+app = modal.App(
+    APP_NAME,
+    secrets=[modal.Secret.from_dict({"OVERMIND_TRAINING_RELEASE": json.dumps(RELEASE)})],
+)
 
 
 @app.function(image=light_image)
@@ -101,12 +105,13 @@ def _write_meta(run_dir: Path, **fields) -> None:
     meta_path.write_text(json.dumps(meta, indent=2) + "\n")
 
 
-def _run_training(run_id: str, env: dict[str, str]) -> dict:
+def _run_training(run_id: str, env: dict[str, str], *, gpu_type="H100", gpu_count=1) -> dict:
+    meter = ComputeMeter(gpu_type=gpu_type, gpu_count=gpu_count)
     record_stage(_run_dir(run_id), "loading_model")
     run_dir = _run_dir(run_id)
     run_dir.mkdir(parents=True, exist_ok=True)
     final_dir = run_dir / "final"
-    native = env.get("TRAINING_OBJECTIVE") == DECISION_OBJECTIVE
+    native = env.get("TRAINING_OBJECTIVE") in DECISION_OBJECTIVES
     candidate_dir = run_dir / "candidate" if native else final_dir
     result = {
         "run_id": run_id,
@@ -117,6 +122,8 @@ def _run_training(run_id: str, env: dict[str, str]) -> dict:
     }
 
     sft_vol.reload()
+    usage_path = run_dir / "compute-usage.json"
+    previous_usage = json.loads(usage_path.read_text()) if usage_path.exists() else []
     if native and final_dir.exists():
         result["artifact_identity"] = read_artifact(final_dir)["identity"]
         _write_meta(run_dir, status="succeeded", finished_at=time.time())
@@ -168,6 +175,7 @@ def _run_training(run_id: str, env: dict[str, str]) -> dict:
         while not stop_commit.wait(_VOLUME_COMMIT_INTERVAL_S):
             try:
                 record_heartbeat(run_dir)
+                atomic_json(usage_path, [*previous_usage, meter.snapshot()])
                 sft_vol.commit()
             except Exception as exc:  # noqa: BLE001 — best-effort background commit
                 print(f"[modal_sft_worker] volume commit skipped: {exc!r}")
@@ -222,6 +230,8 @@ def _run_training(run_id: str, env: dict[str, str]) -> dict:
     finally:
         stop_commit.set()
         committer.join(timeout=10)
+        atomic_json(usage_path, [*previous_usage, meter.snapshot()])
+        sft_vol.commit()
 
     _write_meta(run_dir, status=status, finished_at=time.time())
     sft_vol.commit()
@@ -248,22 +258,26 @@ def _register_train(fn_name: str, image: modal.Image) -> None:
         gpu_type: str = "H100",
         gpu_count: int = 1,
     ) -> dict:
-        return _run_training(run_id, env)
+        return _run_training(run_id, env, gpu_type=gpu_type, gpu_count=gpu_count)
 
     _sft.__name__ = fn_name
     _sft.__qualname__ = fn_name
     globals()[fn_name] = app.function(image=image, name=fn_name, **_TRAIN_FN_KWARGS)(_sft)
 
     def prepare(preparation_id: str, request: dict) -> dict:
+        meter = ComputeMeter(cpu=8, memory_gib=8)
         sft_vol.reload()
         destination = Path(DATA_MOUNT) / "preparations" / preparation_id
         try:
             with tempfile.TemporaryDirectory(prefix="sft-prepare-") as workspace:
                 request_path = Path(workspace) / "request.json"
                 request_path.write_text(json.dumps(request))
-                return run_preparation_process(
+                report = run_preparation_process(
                     Path(_ASSETS_REMOTE_DIR), request_path, destination, commit=sft_vol.commit
                 )
+                report["compute_usage"] = meter.snapshot()
+                (destination / "report.json").write_text(json.dumps(report))
+                return report
         finally:
             sft_vol.commit()
 
@@ -282,9 +296,7 @@ def _register_train(fn_name: str, image: modal.Image) -> None:
 
 
 for _stack, _fn_name in TRAIN_FUNCTION_NAMES.items():
-    _register_train(
-        _fn_name, TRAIN_IMAGES[_stack].env({"OVERMIND_TRAINING_RELEASE": json.dumps(RELEASE)})
-    )
+    _register_train(_fn_name, TRAIN_IMAGES[_stack])
 
 
 @app.function(
@@ -307,6 +319,12 @@ def get_progress(run_id: str) -> dict:
             except Exception:  # noqa: BLE001
                 out[key] = None
     out["telemetry"] = read_telemetry(run_dir)
+    usage_path = run_dir / "compute-usage.json"
+    if usage_path.exists():
+        out["meta"] = {
+            **(out.get("meta") or {}),
+            "compute_usage": json.loads(usage_path.read_text()),
+        }
     metrics_path = run_dir / "metrics.jsonl"
     if metrics_path.exists():
         with metrics_path.open() as source:
@@ -325,6 +343,16 @@ def get_progress(run_id: str) -> dict:
         out["metrics"] = []
     final_dir = run_dir / "final"
     out["has_final_checkpoint"] = final_dir.is_dir() and any(final_dir.iterdir())
+    if (final_dir / "artifact.json").is_file():
+        artifact = read_artifact(final_dir)
+        out["native_artifact"] = {
+            "artifact_identity": artifact["identity"],
+            "reload_verification": artifact["verification"],
+            "training": artifact["training"],
+        }
+    retained = run_dir / "decision-checkpoints.json"
+    if retained.exists():
+        out["checkpoint_selection"] = json.loads(retained.read_text())
     return out
 
 

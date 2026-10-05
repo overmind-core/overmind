@@ -37,13 +37,13 @@ from overbae.services.mcp.prompts import list_prompts
 from overbae.services.mcp.resources import read_resource, resource_list, resource_templates
 
 SERVER_NAME = "overmind-platform"
-SERVER_VERSION = "1.0.0"
+SERVER_VERSION = "2.0.0"
 
 mcp_server = Server(
     SERVER_NAME,
     version=SERVER_VERSION,
     instructions=(
-        "Overmind is an agent improvement platform. Call list_projects first to find "
+        "Overmind is an agent improvement platform. Read overmind://interface/current for connected contract identity and workflow rules. Drafts never submit provider work; use explicit preparation and launch operations. Call list_projects first to find "
         "accessible projects and choose the project relevant to the user's request. "
         "Account connections require project_id on each project tool and resource URI; "
         "there is no shared selected-project state. Follow returned resource links. "

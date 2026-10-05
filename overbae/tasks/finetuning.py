@@ -13,7 +13,7 @@ from typing import Any
 from celery import shared_task
 from django.utils import timezone
 
-from modal_shared.decisions import DECISION_OBJECTIVE
+from modal_shared.decisions import DECISION_OBJECTIVES
 from overbae.services import training_submission
 from overbae.services.training_preparation import for_job, preparation_error
 from overbae.tasks.training_preparation import inspect_preparation
@@ -264,10 +264,10 @@ def _persist_snapshot_progress(
         ]
     )
     progress = progress_from_snapshot(snap, started_at=job.started_at)
-    # Preserve judge_evals already mirrored onto progress by the eval ticker.
     prev = job.progress if isinstance(job.progress, dict) else {}
-    if prev.get("judge_evals"):
-        progress["judge_evals"] = prev["judge_evals"]
+    for key in ("judge_evals", "preparation", "submission_recoveries"):
+        if key in prev:
+            progress[key] = prev[key]
 
     metrics = progress.get("metrics") or {}
     fingerprint = (
@@ -357,15 +357,16 @@ def _finalize_success(job, runner, snap, remote: str) -> dict[str, Any]:
     epoch_losses = runner.fetch_epoch_losses(remote)
     progress = progress_from_snapshot(snap, started_at=job.started_at)
     prev = job.progress if isinstance(job.progress, dict) else {}
-    if prev.get("judge_evals"):
-        progress["judge_evals"] = prev["judge_evals"]
+    for key in ("judge_evals", "preparation", "submission_recoveries"):
+        if key in prev:
+            progress[key] = prev[key]
     result_blob = {
         "epoch_losses": epoch_losses,
         "model": snap.output_model_name,
         "metrics": progress.get("metrics") or {},
         "checkpoints": progress.get("checkpoints") or [],
     }
-    if (job.hyperparameters or {}).get("objective") == DECISION_OBJECTIVE:
+    if (job.hyperparameters or {}).get("objective") in DECISION_OBJECTIVES:
         claimed = FinetuningJob.objects.filter(
             pk=job.pk,
             status__in=(
@@ -381,8 +382,10 @@ def _finalize_success(job, runner, snap, remote: str) -> dict[str, Any]:
             progress=progress,
             result={
                 **result_blob,
-                "objective": DECISION_OBJECTIVE,
+                "objective": job.hyperparameters["objective"],
                 "inference_contract": "typed_probabilities",
+                **(snap.raw.get("native_artifact") or {}),
+                "checkpoint_selection": snap.raw.get("checkpoint_selection"),
             },
         )
         job.refresh_from_db()
@@ -494,16 +497,17 @@ def run_finetuning(*, job_id: str) -> dict[str, Any]:
                 preparation = for_job(job)
                 if preparation.state in {"failed", "incompatible"}:
                     raise ValueError(preparation_error(preparation))
+                job.progress = {
+                    **(job.progress or {}),
+                    "preparation": {
+                        "id": str(preparation.id),
+                        "state": preparation.state,
+                        "report": preparation.report,
+                        **(preparation.report.get("progress") or {}),
+                    },
+                }
+                FinetuningJob.objects.filter(pk=job.pk).update(progress=job.progress)
                 if preparation.state != "ready":
-                    job.progress = {
-                        **(job.progress or {}),
-                        "preparation": {
-                            "id": str(preparation.id),
-                            "state": preparation.state,
-                            **(preparation.report.get("progress") or {}),
-                        },
-                    }
-                    FinetuningJob.objects.filter(pk=job.pk).update(progress=job.progress)
                     _transition(
                         job,
                         FinetuningJob.Status.PREPARING,

@@ -745,15 +745,20 @@ function experimentTokenAccLabel(s: ExperimentSnapshot): string | null {
 
 function experimentTimeLabel(s: ExperimentSnapshot): string | null {
   const elapsed = s.progress.elapsed_seconds;
-  const eta = s.progress.eta_seconds;
+  const range = s.progress.eta_range_seconds;
+  const remaining =
+    Array.isArray(range) &&
+    range.length === 2 &&
+    range.every((value) => Number.isFinite(value) && value >= 0) &&
+    range[1] >= range[0] &&
+    range[1] > 0
+      ? `${Math.floor(range[0] / 60)}–${Math.ceil(range[1] / 60)} min training remaining (estimate)`
+      : null;
   if (s.terminal) {
     return elapsed != null ? `${formatElapsed(elapsed)} total` : null;
   }
   return (
-    [
-      elapsed != null && elapsed > 0 ? `${formatElapsed(elapsed)} elapsed` : null,
-      eta != null && eta > 0 ? `~${formatElapsed(eta)} training remaining` : null,
-    ]
+    [elapsed != null && elapsed > 0 ? `${formatElapsed(elapsed)} elapsed` : null, remaining]
       .filter(Boolean)
       .join(" · ") || null
   );
@@ -985,9 +990,8 @@ function MonitorChartCard({
 }
 
 function isNativeJob(job: FinetuningJobList): boolean {
-  return (
-    (job.trainingContract as Record<string, unknown> | undefined)?.objective ===
-    "decision_cross_entropy"
+  return ["decision_cross_entropy", "decision_supervised"].includes(
+    String((job.trainingContract as Record<string, unknown> | undefined)?.objective)
   );
 }
 

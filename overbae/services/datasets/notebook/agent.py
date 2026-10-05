@@ -10,6 +10,7 @@ from typing import Any
 
 from django.db import transaction
 from django.utils import timezone
+from jsonschema import Draft202012Validator
 from pydantic import ValidationError
 
 from overbae.models import Capability, Cell, Dataset
@@ -361,7 +362,7 @@ class Tools:
                 "fingerprint": cell.fingerprint,
                 "tool": "query",
                 "sql": str(args.get("sql") or "")[:4000],
-                "preview": _clip(result),
+                "preview": _safe(_clip(result)),
                 "preview_bounded": True,
             }
         )
@@ -393,7 +394,7 @@ class Tools:
 
     def try_script(self, args: dict[str, Any], _ctx: Any = None) -> dict[str, Any]:
         dataset = _dataset(self.dataset_id)
-        after = resolve_cell(dataset, args.get("after"), ran_only=True)
+        after = resolve_cell(dataset, args.get("version"), ran_only=True)
         result = run_svc.try_script(dataset, str(args.get("script") or ""), after=after)
         self.preview = (after.id, after.fingerprint, str(args.get("script") or ""), result)
         if result.path is None:
@@ -538,7 +539,7 @@ class Tools:
                 if dataset.intent == "eval"
                 else "Prepare training examples",
                 "script": f"def transform_batch(df):\n    return prepare_examples(df, intent={dataset.intent!r}{kwargs})",
-                "note": "Preserve evidence, multiplicity and native probability targets; separate evaluation references from inputs.",
+                "note": "Preserve evidence, multiplicity and declared native targets; separate evaluation references from inputs.",
             }
         )
 
@@ -909,7 +910,7 @@ _TEXT = {"type": "string"}
 
 TOOL_SPECS: dict[str, tuple[str, dict]] = {
     "record_preparation_plan": (
-        "Save your evidence-based interpretation and preparation plan for an inspected version. Describe task families, user objective, source-to-consumer mappings, assumptions, unresolved questions, ordered steps and relevant checks. Columns may use arbitrary names or nested paths. Automatic transformations require a saved plan and plan_step. Plan checks replace a universal checklist; unmeasured claims stay unknown. Semantic row budget bounds automatic judging across turns; reserve zero unless independent evidence and a justified audit exist. Saving a plan does not approve semantic edits or sampling. Revise the plan when evidence or intent changes.",
+        "Save a complete preparation plan before proposing a sample or preparing rows. Required arguments: version, objective, consumer, understanding, families and checks. families is a nonempty array of objects with name and evidence. Only list column paths actually observed in the source; omit absent optional fields such as weights. Unchanged sampling needs no mapping. Any target_meaning other than unknown requires target_evidence, including hypotheses. A supported interpretation also requires nonempty evidence_references and interpretation_scope, with no conflicts; otherwise retain hypothesis or conflicted. checks is a nonempty array of objects with name, category, method and question. Declare each transformation or sample in steps using id, description and kind; later calls use that id as plan_step. Describe mappings, assumptions and unresolved questions from inspected evidence. Semantic row budget bounds automatic judging across turns; reserve zero unless independent evidence and a justified audit exist. Saving a plan does not approve semantic edits or sampling. Revise the plan when evidence or intent changes.",
         preparation.PlanRequest.model_json_schema(),
     ),
     "check_semantic_quality": (
@@ -917,11 +918,11 @@ TOOL_SPECS: dict[str, tuple[str, dict]] = {
         semantic_checks.SemanticReviewRequest.model_json_schema(),
     ),
     "prepare_examples": (
-        "Prepare typed decisions or conversations in bounded batches. Native train preserves full probability targets; native eval separates input.decision from expected_output.probabilities. Preserve blank states, duplicates, option order and weights. Conversations retain instructions, evidence and tools. Invalid data stays visible; never normalize targets or invent evidence.",
+        "Prepare typed decisions or conversations in bounded batches. Native train preserves full probability targets or declared target_mean/option_values; native eval separates input.decision from expected_output.probabilities or {mean, values}. Target meaning comes from the inspected preparation plan, never a numeric-shape heuristic. Preserve blank states, duplicates, option order and weights. Conversations retain instructions, evidence and tools. Invalid data stays visible; never normalize targets or invent evidence.",
         {"type": "object", "properties": {"plan_step": _TEXT}},
     ),
     "sample_rows": (
-        "Propose a deterministic sample of unchanged rows. Reads the full source in bounded passes; no quota tables or scripts needed. Stratify by scalar column paths, optionally native hard/soft targets. Reserve minimum coverage per nonempty stratum, then allocate remaining capacity proportionally by largest remainder. Preserves row order, multiplicity and lineage. Does not create train/eval splits. Fails instead of silently underfilling. Approval pins the reviewed output.",
+        "Propose a deterministic sample of unchanged rows. During preparation, first save record_preparation_plan with a kind=sample step, then pass its id as plan_step here. A description of a plan in chat is not a saved plan. Reads the full source in bounded passes; no quota tables or scripts needed. Stratify by scalar column paths, optionally native hard/soft targets. Reserve minimum coverage per nonempty stratum, then allocate remaining capacity proportionally by largest remainder. Preserves row order, multiplicity and lineage. Does not create train/eval splits. Fails instead of silently underfilling. Approval pins the reviewed output.",
         {
             "type": "object",
             "additionalProperties": False,
@@ -946,7 +947,7 @@ TOOL_SPECS: dict[str, tuple[str, dict]] = {
         {"type": "object", "properties": {}},
     ),
     "query": (
-        "DuckDB SQL over one version's frame as table t. Aggregates read every row; 50 rows come back.",
+        "DuckDB SQL over one version's frame as table t. Declared nested columns have JSON type: use json_extract_string(column, '$.field') for text and cast extracted arrays to DOUBLE[] for arithmetic. For a per-row array statistic use list_min/list_max/list_sum on the extracted array, not a correlated SELECT over UNNEST: correlation can materialize the whole JSON payload and exhaust memory. Aggregates read every row; 50 rows come back. For complex large nested-array scans use inspect with inspect_batch(df). Reuse measured profile counts on the same fingerprint.",
         {
             "type": "object",
             "properties": {
@@ -966,13 +967,16 @@ TOOL_SPECS: dict[str, tuple[str, dict]] = {
             "type": "object",
             "properties": {
                 "script": _TEXT,
-                "after": {**_TEXT, "description": "version the script reads; blank = active"},
+                "version": {
+                    **_TEXT,
+                    "description": "Exact cell UUID or version label; blank = active",
+                },
             },
             "required": ["script"],
         },
     ),
     "inspect": (
-        "Run a read-only script against a version's frame and read back what it printed. Lands nothing and needs no df. Use it to measure a check before you cut.",
+        "Run read-only Python and return printed output, without landing a cell. For large frames define inspect_batch(df), update bounded accumulators, then print totals in finish_inspection(). Every row is visited in batches; df/source are unavailable at module scope in this mode. Ordinary scripts receive the whole frame and are only suitable for small inputs. Reuse existing measured profile counts instead of recounting them.",
         {
             "type": "object",
             "properties": {
@@ -1040,7 +1044,7 @@ TOOL_SPECS: dict[str, tuple[str, dict]] = {
         },
     ),
     "record_quality_review": (
-        "Execute a read-only audit against the exact version. The script must leave df with source_row and one boolean-or-null column per named check, one result per original row. True=pass, False=fail, null=unmeasured. Counts and results are computed by the server, not supplied by you. Use the checks declared in the saved preparation plan, with real predicates for its deterministic checks and null for unmeasured claims. Use actual predicates, not constant passes. Use null for semantic claims you cannot verify. Native probability validity is output_schema, never answer_support; preserved publisher labels remain semantically unverified. Repair actionable findings and rerun on the changed version. Findings never block use; this agent-authored audit is not independent proof.",
+        "Execute a read-only audit against the exact version. Return ONLY one boolean-or-null column per named check, preserving df.index and every input row; the runner carries source_row automatically. Example: df = pd.DataFrame({'answer_present': df['answer'].notna()}, index=df.index). Do not return the source's other columns. If explicitly returning source_row, copy df['source_row'] unchanged: sample identities are NOT 0..N-1 or df.index. True=pass, False=fail, null=unmeasured. Counts and results are computed by the server. Use the saved plan's checks, actual predicates for deterministic checks and null for unmeasured claims, never constant passes. Native probability validity is output_schema, never answer_support; preserved publisher labels remain semantically unverified. Repair actionable findings and rerun on the changed version. After success, read status and report only the persisted quality_report; rejected audits do not establish passing checks. Findings never block use; this agent-authored audit is not independent proof.",
         {
             "type": "object",
             "properties": {
@@ -1179,7 +1183,14 @@ def _guarded(tools: Tools, name: str, fn: Callable[..., Any]) -> Callable[..., A
         )
         started = time.monotonic()
         try:
-            result = _safe(fn(args, ctx))
+            schema = {**TOOL_SPECS[name][1], "additionalProperties": False}
+            violations = sorted(
+                Draft202012Validator(schema).iter_errors(args), key=lambda e: str(e.path)
+            )
+            if violations:
+                result = {"ok": False, "error": violations[0].message[:600]}
+            else:
+                result = _safe(fn(args, ctx))
         except ChatGPTError:
             raise
         except lifecycle.DatasetError as exc:

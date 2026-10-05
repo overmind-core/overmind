@@ -1,20 +1,41 @@
 import hashlib
 import json
 
-from modal_shared.decisions import DECISION_OBJECTIVE, TEXT_OBJECTIVE
+from modal_shared.decisions import DECISION_OBJECTIVE, DECISION_OBJECTIVES, TEXT_OBJECTIVE
+
+
+def dataset_objective(cell):
+    report = (cell.intent_report.get("train") or {}) if cell else {}
+    if report.get("format") == "decision":
+        return report.get("objective", DECISION_OBJECTIVE)
+    return TEXT_OBJECTIVE
 
 
 def contract(cell, hyperparameters=None):
-    native = (hyperparameters or {}).get("objective") == DECISION_OBJECTIVE or (
-        cell is not None and (cell.intent_report.get("train") or {}).get("format") == "decision"
-    )
+    objective = (hyperparameters or {}).get("objective") or dataset_objective(cell)
+    native = objective in DECISION_OBJECTIVES
     return {
-        "objective": DECISION_OBJECTIVE if native else TEXT_OBJECTIVE,
+        "objective": objective,
         "inference_contract": "decision" if native else "chat",
-        "target": "full_probability_distribution" if native else "assistant_tokens",
+        "target": "declared_decision_supervision" if native else "assistant_tokens",
+        "target_semantics": (
+            (cell.intent_report.get("train") or {}).get("target_semantics", {}) if cell else {}
+        ),
+        "losses": {
+            "distribution": "cross_entropy",
+            "ordinal_mean": "squared_error_of_normalized_expectation",
+        }
+        if native
+        else {"assistant_tokens": "cross_entropy"},
         "methods": ["lora"] if native else ["lora", "full"],
         "providers": ["modal"] if native else ["modal", "baseten", "together_ai"],
-        "metrics": ["cross_entropy", "brier", "hard_label_accuracy", "coverage"]
+        "metrics": [
+            "cross_entropy",
+            "brier",
+            "hard_label_accuracy",
+            "expected_score_mae",
+            "coverage",
+        ]
         if native
         else ["cross_entropy", "token_accuracy"],
         "evaluation": "native_probabilities" if native else "chat_generation",

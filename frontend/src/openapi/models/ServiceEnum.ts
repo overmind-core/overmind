@@ -20,6 +20,7 @@
  * * `inference` - Inference
  * * `inference-ft-model` - Fine-tuned inference
  * * `data-workshop` - Data workshop
+ * * `evaluation` - Evaluation
  * * `cursor-agent` - Cursor agent
  * @export
  */
@@ -30,6 +31,7 @@ export const ServiceEnum = {
     inference: 'inference',
     inference_ft_model: 'inference-ft-model',
     data_workshop: 'data-workshop',
+    evaluation: 'evaluation',
     cursor_agent: 'cursor-agent'
 } as const;
 export type ServiceEnum = typeof ServiceEnum[keyof typeof ServiceEnum];

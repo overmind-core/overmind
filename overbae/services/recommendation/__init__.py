@@ -12,6 +12,7 @@ from typing import Any
 
 from overbae.core.errors import InputValidationError
 from overbae.services.serving_context import evaluation_budget, serving_plan
+from overbae.services.training_contract import dataset_objective
 
 from .analysis import build_analysis
 from .candidates import build_candidate, dataset_total_tokens
@@ -149,11 +150,10 @@ def estimate_for_hyperparams(
     selected_tokens = round(dataset_total_tokens(stats) * count / max(1, selected.rows))
 
     if active_backend() == "modal" and native:
-        from overbae.services.finetuning_pricing import humanize_duration
         from overbae.services.training_forecast import forecast
 
         tokens = selected_tokens * n_epochs
-        recipe = {**(hyperparameters or {}), "objective": "decision_cross_entropy"}
+        recipe = {**(hyperparameters or {}), "objective": dataset_objective(selected)}
         measured = forecast(dataset.project_id, base_model, recipe, tokens=tokens, stats=stats)
         measured["token_estimate"] = "proportional_to_selected_rows"
         measured["selected_training_rows"] = count
@@ -170,8 +170,8 @@ def estimate_for_hyperparams(
             if cost
             else None,
             "time_estimate": {
-                "seconds": math.ceil(duration[1]) if duration else None,
-                "human": humanize_duration(math.ceil(duration[1]))
+                "seconds": None,
+                "human": f"{math.floor(duration[0] / 60)}–{math.ceil(duration[1] / 60)} min"
                 if duration
                 else "Unmeasured recipe",
             },

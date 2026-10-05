@@ -1,3 +1,4 @@
+from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 from unittest.mock import patch
 
@@ -5,6 +6,7 @@ import pytest
 from conftest import frozen_dataset
 
 from overbae.models import Project
+from overbae.services import training_release
 from overbae.services.recommendation import estimate_for_hyperparams
 from overbae.services.training_forecast import forecast
 
@@ -12,22 +14,30 @@ from overbae.services.training_forecast import forecast
 def test_native_forecast_uses_matching_measurements_and_selected_gpu():
     recipe = {"objective": "decision_cross_entropy", "context_length": 2048, "batch_size": 128}
     job = SimpleNamespace(
+        requested_configuration={"runtime": training_release.current()},
         id="pilot",
         effective_configuration={"gpu_type": "H200", "gpu_count": 1},
         hyperparameters=recipe,
-        progress={"tokens_per_second": 4000},
+        progress={"tokens_per_second": 4000, "trained_steps": 100, "total_steps": 100},
+        started_at=datetime(2026, 10, 4, tzinfo=UTC),
+        completed_at=datetime(2026, 10, 4, tzinfo=UTC) + timedelta(seconds=100),
         result={},
         provider="modal",
-        cell=SimpleNamespace(stats={"p95_token_length": 1000}),
+        cell=SimpleNamespace(
+            stats={
+                "p95_token_length": 1000,
+                "avg_input_chars": 1600,
+                "avg_output_chars": 0,
+                "num_examples": 1000,
+            }
+        ),
     )
     with (
         patch("overbae.services.training_forecast.candidates", return_value=[job]),
         patch("overbae.services.training_forecast.hardware", return_value=("H200", 1)),
         patch("overbae.services.training_forecast.gpu_usd_per_second", return_value=0.0015),
     ):
-        result = forecast(
-            "project", "model", recipe, tokens=400000, stats={"p95_token_length": 1000}
-        )
+        result = forecast("project", "model", recipe, tokens=400000, stats=job.cell.stats)
     assert result["basis"] == "matched_measurements"
     assert result["training_seconds"][0] < 100 < result["training_seconds"][1]
     assert result["gpu_type"] == "H200"
@@ -39,6 +49,7 @@ def test_native_forecast_uses_matching_measurements_and_selected_gpu():
 def test_other_objective_or_batch_does_not_calibrate_native_forecast():
     recipe = {"objective": "decision_cross_entropy", "context_length": 2048, "batch_size": 128}
     wrong = SimpleNamespace(
+        requested_configuration={"runtime": training_release.current()},
         id="chat",
         hyperparameters={**recipe, "objective": "causal_lm"},
         progress={"tokens_per_second": 90000},
@@ -102,6 +113,14 @@ def test_estimate_uses_the_selected_split_and_external_validation(native, settin
         )
     assert 0 < split["trained_tokens"] < whole["trained_tokens"]
     assert separate["trained_tokens"] == whole["trained_tokens"]
+    if native:
+        with patch(
+            "overbae.services.training_forecast.forecast",
+            return_value={"training_seconds": [929.4, 2788.2], "training_gpu_usd": [1, 3]},
+        ):
+            quoted = estimate_for_hyperparams(str(dataset.id), **common, validation_enabled=False)
+        assert quoted["time_estimate"]["seconds"] is None
+        assert quoted["time_estimate"]["human"] == "15–47 min"
 
 
 @pytest.mark.parametrize(
@@ -110,6 +129,7 @@ def test_estimate_uses_the_selected_split_and_external_validation(native, settin
 def test_forecast_does_not_reinterpret_old_hardware_with_todays_planner(effective):
     recipe = {"objective": "decision_cross_entropy", "context_length": 2048, "batch_size": 128}
     job = SimpleNamespace(
+        requested_configuration={"runtime": training_release.current()},
         id="older-pilot",
         hyperparameters=recipe,
         effective_configuration=effective,

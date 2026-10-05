@@ -35,6 +35,46 @@ def flat(index=0, **changes):
 
 
 @pytest.mark.parametrize("intent", ["train", "eval"])
+@pytest.mark.parametrize("encoded", [False, True], ids=["object", "json_container"])
+def test_identity_mapping_preserves_json_looking_decision_text(settings, tmp_path, intent, encoded):
+    texts = ['{ "evidence": [1, 2] }', "[1, 2]", "true", "null", '"quoted"', " 12 ", ""]
+    decisions = [
+        {
+            "state": text,
+            "question": '"Choose"',
+            "kind": "choice",
+            "options": ["true", "false"],
+            "target_probabilities": [0.3, 0.7],
+        }
+        for text in texts
+    ]
+    records = [
+        {"decision": json.dumps(value) if encoded else value, "group_id": f"case-{index}"}
+        for index, value in enumerate(decisions)
+    ]
+    ds, tools = corpus(settings, tmp_path, intent, records)
+    plan_fixture(ds)
+    tools.automatic = True
+    mapping = {f"decision.{field}": f"decision.{field}" for field in decisions[0]}
+    result = tools.add_cell(
+        {
+            "plan_step": "prepare",
+            "title": "Map decision fields",
+            "script": "def transform_batch(df):\n"
+            f"    return prepare_examples(df, intent={intent!r}, mapping={mapping!r})",
+        }
+    )
+    assert result["ok"] and not result.get("proposed"), result
+    ds.refresh_from_db()
+    prepared = list(store.iter_rows(paths.cell_path(ds.id, ds.active_cell.id)))
+    assert [row["decision"] for row in prepared] == decisions
+    assert ds.active_cell.intent_report[intent]["ok"]
+    if intent == "eval":
+        assert [row["input"]["decision"]["state"] for row in prepared] == texts
+        assert all(row["expected_output"] == {"probabilities": [0.3, 0.7]} for row in prepared)
+
+
+@pytest.mark.parametrize("intent", ["train", "eval"])
 def test_native_preparation_keeps_empty_evidence_soft_targets_and_multiplicity(
     settings, tmp_path, intent
 ):

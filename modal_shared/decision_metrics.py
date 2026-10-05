@@ -1,6 +1,6 @@
 import math
 
-from modal_shared.decisions import decision_request
+from modal_shared.decisions import decision_reference
 
 
 def finite_numbers(values, count):
@@ -23,7 +23,7 @@ def probability_distribution(values, count):
 
 
 def score_decision(request, reference, prediction):
-    decision_request(request)
+    decision_reference(request, reference)
     count = len(request["options"])
     p = probability_distribution(prediction["probabilities"], count)
     logp = finite_numbers(prediction["log_probabilities"], count)

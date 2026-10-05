@@ -56,3 +56,9 @@ Use `annotate_evaluation_sample` only to record an explicit human label.
 Conclude improved, regressed, unchanged or insufficient evidence, with supporting
 run/sample IDs. For a visual comparison open `evaluations/runs/{id}` under the
 current project's Console base and preserve `projectId`.
+
+## Data-first model workflows
+
+For saved partitions, standalone decision comparisons, explicit training candidates or reproducible performance workloads, use `develop-model-from-data` and [the model workflow reference](../overmind/references/model-workflows.md). The Workshop interprets targets from evidence before consumers enforce their declared meaning. These workflows do not require a repository or activate a model.
+
+Read `overmind://interface/current` for connected lifecycle version and [model workflows](../overmind/references/model-workflows.md) for explicit source derivation, draft/prepare/launch, bounded profiles, prediction reuse and recovery. Creation is not paid launch; saved scope and receipts control continuation.

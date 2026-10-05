@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
+import math
 import uuid
 from collections import Counter
 from collections.abc import Iterable
@@ -16,7 +18,7 @@ from mcp.server.lowlevel.helper_types import ReadResourceContents
 from mcp.shared.exceptions import McpError
 from pydantic import AnyUrl
 
-from modal_shared.decisions import DECISION_OBJECTIVE
+from modal_shared.decisions import DECISION_OBJECTIVES
 from overbae.api.eval_serializers import compute_run_progress
 from overbae.core.errors import InputValidationError
 from overbae.models import (
@@ -27,13 +29,12 @@ from overbae.models import (
     EvalSet,
     FinetuningJob,
     ModelActivation,
-    NativeEvaluationPlan,
     OptimizerCandidate,
     OptimizerExperiment,
     Span,
     TrainingPreparation,
 )
-from overbae.services import native_evaluation
+from overbae.services import model_workflows
 from overbae.services.deployment import deployment_progress
 from overbae.services.entity_resolution import (
     resolve_capability,
@@ -48,7 +49,11 @@ from overbae.services.eval.sample_io import sample_io
 from overbae.services.inference_live import worker_status
 from overbae.services.inference_metrics import model_activity, model_metrics, monitoring_options
 from overbae.services.mcp.context import get_context, project_context
-from overbae.services.mcp.contracts.datasets import next_actions, serialize_dataset_detail
+from overbae.services.mcp.contracts.datasets import (
+    next_actions,
+    serialize_dataset_detail,
+    tool_activity,
+)
 from overbae.services.mcp.contracts.instrumentation import MAX_INSTRUMENTATION_SPANS
 from overbae.services.mcp.errors import MCPError, error_payload, internal_error
 from overbae.services.mcp.references import project_references
@@ -88,6 +93,20 @@ _SENSITIVE_PARTS = frozenset(
     }
 )
 _SENSITIVE_COMPACT_PARTS = frozenset(_normalize_key(part) for part in _SENSITIVE_PARTS)
+_TOKEN_MEASUREMENTS = frozenset(
+    {
+        "trained_tokens",
+        "max_tokens",
+        "padded_tokens",
+        "padded_token_budget",
+        "tokens_per_second",
+        "tokens_processed",
+        "total_tokens",
+        "num_tokens",
+        "max_token_length",
+        "p95_token_length",
+    }
+)
 _FINETUNE_PROGRESS_BLOCKED_PARTS = frozenset(
     {"artifact", "artifacts", "checkpoint", "checkpoints", "download", "presigned", "uri", "url"}
 )
@@ -254,7 +273,12 @@ def safe_json(value, *, max_chars: int = 12_000):
         result = {}
         for key, item in list(value.items())[:100]:
             key_text = str(key)
-            if _contains_key_part(key_text, _SENSITIVE_COMPACT_PARTS):
+            measurement = (
+                key_text in _TOKEN_MEASUREMENTS
+                and type(item) in {int, float}
+                and math.isfinite(item)
+            )
+            if not measurement and _contains_key_part(key_text, _SENSITIVE_COMPACT_PARTS):
                 continue
             result[key_text] = safe_json(item, max_chars=max_chars)
         return result
@@ -625,6 +649,7 @@ def _chat_turn(raw) -> dict | None:
         "ms": ms if isinstance(ms, int) else None,
         "status": raw.get("status"),
         "progress": safe_json(raw.get("progress")),
+        "tool_activity": tool_activity(raw).model_dump(mode="json"),
     }
 
 
@@ -863,7 +888,7 @@ def _finetune_resource(project, value: str, uri: str) -> dict:
         "inference_contract": result.get("inference_contract")
         or (
             "decision"
-            if (job.hyperparameters or {}).get("objective") == DECISION_OBJECTIVE
+            if (job.hyperparameters or {}).get("objective") in DECISION_OBJECTIVES
             else "chat"
         ),
         "cost_usd": float(job.cost_usd) if job.cost_usd is not None else None,
@@ -1129,14 +1154,11 @@ def _job_resource(project, kind: str, value: str, uri: str) -> dict:
             "status": activation.stage,
             **activation_progress(activation),
         }
-    if kind == "native_evaluation":
-        plan = NativeEvaluationPlan.objects.filter(
-            pk=_uuid_ref(value), job__project=project
-        ).first()
-        if plan is None:
-            raise _not_found("native evaluation", value)
-
-        return {"uri": uri, "kind": kind, **safe_json(native_evaluation.describe(plan))}
+    if kind in model_workflows.MODELS:
+        record = model_workflows.find(project, kind, _uuid_ref(value))
+        if record is None:
+            raise _not_found(kind, value)
+        return {"uri": uri, "kind": kind, **safe_json(model_workflows.describe(kind, record))}
     if kind == "training_preparation":
         prep = TrainingPreparation.objects.filter(
             pk=_uuid_ref(value), cell__dataset__project=project
@@ -1176,12 +1198,53 @@ def _connector_resource(project, value: str, uri: str) -> dict:
     return connector_resource_payload(project, connector, uri)
 
 
+def interface_resource():
+    # Catalog registrars load resources; inspect the catalog only after initialization.
+    from overbae.services.mcp.catalog import CATALOG
+
+    context = get_context()
+    manifest = [
+        tool.model_dump(mode="json")
+        for tool in CATALOG.tools(frozenset(context.token.scope.get("permission", [])))
+    ]
+    parsed = urlparse(context.inference_base_url)
+    origin = (
+        f"{parsed.scheme}://{parsed.netloc}"
+        if parsed.scheme in {"http", "https"} and parsed.netloc
+        else None
+    )
+    return {
+        "contract_version": "2.0.0",
+        "catalog_sha256": hashlib.sha256(json.dumps(manifest, sort_keys=True).encode()).hexdigest(),
+        "tool_count": len(manifest),
+        "connection": {
+            "mcp_url": origin + "/api/mcp/" if origin else None,
+            "console_url": settings.FRONTEND_URL,
+            "identity_basis": "authenticated request endpoint; compare with your intended environment",
+        },
+        "guidance": {
+            "entry": "list_projects; data-only work does not require code scanning or a capability",
+            "source": "Pass the exact cell UUID. Derive a new dataset to work from a frozen historical parent.",
+            "lifecycle": "create saves a draft; prepare verifies inputs; launch is explicit paid authorization",
+            "resume": "Use get_job and next_actions. Saved request keys and provider receipts survive reconnects; unresolved submissions are not replayed.",
+            "recipes": "Use get_model_catalog for supported model-specific context, batch and training-method constraints. Hyperparameters remain a model-dependent extension; stable partition, sampling, inference and workload settings are typed.",
+            "cost": "No implicit spend limit. User constraints bind a reviewed quote; missing cost components stay explicit.",
+            "pause": "Pausing a comparison prevents future submissions. It neither cancels in-flight provider work nor configures an external notification monitor.",
+        },
+        "training_runtime": "Pinned per experiment and job; local catalog identity does not certify deployed GPU code",
+        "installed_guidance": "Connected tool schemas are authoritative when installed skills differ",
+        "discovery": "Compare this endpoint and catalog hash with the connection you intend to use. Refresh tools/list when the cached inventory differs; do not silently switch environments.",
+    }
+
+
 def _read_resource_sync(project, raw_uri: str) -> dict:
     parsed = urlparse(raw_uri)
     if parsed.scheme != "overmind":
         raise _not_found("resource", raw_uri)
     segments = [unquote(part) for part in parsed.path.split("/") if part]
     host = parsed.netloc
+    if host == "interface" and segments == ["current"]:
+        return interface_resource()
     if host == "project" and segments == ["current"]:
         return _project_resource(project, raw_uri)
     if host == "dataset-upload" and not segments:
@@ -1221,6 +1284,24 @@ def _read_resource_sync(project, raw_uri: str) -> dict:
             "connectors": _connector_resource,
         }
         return kind_map[host](project, segments[0], raw_uri)
+    if (
+        host == "jobs"
+        and len(segments) == 3
+        and segments[0] == "data_exploration"
+        and segments[2] == "strata"
+    ):
+        record = model_workflows.find(project, "data_exploration", _uuid_ref(segments[1]))
+        if record is None:
+            raise _not_found("data_exploration", segments[1])
+        params = parse_qs(urlparse(raw_uri).query)
+        try:
+            return model_workflows.exploration.strata(
+                record,
+                limit=int(params.get("limit", [100])[0]),
+                offset=int(params.get("offset", [0])[0]),
+            )
+        except ValueError as exc:
+            raise MCPError("invalid_input", str(exc)) from None
     if host == "jobs" and len(segments) == 2:
         return _job_resource(project, segments[0], segments[1], raw_uri)
     raise _not_found("resource", raw_uri)
@@ -1228,6 +1309,13 @@ def _read_resource_sync(project, raw_uri: str) -> dict:
 
 def resource_list() -> list[types.Resource]:
     return [
+        types.Resource(
+            name="interface",
+            title="Connected interface",
+            uri="overmind://interface/current",
+            description="Connected contract version, catalog fingerprint and data-first lifecycle rules.",
+            mimeType=JSON_MIME,
+        ),
         types.Resource(
             name="current-project",
             title="Current project",
@@ -1279,6 +1367,11 @@ def resource_templates() -> list[types.ResourceTemplate]:
         ("optimizer-run", "overmind://optimizer-runs/{experiment}", "Optimizer run status"),
         ("connector", "overmind://connectors/{connector}", "Connector metadata and sync status"),
         ("job", "overmind://jobs/{kind}/{id}", "Project job status"),
+        (
+            "exploration-strata",
+            "overmind://jobs/data_exploration/{id}/strata",
+            "Sampling strata; optional limit (1–100) and offset query parameters",
+        ),
     ]
     return [
         types.ResourceTemplate(
@@ -1306,6 +1399,7 @@ async def read_resource(uri: AnyUrl) -> Iterable[ReadResourceContents]:
         if len(ids) > 1:
             raise MCPError("invalid_input", "Pass exactly one project_id.")
         static = parsed.netloc in {
+            "interface",
             "dataset-upload",
             "dataset-export",
             "checkpoint-download",

@@ -12,7 +12,12 @@ from typing import Any
 
 import pandas as pd
 
-from modal_shared.decisions import decision_line, decision_request
+from modal_shared.decisions import (
+    DECISION_OBJECTIVE,
+    MEAN_DECISION_OBJECTIVE,
+    decision_line,
+    decision_reference,
+)
 from overbae.services.datasets import store
 from overbae.services.datasets.examples import identifier_only, normalize_record
 from overbae.services.datasets.text import approx_tokens
@@ -142,11 +147,20 @@ def _train_check(df: pd.DataFrame) -> dict[str, Any]:
 
     if "decision" in df.columns:
         result = validate_rows(df[["decision"]].to_dict("records"))
+        semantics = Counter(
+            value.get("target_semantics") or "unspecified_distribution"
+            for value in df["decision"]
+            if isinstance(value, dict)
+        )
         return {
             "ok": result.valid,
             "reason": result.errors[0] if result.errors else "",
             "failures": [{"reason": error} for error in result.errors[:_FAILURE_SAMPLES]],
             "format": "decision",
+            "target_semantics": dict(semantics),
+            "objective": MEAN_DECISION_OBJECTIVE
+            if semantics.get("ordinal_mean")
+            else DECISION_OBJECTIVE,
         }
     if "messages" not in df.columns:
         return {"ok": False, "reason": "no messages column", "failures": []}
@@ -207,12 +221,7 @@ def _eval_check(df: pd.DataFrame) -> dict[str, Any]:
         if isinstance(payload, dict) and "decision" in payload:
             reference = _as_obj(df.iloc[index].get("expected_output"))
             try:
-                request = decision_request(payload["decision"])
-                if not isinstance(reference, dict) or set(reference) != {"probabilities"}:
-                    raise ValueError("Decision evaluation requires a probability reference")
-                decision_line(
-                    {"decision": {**request, "target_probabilities": reference["probabilities"]}}
-                )
+                decision_reference(payload["decision"], reference)
             except (TypeError, ValueError) as exc:
                 failures.append({"row": index, "reason": str(exc)})
         if isinstance(payload, dict) and "messages" in payload:
@@ -263,9 +272,11 @@ def measure_path(path):
     result = None
     offset = 0
     types = Counter()
+    semantics = Counter()
     references = 0
     for df in store.iter_frames(path):
         part = measure(df)
+        semantics.update(part["train"].get("target_semantics", {}))
         evaluation = part["eval"]
         references += evaluation.get("reference_rows", 0)
         types.update(evaluation.get("input_types", {}))
@@ -295,6 +306,13 @@ def measure_path(path):
     if result is None:
         return measure(pd.DataFrame(columns=[c["name"] for c in store.read_manifest(path)]))
     evaluation = result["eval"]
+    if semantics:
+        result["train"].update(
+            target_semantics=dict(semantics),
+            objective=MEAN_DECISION_OBJECTIVE
+            if semantics.get("ordinal_mean")
+            else DECISION_OBJECTIVE,
+        )
     if references:
         evaluation["has_reference"] = True
         evaluation["reference_rows"] = references

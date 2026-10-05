@@ -9,6 +9,35 @@ from overbae.services.datasets.lifecycle import DatasetError
 pytestmark = pytest.mark.django_db
 
 
+@pytest.mark.parametrize("matching_agent", [True, False])
+def test_interrupted_local_run_recovery_uses_its_saved_store(tmp_path, settings, matching_agent):
+    settings.MEDIA_ROOT = tmp_path
+    dataset = Dataset.objects.create(
+        project=Project.objects.create(name="Local recovery", slug="local-recovery"),
+        state="diagnosing",
+    )
+    operations.started(dataset.pk, "interrupted")
+    operations.provider_started(dataset.pk, "interrupted", "local-agent", "local-run")
+    operations.change(dataset.pk, state="cancel_pending", local_stopped=True)
+    with (
+        patch("cursor_sdk.Client.launch_bridge") as bridge,
+        patch("cursor_sdk.Agent.cancel_run", side_effect=ValueError("Expected cloud agent ID")),
+    ):
+        client = bridge.return_value.__enter__.return_value
+        run = client.get_run.return_value
+        run.agent_id = "local-agent" if matching_agent else "another-agent"
+        state = operations.reconcile(dataset.pk)
+    if matching_agent:
+        assert state["state"] == "cancelled"
+        run.cancel.assert_called_once_with()
+        root = tmp_path / "datasets" / str(dataset.pk) / "workspace"
+        bridge.assert_called_once_with(workspace=root, state_root=root / ".agent")
+        client.get_run.assert_called_once_with("local-run", {"runtime": "local", "cwd": str(root)})
+    else:
+        assert state["state"] == "cancel_pending"
+        run.cancel.assert_not_called()
+
+
 def test_dead_worker_keeps_provider_cancellation_pending_until_acknowledged():
     dataset = Dataset.objects.create(
         project=Project.objects.create(name="Cancel", slug="cancel"), state="diagnosing"

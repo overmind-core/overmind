@@ -1158,6 +1158,7 @@ class FinetuningJobViewSet(viewsets.ModelViewSet):
                     "total_steps": progress.get("total_steps"),
                     "percent": progress.get("percent"),
                     "eta_seconds": progress.get("eta_seconds"),
+                    "eta_range_seconds": progress.get("eta_range_seconds"),
                     "elapsed_seconds": progress.get("elapsed_seconds"),
                     "estimated_finish": progress.get("estimated_finish"),
                     "tokens_processed": progress.get("tokens_processed"),

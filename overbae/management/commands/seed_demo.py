@@ -20,6 +20,7 @@ Beat-safety — workers and beat stay up while this runs:
 
 import hashlib
 import json
+import math
 import random
 import re
 import shutil
@@ -44,7 +45,10 @@ from overbae.models import (
     Cell,
     ConnectorCredential,
     Conversation,
+    DataExploration,
+    DataPartitionPlan,
     Dataset,
+    DecisionPerformanceRun,
     DeployedModel,
     EvalRun,
     EvalSample,
@@ -59,6 +63,7 @@ from overbae.models import (
     InferenceCall,
     ModelActivation,
     ModelRef,
+    NativeEvaluationPlan,
     OptimizerCandidate,
     OptimizerCommand,
     OptimizerExperiment,
@@ -70,14 +75,18 @@ from overbae.models import (
     ScoringPass,
     Span,
     TaskExecution,
+    TrainingExperiment,
     UserOnboarding,
     Verdict,
 )
 from overbae.models.traces import usage_slice
+from overbae.services import native_evaluation
 from overbae.services import sync as sync_service
 from overbae.services.capabilities import identity as capability_identity
+from overbae.services.datasets import exploration as dataset_exploration
 from overbae.services.datasets import land as dataset_land
 from overbae.services.datasets import lifecycle as dataset_lifecycle
+from overbae.services.datasets import partition_plans
 from overbae.services.datasets import paths as dataset_paths
 from overbae.services.datasets import rows as row_store
 from overbae.services.datasets.notebook import run as notebook_run
@@ -421,6 +430,148 @@ MODAL_URL = (
 L4_USD_PER_SECOND = 0.80 / 3600
 
 
+def seed_model_workflows(project):
+    source = Dataset.objects.create(
+        project=project,
+        name="Demo decision evidence",
+        intent="eval",
+        brief="Synthetic demo fixture: classify support requests. No provider measurements.",
+    )
+    dataset_land.land_rows(
+        source,
+        [
+            {
+                "input": {
+                    "decision": {
+                        "state": f"Support request {index}",
+                        "question": "Choose the queue",
+                        "kind": "choice",
+                        "options": ["Payments", "Account"],
+                    }
+                },
+                "expected_output": {"probabilities": [1, 0] if index % 2 else [0, 1]},
+                "benchmark": "Synthetic support",
+                "group_id": f"request-{index}",
+            }
+            for index in range(20)
+        ],
+    )
+    source.refresh_from_db()
+    exploration = dataset_exploration.request(
+        project,
+        source_cell=source.active_cell,
+        name="Demo source profile",
+        request_key="demo-profile",
+        kind="profile",
+    )
+    dataset_exploration.advance(exploration.pk)
+    partition = partition_plans.request_plan(
+        project,
+        name="Demo frozen roles",
+        request_key="demo-roles",
+        source_cell=source.active_cell,
+        recipe={"seed": 17, "fractions": {"train": 0.7, "final": 0.3}, "group_by": ["group_id"]},
+    )
+    partition_plans.build(partition.pk)
+    member = partition.members.select_related("cell__dataset").get(role="final")
+    comparison = NativeEvaluationPlan.objects.create(
+        project=project,
+        name="Demo decision comparison",
+        state="completed",
+        final_cell=member.cell,
+        request_key="demo-comparison",
+        config={
+            "participants": [
+                {
+                    "key": "demo",
+                    "name": "Synthetic fixture",
+                    "kind": "external",
+                    "model": "demo:fixture",
+                }
+            ],
+            "baseline": "demo",
+            "suites": {
+                "final": {
+                    "cell": str(member.cell_id),
+                    "dataset": str(member.cell.dataset_id),
+                    "fingerprint": member.cell.fingerprint,
+                    "rows": member.cell.rows,
+                }
+            },
+            "bootstrap_samples": 100,
+            "seed": 17,
+            "logarithm_floor": 1e-12,
+            "contamination_limits": "Synthetic demo predictions; no provider, hardware or model-quality measurement.",
+        },
+    )
+    inputs = native_evaluation.seal_suite(comparison, "final")
+    output = native_evaluation.directory(comparison, "final") / "demo.jsonl"
+    with inputs.open() as stream, output.open("w") as predictions:
+        for line in stream:
+            request = json.loads(line)
+            probabilities = [0.7, 0.3]
+            predictions.write(
+                json.dumps(
+                    {
+                        "key": request["key"],
+                        "input_sha256": request["input_sha256"],
+                        "kind": "choice",
+                        "model_identity": "demo:synthetic",
+                        "probabilities": probabilities,
+                        "log_probabilities": [math.log(p) for p in probabilities],
+                    }
+                )
+                + "\n"
+            )
+    comparison.results = {**native_evaluation.score(comparison), "demo": True}
+    comparison.save()
+    DecisionPerformanceRun.objects.create(
+        project=project,
+        evaluation=comparison,
+        name="Demo workload · unmeasured",
+        request_key="demo-workload",
+        state="completed",
+        workload={
+            "settings": {
+                "sample_size": 6,
+                "repetitions": 3,
+                "concurrency": 1,
+                "questions_per_request": 1,
+                "seed": 17,
+                "amortization_decisions": 1000000,
+            }
+        },
+        results={
+            "demo": True,
+            "participants": {},
+            "measurement": "not_run",
+            "reason": "Demo seed never contacts providers",
+        },
+    )
+    job = (
+        FinetuningJob.objects.filter(project=project, group_id__isnull=False)
+        .select_related("cell__dataset")
+        .first()
+    )
+    if job:
+        TrainingExperiment.objects.create(
+            id=job.group_id,
+            project=project,
+            name="Support model candidates",
+            purpose="Seeded historical training group",
+            request_key="demo-experiment",
+            state="completed",
+            protocol={"demo": True},
+            variants=[
+                {
+                    "name": job.name,
+                    "base_model": job.base_model,
+                    "hyperparameters": job.hyperparameters,
+                }
+            ],
+        )
+
+
 class Command(BaseCommand):
     help = "Seed the Support Copilot demo project"
 
@@ -497,6 +648,14 @@ class Command(BaseCommand):
         # Consumers PROTECT the cell they used; they go first so the project cascade is clean.
         # Big tables go first, explicitly: the collector's deferred cascade trips the verdict FK.
         for model in (Verdict, ScoringPass, TaskExecution, Span, Conversation):
+            model.objects.filter(project__slug__in=slugs).delete()
+        for model in (
+            DecisionPerformanceRun,
+            TrainingExperiment,
+            NativeEvaluationPlan,
+            DataExploration,
+            DataPartitionPlan,
+        ):
             model.objects.filter(project__slug__in=slugs).delete()
         FinetuningJob.objects.filter(project__slug__in=slugs).delete()
         OptimizerExperiment.objects.filter(project__slug__in=slugs).delete()
@@ -4905,6 +5064,7 @@ class Command(BaseCommand):
 
         # ── Summary ──────────────────────────────────────────────────────────────────────
 
+        seed_model_workflows(project)
         self.stdout.write("\nSeed complete — Support Copilot.")
         for label, count in [
             ("Capabilities", Capability.objects.filter(project=project).count()),

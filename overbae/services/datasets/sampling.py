@@ -48,17 +48,33 @@ def field(row, path):
     return value
 
 
-def sample_frames(read_batches, native_decision, **request):
-    config = validate_request(**request)
-
-    def stratum(row):
-        values = [field(row, path) for path in config["stratify_by"]]
-        if config["target_type"]:
-            decision = native_decision(row)
-            q = decision.get("target_probabilities") if decision else None
+def stratum(row, native_decision, config):
+    values = [field(row, path) for path in config["stratify_by"]]
+    if config["target_type"]:
+        decision = native_decision(row) or {}
+        if "target_mean" in decision:
+            mean, options = decision["target_mean"], decision.get("option_values")
+            if (
+                decision.get("target_semantics") != "ordinal_mean"
+                or decision.get("kind") != "score"
+                or "target_probabilities" in decision
+                or not isinstance(options, list)
+                or len(options) != len(decision.get("options", []))
+                or len(options) < 2
+                or any(type(v) not in {int, float} or not math.isfinite(v) for v in options)
+                or any(a >= b for a, b in zip(options, options[1:], strict=False))
+                or type(mean) not in {int, float}
+                or not math.isfinite(mean)
+                or not options[0] <= mean <= options[-1]
+            ):
+                raise ValueError("Target stratification requires valid ordinal means")
+            values.append("ordinal_mean")
+        else:
+            q = decision.get("target_probabilities")
             if (
                 not isinstance(q, list)
                 or len(q) < 2
+                or len(q) != len(decision.get("options", []))
                 or any(
                     type(v) not in {int, float} or not math.isfinite(v) or not 0 <= v <= 1
                     for v in q
@@ -69,23 +85,43 @@ def sample_frames(read_batches, native_decision, **request):
                     "Target stratification requires valid native probability distributions"
                 )
             values.append("hard" if max(q) == 1 else "soft")
-        return json.dumps(
-            values, ensure_ascii=False, sort_keys=True, separators=(",", ":"), allow_nan=False
-        )
+    return json.dumps(
+        values, ensure_ascii=False, sort_keys=True, separators=(",", ":"), allow_nan=False
+    )
 
+
+def census(read_batches, native_decision, config):
     counts = Counter()
     for batch in read_batches():
         for row in batch.to_dict(orient="records"):
-            counts[stratum(row)] += 1
+            counts[stratum(row, native_decision, config)] += 1
             if len(counts) > 100_000:
                 raise ValueError("Sampling supports at most 100,000 strata; choose fewer fields")
+    return counts
+
+
+def feasibility(counts, config):
     total = sum(counts.values())
-    if config["rows"] > total:
-        raise ValueError(f"Requested {config['rows']} rows but only {total} are available")
+    minimum = sum(min(n, config["minimum_per_stratum"]) for n in counts.values())
+    return {
+        "feasible": minimum <= config["rows"] <= total,
+        "source_rows": total,
+        "strata": len(counts),
+        "minimum_rows": minimum,
+        "requested_rows": config["rows"],
+        "reason": "Requested size cannot retain the minimum for every stratum"
+        if config["rows"] < minimum
+        else "Requested size exceeds the source"
+        if config["rows"] > total
+        else "",
+    }
+
+
+def allocation(counts, config):
+    if not feasibility(counts, config)["feasible"]:
+        return {}
     quotas = {key: min(count, config["minimum_per_stratum"]) for key, count in counts.items()}
     remaining = config["rows"] - sum(quotas.values())
-    if remaining < 0:
-        raise ValueError("Requested size cannot retain the minimum for every stratum")
     capacity = {key: counts[key] - quota for key, quota in quotas.items()}
     denominator = sum(capacity.values())
     if denominator:
@@ -94,13 +130,24 @@ def sample_frames(read_batches, native_decision, **request):
         ranking = sorted(quotas, key=lambda key: (-(capacity[key] * remaining % denominator), key))
         for key in ranking[: config["rows"] - sum(quotas.values())]:
             quotas[key] += 1
+    return quotas
+
+
+def sample_frames(read_batches, native_decision, **request):
+    config = validate_request(**request)
+    counts = census(read_batches, native_decision, config)
+    check = feasibility(counts, config)
+    if not check["feasible"]:
+        raise ValueError(check["reason"])
+    total = check["source_rows"]
+    quotas = allocation(counts, config)
     rng = random.Random(config["seed"])
     reservoirs = {key: [] for key in quotas}
     seen = Counter()
     position = 0
     for batch in read_batches():
         for row in batch.to_dict(orient="records"):
-            key = stratum(row)
+            key = stratum(row, native_decision, config)
             seen[key] += 1
             reservoir = reservoirs[key]
             if len(reservoir) < quotas[key]:

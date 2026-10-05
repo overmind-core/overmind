@@ -84,3 +84,32 @@ def test_lost_cpu_preparation_task_reuses_existing_job():
     FinetuningJob.objects.filter(pk=job.pk).update(updated_at=timezone.now() - timedelta(hours=1))
     _, sent = _run_reconcile(active_tasks=[])
     assert sent == [("overbae.tasks.finetuning.run_finetuning", {"job_id": str(job.id)})]
+
+
+@pytest.mark.parametrize("status", ["preparing", "submission_unknown"])
+def test_lost_modal_staging_requeues_same_job_before_gpu_dispatch(status):
+    job = _job(status)
+    job.provider = "modal"
+    job.remote_job_id, job.celery_task_id = "", "lost-task"
+    job.provider_submission = {
+        "state": "submitting" if status == "preparing" else "unknown",
+        "intent_at": (timezone.now() - timedelta(hours=1)).isoformat(),
+    }
+    job.save()
+    FinetuningJob.objects.filter(pk=job.pk).update(updated_at=timezone.now() - timedelta(hours=1))
+    _, sent = _run_reconcile(active_tasks=[])
+    job.refresh_from_db()
+    assert sent == [("overbae.tasks.finetuning.run_finetuning", {"job_id": str(job.id)})]
+    assert job.status == "queued"
+    assert not job.provider_submission
+    assert job.progress["submission_recoveries"][-1]["task_id"] == "lost-task"
+
+
+def test_active_modal_staging_is_not_requeued():
+    job = _job("submission_unknown")
+    job.provider = "modal"
+    job.remote_job_id, job.celery_task_id = "", "live-task"
+    job.provider_submission = {"state": "unknown"}
+    job.save()
+    _, sent = _run_reconcile(active_tasks=[{"id": "live-task"}])
+    assert sent == []

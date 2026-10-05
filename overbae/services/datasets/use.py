@@ -16,7 +16,7 @@ from overbae.services.datasets.lifecycle import DatasetError
 logger = logging.getLogger(__name__)
 
 
-def check(dataset: Dataset, intent: str, *, cell: Cell | None = None) -> Cell:
+def check(dataset: Dataset, intent: str, *, cell: Cell | None = None, verify: bool = True) -> Cell:
     if cell is not None and cell.dataset_id != dataset.id:
         raise DatasetError("That version belongs to another dataset.", code="cell_mismatch")
     stored = public_intent(dataset.intent)
@@ -41,7 +41,8 @@ def check(dataset: Dataset, intent: str, *, cell: Cell | None = None) -> Cell:
     if not ok:
         raise DatasetError(f"{dataset.name} · {label(dataset, cell)}: {reason}", code="contract")
     try:
-        rows.verify(cell)
+        if verify:
+            rows.verify(cell)
     except (ValueError, rows.RowStoreError) as exc:
         logger.exception("Could not verify dataset cell %s", cell.pk)
         raise DatasetError(
@@ -52,7 +53,7 @@ def check(dataset: Dataset, intent: str, *, cell: Cell | None = None) -> Cell:
 
 
 @transaction.atomic
-def use(dataset: Dataset, intent: str, *, cell: Cell | None = None) -> Cell:
+def use(dataset: Dataset, intent: str, *, cell: Cell | None = None, verify: bool = True) -> Cell:
     """``check``, then set ``used_at`` the first time, which freezes the cell
     and every cell it reads and starts a new major version."""
     # Share generation's lock so a consumed version cannot change between batches.
@@ -61,7 +62,7 @@ def use(dataset: Dataset, intent: str, *, cell: Cell | None = None) -> Cell:
         .select_related("capability")
         .get(pk=dataset.pk)
     )
-    cell = check(dataset, intent, cell=cell)
+    cell = check(dataset, intent, cell=cell, verify=verify)
     freeze(cell)
     return cell
 

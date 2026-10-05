@@ -5,7 +5,27 @@ from conftest import EVAL_ROWS, TRAIN_ROWS, frozen_dataset
 from overbae.models import Capability, EvalSet, EvalSetMember, Evaluator
 from overbae.services.mcp.context import MCPContext
 
+MAX_MANIFEST_BYTES = 64 * 1024
+
 EXPECTED_TOOL_NAMES = {
+    "explore_dataset",
+    "derive_dataset",
+    "prepare_native_evaluation",
+    "launch_native_evaluation",
+    "pause_native_evaluation",
+    "reuse_evaluation_predictions",
+    "prepare_training_experiment",
+    "create_training_profile",
+    "list_decision_models",
+    "create_data_partition",
+    "retry_data_partition",
+    "create_native_evaluation",
+    "resume_native_evaluation",
+    "create_training_experiment",
+    "launch_training_experiment",
+    "list_model_workflows",
+    "measure_decision_performance",
+    "resume_decision_performance",
     "list_projects",
     "inspect_capability_health",
     "query_failures",

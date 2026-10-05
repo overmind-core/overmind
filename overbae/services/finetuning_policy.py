@@ -11,6 +11,8 @@ import math
 from dataclasses import dataclass, field
 from typing import Any
 
+from modal_shared.decisions import DECISION_OBJECTIVES
+from modal_shared.modelfam import resolve
 from overbae.modal.model_registry import context_headroom, get_training_context_policy
 
 # Epochs when unset: enough example-visits that tiny datasets get real optimizer-step
@@ -259,7 +261,6 @@ def _default_lora_target_modules(model_id: str | None) -> str | None:
     """
     if not model_id:
         return None
-    from modal_shared.modelfam import resolve
 
     return resolve(model_id).lora_target_modules
 
@@ -444,7 +445,7 @@ def derive_baseten_training_plan(
     weight_decay = float(hp["weight_decay"]) if hp.get("weight_decay") is not None else 0.01
 
     # Never larger than the corpus — an over-sized batch degenerates to 1 step.
-    native_decisions = hp.get("objective") == "decision_cross_entropy"
+    native_decisions = hp.get("objective") in DECISION_OBJECTIVES
     hard_max = 256 if native_decisions else model_max_batch or 256
     hard_max = min(hard_max, num_train_examples)
     hard_max = max(hard_max, model_min_batch)
@@ -518,7 +519,7 @@ def derive_baseten_training_plan(
     packing = (
         bool(hp["packing"])
         if "packing" in hp
-        else hp.get("objective") != "decision_cross_entropy"
+        else hp.get("objective") not in DECISION_OBJECTIVES
         and should_pack(num_train_examples, avg_row_tokens, context_length)
     )
     if packing and native_decisions:

@@ -127,6 +127,28 @@ def error_payload(error: MCPError) -> dict[str, Any]:
     return error.data.model_dump(mode="json")
 
 
+def serializer_fields(detail) -> dict[str, str]:
+    fields = {}
+
+    def visit(value, path):
+        if len(fields) >= 20:
+            return
+        if isinstance(value, dict):
+            for key, child in value.items():
+                visit(child, f"{path}.{key}" if path else str(key))
+        elif isinstance(value, list):
+            if all(not isinstance(child, (dict, list)) for child in value):
+                fields[path or "request"] = " ".join(map(str, value))[:500]
+            else:
+                for index, child in enumerate(value):
+                    visit(child, f"{path}.{index}" if path else str(index))
+        else:
+            fields[path or "request"] = str(value)[:500]
+
+    visit(detail, "")
+    return fields
+
+
 _DATASET_ERROR_CODES: dict[str, ErrorCode] = {
     "intent": "dataset_intent_mismatch",
     "running": "dataset_busy",

@@ -27,6 +27,29 @@ class TrainingPreparation(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
 
 
+class TrainingExperiment(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    project = models.ForeignKey("overbae.Project", on_delete=models.CASCADE)
+    name = models.CharField(max_length=255)
+    purpose = models.TextField()
+    request_key = models.CharField(max_length=128)
+    variants = models.JSONField(default=list)
+    protocol = models.JSONField(default=dict)
+    evaluation = models.ForeignKey(
+        "overbae.NativeEvaluationPlan", on_delete=models.PROTECT, null=True, blank=True
+    )
+    state = models.CharField(max_length=24, default="draft")
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["project", "request_key"], name="unique_training_experiment_request"
+            )
+        ]
+
+
 class FinetuningJob(models.Model):
     """API-side handle for one training run. A Celery worker dispatches the run
     to the configured provider and reconciles the remote state back onto this row.
@@ -343,11 +366,29 @@ class FinetuningJobEval(models.Model):
 
 class NativeEvaluationPlan(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    project = models.ForeignKey("overbae.Project", on_delete=models.CASCADE)
+    triggered_by = models.ForeignKey(
+        "overbae.User",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="native_evaluations",
+    )
+    name = models.CharField(max_length=255, default="Decision comparison")
+    request_key = models.CharField(max_length=128, null=True, blank=True)
     job = models.OneToOneField(
-        FinetuningJob, on_delete=models.CASCADE, related_name="native_evaluation"
+        FinetuningJob,
+        on_delete=models.PROTECT,
+        related_name="native_evaluation",
+        null=True,
+        blank=True,
     )
     calibration_cell = models.ForeignKey(
-        "overbae.Cell", on_delete=models.PROTECT, related_name="native_calibration_plans"
+        "overbae.Cell",
+        on_delete=models.PROTECT,
+        related_name="native_calibration_plans",
+        null=True,
+        blank=True,
     )
     final_cell = models.ForeignKey(
         "overbae.Cell", on_delete=models.PROTECT, related_name="native_final_plans"
@@ -360,3 +401,83 @@ class NativeEvaluationPlan(models.Model):
     error = models.TextField(blank=True, default="")
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["project", "request_key"], name="unique_native_evaluation_request"
+            )
+        ]
+
+
+class DecisionProviderRequest(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    plan = models.ForeignKey(
+        NativeEvaluationPlan, on_delete=models.CASCADE, related_name="requests"
+    )
+    participant = models.CharField(max_length=64)
+    role = models.CharField(max_length=16)
+    input_sha256 = models.CharField(max_length=64)
+    state = models.CharField(max_length=24, default="pending", db_index=True)
+    attempts = models.JSONField(default=list)
+    response = models.JSONField(null=True, blank=True)
+    prediction = models.JSONField(null=True, blank=True)
+    diagnostics = models.JSONField(default=dict)
+    usage = models.JSONField(default=dict)
+    error = models.TextField(blank=True, default="")
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["plan", "participant", "role", "input_sha256"],
+                name="unique_decision_provider_request",
+            )
+        ]
+
+
+class DecisionPerformanceRun(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    project = models.ForeignKey("overbae.Project", on_delete=models.CASCADE)
+    evaluation = models.ForeignKey(NativeEvaluationPlan, on_delete=models.PROTECT)
+    name = models.CharField(max_length=255)
+    request_key = models.CharField(max_length=128)
+    workload = models.JSONField()
+    state = models.CharField(max_length=24, default="queued")
+    results = models.JSONField(default=dict)
+    error = models.TextField(default="", blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["project", "request_key"], name="unique_decision_performance_run"
+            )
+        ]
+
+
+class DecisionPerformanceRequest(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    run = models.ForeignKey(
+        DecisionPerformanceRun, on_delete=models.CASCADE, related_name="requests"
+    )
+    participant = models.CharField(max_length=64)
+    position = models.PositiveIntegerField()
+    state = models.CharField(max_length=24, default="pending")
+    call_id = models.CharField(max_length=255, default="", blank=True)
+    response = models.JSONField(null=True)
+    usage = models.JSONField(default=dict)
+    latency_ms = models.FloatField(null=True)
+    error = models.TextField(default="", blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["run", "participant", "position"],
+                name="unique_decision_performance_request",
+            )
+        ]

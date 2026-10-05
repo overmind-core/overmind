@@ -1,3 +1,5 @@
+import uuid
+
 import modal
 from django.db import transaction
 from django.utils import timezone
@@ -17,15 +19,62 @@ def claim(job):
         raise SubmissionUnresolvedError(
             "A provider submission already exists. Reconcile its receipt before any retry."
         )
-    intent = {"state": "submitting", "intent_at": timezone.now().isoformat(), "job": str(job.pk)}
+    intent = {
+        "state": "submitting",
+        "attempt": uuid.uuid4().hex,
+        "intent_at": timezone.now().isoformat(),
+        "job": str(job.pk),
+    }
     FinetuningJob.objects.filter(pk=job.pk).update(provider_submission=intent)
+    job.provider_submission = intent
     return intent
+
+
+@transaction.atomic
+def restage(job):
+    """Called only after the reconciler confirms the staging task is absent."""
+    locked = FinetuningJob.objects.select_for_update().get(pk=job.pk)
+    intent = locked.provider_submission
+    if (
+        locked.provider != "modal"
+        or locked.status not in {"preparing", "submission_unknown"}
+        or locked.remote_job_id
+        or not intent
+        or intent.get("state") not in {"submitting", "unknown"}
+        or intent.get("run_id")
+        or intent.get("dispatch_at")
+        or locked.celery_task_id != job.celery_task_id
+        or intent != job.provider_submission
+    ):
+        return False
+    progress = locked.progress or {}
+    recovered = {
+        "task_id": locked.celery_task_id,
+        "submission": intent,
+        "recovered_at": timezone.now().isoformat(),
+        "reason": "Staging task exited before GPU dispatch",
+    }
+    FinetuningJob.objects.filter(pk=job.pk).update(
+        status="queued",
+        provider_submission={},
+        celery_task_id="",
+        error_message="",
+        progress={
+            **progress,
+            "submission_recoveries": [*progress.get("submission_recoveries", []), recovered],
+        },
+        updated_at=timezone.now(),
+    )
+    job.refresh_from_db()
+    return True
 
 
 @transaction.atomic
 def unknown(job, error):
     locked = FinetuningJob.objects.select_for_update().get(pk=job.pk)
-    if locked.remote_job_id:
+    if locked.remote_job_id or locked.provider_submission.get("attempt") != (
+        job.provider_submission or {}
+    ).get("attempt"):
         return
     FinetuningJob.objects.filter(pk=job.pk).update(
         status="submission_unknown",
@@ -80,7 +129,11 @@ def reconcile(job, remote_id):
 @transaction.atomic
 def dispatching(job, run_id):
     locked = FinetuningJob.objects.select_for_update().get(pk=job.pk)
-    if locked.provider_submission.get("state") != "submitting":
+    if (
+        locked.provider_submission.get("state") != "submitting"
+        or not job.provider_submission.get("attempt")
+        or locked.provider_submission.get("attempt") != job.provider_submission["attempt"]
+    ):
         raise SubmissionUnresolvedError("The submission is not owned by this task.")
     FinetuningJob.objects.filter(pk=job.pk).update(
         provider_submission={

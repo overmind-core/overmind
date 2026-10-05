@@ -267,3 +267,31 @@ it("shows the frozen native plan beside its training job", () => {
   expect(screen.getByText(/48 decisions/)).toBeTruthy();
   expect(screen.queryByText(/No eval dataset or eval set linked/)).toBeNull();
 });
+
+it.each([
+  { range: [913, 2184], remaining: "15–37 min training remaining (estimate)" },
+  { range: null, remaining: null },
+  { range: [-1, 2184], remaining: null },
+  { range: [2184, 913], remaining: null },
+])("shows elapsed time and only a valid range in minutes: $range", ({ range, remaining }) => {
+  const running = {
+    ...job,
+    progress: { elapsed_seconds: 728, eta_range_seconds: range, eta_seconds: 60 },
+    status: "running",
+  } as unknown as FinetuningJobList;
+  render(
+    <QueryClientProvider client={new QueryClient()}>
+      <TrainingMonitorPanel
+        focusJobId={null}
+        groupJobs={[running]}
+        onFocusJob={vi.fn()}
+        projectId={PROJECT_ID}
+      />
+    </QueryClientProvider>
+  );
+  const label = screen.getByText(/elapsed/).textContent;
+  expect(label).toContain("12m 08s elapsed");
+  if (remaining) expect(label).toContain(remaining);
+  else expect(label).not.toContain("remaining");
+  expect(label).not.toContain("~1m");
+});

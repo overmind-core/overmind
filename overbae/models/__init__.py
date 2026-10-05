@@ -10,7 +10,7 @@ from .chatgpt import (
 )
 from .connectors import ConnectorCredential, ConnectorSyncConfig, ConnectorSyncRun
 from .dataset_context import DatasetContext
-from .datasets import Cell, Dataset
+from .datasets import Cell, DataExploration, DataPartitionMember, DataPartitionPlan, Dataset
 from .evaluation import (
     Annotation,
     EvalRun,
@@ -29,10 +29,14 @@ from .evaluation import (
 )
 from .feedback import Feedback
 from .finetuning import (
+    DecisionPerformanceRequest,
+    DecisionPerformanceRun,
+    DecisionProviderRequest,
     FinetuningJob,
     FinetuningJobEval,
     FinetuningJobEvent,
     NativeEvaluationPlan,
+    TrainingExperiment,
     TrainingPreparation,
 )
 from .iam import (
@@ -87,6 +91,10 @@ __all__ = [
     "ConnectorSyncConfig",
     "ConnectorSyncRun",
     "Dataset",
+    "DataExploration",
+    "DataPartitionMember",
+    "DataPartitionPlan",
+    "DecisionProviderRequest",
     "Cell",
     "DatasetContext",
     "Conversation",
@@ -102,6 +110,9 @@ __all__ = [
     "FinetuningJobEval",
     "FinetuningJobEvent",
     "TrainingPreparation",
+    "TrainingExperiment",
+    "DecisionPerformanceRun",
+    "DecisionPerformanceRequest",
     "NativeEvaluationPlan",
     "DeployedModel",
     "InferenceCall",

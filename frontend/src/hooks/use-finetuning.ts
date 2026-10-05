@@ -403,6 +403,7 @@ interface FinetuningProgressSnapshot {
   total_steps?: number | null;
   percent?: number | null;
   eta_seconds?: number | null;
+  eta_range_seconds?: [number, number] | null;
   elapsed_seconds?: number | null;
   estimated_finish?: number | null;
   tokens_processed?: number | null;

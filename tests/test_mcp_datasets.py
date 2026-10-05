@@ -204,6 +204,78 @@ def test_inspection_exposes_the_workshops_source_families_and_consumer_requireme
     assert "not the application" in preparation["consumers"]["model_evaluation"]["execution"]
 
 
+def test_completed_workshop_turn_retains_recovered_tool_errors_in_mcp(monkeypatch):
+    context = _context()
+    dataset = _dataset(context)
+    land.land_rows(dataset, [{"input": "evidence", "expected_output": "yes"}])
+
+    class RecoveringEngine:
+        name = "test"
+
+        def run(self, dataset, message, tools, pending):
+            handlers = tools.handlers()
+            failed = handlers["query"]({"sql": "SELECT missing_column FROM t"})
+            assert failed["ok"] is False
+            recovered = handlers["query"]({"sql": "SELECT count(*) AS n FROM t"})
+            assert recovered["rows"] == [{"n": 1}]
+            yield from pending
+            return engines.Outcome(text="Finished after recovery.")
+
+    monkeypatch.setattr(engines, "select", lambda user=None: RecoveringEngine())
+    list(agent.follow_up(dataset.id, "Count the existing rows"))
+    inspected = _call("inspect_dataset", {"dataset": str(dataset.id)}, context)
+    job = _call("get_job", {"kind": "dataset_run", "id": str(dataset.id)}, context)
+    for turn in (
+        inspected.structuredContent["recent_chat"][-1],
+        job.structuredContent["details"]["latest_turn"],
+    ):
+        assert turn["status"] == "complete"
+        activity = turn["tool_activity"]
+        assert activity["recorded"] is True
+        assert activity["completed"] == 2
+        assert activity["failed"] == 1 and activity["succeeded"] == 1
+        assert activity["pending"] == 0
+        assert activity["failures"][0]["tool"] == "query"
+        assert "missing_column" in activity["failures"][0]["detail"]
+        assert "SELECT missing_column FROM t" in activity["failures"][0]["request"]
+        assert "thinking" not in json.dumps(activity)
+
+
+def test_workshop_tool_activity_is_bounded_and_missing_history_stays_unknown():
+    context = _context()
+    dataset = _dataset(context)
+    dataset.chat = [
+        {"role": "agent", "status": "complete", "text": "Older turn"},
+        {
+            "role": "agent",
+            "status": "running",
+            "steps": [
+                {"phase": "thinking", "text": "Private reasoning"},
+                *[
+                    {
+                        "phase": "tool_done",
+                        "id": str(i),
+                        "tool": "query",
+                        "ok": False,
+                        "preview": "Rejected " + "x" * 1000,
+                    }
+                    for i in range(15)
+                ],
+                {"phase": "tool_start", "id": "pending", "tool": "inspect"},
+            ],
+        },
+    ]
+    dataset.save(update_fields=["chat"])
+    body = _call("inspect_dataset", {"dataset": str(dataset.id)}, context).structuredContent
+    older, current = body["recent_chat"]
+    assert older["tool_activity"]["recorded"] is False
+    activity = current["tool_activity"]
+    assert activity["failed"] == 15 and activity["pending"] == 1
+    assert len(activity["failures"]) == 10 and activity["failures_truncated"] is True
+    assert all(len(item["detail"]) <= 600 for item in activity["failures"])
+    assert "Private reasoning" not in json.dumps(activity)
+
+
 def test_requested_generation_is_active_and_queryable_without_an_mcp_approval_step(monkeypatch):
     context = _context()
     dataset = _dataset(context)

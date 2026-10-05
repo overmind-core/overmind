@@ -2,11 +2,10 @@ from __future__ import annotations
 
 import json
 
-from mcp_fixtures import EXPECTED_TOOL_NAMES
+from mcp_fixtures import EXPECTED_TOOL_NAMES, MAX_MANIFEST_BYTES
 
 from overbae.services.mcp.catalog import CATALOG
 
-MAX_MANIFEST_BYTES = 40 * 1024
 SECRET_INPUT_PARTS = {
     "access_token",
     "api_key",
@@ -20,7 +19,7 @@ SECRET_INPUT_PARTS = {
     "token",
 }
 FORBIDDEN_NAME_PARTS = ("delete", "remove", "cancel", "retry", "undeploy")
-ALLOWED_LIFECYCLE_TOOLS = {"retry_deployment", "cancel_dataset"}
+ALLOWED_LIFECYCLE_TOOLS = {"retry_deployment", "cancel_dataset", "retry_data_partition"}
 
 
 def _serialized_tools(permissions: frozenset[str]) -> bytes:
@@ -103,6 +102,15 @@ def test_manifest_annotations_cover_read_only_world_and_cost_metadata():
         "sync_connector": (False, False, True, "free", "task"),
         "get_model_catalog": (True, True, False, "free", "sync"),
         "set_benchmark_model": (False, True, False, "free", "sync"),
+        "list_decision_models": (True, True, False, "free", "sync"),
+        "create_data_partition": (False, True, False, "compute", "job"),
+        "retry_data_partition": (False, True, False, "compute", "job"),
+        "create_native_evaluation": (False, True, False, "compute", "job"),
+        "resume_native_evaluation": (False, False, True, "gpu", "job"),
+        "create_training_experiment": (False, True, False, "compute", "job"),
+        "launch_training_experiment": (False, True, True, "gpu", "job"),
+        "measure_decision_performance": (False, True, True, "gpu", "job"),
+        "resume_decision_performance": (False, True, True, "gpu", "job"),
     }
     definitions = {definition.name: definition for definition in CATALOG.definitions()}
 

@@ -270,6 +270,29 @@ def test_baseline_launch_error_does_not_block_training(job, monkeypatch, setting
     runner.submit.assert_called_once()
 
 
+def test_ready_preparation_is_recorded_before_submission(job, monkeypatch, settings):
+    settings.FINETUNING_BACKEND = "modal"
+    preparation = SimpleNamespace(
+        id="ready-source",
+        state="ready",
+        config={"context_length": 4096},
+        report={"artifact_sha256": "a" * 64, "ready_rows": 2, "incompatible_rows": 0},
+    )
+    monkeypatch.setattr("overbae.tasks.finetuning.for_job", lambda _: preparation)
+    monkeypatch.setattr("overbae.services.finetuning_eval.start_before_evals", Mock())
+    runner = Mock()
+    runner.submit.return_value = SimpleNamespace(remote_id="training-task", num_examples=None)
+    monkeypatch.setattr("overbae.services.finetuning_runner.get_runner", lambda **kwargs: runner)
+    result = run_finetuning(job_id=str(job.id))
+    job.refresh_from_db()
+    assert result["status"] == "running"
+    assert job.progress["preparation"] == {
+        "id": "ready-source",
+        "state": "ready",
+        "report": preparation.report,
+    }
+
+
 @pytest.mark.parametrize("state", ["queued", "running"])
 def test_launched_modal_job_prepares_data_before_gpu_submission(job, monkeypatch, settings, state):
     settings.FINETUNING_BACKEND = "modal"
@@ -321,7 +344,9 @@ def test_unresolved_baseline_does_not_change_running_training(
     settings.FINETUNING_BACKEND = "modal"
     monkeypatch.setattr(
         "overbae.tasks.finetuning.for_job",
-        lambda _: SimpleNamespace(state="ready", config={"context_length": 4096}),
+        lambda _: SimpleNamespace(
+            id="prepared-source", state="ready", config={"context_length": 4096}, report={}
+        ),
     )
     job.provider = FinetuningJob.Provider.MODAL
     job.eval_incumbent_before = False

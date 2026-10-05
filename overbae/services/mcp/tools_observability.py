@@ -26,13 +26,13 @@ from overbae.models import (
     DeployedModel,
     FinetuningJob,
     ModelActivation,
-    NativeEvaluationPlan,
     OptimizerExperiment,
     Score,
     Span,
     TaskExecution,
     TrainingPreparation,
 )
+from overbae.services import model_workflows
 from overbae.services.entity_resolution import (
     resolve_behaviour,
     resolve_capability,
@@ -547,23 +547,14 @@ def _get_job_sync(payload: GetJobInput, context: MCPContext) -> GetJobOutput:
     label = kind
     underlying: list[ResourceLinkContract] = []
 
-    if kind == "native_evaluation":
-        job = (
-            NativeEvaluationPlan.objects.filter(
-                pk=normalized_id, job__project=context.project
-            ).first()
-            if normalized_id
-            else None
-        )
+    if kind in model_workflows.MODELS:
+        job = model_workflows.find(context.project, kind, normalized_id) if normalized_id else None
         if job is None:
-            raise MCPError("resource_not_found", "Native evaluation was not found.")
+            raise MCPError("resource_not_found", "The workflow was not found in this project")
         created_at, updated_at = job.created_at, job.updated_at
-        label, status, job_error = "Native paired evaluation", job.state, job.error or None
-        progress = safe_json(
-            {"calls": job.calls, "calibration": job.calibration, "results": job.results}
-        )
-        details = safe_json(job.config)
-        primary = _link("jobs", f"native_evaluation/{job.id}", label)
+        label, status, job_error = job.name, job.state, getattr(job, "error", None) or None
+        progress = safe_json(model_workflows.describe(kind, job))
+        primary = _link("jobs", f"{kind}/{job.pk}", label[:160])
     elif kind == "training_preparation":
         job = (
             TrainingPreparation.objects.filter(

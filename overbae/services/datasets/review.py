@@ -53,9 +53,11 @@ def decision_changed(original, row):
     if isinstance(payload, dict) and "decision" in payload:
         return payload["decision"] != {
             key: decision.get(key) for key in ("state", "question", "kind", "options")
-        } or decode(row.get("expected_output")) != {
-            "probabilities": decision.get("target_probabilities")
-        }
+        } or decode(row.get("expected_output")) != (
+            {"mean": decision["target_mean"], "values": decision.get("option_values")}
+            if "target_mean" in decision
+            else {"probabilities": decision.get("target_probabilities")}
+        )
     return False
 
 
@@ -452,21 +454,47 @@ def save_proposal(dataset, cell, previous, output: Path, *, kind: str, note: str
     return report
 
 
+def _audit_shape(columns, names, measured_count, expected_count):
+    expected = {store.SOURCE_ROW, *names}
+    missing, unexpected = expected - set(columns), set(columns) - expected
+    if missing or unexpected:
+        raise ValueError(
+            f"Audit output has missing columns: {sorted(missing)}; unexpected columns: "
+            f"{sorted(unexpected)}. Return only the named check columns with the original "
+            "DataFrame index; the runner preserves source_row."
+        )
+    if measured_count != expected_count:
+        raise ValueError(
+            f"Audit output has {measured_count} rows; expected {expected_count}. "
+            "Return one result per input row, using null for unmeasured checks."
+        )
+
+
+def _audit_identity(missing, unexpected, duplicate_or_null):
+    if missing or unexpected or duplicate_or_null:
+        raise ValueError(
+            f"Audit source_row mismatch: missing={missing}, unexpected={unexpected}, "
+            f"duplicate_or_null={duplicate_or_null}. Preserve df['source_row'] unchanged; "
+            "it is the original identity, not df.index or a new row number. Alternatively "
+            "return only check columns with the original DataFrame index."
+        )
+
+
 def file_quality_outcomes(original: Path, measured: Path, checks: list[dict]) -> list[dict]:
     names = {c["name"] for c in checks}
     columns = {c["name"]: c["type"] for c in store.read_manifest(measured)}
     count = store.row_count(original)
-    error = "Audit results must contain source_row and the named check columns, with every original row exactly once. Use null for unmeasured rows."
-    if set(columns) != {store.SOURCE_ROW, *names} or store.row_count(measured) != count:
-        raise ValueError(error)
+    _audit_shape(columns, names, store.row_count(measured), count)
     outcomes = []
     with store.connect(original=original, measured=measured) as con:
         covered = con.execute("SELECT count(DISTINCT source_row) FROM measured").fetchone()[0]
         missing = con.execute(
             "SELECT count(*) FROM original ANTI JOIN measured USING (source_row)"
         ).fetchone()[0]
-        if covered != count or missing:
-            raise ValueError(error)
+        unexpected = con.execute(
+            "SELECT count(*) FROM measured ANTI JOIN original USING (source_row)"
+        ).fetchone()[0]
+        _audit_identity(missing, unexpected, count - covered)
         for check in checks:
             name = check["name"]
             quoted = '"' + name.replace('"', '""') + '"'
@@ -564,15 +592,13 @@ def record_quality_results(
     else:
         if original is None:
             original = store.read_frame(paths.cell_path(dataset.id, cell.id))
-        if (
-            set(measured.columns) != {store.SOURCE_ROW, *names}
-            or len(measured) != len(original)
-            or not measured[store.SOURCE_ROW].is_unique
-            or set(measured[store.SOURCE_ROW]) != set(original[store.SOURCE_ROW])
-        ):
-            raise ValueError(
-                "Audit results must contain source_row and the named check columns, with every original row exactly once. Use null for unmeasured rows."
-            )
+        _audit_shape(measured.columns, names, len(measured), len(original))
+        source_ids, measured_ids = original[store.SOURCE_ROW], measured[store.SOURCE_ROW]
+        _audit_identity(
+            int((~source_ids.isin(measured_ids)).sum()),
+            int((~measured_ids.isin(source_ids)).sum()),
+            len(measured_ids) - measured_ids.nunique(),
+        )
         outcomes = []
         for check in checks:
             values = measured[check["name"]]

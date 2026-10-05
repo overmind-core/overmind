@@ -6,11 +6,13 @@ import { JobDetailDrawer } from "@/components/finetuning/job-detail";
 import { JobsHistory } from "@/components/finetuning/jobs-history";
 import { TrainWizard } from "@/components/finetuning/train/train-wizard";
 import { WizardMonitor } from "@/components/finetuning/training-monitor";
+import { TrainingExperiments } from "@/components/model-workflows/training-experiments";
 import { ProjectRequiredEmptyState } from "@/components/project-required-empty-state";
 import { Button } from "@/components/ui/button";
 import { Icon } from "@/components/ui/icons";
 import { PageHeader } from "@/components/ui/page-header";
 import { PageShell } from "@/components/ui/page-shell";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { featureFlags } from "@/lib/feature-flags";
 import { type TrainingSearch, trainingSearchSchema } from "@/lib/schemas";
@@ -134,30 +136,43 @@ function TrainingPage() {
       <TooltipProvider>
         <PageShell header={TRAINING_HEADER} variant="full">
           <div className="flex min-h-0 flex-1 flex-col gap-3">
-            <JobsHistory
-              action={
-                <Button onClick={openTrainWizard}>
-                  <Icon.ai /> Train model
-                </Button>
-              }
-              filters={search}
-              onMonitorRun={(run) =>
-                navigate({
-                  search: (prev) => ({
-                    ...prev,
-                    groupId: run.runId,
-                    // Multi-experiment runs open in "All" mode; the run header's
-                    // Experiments chips take it from there.
-                    jobId: run.jobs.length === 1 ? run.jobs[0].id : undefined,
-                  }),
-                })
-              }
-              onPeekJob={(id) => patchSearch({ job: id })}
-              onSearchChange={patchSearch}
-              page={page}
-              pageSize={pageSize}
-              projectId={projectId}
-            />
+            <Tabs
+              onValueChange={(view) => patchSearch({ view: view as "jobs" | "experiments" })}
+              value={search.view}
+            >
+              <TabsList>
+                <TabsTrigger value="jobs">Jobs</TabsTrigger>
+                <TabsTrigger value="experiments">Experiments</TabsTrigger>
+              </TabsList>
+            </Tabs>
+            {search.view === "experiments" ? (
+              <TrainingExperiments key={projectId} projectId={projectId} />
+            ) : (
+              <JobsHistory
+                action={
+                  <Button onClick={openTrainWizard}>
+                    <Icon.ai /> Train model
+                  </Button>
+                }
+                filters={search}
+                onMonitorRun={(run) =>
+                  navigate({
+                    search: (prev) => ({
+                      ...prev,
+                      groupId: run.runId,
+                      // Multi-experiment runs open in "All" mode; the run header's
+                      // Experiments chips take it from there.
+                      jobId: run.jobs.length === 1 ? run.jobs[0].id : undefined,
+                    }),
+                  })
+                }
+                onPeekJob={(id) => patchSearch({ job: id })}
+                onSearchChange={patchSearch}
+                page={page}
+                pageSize={pageSize}
+                projectId={projectId}
+              />
+            )}
           </div>
 
           <JobDetailDrawer

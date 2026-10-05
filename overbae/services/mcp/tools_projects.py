@@ -3,6 +3,7 @@ from django.conf import settings
 from pydantic import BaseModel, ConfigDict, Field
 
 from overbae.services.mcp.context import accessible_projects
+from overbae.services.mcp.resources import interface_resource
 
 
 class ListProjectsInput(BaseModel):
@@ -23,14 +24,21 @@ class ListProjectsOutput(BaseModel):
     projects: list[ProjectSummary]
     total: int
     next_offset: int | None
+    connection: dict
+    catalog_sha256: str
+    tool_count: int
 
 
 @sync_to_async(thread_sensitive=True)
 def list_projects(payload, context):
+    identity = interface_resource()
     projects = accessible_projects(context)
     total = projects.count()
     end = payload.offset + payload.limit
     return ListProjectsOutput(
+        connection=identity["connection"],
+        catalog_sha256=identity["catalog_sha256"],
+        tool_count=identity["tool_count"],
         projects=[
             ProjectSummary(
                 id=str(project.pk),

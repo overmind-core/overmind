@@ -30,6 +30,7 @@ export function navigateToJob(
         groupId: job.groupId ?? job.id,
         jobId: job.id,
         projectId,
+        view: "jobs",
       }),
       to: "/training",
     });

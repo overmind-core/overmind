@@ -67,3 +67,9 @@ a quality-approval gate or silently change a selected version.
 For download, prefer `export-dataset` or read `overmind://dataset-export` for
 the local CLI action. Open `datasets/{id}` under the project's `console_url`
 base, preserving `projectId`, when the user wants the notebook.
+
+## Data-first model workflows
+
+For saved partitions, standalone decision comparisons, explicit training candidates or reproducible performance workloads, use `develop-model-from-data` and [the model workflow reference](../overmind/references/model-workflows.md). The Workshop interprets targets from evidence before consumers enforce their declared meaning. These workflows do not require a repository or activate a model.
+
+Read `overmind://interface/current` for connected lifecycle version and [model workflows](../overmind/references/model-workflows.md) for explicit source derivation, draft/prepare/launch, bounded profiles, prediction reuse and recovery. Creation is not paid launch; saved scope and receipts control continuation.

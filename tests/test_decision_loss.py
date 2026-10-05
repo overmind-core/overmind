@@ -134,3 +134,45 @@ def test_probability_readout_keeps_finite_logs_when_probabilities_underflow():
 def test_inference_collator_refuses_reference_fields():
     with pytest.raises(ValueError, match="reference"):
         collate_inputs(rows(), 0, "cpu")
+
+
+def test_mean_supervision_optimises_expectation_without_imposing_a_distribution():
+    row = {
+        "input_ids": [1],
+        "option_token_ids": [3, 5, 6],
+        "target_mean": 2.0,
+        "target_semantics": "ordinal_mean",
+        "option_values": [1.0, 2.0, 3.0],
+        "weight": 1,
+    }
+    batch = collate([row], 0, "cpu")
+    for probabilities in ([0.25, 0.5, 0.25], [0.45, 0.1, 0.45]):
+        logits = torch.tensor([probabilities]).log().requires_grad_()
+        loss, weight = loss_terms(logits, batch)
+        torch.testing.assert_close(loss / weight, torch.tensor(0.0))
+    logits = torch.tensor([[2.0, 0.0, -2.0]], requires_grad=True)
+    loss, _ = loss_terms(logits, batch)
+    loss.backward()
+    assert torch.isfinite(logits.grad).all()
+    assert logits.grad[0, 0] > 0 and logits.grad[0, 2] < 0
+
+
+def test_mixed_mean_and_distribution_gradients_match_separate_batches():
+    mean = {
+        "input_ids": [1],
+        "option_token_ids": [3, 5, 6],
+        "target_mean": 2.2,
+        "target_semantics": "ordinal_mean",
+        "option_values": [1.0, 2.0, 3.0],
+        "weight": 2,
+    }
+    data = [rows()[0], mean]
+    model = Model()
+    combined = collate(data, 0, "cpu")
+    total, _ = loss_terms(decision_logits(model, combined), combined)
+    individual = []
+    for row in data:
+        batch = collate([row], 0, "cpu")
+        loss, _ = loss_terms(decision_logits(model, batch), batch)
+        individual.append(loss)
+    torch.testing.assert_close(total, sum(individual))

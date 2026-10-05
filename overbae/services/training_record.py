@@ -3,7 +3,9 @@ import json
 
 from django.conf import settings
 
+from overbae.modal.model_registry import get_model_config_any_backend
 from overbae.services import native_evaluation, training_release
+from overbae.services.compute_costs import training_cost
 from overbae.services.training_contract import contract, selection_record
 
 EVALUATION_CHOICES = (
@@ -68,25 +70,25 @@ def run_record(job):
             key: result.get(key)
             for key in ("artifact_identity", "inference_contract", "reload_verification")
         },
-        "cost": {
-            "recorded_training_usd": float(job.cost_usd) if job.cost_usd is not None else None,
-            "recorded_at": job.cost_synced_at.isoformat() if job.cost_synced_at else None,
-            "coverage": "training_gpu" if job.provider == "modal" else "provider_training",
-            "unreported_components": [
-                "preparation_cpu",
-                "training_cpu_memory",
-                "evaluation",
-                "storage",
-            ]
-            if job.provider == "modal"
-            else [],
-            "all_in_actual_usd": None,
-            "budget_enforcement": "none",
+        "checkpoint_selection": result.get("checkpoint_selection"),
+        "qualification": {
+            "catalog_eligible": get_model_config_any_backend(job.base_model) is not None,
+            "exact_preparation": progress.get("preparation") or None,
+            "hardware_execution": {
+                "observed": (progress.get("trained_steps") or 0) > 0,
+                "steps": progress.get("trained_steps"),
+                "conditions": job.effective_configuration or None,
+            },
+            "reload_verification": result.get("reload_verification"),
+            "quality": "measured" if plan and plan.state == "completed" else "unmeasured",
         },
+        "cost": training_cost(job),
         "timing": {
             "created_at": job.created_at.isoformat(),
             "training_started_at": job.started_at.isoformat() if job.started_at else None,
-            "training_eta_seconds": progress.get("eta_seconds"),
+            "elapsed_seconds": progress.get("elapsed_seconds"),
+            "training_remaining_range_seconds": progress.get("eta_range_seconds"),
+            "estimate_basis": progress.get("eta_basis"),
             "eta_scope": "training_only",
         },
         "quality": {

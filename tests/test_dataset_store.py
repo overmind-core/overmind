@@ -128,3 +128,32 @@ def test_paste_detects_shape():
 def test_stream_rows_rejects_unknown_extension():
     with pytest.raises(files.FileError, match="Use a CSV"):
         list(files.iter_stream_rows(io.StringIO("x"), filename="rows.xlsx"))
+
+
+def test_query_exposes_declared_nested_columns_as_json(tmp_path):
+    path = tmp_path / "nested.parquet"
+    store.write_rows(
+        path,
+        [
+            {
+                "source_row": 0,
+                "decision": {"kind": "choice", "target": [0.25, 0.75]},
+                "literal": '{"kind":"text"}',
+            },
+            {
+                "source_row": 1,
+                "decision": {"kind": "score", "target": [1.0, 0.0]},
+                "literal": "plain",
+            },
+        ],
+    )
+    result = store.query(
+        "SELECT json_extract_string(decision.kind, '$') AS kind, "
+        "CAST(decision.target AS DOUBLE[]) AS probabilities, typeof(literal) AS literal_type "
+        "FROM t ORDER BY source_row",
+        t=path,
+    )
+    assert result["rows"] == [
+        {"kind": "choice", "probabilities": [0.25, 0.75], "literal_type": "VARCHAR"},
+        {"kind": "score", "probabilities": [1.0, 0.0], "literal_type": "VARCHAR"},
+    ]

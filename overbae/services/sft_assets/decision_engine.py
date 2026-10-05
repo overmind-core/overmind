@@ -1,10 +1,13 @@
 """Native decision optimization on the backbone loaded by the shared engine."""
 
 import hashlib
+import io
 import json
 import math
 import os
 import random
+import socketserver
+import tempfile
 import time
 from contextlib import nullcontext
 from pathlib import Path
@@ -28,11 +31,24 @@ from common import (
 from decision_readout import collate, decision_logits, loss_terms, predict, probability_vectors
 from transformers import get_cosine_schedule_with_warmup
 
-from modal_shared.decision_artifact import read_artifact
+from modal_shared.decision_artifact import read_artifact, seal_artifact
 from modal_shared.decision_batching import microbatches
 from modal_shared.decision_checkpoint import restore_resume, save_resume, training_base_identity
-from modal_shared.decisions import compare_predictions
+from modal_shared.decision_checkpoint_policy import (
+    checkpoint_steps,
+    select_checkpoint,
+    validate_policy,
+)
+from modal_shared.decision_inference import input_digest
+from modal_shared.decisions import (
+    TARGET_FIELDS,
+    DecisionTokenizer,
+    compare_predictions,
+    decision_request,
+)
 from modal_shared.preparation import training_fingerprint
+from modal_shared.runtime_profile import representative_order
+from modal_shared.serving.artifacts import atomic_json
 from modal_shared.training_telemetry import record_stage
 
 PADDED_TOKEN_BUDGET = int(os.environ.get("PADDED_TOKEN_BUDGET", MAX_LENGTH))
@@ -85,6 +101,7 @@ def evaluate(model, data, tokenizer, destination, *, stage=None):
     was_training = model.training
     model.eval()
     total_loss = total_weight = correct = count = brier = hard_correct = hard_count = 0.0
+    distribution_count = mean_count = mean_error = 0
     if stage:
         record_stage(
             Path(destination).parent, stage, completed=0, total=len(data), unit="decisions"
@@ -107,24 +124,30 @@ def evaluate(model, data, tokenizer, destination, *, stage=None):
             total_weight += weight.item()
             for row, vectors in zip(rows, probability_vectors(logits, batch), strict=True):
                 p = vectors["probabilities"]
-                q = row["target_probabilities"]
-                correct += int(
-                    max(range(len(p)), key=p.__getitem__) == max(range(len(q)), key=q.__getitem__)
-                )
+                q = row.get("target_probabilities")
                 count += 1
-                brier += sum((a - b) ** 2 for a, b in zip(p, q, strict=True))
-                if max(q) == 1.0:
-                    hard_count += 1
-                    hard_correct += int(
+                if q is not None:
+                    distribution_count += 1
+                    correct += int(
                         max(range(len(p)), key=p.__getitem__)
                         == max(range(len(q)), key=q.__getitem__)
                     )
+                    brier += sum((a - b) ** 2 for a, b in zip(p, q, strict=True))
+                    if max(q) == 1.0:
+                        hard_count += 1
+                        hard_correct += int(q[max(range(len(p)), key=p.__getitem__)] == 1)
+                else:
+                    mean_count += 1
+                    estimate = math.fsum(
+                        a * b for a, b in zip(p, row["option_values"], strict=True)
+                    )
+                    mean_error += abs(estimate - row["target_mean"])
                 stream.write(
                     json.dumps(
                         {
                             "key": row["key"],
                             **vectors,
-                            "target_probabilities": q,
+                            **{key: row[key] for key in TARGET_FIELDS if key in row},
                             "kind": row["kind"],
                         }
                     )
@@ -141,10 +164,13 @@ def evaluate(model, data, tokenizer, destination, *, stage=None):
     model.train(was_training)
     return {
         "eval_loss": total_loss / total_weight,
-        "argmax_target_agreement": correct / count,
+        "argmax_target_agreement": correct / distribution_count if distribution_count else None,
         "hard_label_accuracy": hard_correct / hard_count if hard_count else None,
         "hard_label_decisions": int(hard_count),
-        "brier": brier / count,
+        "brier": brier / distribution_count if distribution_count else None,
+        "distribution_decisions": distribution_count,
+        "mean_decisions": mean_count,
+        "expected_score_mae": mean_error / mean_count if mean_count else None,
         "decisions": int(count),
         "eval_runtime": time.monotonic() - started,
     }
@@ -157,6 +183,12 @@ def train(model, tokenizer):
     if not len(data):
         raise ValueError("No decisions to train")
     validation = IndexedRows("val.jsonl") if Path("val.jsonl").exists() else None
+    policy = validate_policy(
+        json.loads(
+            os.environ.get("DECISION_CHECKPOINT_POLICY", '{"fractions":[1],"selection":"last"}')
+        ),
+        has_development=validation is not None and len(validation) > 0,
+    )
     run = Path(RUN_DIR)
     prepared = json.loads(Path("preparation.json").read_text())
     global_batch = PER_DEVICE_BATCH * GRAD_ACCUM
@@ -164,7 +196,15 @@ def train(model, tokenizer):
     total_steps = steps_per_epoch * N_EPOCHS
     if MAX_STEPS:
         total_steps = min(total_steps, MAX_STEPS)
+    profile_order, profile_measurement = (
+        representative_order(
+            data.lengths, samples=total_steps * global_batch, batch_size=global_batch, seed=SEED
+        )
+        if os.environ.get("RUNTIME_PROFILE")
+        else (None, None)
+    )
     signature = {
+        "runtime_profile": profile_measurement,
         "runtime_fingerprint": training_fingerprint(Path(__file__).parent),
         "torch_version": str(torch.__version__),
         "cuda_version": torch.version.cuda,
@@ -197,7 +237,10 @@ def train(model, tokenizer):
         "learning_rate": LEARNING_RATE,
         "weight_decay": WEIGHT_DECAY,
         "warmup_ratio": WARMUP_RATIO,
+        "checkpoint_policy": policy,
     }
+    if profile_measurement is not None:
+        record_stage(run, "profile_selection", runtime_profile=profile_measurement)
     random.seed(SEED)
     torch.manual_seed(SEED)
     torch.cuda.manual_seed_all(SEED)
@@ -238,6 +281,17 @@ def train(model, tokenizer):
     callback.on_train_begin(args, state, None, model=model, tokens_seen=tokens_seen)
     device = model.get_input_embeddings().weight.device
     model.train()
+    retained_path = run / "decision-checkpoints.json"
+    retained = (
+        json.loads(retained_path.read_text())["checkpoints"] if retained_path.exists() else []
+    )
+    retained_steps = checkpoint_steps(policy, total_steps)
+    probe_indices = sorted(range(len(data)), key=lambda i: data.lengths[i])
+    selected = sorted({probe_indices[round(i * (len(data) - 1) / 63)] for i in range(64)})
+    probe = run / "decision-reload-inputs.jsonl"
+    with probe.open("w") as stream:
+        for row in data.read(selected):
+            stream.write(json.dumps(row) + "\n")
     started = time.monotonic()
     saved_at = started
     epoch = -1
@@ -246,7 +300,7 @@ def train(model, tokenizer):
         next_epoch, epoch_step = divmod(step, steps_per_epoch)
         if next_epoch != epoch:
             epoch = next_epoch
-            order = epoch_order(data, SEED + epoch)
+            order = profile_order if profile_order is not None else epoch_order(data, SEED + epoch)
         indices = order[epoch_step * global_batch : (epoch_step + 1) * global_batch]
         rows = data.read(indices)
         normalizer = sum(row["weight"] for row in rows)
@@ -277,7 +331,17 @@ def train(model, tokenizer):
             },
         )
         now = time.monotonic()
-        if now - saved_at >= 300 or step == total_steps:
+        if (
+            step in retained_steps
+            and step < total_steps
+            and not any(item["step"] == step for item in retained)
+        ):
+            checkpoint = retain_checkpoint(
+                model, tokenizer, run, probe, validation, prepared, signature, step
+            )
+            retained.append(checkpoint)
+            atomic_json(retained_path, {"policy": policy, "checkpoints": retained})
+        if now - saved_at >= 300 or step in retained_steps:
             save_resume(
                 resume_path,
                 model,
@@ -295,6 +359,29 @@ def train(model, tokenizer):
                 checkpoint_bytes=resume_path.stat().st_size,
             )
             saved_at = now
+    if len(policy["fractions"]) > 1 or policy["selection"] == "development_loss":
+        if not any(item["step"] == step for item in retained):
+            retained.append(
+                retain_checkpoint(
+                    model, tokenizer, run, probe, validation, prepared, signature, step
+                )
+            )
+        chosen = select_checkpoint(policy, retained)
+        read_artifact(run / chosen["path"])
+        model.load_adapter(str(run / chosen["path"]), adapter_name="default", is_trainable=True)
+        model.set_adapter("default")
+        signature["selected_checkpoint_step"] = chosen["step"]
+        atomic_json(
+            retained_path,
+            {
+                "policy": policy,
+                "checkpoints": retained,
+                "selected": chosen,
+                "selection_data": "development"
+                if policy["selection"] == "development_loss"
+                else None,
+            },
+        )
     if validation and len(validation):
         metrics = evaluate(
             model, validation, tokenizer, run / "decision-after.jsonl", stage="final_validation"
@@ -302,12 +389,6 @@ def train(model, tokenizer):
         (run / "decision-after.json").write_text(json.dumps(metrics))
         callback.on_evaluate(args, state, None, metrics=metrics)
     record_stage(run, "verifying_checkpoint")
-    probe_indices = sorted(range(len(data)), key=lambda i: data.lengths[i])
-    selected = sorted({probe_indices[round(i * (len(data) - 1) / 63)] for i in range(64)})
-    probe = run / "decision-reload-inputs.jsonl"
-    with probe.open("w") as stream:
-        for row in data.read(selected):
-            stream.write(json.dumps(row) + "\n")
     evaluate(model, IndexedRows(probe), tokenizer, run / "decision-reload-reference.jsonl")
     model.save_pretrained(CHECKPOINT_DIR)
     tokenizer.save_pretrained(CHECKPOINT_DIR)
@@ -327,6 +408,70 @@ def train(model, tokenizer):
     callback.emit_final_checkpoint(state, path="checkpoint-final")
 
 
+def retain_checkpoint(model, tokenizer, run, probe, validation, prepared, signature, step):
+    final = run / "checkpoints" / str(step)
+    expected_training = {**signature, "selected_checkpoint_step": step}
+    if final.exists():
+        artifact = read_artifact(final)
+        if artifact["training"] != expected_training:
+            raise ValueError("A retained checkpoint belongs to another training state")
+        record = json.loads((final / "checkpoint-metrics.json").read_text())
+        return {
+            **record,
+            "path": str(final.relative_to(run)),
+            "artifact_identity": artifact["identity"],
+        }
+    final.parent.mkdir(parents=True, exist_ok=True)
+    with tempfile.TemporaryDirectory(dir=final.parent, prefix="retaining-") as temporary:
+        checkpoint = Path(temporary) / "artifact"
+        checkpoint.mkdir()
+        metrics = (
+            evaluate(model, validation, tokenizer, run / f"development-{step}.jsonl")
+            if validation and len(validation)
+            else {}
+        )
+        before, after = run / f"reload-{step}-before.jsonl", run / f"reload-{step}-after.jsonl"
+        evaluate(model, IndexedRows(probe), tokenizer, before)
+        model.save_pretrained(checkpoint)
+        tokenizer.save_pretrained(checkpoint)
+        atomic_json(
+            checkpoint / "decision.json",
+            {
+                **{
+                    key: prepared[key]
+                    for key in ("objective", "renderer", "codebook", "vocab_fingerprint")
+                },
+                "training": {**signature, "selected_checkpoint_step": step},
+            },
+        )
+        try:
+            model.load_adapter(str(checkpoint), adapter_name="verification", is_trainable=False)
+            model.set_adapter("verification")
+            evaluate(model, IndexedRows(probe), tokenizer, after)
+            with before.open() as expected, after.open() as restored:
+                verification = compare_predictions(
+                    (json.loads(line) for line in expected), (json.loads(line) for line in restored)
+                )
+        finally:
+            model.set_adapter("default")
+            if "verification" in model.peft_config:
+                model.delete_adapter("verification")
+        record = {
+            "step": step,
+            "development_loss": metrics.get("eval_loss"),
+            "development_metrics": metrics,
+            "reload_verification": verification,
+        }
+        atomic_json(checkpoint / "checkpoint-metrics.json", record)
+        artifact = seal_artifact(checkpoint, verification)
+        checkpoint.replace(final)
+    return {
+        **record,
+        "path": str(final.relative_to(run)),
+        "artifact_identity": artifact["identity"],
+    }
+
+
 def verify_checkpoint(model, tokenizer):
     run = Path(RUN_DIR)
     model.load_adapter(CHECKPOINT_DIR, adapter_name="default", is_trainable=False)
@@ -341,16 +486,75 @@ def verify_checkpoint(model, tokenizer):
     print("Native checkpoint reload verified: " + json.dumps(report), flush=True)
 
 
-def predict_checkpoint(model, tokenizer):
-    artifact = read_artifact(CHECKPOINT_DIR)
+def prediction_identity(model):
     base_identity = training_base_identity(os.environ["BASE_MODEL_PATH"], os.environ["MODEL_ID"])
-    if base_identity != artifact["training"]["base_identity"]:
+    foundation_path = os.environ.get("DECISION_FOUNDATION_PATH")
+    if foundation_path:
+        foundation = json.loads(Path(foundation_path).read_text())
+        expected = foundation["foundation"]["base_identity"]
+        artifact = None
+    else:
+        artifact = read_artifact(CHECKPOINT_DIR)
+        expected = artifact["training"]["base_identity"]
+    if base_identity != expected:
         raise ValueError("Prediction base differs from the trained artifact")
-    base_only = os.environ.get("DECISION_BASE_ONLY") == "1"
+    base_only = bool(foundation_path) or os.environ.get("DECISION_BASE_ONLY") == "1"
     if not base_only:
         model.load_adapter(CHECKPOINT_DIR, adapter_name="default", is_trainable=False)
         model.set_adapter("default")
     identity = "base:" + base_identity if base_only else artifact["identity"]
+    return identity, base_only
+
+
+def serve_decisions(model, tokenizer):
+    identity, base_only = prediction_identity(model)
+    preparation = json.loads(Path("preparation.json").read_text())
+    vocab = hashlib.sha256(json.dumps(tokenizer.get_vocab(), sort_keys=True).encode()).hexdigest()
+    if vocab != preparation["vocab_fingerprint"]:
+        raise ValueError("Performance tokenizer identity changed")
+    encoder = DecisionTokenizer(tokenizer, preparation["codebook"])
+
+    class Handler(socketserver.StreamRequestHandler):
+        def handle(self):
+            try:
+                requests = json.loads(self.rfile.readline(32 * 1024 * 1024))
+                if not isinstance(requests, list) or not 1 <= len(requests) <= 16:
+                    raise ValueError("A performance request contains one to sixteen decisions")
+                prepared = []
+                for index, request in enumerate(requests):
+                    decision_request(request)
+                    row = encoder.request(request)
+                    if len(row["input_ids"]) > preparation["context_length"]:
+                        raise ValueError("Performance input exceeds the qualified context")
+                    prepared.append(
+                        {**row, "key": str(index), "input_sha256": input_digest(request)}
+                    )
+                output = io.StringIO()
+                with model.disable_adapter() if base_only else nullcontext():
+                    predict(
+                        model,
+                        tokenizer.pad_token_id,
+                        prepared,
+                        output,
+                        identity,
+                        max_rows=PER_DEVICE_BATCH,
+                        max_tokens=PADDED_TOKEN_BUDGET,
+                    )
+                result = {
+                    "predictions": [json.loads(line) for line in output.getvalue().splitlines()],
+                    "input_tokens": [len(row["input_ids"]) for row in prepared],
+                    "model_identity": identity,
+                }
+            except Exception as exc:
+                result = {"error": type(exc).__name__}
+            self.wfile.write(json.dumps(result).encode() + b"\n")
+
+    with socketserver.UnixStreamServer(os.environ["DECISION_SERVICE_SOCKET"], Handler) as server:
+        server.serve_forever()
+
+
+def predict_checkpoint(model, tokenizer):
+    identity, base_only = prediction_identity(model)
     with (
         model.disable_adapter() if base_only else nullcontext(),
         Path(os.environ["DECISION_INPUTS_PATH"]).open() as source,

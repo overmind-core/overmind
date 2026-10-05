@@ -199,7 +199,9 @@ def score_suite(suite, predictions, destination, *, bootstrap_samples=1000, seed
         for failure in records(suite / "failures.jsonl"):
             coverage[failure["benchmark"]]["incompatible_inputs"] += failure["decisions"]
             coverage[failure["benchmark"]]["expected"] += failure["decisions"]
-        preparation_failures = suite / "preparation-failures.jsonl"
+        preparation_failures = predictions.with_suffix(".failures.jsonl")
+        if not preparation_failures.exists():
+            preparation_failures = suite / "preparation-failures.jsonl"
         if preparation_failures.exists():
             for failure in records(preparation_failures):
                 found = database.execute(

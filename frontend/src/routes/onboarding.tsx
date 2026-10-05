@@ -5,12 +5,14 @@ import { createFileRoute, Navigate, useNavigate } from "@tanstack/react-router";
 
 import overmindEye from "@/assets/overmind-eye-copper.svg";
 import apiClient from "@/client";
+import { DataProjectForm } from "@/components/onboarding/data-project-form";
 import { clearDraft } from "@/components/onboarding/draft";
 import { OnboardingShell } from "@/components/onboarding/shell";
 import { OnboardWithAiPanel } from "@/components/quickstart/onboard-with-ai-panel";
 import { Button } from "@/components/ui/button";
 import { Icon } from "@/components/ui/icons";
 import { Spinner } from "@/components/ui/spinner";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useAuthContext } from "@/contexts/auth-context";
 import { useOnboardingStatus } from "@/hooks/use-query";
 import { onboardingSearchSchema } from "@/lib/schemas";
@@ -74,6 +76,8 @@ function SetupForm({ hasCompleted }: { meId: string; hasCompleted: boolean }) {
   const queryClient = useQueryClient();
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [done, setDone] = useState(false);
+  const [source, setSource] = useState("data");
+  const [dataProject, setDataProject] = useState<string>();
 
   useEffect(() => {
     if (hasCompleted) return;
@@ -103,10 +107,12 @@ function SetupForm({ hasCompleted }: { meId: string; hasCompleted: boolean }) {
   useEffect(() => {
     if (!done) return;
     const t = setTimeout(() => {
-      void navigate({ search: { projectId: undefined }, to: "/" });
+      if (dataProject)
+        void navigate({ search: { create: true, projectId: dataProject }, to: "/datasets" });
+      else void navigate({ search: { projectId: undefined }, to: "/" });
     }, DONE_DWELL_MS);
     return () => clearTimeout(t);
-  }, [done, navigate]);
+  }, [done, navigate, dataProject]);
 
   const pending = finishMutation.isPending;
 
@@ -128,16 +134,30 @@ function SetupForm({ hasCompleted }: { meId: string; hasCompleted: boolean }) {
     <div className="flex h-full min-h-0 flex-col">
       <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-7 pb-5 pt-6">
         <div className="shrink-0">
-          <h2 className={cn(TITLE.card, "text-auth-text")}>Set up from your repository</h2>
+          <h2 className={cn(TITLE.card, "text-auth-text")}>Set up your project</h2>
           <p className="mt-1 text-sm text-auth-text-label">
-            Copy the prompt into your coding agent. The console project is created when you run{" "}
-            <span className="font-mono text-auth-text">overmind sync</span>.
+            Start with data or connect your repository.
           </p>
         </div>
 
         {submitError && <ErrorBanner message={submitError} />}
 
-        <OnboardWithAiPanel showManualSetup={false} />
+        <Tabs onValueChange={setSource} value={source}>
+          <TabsList>
+            <TabsTrigger value="data">From data</TabsTrigger>
+            <TabsTrigger value="repository">From repository</TabsTrigger>
+          </TabsList>
+        </Tabs>
+        {source === "data" ? (
+          <DataProjectForm
+            onCreated={(id) => {
+              setDataProject(id);
+              finishMutation.mutate();
+            }}
+          />
+        ) : (
+          <OnboardWithAiPanel showManualSetup={false} />
+        )}
       </div>
 
       <div className="flex shrink-0 items-center justify-end border-t border-auth-border px-7 py-4">

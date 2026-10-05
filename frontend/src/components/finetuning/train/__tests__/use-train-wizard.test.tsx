@@ -13,6 +13,7 @@ const mocks = vi.hoisted(() => ({
   },
   create: vi.fn(),
   estimate: vi.fn(),
+  estimateResults: [] as unknown[],
   evals: {
     results: [
       { active: "eval-cell", capability: null, id: "eval", name: "Evaluation", project: "project" },
@@ -51,7 +52,7 @@ vi.mock("@/client", () => ({
 vi.mock("@tanstack/react-query", () => ({
   useQueries: (options: { queries: unknown[] }) => {
     mocks.queries(options);
-    return options.queries.map(() => ({ data: undefined }));
+    return options.queries.map((_, index) => ({ data: mocks.estimateResults[index] }));
   },
   useQuery: () => mocks.context,
 }));
@@ -80,6 +81,9 @@ vi.mock("@/hooks/use-finetuning", () => ({
 }));
 beforeEach(() => {
   mocks.recommendation.excluded = [];
+  mocks.recommendation.candidates = [mocks.recommendation.candidates[0]];
+  mocks.recommendation.shown = ["model"];
+  mocks.estimateResults = [];
   mocks.catalog.backend = "baseten";
   mocks.overlapCount = 0;
   mocks.train.results[0].capability = "cap";
@@ -96,6 +100,30 @@ const args = {
   onLaunched: vi.fn(),
   projectId: "project",
 };
+
+it("summarizes selected model ranges without falling back to a point estimate", async () => {
+  mocks.recommendation.shown.push("second-model");
+  mocks.recommendation.candidates.push({
+    ...mocks.recommendation.candidates[0],
+    model: "second-model",
+  });
+  mocks.estimateResults = [
+    {
+      forecast: { training_seconds: [60, 600] },
+      timeEstimate: { human: "1–10 min", seconds: null },
+    },
+    {
+      forecast: { training_seconds: [120, 300] },
+      timeEstimate: { human: "2–5 min", seconds: null },
+    },
+  ];
+  const { result, rerender } = renderHook(() => useTrainWizard(args));
+  await waitFor(() => expect(result.current.selectedDrafts).toHaveLength(2));
+  expect(result.current.totals.longest).toBe("2–10 min");
+  mocks.estimateResults = [mocks.estimateResults[0], undefined];
+  rerender();
+  expect(result.current.totals.longest).toBeNull();
+});
 
 it("keeps context warnings advisory", async () => {
   const { result } = renderHook(() => useTrainWizard(args));

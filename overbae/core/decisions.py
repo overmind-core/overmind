@@ -180,7 +180,7 @@ def merge_stats(attempts: list[dict[str, Any]]) -> dict[str, Any]:
     }
 
 
-def _usage(payload: dict, elapsed: float) -> dict[str, Any]:
+def response_usage(payload: dict, elapsed: float) -> dict[str, Any]:
     usage = payload.get("usage") or {}
     if not isinstance(usage, dict):
         usage = {}
@@ -208,8 +208,46 @@ def _usage(payload: dict, elapsed: float) -> dict[str, Any]:
     }
 
 
-def _request(body: dict, *, deadline: float, account: str) -> dict:
+def post_request(body, *, remaining):
     provider = PROVIDERS["openrouter"]
+    return httpx.post(
+        f"{provider.base_url}/systemone",
+        headers={"Authorization": f"Bearer {provider.key()}", **provider.headers},
+        json=body,
+        timeout=httpx.Timeout(min(remaining, _TIMEOUT), connect=min(remaining, 5)),
+    )
+
+
+def request_once(body):
+    provider = PROVIDERS["openrouter"]
+    if not provider.configured():
+        raise DecisionError("not_configured")
+    started = time.monotonic()
+    account = hashlib.sha256(provider.key().encode()).hexdigest()[:24]
+    reserve_capacity(account, len(_encoded(body)), started + _TIMEOUT)
+    try:
+        response = post_request(body, remaining=max(0.1, _TIMEOUT - (time.monotonic() - started)))
+    except httpx.HTTPError as exc:
+        raise DecisionError("submission_unknown", stats={"response_cost": None}) from exc
+    if not response.is_success:
+        raise DecisionError(
+            "provider_http_error",
+            stats={
+                "status_code": response.status_code,
+                "response_cost": None if response.status_code >= 500 else 0.0,
+                "response_ms": round((time.monotonic() - started) * 1000),
+            },
+        )
+    try:
+        payload = response.json()
+        if not isinstance(payload, dict):
+            raise ValueError("Invalid response")
+    except ValueError as exc:
+        raise DecisionError("invalid_response", stats={"response_cost": None}) from exc
+    return payload, response_usage(payload, time.monotonic() - started)
+
+
+def _request(body: dict, *, deadline: float, account: str) -> dict:
     uncertain_cost = False
     for attempt in range(3):
         try:
@@ -224,12 +262,7 @@ def _request(body: dict, *, deadline: float, account: str) -> dict:
                 "provider_timeout", stats={"response_cost": None if uncertain_cost else 0.0}
             )
         try:
-            response = httpx.post(
-                f"{provider.base_url}/systemone",
-                headers={"Authorization": f"Bearer {provider.key()}", **provider.headers},
-                json=body,
-                timeout=httpx.Timeout(min(remaining, _TIMEOUT), connect=min(remaining, 5)),
-            )
+            response = post_request(body, remaining=remaining)
         except httpx.TimeoutException as exc:
             # A timed-out request may have run and been billed; never claim zero cost.
             raise DecisionError("provider_timeout", stats={"response_cost": None}) from exc
@@ -306,7 +339,7 @@ def decide(
         try:
             if payload is None:
                 payload = _request(body, deadline=deadline, account=account)
-            stats = _usage(payload, time.monotonic() - batch_started)
+            stats = response_usage(payload, time.monotonic() - batch_started)
             if payload.get("unreported_attempt_cost") and not cached:
                 stats = merge_stats([{"response_cost": None}, stats])
             if cached:

@@ -30,7 +30,9 @@ import {
   ChatGPTApi,
   Configuration,
   ConnectorCredentialsApi,
+  DataPartitionsApi,
   DatasetsApi,
+  DecisionPerformanceApi,
   DeployedModelsApi,
   EvalRunsApi,
   EvalSamplesApi,
@@ -41,12 +43,14 @@ import {
   FinetuningJobsApi,
   McpOauthApi,
   ModelsApi,
+  NativeEvaluationsApi,
   OptimizerExperimentsApi,
   ProjectsApi,
   ResponseError,
   SessionsApi,
   TaskExecutionsApi,
   TracesApi,
+  TrainingExperimentsApi,
   TrainingPreparationsApi,
   UploadsApi,
   VerdictsApi,
@@ -422,6 +426,10 @@ export class API {
   finetuningJobs: FinetuningJobsApi;
   uploads: UploadsApi;
   trainingPreparations: TrainingPreparationsApi;
+  dataPartitions: DataPartitionsApi;
+  nativeEvaluations: NativeEvaluationsApi;
+  trainingExperiments: TrainingExperimentsApi;
+  decisionPerformance: DecisionPerformanceApi;
   optimizerExperiments: OptimizerExperimentsApi;
   /** OTLP trace ingestion (`POST /api/v1/traces`). */
   projects: ProjectsApi;
@@ -454,6 +462,10 @@ export class API {
     this.finetuningJobs = new FinetuningJobsApi(this.cfg);
     this.uploads = new UploadsApi(this.cfg);
     this.trainingPreparations = new TrainingPreparationsApi(this.cfg);
+    this.dataPartitions = new DataPartitionsApi(this.cfg);
+    this.nativeEvaluations = new NativeEvaluationsApi(this.cfg);
+    this.trainingExperiments = new TrainingExperimentsApi(this.cfg);
+    this.decisionPerformance = new DecisionPerformanceApi(this.cfg);
     this.optimizerExperiments = new OptimizerExperimentsApi(this.cfg);
     this.projects = new ProjectsApi(this.cfg);
     this.sessions = new SessionsApi(this.cfg);

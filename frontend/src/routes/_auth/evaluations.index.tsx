@@ -8,6 +8,7 @@ import { CreateRunDialog } from "@/components/evaluations/create-run-dialog";
 import { EvalSetDetailDialog } from "@/components/evaluations/eval-set-detail-dialog";
 import { RunsTable } from "@/components/evaluations/runs-table";
 import { TaskEvalLibrary } from "@/components/evaluations/task-eval-library";
+import { DecisionComparisons } from "@/components/model-workflows/decision-comparisons";
 import { ProjectRequiredEmptyState } from "@/components/project-required-empty-state";
 import { Alert } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
@@ -90,7 +91,7 @@ function EvaluationsPage() {
       search: (prev) => ({
         ...prev,
         capability: next === "library" ? prev.capability : undefined,
-        view: next as "sets" | "runs" | "library",
+        view: next as "sets" | "runs" | "library" | "decisions",
       }),
     });
   const setCapabilityFilter = (next: string | undefined) =>
@@ -110,6 +111,7 @@ function EvaluationsPage() {
               <Tabs className="w-auto shrink-0" onValueChange={setView} value={activeView}>
                 <TabsList>
                   <TabsTrigger value="runs">Runs</TabsTrigger>
+                  <TabsTrigger value="decisions">Decisions</TabsTrigger>
                   <TabsTrigger value="sets">Eval sets</TabsTrigger>
                   <TabsTrigger value="library">Eval library</TabsTrigger>
                 </TabsList>
@@ -129,6 +131,9 @@ function EvaluationsPage() {
       variant="full"
     >
       <div className="flex min-h-0 flex-1 flex-col">
+        {activeView === "decisions" && (
+          <DecisionComparisons key={projectId} projectId={projectId} />
+        )}
         {activeView === "sets" && (
           <div className="flex flex-col gap-3">
             <div>

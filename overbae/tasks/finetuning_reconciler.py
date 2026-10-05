@@ -50,6 +50,14 @@ def _reconcile() -> dict:
     kicked = 0
     observed = 0
     for job in orphaned_jobs:
+        if job.celery_task_id and job.celery_task_id in running_task_ids:
+            continue
+        if (
+            job.status in {"preparing", "submission_unknown"}
+            and inventory_known
+            and (timezone.now() - job.updated_at).total_seconds() >= 120
+        ):
+            training_submission.restage(job)
         if job.status == "submission_unknown":
             from overbae.services.training_submission import recover
 
@@ -61,8 +69,6 @@ def _reconcile() -> dict:
         if job.remote_job_id and job.status in {"running", "preparing", "queued"}:
             observe_finetuning_job(job)
             observed += 1
-            continue
-        if job.celery_task_id and job.celery_task_id in running_task_ids:
             continue
         if job.status == "preparing" and not job.remote_job_id:
             if not inventory_known or (timezone.now() - job.updated_at).total_seconds() < 120:

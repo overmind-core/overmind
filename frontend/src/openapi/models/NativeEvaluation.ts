@@ -30,7 +30,37 @@ export interface NativeEvaluation {
      * @type {string}
      * @memberof NativeEvaluation
      */
-    readonly job: string;
+    readonly project: string;
+    /**
+     *
+     * @type {string}
+     * @memberof NativeEvaluation
+     */
+    readonly name: string;
+    /**
+     *
+     * @type {string}
+     * @memberof NativeEvaluation
+     */
+    readonly requestKey: string | null;
+    /**
+     *
+     * @type {string}
+     * @memberof NativeEvaluation
+     */
+    readonly finalCell: string;
+    /**
+     *
+     * @type {string}
+     * @memberof NativeEvaluation
+     */
+    readonly calibrationCell: string | null;
+    /**
+     *
+     * @type {string}
+     * @memberof NativeEvaluation
+     */
+    readonly job: string | null;
     /**
      *
      * @type {string}
@@ -86,6 +116,11 @@ export interface NativeEvaluation {
  */
 export function instanceOfNativeEvaluation(value: object): value is NativeEvaluation {
     if (!('id' in value) || value['id'] === undefined) return false;
+    if (!('project' in value) || value['project'] === undefined) return false;
+    if (!('name' in value) || value['name'] === undefined) return false;
+    if (!('requestKey' in value) || value['requestKey'] === undefined) return false;
+    if (!('finalCell' in value) || value['finalCell'] === undefined) return false;
+    if (!('calibrationCell' in value) || value['calibrationCell'] === undefined) return false;
     if (!('job' in value) || value['job'] === undefined) return false;
     if (!('state' in value) || value['state'] === undefined) return false;
     if (!('config' in value) || value['config'] === undefined) return false;
@@ -109,6 +144,11 @@ export function NativeEvaluationFromJSONTyped(json: any, ignoreDiscriminator: bo
     return {
 
         'id': json['id'],
+        'project': json['project'],
+        'name': json['name'],
+        'requestKey': json['request_key'],
+        'finalCell': json['final_cell'],
+        'calibrationCell': json['calibration_cell'],
         'job': json['job'],
         'state': json['state'],
         'config': json['config'],
@@ -125,7 +165,7 @@ export function NativeEvaluationToJSON(json: any): NativeEvaluation {
     return NativeEvaluationToJSONTyped(json, false);
 }
 
-export function NativeEvaluationToJSONTyped(value?: Omit<NativeEvaluation, 'id'|'job'|'state'|'config'|'calls'|'calibration'|'results'|'error'|'created_at'|'updated_at'> | null, ignoreDiscriminator: boolean = false): any {
+export function NativeEvaluationToJSONTyped(value?: Omit<NativeEvaluation, 'id'|'project'|'name'|'request_key'|'final_cell'|'calibration_cell'|'job'|'state'|'config'|'calls'|'calibration'|'results'|'error'|'created_at'|'updated_at'> | null, ignoreDiscriminator: boolean = false): any {
     if (value == null) {
         return value;
     }

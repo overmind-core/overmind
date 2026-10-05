@@ -13,6 +13,7 @@ class BillingService(models.TextChoices):
     INFERENCE = "inference", "Inference"
     INFERENCE_FT_MODEL = "inference-ft-model", "Fine-tuned inference"
     DATA_WORKSHOP = "data-workshop", "Data workshop"
+    EVALUATION = "evaluation", "Evaluation"
     CURSOR_AGENT = "cursor-agent", "Cursor agent"
 
 

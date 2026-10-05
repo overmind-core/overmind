@@ -16,6 +16,7 @@ import {
   SourceDetails,
   SourceLanding,
 } from "@/components/datasets/notebook/source";
+import { Partitions } from "@/components/model-workflows/partitions";
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
 import {
@@ -299,6 +300,7 @@ export function DatasetNotebook({
           <>
             <ContaminationReport spec={dataset.sourceSpec} />
             <PreparationPlanDetails plan={dataset.preparationPlan} />
+            {active && <Partitions cellId={active.id} projectId={dataset.project} />}
             {active && (
               <PilotRequest
                 cell={active}

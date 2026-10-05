@@ -3,10 +3,11 @@ import json
 import torch
 
 from modal_shared.decision_batching import microbatches
+from modal_shared.decisions import TARGET_FIELDS
 
 
 def collate_inputs(rows, pad_token_id, device):
-    if any("target_probabilities" in row or "weight" in row for row in rows):
+    if any(set(row) & {*TARGET_FIELDS, "weight"} for row in rows):
         raise ValueError("Inference inputs cannot contain reference fields")
     width = max(len(row["input_ids"]) for row in rows)
     classes = max(len(row["option_token_ids"]) for row in rows)
@@ -35,13 +36,27 @@ def collate(rows, pad_token_id, device):
         device,
     )
     target = torch.zeros_like(batch["option_token_ids"], dtype=torch.float32)
+    values = torch.zeros_like(target)
+    means = torch.zeros(len(rows), dtype=torch.float32, device=device)
+    mean_mask = torch.zeros(len(rows), dtype=torch.bool, device=device)
     for index, row in enumerate(rows):
-        target[index, : len(row["option_token_ids"])] = torch.tensor(
-            row["target_probabilities"], device=device
-        )
+        count = len(row["option_token_ids"])
+        if "target_mean" in row:
+            axis = row["option_values"]
+            span = axis[-1] - axis[0]
+            values[index, :count] = torch.tensor(
+                [(v - axis[0]) / span for v in axis], device=device
+            )
+            means[index] = (row["target_mean"] - axis[0]) / span
+            mean_mask[index] = True
+        else:
+            target[index, :count] = torch.tensor(row["target_probabilities"], device=device)
     return {
         **batch,
         "target_probabilities": target,
+        "option_values": values,
+        "target_means": means,
+        "mean_mask": mean_mask,
         "weights": torch.tensor(
             [row["weight"] for row in rows], dtype=torch.float32, device=device
         ),
@@ -84,9 +99,12 @@ def loss_terms(logits, batch):
     weights = batch["weights"].to(logits.device)
     if not torch.isfinite(logits[valid]).all():
         raise ValueError("Decision logits are not finite")
-    logp = logits.float().log_softmax(-1).masked_fill(~valid, 0)
+    logp = logits.float().masked_fill(~valid, -torch.inf).log_softmax(-1)
     # Padded targets are zero; 0 * -inf would otherwise poison every loss.
-    terms = -(targets * logp).sum(-1)
+    terms = -(targets * logp.masked_fill(~valid, 0)).sum(-1)
+    estimate = (logp.exp() * batch["option_values"].to(logits.device)).sum(-1)
+    mean_terms = (estimate - batch["target_means"].to(logits.device)).square()
+    terms = torch.where(batch["mean_mask"].to(logits.device), mean_terms, terms)
     return (terms * weights).sum(), weights.sum()
 
 

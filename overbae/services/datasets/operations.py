@@ -1,9 +1,14 @@
-from cursor_sdk import Agent
+import logging
+
+from cursor_sdk import Client
 from django.db import transaction
 from django.utils import timezone
 
 from overbae.models import Dataset
+from overbae.services.datasets import paths
 from overbae.services.datasets.lifecycle import DatasetError
+
+logger = logging.getLogger(__name__)
 
 
 @transaction.atomic
@@ -71,8 +76,13 @@ def check_cancelled(dataset_id, *, task_id=None):
         raise DatasetError("Cancellation requested.", code="cancel_pending")
 
 
-def cancel_provider(provider):
-    Agent.cancel_run(provider["run_id"], agent_id=provider["agent_id"])
+def cancel_provider(provider, *, workspace):
+    # Detached cancellation with agent_id selects the SDK's cloud transport.
+    with Client.launch_bridge(workspace=workspace, state_root=workspace / ".agent") as client:
+        run = client.get_run(provider["run_id"], {"runtime": "local", "cwd": str(workspace)})
+        if run.agent_id != provider["agent_id"]:
+            raise DatasetError("Saved run belongs to a different agent.", code="ownership_lost")
+        run.cancel()
 
 
 def cancel(dataset_id):
@@ -97,8 +107,11 @@ def reconcile(dataset_id, *, local_stopped=False):
         )
     if provider.get("run_id") and provider.get("state") not in {"cancelled", "completed"}:
         try:
-            cancel_provider(provider)
+            cancel_provider(provider, workspace=paths.workspace_dir(dataset.pk))
         except Exception:
+            logger.warning(
+                "dataset %s: cancellation acknowledgement failed", dataset.pk, exc_info=True
+            )
             return change(
                 dataset_id,
                 local_stopped=local_stopped or operation.get("local_stopped", False),

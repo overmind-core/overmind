@@ -6,7 +6,7 @@ import ipaddress
 from dataclasses import dataclass
 from typing import Any
 
-from asgiref.sync import sync_to_async
+from asgiref.sync import ThreadSensitiveContext, sync_to_async
 from django.conf import settings
 from django.db import close_old_connections, connections
 from rest_framework import exceptions
@@ -162,7 +162,7 @@ def _authenticate_sync(scope: Scope) -> MCPContext:
 
 
 authenticate_scope = sync_to_async(_authenticate_sync, thread_sensitive=True)
-_recycle_connections = sync_to_async(recycle_connections, thread_sensitive=True)
+_close_connections = sync_to_async(connections.close_all, thread_sensitive=True)
 
 
 class MCPAuthMiddleware:
@@ -174,24 +174,26 @@ class MCPAuthMiddleware:
             await self.app(scope, receive, send)
             return
 
-        try:
+        # The outer Starlette mount does not inherit Django's per-request executor.
+        async with ThreadSensitiveContext():
             try:
-                context = await authenticate_scope(scope)
-            except MCPError as error:
-                headers = {}
-                if settings.MCP_SERVER_URL:
-                    origin = settings.MCP_SERVER_URL.removesuffix("/api/mcp/")
-                    headers["WWW-Authenticate"] = (
-                        f'Bearer resource_metadata="{origin}/.well-known/oauth-protected-resource/api/mcp/"'
+                try:
+                    context = await authenticate_scope(scope)
+                except MCPError as error:
+                    headers = {}
+                    if settings.MCP_SERVER_URL:
+                        origin = settings.MCP_SERVER_URL.removesuffix("/api/mcp/")
+                        headers["WWW-Authenticate"] = (
+                            f'Bearer resource_metadata="{origin}/.well-known/oauth-protected-resource/api/mcp/"'
+                        )
+                    response = JSONResponse(
+                        {"error": error_payload(error)},
+                        status_code=401 if error.data.code.startswith("authentication") else 403,
+                        headers=headers,
                     )
-                response = JSONResponse(
-                    {"error": error_payload(error)},
-                    status_code=401 if error.data.code.startswith("authentication") else 403,
-                    headers=headers,
-                )
-                await response(scope, receive, send)
-                return
-            with bind_context(context):
-                await self.app(scope, receive, send)
-        finally:
-            await _recycle_connections()
+                    await response(scope, receive, send)
+                    return
+                with bind_context(context):
+                    await self.app(scope, receive, send)
+            finally:
+                await _close_connections()

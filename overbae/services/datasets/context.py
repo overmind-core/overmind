@@ -13,13 +13,13 @@ from overbae.services.datasets.profile import profile_records
 CONSUMERS = {
     "decision_training": {
         "reads": ["decision"],
-        "target": "decision.target_probabilities is the full supervision distribution. Never collapse soft targets to argmax.",
-        "wire": "decision is an object with state (text), question (nonempty text), kind (choice/noul/score), options (2–255 distinct strings), target_probabilities (matching finite probabilities summing to one), and optional positive weight. Flat noul targets expand to No/Yes options (false/true semantic order) and [1-p,p].",
+        "target": "Interpret targets through Workshop exploration and source/user evidence. Record per-family target_meaning and target_evidence in the preparation plan. Unknown meaning stays unknown. Preserve full probability distributions; mean-only ordinal supervision uses target_mean plus an explicit option_values scale. Never invent votes or collapse soft targets to argmax.",
+        "wire": "decision is an object with state (text), question (nonempty text), kind (choice/noul/score), options (2–255 distinct strings), target_probabilities (matching finite probabilities summing to one), and optional positive weight, target_semantics and target_provenance. Alternatively score rows use target_mean, increasing option_values and target_semantics=ordinal_mean, without target_probabilities. Known meanings are categorical_gold, annotator_distribution, posterior, ordinal_histogram, pairwise_preference and teacher_distribution. Preserve annotation counts in target_provenance when known. Flat noul targets expand to No/Yes options (false/true semantic order) and [1-p,p].",
         "model_specific": "Training renders option codes and applies the selected tokenizer. Keep code tokens out of Workshop data. Preserve source/license/group identities outside decision for auditing and splitting.",
     },
     "decision_evaluation": {
         "reads": ["input.decision"],
-        "target": "expected_output.probabilities retains the full publisher distribution outside the request. Use a native probability evaluator; chat generation is not a probability prediction.",
+        "target": "expected_output.probabilities retains the full publisher distribution outside the request; mean-only references use expected_output={mean, values} without inventing a distribution. Use a native probability evaluator; chat generation is not a probability prediction.",
         "wire": "input.decision contains only state, question, kind and options. Option order must match reference probabilities. Blank state is structurally valid; whether the question supplies enough evidence is a separate semantic claim.",
         "quality": "Validate schema, probability range/sum/dimensions and preservation over every row. Do not normalize, harden, deduplicate, rebalance or drop valid blank states automatically. Publisher references are not verified truth; semantic checks are opt-in and uncertainty remains visible.",
     },
