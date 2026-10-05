@@ -6,6 +6,7 @@ from types import SimpleNamespace
 from unittest import mock
 
 import pytest
+from factories import make_project
 
 from overbae.api import overmind_attrs as oc_attrs
 from overbae.models import (
@@ -13,7 +14,6 @@ from overbae.models import (
     EvalSet,
     EvalSetMember,
     Evaluator,
-    Project,
     Span,
     TaskExecution,
 )
@@ -253,10 +253,6 @@ def test_parse_conversation_context_from_envelope_facts():
 pytestmark = pytest.mark.django_db
 
 
-def _project() -> Project:
-    return Project.objects.create(name="P", slug=f"p-{uuid.uuid4().hex[:8]}")
-
-
 def _capability(project) -> Capability:
     capability = Capability.objects.create(
         project=project,
@@ -325,7 +321,7 @@ def _trace(project, capability, *, events=(), with_tool=True, conversation_id=""
 
 
 def test_declared_intent_wins_and_occupancy_persists():
-    project = _project()
+    project = make_project()
     capability = _capability(project)
     trace_id = _trace(project, capability, events=[_intent_event("fine tune a model")])
 
@@ -340,7 +336,7 @@ def test_declared_intent_wins_and_occupancy_persists():
 
 
 def test_intent_falls_back_to_first_user_message():
-    project = _project()
+    project = make_project()
     capability = _capability(project)
     trace_id = _trace(project, capability)
 
@@ -371,7 +367,7 @@ def test_conversation_turn_records_ledger_and_running_intent():
     """The ledger classifier is the only writer; task_state reads its transitions back."""
     from overbae.models import ConversationEvent
 
-    project = _project()
+    project = make_project()
     capability = _capability(project)
     cid = str(uuid.uuid4())
     trace_id = _trace(
@@ -414,7 +410,7 @@ def test_conversation_turn_classifier_down_does_not_sink_scoring():
     """A failing classifier leaves the turn unrecorded — no lexical fallback."""
     from overbae.models import ConversationEvent
 
-    project = _project()
+    project = make_project()
     capability = _capability(project)
     cid = str(uuid.uuid4())
     trace_id = _trace(

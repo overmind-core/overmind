@@ -8,16 +8,16 @@ from __future__ import annotations
 
 import uuid
 from datetime import timedelta
-from unittest.mock import MagicMock, patch
 
 import pytest
 from django.utils import timezone
+from factories import reconcile_training
 
 from overbae.models.finetuning import FinetuningJob
-from overbae.services.finetuning_runner import PollSnapshot
-from overbae.tasks.finetuning_reconciler import _RUN_TASK, _reconcile
 
 pytestmark = pytest.mark.django_db
+
+_RUN_TASK = "overbae.tasks.finetuning.run_finetuning"
 
 
 def test_inflight_function_call_beats_stale_volume_failed():
@@ -56,179 +56,159 @@ def _job(**kwargs) -> FinetuningJob:
     return FinetuningJob.objects.create(**defaults)
 
 
-def _runner(*, state: str = "running", error: str = "") -> MagicMock:
-    runner = MagicMock()
-    snap = PollSnapshot(state=state, error=error)
-    runner.poll.return_value = snap
-    runner.is_terminal_ok.side_effect = lambda s: s in {"succeeded", "completed"}
-    runner.is_terminal_fail.side_effect = lambda s: s in {"failed", "error"}
-    runner.is_terminal_cancelled.side_effect = lambda s: s in {"cancelled", "canceled"}
-    runner.fetch_epoch_losses.return_value = []
-    return runner
+@pytest.fixture
+def remote(sft, fake_modal):
+    def arrange(*, meta="running", call="pending", error=None, final=False, steps=2):
+        sft.runs["ft-abc"] = {"status": meta, "steps": steps, "final": final}
+        return fake_modal.adopt("fc-123", "sft_train", state=call, error=error)
+
+    return arrange
 
 
-def _run_reconcile(*, runner, active_tasks: list[dict] | None = None):
-    sent: list[tuple[str, dict]] = []
-    app = MagicMock()
-    app.control.inspect.return_value.active.return_value = {"w1": active_tasks or []}
-    app.control.inspect.return_value.reserved.return_value = {}
-    app.control.inspect.return_value.scheduled.return_value = {}
-
-    def _send(name, kwargs=None):
-        sent.append((name, kwargs or {}))
-        return MagicMock(id=str(uuid.uuid4()))
-
-    app.send_task.side_effect = _send
-    with (
-        patch("overbae.celery.get_celery_app", return_value=app),
-        patch("overbae.services.finetuning_runner.get_runner", return_value=runner),
-        patch("overbae.tasks.model_deployment.register_finetuned_model.delay"),
-    ):
-        result = _reconcile()
-    return result, sent, runner
+def _polls(fake_modal) -> int:
+    return len([name for _, name, _, _ in fake_modal.log if name == "get_progress"])
 
 
-def test_running_job_past_four_hours_stays_running_while_remote_alive():
+def _cancelled(fake_modal) -> bool:
+    return any(call == "fc-123" for call, _ in fake_modal.cancelled) and bool(
+        fake_modal.called("mark_cancelled")
+    )
+
+
+def test_running_job_past_four_hours_stays_running_while_remote_alive(remote, fake_modal):
     job = _job()
-    runner = _runner(state="running")
-    _, sent, runner = _run_reconcile(runner=runner)
+    remote()
+    sent = reconcile_training()
 
     job.refresh_from_db()
     assert job.status == FinetuningJob.Status.RUNNING
     assert job.error_message == ""
-    assert runner.poll.call_count == 1
+    assert _polls(fake_modal) == 1
     assert all(n != _RUN_TASK for n, _ in sent)
 
 
-def test_running_job_is_observed_not_requeued():
+def test_running_job_is_observed_not_requeued(remote, fake_modal):
     job = _job(started_at=timezone.now())
-    runner = _runner(state="running")
-    _, sent, _ = _run_reconcile(runner=runner)
+    remote()
+    sent = reconcile_training()
     assert all(k.get("job_id") != str(job.id) for _, k in sent)
-    runner.poll.assert_called_once_with(job.remote_job_id)
+    assert _polls(fake_modal) == 1
 
 
-def test_succeeded_poll_finalizes_once():
+def test_succeeded_poll_finalizes_once(remote):
     job = _job(started_at=timezone.now())
-    runner = _runner(state="succeeded")
-    _run_reconcile(runner=runner)
+    remote(meta="succeeded", call="done")
+    reconcile_training()
     job.refresh_from_db()
     assert job.status == FinetuningJob.Status.DEPLOYING
-    _run_reconcile(runner=runner)
+    reconcile_training()
     job.refresh_from_db()
     assert job.status == FinetuningJob.Status.DEPLOYING
     assert job.events.filter(message="Fine-tuning completed — deploying model").count() == 1
 
 
-def test_queued_without_remote_still_enqueues_submit():
+def test_queued_without_remote_still_enqueues_submit(remote, fake_modal):
     job = _job(status=FinetuningJob.Status.QUEUED, remote_job_id="", started_at=None)
-    runner = _runner()
-    _, sent, _ = _run_reconcile(runner=runner)
+    sent = reconcile_training()
     mine = [(n, k) for n, k in sent if k.get("job_id") == str(job.id)]
     assert mine == [(_RUN_TASK, {"job_id": str(job.id)})]
-    runner.poll.assert_not_called()
+    assert _polls(fake_modal) == 0
 
 
-def test_preparing_with_remote_id_is_observed():
+def test_preparing_with_remote_id_is_observed(remote, fake_modal):
     job = _job(status=FinetuningJob.Status.PREPARING, started_at=None)
-    runner = _runner(state="running")
-    _, sent, runner = _run_reconcile(runner=runner)
+    remote()
+    sent = reconcile_training()
     assert all(n != _RUN_TASK for n, _ in sent)
-    runner.poll.assert_called_once()
+    assert _polls(fake_modal) == 1
     job.refresh_from_db()
     assert job.status == FinetuningJob.Status.RUNNING
 
 
-def test_run_finetuning_does_not_poll_after_submit():
+def test_run_finetuning_does_not_poll_after_submit(remote, fake_modal):
     from overbae.tasks.finetuning import run_finetuning
 
     job = _job()
-    runner = _runner(state="running")
-    runner.poll.side_effect = AssertionError("submit task must not poll")
-    with patch("overbae.services.finetuning_runner.get_runner", return_value=runner):
-        result = run_finetuning(job_id=str(job.id))
+    remote()
+    result = run_finetuning(job_id=str(job.id))
     assert result["status"] == "running"
+    assert _polls(fake_modal) == 0
     job.refresh_from_db()
     assert job.status == FinetuningJob.Status.RUNNING
 
 
-def test_queued_with_remote_is_observed_not_resubmitted():
-    job = _job(status=FinetuningJob.Status.QUEUED)
-    runner = _runner(state="running")
-    _, sent, runner = _run_reconcile(runner=runner)
+def test_queued_with_remote_is_observed_not_resubmitted(remote, fake_modal):
+    _job(status=FinetuningJob.Status.QUEUED)
+    remote()
+    sent = reconcile_training()
     assert all(n != _RUN_TASK for n, _ in sent)
-    runner.poll.assert_called_once_with(job.remote_job_id)
-    runner.submit.assert_not_called()
+    assert _polls(fake_modal) == 1
+    assert fake_modal.spawns() == []
 
 
-def test_preparing_without_remote_is_not_double_submitted():
+def test_preparing_without_remote_is_not_double_submitted(remote, fake_modal):
     job = _job(
         status=FinetuningJob.Status.PREPARING,
         remote_job_id="",
         celery_task_id="submit-in-flight",
         started_at=None,
     )
-    runner = _runner()
-    _, sent, runner = _run_reconcile(runner=runner, active_tasks=[])
+    sent = reconcile_training(active_tasks=[])
     assert all(k.get("job_id") != str(job.id) for _, k in sent)
-    runner.poll.assert_not_called()
+    assert _polls(fake_modal) == 0
 
 
-def test_failed_poll_with_weights_deploys():
+def test_a_failed_call_with_final_weights_still_deploys(remote, fake_modal):
     job = _job()
-    runner = _runner(state="failed", error="OutputExpired")
-    runner.poll.return_value = PollSnapshot(
-        state="failed",
-        output_model_name="modal/ft-abc/final",
-        weights_url="/data/runs/ft-abc/final",
-        error="OutputExpired",
-    )
-    _run_reconcile(runner=runner)
+    remote(meta="failed", call="failed", error=RuntimeError("OutputExpired"), final=True)
+    reconcile_training()
     job.refresh_from_db()
     assert job.status == FinetuningJob.Status.DEPLOYING
-    assert job.output_model_name == "modal/ft-abc/final"
-    runner.cancel.assert_not_called()
+    assert job.output_model_name
+    assert fake_modal.cancelled == []
 
 
-def test_failed_poll_without_weights_cancels_remote():
+def test_a_failed_call_without_weights_fails_and_cancels_the_remote(remote, fake_modal):
     job = _job()
-    runner = _runner(state="failed", error="train.py exited 1")
-    _run_reconcile(runner=runner)
+    remote(meta="failed", call="failed", error=RuntimeError("train.py exited 1"))
+    reconcile_training()
     job.refresh_from_db()
     assert job.status == FinetuningJob.Status.FAILED
-    runner.cancel.assert_called_once_with(job.remote_job_id)
+    assert _cancelled(fake_modal)
 
 
-def test_stalled_progress_fails_and_cancels():
+def test_progress_that_stops_moving_for_half_an_hour_fails_and_cancels(remote, fake_modal):
     job = _job()
-    job.progress = {
-        "trained_steps": 100,
-        "latest_train_loss": 1.2,
-        "checkpoints": [],
-        "metrics": {"loss": [], "learning_rate": [], "grad_norm": []},
-        "observe": {
-            "last_move_at": (timezone.now() - timedelta(minutes=31)).isoformat(),
-            "saw_step": True,
-        },
-    }
+    remote(steps=5)
+    reconcile_training()
+    job.refresh_from_db()
+    assert job.status == FinetuningJob.Status.RUNNING
+    job.progress["observe"]["last_move_at"] = (timezone.now() - timedelta(minutes=31)).isoformat()
     job.save(update_fields=["progress"])
-    runner = _runner(state="running")
-    runner.poll.return_value = PollSnapshot(
-        state="running", step=100, trained_steps=100, train_loss=1.2
-    )
-    _run_reconcile(runner=runner)
+
+    reconcile_training()
     job.refresh_from_db()
     assert job.status == FinetuningJob.Status.FAILED
-    runner.cancel.assert_called_once_with(job.remote_job_id)
+    assert _cancelled(fake_modal)
 
 
-def test_poll_errors_fail_after_budget():
+def test_poll_errors_fail_after_budget(remote, fake_modal):
     job = _job()
     job.progress = {"observe": {"poll_errors": 19}}
     job.save(update_fields=["progress"])
-    runner = _runner()
-    runner.poll.side_effect = RuntimeError("revoked key")
-    _run_reconcile(runner=runner)
+    remote()
+
+    def revoked(run_id):
+        raise RuntimeError("revoked key")
+
+    fake_modal.deploy("overmind-sft", "get_progress", revoked)
+    reconcile_training()
     job.refresh_from_db()
     assert job.status == FinetuningJob.Status.FAILED
-    runner.cancel.assert_called_once_with(job.remote_job_id)
+    assert _cancelled(fake_modal)
+
+
+def test_a_deploying_job_is_not_resubmitted(remote):
+    job = _job(status=FinetuningJob.Status.DEPLOYING)
+    sent = reconcile_training()
+    assert [(n, k) for n, k in sent if k.get("job_id") == str(job.id)] == []

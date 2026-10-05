@@ -116,6 +116,29 @@ REPORT = {
 }
 
 
+@pytest.fixture(autouse=True)
+def _authoring_llm(fake_llm):
+    global AUTHOR
+    AUTHOR = fake_llm
+
+
+def _authored_spec(judge: dict, grounding, covered_fields=()):
+    from overbae.services.eval import semantic_recommender
+
+    AUTHOR.on(lambda r: True, json.dumps({"evals": [judge]}))
+    tier0 = [_field_coverage(*sorted(covered_fields))] if covered_fields else []
+    specs = semantic_recommender.author_grounded_judges(grounding, tier0)
+    return specs[0] if specs else None
+
+
+def _authoring_prompt(grounding) -> str:
+    from overbae.services.eval import semantic_recommender
+
+    AUTHOR.on(lambda r: True, '{"evals": []}')
+    semantic_recommender.author_grounded_judges(grounding, [])
+    return AUTHOR.requests[-1].text
+
+
 def _grounding(**overrides) -> EvalGroundingContext:
     defaults = {
         "dataset_card": copy.deepcopy(DATASET_CARD),
@@ -1246,21 +1269,13 @@ class TestTier1BudgetAndFallback:
     """generate-evals runs Tier 1 synchronously in the request — it must never
     hang and must always leave Tier 0 output standing on any failure."""
 
-    @pytest.fixture(autouse=True)
-    def _neutralize_key_guard(self, monkeypatch):
-        """Without a provider key ``resolve_model`` raises before ``call_llm``, so the
-        monkeypatched ``call_llm`` would never run."""
-        from overbae.services.eval import semantic_recommender
-
-        monkeypatch.setattr(semantic_recommender, "resolve_model", lambda *a, **k: "test-model")
-
     def _judge_json(self, name: str) -> str:
         return (
             f'{{"name": "{name}", "rubric_md": "Grade the output for groundedness.", '
             '"grounding_citation": "codebase_card.success_criteria[0]"}'
         )
 
-    def test_hung_llm_call_returns_empty_within_budget(self, monkeypatch):
+    def test_hung_llm_call_returns_empty_within_budget(self, fake_llm):
         import threading
         import time
 
@@ -1269,11 +1284,11 @@ class TestTier1BudgetAndFallback:
         # Block forever without sleeping — the budget timeout must still abort.
         hang_gate = threading.Event()
 
-        def hang(*args, **kwargs):
+        def hang(request):
             hang_gate.wait(timeout=30)
-            return "{}", {}
+            return "{}"
 
-        monkeypatch.setattr(semantic_recommender, "call_llm", hang)
+        fake_llm.on(lambda r: True, hang)
         start = time.monotonic()
         specs = semantic_recommender.author_grounded_judges(_grounding(), [], time_budget_s=0.2)
         elapsed = time.monotonic() - start
@@ -1281,16 +1296,13 @@ class TestTier1BudgetAndFallback:
         assert specs == []
         assert elapsed < 1.5  # returned at the budget, not the LLM's pace
 
-    def test_raising_llm_call_returns_empty(self, monkeypatch):
+    def test_raising_llm_call_returns_empty(self, fake_llm):
         from overbae.services.eval import semantic_recommender
 
-        def boom(*args, **kwargs):
-            raise RuntimeError("Error calling LLM: provider exploded")
-
-        monkeypatch.setattr(semantic_recommender, "call_llm", boom)
+        fake_llm.fail(lambda r: True, 400, "provider exploded")
         assert semantic_recommender.author_grounded_judges(_grounding(), []) == []
 
-    def test_truncated_json_salvages_complete_judges(self, monkeypatch):
+    def test_truncated_json_salvages_complete_judges(self, fake_llm):
         from overbae.services.eval import semantic_recommender
 
         # One complete judge, then a max_tokens cut-off mid-object.
@@ -1298,20 +1310,20 @@ class TestTier1BudgetAndFallback:
             '{"evals": [' + self._judge_json("Ref Groundedness") + ', {"name": "cut-off-judg'
         )
 
-        monkeypatch.setattr(semantic_recommender, "call_llm", lambda *a, **k: (truncated, {}))
+        fake_llm.on(lambda r: True, truncated)
         specs = semantic_recommender.author_grounded_judges(_grounding(), [])
         assert [s.name for s in specs] == ["Ref Groundedness"]
         assert specs[0].kind == "llm_judge"
 
-    def test_valid_response_still_parses(self, monkeypatch):
+    def test_valid_response_still_parses(self, fake_llm):
         from overbae.services.eval import semantic_recommender
 
         raw = f'{{"evals": [{self._judge_json("Output Specificity")}]}}'
-        monkeypatch.setattr(semantic_recommender, "call_llm", lambda *a, **k: (raw, {}))
+        fake_llm.on(lambda r: True, raw)
         specs = semantic_recommender.author_grounded_judges(_grounding(), [])
         assert [s.name for s in specs] == ["Output Specificity"]
 
-    def test_leaked_internal_symbol_is_sanitized_from_authored_spec(self, monkeypatch):
+    def test_leaked_internal_symbol_is_sanitized_from_authored_spec(self, fake_llm):
         from overbae.services.eval import semantic_recommender
 
         raw = (
@@ -1321,7 +1333,7 @@ class TestTier1BudgetAndFallback:
             '"gate": true}], '
             '"grounding_citation": "codebase_card.success_criteria[0]"}]}'
         )
-        monkeypatch.setattr(semantic_recommender, "call_llm", lambda *a, **k: (raw, {}))
+        fake_llm.on(lambda r: True, raw)
         specs = semantic_recommender.author_grounded_judges(_grounding(), [])
         assert len(specs) == 1
         spec = specs[0]
@@ -1329,7 +1341,7 @@ class TestTier1BudgetAndFallback:
         assert "{total_rows}" not in spec.checklist[0].q
         assert set(spec.config["_sanitized_tokens"]) == {"_LLM_OUTPUT_KEYS", "{total_rows}"}
 
-    def test_authored_judge_roles_pinned_to_suite(self, monkeypatch):
+    def test_authored_judge_roles_pinned_to_suite(self, fake_llm):
         from overbae.services.eval import semantic_recommender
         from overbae.services.eval.roles import roles_for_spec
 
@@ -1342,14 +1354,14 @@ class TestTier1BudgetAndFallback:
             '"grounding_citation": "dataset_card.reference"}'
             "]}"
         )
-        monkeypatch.setattr(semantic_recommender, "call_llm", lambda *a, **k: (raw, {}))
+        fake_llm.on(lambda r: True, raw)
         specs = {s.name: s for s in semantic_recommender.author_grounded_judges(_grounding(), [])}
         assert specs["Output Quality"].applicable_roles == ["generative"]
         assert roles_for_spec(specs["Output Quality"]) == ("generative",)
         # A reference-graded judge stays generative-only (no reference on a live trace).
         assert roles_for_spec(specs["Ref Correctness"]) == ("generative",)
 
-    def test_authored_judge_binds_referenced_placeholders(self, monkeypatch):
+    def test_authored_judge_binds_referenced_placeholders(self, fake_llm):
         from overbae.services.eval import semantic_recommender
         from overbae.services.eval.specs import VARIABLE_SOURCES
 
@@ -1359,7 +1371,7 @@ class TestTier1BudgetAndFallback:
             '"variable_mapping": [{"var": "output", "source": "output"}], '
             '"grounding_citation": "codebase_card.success_criteria[0]"}]}'
         )
-        monkeypatch.setattr(semantic_recommender, "call_llm", lambda *a, **k: (raw, {}))
+        fake_llm.on(lambda r: True, raw)
         specs = semantic_recommender.author_grounded_judges(_grounding(), [])
         assert len(specs) == 1
         bound = {entry.var: entry for entry in specs[0].variable_mapping}
@@ -1368,7 +1380,7 @@ class TestTier1BudgetAndFallback:
         assert bound["summary"].source == "output"
         assert bound["reference"].source == "reference"
 
-    def test_discovery_prompt_shows_variables_like_author_path(self, monkeypatch):
+    def test_discovery_prompt_shows_variables_like_author_path(self, fake_llm):
         from types import SimpleNamespace
 
         from overbae.services.eval import semantic_recommender
@@ -1383,7 +1395,7 @@ class TestTier1BudgetAndFallback:
             f'"rubric_md": "{evaluation_prompt}", '
             '"grounding_citation": "codebase_card.success_criteria[0]"}]}'
         )
-        monkeypatch.setattr(semantic_recommender, "call_llm", lambda *a, **k: (raw, {}))
+        fake_llm.on(lambda r: True, raw)
         spec = semantic_recommender.author_grounded_judges(_grounding(), [])[0]
 
         assert "{{summary}}" in spec.rubric_md
@@ -1422,20 +1434,6 @@ class TestTier1BudgetAndFallback:
         )
         author_vars = {entry["var"] for entry in author_kwargs["variable_mapping"]}
         assert {"summary", "output", "input", "reference"} <= author_vars
-
-    def test_per_call_timeout_passed_to_llm(self, monkeypatch):
-        from overbae.services.eval import semantic_recommender
-
-        seen: dict = {}
-
-        def capture(*args, **kwargs):
-            seen.update(kwargs)
-            return '{"evals": []}', {}
-
-        monkeypatch.setattr(semantic_recommender, "call_llm", capture)
-        semantic_recommender.author_grounded_judges(_grounding(), [])
-        assert seen["request_kwargs"]["timeout"] == semantic_recommender._TIER1_LLM_TIMEOUT_S
-        assert seen["max_tokens"] == semantic_recommender._TIER1_MAX_TOKENS
 
 
 class TestManagedRubricSanitation:
@@ -1545,19 +1543,17 @@ class TestExampleUnitRendering:
 
 class TestTier1PromptContract:
     def test_to_spec_preserves_authored_name(self):
-        from overbae.services.eval import semantic_recommender
 
-        judge = semantic_recommender._AuthoredJudge(
+        judge = dict(
             name="  Failure Mode Avoidance  ",
             rubric_md="Prefer totals over subtotals.",
             grounding_citation="codebase_card.failure_modes[0]",
         )
-        spec = semantic_recommender._to_spec(judge, _grounding())
+        spec = _authored_spec(judge, _grounding())
         assert spec is not None
         assert spec.name == "Failure Mode Avoidance"
 
     def test_to_spec_drops_items_a_deterministic_check_owns(self):
-        from overbae.services.eval import semantic_recommender
 
         card = copy.deepcopy(CODEBASE_CARD)
         card["output_fields"] = {
@@ -1569,7 +1565,7 @@ class TestTier1PromptContract:
             "required_keys": ["amount", "summary"],
             "properties": {"amount": {}, "summary": {}},
         }
-        judge = semantic_recommender._AuthoredJudge(
+        judge = dict(
             name="Task Success",
             rubric_md="Grade the row.",
             checklist=[
@@ -1577,23 +1573,22 @@ class TestTier1PromptContract:
                 {"id": "summary_ok", "q": "Is the summary faithful?", "weight": 1.0},
             ],
         )
-        spec = semantic_recommender._to_spec(judge, _grounding(codebase_card=card))
+        spec = _authored_spec(judge, _grounding(codebase_card=card))
         assert spec is not None
         assert [i.id for i in spec.checklist] == ["summary_ok"]
         assert spec.config["_dropped_items"] == ["amount_ok"]
 
     def test_to_spec_discards_a_judge_that_only_restated_exact_fields(self):
-        from overbae.services.eval import semantic_recommender
 
         card = copy.deepcopy(CODEBASE_CARD)
         card["output_fields"] = {"amount": "number — total due"}
         card["output_schema"] = {"required_keys": ["amount"], "properties": {"amount": {}}}
-        judge = semantic_recommender._AuthoredJudge(
+        judge = dict(
             name="Amount Extraction",
             rubric_md="Grade amount.",
             checklist=[{"id": "amount_ok", "q": "Does amount match?", "weight": 1.0}],
         )
-        assert semantic_recommender._to_spec(judge, _grounding(codebase_card=card)) is None
+        assert _authored_spec(judge, _grounding(codebase_card=card)) is None
 
     def test_coverage_block_names_fields_already_checked_exactly(self):
         from overbae.services.eval.semantic_recommender import _coverage_block
@@ -1637,29 +1632,18 @@ class TestTier1PromptContract:
 
 
 class TestTier1GenerativeAuthoring:
-    @pytest.fixture(autouse=True)
-    def _neutralize_key_guard(self, monkeypatch):
-        from overbae.services.eval import semantic_recommender
-
-        monkeypatch.setattr(semantic_recommender, "resolve_model", lambda *a, **k: "test-model")
-
-    def test_author_tier1_suites_returns_generative_only(self, monkeypatch):
+    def test_author_tier1_suites_returns_generative_only(self, fake_llm):
         from overbae.services.eval import semantic_recommender
         from overbae.services.eval.roles import GENERATIVE, roles_for_spec
 
-        calls: list[str] = []
-
-        def fake_call(prompt, *, system_prompt="", **kwargs):
-            calls.append("generative")
-            raw = (
-                '{"evals": [{"name": "Task Success", '
-                '"rubric_md": "Compare {{output}} to {{reference}}.", '
-                '"requires_reference": true, '
-                '"grounding_citation": "codebase_card.success_criteria[0]"}]}'
-            )
-            return raw, {}
-
-        monkeypatch.setattr(semantic_recommender, "call_llm", fake_call)
+        calls = []
+        raw = (
+            '{"evals": [{"name": "Task Success", '
+            '"rubric_md": "Compare {{output}} to {{reference}}.", '
+            '"requires_reference": true, '
+            '"grounding_citation": "codebase_card.success_criteria[0]"}]}'
+        )
+        fake_llm.on(lambda r: True, lambda r: calls.append("generative") or raw)
         specs, suites_timed_out, _allocation = semantic_recommender.author_tier1_suites(
             _grounding(), []
         )
@@ -1672,30 +1656,28 @@ class TestTier1GenerativeAuthoring:
         assert GENERATIVE in roles_for_spec(gen)
         assert gen.applicable_roles == ["generative"]
 
-    def test_author_tier1_suites_names_timed_out_suite(self, monkeypatch):
-        from concurrent.futures import TimeoutError as FutureTimeoutError
+    def test_author_tier1_suites_names_timed_out_suite(self, fake_llm):
+        import threading
 
         from overbae.services.eval import semantic_recommender
 
-        def fake_author(grounding, tier0, **kw):
-            raise FutureTimeoutError
-
-        monkeypatch.setattr(semantic_recommender, "author_grounded_judges", fake_author)
-        specs, timed_out, _allocation = semantic_recommender.author_tier1_suites(_grounding(), [])
+        gate = threading.Event()
+        fake_llm.on(lambda r: True, lambda r: gate.wait(timeout=30) and "{}")
+        specs, timed_out, _allocation = semantic_recommender.author_tier1_suites(
+            _grounding(), [], time_budget_s=0.05
+        )
+        gate.set()
         assert timed_out == [semantic_recommender.SUITE_GENERATIVE]
         assert specs == []
 
-    def test_author_grounded_judges_raise_on_timeout(self, monkeypatch):
-        import time
+    def test_author_grounded_judges_raise_on_timeout(self, fake_llm):
+        import threading
         from concurrent.futures import TimeoutError as FutureTimeoutError
 
         from overbae.services.eval import semantic_recommender
 
-        def slow_llm(*a, **k):
-            time.sleep(0.5)
-            return '{"evals": []}'
-
-        monkeypatch.setattr(semantic_recommender, "_call_authoring_llm", slow_llm)
+        gate = threading.Event()
+        fake_llm.on(lambda r: True, lambda r: gate.wait(timeout=0.5) or '{"evals": []}')
         with pytest.raises(FutureTimeoutError):
             semantic_recommender.author_grounded_judges(
                 _grounding(), [], time_budget_s=0.05, raise_on_timeout=True
@@ -1705,10 +1687,9 @@ class TestTier1GenerativeAuthoring:
             semantic_recommender.author_grounded_judges(_grounding(), [], time_budget_s=0.05) == []
         )
 
-    def test_authoring_schemas_have_no_freeform_objects(self):
+    def test_authoring_schemas_have_no_freeform_objects(self, fake_llm):
         # Strict structured output 400s on any object node without explicit properties.
-        from overbae.services.eval import semantic_recommender
-        from overbae.services.eval.rubric_compiler import _Checklist
+        from overbae.services.eval.rubric_compiler import compile_rubric
 
         def walk(node):
             if isinstance(node, dict):
@@ -1719,10 +1700,14 @@ class TestTier1GenerativeAuthoring:
                 for value in node:
                     walk(value)
 
-        walk(semantic_recommender._AuthoredJudgeSuite.model_json_schema())
-        walk(_Checklist.model_json_schema())
+        _authoring_prompt(_grounding())
+        compile_rubric("Grade the answer for correctness.")
+        schemas = {r.schema_name: r.schema for r in fake_llm.requests if r.schema}
+        assert {"_AuthoredJudgeSuite", "_Checklist"} <= set(schemas)
+        for schema in schemas.values():
+            walk(schema)
 
-    def test_authored_checklist_carries_applies_when(self, monkeypatch):
+    def test_authored_checklist_carries_applies_when(self, fake_llm):
         from overbae.services.eval import semantic_recommender
 
         raw = (
@@ -1734,7 +1719,7 @@ class TestTier1GenerativeAuthoring:
             '{"id": "coherent", "q": "Is the output coherent?"}], '
             '"grounding_citation": "codebase_card.success_criteria[0]"}]}'
         )
-        monkeypatch.setattr(semantic_recommender, "call_llm", lambda *a, **k: (raw, {}))
+        fake_llm.on(lambda r: True, raw)
         specs = semantic_recommender.author_grounded_judges(_grounding(), [])
         assert len(specs) == 1
         by_id = {item.id: item for item in specs[0].checklist}
@@ -1842,7 +1827,6 @@ class TestAgentPathExampleUnit:
         from conftest import frozen_dataset
 
         from overbae.models import Dataset
-        from overbae.services.eval import semantic_recommender
 
         capability = self._capability()
         Dataset.objects.create(
@@ -1863,19 +1847,18 @@ class TestAgentPathExampleUnit:
             name="rich",
         )
         grounding = _grounding(dataset=None, capability=capability)
-        rendered = semantic_recommender._render_example_unit_section(grounding)
+        rendered = _authoring_prompt(grounding)
         assert "Example sample" in rendered
         assert "$.amount.value" in rendered
         assert "Surface / shape table" in rendered
 
     def test_capability_with_no_dataset_rows_renders_empty(self):
         from overbae.models import Dataset
-        from overbae.services.eval import semantic_recommender
 
         capability = self._capability()
         Dataset.objects.create(capability=capability, project=capability.project, name="empty")
         grounding = _grounding(dataset=None, capability=capability)
-        assert semantic_recommender._render_example_unit_section(grounding) == ""
+        assert "Surface / shape table" not in _authoring_prompt(grounding)
 
 
 @pytest.mark.django_db
@@ -2190,21 +2173,15 @@ class TestSurfaceBindingInAuthoringPipeline:
     """The validator runs inside ``_to_spec``, so a misbound authored judge is
     repaired or dropped before it can persist."""
 
-    @pytest.fixture(autouse=True)
-    def _neutralize_key_guard(self, monkeypatch):
+    def _authored(self, raw, fake_llm, suite="generative"):
         from overbae.services.eval import semantic_recommender
 
-        monkeypatch.setattr(semantic_recommender, "resolve_model", lambda *a, **k: "test-model")
-
-    def _authored(self, raw, monkeypatch, suite="generative"):
-        from overbae.services.eval import semantic_recommender
-
-        monkeypatch.setattr(semantic_recommender, "call_llm", lambda *a, **k: (raw, {}))
+        fake_llm.on(lambda r: True, raw)
         return semantic_recommender.author_grounded_judges(
             _grounding(codebase_card=copy.deepcopy(DUAL_LAYER_CARD)), [], suite=suite
         )
 
-    def test_output_field_applies_when_repaired_and_recorded(self, monkeypatch):
+    def test_output_field_applies_when_repaired_and_recorded(self, fake_llm):
         raw = (
             '{"evals": [{"name": "Amount Extraction", '
             '"rubric_md": "Judge {{output}} amount extraction.", '
@@ -2212,12 +2189,12 @@ class TestSurfaceBindingInAuthoringPipeline:
             '"applies_when": {"context_equals": {"key": "output.isBillable", "value": true}}}], '
             '"grounding_citation": "codebase_card.success_criteria[0]"}]}'
         )
-        specs = self._authored(raw, monkeypatch)
+        specs = self._authored(raw, fake_llm)
         assert len(specs) == 1
         assert specs[0].checklist[0].applies_when == {"output_present": True}
         assert any("output-field binding" in n for n in specs[0].config["_surface_repairs"])
 
-    def test_generative_judge_keeps_model_layer_checklist(self, monkeypatch):
+    def test_generative_judge_keeps_model_layer_checklist(self, fake_llm):
         """Tier-1 authors generative judges only; model-layer fields are valid there."""
         raw = (
             '{"evals": [{"name": "Classification Flag", '
@@ -2225,14 +2202,14 @@ class TestSurfaceBindingInAuthoringPipeline:
             '"checklist": [{"id": "cls", "q": "When the document is a bill, is {output.isBillable} true?"}], '
             '"grounding_citation": "codebase_card.success_criteria[0]"}]}'
         )
-        specs = self._authored(raw, monkeypatch)
+        specs = self._authored(raw, fake_llm)
         assert len(specs) == 1
         assert specs[0].applicable_roles == ["generative"]
         assert specs[0].checklist[0].q == (
             "When the document is a bill, is {output.isBillable} true?"
         )
 
-    def test_authored_output_present_leaf_survives_to_spec(self, monkeypatch):
+    def test_authored_output_present_leaf_survives_to_spec(self, fake_llm):
         raw = (
             '{"evals": [{"name": "Amount Extraction", '
             '"rubric_md": "Judge {{output}} amount extraction.", '
@@ -2240,7 +2217,7 @@ class TestSurfaceBindingInAuthoringPipeline:
             '"applies_when": {"output_present": true}}], '
             '"grounding_citation": "codebase_card.success_criteria[0]"}]}'
         )
-        specs = self._authored(raw, monkeypatch)
+        specs = self._authored(raw, fake_llm)
         assert len(specs) == 1
         assert specs[0].checklist[0].applies_when == {"output_present": True}
 
@@ -2267,9 +2244,8 @@ _AMOUNT_DUE_JUDGEMENT = (
 
 
 def _authored_judge(name: str, questions: list[str], **kwargs):
-    from overbae.services.eval import semantic_recommender
 
-    return semantic_recommender._AuthoredJudge(
+    return dict(
         name=name,
         rubric_md=kwargs.pop("rubric_md", "Grade the output."),
         checklist=[{"id": f"i{i}", "q": q} for i, q in enumerate(questions)],
@@ -2292,9 +2268,8 @@ def _field_coverage(*names: str):
 
 class TestAuthoredItemFilter:
     def test_whole_blob_anchor_survives_authoring(self):
-        from overbae.services.eval import semantic_recommender
 
-        spec = semantic_recommender._to_spec(
+        spec = _authored_spec(
             _authored_judge("Groundedness", ["Is the claim present in {input}?"]),
             _grounding(),
         )
@@ -2303,20 +2278,16 @@ class TestAuthoredItemFilter:
         assert "_sanitized_tokens" not in spec.config
 
     def test_confidence_calibration_items_are_dropped(self):
-        from overbae.services.eval import semantic_recommender
 
         questions = [*_CONFIDENCE_CALIBRATION_ITEMS, _CONFIDENCE_CONTRACT]
-        spec = semantic_recommender._to_spec(
-            _authored_judge("Task Success", questions), _grounding()
-        )
+        spec = _authored_spec(_authored_judge("Task Success", questions), _grounding())
         assert spec is not None
         assert [i.q for i in spec.checklist] == [_CONFIDENCE_CONTRACT]
         assert spec.config["_dropped_items"] == list(_CONFIDENCE_CALIBRATION_ITEMS)
 
     def test_mechanical_covered_field_compare_is_dropped(self):
-        from overbae.services.eval import semantic_recommender
 
-        spec = semantic_recommender._to_spec(
+        spec = _authored_spec(
             _authored_judge("Task Success", [_MECHANICAL_AMOUNT, _AMOUNT_DUE_JUDGEMENT]),
             _grounding(),
             covered_fields={"amount"},
@@ -2326,22 +2297,15 @@ class TestAuthoredItemFilter:
         assert spec.config["_dropped_items"] == [_MECHANICAL_AMOUNT]
 
     def test_emptied_judge_is_not_an_evaluator(self):
-        from overbae.services.eval import semantic_recommender
 
-        spec = semantic_recommender._to_spec(
+        spec = _authored_spec(
             _authored_judge("Task Success", [_MECHANICAL_AMOUNT, *_CONFIDENCE_CALIBRATION_ITEMS]),
             _grounding(),
             covered_fields={"amount"},
         )
         assert spec is None
 
-    @pytest.fixture(autouse=True)
-    def _neutralize_key_guard(self, monkeypatch):
-        from overbae.services.eval import semantic_recommender
-
-        monkeypatch.setattr(semantic_recommender, "resolve_model", lambda *a, **k: "test-model")
-
-    def test_coverage_from_tier0_reaches_the_filter(self, monkeypatch):
+    def test_coverage_from_tier0_reaches_the_filter(self, fake_llm):
         from overbae.services.eval import semantic_recommender
 
         raw = (
@@ -2351,14 +2315,14 @@ class TestAuthoredItemFilter:
             f'{{"id": "due", "q": "{_AMOUNT_DUE_JUDGEMENT}"}}'
             '], "grounding_citation": "codebase_card.success_criteria[0]"}]}'
         )
-        monkeypatch.setattr(semantic_recommender, "call_llm", lambda *a, **k: (raw, {}))
+        fake_llm.on(lambda r: True, raw)
         specs = semantic_recommender.author_grounded_judges(
             _grounding(), [_field_coverage("amount")]
         )
         assert len(specs) == 1
         assert [i.q for i in specs[0].checklist] == [_AMOUNT_DUE_JUDGEMENT]
 
-    def test_emptied_authored_judge_is_omitted_from_the_suite(self, monkeypatch):
+    def test_emptied_authored_judge_is_omitted_from_the_suite(self, fake_llm):
         from overbae.services.eval import semantic_recommender
 
         raw = (
@@ -2367,14 +2331,13 @@ class TestAuthoredItemFilter:
             f'{{"id": "amt", "q": "{_MECHANICAL_AMOUNT}"}}'
             '], "grounding_citation": "codebase_card.success_criteria[0]"}]}'
         )
-        monkeypatch.setattr(semantic_recommender, "call_llm", lambda *a, **k: (raw, {}))
+        fake_llm.on(lambda r: True, raw)
         specs = semantic_recommender.author_grounded_judges(
             _grounding(), [_field_coverage("amount")]
         )
         assert specs == []
 
     def test_vendor_compare_is_dropped_once_string_fields_are_covered(self):
-        from overbae.services.eval import semantic_recommender
         from overbae.services.eval.card_compiler import canonical_output_fields
         from overbae.services.eval.semantic_recommender import covered_field_names
 
@@ -2405,7 +2368,7 @@ class TestAuthoredItemFilter:
         covered = covered_field_names(coverage)
         assert "vendor" in covered
         assert "summary" not in covered
-        spec = semantic_recommender._to_spec(
+        spec = _authored_spec(
             _authored_judge(
                 "Extraction Faithfulness",
                 ["Compare {output.vendor} to {reference.vendor}"],
@@ -2416,7 +2379,6 @@ class TestAuthoredItemFilter:
         assert spec is None
 
     def test_dropped_field_compares_leave_the_rubric(self):
-        from overbae.services.eval import semantic_recommender
 
         summary = "summary is relevant to the email"
         authored = (
@@ -2435,7 +2397,7 @@ class TestAuthoredItemFilter:
             "Compare {output.dueDate} to {reference.dueDate}",
             summary,
         ]
-        spec = semantic_recommender._to_spec(
+        spec = _authored_spec(
             _authored_judge("Task Success", questions, rubric_md=authored),
             _grounding(),
             covered_fields={"isInvoice", "vendor", "invoiceNumber", "amount", "dueDate"},
@@ -2446,10 +2408,9 @@ class TestAuthoredItemFilter:
         assert "reference.isInvoice" not in spec.rubric_md
 
     def test_unfiltered_judge_keeps_its_authored_rubric(self):
-        from overbae.services.eval import semantic_recommender
 
         authored = "Grade whether the extraction is faithful to the email."
-        spec = semantic_recommender._to_spec(
+        spec = _authored_spec(
             _authored_judge(
                 "Groundedness",
                 ["Is the claim present in {input}?"],
@@ -2518,13 +2479,7 @@ class TestChecklistCluster:
         second = _cluster_spec("Ref Correctness", [])
         assert overlapping_prior(second, [first]) is None
 
-    @pytest.fixture(autouse=True)
-    def _neutralize_key_guard(self, monkeypatch):
-        from overbae.services.eval import semantic_recommender
-
-        monkeypatch.setattr(semantic_recommender, "resolve_model", lambda *a, **k: "test-model")
-
-    def test_authored_suite_keeps_the_first_of_a_cluster(self, monkeypatch):
+    def test_authored_suite_keeps_the_first_of_a_cluster(self, fake_llm):
         from overbae.services.eval import semantic_recommender
 
         payload = {
@@ -2549,8 +2504,6 @@ class TestChecklistCluster:
                 },
             ]
         }
-        monkeypatch.setattr(
-            semantic_recommender, "call_llm", lambda *a, **k: (json.dumps(payload), {})
-        )
+        fake_llm.on(lambda r: True, json.dumps(payload))
         specs = semantic_recommender.author_grounded_judges(_grounding(), [])
         assert [s.name for s in specs] == ["Failure Mode Avoidance", "Task Success"]

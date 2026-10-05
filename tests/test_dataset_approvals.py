@@ -2,10 +2,11 @@ import uuid
 from unittest.mock import Mock, patch
 
 import pytest
+from fakes.llm import tool_call
 
 from overbae.models import Cell, Dataset, Project
 from overbae.services.datasets import dispatch, land, lifecycle, paths, store
-from overbae.services.datasets.notebook import agent, engines
+from overbae.services.datasets.notebook import agent
 from overbae.services.mcp.contracts.datasets import ChatTurn
 from overbae.services.mcp.resources import dataset_run_job_payload
 from overbae.tasks import datasets as tasks
@@ -26,31 +27,32 @@ def dataset():
     return dataset
 
 
-def propose(dataset, monkeypatch, *, generation=False, error=""):
-    class Engine:
-        name = "test"
-
-        def run(self, dataset, message, tools, pending):
-            if generation:
-                tools.seed_examples({"target_rows": 5, "instruction": "Cover new scenarios"})
-            tools.add_cell(
-                {
-                    "title": "Resolve ambiguity",
-                    "script": "df['expected_output'] = 'unknown'",
-                    "kind": "semantic",
-                }
-            )
-            yield from pending
-            return engines.Outcome(text="Approve or deny the proposed labels.", error=error)
-
-    monkeypatch.setattr(engines, "select", lambda: Engine())
+def propose(dataset, fake_llm, *, generation=False, fail=False):
+    calls = [
+        tool_call(
+            "add_cell",
+            {
+                "title": "Resolve ambiguity",
+                "script": "df['expected_output'] = 'unknown'",
+                "kind": "semantic",
+            },
+        )
+    ]
+    if generation:
+        calls.insert(
+            0,
+            tool_call("seed_examples", {"target_rows": 5, "instruction": "Cover new scenarios"}),
+        )
+    fake_llm.stream_rounds([(calls, ""), ([], "Approve or deny the proposed labels.")])
+    if fail:
+        fake_llm.fail(lambda r: len(fake_llm.streamed()) >= 1, 400, "Provider disconnected")
     list(agent.follow_up(dataset.id, "Prepare these rows and check their quality"))
     dataset.refresh_from_db()
     return dataset.cells.get(state=Cell.State.PROPOSED)
 
 
-def test_approval_activates_exact_preview_and_resumes_once(dataset, monkeypatch):
-    proposal = propose(dataset, monkeypatch)
+def test_approval_activates_exact_preview_and_resumes_once(dataset, monkeypatch, fake_llm):
+    proposal = propose(dataset, fake_llm)
     enqueue = Mock()
     monkeypatch.setattr(tasks.turn, "apply_async", enqueue)
     with patch(
@@ -76,8 +78,8 @@ def test_approval_activates_exact_preview_and_resumes_once(dataset, monkeypatch)
     assert enqueue.call_count == 1
 
 
-def test_denial_preserves_active_rows_and_resumes_with_the_decision(dataset, monkeypatch):
-    proposal = propose(dataset, monkeypatch)
+def test_denial_preserves_active_rows_and_resumes_with_the_decision(dataset, monkeypatch, fake_llm):
+    proposal = propose(dataset, fake_llm)
     active_id = dataset.active_id
     enqueue = Mock()
     monkeypatch.setattr(tasks.turn, "apply_async", enqueue)
@@ -95,8 +97,8 @@ def test_denial_preserves_active_rows_and_resumes_with_the_decision(dataset, mon
 
 
 @pytest.mark.parametrize("generation", [False, True])
-def test_pending_decision_is_waiting_not_generation_failure(dataset, monkeypatch, generation):
-    propose(dataset, monkeypatch, generation=generation)
+def test_pending_decision_is_waiting_not_generation_failure(dataset, fake_llm, generation):
+    propose(dataset, fake_llm, generation=generation)
     latest = dataset.chat[-1]
     assert latest["status"] == "awaiting_approval"
     assert latest["progress"]["stage"] == "awaiting_approval"
@@ -108,14 +110,14 @@ def test_pending_decision_is_waiting_not_generation_failure(dataset, monkeypatch
     assert dataset.state == Dataset.State.IDLE
 
 
-def test_provider_failure_is_not_hidden_by_pending_approval(dataset, monkeypatch):
-    propose(dataset, monkeypatch, error="Provider disconnected")
+def test_provider_failure_is_not_hidden_by_pending_approval(dataset, fake_llm):
+    propose(dataset, fake_llm, fail=True)
     assert dataset.chat[-1]["status"] == "error"
-    assert dataset.chat[-1]["error"] == "Provider disconnected"
+    assert dataset.chat[-1]["error"] == "The model provider refused the request (HTTP 400)."
 
 
-def test_stale_approval_never_activates_or_resumes(dataset, monkeypatch):
-    proposal = propose(dataset, monkeypatch)
+def test_stale_approval_never_activates_or_resumes(dataset, monkeypatch, fake_llm):
+    proposal = propose(dataset, fake_llm)
     enqueue = Mock()
     monkeypatch.setattr(tasks.turn, "apply_async", enqueue)
     Cell.objects.filter(pk=dataset.source.id).update(fingerprint="changed")
@@ -127,8 +129,8 @@ def test_stale_approval_never_activates_or_resumes(dataset, monkeypatch):
     enqueue.assert_not_called()
 
 
-def test_changed_preview_after_approval_fails_without_resuming(dataset, monkeypatch):
-    proposal = propose(dataset, monkeypatch)
+def test_changed_preview_after_approval_fails_without_resuming(dataset, monkeypatch, fake_llm):
+    proposal = propose(dataset, fake_llm)
     enqueue = Mock()
     monkeypatch.setattr(tasks.turn, "apply_async", enqueue)
     monkeypatch.setattr(tasks.run, "apply_async", Mock())
@@ -172,8 +174,8 @@ def test_followup_repairs_advance_a_pinned_active_version(dataset):
     assert dataset.active_id != source
 
 
-def test_all_decisions_arrive_before_one_continuation(dataset, monkeypatch):
-    first = propose(dataset, monkeypatch)
+def test_all_decisions_arrive_before_one_continuation(dataset, monkeypatch, fake_llm):
+    first = propose(dataset, fake_llm)
     tools = agent.Tools(dataset.id, None, lambda _: None)
     second = dataset.cells.get(
         pk=tools.add_cell(
@@ -200,42 +202,43 @@ def test_all_decisions_arrive_before_one_continuation(dataset, monkeypatch):
 
 
 def test_resumed_agent_reviews_active_version_and_redelivery_does_not_run_again(
-    dataset, monkeypatch
+    dataset, monkeypatch, fake_llm
 ):
-    proposal = propose(dataset, monkeypatch)
+    proposal = propose(dataset, fake_llm)
     enqueue = Mock()
     monkeypatch.setattr(tasks.turn, "apply_async", enqueue)
     dispatch.run_dataset(dataset, None, proposal=proposal)
 
-    class ReviewingEngine:
-        name = "test"
-
-        def run(self, dataset, message, tools, pending):
-            assert dataset.active_id == proposal.id
-            result = tools.record_quality_review(
-                {
-                    "script": "df = pd.DataFrame({name: [True] * len(df) for name in ('task_alignment', 'input_evidence', 'answer_support', 'output_schema')})",
-                    "checks": [
+    fake_llm.stream_rounds(
+        [
+            (
+                [
+                    tool_call(
+                        "record_quality_review",
                         {
-                            "name": name,
-                            "result": "pass",
-                            "rows_checked": 2,
-                            "evidence": "Checked both rows",
-                        }
-                        for name in (
-                            "task_alignment",
-                            "input_evidence",
-                            "answer_support",
-                            "output_schema",
-                        )
-                    ],
-                }
-            )
-            assert result["ok"]
-            yield from pending
-            return engines.Outcome(text="Quality checks recorded.")
-
-    monkeypatch.setattr(engines, "select", lambda: ReviewingEngine())
+                            "script": "df = pd.DataFrame({name: [True] * len(df) for name in ('task_alignment', 'input_evidence', 'answer_support', 'output_schema')})",
+                            "checks": [
+                                {
+                                    "name": name,
+                                    "result": "pass",
+                                    "rows_checked": 2,
+                                    "evidence": "Checked both rows",
+                                }
+                                for name in (
+                                    "task_alignment",
+                                    "input_evidence",
+                                    "answer_support",
+                                    "output_schema",
+                                )
+                            ],
+                        },
+                    )
+                ],
+                "",
+            ),
+            ([], "Quality checks recorded."),
+        ]
+    )
     queued = enqueue.call_args.kwargs
     result = tasks.turn.apply(kwargs=queued["kwargs"], task_id=queued["task_id"])
     assert result.result == {"status": "ok"}

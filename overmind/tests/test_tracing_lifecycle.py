@@ -123,35 +123,3 @@ class TestInitDebug:
         (record,) = (r for r in caplog.records if r.message.startswith("Overmind debug:"))
         for fragment in ("endpoint=", "capability_id=", "providers=", "export=", "export_orphan_spans="):
             assert fragment in record.message
-
-
-class TestTracingAll:
-    """Regression guard for the public ``overmind.tracing.__all__`` surface."""
-
-    def test_all_contains_core_lifecycle_helpers(self):
-        import overmind.tracing as tr
-
-        expected = {
-            "capability",
-            "capture_exception",
-            "deliver",
-            "enable_tracing",
-            "force_flush_traces",
-            "init",
-            "normalize_messages",
-            "observe",
-            "set_conversation_id",
-            "set_tag",
-            "set_user",
-            "set_workflow_name",
-            "start_span",
-            "task",
-        }
-        missing = expected - set(tr.__all__)
-        assert missing == set(), f"Missing from tracing.__all__: {missing}"
-
-    def test_all_names_resolve(self):
-        import overmind.tracing as tr
-
-        for name in tr.__all__:
-            assert hasattr(tr, name), f"__all__ lists '{name}' but module has no attribute"

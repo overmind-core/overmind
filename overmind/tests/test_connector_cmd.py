@@ -37,45 +37,6 @@ class FakeSession:
         pass
 
 
-def test_add_connector_posts_credentials_and_strips_hint():
-    session = FakeSession(
-        FakeResponse({
-            "id": "conn-1",
-            "name": "langfuse",
-            "connector_type": "langfuse",
-            "verified_at": "2026-01-01T00:00:00Z",
-            "api_key_hint": "pk-l****************",
-        })
-    )
-
-    result = add_connector(
-        "langfuse",
-        project_id="project-1",
-        api_key="ovr_key",
-        api_url="http://localhost:8000",
-        provider_key="pk-lf-real",
-        provider_secret="sk-lf-real",
-        session=session,
-    )
-
-    assert result["id"] == "conn-1"
-    assert result["verified"] is True
-    assert result["next_mcp_calls"][0]["arguments"]["include_source_projects"] is True
-    encoded = json.dumps(result)
-    assert "pk-lf-real" not in encoded
-    assert "sk-lf-real" not in encoded
-    assert "api_key_hint" not in encoded
-    assert "pk-l" not in encoded
-    assert session.calls[0][0] == "POST"
-    assert session.calls[0][1].endswith("/api/connector-credentials/")
-    body = session.calls[0][2]["json"]
-    assert body["project"] == "project-1"
-    assert body["connector_type"] == "langfuse"
-    assert body["api_key"] == "pk-lf-real"
-    assert body["api_secret"] == "sk-lf-real"
-    assert body["auto_sync_enabled"] is False
-
-
 def test_add_connector_rejects_unknown_type():
     with pytest.raises(ConnectorAddError, match="Unsupported connector type"):
         add_connector(

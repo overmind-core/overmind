@@ -1,10 +1,9 @@
 """Observation names resolve to Capabilities through recorded names and cards."""
 
-import uuid
-
 import pytest
+from factories import make_project
 
-from overbae.models import Capability, Project
+from overbae.models import Capability
 from overbae.services.connectors.capability_resolution import (
     drop_nested_mapping_names,
     propose_boundary_assignments,
@@ -15,10 +14,6 @@ from overbae.services.connectors.capability_resolution import (
 )
 
 pytestmark = pytest.mark.django_db
-
-
-def _project() -> Project:
-    return Project.objects.create(name="P", slug=f"p-{uuid.uuid4().hex[:8]}")
 
 
 def _capability(project, name, *, path="", fn="", meta=None) -> Capability:
@@ -33,7 +28,7 @@ def _capability(project, name, *, path="", fn="", meta=None) -> Capability:
 
 
 def test_entrypoint_function_matches_across_separator_style():
-    project = _project()
+    project = make_project()
     capability = _capability(project, "Triage", path="app/triage.py", fn="triage_invoices")
 
     got = propose_capability_assignments(project, ["triage-invoices"])
@@ -43,7 +38,7 @@ def test_entrypoint_function_matches_across_separator_style():
 
 
 def test_scanned_modes_and_tools_are_matchable():
-    project = _project()
+    project = make_project()
     capability = _capability(
         project,
         "Mailbox",
@@ -57,21 +52,21 @@ def test_scanned_modes_and_tools_are_matchable():
 
 
 def test_unknown_name_yields_no_proposal():
-    project = _project()
+    project = make_project()
     _capability(project, "Triage", path="app/triage.py", fn="triage_invoices")
 
     assert propose_capability_assignments(project, ["something-else"]) == {}
 
 
 def test_no_capabilities_or_no_keys_is_not_an_error():
-    project = _project()
+    project = make_project()
     assert propose_capability_assignments(project, ["anything"]) == {}
     _capability(project, "Triage")
     assert propose_capability_assignments(project, []) == {}
 
 
 def test_boundary_proposals_ignore_tool_spec():
-    project = _project()
+    project = make_project()
     capability = _capability(
         project,
         "Adjudicator",
@@ -110,7 +105,7 @@ def test_drop_nested_mapping_names_keeps_the_parent():
 
 
 def test_suggest_parent_boundaries_prefers_entrypoint_over_wrapper():
-    project = _project()
+    project = make_project()
     capability = _capability(
         project,
         "Triage Agent",
@@ -151,7 +146,7 @@ def test_suggest_parent_boundaries_prefers_entrypoint_over_wrapper():
 
 
 def test_suggest_parent_boundaries_lists_nested_matches_as_alternatives():
-    project = _project()
+    project = make_project()
     capability = _capability(
         project,
         "Invoice triage",

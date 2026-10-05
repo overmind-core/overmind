@@ -29,23 +29,17 @@ class TestPresets:
 
 
 @pytest.mark.django_db
-def test_judge_cache_serves_second_call(monkeypatch):
-    calls = []
-
-    def fake_call_llm(prompt, **kw):
-        calls.append(prompt)
-        return (
-            '{"items":[],"score":0.7,"reasoning":"ok","label":"","evidence":[]}',
-            {"response_cost": 0.01, "prompt_tokens": 5, "completion_tokens": 3},
-        )
-
-    monkeypatch.setattr(judging, "call_llm", fake_call_llm)
+def test_judge_cache_serves_second_call(fake_llm):
+    fake_llm.on(
+        lambda r: r.schema_name == "JudgeResult",
+        {"content": '{"items":[],"score":0.7,"reasoning":"ok"}', "usage": {"cost": 0.01}},
+    )
     judge = judging.ResolvedJudge(model_name="gpt-5-mini", model_spec=None, family="openai")
 
     o1 = judging.invoke_judge("grade this", response_format=JudgeResult, judge=judge)
     o2 = judging.invoke_judge("grade this", response_format=JudgeResult, judge=judge)
 
-    assert len(calls) == 1, "identical second call must hit the cache, not the LLM"
+    assert len(fake_llm.requests) == 1, "identical second call must hit the cache, not the LLM"
     assert o1.cached is False
     assert o2.cached is True
     assert o2.stats["response_cost"] == 0.0
@@ -53,19 +47,8 @@ def test_judge_cache_serves_second_call(monkeypatch):
 
 
 @pytest.mark.django_db
-def test_judge_cache_key_varies_by_prompt(monkeypatch):
-    calls = []
-
-    def fake_call_llm(prompt, **kw):
-        calls.append(prompt)
-        return (
-            '{"items":[],"score":0.5,"reasoning":"","label":"","evidence":[]}',
-            {"response_cost": 0.01},
-        )
-
-    monkeypatch.setattr(judging, "call_llm", fake_call_llm)
+def test_judge_cache_key_varies_by_prompt(fake_llm):
     judge = judging.ResolvedJudge(model_name="gpt-5-mini", model_spec=None, family="openai")
-
     judging.invoke_judge("prompt A", response_format=JudgeResult, judge=judge)
     judging.invoke_judge("prompt B", response_format=JudgeResult, judge=judge)
-    assert len(calls) == 2, "different prompts must not share a cache entry"
+    assert len(fake_llm.requests) == 2, "different prompts must not share a cache entry"

@@ -2,11 +2,10 @@
 
 from __future__ import annotations
 
-import uuid
-
 import pytest
+from factories import make_project, make_user
 
-from overbae.models import Dataset, Project, User
+from overbae.models import Dataset
 from overbae.services.datasets import dispatch, land, lifecycle
 from overbae.services.datasets.lifecycle import DatasetError
 from overbae.tasks.datasets import land as land_task
@@ -16,18 +15,6 @@ from overbae.tasks.datasets import turn as turn_task
 pytestmark = pytest.mark.django_db(transaction=True)
 
 ROWS = [{"question": "q1", "answer": "a1"}]
-
-
-def _project() -> Project:
-    return Project.objects.create(name="P", slug=f"p-{uuid.uuid4().hex[:8]}")
-
-
-def _user() -> User:
-    return User.objects.create_user(
-        email=f"u-{uuid.uuid4().hex[:6]}@test.com",
-        password="pw",
-        clerk_user_id=f"clerk_{uuid.uuid4().hex}",
-    )
 
 
 def _dataset(project, *, state=Dataset.State.IDLE, name="ds") -> Dataset:
@@ -41,7 +28,7 @@ def _queued(monkeypatch, task) -> list:
 
 
 def test_create_dataset_with_traces_lands_and_queues(monkeypatch):
-    project, user = _project(), _user()
+    project, user = make_project(), make_user()
     queued = _queued(monkeypatch, land_task)
     source = {"traces": {"trace_ids": ["abc"]}}
     dataset = dispatch.create_dataset(project=project, user=user, name="from traces", source=source)
@@ -55,7 +42,7 @@ def test_create_dataset_with_traces_lands_and_queues(monkeypatch):
 
 
 def test_create_dataset_with_two_source_keys_raises():
-    project, user = _project(), _user()
+    project, user = make_project(), make_user()
     with pytest.raises(DatasetError):
         dispatch.create_dataset(
             project=project,
@@ -66,7 +53,7 @@ def test_create_dataset_with_two_source_keys_raises():
 
 
 def test_message_agent_on_idle_becomes_diagnosing_and_queues_one_turn(monkeypatch):
-    project, user = _project(), _user()
+    project, user = make_project(), make_user()
     dataset = _dataset(project)
     queued = _queued(monkeypatch, turn_task)
     dispatch.message_agent(dataset, user, "hi")
@@ -82,7 +69,7 @@ def test_message_agent_on_idle_becomes_diagnosing_and_queues_one_turn(monkeypatc
     [Dataset.State.RUNNING, Dataset.State.LANDING, Dataset.State.DIAGNOSING],
 )
 def test_message_agent_on_busy_raises_and_does_not_queue(monkeypatch, state):
-    project, user = _project(), _user()
+    project, user = make_project(), make_user()
     dataset = _dataset(project, state=state)
     queued = _queued(monkeypatch, turn_task)
     with pytest.raises(DatasetError) as exc:
@@ -92,7 +79,7 @@ def test_message_agent_on_busy_raises_and_does_not_queue(monkeypatch, state):
 
 
 def test_message_agent_second_call_raises_atomically(monkeypatch):
-    project, user = _project(), _user()
+    project, user = make_project(), make_user()
     dataset = _dataset(project)
     queued = _queued(monkeypatch, turn_task)
     dispatch.message_agent(dataset, user, "one")
@@ -107,7 +94,7 @@ def test_message_agent_second_call_raises_atomically(monkeypatch):
     [Dataset.State.LANDING, Dataset.State.DIAGNOSING, Dataset.State.RUNNING],
 )
 def test_run_dataset_on_busy_raises(monkeypatch, state):
-    project, user = _project(), _user()
+    project, user = make_project(), make_user()
     dataset = _dataset(project, state=state)
     queued = _queued(monkeypatch, run_task)
     with pytest.raises(DatasetError) as exc:
@@ -118,7 +105,7 @@ def test_run_dataset_on_busy_raises(monkeypatch, state):
 
 @pytest.mark.parametrize("state", [Dataset.State.IDLE, Dataset.State.ERROR])
 def test_run_dataset_on_idle_or_error_queues_and_is_running(monkeypatch, state):
-    project, user = _project(), _user()
+    project, user = make_project(), make_user()
     dataset = _dataset(project, state=state)
     queued = _queued(monkeypatch, run_task)
     dispatch.run_dataset(dataset, user)
@@ -129,7 +116,7 @@ def test_run_dataset_on_idle_or_error_queues_and_is_running(monkeypatch, state):
 
 
 def test_run_dataset_refuses_when_db_busy_but_in_memory_idle(monkeypatch):
-    project, user = _project(), _user()
+    project, user = make_project(), make_user()
     dataset = _dataset(project)
     land.land_rows(dataset, ROWS)
     proposal = lifecycle.add_cell(dataset, title="Keep", script="df = df\n", proposed=True)
@@ -145,7 +132,7 @@ def test_run_dataset_refuses_when_db_busy_but_in_memory_idle(monkeypatch):
 
 
 def test_run_dataset_accepts_only_a_proposal_of_that_dataset(monkeypatch):
-    project, user = _project(), _user()
+    project, user = make_project(), make_user()
     dataset = Dataset.objects.create(project=project, name="ds")
     land.land_rows(dataset, ROWS)
     dataset.refresh_from_db()

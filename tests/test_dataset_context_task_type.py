@@ -11,7 +11,7 @@ from conftest import frozen_dataset
 from overbae.models import Capability, Dataset, DatasetContext, Project
 from overbae.services.benchmarks.taxonomy import TaskType
 from overbae.services.datasets import rows as row_store
-from overbae.services.eval import context_extractor, profiler, semantic_recommender
+from overbae.services.eval import context_extractor, profiler
 from overbae.services.recommendation import get_recommendation
 
 pytestmark = pytest.mark.django_db
@@ -23,22 +23,16 @@ _LONG_PARAGRAPH = (
 
 
 @pytest.fixture(autouse=True)
-def _no_llm_calls(monkeypatch):
-    """Auto-rubric generation swallows call_llm failures and degrades to "", so
-    blocking the provider here leaves the task_type path untouched."""
-
-    def _blocked(*args, **kwargs):
-        raise RuntimeError("no network in tests")
-
-    monkeypatch.setattr(context_extractor, "call_llm", _blocked)
+def _rubric_authoring_unavailable(fake_llm):
+    fake_llm.fail(lambda r: r.schema_name != "_SemanticAnalysis", 400, "no network in tests")
 
 
-def _stub_semantic(monkeypatch, payload: dict[str, Any]) -> None:
-    monkeypatch.setattr(
-        semantic_recommender,
-        "analyze_dataset_semantically",
-        lambda *args, **kwargs: payload,
-    )
+def _semantic(fake_llm, payload: dict[str, Any]) -> None:
+    if not payload.get("available"):
+        fake_llm.fail(lambda r: True, 400, payload.get("error", "provider down"))
+        return
+    fields = {k: payload[k] for k in ("domain", "task_description", "task_type")}
+    fake_llm.on_json(lambda r: r.schema_name == "_SemanticAnalysis", lambda r: fields)
 
 
 def _available(task_type: str) -> dict[str, Any]:
@@ -103,8 +97,8 @@ def expanding_dataset() -> Dataset:
     )
 
 
-def test_valid_semantic_task_type_is_stored_as_semantic(monkeypatch, label_dataset):
-    _stub_semantic(monkeypatch, _available(TaskType.SUMMARIZATION.value))
+def test_valid_semantic_task_type_is_stored_as_semantic(fake_llm, label_dataset):
+    _semantic(fake_llm, _available(TaskType.SUMMARIZATION.value))
 
     ctx = context_extractor.extract_and_save(label_dataset)
 
@@ -112,8 +106,8 @@ def test_valid_semantic_task_type_is_stored_as_semantic(monkeypatch, label_datas
     assert ctx.task_type_source == "semantic"
 
 
-def test_semantic_task_type_is_normalized_before_matching(monkeypatch, label_dataset):
-    _stub_semantic(monkeypatch, _available("  Summarization "))
+def test_semantic_task_type_is_normalized_before_matching(fake_llm, label_dataset):
+    _semantic(fake_llm, _available("  Summarization "))
 
     ctx = context_extractor.extract_and_save(label_dataset)
 
@@ -122,8 +116,8 @@ def test_semantic_task_type_is_normalized_before_matching(monkeypatch, label_dat
 
 
 @pytest.mark.parametrize("candidate", ["chat", "instruction_following", "", "  ", "None"])
-def test_invalid_semantic_task_type_falls_back_to_heuristic(monkeypatch, label_dataset, candidate):
-    _stub_semantic(monkeypatch, _available(candidate))
+def test_invalid_semantic_task_type_falls_back_to_heuristic(fake_llm, label_dataset, candidate):
+    _semantic(fake_llm, _available(candidate))
 
     ctx = context_extractor.extract_and_save(label_dataset)
 
@@ -131,18 +125,18 @@ def test_invalid_semantic_task_type_falls_back_to_heuristic(monkeypatch, label_d
     assert ctx.task_type_source == "heuristic"
 
 
-def test_unavailable_semantic_analysis_falls_back_to_heuristic(monkeypatch, label_dataset):
-    _stub_semantic(monkeypatch, {"available": False, "error": "provider down"})
+def test_unavailable_semantic_analysis_falls_back_to_heuristic(fake_llm, label_dataset):
+    _semantic(fake_llm, {"available": False, "error": "provider down"})
 
     ctx = context_extractor.extract_and_save(label_dataset)
 
     assert ctx.task_type == TaskType.CLASSIFICATION.value
     assert ctx.task_type_source == "heuristic"
-    assert ctx.notes == "provider down"
+    assert "provider down" in ctx.notes
 
 
-def test_heuristic_task_type_follows_the_dataset_profile(monkeypatch, label_dataset):
-    _stub_semantic(monkeypatch, {"available": False})
+def test_heuristic_task_type_follows_the_dataset_profile(fake_llm, label_dataset):
+    _semantic(fake_llm, {"available": False})
     label_dataset = _dataset_of(
         [("summarize this report", '{"queue": "billing", "priority": 2}')] * 4
     )
@@ -154,8 +148,8 @@ def test_heuristic_task_type_follows_the_dataset_profile(monkeypatch, label_data
     assert ctx.task_type_source == "heuristic"
 
 
-def test_condensing_free_text_gives_summarization_without_semantic(monkeypatch, condensing_dataset):
-    _stub_semantic(monkeypatch, {"available": False})
+def test_condensing_free_text_gives_summarization_without_semantic(fake_llm, condensing_dataset):
+    _semantic(fake_llm, {"available": False})
 
     ctx = context_extractor.extract_and_save(condensing_dataset)
 
@@ -164,10 +158,8 @@ def test_condensing_free_text_gives_summarization_without_semantic(monkeypatch, 
     assert ctx.task_type_source == "heuristic"
 
 
-def test_expanding_free_text_gives_creative_writing_without_semantic(
-    monkeypatch, expanding_dataset
-):
-    _stub_semantic(monkeypatch, {"available": False})
+def test_expanding_free_text_gives_creative_writing_without_semantic(fake_llm, expanding_dataset):
+    _semantic(fake_llm, {"available": False})
 
     ctx = context_extractor.extract_and_save(expanding_dataset)
 
@@ -176,8 +168,8 @@ def test_expanding_free_text_gives_creative_writing_without_semantic(
     assert ctx.task_type_source == "heuristic"
 
 
-def test_cached_stats_are_used_without_recomputing(monkeypatch, condensing_dataset):
-    _stub_semantic(monkeypatch, {"available": False})
+def test_cached_stats_are_used_without_recomputing(fake_llm, condensing_dataset):
+    _semantic(fake_llm, {"available": False})
     version = condensing_dataset.active_cell
     version.stats = {"avg_input_chars": 100, "avg_output_chars": 900}
     version.save(update_fields=["stats"])
@@ -187,8 +179,8 @@ def test_cached_stats_are_used_without_recomputing(monkeypatch, condensing_datas
     assert ctx.task_type == TaskType.CREATIVE_WRITING.value
 
 
-def test_unavailable_stats_still_give_a_legal_task_type(monkeypatch, condensing_dataset):
-    _stub_semantic(monkeypatch, {"available": False})
+def test_unavailable_stats_still_give_a_legal_task_type(monkeypatch, condensing_dataset, fake_llm):
+    _semantic(fake_llm, {"available": False})
     monkeypatch.setattr(row_store, "dataset_stats", _boom)
 
     ctx = context_extractor.extract_and_save(condensing_dataset)
@@ -197,8 +189,8 @@ def test_unavailable_stats_still_give_a_legal_task_type(monkeypatch, condensing_
     assert ctx.task_type_source == "heuristic"
 
 
-def test_task_type_is_always_a_legal_taxonomy_value(monkeypatch, label_dataset):
-    _stub_semantic(monkeypatch, {"available": False})
+def test_task_type_is_always_a_legal_taxonomy_value(fake_llm, label_dataset):
+    _semantic(fake_llm, {"available": False})
 
     ctx = context_extractor.extract_and_save(label_dataset)
 

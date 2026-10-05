@@ -6,43 +6,23 @@ import uuid
 from datetime import timedelta
 
 import pytest
+from conftest import frozen_dataset
+from fakes.llm import tool_call
+from mcp_fixtures import mcp_context
 
 from overbae.models import (
-    APIToken,
     Capability,
     Cell,
     Dataset,
     Project,
-    ProjectMembership,
     Span,
-    User,
 )
 from overbae.services.datasets import land, paths, store
-from overbae.services.datasets.notebook import agent, engines
-from overbae.services.mcp import tools_datasets
+from overbae.services.datasets.notebook import agent
 from overbae.services.mcp.catalog import CATALOG
 from overbae.services.mcp.context import MCPContext
 
 pytestmark = pytest.mark.django_db(transaction=True)
-
-
-def _context(*, permission: str | list[str] = ("read", "write")) -> MCPContext:
-    user = User.objects.create_user(
-        email=f"mcp-dataset-{uuid.uuid4().hex[:8]}@test.com",
-        password="pw",
-        clerk_user_id=f"clerk_{uuid.uuid4().hex}",
-    )
-    project = Project.objects.create(name="Datasets", slug=f"datasets-{uuid.uuid4().hex[:8]}")
-    ProjectMembership.objects.create(user=user, project=project)
-    permissions = [permission] if isinstance(permission, str) else list(permission)
-    token = APIToken(
-        scope={
-            "scope": "project",
-            "resourceIds": [str(project.id)],
-            "permission": permissions,
-        }
-    )
-    return MCPContext(user=user, token=token, project=project)
 
 
 def _call(name: str, arguments: dict, context: MCPContext):
@@ -76,7 +56,7 @@ def _ran_cell(dataset: Dataset, *, position: int = 0, title: str = "Source") -> 
 
 
 def test_approving_a_later_proposal_preserves_earlier_proposals_and_saved_data():
-    context = _context()
+    context = mcp_context(("read", "write"))
     dataset = _dataset(context)
     land.land_rows(
         dataset,
@@ -105,7 +85,7 @@ def test_approving_a_later_proposal_preserves_earlier_proposals_and_saved_data()
 
 
 def test_list_datasets_is_project_scoped_filtered_paginated_and_uses_uuids():
-    context = _context()
+    context = mcp_context(("read", "write"))
     capability = Capability.objects.create(project=context.project, name="Support", slug="support")
     first = _dataset(context, "Alpha", capability=capability)
     _dataset(context, "Beta", intent=Dataset.Intent.TRAIN)
@@ -131,7 +111,7 @@ def test_list_datasets_is_project_scoped_filtered_paginated_and_uses_uuids():
 
 
 def test_inspection_and_job_report_saved_generation_progress():
-    context = _context()
+    context = mcp_context(("read", "write"))
     dataset = _dataset(
         context,
         state="diagnosing",
@@ -162,7 +142,7 @@ def test_inspection_and_job_report_saved_generation_progress():
 
 
 def test_inspection_exposes_the_workshops_source_families_and_consumer_requirements():
-    context = _context()
+    context = mcp_context(("read", "write"))
     dataset = _dataset(context)
     land.land_rows(
         dataset,
@@ -187,24 +167,29 @@ def test_inspection_exposes_the_workshops_source_families_and_consumer_requireme
     assert "not the application" in preparation["consumers"]["model_evaluation"]["execution"]
 
 
-def test_requested_generation_is_active_and_queryable_without_an_mcp_approval_step(monkeypatch):
-    context = _context()
+def test_requested_generation_is_active_and_queryable_without_an_mcp_approval_step(fake_llm):
+    context = mcp_context(("read", "write"))
     dataset = _dataset(context)
     land.land_rows(dataset, [{"input": "seed", "expected_output": "yes"}])
-
-    class GeneratingEngine:
-        name = "test"
-
-        def run(self, dataset, message, tools, pending):
-            tools.respond("Adding a contrasting example.")
-            tools.seed_examples({"target_rows": 2, "instruction": "Cover variants"})
-            tools.add_synthetic_rows(
-                {"examples": [{"seed_row": 0, "row": {"input": "new", "expected_output": "no"}}]}
-            )
-            yield from pending
-            return engines.Outcome(text="One example added.")
-
-    monkeypatch.setattr(engines, "select", lambda: GeneratingEngine())
+    fake_llm.stream_rounds(
+        [
+            (
+                [
+                    tool_call("seed_examples", {"target_rows": 2, "instruction": "Cover variants"}),
+                    tool_call(
+                        "add_synthetic_rows",
+                        {
+                            "examples": [
+                                {"seed_row": 0, "row": {"input": "new", "expected_output": "no"}}
+                            ]
+                        },
+                    ),
+                ],
+                "Adding a contrasting example.",
+            ),
+            ([], "One example added."),
+        ]
+    )
     list(agent.follow_up(dataset.id, "Generate and add one example"))
     result = _call("inspect_dataset", {"dataset": str(dataset.id)}, context)
     assert not result.isError
@@ -221,8 +206,8 @@ def test_requested_generation_is_active_and_queryable_without_an_mcp_approval_st
     assert not queried.isError and queried.structuredContent["rows"] == [{"n": 2}]
 
 
-def test_inspect_is_bounded_ordered_and_refuses_an_ambiguous_name(monkeypatch):
-    context = _context()
+def test_inspect_is_bounded_ordered_and_refuses_an_ambiguous_name():
+    context = mcp_context(("read", "write"))
     dataset = _dataset(
         context,
         "Named dataset",
@@ -242,8 +227,6 @@ def test_inspect_is_bounded_ordered_and_refuses_an_ambiguous_name(monkeypatch):
         state=Cell.State.PROPOSED,
         script="return df",
     )
-    monkeypatch.setattr("pathlib.Path.exists", lambda _path: False)
-
     result = _call("inspect_dataset", {"dataset": str(dataset.id), "chat_limit": 30}, context)
     by_name = _call("inspect_dataset", {"dataset": dataset.name}, context)
 
@@ -282,7 +265,7 @@ def test_inspect_is_bounded_ordered_and_refuses_an_ambiguous_name(monkeypatch):
     ],
 )
 def test_inspect_next_action_follows_dataset_state(state: str, tool: str):
-    context = _context()
+    context = mcp_context(("read", "write"))
     dataset = _dataset(context, state=state, error="/private/tmp/secret.parquet")
 
     result = _call("inspect_dataset", {"dataset": str(dataset.id)}, context)
@@ -291,19 +274,14 @@ def test_inspect_next_action_follows_dataset_state(state: str, tool: str):
     assert "/private/tmp" not in json.dumps(result.structuredContent)
 
 
-def test_query_is_project_and_cell_scoped_read_only_and_capped(monkeypatch):
-    context = _context()
-    dataset = _dataset(context)
-    cell = _ran_cell(dataset)
+def test_query_is_project_and_cell_scoped_read_only_and_capped():
+    context = mcp_context(("read", "write"))
+    dataset = frozen_dataset(
+        context.project, [{"input": str(n), "expected_output": "x"} for n in range(150)]
+    )
+    cell = dataset.active_cell
     foreign_dataset = _dataset(context, "Foreign dataset")
     foreign_cell = _ran_cell(foreign_dataset)
-    calls = []
-
-    def query(sql, *, limit, **tables):
-        calls.append((sql, limit, tables))
-        return {"columns": ["input"], "rows": [{"input": str(n)} for n in range(limit)]}
-
-    monkeypatch.setattr(tools_datasets.store, "query", query)
     ok = _call(
         "query_dataset",
         {"dataset": str(dataset.id), "cell": str(cell.id), "sql": "select input from t"},
@@ -324,7 +302,6 @@ def test_query_is_project_and_cell_scoped_read_only_and_capped(monkeypatch):
     assert len(ok.structuredContent["rows"]) == 100
     assert ok.structuredContent["columns"] == ["input"]
     assert ok.structuredContent["truncated"] is True
-    assert calls[0][1] == 101
     assert foreign.structuredContent["error"]["code"] == "cell_not_found"
     assert write.structuredContent["error"]["code"] == "query_invalid"
 
@@ -344,7 +321,7 @@ def _root_span(project, trace_id: str) -> Span:
 
 
 def test_trace_creation_refuses_unknown_filters_mixed_sources_and_empty_selections():
-    context = _context()
+    context = mcp_context(("read", "write"))
     unknown = _call(
         "create_dataset_from_traces",
         {"name": "Trace set", "filters": {"capability_name": "x"}},
@@ -370,7 +347,7 @@ def test_trace_creation_refuses_unknown_filters_mixed_sources_and_empty_selectio
 @pytest.mark.parametrize("split", [False, True])
 @pytest.mark.parametrize("choice", ["automatic", "none", "selected"])
 def test_trace_creation_respects_the_capability_choice(split, choice):
-    context = _context()
+    context = mcp_context(("read", "write"))
     matched = Capability.objects.create(project=context.project, name="Matched", slug="matched")
     selected = Capability.objects.create(project=context.project, name="Selected", slug="selected")
     trace_ids = [uuid.uuid4().hex for _ in range(4)]
@@ -396,23 +373,10 @@ def test_trace_creation_respects_the_capability_choice(split, choice):
         assert dataset.capability_rank[0]["capability_id"] == str(matched.id)
 
 
-def test_trace_creation_returns_a_dataset_run_receipt(monkeypatch):
-    context = _context()
+def test_trace_creation_returns_a_dataset_run_receipt():
+    context = mcp_context(("read", "write"))
     Capability.objects.create(project=context.project, name="Support", slug="support")
     _root_span(context.project, "b" * 32)
-    sources = []
-
-    def create_dataset(**kwargs):
-        sources.append(kwargs["source"])
-        return _dataset(
-            context,
-            kwargs["name"],
-            capability=kwargs.get("capability"),
-            intent=kwargs.get("intent") or Dataset.Intent.PENDING,
-            state=Dataset.State.LANDING,
-        )
-
-    monkeypatch.setattr(tools_datasets.dispatch, "create_dataset", create_dataset)
 
     traces = _call(
         "create_dataset_from_traces",
@@ -430,11 +394,13 @@ def test_trace_creation_returns_a_dataset_run_receipt(monkeypatch):
             link["uri"] for link in body["resource_links"]
         }
         assert body["traces"] == 1
-    assert sources == [{"traces": {"trace_ids": ["b" * 32]}}]
+    dataset = Dataset.objects.get(pk=traces.structuredContent["dataset"]["id"])
+    assert dataset.state == Dataset.State.IDLE, dataset.error
+    assert dataset.active_cell.rows == 1
 
 
 def test_message_agent_refuses_busy_then_queues_one_turn(monkeypatch):
-    context = _context()
+    context = mcp_context(("read", "write"))
     dataset = _dataset(context, state=Dataset.State.LANDING)
     queued = []
     monkeypatch.setattr(
@@ -462,7 +428,7 @@ def test_message_agent_refuses_busy_then_queues_one_turn(monkeypatch):
 
 
 def test_run_accepts_only_a_proposal_from_that_dataset(monkeypatch):
-    context = _context()
+    context = mcp_context(("read", "write"))
     dataset = _dataset(context)
     land.land_rows(dataset, [{"input": "question", "expected_output": "answer"}])
     dataset.refresh_from_db()
@@ -510,7 +476,7 @@ def test_run_accepts_only_a_proposal_from_that_dataset(monkeypatch):
 
 
 def test_dataset_tool_text_is_complete_structured_json():
-    context = _context()
+    context = mcp_context(("read", "write"))
     _dataset(context)
 
     result = _call("list_datasets", {}, context)
@@ -519,7 +485,7 @@ def test_dataset_tool_text_is_complete_structured_json():
 
 
 def test_list_and_inspect_map_legacy_ft_intent():
-    context = _context()
+    context = mcp_context(("read", "write"))
     dataset = _dataset(context, name="Old train", intent="ft")
 
     listed = _call("list_datasets", {}, context)
@@ -560,7 +526,7 @@ def _llm_span(project, capability, text="hello"):
 
 
 def test_llm_call_creation_refuses_an_empty_selection():
-    context = _context()
+    context = mcp_context(("read", "write"))
     capability = Capability.objects.create(project=context.project, name="Support", slug="support")
     result = _call(
         "create_dataset_from_llm_calls",
@@ -579,7 +545,7 @@ def test_llm_call_creation_refuses_an_empty_selection():
 def test_llm_call_creation_lands_one_row_per_call():
     from django.utils import timezone
 
-    context = _context()
+    context = mcp_context(("read", "write"))
     capability = Capability.objects.create(project=context.project, name="Support", slug="support")
     _llm_span(context.project, capability, text="recorded")
     result = _call(

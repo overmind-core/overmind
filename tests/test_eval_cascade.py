@@ -50,12 +50,10 @@ def _unit_with_steps(tools, structured_extra=None):
     )
 
 
-def _patch_judge(monkeypatch, fake):
-    monkeypatch.setattr(cascade.judging, "invoke_judge", fake)
-    monkeypatch.setattr(
-        cascade.judging,
-        "resolve_judge",
-        lambda *a, **k: judging.ResolvedJudge(None, None, "openai"),
+def _patch_judge(fake_llm, fake):
+    fake_llm.on(
+        lambda r: r.schema_name == "JudgeResult",
+        lambda r: fake(r.messages[-1]["content"]).parsed.model_dump_json(),
     )
 
 
@@ -70,15 +68,15 @@ def _outcome(items=None, score=1.0):
     )
 
 
-def test_batched_single_call_for_many_steps(monkeypatch):
+def test_batched_single_call_for_many_steps(fake_llm):
     calls = []
 
-    def fake(prompt, **kw):
+    def fake(prompt):
         calls.append(prompt)
         ids = re.findall(r"\[(step_\d+)\]", prompt)
         return _outcome(items=[(sid, 0.9) for sid in ids])
 
-    _patch_judge(monkeypatch, fake)
+    _patch_judge(fake_llm, fake)
     unit = _unit_with_steps([f"t{i}" for i in range(8)])
     ev = _evaluator(config={**_evaluator().config, "step_window": 20})
     out = cascade.run_cascade(
@@ -88,15 +86,15 @@ def test_batched_single_call_for_many_steps(monkeypatch):
     assert len(out.drafts[0].sub_scores) == 8
 
 
-def test_windowing_when_many_steps(monkeypatch):
+def test_windowing_when_many_steps(fake_llm):
     calls = []
 
-    def fake(prompt, **kw):
+    def fake(prompt):
         calls.append(prompt)
         ids = re.findall(r"\[(step_\d+)\]", prompt)
         return _outcome(items=[(sid, 0.8) for sid in ids])
 
-    _patch_judge(monkeypatch, fake)
+    _patch_judge(fake_llm, fake)
     unit = _unit_with_steps([f"t{i}" for i in range(10)])
     ev = _evaluator(config={**_evaluator().config, "step_window": 4})
     cascade.run_cascade(
@@ -106,11 +104,11 @@ def test_windowing_when_many_steps(monkeypatch):
     assert len(calls) == 3
 
 
-def test_root_cause_vs_propagated(monkeypatch):
-    def fake(prompt, **kw):
+def test_root_cause_vs_propagated(fake_llm):
+    def fake(prompt):
         return _outcome(items=[("step_0", 0.2), ("step_1", 0.3)])
 
-    _patch_judge(monkeypatch, fake)
+    _patch_judge(fake_llm, fake)
     unit = _unit_with_steps(["search", "summarize"])
     ev = _evaluator()
     draft = cascade.run_cascade(
@@ -122,14 +120,14 @@ def test_root_cause_vs_propagated(monkeypatch):
     assert draft.failure_role == "root_cause"
 
 
-def test_gate_short_circuits_with_zero_judge_calls(monkeypatch):
+def test_gate_short_circuits_with_zero_judge_calls(fake_llm):
     calls = []
 
-    def fake(prompt, **kw):
+    def fake(prompt):
         calls.append(prompt)
         return _outcome(score=1.0)
 
-    _patch_judge(monkeypatch, fake)
+    _patch_judge(fake_llm, fake)
     unit = _unit_with_steps(["x"])
     unit.trajectory["final_output"] = "BAD"
     ev = _evaluator(
@@ -146,15 +144,15 @@ def test_gate_short_circuits_with_zero_judge_calls(monkeypatch):
     assert len(calls) == 0, "gate failure must not make any LLM calls"
 
 
-def test_salient_only_selection(monkeypatch):
+def test_salient_only_selection(fake_llm):
     judged_ids = []
 
-    def fake(prompt, **kw):
+    def fake(prompt):
         ids = re.findall(r"\[(step_\d+)\]", prompt)
         judged_ids.extend(ids)
         return _outcome(items=[(sid, 0.9) for sid in ids])
 
-    _patch_judge(monkeypatch, fake)
+    _patch_judge(fake_llm, fake)
     unit = _unit_with_steps(
         ["a", "b", "c", "d"],
         structured_extra={"salient_steps": [{"type": "tool_error", "ref": "step_1"}]},
@@ -201,8 +199,8 @@ def test_clip_clean_full_word_and_sentence_boundaries():
     assert sentences.startswith(sentence_cut)
 
 
-def test_persisted_reason_never_ends_mid_word(monkeypatch):
-    def fake(prompt, **kw):
+def test_persisted_reason_never_ends_mid_word(fake_llm):
+    def fake(prompt):
         ids = re.findall(r"\[(step_\d+)\]", prompt)
         parsed = JudgeResult(
             items=[JudgeItem(id=sid, score=0.2, reasoning=_LONG_REASONING) for sid in ids],
@@ -213,7 +211,7 @@ def test_persisted_reason_never_ends_mid_word(monkeypatch):
             parsed=parsed, raw="{}", stats={"response_cost": 0.0001}, judge_trace_id="t"
         )
 
-    _patch_judge(monkeypatch, fake)
+    _patch_judge(fake_llm, fake)
     unit = _unit_with_steps(["search", "sum", "reconcile"])
     draft = cascade.run_cascade(
         unit, _evaluator(), {"project_id": "p"}, strategy="per_step", budget=60000, approx_tokens=5

@@ -265,35 +265,20 @@ def test_generate_drops_unreferenced_output_field_binding():
     assert any("unused" in n and "report" in n for n in notes)
 
 
-def test_generate_judge_scores_checklist_on_long_last_chat(monkeypatch):
-    from types import SimpleNamespace
+def test_generate_judge_scores_checklist_on_long_last_chat(fake_llm):
 
-    from overbae.services.eval import cascade
-    from overbae.services.eval import funnel as judging
     from overbae.services.eval.evaluators import gen_judge
     from tests.factories import evaluator_stub
 
-    routed = []
-
-    def _route(*args, **kwargs):
-        routed.append(True)
-        raise AssertionError("generate judge must not cascade")
-
-    def _fake(*args, **kwargs):
-        return SimpleNamespace(
-            parsed=gen_judge.ChecklistResult(
-                items=[gen_judge.ChecklistItem(id="gold", verdict=True)],
-                reasoning="r",
-            ),
-            stats={},
-            judge_trace_id="t",
-        )
-
-    monkeypatch.setattr(cascade, "maybe_route", _route)
-    monkeypatch.setattr(judging, "invoke_judge", _fake)
+    fake_llm.on(
+        lambda r: r.schema_name == "ChecklistResult",
+        gen_judge.ChecklistResult(
+            items=[gen_judge.ChecklistItem(id="gold", verdict=True)], reasoning="r"
+        ).model_dump_json(),
+    )
     ev = evaluator_stub(
         kind="llm_judge",
-        judge_model="judge-x",
+        judge_model="gpt-5-mini",
         checklist=[{"id": "gold", "q": "Does {output} agree with {reference}?", "weight": 1.0}],
         variable_mapping=[
             {"var": "output", "source": "output"},
@@ -324,40 +309,32 @@ def test_generate_judge_scores_checklist_on_long_last_chat(monkeypatch):
         },
     )
     drafts = gen_judge.evaluate(unit, ev, {})
-    assert routed == []
+    assert [r.schema_name for r in fake_llm.requests] == ["ChecklistResult"]
     assert drafts[0].outcome == eval_base.OUTCOME_SCORED
     by_id = {s["id"]: s for s in drafts[0].sub_scores if "id" in s}
     assert by_id["gold"]["verdict"] is True
     assert not any(str(s.get("id") or "").startswith("step_") for s in drafts[0].sub_scores)
 
 
-def test_generate_judge_keeps_tool_item_when_unit_has_tool_graph(monkeypatch):
-    from types import SimpleNamespace
+def test_generate_judge_keeps_tool_item_when_unit_has_tool_graph(fake_llm):
 
-    from overbae.services.eval import cascade
-    from overbae.services.eval import funnel as judging
     from overbae.services.eval.evaluators import gen_judge
     from overbae.services.eval.surface_binding import GOLD_AGREEMENT_QUESTION
     from tests.factories import evaluator_stub
 
-    def _fake(*args, **kwargs):
-        return SimpleNamespace(
-            parsed=gen_judge.ChecklistResult(
-                items=[
-                    gen_judge.ChecklistItem(id="tools", verdict=True),
-                    gen_judge.ChecklistItem(id="gold", verdict=True),
-                ],
-                reasoning="r",
-            ),
-            stats={},
-            judge_trace_id="t",
-        )
-
-    monkeypatch.setattr(cascade, "maybe_route", lambda *a, **k: None)
-    monkeypatch.setattr(judging, "invoke_judge", _fake)
+    fake_llm.on(
+        lambda r: r.schema_name == "ChecklistResult",
+        gen_judge.ChecklistResult(
+            items=[
+                gen_judge.ChecklistItem(id="tools", verdict=True),
+                gen_judge.ChecklistItem(id="gold", verdict=True),
+            ],
+            reasoning="r",
+        ).model_dump_json(),
+    )
     ev = evaluator_stub(
         kind="llm_judge",
-        judge_model="judge-x",
+        judge_model="gpt-5-mini",
         checklist=[
             {"id": "tools", "q": "Did the research call web_search_retriever?", "weight": 1.0},
             {"id": "rtype", "q": "Does the output match report_type?", "weight": 1.0},

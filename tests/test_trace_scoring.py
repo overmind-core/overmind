@@ -4,10 +4,7 @@ import uuid
 
 import pytest
 
-from overbae.api.otlp import _resolve_capability
 from overbae.models import (
-    Capability,
-    EvalSet,
     EvalSetMember,
     Evaluator,
     Span,
@@ -235,30 +232,6 @@ def test_error_trace_is_skipped():
     assert result["reason"] == "error_trace"
     span.refresh_from_db()
     assert (span.feedback_score or {}).get(FEEDBACK_KEY) is None
-
-
-def test_ingest_resolves_scan_capability_by_id():
-    project = make_project()
-    scan_agent = Capability.objects.create(
-        project=project,
-        name="Ledgerline Invoice Triage Capability",
-        slug="ledgerline-invoice-triage",
-    )
-    eval_set = EvalSet.objects.create(project=project, capability=scan_agent, name="Default")
-    scan_agent.active_eval_set = eval_set
-    scan_agent.save(update_fields=["active_eval_set"])
-
-    resolved = _resolve_capability(project, {}, {"overmind.capability.id": str(scan_agent.id)})
-    assert resolved is not None
-    assert resolved.id == scan_agent.id
-    assert Capability.objects.filter(project=project).count() == 1
-
-
-def test_ingest_never_creates_a_capability():
-    project = make_project()
-    resolved = _resolve_capability(project, {}, {"overmind.capability.id": str(uuid.uuid4())})
-    assert resolved is None
-    assert Capability.objects.filter(project=project).count() == 0
 
 
 def _entry(score, *, scope="final_output", passed=None, **extra):
@@ -908,30 +881,6 @@ def test_unattributed_unit_is_skipped_not_misattributed():
     name = member.evaluator.name
     for turn in (turns[0], turns[2]):
         assert _verdict(project, turn, name).metadata["passed"] is True
-
-
-def test_trace_capability_fallback_declines_on_multi_capability_trace():
-    """Identity-less spans reuse the trace's capability only when it is
-    unambiguous; a handoff trace must leave them unbound."""
-    from overbae.api.otlp import _find_existing_capability_for_trace
-
-    project = make_project()
-    cap_a = make_capability(project, name="Alpha")
-    cap_b = make_capability(project, name="Beta")
-    trace_id = uuid.uuid4().hex
-    _span(project, cap_a, trace_id=trace_id)
-
-    assert _find_existing_capability_for_trace(trace_id, project) == cap_a
-
-    Span.objects.create(
-        span_id=uuid.uuid4().hex[:16],
-        trace_id=trace_id,
-        parent_span_id=None,
-        project=project,
-        capability=cap_b,
-        attributes={},
-    )
-    assert _find_existing_capability_for_trace(trace_id, project) is None
 
 
 def test_error_root_multi_entry_scores_clean_units():

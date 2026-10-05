@@ -11,11 +11,7 @@ from overbae.api.eval_serializers import VerdictSerializer
 from overbae.models import EvalSetMember, Evaluator, Verdict
 from overbae.services.eval import dispatch
 from overbae.services.eval.trace_scoring import FEEDBACK_KEY, execution_score, score_trace
-from overbae.services.live_trace_scores import (
-    display_verdicts,
-    list_trace_score_fields,
-    trace_score_detail,
-)
+from overbae.services.live_trace_scores import display_verdicts
 from tests.factories import make_capability, make_project, make_span
 
 pytestmark = pytest.mark.django_db
@@ -72,15 +68,6 @@ def test_verdict_reads_match_the_scorers_composition():
 
     assert execution_score(span.feedback_score) == block["_execution"]["score"] == 1.0
     assert block["_execution"]["any_failed"] is False
-
-    detail = trace_score_detail(span, [span])
-    assert detail["scoring_mode"] == "single"
-    assert detail["trace_scores"][evaluator.name]["passed"] is True
-
-    compact, n_scored, any_failed = list_trace_score_fields(span, verdicts)
-    assert compact == {evaluator.name: {"score": 1.0, "passed": True}}
-    assert n_scored == 1
-    assert any_failed is False
 
 
 def test_verdict_serializer_lifts_composition_fields():

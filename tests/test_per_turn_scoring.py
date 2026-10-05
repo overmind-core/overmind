@@ -1,26 +1,15 @@
 from __future__ import annotations
 
+import json
 from types import SimpleNamespace
 
 
-def test_per_turn_judge_emits_one_draft_per_dimension(monkeypatch):
-    from overbae.services.eval import funnel as judging
+def test_per_turn_judge_emits_one_draft_per_dimension(fake_llm):
     from overbae.services.eval import per_turn_judge
     from overbae.services.eval.evaluators.base import EvalUnit
 
-    verdict = per_turn_judge._TurnVerdict(
-        tool_choice=1.0, args_grounded=0.5, progress=1, safety=None, reasoning="ok"
-    )
-    monkeypatch.setattr(
-        judging,
-        "resolve_default_judge",
-        lambda *a, **k: SimpleNamespace(model_name="x", model_spec=None, family="x"),
-    )
-    monkeypatch.setattr(
-        judging,
-        "invoke_judge",
-        lambda *a, **k: SimpleNamespace(parsed=verdict, stats={}, judge_trace_id="t"),
-    )
+    verdict = dict(tool_choice=1.0, args_grounded=0.5, progress=1, safety=None, reasoning="ok")
+    fake_llm.on(lambda r: r.schema_name == "_TurnVerdict", json.dumps(verdict))
     ev = SimpleNamespace(
         name="Per-turn decision quality",
         judge_model="",
@@ -45,24 +34,14 @@ def test_per_turn_judge_emits_one_draft_per_dimension(monkeypatch):
     assert drafts[2].string_value == "1"
 
 
-def test_per_turn_judge_gates_tool_dims_when_reference_has_no_tools(monkeypatch):
-    from overbae.services.eval import funnel as judging
+def test_per_turn_judge_gates_tool_dims_when_reference_has_no_tools(fake_llm):
     from overbae.services.eval import per_turn_judge
     from overbae.services.eval.evaluators.base import EvalUnit
 
-    verdict = per_turn_judge._TurnVerdict(
+    verdict = dict(
         tool_choice=0.0, args_grounded=0.0, progress=1, safety=None, reasoning="reasoning-only turn"
     )
-    monkeypatch.setattr(
-        judging,
-        "resolve_default_judge",
-        lambda *a, **k: SimpleNamespace(model_name="x", model_spec=None, family="x"),
-    )
-    monkeypatch.setattr(
-        judging,
-        "invoke_judge",
-        lambda *a, **k: SimpleNamespace(parsed=verdict, stats={}, judge_trace_id="t"),
-    )
+    fake_llm.on(lambda r: r.schema_name == "_TurnVerdict", json.dumps(verdict))
     ev = SimpleNamespace(
         name="Per-turn decision quality",
         judge_model="",

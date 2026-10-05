@@ -5,7 +5,6 @@ from __future__ import annotations
 from types import SimpleNamespace
 
 from overbae.services.eval.comparison import compare_variant_to_baseline
-from overbae.services.eval.runner import RunResult
 from overbae.tasks import eval as eval_tasks
 
 
@@ -77,70 +76,3 @@ def test_normalize_datapoint_keeps_a_recorded_tool_call():
     assert assistant["tool_calls"][0]["name"] == "get_weather"
     assert assistant.get("content") in (None, "")
     assert normalized["metadata"]["output_synthesized_from_reference"] is True
-
-
-def test_single_completion_does_not_execute_tools(monkeypatch):
-    from overbae.services.eval import runner
-
-    executed = []
-
-    class Tracking(runner.ReplayToolProvider):
-        def execute(self, *args, **kwargs):
-            executed.append(args)
-            return super().execute(*args, **kwargs)
-
-    def generate(**kwargs):
-        assert kwargs["tool_provider"].tool_definitions()
-        return RunResult(
-            output_messages=[
-                {
-                    "role": "assistant",
-                    "content": "",
-                    "tool_calls": [
-                        {
-                            "id": "call_1",
-                            "type": "function",
-                            "function": {"name": "lookup", "arguments": "{}"},
-                        }
-                    ],
-                }
-            ],
-            steps=1,
-            cost=0,
-            fuzzy_tool_hits=0,
-            tool_misses=0,
-        )
-
-    monkeypatch.setattr(runner, "ReplayToolProvider", Tracking)
-    monkeypatch.setattr(runner, "generate_decision", generate)
-    monkeypatch.setattr(eval_tasks, "_sample_row", lambda sample: object())
-    monkeypatch.setattr(
-        eval_tasks,
-        "_seed_from_datapoint",
-        lambda datapoint: (
-            [{"role": "user", "content": "hi"}],
-            [
-                {
-                    "name": "lookup",
-                    "description": "",
-                    "parameters": {"type": "object", "properties": {}},
-                }
-            ],
-            None,
-        ),
-    )
-    sample = SimpleNamespace(
-        variant=SimpleNamespace(
-            params={"generation_strategy": "single_completion"},
-            prompt_id=None,
-            model_ref_id=None,
-            model_name="openai/gpt-5-mini",
-            resolved_model="openai/gpt-5-mini",
-        ),
-        run=SimpleNamespace(project_id="project"),
-    )
-    result = eval_tasks._generate_single_completion(sample)
-    assert executed == []
-    messages = result["messages"]
-    assert messages[-1]["tool_calls"][0]["name"] == "lookup"
-    assert not any(message.get("role") == "tool" for message in messages)

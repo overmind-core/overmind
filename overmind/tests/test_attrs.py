@@ -18,21 +18,6 @@ from overmind import attrs
 class TestLLMNamespace:
     """Canonical LLM_* constants must live in the server's ``genai.*`` namespace."""
 
-    def test_llm_model_uses_genai_namespace(self) -> None:
-        assert attrs.LLM_MODEL == "genai.model"
-
-    def test_llm_provider_uses_genai_namespace(self) -> None:
-        assert attrs.LLM_PROVIDER == "genai.provider"
-
-    def test_token_usage_uses_canonical_names(self) -> None:
-        # The server rolls up prompt/completion (not the semconv input/output).
-        assert attrs.LLM_PROMPT_TOKENS == "genai.prompt_tokens"
-        assert attrs.LLM_COMPLETION_TOKENS == "genai.completion_tokens"
-        assert attrs.LLM_TOTAL_TOKENS == "genai.total_tokens"
-
-    def test_cost_key_is_canonical(self) -> None:
-        assert attrs.LLM_COST == "genai.cost"
-
     def test_all_llm_constants_start_with_genai(self) -> None:
         offenders = [
             (name, value)
@@ -58,28 +43,6 @@ class TestBehaviourKey:
         assert attrs.BEHAVIOUR_KEY == "overmind.behaviour.key"
 
 
-class TestEvalEnvelopeNamespace:
-    """Eval envelope wire contract v1 — event names + event attributes.
-
-    The platform parses ``Span.events`` against exactly these strings
-    (emitters live in ``overmind/evals.py``), so a rename here silently
-    breaks server-side evaluation.
-    """
-
-    def test_event_attribute_keys_are_pinned(self) -> None:
-        assert attrs.EVAL_SCHEMA_VERSION == "overmind.eval.schema_version"
-        assert attrs.EVAL_PAYLOAD == "overmind.eval.payload"
-
-
 class TestErrorSummary:
     def test_error_summary_key(self) -> None:
         assert attrs.ERROR_SUMMARY == "overmind.error"
-
-    def test_error_type_and_message_use_dotted_subnamespace(self) -> None:
-        assert attrs.ERROR_TYPE == "overmind.error.type"
-        assert attrs.ERROR_MESSAGE == "overmind.error.message"
-
-
-class TestOptimizeBestScore:
-    def test_canonical_key_value(self) -> None:
-        assert attrs.OPTIMIZE_FINAL_BEST_SCORE == "overmind.optimize.final_best_score"

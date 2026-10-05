@@ -10,8 +10,7 @@ from conftest import EVAL_ROWS, frozen_dataset
 from django.conf import settings
 from django.test import override_settings
 from django.urls import reverse
-from rest_framework.test import APIClient
-from rest_framework_simplejwt.tokens import RefreshToken
+from factories import auth_client
 
 from overbae.models import (
     Capability,
@@ -26,7 +25,6 @@ from overbae.models import (
     User,
 )
 from overbae.services.finetuning_eval import (
-    _aggregate_from_summary,
     job_wants_evals,
     serialize_job_evals,
     sync_eval_scores,
@@ -34,13 +32,6 @@ from overbae.services.finetuning_eval import (
 )
 
 pytestmark = pytest.mark.django_db
-
-
-def _auth_client(user) -> APIClient:
-    c = APIClient()
-    token = RefreshToken.for_user(user)
-    c.credentials(HTTP_AUTHORIZATION=f"Bearer {token.access_token}")
-    return c
 
 
 def _setup(*, with_eval_link=True):
@@ -95,21 +86,35 @@ def test_job_wants_evals_requires_both_links():
     assert job_wants_evals(job) is False
 
 
-def test_aggregate_from_summary_means():
+def _final_score(summary) -> float | None:
+    _, _, job, _, _ = _setup()
+    run = EvalRun.objects.create(
+        project=job.project,
+        name="final",
+        dataset=job.eval_dataset,
+        eval_set=job.eval_set,
+        status=EvalRun.Status.COMPLETED,
+        summary=summary,
+    )
+    FinetuningJobEval.objects.create(
+        job=job,
+        eval_run=run,
+        kind=FinetuningJobEval.Kind.FINAL,
+        status=FinetuningJobEval.Status.RUNNING,
+        model_id="ft:model",
+    )
+    [row] = sync_eval_scores(job)
+    return row["aggregate_score"]
+
+
+def test_the_job_score_is_the_mean_of_its_criteria():
     summary = {
-        "variants": {
-            "v1": {
-                "metrics": {
-                    "helpfulness": {"mean": 0.8},
-                    "accuracy": {"mean": 0.6},
-                }
-            }
-        }
+        "variants": {"v1": {"metrics": {"helpfulness": {"mean": 0.8}, "accuracy": {"mean": 0.6}}}}
     }
-    assert _aggregate_from_summary(summary) == 0.7
+    assert _final_score(summary) == 0.7
 
 
-def test_aggregate_from_summary_excludes_gate_only_metrics():
+def test_gate_only_metrics_stay_out_of_the_job_score():
     summary = {
         "gate_metrics": ["output-contract-required-keys"],
         "variants": {
@@ -121,7 +126,7 @@ def test_aggregate_from_summary_excludes_gate_only_metrics():
             }
         },
     }
-    assert _aggregate_from_summary(summary) == 0.8
+    assert _final_score(summary) == 0.8
 
 
 def test_sync_eval_scores_computes_baseline_delta():
@@ -392,13 +397,13 @@ def test_loss_curves_includes_judge_evals():
         model_id=job.base_model,
         aggregate_score=0.42,
     )
-    r = _auth_client(u).get(reverse("finetuningjob-loss-curves", kwargs={"id": str(job.id)}))
+    r = auth_client(u).get(reverse("finetuningjob-loss-curves", kwargs={"id": str(job.id)}))
     assert r.status_code == 200
     assert len(r.data["judge_evals"]) == 1
     assert r.data["judge_evals"][0]["aggregate_score"] == 0.42
 
 
-def test_cancel_revokes_related_eval_runs():
+def test_cancel_revokes_related_eval_runs(sft, fake_modal):
     u, _, job, _, _ = _setup()
     run = EvalRun.objects.create(
         project=job.project,
@@ -415,15 +420,15 @@ def test_cancel_revokes_related_eval_runs():
         status=FinetuningJobEval.Status.RUNNING,
         model_id=job.base_model,
     )
-    mock_runner = MagicMock()
-    with (
-        patch("overbae.services.finetuning_runner.get_runner", return_value=mock_runner),
-        patch("overbae.celery.app"),
-        patch("overbae.tasks.eval.revoke_run_tasks", return_value=1) as revoke,
-    ):
-        r = _auth_client(u).post(reverse("finetuningjob-cancel", kwargs={"id": job.id}))
+    FinetuningJob.objects.filter(pk=job.pk).update(
+        provider=FinetuningJob.Provider.MODAL, remote_job_id="run-x:fc-x"
+    )
+    fake_modal.adopt("fc-x", "sft_train")
+    with patch("celery.current_app.control.revoke") as revoke:
+        r = auth_client(u).post(reverse("finetuningjob-cancel", kwargs={"id": job.id}))
     assert r.status_code == 200
-    revoke.assert_called_once()
+    assert revoke.call_args.args[0] == ["eval-celery-1"]
+    assert [call for call, _ in fake_modal.cancelled] == ["fc-x"]
     run.refresh_from_db()
     assert run.status == EvalRun.Status.CANCELLED
     row = FinetuningJobEval.objects.get(job=job)
@@ -583,8 +588,9 @@ def _ready_base_deployment(project, base="Qwen/Qwen3-8B"):
 
 @override_settings(INFERENCE_API_URL="https://gateway.example.modal.run")
 def test_baseten_baseline_waits_for_base_deployment_then_fires(
-    django_capture_on_commit_callbacks,
+    django_capture_on_commit_callbacks, fake_llm
 ):
+    fake_llm.catalog_models = []
     _, _, job, _, _ = _setup()
     _basetenify(job)
 
@@ -703,8 +709,9 @@ def _fake_modal(monkeypatch, calls):
 
 @override_settings(INFERENCE_API_URL="https://gateway.example.modal.run")
 def test_deploy_base_model_for_eval_deploys_then_launches_baseline(
-    monkeypatch, django_capture_on_commit_callbacks
+    monkeypatch, django_capture_on_commit_callbacks, fake_llm
 ):
+    fake_llm.catalog_models = []
     from overbae.models import DeployedModel
     from overbae.tasks.model_deployment import deploy_base_model_for_eval
 
@@ -732,8 +739,9 @@ def test_deploy_base_model_for_eval_deploys_then_launches_baseline(
 
 @override_settings(INFERENCE_API_URL="https://gateway.example.modal.run")
 def test_deploy_base_model_dedupes_ready_deployment(
-    monkeypatch, django_capture_on_commit_callbacks
+    monkeypatch, django_capture_on_commit_callbacks, fake_llm
 ):
+    fake_llm.catalog_models = []
     from overbae.tasks.model_deployment import deploy_base_model_for_eval
 
     _, _, job, _, _ = _setup()
@@ -776,7 +784,10 @@ def test_deploy_base_model_skips_cancelled_job(monkeypatch):
 
 
 @override_settings(INFERENCE_API_URL="https://gateway.example.modal.run")
-def test_baseten_final_eval_fires_after_ready_deployment(django_capture_on_commit_callbacks):
+def test_baseten_final_eval_fires_after_ready_deployment(
+    django_capture_on_commit_callbacks, fake_llm
+):
+    fake_llm.catalog_models = []
     from overbae.models import DeployedModel
 
     _, _, job, _, _ = _setup()

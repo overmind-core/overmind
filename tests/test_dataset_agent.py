@@ -7,10 +7,11 @@ from __future__ import annotations
 import json
 import types
 import uuid
+from concurrent.futures import ThreadPoolExecutor
 
 import pytest
+from fakes.llm import tool_call
 
-from overbae.core.llms import ToolStreamDelta, ToolStreamResult
 from overbae.core.model_registry import WORKSHOP_KEY_ENVS
 from overbae.models import Capability, Dataset, Project
 from overbae.services.datasets import land, lifecycle, paths, review, rows, store, use
@@ -401,7 +402,10 @@ class _FakeRun:
         self._tools = tools
 
     def stream(self):
-        out = self._tools["add_cell"].execute({"title": "Keep", "script": KEEP}, None)
+        with ThreadPoolExecutor(max_workers=1) as sdk_thread:
+            out = sdk_thread.submit(
+                self._tools["add_cell"].execute, {"title": "Keep", "script": KEEP}, None
+            ).result()
         assert out["ok"]
         yield types.SimpleNamespace(type="tool_call", name="add_cell", status="running")
         yield types.SimpleNamespace(
@@ -454,6 +458,7 @@ def cursor(monkeypatch):
     return _FakeAgent
 
 
+@pytest.mark.django_db(transaction=True)
 def test_a_cursor_turn_streams_cells_and_text_and_lands_on_the_dataset(cursor):
     dataset = _dataset(intent="eval")
     events = list(agent.follow_up(dataset.id, "Keep only the keep rows"))
@@ -484,44 +489,53 @@ def test_a_cursor_turn_streams_cells_and_text_and_lands_on_the_dataset(cursor):
     assert cursor.created[-1].disallowed_tools == ["shell", "task"]
 
 
-def test_running_generation_progress_is_persisted_and_partial_rows_survive_failure(monkeypatch):
+def test_running_generation_progress_is_persisted_and_partial_rows_survive_failure(
+    openrouter, fake_llm
+):
     dataset = _dataset(intent="eval")
     agent.Tools(dataset.id, None, lambda _: None).add_cell({"title": "Shape", "script": SHAPE})
+    seen = []
 
-    class PartialEngine:
-        name = "test"
+    def interrupted(request):
+        dataset.refresh_from_db()
+        seen.append(dataset.chat[-1])
+        return True
 
-        def run(self, dataset, message, tools, pending):
-            handlers = tools.handlers()
-            handlers["seed_examples"]({"target_rows": 5, "instruction": "Cover variants"})
-            result = handlers["add_synthetic_rows"](
-                {
-                    "examples": [
-                        {"seed_row": 0, "row": {"input": "new", "expected_output": "answer"}}
-                    ]
-                }
+    fake_llm.stream_rounds(
+        [
+            (
+                [
+                    tool_call("seed_examples", {"target_rows": 5, "instruction": "Cover variants"}),
+                    tool_call(
+                        "add_synthetic_rows",
+                        {
+                            "examples": [
+                                {
+                                    "seed_row": 0,
+                                    "row": {"input": "new", "expected_output": "answer"},
+                                }
+                            ]
+                        },
+                    ),
+                ],
+                "",
             )
-            dataset.refresh_from_db()
-            draft = dataset.chat[-1]
-            assert draft["status"] == "running"
-            assert draft["progress"]["generated_rows"] == 1
-            assert draft["cells"] == [{"id": result["id"], "action": "ran"}]
-            yield from pending
-            raise RuntimeError("provider interrupted")
-
-        def describe_error(self, exc):
-            return str(exc)
-
-    monkeypatch.setattr(engines, "select", lambda: PartialEngine())
+        ],
+    )
+    fake_llm.fail(lambda r: len(fake_llm.streamed()) >= 1 and interrupted(r), 400, "interrupted")
     list(agent.follow_up(dataset.id, "Generate to 5 rows"))
     dataset.refresh_from_db()
+    draft = seen[0]
+    assert draft["status"] == "running"
+    assert draft["progress"]["generated_rows"] == 1
+    assert [c["action"] for c in draft["cells"]] == ["ran"]
     assert len(dataset.chat) == 2
     turn = dataset.chat[-1]
     assert turn["status"] == "error" and turn["progress"]["stage"] == "partial"
     assert turn["progress"]["generated_rows"] == 1
     assert not dataset.cells.filter(state="proposed").exists()
     assert dataset.active_cell.rows == 4
-    assert dataset.active_cell.review["generator"]["engine"] == "test"
+    assert dataset.active_cell.review["generator"]["engine"] == "openrouter"
 
 
 def test_cursor_thinking_streams_and_survives_reload(cursor, monkeypatch):
@@ -553,24 +567,30 @@ def test_cursor_thinking_streams_and_survives_reload(cursor, monkeypatch):
     assert dataset.chat[-1]["text"] == "Three rows."
 
 
-def test_generation_keeps_the_explanation_alongside_verified_counts(monkeypatch):
+def test_generation_keeps_the_explanation_alongside_verified_counts(openrouter, fake_llm):
     dataset = _dataset(rows=[{"input": "one", "expected_output": "yes"}], intent="eval")
     explanation = (
         "I added a contrasting case to broaden coverage. The generated label needs review."
     )
-
-    class GeneratingEngine:
-        name = "test"
-
-        def run(self, dataset, message, tools, pending):
-            tools.seed_examples({"target_rows": 2, "instruction": "Cover variants"})
-            tools.add_synthetic_rows(
-                {"examples": [{"seed_row": 0, "row": {"input": "two", "expected_output": "no"}}]}
-            )
-            yield from pending
-            return engines.Outcome(text=explanation)
-
-    monkeypatch.setattr(engines, "select", lambda: GeneratingEngine())
+    fake_llm.stream_rounds(
+        [
+            (
+                [
+                    tool_call("seed_examples", {"target_rows": 2, "instruction": "Cover variants"}),
+                    tool_call(
+                        "add_synthetic_rows",
+                        {
+                            "examples": [
+                                {"seed_row": 0, "row": {"input": "two", "expected_output": "no"}}
+                            ]
+                        },
+                    ),
+                ],
+                "",
+            ),
+            ([], explanation),
+        ],
+    )
     list(agent.follow_up(dataset.id, "Add one example"))
     dataset.refresh_from_db()
     text = dataset.chat[-1]["text"]
@@ -597,62 +617,34 @@ def test_a_refused_cursor_send_still_lands_the_turn(cursor, monkeypatch):
     assert [t["role"] for t in dataset.chat] == ["user", "agent"] and dataset.state == "idle"
 
 
-def test_a_cursor_turn_bills_composer_through_the_registry(cursor, monkeypatch):
+@pytest.mark.django_db(transaction=True)
+def test_a_cursor_turn_bills_composer_through_the_registry(cursor, fake_llm):
     from django.contrib.auth import get_user_model
 
-    charged = {}
-    monkeypatch.setattr(
-        "overbae.services.billing_ledger.charge_llm_usage",
-        lambda user, stats, **kw: charged.update(stats=stats, **kw),
-    )
+    from overbae.models import BillingService, BillingTelemetry
+
+    fake_llm.prices["moonshotai/kimi-k2.5"] = {
+        "prompt": "0.000001",
+        "completion": "0.000004",
+        "input_cache_read": "0.0000001",
+    }
     user = get_user_model().objects.create_user(
         email="ws@example.com", password="x", clerk_user_id="clerk_ws"
     )
     dataset = _dataset(intent="eval")
     list(agent.follow_up(dataset.id, "Keep only the keep rows", user=user))
-    assert charged["stats"] == {
+    [charge] = BillingTelemetry.objects.filter(user=user, service=BillingService.DATA_WORKSHOP)
+    assert charge.metadata["llm_usage"] == {
         "prompt_tokens": 160,
         "completion_tokens": 20,
         "cached_tokens": 60,
         "served_model": "composer-2.5",
     }
-    assert charged["service"] == "data-workshop"
-    assert charged["metadata"]["engine"] == "cursor"
+    assert charge.metadata["engine"] == "cursor"
+    assert charge.amount < 0
 
 
 # ─── The native engine ────────────────────────────────────────────────────────
-
-
-def _fake_stream(tool_calls_then_text, *, reasoning=""):
-    """Stand in for ``stream_llm_tools``: yield deltas, then the result.
-
-    ``tool_calls_then_text`` is one entry per round.
-    """
-    rounds = iter(tool_calls_then_text)
-
-    def _stream(messages, schemas, **_kwargs):
-        calls, text = next(rounds)
-        if reasoning:
-            yield ToolStreamDelta("reasoning", reasoning)
-        for token in text:
-            yield ToolStreamDelta("text", token)
-        yield ToolStreamResult(
-            "".join(text),
-            calls,
-            {"prompt_tokens": 10, "completion_tokens": 2, "response_cost": 0.01},
-            reasoning,
-            [{"type": "reasoning.text", "text": reasoning}] if reasoning else [],
-        )
-
-    return _stream
-
-
-def _call(name, args):
-    return {
-        "id": f"call-{name}",
-        "type": "function",
-        "function": {"name": name, "arguments": json.dumps(args)},
-    }
 
 
 @pytest.fixture
@@ -660,18 +652,14 @@ def openrouter(monkeypatch):
     monkeypatch.setenv("OPENROUTER_API_KEY", "or-key")
 
 
-def test_a_native_turn_streams_cells_and_text_and_lands_on_the_dataset(openrouter, monkeypatch):
+def test_a_native_turn_streams_cells_and_text_and_lands_on_the_dataset(openrouter, fake_llm):
     """The step sequence the chat renders is the same one the Cursor engine
     produces, so it is pinned exactly."""
-    monkeypatch.setattr(
-        native,
-        "stream_llm_tools",
-        _fake_stream(
-            [
-                ([_call("add_cell", {"title": "Keep", "script": KEEP})], ""),
-                ([], "Kept 2 rows."),
-            ]
-        ),
+    fake_llm.stream_rounds(
+        [
+            ([tool_call("add_cell", {"title": "Keep", "script": KEEP})], ""),
+            ([], "Kept 2 rows."),
+        ],
     )
     dataset = _dataset(intent="eval")
     events = list(agent.follow_up(dataset.id, "Keep only the keep rows"))
@@ -698,33 +686,29 @@ def test_a_native_turn_streams_cells_and_text_and_lands_on_the_dataset(openroute
     assert dataset.versions()[dataset.active_cell.id] == "1.0"
 
 
-def test_the_ladder_picks_cursor_then_openrouter_then_a_vendor_key(monkeypatch):
-    seen: list[dict] = []
-    inner = _fake_stream([([], "Hi.")] * 3)
-
-    def _spy(messages, schemas, **kwargs):
-        seen.append(kwargs)
-        yield from inner(messages, schemas, **kwargs)
-
-    monkeypatch.setattr(native, "stream_llm_tools", _spy)
+def test_the_ladder_picks_cursor_then_openrouter_then_a_vendor_key(fake_llm, monkeypatch):
+    fake_llm.stream_rounds([([], "Hi.")] * 3)
     dataset = _dataset(intent="eval")
 
     monkeypatch.setenv("ANTHROPIC_API_KEY", "a")
     list(agent.follow_up(dataset.id, "one"))
-    assert seen[-1]["provider"].name == "anthropic" and seen[-1]["model"] == "claude-sonnet-5"
-    assert seen[-1]["fallback_models"] == ["claude-sonnet-5"]
+    sent = fake_llm.streamed()[-1]
+    assert "anthropic" in sent.url and sent.model == "claude-sonnet-5"
+    assert "models" not in sent.body
 
     monkeypatch.setenv("OPENAI_API_KEY", "o")
     list(agent.follow_up(dataset.id, "two"))
-    assert seen[-1]["provider"].name == "openai" and seen[-1]["model"] == "gpt-5.6-terra"
+    sent = fake_llm.streamed()[-1]
+    assert sent.url.startswith("https://api.openai.com/") and sent.model == "gpt-5.6-terra"
 
     monkeypatch.setenv("OPENROUTER_API_KEY", "r")
     list(agent.follow_up(dataset.id, "three"))
-    assert seen[-1]["provider"].name == "openrouter"
-    assert seen[-1]["fallback_models"] == [
-        "gpt-5.6-terra",
-        "claude-sonnet-5",
-        "gemini-3.1-pro-preview",
+    sent = fake_llm.streamed()[-1]
+    assert sent.url.startswith("https://openrouter.ai/")
+    assert sent.body["models"] == [
+        "openai/gpt-5.6-terra",
+        "anthropic/claude-sonnet-5",
+        "google/gemini-3.1-pro-preview",
     ]
     dataset.refresh_from_db()
     assert [t["engine"] for t in dataset.chat if t["role"] == "agent"] == [
@@ -743,11 +727,11 @@ def test_no_key_lands_an_error_turn_and_frees_the_dataset():
     assert dataset.state == "idle" and dataset.chat[1]["engine"] == ""
 
 
-def test_text_deltas_are_coalesced_not_one_event_per_token(openrouter, monkeypatch):
+def test_text_deltas_are_coalesced_not_one_event_per_token(openrouter, monkeypatch, fake_llm):
     """One event per token is one Redis publish and one markdown re-parse each.
     The reader still sees the whole text, in order."""
     tokens = [f"w{i} " for i in range(200)]
-    monkeypatch.setattr(native, "stream_llm_tools", _fake_stream([([], tokens)]))
+    fake_llm.stream_rounds([([], tokens)])
     dataset = _dataset(intent="eval")
     events = list(agent.follow_up(dataset.id, "Say something long"))
     deltas = [e for e in events if e["type"] == "chat_delta"]
@@ -759,17 +743,15 @@ def test_text_deltas_are_coalesced_not_one_event_per_token(openrouter, monkeypat
     # The flush is driven by elapsed time, not by the end of the stream: with no
     # interval every token goes out on its own, so nothing is held back.
     monkeypatch.setattr(native, "DELTA_FLUSH_SECONDS", 0)
-    monkeypatch.setattr(native, "stream_llm_tools", _fake_stream([([], tokens)]))
+    fake_llm.stream_rounds([([], tokens)])
     other = _dataset(intent="eval")
     eager = [e for e in agent.follow_up(other.id, "again") if e["type"] == "chat_delta"]
     assert len(eager) == len(tokens)
 
 
-def test_a_native_turn_keeps_the_tool_exchange_for_the_next_turn(openrouter, monkeypatch):
-    monkeypatch.setattr(
-        native,
-        "stream_llm_tools",
-        _fake_stream([([_call("status", {})], ""), ([], "Three rows.")]),
+def test_a_native_turn_keeps_the_tool_exchange_for_the_next_turn(openrouter, fake_llm):
+    fake_llm.stream_rounds(
+        [([tool_call("status", {})], ""), ([], "Three rows.")],
     )
     dataset = _dataset(intent="eval")
     list(agent.follow_up(dataset.id, "How many rows?"))
@@ -779,24 +761,16 @@ def test_a_native_turn_keeps_the_tool_exchange_for_the_next_turn(openrouter, mon
     assert dataset.agent_messages[1]["tool_calls"][0]["function"]["name"] == "status"
 
 
-def test_a_long_turn_keeps_its_instructions(openrouter, monkeypatch):
+def test_a_long_turn_keeps_its_instructions(openrouter, monkeypatch, fake_llm):
     """The system prompt is outside the context budget. Preparing a table runs to
     dozens of tool calls, and an agent that loses its playbook half way through
     reports what it managed instead of what the table needs."""
     monkeypatch.setattr(native, "CONTEXT_CHARS", 2000)
     monkeypatch.setattr(native, "COMPACT_RESULT_CHARS", 100)
-    seen: list[list[dict]] = []
-
-    rounds = [([_call("status", {})], "")] * 6 + [([], "Done.")]
-    inner = _fake_stream(rounds)
-
-    def _spy(messages, schemas, **kwargs):
-        seen.append(list(messages))
-        yield from inner(messages, schemas, **kwargs)
-
-    monkeypatch.setattr(native, "stream_llm_tools", _spy)
+    fake_llm.stream_rounds([([tool_call("status", {})], "")] * 6 + [([], "Done.")])
     dataset = _dataset(intent="eval")
     list(agent.follow_up(dataset.id, "Prepare it"))
+    seen = [r.messages for r in fake_llm.streamed()]
 
     assert len(seen) == 7
     for sent in seen:
@@ -814,11 +788,11 @@ def test_fit_compacts_old_results_before_dropping_rounds():
     big = "x" * 1000
     exchange = [
         {"role": "user", "content": "first"},
-        {"role": "assistant", "content": None, "tool_calls": [_call("status", {})]},
+        {"role": "assistant", "content": None, "tool_calls": [tool_call("status", {})]},
         {"role": "tool", "tool_call_id": "call-status", "content": big},
         {"role": "assistant", "content": "done"},
         {"role": "user", "content": "second"},
-        {"role": "assistant", "content": None, "tool_calls": [_call("query", {})]},
+        {"role": "assistant", "content": None, "tool_calls": [tool_call("query", {})]},
         {"role": "tool", "tool_call_id": "call-query", "content": big},
     ]
     kept = native.fit(exchange, keep_from=4, budget=native.COMPACT_RESULT_CHARS * 2 + 600)
@@ -840,7 +814,7 @@ def test_a_tool_result_keeps_every_row_and_cuts_structurally():
     assert cut["truncated"].startswith("rows:")
 
 
-def test_a_tool_step_is_published_before_the_tool_returns(openrouter, monkeypatch):
+def test_a_tool_step_is_published_before_the_tool_returns(openrouter, monkeypatch, fake_llm):
     """A cell run takes minutes. The page must see the step start when it
     starts, not when the result is in."""
     published: list[str] = []
@@ -855,29 +829,22 @@ def test_a_tool_step_is_published_before_the_tool_returns(openrouter, monkeypatc
         return original(self, args, _ctx)
 
     monkeypatch.setattr(agent.Tools, "status", _slow_status)
-    monkeypatch.setattr(
-        native,
-        "stream_llm_tools",
-        _fake_stream([([_call("status", {})], ""), ([], "Three rows.")]),
+    fake_llm.stream_rounds(
+        [([tool_call("status", {})], ""), ([], "Three rows.")],
     )
     dataset = _dataset(intent="eval")
     list(agent.follow_up(dataset.id, "How many rows?"))
     assert slow_calls == ["running:chat_step,chat_progress"]
 
 
-def test_reasoning_lands_on_the_thinking_step_and_rides_the_next_request(openrouter, monkeypatch):
-    seen: list[list[dict]] = []
-    inner = _fake_stream(
-        [([_call("status", {})], ""), ([], "Three rows.")], reasoning="Count the rows."
+def test_reasoning_lands_on_the_thinking_step_and_rides_the_next_request(openrouter, fake_llm):
+    fake_llm.stream_rounds(
+        [([tool_call("status", {})], ""), ([], "Three rows.")],
+        reasoning="Count the rows.",
     )
-
-    def _spy(messages, schemas, **kwargs):
-        seen.append(list(messages))
-        yield from inner(messages, schemas, **kwargs)
-
-    monkeypatch.setattr(native, "stream_llm_tools", _spy)
     dataset = _dataset(intent="eval")
     events = list(agent.follow_up(dataset.id, "How many rows?"))
+    seen = [r.messages for r in fake_llm.streamed()]
     thinking = [e for e in events if e["type"] == "chat_thinking"]
     assert thinking and thinking[0]["text"] == "Count the rows."
     done = [e for e in events if e["type"] == "chat_step" and e.get("status") == "done"]
@@ -890,55 +857,32 @@ def test_reasoning_lands_on_the_thinking_step_and_rides_the_next_request(openrou
     assert all("reasoning_details" not in m for m in dataset.agent_messages)
 
 
-def test_a_dropped_stream_is_retried_when_nothing_reached_the_reader(openrouter, monkeypatch):
-    attempts: list[int] = []
-    inner = _fake_stream([([], "Fine.")])
-
-    def _flaky(messages, schemas, **kwargs):
-        attempts.append(1)
-        if len(attempts) == 1:
-            raise RuntimeError("Error streaming LLM: connection reset")
-        yield from inner(messages, schemas, **kwargs)
-
-    monkeypatch.setattr(native, "stream_llm_tools", _flaky)
+def test_a_dropped_stream_is_retried_when_nothing_reached_the_reader(openrouter, fake_llm):
+    fake_llm.stream_rounds([([], "Fine.")])
+    dropped = []
+    fake_llm.fail(lambda r: not dropped and not dropped.append(r), 502, "connection reset")
     dataset = _dataset(intent="eval")
     list(agent.follow_up(dataset.id, "Hi"))
     dataset.refresh_from_db()
-    assert (
-        len(attempts) == 2 and dataset.chat[1]["text"] == "Fine." and not dataset.chat[1]["error"]
-    )
+    assert len(fake_llm.requests) == 2
+    assert dataset.chat[1]["text"] == "Fine." and not dataset.chat[1]["error"]
 
 
-def test_a_rejected_key_is_named_in_the_turn(openrouter, monkeypatch):
-    import httpx
-    import openai
-
-    response = httpx.Response(401, request=httpx.Request("POST", "https://x"))
-
-    def _refused(messages, schemas, **kwargs):
-        raise RuntimeError("Error calling LLM") from openai.AuthenticationError(
-            "bad key", response=response, body=None
-        )
-        yield  # pragma: no cover
-
-    monkeypatch.setattr(native, "stream_llm_tools", _refused)
+def test_a_rejected_key_is_named_in_the_turn(openrouter, fake_llm):
+    fake_llm.fail(lambda r: True, 401, "bad key")
     dataset = _dataset(intent="eval")
     events = list(agent.follow_up(dataset.id, "Hi"))
     assert events[-1]["error"] == "The model provider rejected this server's OPENROUTER_API_KEY."
 
 
-def test_a_redelivered_turn_does_not_run_its_tools_twice(openrouter, monkeypatch):
+def test_a_redelivered_turn_does_not_run_its_tools_twice(openrouter, fake_llm):
     """``tasks.datasets.turn`` is acks_late, so a worker lost mid-turn has the
     same message redelivered under the same task id. The key makes it a no-op."""
-    monkeypatch.setattr(
-        native,
-        "stream_llm_tools",
-        _fake_stream(
-            [
-                ([_call("add_cell", {"title": "Keep", "script": KEEP})], ""),
-                ([], "Kept 2 rows."),
-            ]
-        ),
+    fake_llm.stream_rounds(
+        [
+            ([tool_call("add_cell", {"title": "Keep", "script": KEEP})], ""),
+            ([], "Kept 2 rows."),
+        ],
     )
     dataset = _dataset(intent="eval")
     assert list(agent.follow_up(dataset.id, "Keep the keep rows", turn_key="task-1"))
@@ -948,26 +892,20 @@ def test_a_redelivered_turn_does_not_run_its_tools_twice(openrouter, monkeypatch
     assert [t["role"] for t in dataset.chat] == ["user", "agent"]
 
 
-def test_a_turn_that_runs_out_of_rounds_still_reports(openrouter, monkeypatch):
+def test_a_turn_that_runs_out_of_rounds_still_reports(openrouter, monkeypatch, fake_llm):
     """The last completion carries no tools: the agent can only write."""
     monkeypatch.setattr(native, "MAX_ROUNDS", 2)
-    seen: list[list] = []
-    inner = _fake_stream([([_call("status", {})], "")] * 2 + [([], "Read the chain twice.")])
-
-    def _spy(messages, schemas, **kwargs):
-        seen.append(schemas)
-        yield from inner(messages, schemas, **kwargs)
-
-    monkeypatch.setattr(native, "stream_llm_tools", _spy)
+    fake_llm.stream_rounds([([tool_call("status", {})], "")] * 2 + [([], "Read the chain twice.")])
     dataset = _dataset(intent="eval")
     list(agent.follow_up(dataset.id, "Loop forever"))
+    seen = [r.body.get("tools") or [] for r in fake_llm.streamed()]
     dataset.refresh_from_db()
     assert dataset.chat[1]["error"] == "The agent used its whole tool budget for this turn."
     assert dataset.chat[1]["text"] == "Read the chain twice."
     assert seen[-1] == [] and seen[0] != []
 
 
-def test_a_failed_preview_keeps_the_active_chain_unchanged(openrouter, monkeypatch):
+def test_a_failed_preview_keeps_the_active_chain_unchanged(openrouter, monkeypatch, fake_llm):
     seen_states: list[str] = []
     original = agent.Tools.status
 
@@ -976,16 +914,12 @@ def test_a_failed_preview_keeps_the_active_chain_unchanged(openrouter, monkeypat
         return original(self, args, _ctx)
 
     monkeypatch.setattr(agent.Tools, "status", _status)
-    monkeypatch.setattr(
-        native,
-        "stream_llm_tools",
-        _fake_stream(
-            [
-                ([_call("add_cell", {"title": "Bad", "script": "df = df['nope']\n"})], ""),
-                ([_call("status", {})], ""),
-                ([], "That failed."),
-            ]
-        ),
+    fake_llm.stream_rounds(
+        [
+            ([tool_call("add_cell", {"title": "Bad", "script": "df = df['nope']\n"})], ""),
+            ([tool_call("status", {})], ""),
+            ([], "That failed."),
+        ],
     )
     dataset = _dataset(intent="eval")
     list(agent.follow_up(dataset.id, "Break it"))
@@ -994,18 +928,16 @@ def test_a_failed_preview_keeps_the_active_chain_unchanged(openrouter, monkeypat
     dataset.refresh_from_db()
     assert dataset.state == "idle" and dataset.error == "" and dataset.cells.count() == 1
     # A follow-up from the error state is allowed and repairs it.
-    monkeypatch.setattr(
-        native,
-        "stream_llm_tools",
-        _fake_stream([([_call("remove_cell", {"version": "1"})], ""), ([], "Removed.")]),
+    fake_llm.stream_rounds(
+        [([tool_call("remove_cell", {"version": "1"})], ""), ([], "Removed.")],
     )
     list(agent.follow_up(dataset.id, "Remove it"))
     dataset.refresh_from_db()
     assert dataset.state == "idle" and dataset.error == ""
 
 
-def test_diagnose_runs_one_turn_and_returns_to_idle(openrouter, monkeypatch):
-    monkeypatch.setattr(native, "stream_llm_tools", _fake_stream([([], "Nothing to change.")]))
+def test_diagnose_runs_one_turn_and_returns_to_idle(openrouter, fake_llm):
+    fake_llm.stream_rounds([([], "Nothing to change.")])
     dataset = _dataset(intent="eval")
     turns = [e for e in agent.diagnose(dataset.id) if e["type"] == "chat_turn"]
     assert [t["text"] for t in turns if t["role"] == "user"] == [agent.PREPARE_DISPLAY]
@@ -1014,9 +946,7 @@ def test_diagnose_runs_one_turn_and_returns_to_idle(openrouter, monkeypatch):
 
 
 @pytest.mark.parametrize("initial", [True, False], ids=["initial", "follow_up"])
-def test_preparation_applies_evidence_repair_with_residual_warnings(
-    openrouter, monkeypatch, initial
-):
+def test_preparation_applies_evidence_repair_with_residual_warnings(openrouter, fake_llm, initial):
     evidence = {"onboarding_packet_id": "case-1", "documents": ["Legal name: Alex Example"]}
     answer = {"legal_name": "Alex Example"}
     original = {
@@ -1054,67 +984,63 @@ def test_preparation_applies_evidence_repair_with_residual_warnings(
         }
         for check in before
     ]
-    monkeypatch.setattr(
-        native,
-        "stream_llm_tools",
-        _fake_stream(
-            [
-                ([_call("status", {})], ""),
-                (
-                    [
-                        _call(
-                            "record_quality_review",
-                            {
-                                "checks": before,
-                                "script": "df = pd.DataFrame({name: [False] for name in "
-                                + repr([c["name"] for c in before])
-                                + "})",
-                            },
-                        )
-                    ],
-                    "",
-                ),
-                (
-                    [
-                        _call(
-                            "add_cell",
-                            {
-                                "title": "Restore input evidence",
-                                "script": (
-                                    "import json\n"
-                                    "df['input'] = df['user_payload'].map(json.loads)\n"
-                                    "df = df[['input', 'expected_output', 'mode']].copy()"
-                                ),
-                                "kind": "mechanical",
-                                "run": True,
-                            },
-                        )
-                    ],
-                    "Restoring the supplied documents to the input.",
-                ),
-                ([_call("query", {"sql": "SELECT input, expected_output FROM t"})], ""),
-                (
-                    [
-                        _call(
-                            "record_quality_review",
-                            {
-                                "checks": after,
-                                "script": "df = pd.DataFrame("
-                                + repr(
-                                    {
-                                        c["name"]: [None if c["result"] == "unknown" else False]
-                                        for c in after
-                                    }
-                                )
-                                + ")",
-                            },
-                        )
-                    ],
-                    "",
-                ),
-                ([], "Documents restored in 1.1. Row 0 still lacks the orchestrator target."),
-            ]
-        ),
+    fake_llm.stream_rounds(
+        [
+            ([tool_call("status", {})], ""),
+            (
+                [
+                    tool_call(
+                        "record_quality_review",
+                        {
+                            "checks": before,
+                            "script": "df = pd.DataFrame({name: [False] for name in "
+                            + repr([c["name"] for c in before])
+                            + "})",
+                        },
+                    )
+                ],
+                "",
+            ),
+            (
+                [
+                    tool_call(
+                        "add_cell",
+                        {
+                            "title": "Restore input evidence",
+                            "script": (
+                                "import json\n"
+                                "df['input'] = df['user_payload'].map(json.loads)\n"
+                                "df = df[['input', 'expected_output', 'mode']].copy()"
+                            ),
+                            "kind": "mechanical",
+                            "run": True,
+                        },
+                    )
+                ],
+                "Restoring the supplied documents to the input.",
+            ),
+            ([tool_call("query", {"sql": "SELECT input, expected_output FROM t"})], ""),
+            (
+                [
+                    tool_call(
+                        "record_quality_review",
+                        {
+                            "checks": after,
+                            "script": "df = pd.DataFrame("
+                            + repr(
+                                {
+                                    c["name"]: [None if c["result"] == "unknown" else False]
+                                    for c in after
+                                }
+                            )
+                            + ")",
+                        },
+                    )
+                ],
+                "",
+            ),
+            ([], "Documents restored in 1.1. Row 0 still lacks the orchestrator target."),
+        ],
     )
     if initial:
         list(agent.diagnose(dataset.id))

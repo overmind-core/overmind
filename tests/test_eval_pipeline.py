@@ -7,6 +7,7 @@ from unittest import mock
 
 import pytest
 from conftest import EVAL_ROWS, frozen_dataset
+from factories import make_project
 
 from overbae.models import (
     Capability,
@@ -15,21 +16,15 @@ from overbae.models import (
     EvalSample,
     Evaluator,
     EvalVariant,
-    Project,
     RunEvaluator,
     Score,
 )
 from overbae.services.datasets.rows import row as _dataset_row
-from overbae.services.eval import funnel as judging
 from overbae.services.eval import snapshots
 from overbae.services.eval.evaluators.gen_judge import ChecklistItem, ChecklistResult
 from overbae.tasks import eval as eval_tasks
 
 pytestmark = pytest.mark.django_db
-
-
-def _project() -> Project:
-    return Project.objects.create(name="P", slug=f"p-{uuid.uuid4().hex[:8]}")
 
 
 def _attach(run, evaluator) -> RunEvaluator:
@@ -39,7 +34,7 @@ def _attach(run, evaluator) -> RunEvaluator:
 
 
 def test_statistical_pipeline_accuracy():
-    project = _project()
+    project = make_project()
     capability = Capability.objects.create(project=project, name="A", slug="a")
     dataset = frozen_dataset(
         capability.project,
@@ -111,7 +106,7 @@ def test_statistical_pipeline_accuracy():
 
 def test_normalize_datapoint_propagates_row_extra():
     """Row-level extra columns must reach metadata.row_extra for variable mappings."""
-    project = _project()
+    project = make_project()
     capability = Capability.objects.create(project=project, name="A", slug="a")
     dataset = frozen_dataset(
         capability.project,
@@ -164,7 +159,7 @@ def test_normalize_datapoint_strips_gold_keys_from_object_input():
 
 def test_resolve_items_reads_reference_from_expected_output():
     """Read verbatim from expected_output — never scavenged from the input."""
-    project = _project()
+    project = make_project()
     capability = Capability.objects.create(project=project, name="A", slug="a")
     dataset = frozen_dataset(
         capability.project,
@@ -189,11 +184,10 @@ def test_resolve_items_reads_reference_from_expected_output():
     assert items[0]["expected"] == "GT-ANSWER"
 
 
-def test_generate_prompt_excludes_reference(monkeypatch):
+def test_generate_prompt_excludes_reference(fake_llm):
     """The reference stays out of the prompt but remains available for scoring."""
-    from overbae.services.eval.runner import RunResult
 
-    project = _project()
+    project = make_project()
     capability = Capability.objects.create(project=project, name="A", slug="a")
     ground_truth = '{"clusters":8,"silhouette":0.41}'
     dataset = frozen_dataset(
@@ -221,16 +215,10 @@ def test_generate_prompt_excludes_reference(monkeypatch):
         run=run, variant=variant, row_index=dp.index, expected=ground_truth
     )
 
-    captured: dict = {}
-
-    def fake_run_capability(**kwargs):
-        captured.update(kwargs)
-        return RunResult([{"role": "assistant", "content": "a fresh answer"}], 1, 0.0, 0, 0)
-
-    monkeypatch.setattr("overbae.services.eval.runner.run_capability", fake_run_capability)
+    _generation(fake_llm, "a fresh answer")
     eval_tasks.prepare_sample.apply(kwargs={"sample_id": str(sample.id)}).get()
 
-    prompt_text = " ".join(m.get("content") or "" for m in captured["input_messages"])
+    prompt_text = " ".join(m.get("content") or "" for m in _seed(fake_llm))
     assert "cluster dolly.jsonl" in prompt_text
     assert "silhouette" not in prompt_text
 
@@ -239,10 +227,9 @@ def test_generate_prompt_excludes_reference(monkeypatch):
     assert sample.trajectory["final_output"] == "a fresh answer"
 
 
-def test_generate_multi_turn_keeps_history_strips_final_assistant(monkeypatch):
-    from overbae.services.eval.runner import RunResult
+def test_generate_multi_turn_keeps_history_strips_final_assistant(fake_llm):
 
-    project = _project()
+    project = make_project()
     capability = Capability.objects.create(project=project, name="A", slug="a")
     dataset = frozen_dataset(
         capability.project,
@@ -275,16 +262,10 @@ def test_generate_multi_turn_keeps_history_strips_final_assistant(monkeypatch):
         run=run, variant=variant, row_index=dp.index, expected="TARGET-ANSWER"
     )
 
-    captured: dict = {}
-
-    def fake_run_capability(**kwargs):
-        captured.update(kwargs)
-        return RunResult([{"role": "assistant", "content": "generated"}], 1, 0.0, 0, 0)
-
-    monkeypatch.setattr("overbae.services.eval.runner.run_capability", fake_run_capability)
+    _generation(fake_llm, "generated")
     eval_tasks.prepare_sample.apply(kwargs={"sample_id": str(sample.id)}).get()
 
-    seed = captured["input_messages"]
+    seed = _seed(fake_llm)
     contents = [m.get("content") or "" for m in seed]
     assert "history answer" in contents
     assert "final question" in contents
@@ -294,7 +275,7 @@ def test_generate_multi_turn_keeps_history_strips_final_assistant(monkeypatch):
 def test_existing_mode_reference_synthesized_for_scoring():
     """With no assistant turn in the input, the reference becomes final_output for
     judges while the user message stays clean."""
-    project = _project()
+    project = make_project()
     capability = Capability.objects.create(project=project, name="A", slug="a")
     dataset = frozen_dataset(
         capability.project,
@@ -312,11 +293,10 @@ def test_existing_mode_reference_synthesized_for_scoring():
     assert user_msgs and "GT-ANSWER" not in user_msgs[0]["content"]
 
 
-def test_generate_mode_total_failure_sets_sample_error(monkeypatch):
+def test_generate_mode_total_failure_sets_sample_error(fake_llm):
     """No output at all must set sample.error rather than score an empty output."""
-    from overbae.services.eval.runner import RunResult
 
-    project = _project()
+    project = make_project()
     capability = Capability.objects.create(project=project, name="A", slug="a")
     dataset = frozen_dataset(
         capability.project, [{"input": "q1", "expected_output": "a1"}], capability=capability
@@ -334,8 +314,7 @@ def test_generate_mode_total_failure_sets_sample_error(monkeypatch):
     )
     sample = EvalSample.objects.create(run=run, variant=variant, row_index=dp.index, expected="a1")
 
-    failed = RunResult([], 0, 0.0, 0, 0, error="Error calling LLM: missing credentials")
-    monkeypatch.setattr("overbae.services.eval.runner.run_capability", lambda **_: failed)
+    fake_llm.fail(lambda r: r.model == "openai/gpt-5-mini", 400, "missing credentials")
 
     eval_tasks.prepare_sample.apply(kwargs={"sample_id": str(sample.id)}).get()
     sample.refresh_from_db()
@@ -364,11 +343,11 @@ def _tool_calling_input(n_calls: int) -> list[dict]:
     return msgs
 
 
-def test_generate_max_steps_scales_with_recorded_tool_calls(monkeypatch):
+def test_generate_max_steps_scales_with_recorded_tool_calls(fake_llm):
     """The step budget derives from recorded tool-call depth, not the flat default of 12."""
-    from overbae.services.eval.runner import RunResult, resolve_max_steps
+    from overbae.services.eval.runner import resolve_max_steps
 
-    project = _project()
+    project = make_project()
     capability = Capability.objects.create(project=project, name="A", slug="a")
     dataset = frozen_dataset(
         capability.project,
@@ -390,25 +369,17 @@ def test_generate_max_steps_scales_with_recorded_tool_calls(monkeypatch):
         run=run, variant=variant, row_index=dp.index, expected="TARGET"
     )
 
-    captured: dict = {}
-
-    def fake_run_capability(**kwargs):
-        captured.update(kwargs)
-        return RunResult([{"role": "assistant", "content": "done"}], 1, 0.0, 0, 0)
-
-    monkeypatch.setattr("overbae.services.eval.runner.run_capability", fake_run_capability)
+    _generation(fake_llm, "done")
     eval_tasks.prepare_sample.apply(kwargs={"sample_id": str(sample.id)}).get()
 
-    assert captured["max_steps"] == resolve_max_steps(recorded_tool_calls=8)
-    assert captured["max_steps"] > 12
     sample.refresh_from_db()
-    assert sample.trajectory["metadata"]["max_steps"] == captured["max_steps"]
+    assert sample.trajectory["metadata"]["max_steps"] == resolve_max_steps(recorded_tool_calls=8)
+    assert sample.trajectory["metadata"]["max_steps"] > 12
 
 
-def test_generate_max_steps_override_from_variant_params(monkeypatch):
-    from overbae.services.eval.runner import RunResult
+def test_generate_max_steps_override_from_variant_params(fake_llm):
 
-    project = _project()
+    project = make_project()
     capability = Capability.objects.create(project=project, name="A", slug="a")
     dataset = frozen_dataset(
         capability.project,
@@ -430,23 +401,17 @@ def test_generate_max_steps_override_from_variant_params(monkeypatch):
         run=run, variant=variant, row_index=dp.index, expected="TARGET"
     )
 
-    captured: dict = {}
-
-    def fake_run_capability(**kwargs):
-        captured.update(kwargs)
-        return RunResult([{"role": "assistant", "content": "done"}], 1, 0.0, 0, 0)
-
-    monkeypatch.setattr("overbae.services.eval.runner.run_capability", fake_run_capability)
+    _generation(fake_llm, "done")
     eval_tasks.prepare_sample.apply(kwargs={"sample_id": str(sample.id)}).get()
 
-    assert captured["max_steps"] == 40
+    sample.refresh_from_db()
+    assert sample.trajectory["metadata"]["max_steps"] == 40
 
 
-def test_generate_tool_loop_without_final_answer_degrades(monkeypatch):
+def test_generate_tool_loop_without_final_answer_degrades(fake_llm):
     """A tool envelope is not an answer: final_output stays empty and the sample degrades."""
-    from overbae.services.eval.runner import RunResult
 
-    project = _project()
+    project = make_project()
     capability = Capability.objects.create(project=project, name="A", slug="a")
     dataset = frozen_dataset(
         capability.project, [{"input": "q1", "expected_output": "a1"}], capability=capability
@@ -464,18 +429,14 @@ def test_generate_tool_loop_without_final_answer_degrades(monkeypatch):
     )
     sample = EvalSample.objects.create(run=run, variant=variant, row_index=dp.index, expected="a1")
 
-    tail = [
+    _generation(
+        fake_llm,
         {
-            "role": "assistant",
-            "content": "",
+            "content": None,
             "tool_calls": [
                 {"id": "c1", "type": "function", "function": {"name": "read", "arguments": "{}"}}
             ],
         },
-        {"role": "tool", "tool_call_id": "c1", "name": "read", "content": '{"rows": 100}'},
-    ]
-    monkeypatch.setattr(
-        "overbae.services.eval.runner.run_capability", lambda **_: RunResult(tail, 12, 0.0, 0, 0)
     )
     eval_tasks.prepare_sample.apply(kwargs={"sample_id": str(sample.id)}).get()
 
@@ -485,11 +446,10 @@ def test_generate_tool_loop_without_final_answer_degrades(monkeypatch):
     assert sample.degraded_reason.startswith("no_final_output")
 
 
-def test_generate_mode_partial_failure_keeps_output(monkeypatch):
+def test_generate_mode_partial_failure_keeps_output(fake_llm):
     """An error after some output was produced is metadata, not a hard failure."""
-    from overbae.services.eval.runner import RunResult
 
-    project = _project()
+    project = make_project()
     capability = Capability.objects.create(project=project, name="A", slug="a")
     dataset = frozen_dataset(
         capability.project, [{"input": "q1", "expected_output": "a1"}], capability=capability
@@ -507,19 +467,30 @@ def test_generate_mode_partial_failure_keeps_output(monkeypatch):
     )
     sample = EvalSample.objects.create(run=run, variant=variant, row_index=dp.index, expected="a1")
 
-    partial = RunResult(
-        [{"role": "assistant", "content": "partial answer"}], 1, 0.0, 0, 0, error="step 2 failed"
-    )
-    monkeypatch.setattr("overbae.services.eval.runner.run_capability", lambda **_: partial)
+    steps = []
+
+    def step(request):
+        steps.append(request)
+        if len(steps) > 1:
+            raise AssertionError("unreachable")
+        return {
+            "content": None,
+            "tool_calls": [
+                {"id": "c1", "type": "function", "function": {"name": "read", "arguments": "{}"}}
+            ],
+        }
+
+    _generation(fake_llm, step)
+    fake_llm.fail(lambda r: r.model == "openai/gpt-5-mini" and bool(steps), 400, "step 2 failed")
 
     eval_tasks.prepare_sample.apply(kwargs={"sample_id": str(sample.id)}).get()
     sample.refresh_from_db()
     assert sample.error == ""
-    assert sample.trajectory["metadata"]["generation_error"] == "step 2 failed"
+    assert "step 2 failed" in sample.trajectory["metadata"]["generation_error"]
 
 
 def test_execute_evaluator_idempotent():
-    project = _project()
+    project = make_project()
     capability = Capability.objects.create(project=project, name="A", slug="a")
     dataset = frozen_dataset(
         capability.project,
@@ -561,7 +532,7 @@ def test_execute_evaluator_idempotent():
 
 def test_run_evaluator_snapshot_is_independent():
     """A run's bound rubric snapshot survives edits/deletes to the library."""
-    project = _project()
+    project = make_project()
     capability = Capability.objects.create(project=project, name="A", slug="a")
     dataset = frozen_dataset(capability.project, EVAL_ROWS, capability=capability)
     evaluator = Evaluator.objects.create(
@@ -607,7 +578,7 @@ def _harness_artifact_evaluator(project):
 
 
 def test_harness_artifact_evaluator_not_applicable_in_generate_mode():
-    project = _project()
+    project = make_project()
     capability = Capability.objects.create(project=project, name="A", slug="a")
     dataset = frozen_dataset(capability.project, EVAL_ROWS, capability=capability)
     evaluator = _harness_artifact_evaluator(project)
@@ -638,7 +609,7 @@ def test_harness_artifact_evaluator_not_applicable_in_generate_mode():
 def test_summary_carries_per_item_pass_rates():
     """Two variants can share a score while failing different items, so the
     breakdown is frozen with the run — revealed on request, not in the headline."""
-    project = _project()
+    project = make_project()
     agent = Capability.objects.create(project=project, name="A", slug="a")
     dataset = Dataset.objects.create(project=project, capability=agent, name="d")
     run = EvalRun.objects.create(project=project, name="r", data_source="dataset", dataset=dataset)
@@ -676,7 +647,7 @@ def test_summary_carries_per_item_pass_rates():
 
 
 def test_summary_omits_invented_item_ids():
-    project = _project()
+    project = make_project()
     agent = Capability.objects.create(project=project, name="A", slug="a")
     dataset = Dataset.objects.create(project=project, capability=agent, name="d")
     run = EvalRun.objects.create(project=project, name="r", data_source="dataset", dataset=dataset)
@@ -714,7 +685,7 @@ def test_summary_omits_invented_item_ids():
 def test_summary_pools_proportional_evaluators():
     """Averaging per-row fractions over rows with different denominators favours
     the model that writes least; the ratio of sums does not."""
-    project = _project()
+    project = make_project()
     agent = Capability.objects.create(project=project, name="A", slug="a")
     dataset = Dataset.objects.create(project=project, capability=agent, name="d")
     run = EvalRun.objects.create(project=project, name="r", data_source="dataset", dataset=dataset)
@@ -752,7 +723,7 @@ def test_summary_pools_proportional_evaluators():
 
 def test_a_non_proportional_evaluator_keeps_the_mean_as_its_headline():
     """Only proportional evaluators pool; everything else has one denominator."""
-    project = _project()
+    project = make_project()
     agent = Capability.objects.create(project=project, name="A", slug="a")
     dataset = Dataset.objects.create(project=project, capability=agent, name="d")
     run = EvalRun.objects.create(project=project, name="r", data_source="dataset", dataset=dataset)
@@ -782,7 +753,7 @@ def test_a_non_proportional_evaluator_keeps_the_mean_as_its_headline():
 def test_summary_names_evaluators_that_never_scored():
     """A member that abstains on every row measured nothing, and reads as healthy
     unless the summary names it."""
-    project = _project()
+    project = make_project()
     agent = Capability.objects.create(project=project, name="A", slug="a")
     dataset = Dataset.objects.create(project=project, capability=agent, name="d")
     run = EvalRun.objects.create(project=project, name="r", data_source="dataset", dataset=dataset)
@@ -809,7 +780,7 @@ def test_summary_names_evaluators_that_never_scored():
 
 
 def test_summary_names_uncovered_generate_card_claims():
-    project = _project()
+    project = make_project()
     capability = Capability.objects.create(
         project=project,
         name="A",
@@ -848,7 +819,7 @@ def test_summary_names_uncovered_generate_card_claims():
 def test_summary_gold_label_claim_covered_when_agreement_item_present():
     from conftest import frozen_dataset
 
-    project = _project()
+    project = make_project()
     capability = Capability.objects.create(
         project=project,
         name="Intent",
@@ -894,7 +865,7 @@ def test_summary_gold_label_claim_covered_when_agreement_item_present():
 def test_summary_names_attached_evaluator_that_only_wrote_predictions():
     """Dataset-scope metrics write ``{name}__prediction`` abstains and no scored
     row; those must still surface as never_scored under the snapshot name."""
-    project = _project()
+    project = make_project()
     agent = Capability.objects.create(project=project, name="A", slug="a")
     dataset = Dataset.objects.create(project=project, capability=agent, name="d")
     run = EvalRun.objects.create(project=project, name="r", data_source="dataset", dataset=dataset)
@@ -931,7 +902,7 @@ def test_summary_names_attached_evaluator_that_only_wrote_predictions():
 def test_count_sample_errors_surfaces_evaluator_errors_not_abstains():
     """Both carry value=None; the reasoning prefix is what separates an error from
     a legitimate abstain."""
-    project = _project()
+    project = make_project()
     capability = Capability.objects.create(project=project, name="A", slug="a")
     dataset = frozen_dataset(capability.project, EVAL_ROWS, capability=capability)
     evaluator = Evaluator.objects.create(
@@ -990,9 +961,9 @@ def test_count_sample_errors_surfaces_evaluator_errors_not_abstains():
     assert counts["by_variant"][str(variant.id)]["errored"] == 0
 
 
-def test_execute_evaluator_error_uses_countable_prefix(monkeypatch):
+def test_execute_evaluator_error_uses_countable_prefix(fake_llm):
     """A raising evaluator persists a None score whose reasoning is counted."""
-    project = _project()
+    project = make_project()
     capability = Capability.objects.create(project=project, name="A", slug="a")
     dataset = frozen_dataset(capability.project, EVAL_ROWS, capability=capability)
     evaluator = Evaluator.objects.create(
@@ -1014,10 +985,7 @@ def test_execute_evaluator_error_uses_countable_prefix(monkeypatch):
     variant = EvalVariant.objects.create(run=run, label="v", mode="existing")
     sample = EvalSample.objects.create(run=run, variant=variant, trajectory={"final_output": "x"})
 
-    def _boom(*_args, **_kwargs):
-        raise RuntimeError("provider down")
-
-    monkeypatch.setattr(eval_tasks.eval_base, "evaluate", _boom)
+    fake_llm.fail(lambda r: r.schema_name == "ChecklistResult", 400, "provider down")
 
     res = eval_tasks.execute_evaluator.apply(
         kwargs={"sample_id": str(sample.id), "run_evaluator_id": str(run_eval.id)}
@@ -1032,8 +1000,8 @@ def test_execute_evaluator_error_uses_countable_prefix(monkeypatch):
     assert counts["evaluator_errors"] == 1
 
 
-def test_harness_artifact_evaluator_scores_in_existing_mode():
-    project = _project()
+def test_harness_artifact_evaluator_scores_in_existing_mode(fake_llm):
+    project = make_project()
     capability = Capability.objects.create(project=project, name="A", slug="a")
     dataset = frozen_dataset(capability.project, EVAL_ROWS, capability=capability)
     evaluator = _harness_artifact_evaluator(project)
@@ -1051,27 +1019,17 @@ def test_harness_artifact_evaluator_scores_in_existing_mode():
         run=run, variant=variant, trajectory={"final_output": structured_output}
     )
 
-    captured = {}
-
-    def _fake_invoke_judge(prompt, **kwargs):
-        captured["prompt"] = prompt
-        return judging.JudgeOutcome(
-            parsed=ChecklistResult(
-                items=[ChecklistItem(id="recommendations_present", verdict=True)],
-                reasoning="ok",
-            ),
-            raw="",
-            stats={"response_cost": 0.0, "response_ms": 0},
-            judge_trace_id="t",
-        )
-
-    with mock.patch.object(judging, "invoke_judge", _fake_invoke_judge):
-        res = eval_tasks.execute_evaluator.apply(
-            kwargs={"sample_id": str(sample.id), "run_evaluator_id": str(run_eval.id)}
-        ).get()
+    verdict = ChecklistResult(
+        items=[ChecklistItem(id="recommendations_present", verdict=True)], reasoning="ok"
+    )
+    fake_llm.on(lambda r: r.schema_name == "ChecklistResult", verdict.model_dump_json())
+    res = eval_tasks.execute_evaluator.apply(
+        kwargs={"sample_id": str(sample.id), "run_evaluator_id": str(run_eval.id)}
+    ).get()
 
     assert res["status"] != "not_applicable"
-    assert "dedupe rows" in captured["prompt"]
+    [judged] = [r for r in fake_llm.requests if r.schema_name == "ChecklistResult"]
+    assert "dedupe rows" in judged.text
     assert Score.objects.get(sample=sample, run_evaluator=run_eval).value == 1.0
 
 
@@ -1079,7 +1037,7 @@ def test_sample_units_for_dataset_and_dry_run():
     """The dry-run must normalize dataset rows exactly as the run path does."""
     from overbae.services.eval import binding_check
 
-    project = _project()
+    project = make_project()
     capability = Capability.objects.create(
         project=project,
         name="A",
@@ -1120,7 +1078,7 @@ def test_sample_units_for_dataset_and_dry_run():
 def test_generate_mode_prefers_recent_run_samples():
     from overbae.services.eval import binding_check, evidence
 
-    project = _project()
+    project = make_project()
     capability = Capability.objects.create(
         project=project, name="A", slug=f"a-{uuid.uuid4().hex[:8]}"
     )
@@ -1168,7 +1126,7 @@ def test_generate_mode_skips_output_binding_without_run_samples():
     binding is skipped rather than red."""
     from overbae.services.eval import binding_check, evidence
 
-    project = _project()
+    project = make_project()
     capability = Capability.objects.create(
         project=project, name="A", slug=f"a-{uuid.uuid4().hex[:8]}"
     )
@@ -1197,7 +1155,7 @@ def test_prepare_sample_generation_timeout_marks_sample_errored(monkeypatch):
     """A soft time limit marks the sample errored — no hang, no retry, worker freed."""
     from celery.exceptions import SoftTimeLimitExceeded
 
-    project = _project()
+    project = make_project()
     capability = Capability.objects.create(
         project=project, name="A", slug=f"a-{uuid.uuid4().hex[:8]}"
     )
@@ -1231,10 +1189,10 @@ def test_prepare_sample_generation_timeout_marks_sample_errored(monkeypatch):
     assert sample.trajectory == {}
 
 
-def test_cancel_run_revokes_inflight_tasks():
+def test_cancel_run_revokes_inflight_tasks(fake_llm):
     """Revokes the parent and every sample task with terminate=True so hung
     generation calls stop occupying worker threads."""
-    project = _project()
+    project = make_project()
     capability = Capability.objects.create(
         project=project, name="A", slug=f"a-{uuid.uuid4().hex[:8]}"
     )
@@ -1263,6 +1221,14 @@ def test_cancel_run_revokes_inflight_tasks():
     assert revoked_ids == {"run-task-id", s1.celery_task_id, s2.celery_task_id}
     assert kwargs["terminate"] is True
     assert kwargs["signal"] == "SIGTERM"
+
+
+def _generation(fake_llm, reply):
+    fake_llm.on(lambda r: r.model == "openai/gpt-5-mini", reply)
+
+
+def _seed(fake_llm) -> list[dict]:
+    return next(r for r in fake_llm.requests if r.model == "openai/gpt-5-mini").messages
 
 
 def _row(dataset, index):

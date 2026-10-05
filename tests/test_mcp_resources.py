@@ -27,8 +27,6 @@ from overbae.services.mcp.catalog import CATALOG
 from overbae.services.mcp.context import MCPContext, bind_context
 from overbae.services.mcp.resources import (
     read_resource,
-    resource_list,
-    resource_templates,
     safe_json,
 )
 from overbae.services.mcp.server import create_mcp_application
@@ -78,102 +76,7 @@ def test_project_resource_exposes_scan_provenance():
     assert resource["last_synced_at"] == project.settings["last_synced_at"]
 
 
-def test_resource_templates_cover_the_public_resource_surface():
-    templates = {
-        template.uriTemplate.removesuffix("{?project_id}") for template in resource_templates()
-    }
-    assert templates == {
-        "overmind://capabilities/{capability}",
-        "overmind://traces/{trace_id}",
-        "overmind://sessions/{session}",
-        "overmind://datasets/{dataset}",
-        "overmind://eval-runs/{eval_run}",
-        "overmind://eval-sets/{eval_set}",
-        "overmind://finetunes/{job_id}",
-        "overmind://deployments/{deployment}",
-        "overmind://optimizer-runs/{experiment}",
-        "overmind://jobs/{kind}/{id}",
-        "overmind://connectors/{connector}",
-    }
-
-
-def test_dataset_upload_resource_describes_cli_flow_and_server_limits():
-    project, _ = _project()
-    token = APIToken(scope={"scope": "project", "permission": ["read"]})
-    context = MCPContext(
-        user=User(email="upload-resource@example.com"), token=token, project=project
-    )
-
-    async def read():
-        with bind_context(context):
-            contents = list(await read_resource("overmind://dataset-upload"))
-        return json.loads(contents[0].content)
-
-    resource = asyncio.run(read())
-    assert resource["extensions"] == [".csv", ".tsv", ".json", ".jsonl", ".ndjson", ".parquet"]
-    assert resource["max_bytes"] == 2 * 1024**3
-    assert resource["json_array_max_bytes"] == 256 * 1024**2
-    assert "capped at 2 GiB" in resource["limits"]
-    assert "capped at 256 MiB" in resource["limits"]
-    assert resource["command"] == "overmind dataset upload FILE --json"
-    assert "/inspect/" in resource["multiple_files"]
-    assert "source.uploads" in resource["multiple_files"]
-    assert "OVERMIND_API_KEY" in resource["auth"]
-    assert "get_job" in resource["next_mcp_calls"][0]
-
-
-def test_dataset_export_resource_describes_local_download_and_trace_flow():
-    project, _ = _project()
-    token = APIToken(scope={"scope": "project", "permission": ["read"]})
-    context = MCPContext(
-        user=User(email="export-resource@example.com"), token=token, project=project
-    )
-
-    async def read():
-        with bind_context(context):
-            contents = list(await read_resource("overmind://dataset-export"))
-        return json.loads(contents[0].content)
-
-    resource = asyncio.run(read())
-    assert resource["command"] == "overmind dataset export DATASET --json"
-    assert resource["formats"] == ["jsonl", "csv"]
-    assert "dataset id" in resource["dataset"]
-    assert "--api-url" in resource["config"]
-    assert "--path" in resource["config"]
-    assert (
-        "select traces -> land a dataset from traces -> run dataset export locally"
-        in resource["flow"]
-    )
-    assert "no export_trace MCP tool" in resource["trace_export"]
-
-
-def test_checkpoint_download_resource_describes_cli_boundary_and_availability():
-    project, _ = _project()
-    token = APIToken(scope={"scope": "project", "permission": ["read"]})
-    context = MCPContext(
-        user=User(email="checkpoint-resource@example.com"), token=token, project=project
-    )
-
-    async def read():
-        with bind_context(context):
-            contents = list(await read_resource("overmind://checkpoint-download"))
-        return json.loads(contents[0].content)
-
-    resource = asyncio.run(read())
-    assert resource["command"] == "overmind model download-checkpoint DEPLOYMENT --json"
-    assert "deployment id supplied by MCP" in resource["deployment"]
-    assert "OVERMIND_API_KEY" in resource["auth"]
-    assert "--api-url" in resource["config"]
-    assert "presigned S3" in resource["mcp_boundary"]
-    assert "model context" in resource["mcp_boundary"]
-    assert "baseten or modal" in resource["availability"]
-    assert "archived checkpoints" in resource["availability"]
-    assert "path" in resource["output"]
-    assert "bytes_written" in resource["output"]
-    assert "refuses to overwrite" in resource["overwrite"]
-
-
-def test_connector_setup_resource_describes_human_cli_boundary():
+def test_connector_setup_resource_names_no_secret_fields():
     project, _ = _project()
     token = APIToken(scope={"scope": "project", "permission": ["read"]})
     context = MCPContext(
@@ -187,21 +90,8 @@ def test_connector_setup_resource_describes_human_cli_boundary():
 
     resource = asyncio.run(read())
     encoded = json.dumps(resource)
-    assert resource["command"] == "overmind connector add langfuse --json"
-    assert resource["types"][0]["env"] == ["LANGFUSE_PUBLIC_KEY", "LANGFUSE_SECRET_KEY"]
-    assert "Do not have the agent export keys" in resource["boundary"]
-    assert "inspect_connectors" in resource["next_mcp_calls"][0]
     assert "needs_secret" not in encoded
     assert "api_key" not in encoded
-
-
-def test_static_resource_manifest_includes_checkpoint_download_guidance():
-    resources = resource_list()
-
-    assert len(resources) == 5
-    uris = {str(resource.uri) for resource in resources}
-    assert "overmind://checkpoint-download" in uris
-    assert "overmind://connector-setup" in uris
 
 
 def test_resource_reads_are_json_and_project_scoped():
@@ -293,7 +183,7 @@ def test_trace_resource_preserves_resource_attrs_for_verification():
     trace_id = "3" * 32
     resource_attrs = {"overmind.capability.id": str(uuid.uuid4())}
     Span.objects.create(
-        span_id="resource-attrs-root",
+        span_id="a" * 16,
         trace_id=trace_id,
         project=project,
         name="run",

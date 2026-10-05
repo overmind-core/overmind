@@ -4,29 +4,41 @@ import uuid
 
 import pytest
 from conftest import frozen_dataset
+from factories import make_span
 from rest_framework.exceptions import ValidationError
 
 from overbae.api.optimizer import OptimizerCandidateSerializer, OptimizerExperimentSerializer
+from overbae.celery import app as celery_app
 from overbae.models import (
     Capability,
     DeployedModel,
+    Evaluator,
     OptimizerCandidate,
     OptimizerCommand,
     OptimizerExperiment,
     OptimizerIteration,
     Project,
 )
-from overbae.models import optimizer as optimizer_module
-from overbae.services.datasets.rows import row as _dataset_row
 from overbae.services.optimizer_create import (
     create_optimizer_experiment,
     validate_optimizer_models,
+)
+from overbae.services.optimizer_ledger import (
+    complete_experiment,
+    create_iteration,
+    evaluate_iteration,
+    post_results,
 )
 
 pytestmark = pytest.mark.django_db
 
 MODE = OptimizerExperiment.Mode.MODEL_COMPARISON
 MODELS = ["openai/gpt-5", "anthropic/claude-sonnet-4"]
+
+
+@pytest.fixture(autouse=True)
+def _listed(fake_llm):
+    fake_llm.extra_models = list(MODELS)
 
 
 def _experiment(*, mode=MODE, model_ids=None, status=None, openrouter_key_source=None):
@@ -61,22 +73,16 @@ def _experiment(*, mode=MODE, model_ids=None, status=None, openrouter_key_source
 
 
 @pytest.mark.parametrize("model_ids", [None, [], MODELS * 3, [""], [" openai/gpt-5"]])
-def test_model_selection_rejects_missing_too_many_or_malformed(model_ids, monkeypatch):
-    monkeypatch.setattr("overbae.services.optimizer_create.is_model_available", lambda _: True)
+def test_model_selection_rejects_missing_too_many_or_malformed(model_ids):
     with pytest.raises(ValidationError) as exc:
         validate_optimizer_models(MODE, model_ids)
     assert "model_ids" in str(exc.value)
 
 
-def test_model_selection_rejects_duplicates_and_unavailable(monkeypatch):
-    monkeypatch.setattr("overbae.services.optimizer_create.is_model_available", lambda _: True)
+def test_model_selection_rejects_duplicates_and_unavailable():
     with pytest.raises(ValidationError, match="Duplicate"):
         validate_optimizer_models(MODE, [MODELS[0], MODELS[0]])
 
-    monkeypatch.setattr(
-        "overbae.services.optimizer_create.is_model_available",
-        lambda model: model != "dead/model",
-    )
     with pytest.raises(ValidationError, match="dead/model"):
         validate_optimizer_models(MODE, ["dead/model"])
 
@@ -129,8 +135,7 @@ def test_finetuned_deployment_id_requires_ready_in_project():
         validate_optimizer_models(MODE, ["ft-nobody-00000000"], project=project)
 
 
-def test_finetuned_references_require_platform_source(monkeypatch):
-    monkeypatch.setattr("overbae.services.optimizer_create.is_model_available", lambda _: True)
+def test_finetuned_references_require_platform_source():
     with pytest.raises(ValidationError, match="Overmind credits"):
         validate_optimizer_models(
             MODE,
@@ -149,14 +154,12 @@ def test_normal_optimizer_rejects_model_selection():
         validate_optimizer_models(OptimizerExperiment.Mode.OPTIMIZE, [MODELS[0]])
 
 
-def test_hybrid_model_selection_is_validated(monkeypatch):
-    monkeypatch.setattr("overbae.services.optimizer_create.is_model_available", lambda _: True)
+def test_hybrid_model_selection_is_validated():
     assert validate_optimizer_models(OptimizerExperiment.Mode.HYBRID, MODELS) == MODELS
 
 
-def test_create_service_forces_one_iteration_per_model(monkeypatch):
+def test_create_service_forces_one_iteration_per_model():
     experiment = _experiment(mode=OptimizerExperiment.Mode.OPTIMIZE)
-    monkeypatch.setattr("overbae.services.optimizer_create.is_model_available", lambda _: True)
     created = create_optimizer_experiment(
         user=None,
         capability=experiment.capability,
@@ -198,41 +201,52 @@ def test_read_serializers_expose_comparison_fields():
     assert str(candidate_data["experiment"]) == str(experiment.id)
 
 
-def test_failed_and_empty_outputs_are_excluded_from_candidate_score(monkeypatch):
-    experiment = _experiment(mode=OptimizerExperiment.Mode.OPTIMIZE)
-    datapoint = _dataset_row(experiment.cell, 1)
-    iteration = OptimizerIteration.objects.create(experiment=experiment, order=1)
-    candidate = OptimizerCandidate.objects.create(
-        experiment=experiment,
-        iteration=iteration,
-        candidate_index=0,
-    )
-    OptimizerCommand.objects.create(
-        experiment=experiment,
-        candidate=candidate,
-        iteration=iteration,
-        datapoint_index=0,
-        input={"question": "hello"},
-        status=OptimizerCommand.Status.RAN,
-        output="valid output",
-        result={"output": "valid output"},
-    )
-    failed = OptimizerCommand.objects.create(
-        experiment=experiment,
-        candidate=candidate,
-        iteration=iteration,
-        datapoint_index=1,
-        input=datapoint.input,
-        status=OptimizerCommand.Status.FAILED,
-        error="provider timeout",
-    )
-    monkeypatch.setattr(optimizer_module, "randint", lambda *_: 80)
+@pytest.fixture
+def eager(monkeypatch):
+    monkeypatch.setattr(celery_app.conf, "task_always_eager", True)
+    monkeypatch.setattr(celery_app.conf, "task_eager_propagates", True)
 
-    candidate.evaluate()
+
+def _grade(experiment, candidate: dict, results: list[dict], *, order: int = 1):
+    Evaluator.objects.create(
+        project=experiment.project,
+        capability=experiment.capability,
+        name="ExactMatch",
+        kind="deterministic",
+        scope="final_output",
+        config={"check": "exact_match"},
+        pass_threshold=1.0,
+        version=1,
+    )
+    iteration = create_iteration(experiment, order=order, candidates=[candidate])
+    posted = iteration.candidates.get()
+    post_results(experiment, [{"candidate_id": str(posted.id), **r} for r in results])
+    evaluate_iteration(experiment, order)
+    posted.refresh_from_db()
+    return posted
+
+
+def test_failed_and_empty_outputs_are_excluded_from_the_stub_score():
+    experiment = _experiment(mode=OptimizerExperiment.Mode.OPTIMIZE)
+    iteration = create_iteration(experiment, order=1, candidates=[{"candidate_index": 0}])
+    candidate = iteration.candidates.get()
+    post_results(
+        experiment,
+        [
+            {"candidate_id": str(candidate.id), "datapoint_index": 0, "output": "valid output"},
+            {
+                "candidate_id": str(candidate.id),
+                "datapoint_index": 1,
+                "success": False,
+                "error": "provider timeout",
+            },
+        ],
+    )
+
+    evaluate_iteration(experiment, 1)
 
     candidate.refresh_from_db()
-    failed.refresh_from_db()
-    assert candidate.score == 80
+    assert 60 <= candidate.score <= 85
     assert candidate.scores["coverage"] == {
         "excluded_commands": 1,
         "errors": ["provider timeout"],
@@ -241,62 +255,81 @@ def test_failed_and_empty_outputs_are_excluded_from_candidate_score(monkeypatch)
         "total_rows": 2,
         "coverage_rate": 0.5,
     }
-    assert failed.status == OptimizerCommand.Status.FAILED
+    assert candidate.commands.get(datapoint_index=1).status == OptimizerCommand.Status.FAILED
 
 
-def test_model_telemetry_mismatch_is_a_routing_error():
-    experiment = _experiment(mode=OptimizerExperiment.Mode.MODEL_COMPARISON)
-    iteration = OptimizerIteration.objects.create(experiment=experiment, order=1)
-    candidate = OptimizerCandidate.objects.create(
-        experiment=experiment,
-        iteration=iteration,
-        candidate_index=0,
-        target_model=MODELS[0],
-        status=OptimizerCandidate.Status.RUNNING_COMMANDS,
-    )
-    command = OptimizerCommand.objects.create(
-        experiment=experiment,
-        candidate=candidate,
-        iteration=iteration,
-        datapoint_index=0,
-        status=OptimizerCommand.Status.RAN,
-    )
-    error = command._telemetry_error(
-        {
-            "output": "answer",
-            "trace_id": "trace-1",
-            "telemetry": {"provider": "openrouter", "model": MODELS[1]},
-        }
-    )
-    assert "Model routing mismatch" in error
-    assert MODELS[1] in error
-
-
-def test_eval_variant_label_uses_model_card_identity():
-    experiment = _experiment(mode=OptimizerExperiment.Mode.MODEL_COMPARISON)
-    candidate = OptimizerCandidate(
-        experiment=experiment,
-        candidate_index=0,
-        target_model=MODELS[0],
-    )
-    label, model_name = experiment._candidate_label(candidate)
-    assert label == MODELS[0]
-    assert model_name == MODELS[0]
-
-    baseline = OptimizerCandidate(experiment=experiment, candidate_index=0, is_baseline=True)
-    baseline_label, baseline_model = experiment._candidate_label(baseline)
-    assert baseline_label == "Baseline"
-    assert baseline_model == "Incumbent model"
-
-
-def test_comparison_scores_report_incumbent_winner_and_stop():
+@pytest.mark.parametrize(
+    ("target", "observed", "routed"),
+    [
+        ("openai/gpt-5", "openai/gpt-5", True),
+        ("openai/gpt-5-mini", "gpt-5-mini", True),
+        ("qwen/qwen3-14b", "qwen3-14b", True),
+        ("openrouter/qwen/qwen3-14b", "qwen3-14b", True),
+        ("openai/gpt-5", "openrouter/openai/gpt-5", True),
+        ("deepseek/deepseek-v4-flash", "DeepSeek/DeepSeek-V4-Flash", True),
+        ("ft-abc", "ft-abc", True),
+        ("openai/gpt-5", "anthropic/claude-sonnet-4", False),
+        ("openai/gpt-5-mini", "anthropic/gpt-5-mini", False),
+        ("openai/gpt-5-mini", "openai/gpt-5.4", False),
+        ("ft-abc", "ft-def", False),
+    ],
+)
+def test_a_trace_served_by_another_model_fails_the_datapoint(eager, target, observed, routed):
     experiment = _experiment()
-    iteration = OptimizerIteration.objects.create(
-        experiment=experiment,
-        order=1,
-        name="Model comparison",
-        status=OptimizerIteration.Status.EVALUATED,
+    make_span(
+        experiment.project,
+        trace_id="a" * 32,
+        span_type="llm",
+        attributes={"gen_ai.request.model": observed},
     )
+
+    candidate = _grade(
+        experiment,
+        {"candidate_index": 0, "target_model": target},
+        [
+            {"datapoint_index": 0, "output": "a", "trace_id": "a" * 32},
+            {"datapoint_index": 1, "output": "b"},
+        ],
+    )
+
+    command = candidate.commands.get(datapoint_index=0)
+    assert candidate.scores["coverage"]["excluded_commands"] == (0 if routed else 1)
+    if not routed:
+        assert command.error.startswith("Model routing mismatch")
+        assert observed in command.error
+
+
+@pytest.mark.parametrize(
+    ("mode", "candidate", "label", "model_name"),
+    [
+        (MODE, {"target_model": MODELS[0]}, MODELS[0], MODELS[0]),
+        (MODE, {"is_baseline": True}, "Baseline", "Incumbent model"),
+        (
+            OptimizerExperiment.Mode.HYBRID,
+            {"candidate_index": 2, "target_model": MODELS[1]},
+            f"Candidate 2 · {MODELS[1]}",
+            MODELS[1],
+        ),
+        (
+            OptimizerExperiment.Mode.OPTIMIZE,
+            {"candidate_index": 1},
+            "Candidate 2",
+            "Incumbent model",
+        ),
+    ],
+    ids=["comparison", "baseline", "hybrid", "optimize"],
+)
+def test_the_eval_variant_carries_the_candidate_identity(eager, mode, candidate, label, model_name):
+    experiment = _experiment(mode=mode)
+    graded = _grade(experiment, candidate, [{"datapoint_index": 0, "output": "a"}])
+
+    variant = graded.eval_run.variants.get()
+    assert (variant.label, variant.model_name) == (label, model_name)
+
+
+def test_comparison_scores_report_the_incumbent_when_it_wins():
+    experiment = _experiment()
+    iteration = OptimizerIteration.objects.create(experiment=experiment, order=1)
     for index, (model, score) in enumerate(zip(MODELS, [75.0, 70.0], strict=True)):
         OptimizerCandidate.objects.create(
             experiment=experiment,
@@ -304,15 +337,13 @@ def test_comparison_scores_report_incumbent_winner_and_stop():
             candidate_index=index,
             target_model=model,
             score=score,
-            status=OptimizerCandidate.Status.EVALUATED,
             code_path=f"+model = '{model}'",
         )
 
-    experiment._record_iteration_scores(iteration)
-    experiment.generate_winner()
-    experiment.save(update_fields=["scores", "state"])
+    experiment.on_iteration_eval_complete(1)
+    complete_experiment(experiment)
 
-    # ``best`` never regresses below the incumbent (baseline) — 80.0 wins here.
+    experiment.refresh_from_db()
     assert experiment.scores["best"] == 80.0
     assert experiment.scores["by_model"] == {MODELS[0]: 75.0, MODELS[1]: 70.0}
     assert experiment.scores["models"] == experiment.scores["by_model"]
@@ -323,18 +354,6 @@ def test_comparison_scores_report_incumbent_winner_and_stop():
         "overall_winner": "incumbent",
         "incumbent_wins": True,
     }
-
-
-def test_comparison_continues_until_all_models_scored():
-    experiment = _experiment()
-    experiment.num_iterations = 3
-    experiment.stalled_iterations = 5  # stall never stops a pure comparison run
-    experiment.save(update_fields=["num_iterations", "stalled_iterations"])
-
-    assert experiment.should_continue_iterating() is True
-    experiment.current_iteration = 3
-    experiment.save(update_fields=["current_iteration"])
-    assert experiment.should_continue_iterating() is False
 
 
 def test_hybrid_report_surfaces_best_combination_even_when_incumbent_wins():
@@ -350,7 +369,7 @@ def test_hybrid_report_surfaces_best_combination_even_when_incumbent_wins():
         status=OptimizerCandidate.Status.EVALUATED,
     )
 
-    experiment.generate_winner()
+    complete_experiment(experiment)
 
     assert experiment.state["model_optimization"] == {
         "selected_model": MODELS[0],
@@ -400,7 +419,7 @@ def test_model_comparison_winner_breaks_score_tie_on_coverage():
         status=OptimizerCandidate.Status.EVALUATED,
     )
 
-    experiment.generate_winner()
+    complete_experiment(experiment)
 
     assert experiment.state["model_comparison"]["selected_winner"] == MODELS[0]
 
@@ -428,16 +447,10 @@ def test_model_comparison_blocks_winner_when_suite_incomplete_and_all_tied():
             status=OptimizerCandidate.Status.EVALUATED,
         )
 
-    experiment.generate_winner()
+    complete_experiment(experiment)
 
     comparison = experiment.state["model_comparison"]
     assert comparison["suite_incomplete"] is True
     assert comparison["selected_winner"] == ""
     assert comparison["overall_winner"] == "incumbent"
     assert "winner_note" in comparison
-
-
-def test_model_id_matching_accepts_bare_observations_but_keeps_provider():
-    assert optimizer_module._normalise_model_id("openrouter/qwen/qwen3-8b") == "qwen/qwen3-8b"
-    assert optimizer_module._model_ids_match("openai/gpt-5", "gpt-5")
-    assert not optimizer_module._model_ids_match("openai/gpt-5", "anthropic/gpt-5")

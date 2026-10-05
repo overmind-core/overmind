@@ -1,5 +1,4 @@
 from datetime import timedelta
-from unittest.mock import patch
 
 import pytest
 from django.utils import timezone
@@ -14,7 +13,7 @@ pytestmark = pytest.mark.django_db
 
 
 @pytest.fixture
-def setup():
+def setup(serving):
     project = Project.objects.create(name="Serving")
     old = DeployedModel.objects.create(project=project, model_id="old", status="ready")
     target = DeployedModel.objects.create(project=project, model_id="new", status="ready")
@@ -31,10 +30,8 @@ def advance(activation):
 
 
 def verify(activation):
-    with patch.object(service, "spawn_verification", return_value="fc-verify"):
-        advance(activation)
-    with patch.object(service, "poll_operation", return_value=("complete", None)):
-        advance(activation)
+    advance(activation)
+    advance(activation)
 
 
 def test_routing_switches_only_after_verification_and_retains_previous(setup):
@@ -60,36 +57,38 @@ def test_routing_switches_only_after_verification_and_retains_previous(setup):
     assert capability.previous_active_model == target
 
 
-def test_failed_verification_keeps_routing_and_retry_starts_new_attempt(setup):
+def test_failed_verification_keeps_routing_and_retry_starts_new_attempt(setup, fake_modal):
+    def out_of_memory(**_):
+        raise RuntimeError("CUDA out of memory")
+
+    fake_modal.deploy("overmind-inference", "pre_warm", out_of_memory)
     capability, old, target = setup
     activation = service.start_activation(capability.pk, target.pk)
-    with patch.object(service, "spawn_verification", return_value="fc-verify"):
-        advance(activation)
-    with patch.object(service, "poll_operation", return_value=("failed", "GPU ran out of memory.")):
-        advance(activation)
+    verify(activation)
     capability.refresh_from_db()
     assert capability.active_model == old
     assert activation.stage == "failed"
     assert activation.failed_stage == "verifying"
+    assert "out of memory" in activation.error
     retry = service.start_activation(capability.pk, target.pk)
     assert retry.generation != activation.generation
     assert retry.stage == "checking"
     assert retry.error == ""
 
 
-def test_duplicate_requests_and_worker_delivery_do_not_duplicate_verification(setup):
+def test_duplicate_requests_and_worker_delivery_do_not_duplicate_verification(setup, fake_modal):
     capability, _, target = setup
     activation = service.start_activation(capability.pk, target.pk)
     assert service.start_activation(capability.pk, target.pk).generation == activation.generation
 
-    def spawn(_):
+    def redelivered(**_):
         service.advance_activation(activation.pk)
-        return "fc-one"
 
-    with patch.object(service, "spawn_verification", side_effect=spawn) as launch:
-        advance(activation)
-    launch.assert_called_once()
-    assert activation.call_id == "fc-one"
+    fake_modal.deploy("overmind-inference", "pre_warm", redelivered)
+    advance(activation)
+
+    assert fake_modal.spawns() == ["pre_warm"]
+    assert activation.call_id == next(iter(fake_modal.calls))
 
 
 def test_competing_switch_is_rejected_and_clearing_cancels_pending_switch(setup):
@@ -105,15 +104,15 @@ def test_competing_switch_is_rejected_and_clearing_cancels_pending_switch(setup)
     assert activation.stage == "cancelled"
 
 
-def test_poll_transport_error_reconnects_and_deadline_preserves_incumbent(setup):
+def test_poll_transport_error_reconnects_and_deadline_preserves_incumbent(setup, fake_modal):
     capability, old, target = setup
     activation = service.start_activation(capability.pk, target.pk)
-    with patch.object(service, "spawn_verification", return_value="fc-existing"):
-        advance(activation)
-    with patch.object(service, "poll_operation", side_effect=ConnectionError):
-        advance(activation)
+    advance(activation)
+    call = fake_modal.calls[activation.call_id]
+    call.unreachable = ConnectionError("offline")
+    advance(activation)
     assert activation.stage == "verifying"
-    assert activation.call_id == "fc-existing"
+    assert activation.call_id == call.object_id
     ModelActivation.objects.filter(pk=activation.pk).update(
         deadline=timezone.now() - timedelta(seconds=1)
     )

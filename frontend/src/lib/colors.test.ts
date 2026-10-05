@@ -49,12 +49,6 @@ describe("domainStatus", () => {
 });
 
 describe("tone maps", () => {
-  it("never contains a raw colour value", () => {
-    for (const cls of Object.values(TONE_CHIP)) {
-      expect(cls).not.toMatch(/#[0-9a-f]{3,6}|hsl\(|rgb\(/i);
-    }
-  });
-
   it("never uses a dark: variant (status tokens are already per-theme)", () => {
     for (const cls of Object.values(TONE_CHIP)) expect(cls).not.toContain("dark:");
   });

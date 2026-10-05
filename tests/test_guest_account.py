@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import uuid
 from datetime import timedelta
-from unittest import mock
 
 import pytest
 from conftest import EVAL_ROWS, frozen_dataset
@@ -91,12 +90,16 @@ def test_regular_user_is_not_restricted():
     assert res.json()["is_guest"] is False
 
 
-def test_claim_moves_workspace_to_clerk_account_and_ignores_project_limit():
+def test_claim_moves_workspace_to_clerk_account_and_ignores_project_limit(clerk):
     guest, project, client, _refresh = _guest_client()
     owner = _member(projects_limit=0)
-    with mock.patch("overbae.api.guest.ClerkAuthentication") as clerk:
-        clerk.return_value.authenticate.return_value = (owner, {})
-        res = client.post("/api/auth/guest/claim/", {"clerk_token": "clerk-jwt"}, format="json")
+    owner.clerk_user_id = clerk.user(owner.email)
+    owner.save(update_fields=["clerk_user_id"])
+    res = client.post(
+        "/api/auth/guest/claim/",
+        {"clerk_token": clerk.token(owner.clerk_user_id)},
+        format="json",
+    )
     assert res.status_code == 200
     body = res.json()
     assert body["project_id"] == str(project.id)
@@ -109,11 +112,9 @@ def test_claim_moves_workspace_to_clerk_account_and_ignores_project_limit():
     assert guest.is_guest is True
 
 
-def test_claim_rejects_invalid_clerk_token():
+def test_claim_rejects_invalid_clerk_token(clerk):
     _guest, _project, client, _refresh = _guest_client()
-    with mock.patch("overbae.api.guest.ClerkAuthentication") as clerk:
-        clerk.return_value.authenticate.return_value = None
-        res = client.post("/api/auth/guest/claim/", {"clerk_token": "bad"}, format="json")
+    res = client.post("/api/auth/guest/claim/", {"clerk_token": "bad"}, format="json")
     assert res.status_code == 401
 
 

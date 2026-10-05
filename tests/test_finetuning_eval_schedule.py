@@ -4,6 +4,7 @@ from unittest.mock import Mock
 
 import pytest
 from conftest import TRAIN_ROWS, frozen_dataset
+from factories import prepare_training
 
 from modal_shared.context_budget import DEFAULT_OUTPUT_TOKENS
 from modal_shared.preparation import preparation_failure
@@ -20,7 +21,7 @@ from overbae.models import (
     ProjectMembership,
     User,
 )
-from overbae.services import deployment, finetuning_eval
+from overbae.services import deployment, finetuning_eval, training_preparation
 from overbae.services.finetuning_eval import (
     baseline_needs_base_deploy,
     reset_before_evals_for_retry,
@@ -37,8 +38,7 @@ FIELDS = ("eval_incumbent_before", "eval_incumbent_after", "eval_model_before", 
 
 
 @pytest.fixture
-def job(monkeypatch):
-    monkeypatch.setattr("modal.Function.from_name", Mock())
+def job(monkeypatch, sft):
     project = Project.objects.create(name="Schedule", slug="schedule")
     user = User.objects.create_user(
         email="schedule@example.test", password="test", clerk_user_id="schedule"
@@ -79,12 +79,34 @@ def job(monkeypatch):
         eval_cell=evaluation.active_cell,
         eval_set=eval_set,
         base_model="meta-llama/Llama-3.2-3B-Instruct",
-        provider=FinetuningJob.Provider.TOGETHER_AI,
+        provider=FinetuningJob.Provider.MODAL,
         triggered_by=user,
         baseline_model=capability.model,
         eval_incumbent_before=True,
         eval_model_before=False,
         status=FinetuningJob.Status.PREPARING,
+    )
+
+
+def trained(job, fake_modal) -> dict:
+    result = run_finetuning(job_id=str(job.id))
+    job.refresh_from_db()
+    return {
+        "status": result["status"],
+        "gpu": [n for n in fake_modal.spawns() if n.startswith("sft_")],
+    }
+
+
+def _serve_trained_model(job) -> DeployedModel:
+    job.status = FinetuningJob.Status.SUCCEEDED
+    job.output_model_name = "org/trained-model"
+    job.save(update_fields=["status", "output_model_name"])
+    return DeployedModel.objects.create(
+        project=job.project,
+        finetuning_job=job,
+        model_id="ft-trained",
+        status="ready",
+        inference_url="https://inference.test",
     )
 
 
@@ -101,11 +123,11 @@ def test_every_schedule_runs_only_selected_models_at_the_selected_time(job, choi
     }
     assert set(job.job_evals.values_list("kind", flat=True)) == before
     for row in job.job_evals.all():
-        assert row.model_id == (job.baseline_model if row.kind == "baseline" else job.base_model)
+        assert row.model_id == (
+            job.baseline_model if row.kind == "baseline" else "meta-llama/llama-3.2-3b-instruct"
+        )
 
-    job.status = FinetuningJob.Status.SUCCEEDED
-    job.output_model_name = "org/trained-model"
-    job.save(update_fields=["status", "output_model_name"])
+    trained = _serve_trained_model(job)
     tick_job_evals(job)
     after = {
         kind
@@ -115,7 +137,7 @@ def test_every_schedule_runs_only_selected_models_at_the_selected_time(job, choi
     assert set(job.job_evals.values_list("kind", flat=True)) == before | after
     for row in job.job_evals.filter(kind__in=after):
         assert row.model_id == (
-            job.baseline_model if row.kind == "incumbent_after" else job.output_model_name
+            job.baseline_model if row.kind == "incumbent_after" else trained.model_id
         )
     tick_job_evals(job)
     assert job.job_evals.count() == len(before | after)
@@ -135,9 +157,7 @@ def test_every_training_evaluation_uses_the_complete_dataset(job, hyperparameter
         setattr(job, field, True)
     job.save()
     tick_job_evals(job)
-    job.status = FinetuningJob.Status.SUCCEEDED
-    job.output_model_name = "org/trained-model"
-    job.save(update_fields=["status", "output_model_name"])
+    _serve_trained_model(job)
     tick_job_evals(job)
 
     assert set(job.job_evals.values_list("kind", flat=True)) == {
@@ -191,7 +211,6 @@ def test_group_baseline_reuse_requires_full_dataset_coverage(job, max_items, sam
 
 
 def test_after_only_never_starts_a_baseline_job(job):
-    job.provider = FinetuningJob.Provider.MODAL
     job.eval_incumbent_before = False
     job.eval_model_before = False
     job.eval_incumbent_after = True
@@ -226,103 +245,85 @@ def test_baseline_selection_starts_without_waiting_for_completion(job):
     assert job.progress["before_evals_started_at"]
 
 
-def test_submission_starts_training_while_baseline_eval_is_running(job, monkeypatch, settings):
-    settings.FINETUNING_BACKEND = "together"
-    runner = Mock()
-    runner.submit.return_value = SimpleNamespace(remote_id="training-task", num_examples=None)
-    monkeypatch.setattr("overbae.services.finetuning_runner.get_runner", lambda: runner)
-    result = run_finetuning(job_id=str(job.id))
-    job.refresh_from_db()
-    assert result["status"] == job.status == "running"
-    assert job.remote_job_id == "training-task"
+def test_submission_starts_training_while_baseline_eval_is_running(job, fake_modal):
+    prepare_training(job, fake_modal)
+    submitted = trained(job, fake_modal)
+    assert submitted["status"] == job.status == "running"
+    assert len(submitted["gpu"]) == 1
+    assert job.remote_job_id
     assert job.job_evals.get(kind="baseline").status != FinetuningJobEval.Status.COMPLETED
-    runner.submit.assert_called_once()
 
 
-def test_failed_baseline_eval_does_not_block_training(job, monkeypatch, settings):
-    settings.FINETUNING_BACKEND = "together"
+def test_failed_baseline_eval_does_not_block_training(job, fake_modal):
     tick_job_evals(job)
     job.job_evals.update(status=FinetuningJobEval.Status.FAILED)
-    runner = Mock()
-    runner.submit.return_value = SimpleNamespace(remote_id="training-task", num_examples=None)
-    monkeypatch.setattr("overbae.services.finetuning_runner.get_runner", lambda: runner)
-    result = run_finetuning(job_id=str(job.id))
-    job.refresh_from_db()
-    assert result["status"] == job.status == "running"
-    runner.submit.assert_called_once()
+    prepare_training(job, fake_modal)
+    submitted = trained(job, fake_modal)
+    assert submitted["status"] == job.status == "running"
+    assert len(submitted["gpu"]) == 1
 
 
-def test_baseline_launch_error_does_not_block_training(job, monkeypatch, settings):
-    settings.FINETUNING_BACKEND = "together"
-    runner = Mock()
-    runner.submit.return_value = SimpleNamespace(remote_id="training-task", num_examples=None)
-    monkeypatch.setattr("overbae.services.finetuning_runner.get_runner", lambda: runner)
+def test_an_unavailable_eval_queue_does_not_block_training(job, fake_modal, monkeypatch):
+    from kombu.exceptions import OperationalError
+
     monkeypatch.setattr(
-        "overbae.services.finetuning_eval.start_before_evals",
-        Mock(side_effect=RuntimeError("eval queue unavailable")),
+        "overbae.tasks.eval.run_eval_run.apply_async",
+        Mock(side_effect=OperationalError("broker down")),
     )
-
-    result = run_finetuning(job_id=str(job.id))
-
-    job.refresh_from_db()
-    assert result["status"] == job.status == "running"
-    runner.submit.assert_called_once()
+    prepare_training(job, fake_modal)
+    submitted = trained(job, fake_modal)
+    assert submitted["status"] == job.status == "running"
+    assert len(submitted["gpu"]) == 1
 
 
 @pytest.mark.parametrize("state", ["queued", "running"])
-def test_launched_modal_job_prepares_data_before_gpu_submission(job, monkeypatch, settings, state):
-    settings.FINETUNING_BACKEND = "modal"
-    preparation = SimpleNamespace(id="preparation-id", state=state)
-    monkeypatch.setattr("overbae.tasks.finetuning.for_job", lambda _: preparation)
-    runner = Mock()
-    monkeypatch.setattr("overbae.services.finetuning_runner.get_runner", lambda: runner)
+def test_launched_modal_job_prepares_data_before_gpu_submission(
+    job, fake_modal, monkeypatch, state
+):
+    if state == "running":
+        training_preparation.advance(training_preparation.for_job(job).id)
     inspect = Mock()
     monkeypatch.setattr("overbae.tasks.finetuning.inspect_preparation.delay", inspect)
     resume = Mock(return_value=SimpleNamespace(id="resume-task"))
     monkeypatch.setattr(run_finetuning, "apply_async", resume)
 
-    result = run_finetuning(job_id=str(job.id))
+    submitted = trained(job, fake_modal)
 
-    job.refresh_from_db()
-    assert result["status"] == job.status == "preparing"
-    runner.submit.assert_not_called()
+    assert submitted["status"] == job.status == "preparing"
+    assert submitted["gpu"] == []
     assert inspect.call_count == (1 if state == "queued" else 0)
     resume.assert_called_once_with(kwargs={"job_id": str(job.id)}, countdown=15)
 
 
 def test_preprocessing_worker_failure_preserves_actionable_error_and_never_submits_gpu(
-    job, monkeypatch, settings
+    job, fake_modal
 ):
-    settings.FINETUNING_BACKEND = "modal"
+    from modal_shared.stacks import TRAIN_FUNCTION_NAMES
+
     failure = preparation_failure("worker_out_of_date")
-    prep = SimpleNamespace(state="failed", error=failure["error"], report=failure)
-    monkeypatch.setattr("overbae.tasks.finetuning.for_job", lambda _: prep)
-    runner = Mock()
-    monkeypatch.setattr("overbae.services.finetuning_runner.get_runner", lambda: runner)
+    for name in TRAIN_FUNCTION_NAMES.values():
+        fake_modal.deploy("overmind-sft", f"prepare_{name}", lambda *_, **__: failure)
+    preparation = training_preparation.for_job(job)
+    training_preparation.advance(preparation.id)
+    training_preparation.advance(preparation.id)
     job.max_retries = 0
     job.save(update_fields=["max_retries"])
 
-    result = run_finetuning(job_id=str(job.id))
+    submitted = trained(job, fake_modal)
 
-    job.refresh_from_db()
-    assert result["status"] == job.status == "failed"
+    assert submitted["status"] == job.status == "failed"
     assert job.error_message == failure["error"]
     assert FinetuningJobSerializer(job).data["error_message"] == failure["error"]
     assert not job.remote_job_id and not job.job_evals.exists()
-    runner.submit.assert_not_called()
+    assert submitted["gpu"] == []
 
 
 @pytest.mark.parametrize("existing_waiter", [False, True])
 @pytest.mark.parametrize("cancel_pending", [False, True])
 def test_unresolved_baseline_does_not_change_running_training(
-    job, monkeypatch, settings, existing_waiter, cancel_pending
+    job, monkeypatch, fake_modal, existing_waiter, cancel_pending, fake_llm
 ):
-    settings.FINETUNING_BACKEND = "modal"
-    monkeypatch.setattr(
-        "overbae.tasks.finetuning.for_job",
-        lambda _: SimpleNamespace(state="ready", config={"context_length": 4096}),
-    )
-    job.provider = FinetuningJob.Provider.MODAL
+    fake_llm.catalog_models = []
     job.eval_incumbent_before = False
     job.eval_model_before = True
     job.max_retries = 0
@@ -335,18 +336,16 @@ def test_unresolved_baseline_does_not_change_running_training(
         deployment_cancel_pending=cancel_pending,
         deployment_call_id="fc-old" if cancel_pending else "",
     )
+    if cancel_pending:
+        old = fake_modal.adopt("fc-old", "pre_warm", state="cancelled")
+        old.children.append(fake_modal.adopt("fc-stuck", "gpu"))
+        fake_modal.calls.pop("fc-stuck")
     if existing_waiter:
         baseline.deployment_waiters.add(job)
-    runner = Mock()
-    runner.submit.return_value = SimpleNamespace(remote_id="training-task", num_examples=None)
-    monkeypatch.setattr("overbae.services.finetuning_runner.get_runner", lambda: runner)
     monkeypatch.setattr("overbae.tasks.model_deployment.deploy_base_model_for_eval.delay", Mock())
-    cancel = Mock(return_value=False)
-    monkeypatch.setattr(deployment, "cancel_operation", cancel)
-    spawn = Mock()
-    monkeypatch.setattr(deployment, "spawn_operation", spawn)
+    prepare_training(job, fake_modal)
 
-    assert run_finetuning(job_id=str(job.pk))["status"] == "running"
+    assert trained(job, fake_modal)["status"] == "running"
     deployment.ensure_baseline_deployment(str(job.pk))
     baseline.refresh_from_db()
     assert baseline.status == "failed"
@@ -359,9 +358,8 @@ def test_unresolved_baseline_does_not_change_running_training(
     assert job.job_evals.get(kind="model_before").status == "failed"
     assert job.status == "running"
     assert not job.error_message
-    runner.submit.assert_called_once()
-    spawn.assert_not_called()
-    assert cancel.call_count == int(cancel_pending)
+    assert [n for n in fake_modal.spawns() if not n.startswith(("sft_", "prepare_"))] == []
+    assert [call for call, _ in fake_modal.cancelled] == (["fc-old"] if cancel_pending else [])
 
 
 def test_eval_score_sync_does_not_overwrite_newer_deployment_progress(job):
@@ -376,32 +374,33 @@ def test_eval_score_sync_does_not_overwrite_newer_deployment_progress(job):
     assert job.progress == {**saved, "judge_evals": []}
 
 
-def test_deployment_controller_recovers_baseline_while_training_runs(job, monkeypatch):
+def test_deployment_controller_recovers_baseline_while_training_runs(job, fake_llm):
+    fake_llm.catalog_models = []
     job.status = FinetuningJob.Status.RUNNING
+    job.eval_incumbent_before = False
+    job.eval_model_before = True
     job.progress = {"before_evals_started_at": 1}
-    job.save(update_fields=["status", "progress"])
-    ensure = Mock()
-    monkeypatch.setattr("overbae.tasks.inference_controller.ensure_baseline_deployment", ensure)
+    job.save(update_fields=["status", "progress", "eval_incumbent_before", "eval_model_before"])
 
     reconcile_deployments()
 
-    ensure.assert_called_once_with(str(job.id))
+    baseline = DeployedModel.objects.get(deployment_waiters=job)
+    assert baseline.model_id.startswith("base--")
 
 
-@pytest.mark.parametrize("provider", ["modal", "baseten", "together_ai"])
 @pytest.mark.parametrize("incumbent", [False, True])
 def test_starting_model_uses_openrouter_without_provisioning_inference(
-    job, monkeypatch, provider, incumbent, django_capture_on_commit_callbacks
+    job, monkeypatch, fake_llm, incumbent, django_capture_on_commit_callbacks
 ):
-    job.provider = provider
+    from django.core.cache import cache
+
+    fake_llm.catalog_models = ["qwen/qwen3.5-9b"]
     job.base_model = "Qwen/Qwen3.5-9B"
     job.eval_incumbent_before = incumbent
     job.eval_model_before = not incumbent
     job.baseline_model = ""
     job.capability = None
     job.save()
-    resolver = Mock(return_value="qwen/qwen3.5-9b")
-    monkeypatch.setattr(finetuning_eval, "resolve_training_openrouter_slug", resolver)
     deploy = Mock()
     monkeypatch.setattr("overbae.tasks.model_deployment.deploy_base_model_for_eval.delay", deploy)
     with django_capture_on_commit_callbacks(execute=True):
@@ -417,7 +416,8 @@ def test_starting_model_uses_openrouter_without_provisioning_inference(
     assert not DeployedModel.objects.exists()
     deploy.assert_not_called()
 
-    resolver.return_value = None
+    fake_llm.catalog_models = []
+    cache.clear()
     assert not baseline_needs_base_deploy(job)
     start_before_evals(job)
     assert job.job_evals.count() == 1
@@ -425,8 +425,10 @@ def test_starting_model_uses_openrouter_without_provisioning_inference(
     deploy.assert_not_called()
 
 
-def test_missing_openrouter_model_still_prepares_local_base(job, monkeypatch):
-    job.provider = "modal"
+def test_missing_openrouter_model_still_prepares_local_base(job, monkeypatch, fake_llm):
+    from django.core.cache import cache
+
+    fake_llm.catalog_models = []
     job.eval_model_before = True
     job.eval_incumbent_before = False
     job.save()
@@ -439,27 +441,31 @@ def test_missing_openrouter_model_still_prepares_local_base(job, monkeypatch):
     assert baseline.status == "queued"
     assert not job.job_evals.exists()
 
-    monkeypatch.setattr(
-        finetuning_eval, "resolve_training_openrouter_slug", Mock(return_value="provider/model")
-    )
+    fake_llm.catalog_models = None
+    cache.clear()
     assert baseline_needs_base_deploy(job)
 
 
-def test_eval_route_is_not_resolved_again_after_choosing_model(job, monkeypatch):
-    job.provider = "modal"
+def test_the_chosen_eval_route_survives_a_later_catalog_change(job, fake_llm):
+    from django.core.cache import cache
+
+    fake_llm.catalog_models = ["qwen/qwen3.5-9b"]
+    job.base_model = "Qwen/Qwen3.5-9B"
     job.eval_model_before = True
     job.eval_incumbent_before = False
     job.save()
-    resolver = Mock(side_effect=["qwen/qwen3.5-9b", None])
-    monkeypatch.setattr(finetuning_eval, "resolve_training_openrouter_slug", resolver)
     finetuning_eval.ensure_target_eval(job, kind="model_before")
-    ref = job.job_evals.get(kind="model_before").eval_run.variants.get().model_ref
+    fake_llm.catalog_models = []
+    cache.clear()
+    finetuning_eval.ensure_target_eval(job, kind="model_before")
+
+    [row] = job.job_evals.filter(kind="model_before")
+    ref = row.eval_run.variants.get().model_ref
     assert ref.model_id == "qwen/qwen3.5-9b"
     assert ref.api_key_ref == "OPENROUTER_API_KEY"
-    resolver.assert_called_once()
 
 
-def test_retry_can_use_openrouter_instead_of_failed_baseline_deployment(job, monkeypatch):
+def test_retry_can_use_openrouter_instead_of_failed_baseline_deployment(job):
     baseline = DeployedModel.objects.create(
         project=job.project,
         model_id="base--failed",
@@ -468,9 +474,6 @@ def test_retry_can_use_openrouter_instead_of_failed_baseline_deployment(job, mon
     )
     baseline.deployment_waiters.add(job)
     FinetuningJobEval.objects.create(job=job, kind="model_before", status="failed")
-    monkeypatch.setattr(
-        deployment, "resolve_training_openrouter_slug", Mock(return_value="provider/model")
-    )
     reset_before_evals_for_retry(job)
     baseline.refresh_from_db()
     assert baseline.status == "failed"
@@ -479,14 +482,10 @@ def test_retry_can_use_openrouter_instead_of_failed_baseline_deployment(job, mon
     assert not job.job_evals.exists()
 
 
-def test_openrouter_starting_model_does_not_change_trained_checkpoint_route(job, monkeypatch):
-    job.provider = "modal"
+def test_openrouter_starting_model_does_not_change_trained_checkpoint_route(job):
     job.eval_model_before = True
     job.eval_incumbent_before = False
     job.save()
-    monkeypatch.setattr(
-        finetuning_eval, "resolve_training_openrouter_slug", Mock(return_value="provider/base")
-    )
     tick_job_evals(job)
     before = job.job_evals.get(kind="model_before")
     assert before.eval_run.variants.get().model_ref.api_key_ref == "OPENROUTER_API_KEY"
@@ -791,17 +790,15 @@ def test_matched_base_is_default_even_when_an_incumbent_exists(job):
     assert [getattr(created, field) for field in FIELDS] == [False, False, True, True]
 
 
-def test_overlap_is_recorded_without_blocking_submission(job, monkeypatch, settings):
-    settings.FINETUNING_BACKEND = "together"
-    runner = Mock()
-    runner.submit.return_value = SimpleNamespace(remote_id="training-task", num_examples=None)
-    monkeypatch.setattr("overbae.services.finetuning_runner.get_runner", lambda: runner)
-    overlap = Mock(return_value={"overlap_count": 2})
-    monkeypatch.setattr("overbae.services.datasets.rows.contamination", overlap)
-    assert run_finetuning(job_id=str(job.id))["status"] == "running"
-    assert overlap.call_args.args[1].id == job.eval_cell_id
-    assert job.events.filter(data__overlap_count=2).exists()
-    runner.submit.assert_called_once()
+def test_overlap_is_recorded_without_blocking_submission(job, fake_modal):
+    overlapping = frozen_dataset(job.project, TRAIN_ROWS, capability=job.capability)
+    job.eval_dataset = overlapping
+    job.eval_cell = overlapping.active_cell
+    job.save(update_fields=["eval_dataset", "eval_cell"])
+    prepare_training(job, fake_modal)
+
+    assert trained(job, fake_modal)["status"] == "running"
+    assert job.events.filter(data__overlap_count=len(TRAIN_ROWS)).exists()
 
 
 def test_before_after_reuses_prompt_snapshot_and_prefers_matched_base(job):

@@ -1,8 +1,7 @@
 from __future__ import annotations
 
-import uuid
-
 import pytest
+from factories import make_project, make_user
 from rest_framework import status
 from rest_framework.test import APIClient
 from rest_framework_simplejwt.tokens import RefreshToken
@@ -11,19 +10,6 @@ from overbae.api.scoping import project_ids_for
 from overbae.models import APIToken, Project, ProjectMembership, User
 
 pytestmark = pytest.mark.django_db
-
-
-def _user() -> User:
-    return User.objects.create_user(
-        email=f"u-{uuid.uuid4().hex[:6]}@test.com",
-        password="pw",
-        clerk_user_id=f"clerk_{uuid.uuid4().hex}",
-        projects_limit=5,
-    )
-
-
-def _project() -> Project:
-    return Project.objects.create(name="P", slug=f"p-{uuid.uuid4().hex[:8]}")
 
 
 def _jwt(user: User) -> APIClient:
@@ -40,7 +26,7 @@ def _api_key_client(user: User, *, project: Project | None = None) -> tuple[APIC
 
 
 def test_create_with_project_mints_project_scope():
-    user, project = _user(), _project()
+    user, project = make_user(), make_project()
     ProjectMembership.objects.create(user=user, project=project)
 
     r = _jwt(user).post("/api/auth/api-keys/", {"name": "cli", "project": str(project.id)})
@@ -56,7 +42,7 @@ def test_create_with_project_mints_project_scope():
 
 
 def test_create_account_scope_covers_all_memberships():
-    user, a, b = _user(), _project(), _project()
+    user, a, b = make_user(), make_project(), make_project()
     ProjectMembership.objects.create(user=user, project=a)
     ProjectMembership.objects.create(user=user, project=b)
 
@@ -73,7 +59,7 @@ def test_create_account_scope_covers_all_memberships():
 
 
 def test_account_api_key_can_mint_project_scoped_key():
-    user, project = _user(), _project()
+    user, project = make_user(), make_project()
     ProjectMembership.objects.create(user=user, project=project)
     client, raw = _api_key_client(user)
 
@@ -87,7 +73,7 @@ def test_account_api_key_can_mint_project_scoped_key():
 
 
 def test_api_key_current_returns_scope():
-    user, project = _user(), _project()
+    user, project = make_user(), make_project()
     ProjectMembership.objects.create(user=user, project=project)
     account_client, _ = _api_key_client(user)
     project_client, _ = _api_key_client(user, project=project)
@@ -103,13 +89,13 @@ def test_api_key_current_returns_scope():
 
 
 def test_create_requires_project_or_scope():
-    r = _jwt(_user()).post("/api/auth/api-keys/", {"name": "x"})
+    r = _jwt(make_user()).post("/api/auth/api-keys/", {"name": "x"})
     assert r.status_code == status.HTTP_400_BAD_REQUEST
 
 
 def test_invited_member_can_only_pin_their_project_via_project_field():
-    owner, invitee = _user(), _user()
-    owned, shared = _project(), _project()
+    owner, invitee = make_user(), make_user()
+    owned, shared = make_project(), make_project()
     ProjectMembership.objects.create(user=owner, project=owned)
     ProjectMembership.objects.create(user=owner, project=shared)
     ProjectMembership.objects.create(user=invitee, project=shared)
@@ -124,7 +110,7 @@ def test_invited_member_can_only_pin_their_project_via_project_field():
 
 
 def test_project_key_does_not_see_sibling_membership():
-    user, a, b = _user(), _project(), _project()
+    user, a, b = make_user(), make_project(), make_project()
     ProjectMembership.objects.create(user=user, project=a)
     ProjectMembership.objects.create(user=user, project=b)
     _, token = APIToken.create_for_user(user, project=a)

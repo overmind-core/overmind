@@ -1,8 +1,7 @@
 from __future__ import annotations
 
-import uuid
-
 import pytest
+from factories import make_project
 
 from overbae.api.eval_serializers import (
     EvalRunListSerializer,
@@ -14,16 +13,11 @@ from overbae.models import (
     EvalSample,
     Evaluator,
     EvalVariant,
-    Project,
     RunEvaluator,
     Score,
 )
 
 pytestmark = pytest.mark.django_db
-
-
-def _project() -> Project:
-    return Project.objects.create(name="P", slug=f"p-{uuid.uuid4().hex[:8]}")
 
 
 def _run(project, status=EvalRun.Status.RUNNING) -> EvalRun:
@@ -56,7 +50,7 @@ def _score(run, sample, run_eval, name="quality", value=0.8, passed=True) -> Sco
 
 
 def test_progress_pending_run_without_samples():
-    run = _run(_project(), status=EvalRun.Status.PENDING)
+    run = _run(make_project(), status=EvalRun.Status.PENDING)
     progress = compute_run_progress(run)
     assert progress["phase"] == "pending"
     assert progress["total"] == 0
@@ -68,7 +62,7 @@ def test_progress_pending_run_without_samples():
 
 
 def test_progress_generating_with_per_variant_breakdown():
-    project = _project()
+    project = make_project()
     run = _run(project)
     v1 = EvalVariant.objects.create(run=run, label="model-a", order=0)
     v2 = EvalVariant.objects.create(run=run, label="model-b", order=1)
@@ -103,7 +97,7 @@ def test_progress_generating_with_per_variant_breakdown():
 
 
 def test_progress_scoring_counts_sample_evaluator_pairs():
-    project = _project()
+    project = make_project()
     run = _run(project)
     variant = EvalVariant.objects.create(run=run, label="model-a")
     re1 = _attach(run, _evaluator(project, "quality"))
@@ -129,7 +123,7 @@ def test_progress_scoring_counts_sample_evaluator_pairs():
 
 
 def test_progress_evaluator_stats_rolling_aggregates():
-    project = _project()
+    project = make_project()
     run = _run(project)
     variant = EvalVariant.objects.create(run=run, label="model-a")
     run_eval = _attach(run, _evaluator(project, "quality"))
@@ -148,7 +142,7 @@ def test_progress_evaluator_stats_rolling_aggregates():
 
 
 def test_progress_aggregating_when_all_pairs_scored():
-    project = _project()
+    project = make_project()
     run = _run(project)
     variant = EvalVariant.objects.create(run=run, label="model-a")
     run_eval = _attach(run, _evaluator(project))
@@ -161,14 +155,14 @@ def test_progress_aggregating_when_all_pairs_scored():
 
 
 def test_progress_phase_maps_terminal_statuses():
-    project = _project()
+    project = make_project()
     for status in (EvalRun.Status.COMPLETED, EvalRun.Status.FAILED, EvalRun.Status.CANCELLED):
         run = _run(project, status=status)
         assert compute_run_progress(run)["phase"] == status
 
 
 def test_run_list_serializer_progress_only_for_live_runs():
-    project = _project()
+    project = make_project()
     live = _run(project, status=EvalRun.Status.RUNNING)
     variant = EvalVariant.objects.create(run=live, label="model-a")
     EvalSample.objects.create(run=live, variant=variant, trajectory={"a": 1})
@@ -183,7 +177,7 @@ def test_run_list_serializer_progress_only_for_live_runs():
 
 
 def test_sample_list_serializer_live_feed_fields():
-    project = _project()
+    project = make_project()
     run = _run(project)
     variant = EvalVariant.objects.create(run=run, label="model-a")
     prepared = EvalSample.objects.create(
@@ -210,7 +204,7 @@ def test_sample_list_serializer_live_feed_fields():
 
 
 def test_sample_output_preview_falls_back_to_last_assistant_message():
-    project = _project()
+    project = make_project()
     run = _run(project)
     variant = EvalVariant.objects.create(run=run, label="model-a")
     sample = EvalSample.objects.create(

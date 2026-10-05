@@ -1,22 +1,26 @@
+import asyncio
+import json
 import uuid
 from datetime import timedelta
-from types import SimpleNamespace
-from unittest.mock import AsyncMock, patch
+from unittest.mock import patch
 
 import pytest
 from conftest import TRAIN_ROWS, frozen_dataset
 from django.utils import timezone
-from modal.call_graph import InputStatus
+from factories import make_user
+from fakes.modal import FakeCall
 
-from overbae.models import DeployedModel, FinetuningJob, Project
+from overbae.models import APIToken, DeployedModel, FinetuningJob, Project
 from overbae.services import deployment
+from overbae.services.mcp.context import MCPContext, bind_context
+from overbae.services.mcp.resources import read_resource
 from overbae.tasks.inference_controller import reconcile_deployments
 
 pytestmark = pytest.mark.django_db
 
 
 @pytest.fixture
-def deployed():
+def deployed(serving):
     project = Project.objects.create(name="Deployment recovery")
     dataset = frozen_dataset(project, TRAIN_ROWS, name="train")
     job = FinetuningJob.objects.create(
@@ -37,7 +41,7 @@ def advance(row):
     row.refresh_from_db()
 
 
-def warming(row):
+def warming(row, fake_modal, **call):
     DeployedModel.objects.filter(pk=row.pk).update(
         deployment_stage="warm",
         status="warming",
@@ -48,123 +52,116 @@ def warming(row):
         inference_url="https://inference.test",
     )
     row.refresh_from_db()
+    return fake_modal.adopt("fc-warm", "pre_warm", **call)
 
 
-def test_replacement_worker_reconnects_to_boot_without_launching_gpu_work(deployed):
-    warming(deployed)
+def at_stage(row, fake_modal, stage: str, **call):
+    DeployedModel.objects.filter(pk=row.pk).update(
+        deployment_stage=stage, deployment_call_id=f"fc-{stage}"
+    )
+    return fake_modal.adopt(f"fc-{stage}", stage, **call)
+
+
+def test_replacement_worker_reconnects_to_boot_without_launching_gpu_work(deployed, fake_modal):
+    boot = warming(deployed, fake_modal)
     DeployedModel.objects.filter(pk=deployed.pk).update(
         deployment_claim=uuid.uuid4(),
         deployment_claim_until=timezone.now() - timedelta(seconds=1),
     )
-    with (
-        patch.object(deployment, "spawn_operation") as spawn,
-        patch.object(
-            deployment, "poll_operation", side_effect=[("pending", None), ("complete", None)]
-        ) as poll,
-    ):
-        advance(deployed)
-        assert deployed.deployment_call_id == "fc-warm"
-        advance(deployed)
+    advance(deployed)
+    assert deployed.deployment_call_id == "fc-warm"
+    boot.state = "done"
+    advance(deployed)
+
     assert deployed.status == "ready"
-    assert poll.call_count == 2
-    poll.assert_called_with("fc-warm")
-    spawn.assert_not_called()
+    assert fake_modal.spawns() == []
     assert deployed.finetuning_job.result == {"checkpoint": "preserved"}
     assert deployed.adapter_path == "/weights/.adapters/ft-test"
 
 
-def test_one_claim_launches_one_operation(deployed):
-    def spawn(row):
-        deployment.advance_deployment(row.pk)
-        return "fc-one"
+def test_one_claim_launches_one_operation(deployed, fake_modal):
+    def reenter(**_):
+        deployment.advance_deployment(deployed.pk)
+        return {}
 
-    with patch.object(deployment, "spawn_operation", side_effect=spawn) as launch:
-        advance(deployed)
-    launch.assert_called_once()
-    assert deployed.deployment_call_id == "fc-one"
+    fake_modal.deploy("overmind-register", "fetch_base_model", reenter, held=True)
+    advance(deployed)
+
+    assert fake_modal.spawns() == ["fetch_base_model"]
+    [launched] = fake_modal.calls.values()
+    launched.run()
+    assert deployed.deployment_call_id == launched.object_id
     assert deployed.deployment_claim is None
 
 
-def test_unacknowledged_submission_never_blindly_relaunches(deployed):
+def test_unacknowledged_submission_never_blindly_relaunches(deployed, fake_modal):
     DeployedModel.objects.filter(pk=deployed.pk).update(deployment_dispatching=True)
-    with patch.object(deployment, "spawn_operation") as spawn:
-        advance(deployed)
-        advance(deployed)
+    advance(deployed)
+    advance(deployed)
     assert deployed.status == "failed"
-    spawn.assert_not_called()
+    assert fake_modal.spawns() == []
     with pytest.raises(ValueError, match="unresolved"):
         deployment.retry_deployment(deployed.pk)
 
 
-def test_late_acknowledgement_is_retained_for_cancellation(deployed):
-    def spawn(row):
-        DeployedModel.objects.filter(pk=row.pk).update(
-            status="failed",
-            deployment_claim=None,
-            deployment_claim_until=None,
+def test_late_acknowledgement_is_retained_for_cancellation(deployed, fake_modal):
+    def fail_meanwhile(**_):
+        DeployedModel.objects.filter(pk=deployed.pk).update(
+            status="failed", deployment_claim=None, deployment_claim_until=None
         )
-        return "fc-late"
+        return {}
 
-    with patch.object(deployment, "spawn_operation", side_effect=spawn):
-        advance(deployed)
-    assert deployed.deployment_call_id == "fc-late"
+    fake_modal.deploy("overmind-register", "fetch_base_model", fail_meanwhile)
+    advance(deployed)
+
+    [launched] = fake_modal.calls
+    assert deployed.deployment_call_id == launched
     assert deployed.deployment_cancel_pending
 
 
-def test_superseded_generation_cannot_publish_ready(deployed):
-    warming(deployed)
-
-    def poll(_call_id):
+def test_superseded_generation_cannot_publish_ready(deployed, fake_modal):
+    def supersede():
         DeployedModel.objects.filter(pk=deployed.pk).update(
-            deployment_generation=uuid.uuid4(),
-            status="deleted",
+            deployment_generation=uuid.uuid4(), status="deleted"
         )
-        return "complete", None
 
-    with patch.object(deployment, "poll_operation", side_effect=poll):
-        advance(deployed)
+    warming(deployed, fake_modal, state="done", on_get=supersede)
+    advance(deployed)
     assert deployed.status == "deleted"
     assert deployed.deployed_at is None
 
 
-def test_cancellation_during_poll_cannot_publish_ready(deployed):
-    warming(deployed)
-
-    def poll(_call_id):
+def test_cancellation_during_poll_cannot_publish_ready(deployed, fake_modal):
+    def cancel_job():
         FinetuningJob.objects.filter(pk=deployed.finetuning_job_id).update(status="cancelled")
-        return "complete", None
 
-    with patch.object(deployment, "poll_operation", side_effect=poll):
-        advance(deployed)
+    warming(deployed, fake_modal, state="done", on_get=cancel_job)
+    advance(deployed)
     assert deployed.status == "failed"
     assert deployed.deployed_at is None
     deployed.finetuning_job.refresh_from_db()
     assert deployed.finetuning_job.status == "cancelled"
 
 
-def test_confirmed_failures_have_a_durable_retry_budget(deployed):
+def test_confirmed_failures_have_a_durable_retry_budget(deployed, fake_modal):
     deadline = deployed.deployment_deadline
-    with patch.object(deployment, "poll_operation", return_value=("failed", None)):
-        for attempt in range(1, deployment.MAX_ATTEMPTS + 1):
-            DeployedModel.objects.filter(pk=deployed.pk).update(deployment_call_id=f"fc-{attempt}")
-            advance(deployed)
-            assert deployed.deployment_deadline == deadline
+    for _ in range(deployment.MAX_ATTEMPTS):
+        at_stage(deployed, fake_modal, "base", state="failed", error=RuntimeError("OOM"))
+        DeployedModel.objects.filter(pk=deployed.pk).update(deployment_call_id="fc-base")
+        advance(deployed)
+        assert deployed.deployment_deadline == deadline
     assert deployed.status == "failed"
-    assert deployed.deployment_attempts == deployment.MAX_ATTEMPTS
     assert "Retry limit" in deployed.error_message
-    with patch.object(deployment, "spawn_operation") as spawn:
-        for _ in range(3):
-            advance(deployed)
-        spawn.assert_not_called()
+    for _ in range(3):
+        advance(deployed)
+    assert fake_modal.spawns() == []
     deployed.finetuning_job.refresh_from_db()
     assert deployed.finetuning_job.status == "succeeded"
-    assert deployed.finetuning_job.result == {"checkpoint": "preserved"}
 
 
-def test_warm_failure_revalidates_base_before_retry(deployed):
-    warming(deployed)
-    with patch.object(deployment, "poll_operation", return_value=("failed", None)):
-        advance(deployed)
+def test_warm_failure_revalidates_base_before_retry(deployed, fake_modal):
+    warming(deployed, fake_modal, state="failed", error=RuntimeError("boot failed"))
+    advance(deployed)
     assert deployed.deployment_stage == "base"
     assert deployed.deployment_attempts == 2
     assert 25 < (deployed.deployment_next_poll_at - timezone.now()).total_seconds() <= 30
@@ -172,104 +169,77 @@ def test_warm_failure_revalidates_base_before_retry(deployed):
     assert deployed.weights_path
 
 
-def test_poll_transport_error_keeps_handle_and_budget(deployed):
-    warming(deployed)
-    with patch.object(deployment, "poll_operation", side_effect=ConnectionError("offline")):
-        advance(deployed)
+def test_an_unreachable_provider_keeps_the_handle_and_the_budget(deployed, fake_modal):
+    warming(deployed, fake_modal, unreachable=ConnectionError("offline"))
+    advance(deployed)
     assert deployed.deployment_call_id == "fc-warm"
     assert deployed.deployment_attempts == 1
     assert deployed.status == "warming"
 
 
-def test_deadline_stops_remote_operation_without_losing_weights(deployed):
-    warming(deployed)
+def test_deadline_stops_remote_operation_without_losing_weights(deployed, fake_modal):
+    warming(deployed, fake_modal)
     DeployedModel.objects.filter(pk=deployed.pk).update(
-        deployment_deadline=timezone.now() - timedelta(seconds=1),
+        deployment_deadline=timezone.now() - timedelta(seconds=1)
     )
     advance(deployed)
     assert deployed.status == "failed"
     assert deployed.deployment_cancel_pending
-    with patch("modal.FunctionCall.from_id") as call:
-        call.return_value.cancel.aio = AsyncMock()
-        call.return_value.get_call_graph.aio = AsyncMock(
-            return_value=[
-                SimpleNamespace(
-                    function_call_id="fc-warm",
-                    status=InputStatus.TERMINATED,
-                    children=[],
-                )
-            ]
-        )
-        advance(deployed)
-        call.assert_called_with("fc-warm")
-        call.return_value.cancel.aio.assert_awaited_once()
+
+    advance(deployed)
+    assert [call for call, _ in fake_modal.cancelled] == ["fc-warm"]
     assert not deployed.deployment_cancel_pending
     assert deployed.weights_path == "/weights/base"
 
 
-def test_complete_adapter_pipeline_persists_every_stage(deployed):
-    results = {
-        "base": {},
-        "archive": {},
-        "weights": {"base_path": "bases/qwen", "lora_rank": 32},
-        "register": "https://inference.test",
-        "warm": None,
-    }
-    with (
-        patch.object(
-            deployment, "spawn_operation", side_effect=lambda row: "fc-" + row.deployment_stage
-        ),
-        patch.object(
-            deployment,
-            "poll_operation",
-            side_effect=lambda handle: ("complete", results[handle.removeprefix("fc-")]),
-        ),
-        patch("overbae.services.finetuning_eval.tick_job_evals") as tick,
-    ):
-        for stage in results:
+def test_complete_adapter_pipeline_persists_every_stage(deployed, fake_modal):
+    stages = ["base", "archive", "weights", "register", "warm"]
+    with patch("overbae.services.finetuning_eval.tick_job_evals") as tick:
+        for stage in stages:
             assert deployed.deployment_stage == stage
             advance(deployed)
-            assert deployed.deployment_call_id == "fc-" + stage
+            assert fake_modal.calls[deployed.deployment_call_id].state == "done"
             advance(deployed)
         assert deployed.status == "ready"
         advance(deployed)
+
+    assert fake_modal.spawns() == [
+        "fetch_base_model",
+        "sync_modal_checkpoint_to_s3",
+        "publish_adapter",
+        "InferenceAPIServer.register_model",
+        "pre_warm",
+    ]
     assert deployed.quantization == "bf16"
     assert deployed.adapter_path == "/weights/.adapters/" + deployed.model_id
-    assert deployed.lora_rank == 32
+    assert deployed.lora_rank == 16
     tick.assert_called_once()
 
 
 @pytest.mark.parametrize("adapter", [False, True])
-def test_boot_always_verifies_persisted_adapter(deployed, adapter):
-    warming(deployed)
+def test_boot_always_verifies_persisted_adapter(deployed, fake_modal, adapter):
+    warming(deployed, fake_modal)
     if not adapter:
-        deployed.adapter_path = ""
-    with patch("modal.Function.from_name") as fn:
-        fn.return_value.spawn.aio = AsyncMock(return_value=SimpleNamespace(object_id="fc-boot"))
-        assert deployment.spawn_operation(deployed) == "fc-boot"
-    kwargs = fn.return_value.spawn.aio.call_args.kwargs
+        DeployedModel.objects.filter(pk=deployed.pk).update(adapter_path="")
+    DeployedModel.objects.filter(pk=deployed.pk).update(deployment_call_id="")
+    advance(deployed)
+
+    [(_, name, _, kwargs)] = [entry for entry in fake_modal.log if entry[0] == "spawn"]
+    assert name == "pre_warm"
     assert kwargs["adapter"] == ((deployed.model_id, ".adapters/ft-test") if adapter else None)
     assert kwargs["lora_rank"] == (32 if adapter else 0)
 
 
 @pytest.mark.parametrize("remote_failed", [False, True])
-def test_provider_must_confirm_failure_before_new_attempt(remote_failed):
-    with patch("modal.FunctionCall.from_id") as call:
-        call.return_value.get.aio = AsyncMock(side_effect=RuntimeError("secret provider details"))
-        call.return_value.get_call_graph.aio = AsyncMock(
-            return_value=[
-                SimpleNamespace(
-                    function_call_id="fc-x",
-                    status=InputStatus.FAILURE if remote_failed else InputStatus.PENDING,
-                    children=[],
-                )
-            ]
-        )
-        if remote_failed:
-            assert deployment.poll_operation("fc-x") == ("failed", "Remote operation failed.")
-        else:
-            with pytest.raises(RuntimeError):
-                deployment.poll_operation("fc-x")
+def test_provider_must_confirm_failure_before_new_attempt(fake_modal, remote_failed):
+    secret = RuntimeError("secret provider details")
+    if remote_failed:
+        fake_modal.adopt("fc-x", state="failed", error=secret)
+        assert deployment.poll_operation("fc-x") == ("failed", "Remote operation failed.")
+    else:
+        fake_modal.adopt("fc-x", unreachable=secret)
+        with pytest.raises(RuntimeError):
+            deployment.poll_operation("fc-x")
 
 
 def test_controller_recovers_training_and_baseline_on_same_tick(deployed):
@@ -326,25 +296,16 @@ def test_notification_is_retried_after_worker_failure(deployed):
     assert not deployed.deployment_notify
 
 
-def test_merged_weights_and_baseline_preserve_actual_quantization(deployed):
+def test_merged_weights_and_baseline_preserve_actual_quantization(deployed, fake_modal):
     FinetuningJob.objects.filter(pk=deployed.finetuning_job_id).update(provider="baseten")
-    DeployedModel.objects.filter(pk=deployed.pk).update(
-        deployment_stage="weights",
-        deployment_call_id="fc-weights",
+    at_stage(
+        deployed,
+        fake_modal,
+        "weights",
+        state="done",
+        result={"weights_path": "/weights/private", "quantization": "bf16", "num_parameters": 100},
     )
-    with patch.object(
-        deployment,
-        "poll_operation",
-        return_value=(
-            "complete",
-            {
-                "weights_path": "/weights/private",
-                "quantization": "bf16",
-                "num_parameters": 100,
-            },
-        ),
-    ):
-        advance(deployed)
+    advance(deployed)
     assert deployed.deployment_stage == "register"
     assert deployed.quantization == "bf16"
     assert not deployed.is_lora
@@ -363,10 +324,7 @@ def test_failed_baseline_does_not_reset_budget_for_same_waiter(deployed):
     baseline.deployment_waiters.add(job)
     with (
         patch("overbae.services.finetuning_eval.job_wants_evals", return_value=True),
-        patch(
-            "overbae.services.finetuning_eval.baseline_needs_base_deploy",
-            return_value=True,
-        ),
+        patch("overbae.services.finetuning_eval.baseline_needs_base_deploy", return_value=True),
     ):
         for _ in range(3):
             deployment.ensure_baseline_deployment(str(job.pk))
@@ -409,32 +367,33 @@ def test_shared_baseline_resizes_after_the_existing_operation_finishes(deployed,
     tick.assert_not_called()
 
 
-def test_cancellation_acknowledgement_must_be_terminal_before_retry(deployed):
-    warming(deployed)
+def test_cancellation_acknowledgement_must_be_terminal_before_retry(deployed, fake_modal):
+    boot = warming(deployed, fake_modal)
+    boot.children.append(FakeCall(fake_modal, "gpu", lambda: None, (), {}, True))
     DeployedModel.objects.filter(pk=deployed.pk).update(
         status="failed", deployment_cancel_pending=True
     )
-    with patch.object(deployment, "cancel_operation", return_value=False):
-        advance(deployed)
+    advance(deployed)
     assert deployed.deployment_cancel_pending
     with pytest.raises(ValueError, match="unresolved"):
         deployment.retry_deployment(deployed.pk)
 
 
-def test_stage_progress_preserves_training_metrics_without_duplicate_activity(deployed):
+def test_stage_progress_preserves_training_metrics_without_duplicate_activity(deployed, fake_modal):
     job = deployed.finetuning_job
     FinetuningJob.objects.filter(pk=job.pk).update(progress={"train_loss": 0.4})
-    warming(deployed)
-    with patch.object(deployment, "poll_operation", return_value=("pending", None)):
-        advance(deployed)
-        advance(deployed)
+    warming(deployed, fake_modal)
+    advance(deployed)
+    advance(deployed)
     job.refresh_from_db()
     assert job.progress["train_loss"] == 0.4
     assert job.progress["deployment"]["label"] == "Booting and verifying"
     assert len(job.progress["activity"]) == 1
 
 
-def test_baseline_progress_reaches_waiters_without_changing_training_deployment(deployed):
+def test_baseline_progress_reaches_waiters_without_changing_training_deployment(
+    deployed, fake_modal
+):
     job = deployed.finetuning_job
     FinetuningJob.objects.filter(pk=job.pk).update(status="running", progress={"train_loss": 0.4})
     baseline = DeployedModel.objects.create(
@@ -444,10 +403,10 @@ def test_baseline_progress_reaches_waiters_without_changing_training_deployment(
         deployment_call_id="fc-baseline",
         status="warming",
     )
+    fake_modal.adopt("fc-baseline", "pre_warm")
     baseline.deployment_waiters.add(job)
-    with patch.object(deployment, "poll_operation", return_value=("pending", None)):
-        advance(baseline)
-        advance(baseline)
+    advance(baseline)
+    advance(baseline)
     job.refresh_from_db()
     assert job.progress["train_loss"] == 0.4
     assert "deployment" not in job.progress
@@ -463,7 +422,7 @@ def test_baseline_progress_reaches_waiters_without_changing_training_deployment(
     assert job.progress == saved
 
 
-def test_confirmed_stopped_baseline_can_start_fresh_for_a_new_job(deployed):
+def test_confirmed_stopped_baseline_can_start_fresh_for_a_new_job(deployed, fake_modal):
     job = deployed.finetuning_job
     baseline = DeployedModel.objects.create(
         project=job.project,
@@ -477,7 +436,6 @@ def test_confirmed_stopped_baseline_can_start_fresh_for_a_new_job(deployed):
     with (
         patch("overbae.services.finetuning_eval.job_wants_evals", return_value=True),
         patch("overbae.services.finetuning_eval.baseline_needs_base_deploy", return_value=True),
-        patch.object(deployment, "spawn_operation") as spawn,
     ):
         deployment.ensure_baseline_deployment(str(job.pk))
     baseline.refresh_from_db()
@@ -486,27 +444,29 @@ def test_confirmed_stopped_baseline_can_start_fresh_for_a_new_job(deployed):
     assert baseline.deployment_attempts == 1
     assert baseline.deployment_generation != previous_generation
     assert baseline.weights_path == "/weights/preserved"
-    spawn.assert_not_called()
+    assert fake_modal.spawns() == []
 
 
-def test_api_and_mcp_share_progress_without_remote_credentials(deployed):
+@pytest.mark.django_db(transaction=True)
+def test_api_and_mcp_share_progress_without_remote_credentials(deployed, fake_modal):
     from overbae.api.serializers import DeployedModelSerializer
-    from overbae.services.mcp import resources
 
-    warming(deployed)
+    warming(deployed, fake_modal)
+    context = MCPContext(
+        user=make_user(),
+        token=APIToken(scope={"scope": "project", "permission": ["read"]}),
+        project=deployed.project,
+    )
+
+    async def read():
+        with bind_context(context):
+            return list(await read_resource(f"overmind://deployments/{deployed.pk}"))
+
+    [content] = asyncio.run(read())
     rest = DeployedModelSerializer(deployed).data["deployment_progress"]
-    mcp = resources._deployment_resource(deployed.project, str(deployed.pk), "test")["progress"]
-    assert rest == mcp
+    assert rest == json.loads(content.content)["progress"]
     assert rest["label"] == "Booting and verifying"
     assert "fc-warm" not in str(rest)
-
-
-def test_new_recovery_schedule_replaces_janitor():
-    from django.conf import settings
-
-    assert settings.CELERY_BEAT_SCHEDULE["reconcile-deployments"]["schedule"] == 15.0
-    assert "janitor-stuck-fsm" not in settings.CELERY_BEAT_SCHEDULE
-    assert deployment.CLAIM_SECONDS + deployment.POLL_SECONDS <= 60
 
 
 def test_superseded_notification_cannot_finish_new_attempt(deployed):
@@ -520,41 +480,27 @@ def test_superseded_notification_cannot_finish_new_attempt(deployed):
     assert deployed.finetuning_job.status == "deploying"
 
 
-def test_invalid_remote_result_never_leaks_provider_data(deployed):
-    DeployedModel.objects.filter(pk=deployed.pk).update(
-        deployment_stage="weights",
-        deployment_call_id="fc-weights",
-    )
-    with patch.object(
-        deployment, "poll_operation", return_value=("complete", "secret-provider-token")
-    ):
-        advance(deployed)
+def test_invalid_remote_result_never_leaks_provider_data(deployed, fake_modal):
+    at_stage(deployed, fake_modal, "weights", state="done", result="secret-provider-token")
+    advance(deployed)
     assert "invalid result" in deployed.error_message
     assert "secret-provider-token" not in deployed.error_message
 
 
-def test_failed_parent_waits_for_child_gpu_work_before_retry():
-    child = SimpleNamespace(function_call_id="fc-gpu", status=InputStatus.PENDING, children=[])
-    root = SimpleNamespace(
-        function_call_id="fc-parent", status=InputStatus.TIMEOUT, children=[child]
+def test_failed_parent_waits_for_child_gpu_work_before_retry(fake_modal):
+    child = fake_modal.adopt("fc-gpu", "gpu")
+    fake_modal.adopt(
+        "fc-parent", state="timeout", error=TimeoutError("remote timeout"), children=[child]
     )
-    with patch("modal.FunctionCall.from_id") as call:
-        call.return_value.get.aio = AsyncMock(side_effect=TimeoutError("remote timeout"))
-        call.return_value.get_call_graph.aio = AsyncMock(return_value=[root])
-        assert deployment.poll_operation("fc-parent") == ("pending", None)
-        child.status = InputStatus.TERMINATED
-        assert deployment.poll_operation("fc-parent") == ("failed", "Remote operation timed out.")
+    assert deployment.poll_operation("fc-parent") == ("pending", None)
+    child.state = "cancelled"
+    assert deployment.poll_operation("fc-parent") == ("failed", "Remote operation timed out.")
 
 
-def test_cancellation_covers_child_calls_without_terminating_shared_containers():
-    child = SimpleNamespace(function_call_id="fc-gpu", status=InputStatus.PENDING, children=[])
-    root = SimpleNamespace(
-        function_call_id="fc-parent", status=InputStatus.TERMINATED, children=[child]
-    )
-    with patch("modal.FunctionCall.from_id") as call:
-        call.return_value.get_call_graph.aio = AsyncMock(return_value=[root])
-        call.return_value.cancel.aio = AsyncMock()
-        assert not deployment.cancel_operation("fc-parent")
-        assert {args.args[0] for args in call.call_args_list} == {"fc-parent", "fc-gpu"}
-        for invocation in call.return_value.cancel.aio.call_args_list:
-            assert invocation.kwargs == {}
+def test_cancellation_covers_child_calls_without_terminating_shared_containers(fake_modal):
+    child = fake_modal.adopt("fc-gpu", "gpu")
+    fake_modal.adopt("fc-parent", state="cancelled", children=[child])
+
+    assert deployment.cancel_operation("fc-parent")
+    assert {call for call, _ in fake_modal.cancelled} == {"fc-parent", "fc-gpu"}
+    assert all(kwargs == {} for _, kwargs in fake_modal.cancelled)

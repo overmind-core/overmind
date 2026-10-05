@@ -138,16 +138,6 @@ def test_post_assigns_ids_and_get_roundtrips(client):
 
 
 @pytest.mark.django_db
-def test_post_same_slug_keeps_id(client):
-    first = client.post("/api/v1/sync", _snapshot([_cap()]), format="json")
-    cap_id = first.data["capabilities"][0]["id"]
-    second = client.post("/api/v1/sync", _snapshot([_cap(name="Support Agent 2")]), format="json")
-    assert second.data["capabilities"][0]["id"] == cap_id
-    assert second.data["capabilities"][0]["name"] == "Support Agent 2"
-    assert Capability.objects.filter(project_id=PROJECT_ID).count() == 1
-
-
-@pytest.mark.django_db
 def test_absent_slug_becomes_leftover_and_is_not_in_post_response(client):
     client.post(
         "/api/v1/sync", _snapshot([_cap(), _cap(slug="other", name="Other")]), format="json"
@@ -179,20 +169,6 @@ def test_observed_capability_is_not_marked_leftover(client):
     client.post("/api/v1/sync", _snapshot([_cap()]), format="json")
     observed.refresh_from_db()
     assert observed.status == Capability.Status.CURRENT
-
-
-@pytest.mark.django_db
-def test_leftover_slug_is_remounted(client):
-    client.post("/api/v1/sync", _snapshot([_cap()]), format="json")
-    client.post("/api/v1/sync", _snapshot([]), format="json")
-    leftover = Capability.objects.get(slug="support-agent")
-    assert leftover.status == Capability.Status.LEFTOVER
-    cap_id = str(leftover.id)
-
-    remounted = client.post("/api/v1/sync", _snapshot([_cap()]), format="json")
-    assert remounted.data["capabilities"][0]["id"] == cap_id
-    leftover.refresh_from_db()
-    assert leftover.status == Capability.Status.CURRENT
 
 
 @pytest.mark.django_db

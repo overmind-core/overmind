@@ -2150,7 +2150,3 @@ def get_runner(backend: str | None = None) -> BaseFinetuningRunner:
             f"Unknown fine-tuning backend '{key}'. Available: {list(_RUNNER_REGISTRY)}"
         )
     return cls()
-
-
-def register_runner(key: str, cls: type[BaseFinetuningRunner]) -> None:
-    _RUNNER_REGISTRY[key] = cls

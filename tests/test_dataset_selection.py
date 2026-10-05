@@ -6,17 +6,14 @@ from __future__ import annotations
 import uuid
 
 import pytest
+from factories import make_project
 
-from overbae.models import Project, Span
+from overbae.models import Span
 from overbae.services.datasets.selection import TraceSource, TraceSourceError, allowed_filters
 
 pytestmark = pytest.mark.django_db
 
 NS = 1_700_000_000_000_000_000
-
-
-def _project() -> Project:
-    return Project.objects.create(name="P", slug=f"p-{uuid.uuid4().hex[:8]}")
 
 
 def _root(project, *, start=NS, error=False) -> str:
@@ -87,7 +84,7 @@ def test_parse_normalises_a_traces_list_selection():
 
 
 def test_count_explicit_ids_counts_only_traces_that_exist():
-    project = _project()
+    project = make_project()
     real = _root(project)
     source = TraceSource.parse({"trace_ids": [real, uuid.uuid4().hex]})
     assert source.count(project.id) == 1
@@ -95,7 +92,7 @@ def test_count_explicit_ids_counts_only_traces_that_exist():
 
 
 def test_count_selection_applies_filters_exclusions_and_limit():
-    project = _project()
+    project = make_project()
     failed = [_root(project, start=NS + i, error=True) for i in range(3)]
     _root(project)
     source = TraceSource.parse({"filters": {"has_error": "true"}})
@@ -111,7 +108,7 @@ def test_count_selection_applies_filters_exclusions_and_limit():
 
 
 def test_count_is_scoped_to_the_project():
-    mine, theirs = _project(), _project()
+    mine, theirs = make_project(), make_project()
     _root(theirs)
     source = TraceSource.parse({"filters": {"project": str(mine.id)}})
     assert source.count(mine.id) == 0
