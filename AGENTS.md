@@ -2,13 +2,13 @@
 
 Monorepo for the Overmind Console (`frontend/`, React), API (`overbae/`, Django + DRF + Celery), and SDK/CLI (`overmind/`). Agent improvement platform: observability → data workshop → evals → finetuning/inference. The platform is AGPL-3.0; `overmind/` is MIT.
 
-This file is the single playbook. Cursor reads it natively; Claude Code reads it through the `@AGENTS.md` import in `CLAUDE.md`. It holds what every task needs; procedures and subsystem maps live in `.claude/skills/`, which both tools load on demand.
+This file is the single playbook. Claude Code, Codex and Cursor all read it natively. It holds what every task needs; procedures and subsystem maps live in `.agents/skills/`, which every tool loads on demand.
 
 ## Branches
 
 - `main` is protected: feature branch → PR, using `.github/PULL_REQUEST_TEMPLATE.md`.
-- `oss` is based on `main` and carries the same backend and frontend plus the in-repo SDK under `overmind/`. Rewriting its history needs a force-push to `origin/oss`; do that only when publishing the rewrite. Never force-push `main`.
-- Root ruff excludes `overmind/`. SDK CI is `.github/workflows/sdk-*.yml`; PyPI publish is tag-gated (`overmind-v*`).
+- The repo is public (`overmind-core/overmind`) and carries the platform plus the MIT SDK under `overmind/`. Never force-push `main`.
+- Root ruff excludes `overmind/`. SDK CI is `.github/workflows/sdk-*.yml`. Every merge to `main` that touches `overmind/` publishes to PyPI, so `sdk-ci` requires a version bump on those PRs.
 
 ## Commands
 
@@ -122,11 +122,16 @@ Never put plan-phase labels (P0/P1, "Phase N") in code, comments, or test names 
 
 ## Guardrails
 
-`.claude/hooks/` holds deterministic guards, wired into Claude Code through `.claude/settings.json` and into Cursor through `.cursor/hooks.json`. A denial names the fix; follow it rather than retrying. Cursor cannot veto a file write, so one rule stays as text there: never hand-edit `frontend/src/openapi/` — `make generate_api_client` rewrites it wholesale.
+`.agents/hooks/` holds deterministic guards. A denial names the fix; follow it rather than retrying.
+
+- Claude Code reads the wiring in `.claude/settings.json`; Cursor reads the same file through its third-party hooks setting (on by default).
+- Codex reads `.codex/hooks.json`; trust the project hooks once with `/hooks`.
+- Skills live in `.agents/skills/` (frontmatter `name` and `description` only); `.claude/skills` is a symlink for Claude Code. Personal skills go in `~/.agents/skills/`.
+- Claude Code reads this file only from v2.1.277 and only when no `CLAUDE.md` or `CLAUDE.local.md` exists. With a `CLAUDE.local.md`, set `/config` → Project instructions → `claude-md-and-agents-md`.
 
 ## Gotchas
 
-- After `uv add`/`uv remove` the venv lacks the dev/test groups (pytest vanishes): `uv sync --group dev --group test`. Under Claude Code the `uv_resync` hook runs it.
+- After `uv add`/`uv remove` the venv lacks the dev/test groups (pytest vanishes): `uv sync --group dev --group test`. The `uv_resync` hook runs it.
 - A new Python dependency reaches a compose worker only when its container is recreated (`docker compose up -d --force-recreate --no-deps <worker>`); a worker started before the image changed keeps the old venv and crashes on import at its next watchmedo restart.
 - `overbae/services/sft_assets/` ships via `add_local_dir`, which bakes it into the image at deploy time — editing `pretok.py`/`train.py` does nothing until `modal deploy overbae/modal/modal_sft_worker.py`. The job runs the old code and fails identically, so it reads as "the fix didn't work".
 - Chat templates disagree on OpenAI wire shape: `content: null` and JSON-string `tool_calls[].function.arguments` either raise or silently render an argument-less call. `pretok.normalize_openai_wire` is the one place that reshapes them — training tool data on a new family means checking it there, not per-family.

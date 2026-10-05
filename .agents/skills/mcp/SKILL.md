@@ -12,8 +12,10 @@ The MCP server is the project-scoped agent API. It shares
 domain services with the Console and REST API; it does not proxy either of
 them.
 
-The optional Codex plugin under `overmind/.codex-plugin/` packages the existing
-MCP connection and shared workflow skills. The focused skills in
+The optional Claude Code, Codex and Cursor plugins under
+`overmind/.{claude,codex,cursor}-plugin/` package the existing MCP connection and
+shared workflow skills; their versions match `SKILLS_VERSION` in
+`overmind/overmind/skills_db.py`. The focused skills in
 `overmind/skills/overmind-*/` cover Agent, Observability, Datasets, Evaluations,
 Optimiser, Training, Inference and Integrations; the main `overmind` skill keeps
 local setup and workflows across surfaces. CLI initialization installs all of them.

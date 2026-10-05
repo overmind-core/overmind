@@ -20,7 +20,7 @@
     "mcp"
   ],
   "skills": "./skills/",
-  "mcpServers": "./.mcp.json",
+  "mcpServers": "./mcp.json",
   "interface": {
     "displayName": "Overmind",
     "shortDescription": "Improve agents with real data",

@@ -1,9 +1,9 @@
 ---
 name: pr-etiquette
-description: How to open a complete pull request on overmind-core/platform — the CI gates, the cross-cutting surfaces a change must carry with it (MCP, blast radius, the docs repo), gh pr edit being broken here, and body conventions. Use when opening a PR, editing a PR title or body, or pushing branch work for review.
+description: How to open a complete pull request on overmind-core/overmind — the CI gates, the cross-cutting surfaces a change must carry with it (MCP, blast radius, the docs repo), gh pr edit being broken here, and body conventions. Use when opening a PR, editing a PR title or body, or pushing branch work for review.
 ---
 
-# Pull requests on overmind-core/platform
+# Pull requests on overmind-core/overmind
 
 ## Before you push — what CI will run
 
@@ -25,8 +25,8 @@ the SDK version gate. Bump `overmind/pyproject.toml` above the version on the PR
 base branch, match `overmind/overmind/__init__.py`, and regenerate `overmind/uv.lock`
 with `uv lock --project overmind`. Verify the versions agree before pushing.
 The root `uv.lock` pins the platform's installed SDK dependency; do not change it
-to an unpublished local release. A version bump does not publish to PyPI: that
-still requires the explicit `overmind-v*` tag workflow.
+to an unpublished local release. The merge publishes the bumped version to PyPI
+(`sdk-publish.yml` runs on every push to `main` that touches `overmind/`).
 
 ### Migrations: rebase before you push
 
@@ -57,7 +57,7 @@ tests in
 Overmind skill (`overmind/skills/overmind/`) when the public catalog, prompts,
 or resources change. A Console-only vertical change that an agent should be
 able to progress is not complete. The mcp skill itself lives in
-`.claude/skills/mcp/` and must not be copied into `overmind/skills/`.
+`.agents/skills/mcp/` and must not be copied into `overmind/skills/`.
 
 ### 2. Cross-vertical blast radius
 
@@ -88,7 +88,7 @@ Use REST instead:
 
 ```bash
 python3 -c "import json;print(json.dumps({'title':'<title>','body':open('pr.md').read()}))" > pr.json
-gh api -X PATCH repos/overmind-core/platform/pulls/<n> --input pr.json --jq .title
+gh api -X PATCH repos/overmind-core/overmind/pulls/<n> --input pr.json --jq .title
 ```
 
 Always re-read the PR afterwards (`gh pr view <n>`) to confirm the edit landed.

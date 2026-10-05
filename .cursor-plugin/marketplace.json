@@ -1,0 +1,17 @@
+{
+  "name": "overmind",
+  "owner": {
+    "name": "Overmind",
+    "email": "hello@overmindlab.ai"
+  },
+  "metadata": {
+    "description": "Overmind plugins for coding agents."
+  },
+  "plugins": [
+    {
+      "name": "overmind",
+      "source": "overmind",
+      "description": "Overmind skills — agent observability, tracing, and platform workflows for coding agents."
+    }
+  ]
+}

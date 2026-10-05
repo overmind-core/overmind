@@ -1,18 +1,14 @@
 #!/usr/bin/env python3
-"""PreToolUse guard for Bash commands. Emits a Claude Code permission decision."""
+"""PreToolUse guard for shell commands."""
 
 import json
-import sys
 
+import payload
 from guards import check_command
 
 
 def main():
-    try:
-        cmd = json.load(sys.stdin).get("tool_input", {}).get("command", "")
-    except Exception:
-        return
-    verdict = check_command(cmd)
+    verdict = check_command(payload.command(payload.read()))
     if not verdict:
         return
     decision, reason = verdict

@@ -206,7 +206,13 @@ The Codex, Cursor and Claude Code plugin manifests package that same connection
 and the shared workflow skills. They add installation, branding, workflow guidance and
 links to the normal Console. They do not add a separate UI or another API.
 
-The bundled `.mcp.json` connects to the hosted API through OAuth account sign-in.
+| Client      | Install the plugin                                                                      |
+| ----------- | --------------------------------------------------------------------------------------- |
+| Claude Code | `/plugin marketplace add overmind-core/overmind`, then `/plugin install overmind@overmind` |
+| Codex       | `codex plugin marketplace add overmind-core/overmind`, then enable it in `/plugins`        |
+| Cursor      | Add `overmind-core/overmind` as a plugin marketplace, then install Overmind              |
+
+The bundled `mcp.json` connects to the hosted API through OAuth account sign-in.
 Access continues until revoked, with automatic token refresh. Standalone MCP
 also accepts account or project API keys through `X-Api-Key` or
 `Authorization: Bearer`; never include a key in a plugin archive. For local or
@@ -238,7 +244,7 @@ configured servers untouched. `sync` installs the final project key:
 
 | `--ide`                  | MCP config                     | Skill install      |
 | ------------------------ | ------------------------------ | ------------------ |
-| `cursor`                 | `.cursor/mcp.json`             | `.cursor/skills`   |
+| `cursor`                 | `.cursor/mcp.json`             | `.agents/skills`   |
 | `claude` / `claude_code` | `~/.claude.json` (local scope) | `.claude/skills`   |
 | `opencode`               | `opencode.json`                | `.opencode/skills` |
 | `codex`                  | `.codex/config.toml`           | `.agents/skills`   |

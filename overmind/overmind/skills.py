@@ -10,7 +10,7 @@ from rich.console import Console
 from rich.table import Table
 from typer import echo
 
-from overmind.skills_db import Skill, skills
+from overmind.skills_db import SKILLS_VERSION, Skill, skills
 
 console = Console()
 
@@ -52,7 +52,7 @@ def list_skills(verbose: bool = False):
     table.add_column("Version", style="bold red")
     table.add_column("Provider", style="bold green")
     for skill in skills:
-        table.add_row(skill.name, skill.description, skill.version, skill.provider)
+        table.add_row(skill.name, skill.description, SKILLS_VERSION, skill.provider)
     console.print(table)
 
 
@@ -70,26 +70,27 @@ def sync_skills(
 
 
 def sync_skill(skill: Skill, ide: str):
-    """Copy the whole skill directory (SKILL.md + references/) into the destination."""
+    """Replace the installed skill directory (SKILL.md + references/) with the packaged one."""
     src = _skill_src(skill.slug)
     if src is None:
         raise FileNotFoundError(f"Skill directory not found for: {skill.slug}")
     dest = os.path.join(get_destination_dir(ide), "skills", skill.slug)
-    shutil.copytree(src, dest, dirs_exist_ok=True)
+    shutil.rmtree(dest, ignore_errors=True)
+    shutil.copytree(src, dest)
+    if ide == "cursor":
+        # Cursor reads both trees, so a copy left by an earlier install shows up twice.
+        shutil.rmtree(os.path.join(".cursor", "skills", skill.slug), ignore_errors=True)
     logging.info(f"Copied {src} to {dest}")
 
 
 def get_destination_dir(ide: str):
-    if ide == "cursor":
-        return ".cursor"
+    if ide in ("cursor", "codex"):
+        return ".agents"
 
     if ide in CLAUDE_IDES:
         return ".claude"
 
     if ide == "opencode":
         return ".opencode"
-
-    if ide == "codex":
-        return ".agents"
 
     raise typer.BadParameter(f"use cursor, claude_code, opencode or codex, got: {ide}", param_hint="--ide")

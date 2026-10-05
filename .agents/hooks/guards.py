@@ -1,5 +1,4 @@
-"""Vendor-neutral guard decisions. The Claude Code and Cursor hook entrypoints
-translate these into their own wire formats."""
+"""Vendor-neutral guard decisions, shared by the Claude Code, Codex and Cursor hooks."""
 
 import re
 
@@ -10,7 +9,7 @@ _RULES = [
         r"(^|[;&|]\s*)gh\s+pr\s+edit\b",
         "deny",
         "gh pr edit fails on this repo (Projects-classic GraphQL). Use "
-        "gh api -X PATCH repos/overmind-core/platform/pulls/<n> --input pr.json "
+        "gh api -X PATCH repos/overmind-core/overmind/pulls/<n> --input pr.json "
         "(see the pr-etiquette skill).",
     ),
     (

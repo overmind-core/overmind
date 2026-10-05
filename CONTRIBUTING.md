@@ -39,7 +39,7 @@ Run the same checks CI runs:
 
 ## Coding agents
 
-`.claude/skills/` holds subsystem maps and procedures that Claude Code and Cursor load on demand; `AGENTS.md` indexes them. If you contribute with a coding agent, point it at the repo root and it picks these up. Hooks in `.claude/hooks/` guard generated files and dangerous commands; a denial names the fix.
+`.agents/skills/` holds subsystem maps and procedures that Claude Code, Codex and Cursor load on demand; `AGENTS.md` indexes them. If you contribute with a coding agent, point it at the repo root and it picks these up. Hooks in `.agents/hooks/` guard generated files and dangerous commands; a denial names the fix.
 
 ## Licence
 

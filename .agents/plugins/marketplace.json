@@ -1,0 +1,20 @@
+{
+  "name": "overmind",
+  "interface": {
+    "displayName": "Overmind"
+  },
+  "plugins": [
+    {
+      "name": "overmind",
+      "source": {
+        "source": "local",
+        "path": "./overmind"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "Developer Tools"
+    }
+  ]
+}
