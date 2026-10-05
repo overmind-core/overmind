@@ -231,7 +231,14 @@ it("shows native validation progress and named experiments without chat token ac
     </QueryClientProvider>
   );
   expect(screen.getAllByText("Full corpus").length).toBeGreaterThan(0);
-  expect(screen.getAllByText(/Initial validation · 600 \/ 1,200 decisions/)).toHaveLength(2);
+  expect(
+    screen.getAllByText(/Pre-training baseline evaluation · 600 \/ 1,200 decisions/)
+  ).toHaveLength(2);
+  expect(
+    screen.getAllByText(
+      "Measuring the starting model on the development set before training begins."
+    )
+  ).toHaveLength(2);
   expect(screen.queryByText("Token accuracy")).toBeNull();
   expect(screen.getAllByText("Validation cross entropy").length).toBeGreaterThan(0);
   expect(screen.getAllByText("1.2000")).toHaveLength(2);

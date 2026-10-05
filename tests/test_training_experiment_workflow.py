@@ -51,6 +51,7 @@ def test_experiment_freezes_variants_and_launches_each_saved_candidate_once(
             "development_cell": str(development.active_cell.pk),
             "hyperparameters": {
                 "seed": seed,
+                "pre_training_baseline": seed == 12,
                 "n_epochs": 1,
                 "checkpoint_policy": {"fractions": [0.5, 1], "selection": "development_loss"},
             },
@@ -88,6 +89,9 @@ def test_experiment_freezes_variants_and_launches_each_saved_candidate_once(
         training_experiments.prepare(group)
         training_experiments.launch(group, user=user)
     assert dispatch.call_count == 2
+    jobs = list(FinetuningJob.objects.filter(group_id=group.id).order_by("name"))
+    assert [job.hyperparameters["pre_training_baseline"] for job in jobs] == [False, True]
+    assert all(job.validation_enabled for job in jobs)
     assert FinetuningJob.objects.filter(group_id=group.pk).count() == 2
     report = training_experiments.describe(group)
     assert "hyperparameters.seed" in report["varying_fields"]

@@ -277,6 +277,22 @@ export function SetupPanel({ wizard, projectId }: { wizard: TrainWizard; project
 
         {wizard.nativeDecision ? (
           <div className="sm:col-span-2 lg:col-span-3 text-sm">
+            {wizard.validationMode !== "none" && (
+              <div className="mb-3 space-y-1.5">
+                <Label className="flex items-center gap-2" htmlFor="train-pre-training-baseline">
+                  <Checkbox
+                    checked={wizard.preTrainingBaseline}
+                    id="train-pre-training-baseline"
+                    onCheckedChange={(value) => wizard.setPreTrainingBaseline(value === true)}
+                  />
+                  Run pre-training baseline evaluation
+                </Label>
+                <p className="text-xs text-muted-foreground">
+                  Measures the starting model on development data. Training validation and final
+                  evaluations run separately.
+                </p>
+              </div>
+            )}
             <p className="font-medium">Native probability training · Modal LoRA</p>
             <p className="text-muted-foreground">
               Full probability targets · decision cross entropy · typed probability output. Select

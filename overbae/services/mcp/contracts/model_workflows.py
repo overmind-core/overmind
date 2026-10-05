@@ -88,7 +88,7 @@ class CandidateInput(MCPModel):
     cell: UUID
     development_cell: UUID | None = None
     hyperparameters: dict[str, Any] = Field(
-        description='Model recipe; for LoRA use training_type={"type":"Lora"}. Common fields include n_epochs, learning_rate, lora_r and seed.'
+        description='Model recipe; for LoRA use training_type={"type":"Lora"}. Common fields include n_epochs, learning_rate, lora_r and seed. Native pre_training_baseline=false skips only the initial development evaluation; defaults true.'
     )
 
 

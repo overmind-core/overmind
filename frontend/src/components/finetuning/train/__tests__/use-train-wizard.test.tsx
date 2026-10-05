@@ -359,7 +359,10 @@ it.each(["evals", "sets"] as const)("still requires %s when capability is none",
   }
 });
 
-it("launches a native contract without unrelated chat evaluations and reuses its request identity", async () => {
+it.each([
+  true,
+  false,
+])("launches a native contract with baseline %s and reuses its request identity", async (baseline) => {
   mocks.catalog.backend = "modal";
   mocks.validate.mockResolvedValue({ format: "decision", valid: true });
   const { result } = renderHook(() => useTrainWizard(args));
@@ -375,6 +378,16 @@ it("launches a native contract without unrelated chat evaluations and reuses its
     result.current.setEvalDatasetId("");
     result.current.setEvalSetId("");
   });
+  expect(result.current.preTrainingBaseline).toBe(true);
+  act(() => result.current.setPreTrainingBaseline(baseline));
+  const queries = mocks.queries.mock.calls.at(-1)?.[0].queries;
+  await queries[0].queryFn();
+  expect(mocks.estimate).toHaveBeenLastCalledWith({
+    finetuningEstimateRequestRequest: expect.objectContaining({
+      hyperparameters: expect.objectContaining({ pre_training_baseline: baseline }),
+      validationEnabled: true,
+    }),
+  });
   await act(() => result.current.launch());
   await act(() => result.current.launch());
   expect(mocks.create).toHaveBeenCalledTimes(2);
@@ -385,7 +398,11 @@ it("launches a native contract without unrelated chat evaluations and reuses its
       evalModelAfter: false,
       evalModelBefore: false,
       evalSet: null,
-      hyperparameters: expect.objectContaining({ objective: "decision_cross_entropy" }),
+      hyperparameters: expect.objectContaining({
+        objective: "decision_cross_entropy",
+        pre_training_baseline: baseline,
+      }),
+      validationEnabled: true,
     })
   );
   expect(first.requestKey).toBe(mocks.create.mock.calls[1][0][0].requestKey);

@@ -5,7 +5,6 @@ from types import SimpleNamespace
 from overbae.models import FinetuningJob
 from overbae.services import provider_pricing, training_release
 from overbae.services.finetuning_runner import ModalRunner
-from overbae.services.inference_pricing import gpu_usd_per_second
 from overbae.services.recommendation.candidates import dataset_total_tokens
 
 RECIPE_FIELDS = (
@@ -22,6 +21,7 @@ RECIPE_FIELDS = (
     "lora_target_modules",
     "gradient_accumulation_steps",
     "checkpoint_policy",
+    "pre_training_baseline",
 )
 
 
@@ -55,7 +55,11 @@ def forecast(project_id, model, recipe, *, tokens, stats):
         ):
             rejected["runtime"] += 1
             continue
-        if any(job.hyperparameters.get(key) != recipe.get(key) for key in RECIPE_FIELDS):
+        if any(
+            job.hyperparameters.get(key, True if key == "pre_training_baseline" else None)
+            != recipe.get(key, True if key == "pre_training_baseline" else None)
+            for key in RECIPE_FIELDS
+        ):
             rejected["recipe"] += 1
             continue
         recorded = job.effective_configuration or {}
@@ -103,16 +107,24 @@ def forecast(project_id, model, recipe, *, tokens, stats):
     # This is an explicit planning margin, not a statistical confidence interval.
     lower, upper = (0.5, 1.5) if len(evidence) < 3 else (0.8, 1.3)
     duration = [min(durations) * lower, max(durations) * upper] if durations else None
-    price = gpu_usd_per_second(gpu)
+    card = provider_pricing.current_rates()
+    price = provider_pricing.gpu_rate(card, gpu)
+    blockers = ([] if duration else ["duration_unmeasured"]) + (
+        [] if price is not None else ["gpu_rate_unavailable"]
+    )
     return {
         "basis": "matched_measurements" if duration else "unmeasured_recipe",
         "gpu_type": gpu,
         "gpu_count": count,
-        "rate_card": provider_pricing.current_rates(),
+        "rate_card": card,
+        "price_status": card["status"] if price is not None else "unavailable",
+        "gpu_hour_usd": price * 3600 * count if price is not None else None,
+        "duration_status": "estimated" if duration else "unmeasured",
+        "estimate_blockers": blockers,
         "trained_tokens": tokens,
         "training_seconds": duration,
         "training_gpu_usd": [round(t * count * price, 4) for t in duration]
-        if duration and price
+        if duration and price is not None
         else None,
         "evidence_jobs": [item["job"] for item in evidence],
         "evidence": evidence,

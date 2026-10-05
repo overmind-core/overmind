@@ -97,6 +97,7 @@ export function useTrainWizard({
   const [datasetId, setDatasetIdState] = useState(initialDatasetId ?? "");
   const [validationMode, setValidationMode] = useState<"split" | "external" | "none">("split");
   const [validationDatasetId, setValidationDatasetId] = useState("");
+  const [preTrainingBaseline, setPreTrainingBaseline] = useState(true);
   const [validation, setValidation] = useState<DatasetValidationResponse | null>(null);
   const [validating, setValidating] = useState(false);
   const [evalDatasetId, setEvalDatasetId] = useState(initialEvalDatasetId ?? "");
@@ -431,7 +432,9 @@ export function useTrainWizard({
             ...validationSelection,
             hyperparameters: {
               ...buildHyperparameters(draft),
-              ...(nativeDecision ? { objective: decisionObjective } : {}),
+              ...(nativeDecision
+                ? { objective: decisionObjective, pre_training_baseline: preTrainingBaseline }
+                : {}),
             },
           },
         }),
@@ -443,6 +446,7 @@ export function useTrainWizard({
         draft.useLora,
         draft.hyperparams,
         nativeDecision,
+        preTrainingBaseline,
         dataset?.active,
         validationSelection,
       ] as const,
@@ -604,7 +608,9 @@ export function useTrainWizard({
           groupId,
           hyperparameters: {
             ...buildHyperparameters(fixed),
-            ...(nativeDecision ? { objective: decisionObjective } : {}),
+            ...(nativeDecision
+              ? { objective: decisionObjective, pre_training_baseline: preTrainingBaseline }
+              : {}),
           },
           modelTier: fixed.tier as FinetuningJobRequestModelTierEnum,
           // Job names are `base · dataset · capability`: the run name is
@@ -630,6 +636,7 @@ export function useTrainWizard({
     }
   }, [
     canLaunch,
+    preTrainingBaseline,
     decisionObjective,
     validationSelection,
     validationDataset?.id,
@@ -705,6 +712,7 @@ export function useTrainWizard({
     launching,
     nativeDecision,
     overlapCount,
+    preTrainingBaseline,
     rec,
     recommendQuery,
     removeModel,
@@ -719,6 +727,7 @@ export function useTrainWizard({
     setEvalSetId,
     setEvaluationChoice,
     setJudgeModel,
+    setPreTrainingBaseline,
     setRunName: (value: string) => {
       setRunNameDirty(true);
       setRunName(value);

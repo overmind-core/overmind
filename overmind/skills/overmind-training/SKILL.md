@@ -52,6 +52,11 @@ Poll `get_job(kind=finetune_job, id=...)`, then inspect the linked deployment
 separately. Training completion, evaluation completion and serving readiness
 are distinct outcomes.
 
+Native `initial_validation` is presented as **Pre-training baseline evaluation**.
+It measures the starting model on the development set before training begins;
+it is separate from data preparation and the held-out final benchmark.
+MCP progress includes `stage_label` and `stage_description` for this stage. Set `hyperparameters.pre_training_baseline=false` on a native launch or saved experiment variant to skip this pass. It defaults to true and does not disable development validation, checkpoint selection or separately scheduled final benchmarks. The choice is frozen in the recipe; skipped work is recorded as `not_requested`.
+
 Report measured before/after results with trust flags and any unresolved
 preparation findings. A successful training job does not authorize activation
 or a repository model swap. For requested checkpoint export, use

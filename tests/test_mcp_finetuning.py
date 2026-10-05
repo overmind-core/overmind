@@ -1042,3 +1042,98 @@ def test_native_evaluation_is_shared_by_mcp_rest_and_scoped_resources(settings):
     other = _context(permission=["read", "write", "train"])
     assert _call("get_job", {"kind": "native_evaluation", "id": str(plan.id)}, other).isError
     assert _call("schedule_native_evaluation", arguments, other).isError
+
+
+@pytest.mark.parametrize("baseline", [None, True, False])
+def test_native_baseline_choice_is_pinned_without_disabling_validation(
+    baseline, settings, monkeypatch
+):
+    settings.FINETUNING_BACKEND = "modal"
+    context = _context(permission=["read", "write"])
+    source = [
+        {
+            "decision": {
+                "state": str(i),
+                "question": "Choose",
+                "kind": "choice",
+                "options": ["A", "B"],
+                "target_probabilities": [0.2, 0.8],
+            }
+        }
+        for i in range(12)
+    ]
+    train = frozen_dataset(context.project, source, contract="train")
+    dispatch = Mock(return_value=SimpleNamespace(id="baseline-choice"))
+    monkeypatch.setattr("overbae.tasks.finetuning.run_finetuning.apply_async", dispatch)
+    monkeypatch.setattr("overbae.api.credit_gate.require_credits", lambda _: None)
+    monkeypatch.setattr("overbae.services.plan_limits.require_plan_quota", lambda *_: None)
+    recipe = {"training_type": {"type": "Lora"}}
+    if baseline is not None:
+        recipe["pre_training_baseline"] = baseline
+    arguments = {
+        "dataset": str(train.id),
+        "base_model": "Qwen/Qwen3.5-4B",
+        "request_key": "baseline-choice",
+        "hyperparameters": recipe,
+    }
+    first = _call("start_finetune", arguments, context)
+    assert not first.isError, first.structuredContent
+    job = FinetuningJob.objects.get(pk=first.structuredContent["job"]["id"])
+    enabled = baseline is not False
+    assert job.validation_enabled is True
+    assert job.hyperparameters["pre_training_baseline"] is enabled
+    assert (
+        job.requested_configuration["configuration"]["hyperparameters"]["pre_training_baseline"]
+        is enabled
+    )
+    repeated = _call("start_finetune", arguments, context)
+    assert not repeated.isError, repeated.structuredContent
+    changed = _call(
+        "start_finetune",
+        {**arguments, "hyperparameters": {**recipe, "pre_training_baseline": not enabled}},
+        context,
+    )
+    assert changed.isError
+    assert dispatch.call_count == 1
+
+    async def read():
+        with bind_context(context):
+            return list(await read_resource(f"overmind://finetunes/{job.pk}"))
+
+    resource = json.loads(asyncio.run(read())[0].content)
+    assert resource["record"]["contract"]["pre_training_baseline"] is enabled
+
+
+@pytest.mark.parametrize("baseline", ["false", 0, None, {}, []])
+def test_native_baseline_rejects_non_boolean_choices(baseline, settings, monkeypatch):
+    settings.FINETUNING_BACKEND = "modal"
+    context = _context(permission=["read", "write"])
+    train = frozen_dataset(
+        context.project,
+        [
+            {
+                "decision": {
+                    "state": "state",
+                    "question": "Choose",
+                    "kind": "choice",
+                    "options": ["A", "B"],
+                    "target_probabilities": [1, 0],
+                }
+            }
+        ],
+        contract="train",
+    )
+    monkeypatch.setattr("overbae.api.credit_gate.require_credits", lambda _: None)
+    monkeypatch.setattr("overbae.services.plan_limits.require_plan_quota", lambda *_: None)
+    result = _call(
+        "start_finetune",
+        {
+            "dataset": str(train.id),
+            "base_model": "Qwen/Qwen3.5-4B",
+            "hyperparameters": {"pre_training_baseline": baseline},
+        },
+        context,
+    )
+    assert result.isError
+    assert "pre_training_baseline" in json.dumps(result.structuredContent)
+    assert not FinetuningJob.objects.filter(project=context.project).exists()

@@ -4,20 +4,21 @@ SFT one or more catalog base models on a chosen **train** cell that fits, keep
 a held-out **eval** cell for judges, then deploy
 and compare the result with its untouched base and the capability's selected benchmark.
 
-Training dataset: intent **train** (`messages` with an assistant turn on
-every row — LLM-in → LLM-out, not agent-level rows). Eval dataset: intent
-**eval**; use an independent source or a shared source split. Report normalized
-input, trace/conversation, configured-group and synthetic-seed overlap as warnings;
-do not block progression or silently exclude rows. Successful job creation atomically freezes the
-selected train, validation and eval versions. The eval version is pinned for the
-matched before/after evaluations; a rejected launch does not freeze new versions.
-See
-[SKILL.md](../SKILL.md#dataset-contracts--read-first-they-gate-every-workflow)
-and [datasets.md](datasets.md).
+Training consumes an explicit **train** cell: conversational messages with assistant
+responses, or native decisions with preserved probability/ordinal targets. Chat
+judging uses a separate **eval** cell and eval set only when selected. Native
+probability models use a separate frozen native comparison; they do not enter
+chat deployment or activation. Capability and repository scanning are optional.
 
-Use the native `finetune-capability` prompt to prepare and start training.
-Fine-tuning is a project-scoped write flow with GPU cost; ask before starting
-spend.
+For uploaded-data experiments, follow `develop-model-from-data` and
+[model workflows](model-workflows.md): explore, prepare and freeze partitions,
+save comparison/training drafts, prepare, then launch the authorized configuration.
+Poll the saved receipts rather than recreating work. Wait for Workshop idle and
+use exact cell UUIDs for consumer handoffs.
+
+For ordinary conversational fine-tuning use the `finetune-capability` prompt.
+Paid preparation and launches require user authorization; existing authorization
+persists across the stages it covers.
 
 ## From stored LLM calls
 
@@ -46,7 +47,8 @@ eval set, and the same train and eval cells. A model that is not in
    training never converts worker targets into orchestrator targets.
 1. Call `check_finetune_readiness` after selecting the training dataset/cell.
    Capability is optional; omit it or pass null for no association. An eval
-   dataset and an eval set with generative evaluators are still required.
+   dataset and eval set are required only for selected chat evaluations; native
+   decisions use their own frozen suite plan.
    It may narrow or recommend candidates;
    use its `catalog` and `recommendations` for `base_model` values and fix
    every reported missing prerequisite.
@@ -100,8 +102,7 @@ this as **Benchmark model** in training setup. The choice is saved on the job an
 does not change live routing or capability defaults. If omitted, the capability's
 `benchmark_model` supplies the default, falling back to its codebase incumbent;
 `set_benchmark_model` changes that API default only. Existing jobs retain their selection.
-All checks can be disabled, but the eval dataset and eval set are still
-required. Baseline evaluations launch concurrently with training and do not gate
+All chat checks can be disabled; no chat eval dataset or eval set is then required. Baseline evaluations launch concurrently with training and do not gate
 training submission. The fine-tune resource exposes the saved `evaluation_plan`.
 Before/after runs share a pinned dataset version, a prompt snapshot and evaluator
 snapshots. Every selected evaluation runs every row of that version, without
@@ -126,7 +127,7 @@ Eval sets without a capability can be used by any training job in the project.
 
 ## Deploy, verify, activate
 
-Fine-tuning queues deployment automatically after training succeeds. Follow
+Conversational fine-tuning queues deployment automatically after training succeeds; native decision checkpoints remain probability artifacts. Follow
 the linked deployment with `get_job(kind="deployment", id=...)` and read
 `overmind://deployments/{deployment}` while it moves through `queued`,
 `quantizing`, `deploying`, `warming`, `ready`, or `failed`. Use
@@ -184,3 +185,16 @@ There are no public cancel or undeploy tools. Do not suggest them.
 Read `overmind://deployments/{deployment}?period=24h&source=application` for application request counts, failures, end-to-end response percentiles, warm generation speed, estimated cost and matching activity. Supported periods are `1h`, `24h`, `7d`, `30d` and `all`; source is `application` or `all`. Both default to `all`. Internal evaluations and historical calls with unknown source are included only in `all`.
 
 The resource's `worker` section reports current `state` (`warm`, `warming`, `asleep`, or `unknown`), measurement `available`, runner/input/backlog counts, and recent-activity/warming signals. It uses the Console's cached worker measurements without running inference. `status` remains deployment readiness; capability `active_model` remains the routing selection. Metrics filters do not filter current worker state. Missing measurements remain null rather than zero; recent successful traffic can still establish warmth when provider measurements are unavailable.
+
+Forecasts distinguish live GPU-hour pricing from duration evidence. When no compatible execution measurement exists, duration and total cost remain unknown while the available hourly rate and rejection reasons stay visible. Each quote uses one fetched rate snapshot. Report elapsed time and any supported remaining-time range, never an invented completion timestamp. Recorded charges, resource-based estimates and unreported components remain separate.
+
+## Native pre-training baseline
+
+`initial_validation` is the pre-training baseline evaluation on development data.
+Set `hyperparameters.pre_training_baseline=false` to omit it when launching native
+decision training or saving an experiment variant. This strict boolean defaults to
+true. The Console exposes “Run pre-training baseline evaluation” beside the native
+training setup. Disabling it preserves the selected validation data, development
+checkpoint selection, final validation and separately configured benchmarks.
+Skipped baselines report `not_requested`; a missing starting score is not zero.
+Existing launch keys and resume checkpoints cannot change this choice.

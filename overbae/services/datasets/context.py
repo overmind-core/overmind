@@ -45,7 +45,7 @@ CONSUMERS = {
 }
 
 
-def workshop_context(dataset) -> dict:
+def workshop_context(dataset, *, measure_missing=True) -> dict:
     versions = dataset.versions()
     profiles = {}
     for name, cell in (("source", dataset.source), ("active", dataset.active_cell)):
@@ -61,7 +61,18 @@ def workshop_context(dataset) -> dict:
             "cell": str(cell.id),
             "version": versions.get(cell.id),
             "fingerprint": cell.fingerprint,
-            **(cell.stats.get("preparation_profile") or profile_records(store.iter_rows(path))),
+            **(
+                cell.stats.get("preparation_profile")
+                or (
+                    profile_records(store.iter_rows(path))
+                    if measure_missing
+                    else {
+                        "status": "unmeasured",
+                        "next_action": "explore_dataset",
+                        "source_cell": str(cell.id),
+                    }
+                )
+            ),
         }
     return {
         "consumers": CONSUMERS,

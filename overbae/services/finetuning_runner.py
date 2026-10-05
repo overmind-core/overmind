@@ -1804,6 +1804,7 @@ class ModalRunner(BaseFinetuningRunner):
             "WARMUP_RATIO": str(plan.warmup_ratio),
             "WEIGHT_DECAY": str(plan.weight_decay),
             "SEED": str(plan.seed),
+            "DECISION_PRE_TRAINING_BASELINE": "1" if plan.pre_training_baseline else "0",
             "PACK_ROWS": "1" if plan.packing else "0",
         }
         from overbae.modal.model_registry import get_unsloth_image  # noqa: PLC0415
@@ -1929,6 +1930,7 @@ class ModalRunner(BaseFinetuningRunner):
                 key: env[key]
                 for key in (
                     "SEED",
+                    "DECISION_PRE_TRAINING_BASELINE",
                     "WEIGHT_DECAY",
                     "LEARNING_RATE",
                     "GRAD_ACCUM",

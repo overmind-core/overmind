@@ -70,6 +70,18 @@ class TestExplicitValuesWin:
         env = ModalRunner._training_env(plan, "Qwen/Qwen3.5-4B")
         assert env["PADDED_TOKEN_BUDGET"] == "32768"
 
+    @pytest.mark.parametrize("enabled", [True, False])
+    def test_native_baseline_choice_reaches_worker_environment(self, enabled):
+        plan = _plan(
+            hyperparameters={
+                "objective": "decision_cross_entropy",
+                "pre_training_baseline": enabled,
+            }
+        )
+        assert ModalRunner._training_env(plan, "Qwen/Qwen3.5-4B")[
+            "DECISION_PRE_TRAINING_BASELINE"
+        ] == ("1" if enabled else "0")
+
     def test_experiment_seed_reaches_worker_environment(self):
         plan = _plan(hyperparameters={"seed": 73491})
         assert ModalRunner._training_env(plan, "Qwen/Qwen3-8B")["SEED"] == "73491"

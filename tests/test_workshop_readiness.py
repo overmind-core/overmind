@@ -158,7 +158,7 @@ def test_missing_or_failed_review_warns_without_blocking_use(capability, failure
 
 def test_sampled_or_unknown_answer_support_cannot_pass(capability):
     ds = make_dataset(capability)
-    with pytest.raises(ValueError, match="every original row"):
+    with pytest.raises(ValueError, match="Audit output has 0 rows"):
         review.record_quality(
             ds,
             ds.active_cell,
@@ -170,7 +170,7 @@ def test_sampled_or_unknown_answer_support_cannot_pass(capability):
                     "rows_checked": 0,
                 }
             ],
-            script="df = pd.DataFrame({'answer_support': []})",
+            script="df = df.iloc[:0][['source_row']].assign(answer_support=None)",
         )
     complete_review(ds, unknown="answer_support")
     assert "Answer support: unknown" in "; ".join(review.warnings(ds, ds.active_cell))

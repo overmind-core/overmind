@@ -106,6 +106,8 @@ def _inspect_dataset_sync(payload: InspectDatasetInput, context: MCPContext) -> 
     return serialize_dataset_detail(
         _resolve_dataset(context, payload.dataset),
         chat_limit=payload.chat_limit,
+        cell_offset=payload.cell_offset,
+        cell_limit=payload.cell_limit,
     )
 
 

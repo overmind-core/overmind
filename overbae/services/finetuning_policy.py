@@ -14,6 +14,7 @@ from typing import Any
 from modal_shared.decisions import DECISION_OBJECTIVES
 from modal_shared.modelfam import resolve
 from overbae.modal.model_registry import context_headroom, get_training_context_policy
+from overbae.services.training_contract import baseline_evaluation_enabled
 
 # Epochs when unset: enough example-visits that tiny datasets get real optimizer-step
 # counts (49 rows × 2 epochs still improved on every batch when the LR hit zero).
@@ -250,6 +251,7 @@ class BasetenTrainingPlan:
     # Max per_device_batch × context_length that fits one GPU; 0 = not computed.
     token_budget: int = 0
     seed: int = TRAINING_SEED
+    pre_training_baseline: bool = True
     notes: list[str] = field(default_factory=list)
 
 
@@ -373,6 +375,10 @@ def derive_baseten_training_plan(
     ``hidden_size`` enables the activation token budget (0 = weight-only checks).
     """
     hp = dict(hyperparameters or {})
+    try:
+        baseline = baseline_evaluation_enabled(hp)
+    except ValueError as exc:
+        raise TrainingPlanError(str(exc)) from exc
     stats = dict(dataset_stats or {})
     notes: list[str] = []
     seed = hp.get("seed", TRAINING_SEED)
@@ -560,5 +566,6 @@ def derive_baseten_training_plan(
         load_in_4bit=load_in_4bit,
         token_budget=token_budget,
         seed=seed,
+        pre_training_baseline=baseline,
         notes=notes,
     )

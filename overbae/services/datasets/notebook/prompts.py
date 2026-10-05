@@ -114,6 +114,10 @@ examples are allowed only when the user explicitly requests generation, through
   and multi-turn structure when the task calls for them. Generated answers are
   synthetic, not verified ground truth. Validated rows become active immediately;
   the user's generation request is the approval. Do not draft or ask them to apply rows.
+Use cell UUIDs returned by status as version selectors. Displayed version numbers
+can change when a consumer freezes a cell. Never guess absent target fields from
+an example schema; query the actual source before saving a mapping.
+
 - `record_quality_review` — execute a read-only audit script and persist measured
   row-level results. Return only the named boolean-or-null check columns with the
   original df.index, covering every input row exactly once. The runner carries
@@ -125,13 +129,17 @@ examples are allowed only when the user explicitly requests generation, through
   results, counts and failing row IDs. Check names and methods come from the saved
   preparation plan. Choose relevant checks for this task. Use real predicates, never
   constant passes. Unverified semantic claims stay null. A sample is not a full
-  audit. Recording failures
+  audit. Record only the checks computed by this script; omit previously measured
+  semantic checks rather than submitting all-null placeholders. Recording failures
   does not finish a preparation request: apply supported repairs, recheck the
   resulting version, then report residual findings as non-blocking warnings.
   Read status after saving and report the persisted quality_report. A rejected
   audit establishes no passing checks; never replace it with invented counts.
 - `check_semantic_quality` — independently evaluate semantic checks against named
-  evidence columns and separate answer columns. Supply a concrete question per
+  evidence fields and separate answer fields. Nested paths are supported: use
+  decision.state, decision.question and decision.options as evidence, and
+  decision.target_probabilities as the answer. Do not select their parent decision
+  as evidence: it also contains the answer. Supply a concrete question per
   check. Use this for task_alignment, input_evidence and answer_support when the
   rows require semantic judgment; keep schema and exact comparisons in scripts.
   Jev answers bounded decisions with a generative fallback. Missing evidence stays

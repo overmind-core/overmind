@@ -140,7 +140,7 @@ export function stageStatusLine(progress: FinetuningProgress | null | undefined)
   if (!stage) return null;
   const labels: Record<string, string> = {
     checkpointing: "Saving checkpoint",
-    initial_validation: "Initial validation",
+    initial_validation: "Pre-training baseline evaluation",
     loading_model: "Loading model",
     materializing: "Selecting prepared rows",
     resuming: "Restoring checkpoint",
@@ -155,4 +155,12 @@ export function stageStatusLine(progress: FinetuningProgress | null | undefined)
   if (detail?.completed == null) return label;
   const count = detail.completed.toLocaleString();
   return `${label} · ${count}${detail.total == null ? "" : ` / ${detail.total.toLocaleString()}`} ${detail.unit ?? ""}`.trim();
+}
+
+export function stageDescription(progress: FinetuningProgress | null | undefined): string | null {
+  if (["queued", "starting", "running"].includes(progress?.preparation?.state ?? "")) return null;
+  const stage = progress?.diagnostics?.stage || progress?.stage;
+  return stage === "initial_validation"
+    ? "Measuring the starting model on the development set before training begins."
+    : null;
 }

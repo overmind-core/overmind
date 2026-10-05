@@ -81,14 +81,13 @@ same traces? Pass `split` (`eval_percent`, `position` of `head`, `tail` or
 `random`) to `create_dataset_from_traces`: the selection lands as `<name> train` and `<name> eval` with disjoint rows, and the result carries both under
 `dataset` and `eval_dataset`. From the same file, run
 `overmind dataset upload FILE --json --split PERCENT` (add `--split-position head|tail|random`, default `tail`): the JSON result carries `id` for the train
-dataset and `eval_id` for the eval dataset. There is no reingest or
-copy-as-intent tool.
+dataset and `eval_id` for the eval dataset. Use derive_dataset for a separate chain or create_data_partition for saved role-specific members; neither requires export and reupload.
 
 REST and MCP splits also accept `group_by` (column names), `stratify_by` (one categorical column), and `deduplicate` (default true). Splitting reads the combined source once, removes exact duplicate rows, and keeps matching inputs, traces, conversations, selected groups and synthetic seed descendants together. Grouping can change the requested percentage; inspect `contamination_report` for actual counts and coverage. It explicitly does not claim near-duplicate similarity checking.
 
 To retag an unused dataset, `message_dataset_agent` ("set intent to
 train" or `eval`). After a consumer has used a cell, intent is frozen —
-upload a new dataset instead.
+derive a separate chain or use a saved partition instead.
 
 Land raw rows. Ask the dataset agent to transform them; do not preprocess rows
 locally and upload a second dataset unless you need a second intent.
@@ -97,9 +96,10 @@ locally and upload a second dataset unless you need a second intent.
 
 `inspect_dataset(dataset=UUID)` returns the intent, capability, active cell,
 cell chain, measured contracts, sample, recent agent chat, and next actions.
-`preparation_context` includes downstream SFT/eval requirements and whole-frame
+`cell_offset` and `cell_limit` page the chain; `cell_page.next_cursor` gives the next offset. The active cell identity is always separate. Inspect truncation fields before treating a summary as complete.
+`preparation_context` includes downstream SFT/eval requirements and cached whole-frame
 source/active profiles grouped by instructions, task labels, input/output shapes
-and tool schemas. Counts scan all rows; family lists and examples are bounded and
+and tool schemas. Missing profiles remain unmeasured; request explore_dataset to compute them. Profiles cover all rows; family lists and examples are bounded and
 report truncation. Query each relevant family before generalising. These profiles
 are structural evidence, not a semantic quality audit. Replacing existing task
 instructions requires a reviewed proposal; capability binding is not permission

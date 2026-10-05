@@ -110,6 +110,23 @@ function setup(over: Partial<TrainWizard> = {}) {
 }
 
 describe("SetupPanel", () => {
+  it("lets native training skip only its pre-training baseline", () => {
+    const setPreTrainingBaseline = vi.fn();
+    setup({ nativeDecision: true, preTrainingBaseline: true, setPreTrainingBaseline });
+    const toggle = screen.getByRole("checkbox", { name: "Run pre-training baseline evaluation" });
+    expect(toggle.getAttribute("aria-checked")).toBe("true");
+    fireEvent.click(toggle);
+    expect(setPreTrainingBaseline).toHaveBeenCalledWith(false);
+    expect(screen.getByRole("combobox", { name: /Validation source/ })).toBeTruthy();
+  });
+
+  it("hides the native baseline option when validation is disabled", () => {
+    setup({ nativeDecision: true, validationMode: "none" });
+    expect(
+      screen.queryByRole("checkbox", { name: "Run pre-training baseline evaluation" })
+    ).toBeNull();
+  });
+
   it("aligns evaluation controls on shared grid rows", () => {
     setup();
     const field = (control: HTMLElement) => control.parentElement?.parentElement;

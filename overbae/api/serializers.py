@@ -52,7 +52,11 @@ from overbae.services.deployment import deployment_progress
 from overbae.services.eval.trace_scoring import STATUS_ERROR
 from overbae.services.model_activation import start_activation
 from overbae.services.serving_context import evaluation_budget, serving_plan
-from overbae.services.training_contract import contract, dataset_objective
+from overbae.services.training_contract import (
+    baseline_evaluation_enabled,
+    contract,
+    dataset_objective,
+)
 from overbae.services.training_policies import profile_options
 from overbae.services.training_record import requested_configuration, run_record
 
@@ -1590,8 +1594,12 @@ class FinetuningJobSerializer(serializers.ModelSerializer):
         hp = attrs.get("hyperparameters", getattr(self.instance, "hyperparameters", {})) or {}
         try:
             profile_options(hp)
+            baseline = baseline_evaluation_enabled(hp)
         except ValueError as exc:
             raise serializers.ValidationError({"hyperparameters": str(exc)}) from exc
+        if hp.get("objective") in DECISION_OBJECTIVES:
+            hp = {**hp, "pre_training_baseline": baseline}
+            attrs["hyperparameters"] = hp
         if "checkpoint_policy" in hp:
             if hp.get("objective") not in DECISION_OBJECTIVES:
                 raise serializers.ValidationError(

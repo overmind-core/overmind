@@ -14,6 +14,7 @@ from overbae.services import chatgpt
 from overbae.services.billing_ledger import ensure_credits, record_workshop_usage
 from overbae.services.datasets import paths, review, rows, store
 from overbae.services.datasets.context import context_fingerprint, preparation_context
+from overbae.services.datasets.examples import field_value
 from overbae.services.eval import decisions, funnel
 
 MAX_ROWS_PER_CALL = 200
@@ -31,7 +32,13 @@ class SemanticCheck(BaseModel):
     def independent_evidence(self):
         if self.name == store.SOURCE_ROW:
             raise ValueError("source_row is reserved for row identity.")
-        if set(self.evidence_columns) & set(self.answer_columns):
+        if any(
+            evidence == answer
+            or evidence.startswith(answer + ".")
+            or answer.startswith(evidence + ".")
+            for evidence in self.evidence_columns
+            for answer in self.answer_columns
+        ):
             raise ValueError("Answer columns cannot also be independent evidence columns.")
         if self.name == "answer_support" and not self.answer_columns:
             raise ValueError(
@@ -126,9 +133,19 @@ def run_checks(
         for check in request.checks
         for column in [*check.evidence_columns, *check.answer_columns]
     }
-    missing = columns - set(frame.columns)
+    roots = {column if column in frame.columns else column.split(".")[0] for column in columns}
+    missing = roots - set(frame.columns)
     if missing:
         raise ValueError(f"Missing check columns: {', '.join(sorted(missing))}.")
+    records = [
+        {
+            store.SOURCE_ROW: row[store.SOURCE_ROW],
+            **{column: field_value(row, column, decode_result=False) for column in sorted(columns)},
+        }
+        for row in json.loads(
+            frame[[store.SOURCE_ROW, *sorted(roots - {store.SOURCE_ROW})]].to_json(orient="records")
+        )
+    ]
     context = context_fingerprint(dataset.capability)
     policy = decisions.DecisionPolicy(backend="jev", min_confidence=request.min_confidence)
     audit_policy = (
@@ -170,9 +187,6 @@ def run_checks(
         audit = json.loads(json.dumps(audit))
     for saved in audit["batches"]:
         _charge_batch(user, dataset, cell, saved, contract)
-    records = json.loads(
-        frame[[store.SOURCE_ROW, *sorted(columns - {store.SOURCE_ROW})]].to_json(orient="records")
-    )
     selected = [row for row in records if _row_key(row) not in audit["results"]][: request.max_rows]
     context_data = preparation_context(dataset.capability)
     if selected and user is not None and chatgpt_session is None:

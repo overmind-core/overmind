@@ -273,3 +273,5 @@ Before shipping an agent-relevant change, verify all applicable items:
   Regenerate API clients when the API contract changed.
 
 Training experiment changes expose `request_key`, explicit selection and contract receipts in readiness/estimate/start, elapsed time and remaining-time ranges with their recent metric-window evidence in `get_job`, and the generated run record in the finetune resource. `schedule_native_evaluation` is a metered GPU operation with train scope; its paired plan is a `native_evaluation` job/resource. `cancel_dataset` requests durable local/provider cancellation; pending acknowledgement must not be presented as finished. Both routes share Console domain services and project scoping.
+
+Dataset inspection uses cell_offset/cell_limit pagination, with active identity separate from the page. Large summaries expose truncation metadata; scripts, audit internals and previews are bounded before transport serialization. Reading a dataset never computes a missing whole-source profile synchronously; an unmeasured profile points to explore_dataset. These limits apply to the dataset resource and named inspection tool.

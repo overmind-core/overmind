@@ -11,6 +11,18 @@ def dataset_objective(cell):
     return TEXT_OBJECTIVE
 
 
+def baseline_evaluation_enabled(hyperparameters):
+    enabled = hyperparameters.get("pre_training_baseline", True)
+    if type(enabled) is not bool:
+        raise ValueError("pre_training_baseline must be a boolean.")
+    if (
+        "pre_training_baseline" in hyperparameters
+        and hyperparameters.get("objective") not in DECISION_OBJECTIVES
+    ):
+        raise ValueError("pre_training_baseline applies only to native decision training.")
+    return enabled
+
+
 def contract(cell, hyperparameters=None):
     objective = (hyperparameters or {}).get("objective") or dataset_objective(cell)
     native = objective in DECISION_OBJECTIVES
@@ -40,6 +52,11 @@ def contract(cell, hyperparameters=None):
         else ["cross_entropy", "token_accuracy"],
         "evaluation": "native_probabilities" if native else "chat_generation",
         "max_gpus": 1 if native else None,
+        **(
+            {"pre_training_baseline": (hyperparameters or {}).get("pre_training_baseline", True)}
+            if native
+            else {}
+        ),
     }
 
 

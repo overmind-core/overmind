@@ -14,7 +14,7 @@ from django.utils import timezone
 from overbae.core.errors import InputValidationError
 from overbae.models import DataPartitionMember, DataPartitionPlan, Dataset
 from overbae.services.datasets import land, paths, rows, store, use
-from overbae.services.datasets.examples import field_value
+from overbae.services.datasets.examples import field_value, native_decision, prepare_native_record
 from overbae.services.datasets.partition import contamination_keys, preserve_lineage
 
 ROLES = ("train", "development", "calibration", "final")
@@ -112,7 +112,7 @@ def request_plan(project, *, name, request_key, source_cell, recipe):
     )
 
 
-def assign(cell, recipe, destination):
+def assign(cell, recipe, destination, *, progress=None):
     parents = []
 
     def root(index):
@@ -127,6 +127,8 @@ def assign(cell, recipe, destination):
         )
         db.execute("CREATE TABLE observations (row INTEGER PRIMARY KEY, stratum TEXT, forced TEXT)")
         for index, record in enumerate(store.iter_rows(rows.frame_path(cell))):
+            if progress and index % 10000 == 0:
+                progress("grouping", index, cell.rows)
             parents.append(index)
             for kind, value in contamination_keys(record, recipe["group_by"]):
                 found = db.execute(
@@ -152,6 +154,8 @@ def assign(cell, recipe, destination):
             db.execute(
                 "INSERT INTO observations VALUES(?,?,?)", (index, label, next(iter(forced), None))
             )
+        if progress:
+            progress("assigning", len(parents), cell.rows)
         components = defaultdict(lambda: {"count": 0, "strata": Counter(), "forced": set()})
         totals = Counter()
         for index, label, forced in db.execute(
@@ -226,6 +230,17 @@ def assign(cell, recipe, destination):
         }
 
 
+def prepared_member_rows(source, role):
+    for line in source:
+        record = json.loads(line)
+        decision = native_decision(record)
+        if role in {"calibration", "final"} and decision is not None:
+            # This is a lossless native wire projection; interpretation remains Workshop-owned.
+            yield prepare_native_record(record, decision, "eval")
+        else:
+            yield record
+
+
 def build(plan_id):
     with transaction.atomic():
         plan = (
@@ -239,7 +254,22 @@ def build(plan_id):
             return
         plan.state, plan.error = "running", ""
         plan.save()
+
+    def progress(stage, completed, total, **extra):
+        value = {
+            "stage": stage,
+            "completed": completed,
+            "total": total,
+            **extra,
+            "updated_at": timezone.now().isoformat(),
+        }
+        DataPartitionPlan.objects.filter(pk=plan.pk, state="running").update(
+            report={"progress": value}, updated_at=timezone.now()
+        )
+        return value
+
     try:
+        progress("verifying", 0, plan.source_cell.rows)
         rows.verify(plan.source_cell)
         if plan.source_cell.fingerprint != plan.source_fingerprint:
             raise InputValidationError("The frozen partition source changed")
@@ -247,15 +277,23 @@ def build(plan_id):
         directory.mkdir(parents=True, exist_ok=True)
         with tempfile.TemporaryDirectory(dir=directory) as temporary:
             work = Path(temporary)
-            report = assign(plan.source_cell, plan.recipe, work)
+
+            report = assign(plan.source_cell, plan.recipe, work, progress=progress)
+            progress("writing", 0, plan.source_cell.rows)
             streams = {
                 role: (work / f"{role}.jsonl").open("w") for role in plan.recipe["fractions"]
             }
             try:
                 with (work / "assignments.jsonl").open() as assignments:
-                    for record, line in zip(
-                        store.iter_rows(rows.frame_path(plan.source_cell)), assignments, strict=True
+                    for index, (record, line) in enumerate(
+                        zip(
+                            store.iter_rows(rows.frame_path(plan.source_cell)),
+                            assignments,
+                            strict=True,
+                        )
                     ):
+                        if index % 10000 == 0:
+                            progress("writing", index, plan.source_cell.rows)
                         assignment = json.loads(line)
                         preserved = {
                             **record,
@@ -274,6 +312,7 @@ def build(plan_id):
                 for stream in streams.values():
                     stream.close()
             for role in plan.recipe["fractions"]:
+                progress("preparing_member", 0, report["counts"][role], role=role)
                 existing = plan.members.select_related("cell__dataset").filter(role=role).first()
                 if existing:
                     rows.verify(existing.cell)
@@ -286,7 +325,11 @@ def build(plan_id):
                             "project": plan.project,
                             "name": f"{plan.name} · {role}",
                             "brief": plan.source_cell.dataset.brief,
-                            "intent": plan.source_cell.dataset.intent,
+                            "intent": "eval"
+                            if role in {"calibration", "final"}
+                            else "train"
+                            if plan.source_cell.dataset.intent in {"train", "eval"}
+                            else plan.source_cell.dataset.intent,
                             "state": Dataset.State.LANDING,
                         },
                     )
@@ -294,7 +337,7 @@ def build(plan_id):
                         land.commit(
                             dataset,
                             land.Landing(
-                                (json.loads(line) for line in source),
+                                prepared_member_rows(source, role),
                                 spec={
                                     "partition_plan": str(plan.pk),
                                     "role": role,
@@ -311,6 +354,12 @@ def build(plan_id):
             (work / "assignments.jsonl").replace(assignment_path)
             report["assignments_sha256"] = store.file_sha256(assignment_path)
             report["fingerprint"] = plan.source_fingerprint
+            report["progress"] = {
+                "stage": "completed",
+                "completed": plan.source_cell.rows,
+                "total": plan.source_cell.rows,
+                "updated_at": timezone.now().isoformat(),
+            }
         DataPartitionPlan.objects.filter(pk=plan.pk).update(
             state="completed", report=report, error="", updated_at=timezone.now()
         )

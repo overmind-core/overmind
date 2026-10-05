@@ -388,6 +388,7 @@ def test_finetune_resource_redacts_all_checkpoint_url_styles():
         hyperparameters={"objective": "decision_cross_entropy"},
         result={"inference_contract": "typed_probabilities"},
         progress={
+            "diagnostics": {"stage": "initial_validation", "completed": 600, "total": 1200},
             "checkpoint_uri": signed_url,
             "checkpointUri": signed_url,
             "CHECKPOINT.URI": signed_url,
@@ -417,7 +418,17 @@ def test_finetune_resource_redacts_all_checkpoint_url_styles():
     assert signed_url not in encoded
     assert "api-secret" not in encoded
     assert "refresh-secret" not in encoded
-    assert resource["progress"] == {"nested": {"safe": "kept"}}
+    assert resource["progress"] == {
+        "diagnostics": {"stage": "initial_validation", "completed": 600, "total": 1200},
+        "nested": {"safe": "kept"},
+        "stage_label": "Pre-training baseline evaluation",
+        "stage_description": (
+            "Measuring the starting model on the development set before training begins."
+        ),
+    }
+    result = asyncio.run(CATALOG.call("get_job", {"kind": "finetune", "id": str(job.id)}, context))
+    assert result.isError is False, result.structuredContent
+    assert result.structuredContent["progress"] == resource["progress"]
 
 
 def test_resource_read_through_transport_returns_safe_not_found_error():

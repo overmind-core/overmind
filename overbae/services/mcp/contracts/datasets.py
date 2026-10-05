@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import math
 import re
 from datetime import datetime
 from pathlib import Path
@@ -53,10 +54,57 @@ def _jsonable(value: Any) -> Any:
     if value is None or isinstance(value, (bool, int)):
         return value
     if isinstance(value, float):
-        return None if value != value else value
+        return value if math.isfinite(value) else None
     if hasattr(value, "isoformat"):
         return value.isoformat()
     return _clip(str(value))
+
+
+def _json_bytes(value):
+    return len(json.dumps(value, ensure_ascii=False).encode())
+
+
+def _bounded(value, limit=2500):
+    value = _jsonable(value)
+    if _json_bytes(value) <= limit:
+        return value
+    if isinstance(value, dict):
+        result = {"truncated": True}
+        share = max(30, limit // max(1, len(value)) - 30)
+        for key, item in value.items():
+            candidate = {**result, key: _bounded(item, share)}
+            if _json_bytes(candidate) <= limit:
+                result = candidate
+        return result
+    if isinstance(value, list):
+        result = {"items": [], "total": len(value), "truncated": True}
+        for item in value:
+            candidate = {**result, "items": [*result["items"], _bounded(item, max(30, limit // 4))]}
+            if _json_bytes(candidate) > limit:
+                break
+            result = candidate
+        return result if _json_bytes(result) <= limit else {"truncated": True}
+    text = str(value)
+    while _json_bytes(text + "…") > limit:
+        text = text[: max(0, len(text) // 2)]
+    return text + "…"
+
+
+def _quality_summary(report):
+    result = review.summary(report or {})
+    for key in ("audit", "audits"):
+        if key in result:
+            result[key] = _bounded(result[key], 500)
+    result["checks"] = [
+        {**check, "evidence": _clip(check.get("evidence", ""), 160)}
+        for check in result.get("checks", [])
+    ]
+    if result.get("semantic_audit"):
+        result["semantic_audit"] = {
+            **result["semantic_audit"],
+            "definitions": _bounded(result["semantic_audit"].get("definitions", []), 1000),
+        }
+    return result
 
 
 def sanitize_error(value: str, limit: int = 500) -> str:
@@ -129,6 +177,7 @@ class CellSummary(MCPModel):
     script: str = Field(default="", max_length=_SCRIPT_CHARS)
     script_truncated: bool = False
     note: str = Field(default="", max_length=512)
+    note_truncated: bool = False
     state: Literal["proposed", "queued", "running", "ok", "failed"]
     error: str | None = None
     frozen: bool
@@ -277,6 +326,9 @@ class DatasetDetail(DatasetListItem):
     capability_rank: list[CapabilityRankItem] = Field(default_factory=list, max_length=_RANK_CAP)
     cells: list[CellSummary] = Field(default_factory=list, max_length=_CELL_CAP)
     cells_truncated: bool = False
+    cell_page: PageContract
+    truncated_fields: list[str] = Field(default_factory=list)
+    recent_chat_truncated: bool = False
     sample: DatasetSample | None = None
     recent_chat: list[ChatTurn] = Field(default_factory=list, max_length=_CHAT_MAX)
     next_actions: list[NextAction] = Field(default_factory=list, max_length=8)
@@ -332,6 +384,8 @@ class InspectDatasetInput(MCPModel):
         validation_alias=AliasChoices("dataset", "dataset_id"),
     )
     chat_limit: int = Field(default=_CHAT_DEFAULT, ge=1, le=_CHAT_MAX)
+    cell_offset: int = Field(default=0, ge=0)
+    cell_limit: int = Field(default=5, ge=1, le=20)
 
 
 class QueryDatasetInput(MCPModel):
@@ -620,7 +674,8 @@ def _cell_summary(dataset, cell: Cell, versions: dict, frozen_before: int) -> Ce
         title=cell.title.strip() or "Cell",
         script=_clip(cell.script or ""),
         script_truncated=len(cell.script or "") > _SCRIPT_CHARS,
-        note=cell.note or "",
+        note=_clip(cell.note or "", 512),
+        note_truncated=len(cell.note or "") > 512,
         state=cell.state,
         error=error,
         frozen=cell.used_at is not None or cell.position <= frozen_before,
@@ -630,9 +685,9 @@ def _cell_summary(dataset, cell: Cell, versions: dict, frozen_before: int) -> Ce
         input_fingerprint=cell.input_fingerprint or "",
         intent_report=_jsonable(cell.intent_report or {}),
         capability_report=_jsonable(cell.capability_report or {}),
-        review=_jsonable(cell.review),
-        quality_report=_jsonable(review.summary(cell.quality_report or {})),
-        preparation_plan=_jsonable(cell.preparation_plan),
+        review=_bounded(cell.review),
+        quality_report=_jsonable(_quality_summary(cell.quality_report)),
+        preparation_plan=_bounded(cell.preparation_plan),
         readiness=review.readiness(dataset, cell),
         fits=_fit(cell, public_intent(dataset.intent)),
         seconds=float(cell.seconds or 0),
@@ -850,31 +905,47 @@ def _detail_summary(dataset, chain: list[Cell], active: Cell | None) -> str:
     return f"{n} {noun}, {dataset.state}, {rows} rows."
 
 
-def serialize_dataset_detail(dataset, *, chat_limit: int = _CHAT_DEFAULT) -> DatasetDetail:
+def serialize_dataset_detail(
+    dataset, *, chat_limit: int = _CHAT_DEFAULT, cell_offset: int = 0, cell_limit: int = 5
+) -> DatasetDetail:
     chain = _chain(dataset)
     versions = dataset.versions(chain=chain)
     frozen_before = _frozen_before(chain)
     active = _active_cell(dataset, chain)
-    cells = [_cell_summary(dataset, cell, versions, frozen_before) for cell in chain[:_CELL_CAP]]
+    cells = [
+        _cell_summary(dataset, cell, versions, frozen_before)
+        for cell in chain[cell_offset : cell_offset + cell_limit]
+    ]
     fields = _list_fields(dataset, chain)
     dataset_link = fields["resource"]
     links = [dataset_link]
     if dataset.state in _BUSY:
         links.append(dataset_run_job_link(dataset))
     error = sanitize_error(dataset.error) or None
-    return DatasetDetail.model_validate(
+    result = DatasetDetail.model_validate(
         {
             **fields,
             "operation": _jsonable(dataset.operation),
-            "brief": dataset.brief,
-            "sources": _jsonable(dataset.source_spec.get("sources", [])[:100]),
+            "brief": _clip(dataset.brief, 8000),
+            "sources": [
+                _bounded(item, 500) for item in dataset.source_spec.get("sources", [])[:10]
+            ],
             "sources_total": len(dataset.source_spec.get("sources", [])),
-            "preparation_context": _jsonable(workshop_context(dataset)),
-            "preparation_plan": _jsonable(preparation.describe(dataset)),
+            "preparation_context": _bounded(workshop_context(dataset, measure_missing=False), 6000),
+            "preparation_plan": _bounded(preparation.describe(dataset), 3000),
             "capability_rank": _rank(dataset.capability_rank),
-            "contamination_report": _jsonable(dataset.source_spec.get("contamination_report", {})),
+            "contamination_report": _bounded(dataset.source_spec.get("contamination_report", {})),
             "cells": cells,
-            "cells_truncated": len(chain) > _CELL_CAP,
+            "cells_truncated": cell_offset > 0 or cell_offset + len(cells) < len(chain),
+            "cell_page": {
+                "limit": cell_limit,
+                "offset": cell_offset,
+                "total": len(chain),
+                "has_more": cell_offset + len(cells) < len(chain),
+                "next_cursor": str(cell_offset + len(cells))
+                if cell_offset + len(cells) < len(chain)
+                else None,
+            },
             "sample": _sample(dataset, active, versions),
             "recent_chat": _chat(dataset.chat, chat_limit),
             "next_actions": next_actions(dataset, chain, active),
@@ -884,3 +955,53 @@ def serialize_dataset_detail(dataset, *, chat_limit: int = _CHAT_DEFAULT) -> Dat
             "error": error,
         }
     )
+
+    # Pagination preserves identities when rich summaries exceed the transport budget.
+    while len(result.model_dump_json().encode()) > 32_000 and result.recent_chat:
+        result.recent_chat.pop(0)
+        result.recent_chat_truncated = True
+    while len(result.model_dump_json().encode()) > 32_000 and len(result.cells) > 1:
+        result.cells.pop()
+    if len(result.model_dump_json().encode()) > 32_000:
+        result.truncated_fields.extend(["brief", "sample", "sources", "capability_rank"])
+        result.brief = _bounded(result.brief, 1024)
+        result.sample = None
+        result.sources = [_bounded(source, 200) for source in result.sources[:3]]
+        result.capability_rank = result.capability_rank[:3]
+        for name in (
+            "operation",
+            "preparation_context",
+            "preparation_plan",
+            "contamination_report",
+        ):
+            setattr(result, name, _bounded(getattr(result, name), 1000))
+            result.truncated_fields.append(name)
+        for cell in result.cells:
+            cell.script = _bounded(cell.script, 1024)
+            cell.script_truncated = True
+            cell.note = _bounded(cell.note, 512)
+            cell.note_truncated = True
+            cell.columns = [_bounded(column, 200) for column in cell.columns[:10]]
+            result.truncated_fields.extend(
+                [f"cells.{cell.id}.script", f"cells.{cell.id}.note", f"cells.{cell.id}.columns"]
+            )
+            for name in (
+                "review",
+                "quality_report",
+                "preparation_plan",
+                "readiness",
+                "intent_report",
+                "capability_report",
+            ):
+                setattr(
+                    cell,
+                    name,
+                    _bounded(getattr(cell, name), 6000 if name == "quality_report" else 500),
+                )
+                result.truncated_fields.append(f"cells.{cell.id}.{name}")
+    result.cell_page.has_more = cell_offset + len(result.cells) < len(chain)
+    result.cell_page.next_cursor = (
+        str(cell_offset + len(result.cells)) if result.cell_page.has_more else None
+    )
+    result.cells_truncated = cell_offset > 0 or result.cell_page.has_more
+    return result

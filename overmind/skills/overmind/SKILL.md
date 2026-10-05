@@ -117,7 +117,7 @@ The catalog exposes deliberate lifecycle operations including `cancel_dataset`, 
    `create_dataset_from_traces` with `split` lands one selection as a train
    dataset and an eval dataset with disjoint rows; so does `--split PERCENT`
    on `overmind dataset upload`. A used cell freezes intent:
-   upload a second dataset with the other `--intent` instead of retagging.
+   derive a separate dataset or create role-specific partitions instead of retagging a used chain.
    Read the contracts section below.
 1. **Follow structured errors and durable receipts.** Read the error code, fields and retryability. Creation and paid launch are separate where the schema specifies a draft. Authorization already granted for an unchanged saved scope persists through routine continuation. Unresolved provider submissions require receipt recovery; never blindly repeat them.
 1. **Ticketed instrumentation.** Call `get_instrumentation_plan` with no
@@ -249,7 +249,7 @@ and every version carries two measured contracts (`list_datasets` shows the
 active version's):
 
 - **`train`** ("Train") — a `messages` column whose every row is a chat
-  transcript with an assistant turn (`tools` optional).
+  transcript with an assistant turn (`tools` optional), or a native `decision` with preserved probability/ordinal targets.
 - **`eval`** ("Eval") — an `input` on every row plus an `expected_output`
   column with at least one reference.
 - **`explore`** — data exploration, without automatic train/eval preparation.
@@ -267,7 +267,7 @@ What each workflow accepts:
 - **Eval runs** (`run_evaluation`) and **optimizer experiments**
   (`start_optimizer`) use the active version of an **eval** dataset.
 - **Fine-tuning** (`start_finetune`) uses a **train** version, plus a
-  separate **eval** dataset for in-training judge evals.
+  separate **eval** dataset only when chat judge evaluations are requested. Native decision comparisons use their frozen calibration/final plan.
 
 A use freezes the version and everything before it, and starts a new major
 (2.0). A contract is measured, never declared. The dataset's own agent shapes
@@ -460,3 +460,5 @@ local work is needed:
 Follow [references/telemetry.md](references/telemetry.md) for instrumentation
 verification. Real application tasks are allowed only after explicit user
 approval with the exact run details and correlation value presented first.
+
+For native uploaded-data training, follow [model workflows](references/model-workflows.md). Use exact cell UUIDs after Workshop reaches idle. Dataset inspection has cell_offset/cell_limit pagination and reports omitted detail; absent cached profiles are unmeasured and can be requested with explore_dataset.

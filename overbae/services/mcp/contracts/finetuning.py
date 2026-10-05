@@ -198,7 +198,10 @@ class StartFinetuneInput(MCPModel):
     split_method: Literal["random", "ordered"] = "random"
     name: str | None = Field(default=None, max_length=255)
     use_case: str = Field(default="", max_length=10_000)
-    hyperparameters: dict[str, Any] | None = None
+    hyperparameters: dict[str, Any] | None = Field(
+        default=None,
+        description="Model recipe. Native decisions accept pre_training_baseline (boolean, default true); false skips only the initial development evaluation.",
+    )
     group_id: UUID | None = None
 
 

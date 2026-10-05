@@ -71,7 +71,12 @@ import {
 import { useDeployedModelsQuery } from "@/hooks/use-inference";
 import { seriesColor } from "@/lib/colors";
 import { groupCostUsd, jobCostUsd } from "@/lib/finetuning-cost";
-import { downloadStatusLine, progressPhaseLabel, stageStatusLine } from "@/lib/finetuning-progress";
+import {
+  downloadStatusLine,
+  progressPhaseLabel,
+  stageDescription,
+  stageStatusLine,
+} from "@/lib/finetuning-progress";
 import { formatElapsed } from "@/lib/formatters";
 import { errorMessage } from "@/lib/notify";
 import { PROSE } from "@/lib/typography";
@@ -801,6 +806,7 @@ function RunActivity({ snapshot, projectId }: { snapshot: ExperimentSnapshot; pr
   const activity = snapshot.liveProgress?.activity ?? [];
   const status = snapshot.job.status as string;
   const statusLine = experimentStatusLine(snapshot);
+  const description = snapshot.terminal ? null : stageDescription(snapshot.liveProgress);
   const deployedModelId = snapshot.job.deployedModelId;
 
   return (
@@ -875,6 +881,7 @@ function RunActivity({ snapshot, projectId }: { snapshot: ExperimentSnapshot; pr
           )}
         </ModelLiveAction>
       </div>
+      {description && <p className="text-xs text-muted-foreground">{description}</p>}
       {/* column-reverse pins the newest line to the bottom as lines stream in. */}
       {expanded && activity.length > 0 && (
         <div

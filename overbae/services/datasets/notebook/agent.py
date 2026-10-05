@@ -188,6 +188,9 @@ def _preview_path(path):
 class Tools:
     def __init__(self, dataset_id: Any, user: Any, emit: Callable[[dict[str, Any]], None]):
         self.dataset_id = dataset_id
+        self.cell_references = {
+            version: str(cell_id) for cell_id, version in _dataset(dataset_id).versions().items()
+        }
         self.operation_id: str | None = None
         self.user = user
         self.emit = emit
@@ -209,6 +212,9 @@ class Tools:
         self.response_break = False
         self.preview = None
         self.user_request = ""
+
+    def resolve_cell(self, dataset, reference, **kwargs):
+        return resolve_cell(dataset, self.cell_references.get(reference, reference), **kwargs)
 
     def requires_preparation_plan(self, dataset: Dataset) -> bool:
         return dataset.intent in {Dataset.Intent.TRAIN, Dataset.Intent.EVAL} and (
@@ -332,13 +338,17 @@ class Tools:
         )
 
     def status(self, args: dict[str, Any], _ctx: Any = None) -> dict[str, Any]:
-        return status(_dataset(self.dataset_id))
+        result = status(_dataset(self.dataset_id))
+        for cell in result["cells"]:
+            if cell["version"] != "proposed":
+                self.cell_references.setdefault(cell["version"], cell["id"])
+        return result
 
     def record_preparation_plan(self, args: dict[str, Any], _ctx: Any = None) -> dict[str, Any]:
         dataset = _dataset(self.dataset_id)
         try:
             request = preparation.PlanRequest.model_validate(args)
-            cell = resolve_cell(dataset, request.version, ran_only=True)
+            cell = self.resolve_cell(dataset, request.version, ran_only=True)
             preparation.save_plan(
                 dataset, cell, request, user_request=self.user_request, exploration=self.exploration
             )
@@ -349,7 +359,7 @@ class Tools:
 
     def query(self, args: dict[str, Any], _ctx: Any = None) -> dict[str, Any]:
         dataset = _dataset(self.dataset_id)
-        cell = resolve_cell(dataset, args.get("version"), ran_only=True)
+        cell = self.resolve_cell(dataset, args.get("version"), ran_only=True)
         try:
             result = store.query(
                 str(args.get("sql") or ""), limit=QUERY_ROWS, t=paths.cell_path(dataset.id, cell.id)
@@ -374,10 +384,10 @@ class Tools:
 
     def diff(self, args: dict[str, Any], _ctx: Any = None) -> dict[str, Any]:
         dataset = _dataset(self.dataset_id)
-        b = resolve_cell(dataset, args.get("to"), ran_only=True)
+        b = self.resolve_cell(dataset, args.get("to"), ran_only=True)
         a_ref = args.get("from")
         if a_ref:
-            a = resolve_cell(dataset, a_ref, ran_only=True)
+            a = self.resolve_cell(dataset, a_ref, ran_only=True)
         else:
             a = (
                 dataset.cells.filter(position__lt=b.position, state=Cell.State.OK)
@@ -394,7 +404,7 @@ class Tools:
 
     def try_script(self, args: dict[str, Any], _ctx: Any = None) -> dict[str, Any]:
         dataset = _dataset(self.dataset_id)
-        after = resolve_cell(dataset, args.get("version"), ran_only=True)
+        after = self.resolve_cell(dataset, args.get("version"), ran_only=True)
         result = run_svc.try_script(dataset, str(args.get("script") or ""), after=after)
         self.preview = (after.id, after.fingerprint, str(args.get("script") or ""), result)
         if result.path is None:
@@ -403,7 +413,7 @@ class Tools:
 
     def inspect(self, args: dict[str, Any], _ctx: Any = None) -> dict[str, Any]:
         dataset = _dataset(self.dataset_id)
-        at = resolve_cell(dataset, args.get("version"), ran_only=True)
+        at = self.resolve_cell(dataset, args.get("version"), ran_only=True)
         result = run_svc.inspect(dataset, str(args.get("script") or ""), at=at)
         if not result.ok:
             return {"ok": False, "error": result.error, "stdout": result.stdout}
@@ -696,7 +706,7 @@ class Tools:
 
     def record_quality_review(self, args: dict[str, Any], _ctx: Any = None) -> dict[str, Any]:
         dataset = _dataset(self.dataset_id)
-        cell = resolve_cell(dataset, args.get("version"), ran_only=True)
+        cell = self.resolve_cell(dataset, args.get("version"), ran_only=True)
         try:
             report = review.record_quality(
                 dataset, cell, args.get("checks") or [], script=str(args.get("script") or "")
@@ -710,7 +720,7 @@ class Tools:
         dataset = _dataset(self.dataset_id)
         try:
             request = semantic_checks.SemanticReviewRequest.model_validate(args)
-            cell = resolve_cell(dataset, request.version, ran_only=True)
+            cell = self.resolve_cell(dataset, request.version, ran_only=True)
             if self.requires_preparation_plan(dataset):
                 reserved = preparation.reserve_semantic_rows(
                     dataset, cell, [check.name for check in request.checks], request.max_rows
@@ -749,7 +759,7 @@ class Tools:
             }
         dataset = _dataset(self.dataset_id)
         try:
-            cell = resolve_cell(dataset, version)
+            cell = self.resolve_cell(dataset, version)
             if args.get("script") is not None:
                 previous = (
                     dataset.cells.filter(position__lt=cell.position, state=Cell.State.OK)
@@ -827,7 +837,7 @@ class Tools:
     def set_active(self, args: dict[str, Any], _ctx: Any = None) -> dict[str, Any]:
         dataset = _dataset(self.dataset_id)
         try:
-            cell = resolve_cell(dataset, args.get("version"), ran_only=True)
+            cell = self.resolve_cell(dataset, args.get("version"), ran_only=True)
             lifecycle.set_active(dataset, cell)
         except ChatGPTError:
             raise

@@ -687,10 +687,22 @@ def record_quality_results(
             and previous.get("intent") == report["intent"]
             and previous.get("plan_id") == report["plan_id"]
         ):
+            preserved = {
+                check["name"]
+                for check in previous.get("checks", [])
+                if previous.get("audits", {}).get(check["name"], {}).get("method")
+                == "semantic_decisions"
+                and audit["method"] != "semantic_decisions"
+            }
+            if any(c["name"] in preserved and c["rows_checked"] for c in outcomes):
+                raise ValueError(
+                    "Measured semantic findings can only be replaced by semantic checks."
+                )
+            replaced = names - preserved
             report["checks"] = [
-                c for c in previous.get("checks", []) if c["name"] not in names
-            ] + outcomes
-            report["audits"] = {**previous.get("audits", {}), **dict.fromkeys(names, audit)}
+                c for c in previous.get("checks", []) if c["name"] not in replaced
+            ] + [c for c in outcomes if c["name"] in replaced]
+            report["audits"] = {**previous.get("audits", {}), **dict.fromkeys(replaced, audit)}
             if semantic_audit is None and previous.get("semantic_audit"):
                 report["semantic_audit"] = previous["semantic_audit"]
         else:

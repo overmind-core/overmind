@@ -179,6 +179,10 @@ def evaluate(model, data, tokenizer, destination, *, stage=None):
 def train(model, tokenizer):
     if torch.cuda.device_count() != 1:
         raise ValueError("Native decision training currently requires one GPU")
+    baseline_setting = os.environ.get("DECISION_PRE_TRAINING_BASELINE", "1")
+    if baseline_setting not in {"0", "1"}:
+        raise ValueError("DECISION_PRE_TRAINING_BASELINE must be 0 or 1")
+    baseline_enabled = baseline_setting == "1"
     data = IndexedRows("data.jsonl")
     if not len(data):
         raise ValueError("No decisions to train")
@@ -205,6 +209,7 @@ def train(model, tokenizer):
     )
     signature = {
         "runtime_profile": profile_measurement,
+        "pre_training_baseline": baseline_enabled,
         "runtime_fingerprint": training_fingerprint(Path(__file__).parent),
         "torch_version": str(torch.__version__),
         "cuda_version": torch.version.cuda,
@@ -263,7 +268,8 @@ def train(model, tokenizer):
     else:
         signature_path = run / "decision-training.json"
         signature_path.write_text(json.dumps(signature, indent=2))
-        if validation and len(validation):
+        if baseline_enabled and validation and len(validation):
+            record_stage(run, "initial_validation", pre_training_baseline={"status": "running"})
             metrics = evaluate(
                 model,
                 validation,
@@ -272,8 +278,22 @@ def train(model, tokenizer):
                 stage="initial_validation",
             )
             (run / "decision-before.json").write_text(json.dumps(metrics))
+            record_stage(
+                run,
+                "initial_validation",
+                pre_training_baseline={"status": "completed", "decisions": metrics["decisions"]},
+            )
             callback.on_evaluate(
                 None, SimpleNamespace(global_step=0, epoch=0), None, metrics=metrics
+            )
+        else:
+            record_stage(
+                run,
+                "training",
+                pre_training_baseline={
+                    "status": "not_requested" if not baseline_enabled else "not_applicable",
+                    "reason": "disabled" if not baseline_enabled else "no_development_data",
+                },
             )
     callback.set_measured_tokens_per_step(round(sum(data.lengths) / len(data) * PER_DEVICE_BATCH))
     state = SimpleNamespace(global_step=step, max_steps=total_steps, epoch=step / steps_per_epoch)

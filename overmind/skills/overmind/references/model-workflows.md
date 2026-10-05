@@ -23,3 +23,7 @@ Independent eligible participant stages run concurrently while preserving calibr
 `reuse_evaluation_predictions` explicitly links compatible completed predictions into a draft comparison. Match input/model/runtime/inference identities and stored hashes. `create_training_experiment(reuse_existing_predictions=true, evaluation=...)` carries that choice into its new comparison; default false preserves independent repetitions. This does not reuse performance measurements or erase seed variation.
 
 Discover saved objectives, inputs, output requirements and state with `list_model_workflows` and `get_job`. Action receipts expose `next_actions`, `action_requirements`, `input_required`, polling guidance and detail links. An experiment aggregates child outcomes; a failed candidate remains visible. Inspect artifact verification and coverage, not merely process success.
+
+Partition construction exposes stage/count progress. Calibration/final members have eval intent; native decisions are projected into input.decision and separate expected_output without changing labels, weights or row membership. Mean-only targets remain means and invalid targets remain visible. Chat and other shapes may still require Workshop preparation. Inspect exact member cells and counts before creating comparisons.
+
+Current GPU-hour rates are separate from duration evidence. Unknown duration means unknown total, even with a current rate card; inspect estimate_blockers and rejected_measurements. Do not substitute historical charges for current rates or imply unreported components are free.

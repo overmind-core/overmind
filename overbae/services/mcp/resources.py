@@ -322,6 +322,27 @@ def safe_finetune_progress(value):
     return safe_json(value)
 
 
+def finetune_progress_payload(value):
+    progress = safe_finetune_progress(value)
+    if not isinstance(progress, dict):
+        return progress
+    preparation = progress.get("preparation")
+    if isinstance(preparation, dict) and preparation.get("state") in {
+        "queued",
+        "starting",
+        "running",
+    }:
+        return progress
+    diagnostics = progress.get("diagnostics")
+    stage = diagnostics.get("stage") if isinstance(diagnostics, dict) else None
+    if (stage or progress.get("stage")) == "initial_validation":
+        progress["stage_label"] = "Pre-training baseline evaluation"
+        progress["stage_description"] = (
+            "Measuring the starting model on the development set before training begins."
+        )
+    return progress
+
+
 def _uuid_ref(value: str) -> str | None:
     try:
         return str(uuid.UUID(value))
@@ -904,7 +925,7 @@ def _finetune_resource(project, value: str, uri: str) -> dict:
         "dataset": str(job.dataset_id) if job.dataset_id else None,
         "cell": str(job.cell_id) if job.cell_id else None,
         "eval_cell": str(job.eval_cell_id) if job.eval_cell_id else None,
-        "progress": safe_finetune_progress(progress),
+        "progress": finetune_progress_payload(progress),
         "loss": safe_json(loss[-100:] if isinstance(loss, list) else []),
         "error": job.error_message[:1_000],
         "deployed_model": str(deployment.id) if deployment is not None else None,

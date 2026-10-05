@@ -35,7 +35,7 @@ def test_native_forecast_uses_matching_measurements_and_selected_gpu():
     with (
         patch("overbae.services.training_forecast.candidates", return_value=[job]),
         patch("overbae.services.training_forecast.hardware", return_value=("H200", 1)),
-        patch("overbae.services.training_forecast.gpu_usd_per_second", return_value=0.0015),
+        patch("overbae.services.training_forecast.provider_pricing.gpu_rate", return_value=0.0015),
     ):
         result = forecast("project", "model", recipe, tokens=400000, stats=job.cell.stats)
     assert result["basis"] == "matched_measurements"
@@ -46,12 +46,13 @@ def test_native_forecast_uses_matching_measurements_and_selected_gpu():
     assert result["budget_enforcement"] == "none"
 
 
-def test_other_objective_or_batch_does_not_calibrate_native_forecast():
+@pytest.mark.parametrize("change", [{"objective": "causal_lm"}, {"pre_training_baseline": False}])
+def test_other_objective_or_batch_does_not_calibrate_native_forecast(change):
     recipe = {"objective": "decision_cross_entropy", "context_length": 2048, "batch_size": 128}
     wrong = SimpleNamespace(
         requested_configuration={"runtime": training_release.current()},
         id="chat",
-        hyperparameters={**recipe, "objective": "causal_lm"},
+        hyperparameters={**recipe, **change},
         progress={"tokens_per_second": 90000},
         result={},
         provider="modal",

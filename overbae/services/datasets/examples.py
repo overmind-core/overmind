@@ -238,6 +238,20 @@ def mapped_record(record, mapping, constants):
     return row
 
 
+def prepare_native_record(row: dict, decision: dict, intent: str) -> dict:
+    row["decision"] = decision
+    if intent == "eval":
+        row["input"] = {
+            "decision": {key: decision.get(key) for key in ("state", "question", "kind", "options")}
+        }
+        row["expected_output"] = (
+            {"mean": decision["target_mean"], "values": decision.get("option_values")}
+            if "target_mean" in decision
+            else {"probabilities": decision.get("target_probabilities")}
+        )
+    return row
+
+
 def prepare_examples(
     frame: pd.DataFrame, intent: str, mapping=None, constants=None
 ) -> pd.DataFrame:
@@ -250,19 +264,7 @@ def prepare_examples(
         row = normalize_record(mapped_record(record, mapping, constants))
         decision = native_decision(row)
         if decision is not None:
-            row["decision"] = decision
-            if intent == "eval":
-                row["input"] = {
-                    "decision": {
-                        key: decision.get(key) for key in ("state", "question", "kind", "options")
-                    }
-                }
-                row["expected_output"] = (
-                    {"mean": decision["target_mean"], "values": decision.get("option_values")}
-                    if "target_mean" in decision
-                    else {"probabilities": decision.get("target_probabilities")}
-                )
-            prepared.append(row)
+            prepared.append(prepare_native_record(row, decision, intent))
             continue
         transcript = messages(row.get("messages"))
         complete_transcript = bool(transcript)

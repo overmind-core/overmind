@@ -67,8 +67,8 @@ from overbae.services.mcp.contracts.observability import (
 from overbae.services.mcp.errors import MCPError
 from overbae.services.mcp.resources import (
     dataset_run_job_payload,
+    finetune_progress_payload,
     resource_link,
-    safe_finetune_progress,
     safe_json,
 )
 from overbae.services.model_activation import activation_progress
@@ -594,7 +594,7 @@ def _get_job_sync(payload: GetJobInput, context: MCPContext) -> GetJobOutput:
             raise MCPError("resource_not_found", "The fine-tuning job was not found.")
         created_at, updated_at, completed_at = job.created_at, job.updated_at, job.completed_at
         label, status, job_error = job.name or job.base_model, job.status, job.error_message or None
-        progress = safe_finetune_progress(job.progress or {})
+        progress = finetune_progress_payload(job.progress or {})
         details = {
             "base_model": job.base_model,
             "provider": job.provider,
