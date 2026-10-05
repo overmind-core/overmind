@@ -1,0 +1,25 @@
+{
+  "agent": "support_desk",
+  "capabilities": {
+    "triage": {
+      "name": "Triage",
+      "entrypoint": "support_desk.agent.triage",
+      "location": "support_desk/agent.py:45",
+      "model": "openai/gpt-4.1-mini"
+    },
+    "answer": {
+      "name": "Answer",
+      "entrypoint": "support_desk.agent.answer",
+      "location": "support_desk/agent.py:57",
+      "model": "openai/gpt-4.1-mini",
+      "tools": ["lookup_order"]
+    }
+  },
+  "defects": [
+    {
+      "capability": "answer",
+      "id": "omits-order-id",
+      "description": "ANSWER_PROMPT never asks for the order id, so replies to order tickets leave it out while the card requires it."
+    }
+  ]
+}

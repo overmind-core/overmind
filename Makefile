@@ -1,4 +1,4 @@
-.PHONY: test test-serial lint-format lint-backend lint-frontend install-hooks psql worker check-migrations
+.PHONY: test test-serial test-journeys lint-format lint-backend lint-frontend install-hooks psql worker check-migrations
 
 install-hooks:
 	uv run pre-commit install
@@ -59,3 +59,6 @@ test: ## Run all tests in parallel (default)
 
 test-serial: ## Run all tests serially (for debugging)
 	uv run pytest tests/ -v $(test_args)
+
+test-journeys: ## Run end-to-end journeys on the live stack (needs compose Postgres and Redis)
+	TEST_REDIS_URL=redis://localhost:6379/15 uv run pytest tests/journeys -q $(test_args)
