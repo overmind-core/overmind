@@ -30,6 +30,11 @@ repos:
         entry: bash -c 'uv run ruff check --fix "$@" && uv run ruff format "$@"' --
         language: system
         types_or: [python, pyi]
+      - id: test-seams
+        name: no new patches of our own code or private imports in tests
+        entry: uv run python scripts/check_test_seams.py
+        language: system
+        files: "^tests/.*\\.py$"
       - id: biome
         name: biome check --write
         entry: bash -c 'cd frontend && bun run biome check --write "${@#frontend/}"' --
