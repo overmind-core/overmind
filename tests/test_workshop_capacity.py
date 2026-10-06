@@ -65,9 +65,7 @@ def test_a_turn_whose_worker_stopped_beating_is_reaped_before_its_execution_limi
     dataset, task_id = queued
     assert lifecycle.claim_workshop(dataset.pk, task_id, state="diagnosing")
     assert tasks.reap_stuck_runs()["reaped"] == 0
-    Dataset.objects.filter(pk=dataset.pk).update(
-        workshop_heartbeat_at=timezone.now() - timedelta(minutes=6)
-    )
+    Dataset.objects.filter(pk=dataset.pk).update(updated_at=timezone.now() - timedelta(minutes=6))
     assert tasks.reap_stuck_runs()["reaped"] == 1
     dataset.refresh_from_db()
     assert dataset.state == "error"

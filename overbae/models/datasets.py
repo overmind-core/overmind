@@ -61,7 +61,6 @@ class Dataset(models.Model):
     workshop_task_id = models.CharField(max_length=255, blank=True, default="")
     workshop_queued_at = models.DateTimeField(null=True, blank=True)
     workshop_started_at = models.DateTimeField(null=True, blank=True)
-    workshop_heartbeat_at = models.DateTimeField(null=True, blank=True)
     created_by = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.SET_NULL,

@@ -4,8 +4,7 @@ from __future__ import annotations
 
 import logging
 import threading
-from collections.abc import Callable, Iterator
-from contextlib import contextmanager
+from collections.abc import Callable
 
 from django.db import connections
 
@@ -15,8 +14,7 @@ INTERVAL_SECONDS = 30
 STALE_SECONDS = 5 * 60
 
 
-@contextmanager
-def beating(touch: Callable[[], object]) -> Iterator[None]:
+def start(touch: Callable[[], object]) -> threading.Event:
     stop = threading.Event()
 
     def beat() -> None:
@@ -29,9 +27,5 @@ def beating(touch: Callable[[], object]) -> Iterator[None]:
         finally:
             connections.close_all()
 
-    thread = threading.Thread(target=beat, name="heartbeat", daemon=True)
-    thread.start()
-    try:
-        yield
-    finally:
-        stop.set()
+    threading.Thread(target=beat, name="heartbeat", daemon=True).start()
+    return stop

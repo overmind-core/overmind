@@ -705,85 +705,86 @@ def execute(task_id, inputs):
         run.refresh_from_db()
         return {"status": run.state}
     stage = paths.dataset_dir(dataset.pk) / "imports" / str(run.pk) / str(claimed.owner)
-    with heartbeat.beating(lambda: renew(claimed)):
-        try:
-            run.refresh_from_db()
-            validate_sources(run)
-            targets = [Dataset.objects.get(pk=pk) for pk in _target_ids(run)]
-            user = (
-                User.objects.filter(pk=run.inputs.get("user_id")).first()
-                if run.inputs.get("user_id")
-                else None
-            )
-            for target in targets:
-                events.publish(target.pk, {"type": "land_started", "dataset_id": str(target.pk)})
-            parts, state = _read_parts(run, targets)
-            prepared = [
-                (
+    beat = heartbeat.start(lambda: renew(claimed))
+    try:
+        run.refresh_from_db()
+        validate_sources(run)
+        targets = [Dataset.objects.get(pk=pk) for pk in _target_ids(run)]
+        user = (
+            User.objects.filter(pk=run.inputs.get("user_id")).first()
+            if run.inputs.get("user_id")
+            else None
+        )
+        for target in targets:
+            events.publish(target.pk, {"type": "land_started", "dataset_id": str(target.pk)})
+        parts, state = _read_parts(run, targets)
+        prepared = [
+            (
+                target,
+                landing.prepare(
                     target,
-                    landing.prepare(
-                        target,
-                        part,
-                        path=stage / f"{target.pk}.parquet",
-                        state=state,
-                        infer_capability=run.inputs.get("infer_capability", True),
-                    ),
-                )
-                for target, part in parts
-            ]
-            validate_sources(run)
-            if state == Dataset.State.IDLE:
-                for target, result in prepared:
-                    report = result.cell_fields["intent_report"].get(target.intent, {})
-                    if not report.get("ok") or not result.cell_fields["rows"]:
-                        raise landing.LandError(
-                            report.get("reason") or "The source does not fit its intent."
-                        )
-            with publication(claimed) as locked:
-                rows = 0
-                for target, result in prepared:
-                    landing.publish(target, result, user=user)
-                    if state == Dataset.State.DIAGNOSING:
-                        queue_workshop(target.pk, str(uuid.uuid5(run.pk, f"diagnose:{target.pk}")))
-                    rows += result.cell_fields["rows"]
-                locked.state = DatasetImport.State.COMPLETE
-                locked.result = {
-                    "rows": rows,
-                    "diagnose": [str(target.pk) for target in targets]
-                    if state == Dataset.State.DIAGNOSING
-                    else [],
-                }
-                locked.handoff_pending = bool(locked.result["diagnose"])
-                locked.owner = locked.lease_until = None
-                locked.save(
-                    update_fields=[
-                        "state",
-                        "result",
-                        "handoff_pending",
-                        "owner",
-                        "lease_until",
-                        "updated_at",
-                    ]
-                )
+                    part,
+                    path=stage / f"{target.pk}.parquet",
+                    state=state,
+                    infer_capability=run.inputs.get("infer_capability", True),
+                ),
+            )
+            for target, part in parts
+        ]
+        validate_sources(run)
+        if state == Dataset.State.IDLE:
             for target, result in prepared:
-                events.publish(
-                    target.pk,
-                    {
-                        "type": "land_done",
-                        "dataset_id": str(target.pk),
-                        "rows": result.cell_fields["rows"],
-                    },
-                )
-            run.refresh_from_db()
-            try:
-                _release_sources(run)
-            except OSError:
-                logger.exception("could not clean up completed dataset import %s", run.pk)
-            publish_handoffs(run.pk)
-            return {"status": "ok", "rows": rows}
-        except Exception as exc:  # noqa: BLE001 — a failed attempt retains its exact source
-            logger.exception("dataset import %s failed", run.pk)
-            fail(claimed, str(exc), code=getattr(exc, "code", "import_failed"))
-            return {"status": "failed", "error": str(exc)}
-        finally:
-            shutil.rmtree(stage, ignore_errors=True)
+                report = result.cell_fields["intent_report"].get(target.intent, {})
+                if not report.get("ok") or not result.cell_fields["rows"]:
+                    raise landing.LandError(
+                        report.get("reason") or "The source does not fit its intent."
+                    )
+        with publication(claimed) as locked:
+            rows = 0
+            for target, result in prepared:
+                landing.publish(target, result, user=user)
+                if state == Dataset.State.DIAGNOSING:
+                    queue_workshop(target.pk, str(uuid.uuid5(run.pk, f"diagnose:{target.pk}")))
+                rows += result.cell_fields["rows"]
+            locked.state = DatasetImport.State.COMPLETE
+            locked.result = {
+                "rows": rows,
+                "diagnose": [str(target.pk) for target in targets]
+                if state == Dataset.State.DIAGNOSING
+                else [],
+            }
+            locked.handoff_pending = bool(locked.result["diagnose"])
+            locked.owner = locked.lease_until = None
+            locked.save(
+                update_fields=[
+                    "state",
+                    "result",
+                    "handoff_pending",
+                    "owner",
+                    "lease_until",
+                    "updated_at",
+                ]
+            )
+        for target, result in prepared:
+            events.publish(
+                target.pk,
+                {
+                    "type": "land_done",
+                    "dataset_id": str(target.pk),
+                    "rows": result.cell_fields["rows"],
+                },
+            )
+        run.refresh_from_db()
+        try:
+            _release_sources(run)
+        except OSError:
+            logger.exception("could not clean up completed dataset import %s", run.pk)
+        publish_handoffs(run.pk)
+        return {"status": "ok", "rows": rows}
+    except Exception as exc:  # noqa: BLE001 — a failed attempt retains its exact source
+        logger.exception("dataset import %s failed", run.pk)
+        fail(claimed, str(exc), code=getattr(exc, "code", "import_failed"))
+        return {"status": "failed", "error": str(exc)}
+    finally:
+        beat.set()
+        shutil.rmtree(stage, ignore_errors=True)

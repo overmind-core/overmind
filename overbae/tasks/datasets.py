@@ -87,44 +87,43 @@ def run(
         return {"status": dataset.state}
     if not lifecycle.claim_workshop(dataset_id, self.request.id, state=Dataset.State.RUNNING):
         return {"status": "superseded"}
-    with heartbeat.beating(lambda: lifecycle.beat_workshop(dataset_id, self.request.id)):
-        user = User.objects.filter(pk=user_id).first() if user_id else None
-        try:
-            run_svc.execute(
-                dataset,
-                user=user,
-                activate_cell_id=proposal_id,
-                hold=Dataset.State.RUNNING if proposal_id else None,
-            )
-            if dataset.error:
-                Dataset.objects.filter(pk=dataset_id, workshop_task_id=self.request.id).update(
-                    state=Dataset.State.ERROR
-                )
-                dataset.state = Dataset.State.ERROR
-            elif proposal_id:
-                proposal = dataset.cells.get(pk=proposal_id)
-                dispatch.resume_after_decision(
-                    dataset.id, proposal.id, proposal.title, "approved", user_id=user_id
-                )
-                dataset.refresh_from_db()
-                _emit(dataset_id, {"type": "dataset_changed"})
-        except SoftTimeLimitExceeded:
+    beat = heartbeat.start(lambda: lifecycle.beat_workshop(dataset_id, self.request.id))
+    user = User.objects.filter(pk=user_id).first() if user_id else None
+    try:
+        run_svc.execute(
+            dataset,
+            user=user,
+            activate_cell_id=proposal_id,
+            hold=Dataset.State.RUNNING if proposal_id else None,
+        )
+        if dataset.error:
             Dataset.objects.filter(pk=dataset_id, workshop_task_id=self.request.id).update(
-                state=Dataset.State.ERROR, error="The run took too long and was stopped."
+                state=Dataset.State.ERROR
             )
-            _emit(
-                dataset_id,
-                {"type": "run_failed", "error": "The run took too long and was stopped."},
+            dataset.state = Dataset.State.ERROR
+        elif proposal_id:
+            proposal = dataset.cells.get(pk=proposal_id)
+            dispatch.resume_after_decision(
+                dataset.id, proposal.id, proposal.title, "approved", user_id=user_id
             )
-            return {"status": "timeout"}
-        except Exception as exc:  # noqa: BLE001 — a run must land in a terminal state
-            logger.exception("run failed for dataset %s", dataset_id)
-            Dataset.objects.filter(pk=dataset_id, workshop_task_id=self.request.id).update(
-                state=Dataset.State.ERROR, error=str(exc)[:4000]
-            )
-            _emit(dataset_id, {"type": "run_failed", "error": str(exc)[:4000]})
-            return {"status": "failed", "error": str(exc)}
-        return {"status": dataset.state}
+            dataset.refresh_from_db()
+            _emit(dataset_id, {"type": "dataset_changed"})
+    except SoftTimeLimitExceeded:
+        Dataset.objects.filter(pk=dataset_id, workshop_task_id=self.request.id).update(
+            state=Dataset.State.ERROR, error="The run took too long and was stopped."
+        )
+        _emit(dataset_id, {"type": "run_failed", "error": "The run took too long and was stopped."})
+        return {"status": "timeout"}
+    except Exception as exc:  # noqa: BLE001 — a run must land in a terminal state
+        logger.exception("run failed for dataset %s", dataset_id)
+        Dataset.objects.filter(pk=dataset_id, workshop_task_id=self.request.id).update(
+            state=Dataset.State.ERROR, error=str(exc)[:4000]
+        )
+        _emit(dataset_id, {"type": "run_failed", "error": str(exc)[:4000]})
+        return {"status": "failed", "error": str(exc)}
+    finally:
+        beat.set()
+    return {"status": dataset.state}
 
 
 @shared_task(
@@ -142,17 +141,19 @@ def diagnose(self, *, dataset_id: str, user_id: str | None = None) -> dict[str, 
 
     if not imports.claim_diagnosis(dataset_id, self.request.id):
         return {"status": "superseded"}
-    with heartbeat.beating(lambda: lifecycle.beat_workshop(dataset_id, self.request.id)):
-        user = User.objects.filter(pk=user_id).first() if user_id else None
-        try:
-            for _event in agent.diagnose(dataset_id, user=user, turn_key=self.request.id or ""):
-                pass
-        except Exception as exc:  # noqa: BLE001 — the page shows the failure instead of hanging
-            logger.exception("diagnosis failed for dataset %s", dataset_id)
-            _emit(dataset_id, {"type": "chat_failed", "error": str(exc)[:400]})
-            agent.settle(dataset_id, turn_key=self.request.id or "")
-            return {"status": "failed"}
-        return {"status": "ok"}
+    beat = heartbeat.start(lambda: lifecycle.beat_workshop(dataset_id, self.request.id))
+    user = User.objects.filter(pk=user_id).first() if user_id else None
+    try:
+        for _event in agent.diagnose(dataset_id, user=user, turn_key=self.request.id or ""):
+            pass
+    except Exception as exc:  # noqa: BLE001 — the page shows the failure instead of hanging
+        logger.exception("diagnosis failed for dataset %s", dataset_id)
+        _emit(dataset_id, {"type": "chat_failed", "error": str(exc)[:400]})
+        agent.settle(dataset_id, turn_key=self.request.id or "")
+        return {"status": "failed"}
+    finally:
+        beat.set()
+    return {"status": "ok"}
 
 
 @shared_task(
@@ -172,25 +173,26 @@ def turn(
 
     if not lifecycle.claim_workshop(dataset_id, self.request.id, state=Dataset.State.DIAGNOSING):
         return {"status": "superseded"}
-    with heartbeat.beating(lambda: lifecycle.beat_workshop(dataset_id, self.request.id)):
-        user = User.objects.filter(pk=user_id).first() if user_id else None
-        try:
-            for _event in agent.follow_up(
-                dataset_id, message, user=user, turn_key=self.request.id or "", display=display
-            ):
-                pass
-        except Exception as exc:  # noqa: BLE001
-            logger.exception("agent turn failed for dataset %s", dataset_id)
-            _emit(dataset_id, {"type": "chat_failed", "error": str(exc)[:400]})
-            agent.settle(dataset_id, turn_key=self.request.id or "")
-            return {"status": "failed"}
-        return {"status": "ok"}
+    beat = heartbeat.start(lambda: lifecycle.beat_workshop(dataset_id, self.request.id))
+    user = User.objects.filter(pk=user_id).first() if user_id else None
+    try:
+        for _event in agent.follow_up(
+            dataset_id, message, user=user, turn_key=self.request.id or "", display=display
+        ):
+            pass
+    except Exception as exc:  # noqa: BLE001
+        logger.exception("agent turn failed for dataset %s", dataset_id)
+        _emit(dataset_id, {"type": "chat_failed", "error": str(exc)[:400]})
+        agent.settle(dataset_id, turn_key=self.request.id or "")
+        return {"status": "failed"}
+    finally:
+        beat.set()
+    return {"status": "ok"}
 
 
 @shared_task(name="overbae.tasks.datasets.reap_stuck_runs")
 def reap_stuck_runs() -> dict[str, Any]:
-    """Queue waiting and execution have separate, immutable clocks; a lost heartbeat
-    ends execution early."""
+    """Queue waiting and execution have separate, immutable clocks."""
     from datetime import timedelta
 
     from django.db.models import Q
@@ -216,7 +218,10 @@ def reap_stuck_runs() -> dict[str, Any]:
         else:
             stuck = stuck.filter(
                 Q(workshop_started_at__lt=now - timedelta(seconds=limit + REAP_GRACE))
-                | Q(workshop_heartbeat_at__lt=now - timedelta(seconds=heartbeat.STALE_SECONDS))
+                | Q(
+                    workshop_started_at__isnull=False,
+                    updated_at__lt=now - timedelta(seconds=heartbeat.STALE_SECONDS),
+                )
             )
         with transaction.atomic():
             found = list(stuck.select_for_update(skip_locked=True).values_list("id", flat=True))
