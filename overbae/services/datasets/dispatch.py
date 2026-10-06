@@ -17,6 +17,7 @@ from overbae.services.datasets.lifecycle import (
     accept_proposal,
     enter_busy,
     queue_workshop,
+    refuse_deleted_capability,
     remove_cell,
 )
 
@@ -39,6 +40,7 @@ def _check_source(source: dict) -> None:
 
 
 def _new(project, user, name: str, source: dict, intent: str | None, capability) -> Dataset:
+    refuse_deleted_capability(capability)
     dataset = Dataset.objects.create(
         project=project,
         capability=capability,

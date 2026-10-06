@@ -5,7 +5,7 @@ from __future__ import annotations
 import pytest
 from factories import make_project, make_user
 
-from overbae.models import Dataset
+from overbae.models import Capability, Dataset
 from overbae.services.datasets import dispatch, land, lifecycle
 from overbae.services.datasets.lifecycle import DatasetError
 from overbae.tasks.datasets import land as land_task
@@ -39,6 +39,23 @@ def test_create_dataset_with_traces_lands_and_queues(monkeypatch):
     assert queued[0]["dataset_id"] == str(dataset.id)
     assert queued[0]["source"] == source
     assert queued[0]["user_id"] == str(user.id)
+
+
+def test_a_deleted_capability_cannot_be_bound_on_any_path(monkeypatch):
+    project, user = make_project(), make_user()
+    _queued(monkeypatch, land_task)
+    deleted = Capability.objects.create(
+        project=project, name="Gone", slug="gone", status=Capability.Status.DELETED
+    )
+    source = {"traces": {"trace_ids": ["abc"]}}
+    with pytest.raises(DatasetError):
+        dispatch.create_dataset(
+            project=project, user=user, name="ds", source=source, capability=deleted
+        )
+    dataset = _dataset(project)
+    with pytest.raises(DatasetError):
+        lifecycle.set_capability(dataset, deleted)
+    assert Dataset.objects.filter(project=project, capability=deleted).count() == 0
 
 
 def test_create_dataset_with_two_source_keys_raises():
