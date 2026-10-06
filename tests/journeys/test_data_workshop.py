@@ -35,16 +35,15 @@ def test_an_uploaded_file_with_warnings_is_usable_and_use_freezes_its_version(
     assert frozen["version"] == "2.0"
 
 
-def test_an_unreadable_file_blocks_use(workshop, cli, sample_agent, worker, tmp_path):
+def test_an_unreadable_file_is_refused_before_it_becomes_a_dataset(
+    workshop, cli, sample_agent, tmp_path
+):
     broken = tmp_path / "broken.jsonl"
     broken.write_bytes(b"\x00\x01garbage{not json\n")
-    dataset = upload(cli, sample_agent, broken, "--intent", "eval")
-    drain(worker)
+    with pytest.raises(AssertionError, match="Line 1 is not valid JSON"):
+        upload(cli, sample_agent, broken, "--intent", "eval")
 
-    assert workshop.call("inspect_dataset", {"dataset": dataset})["state"] == "error"
-    assert workshop.call("check_evaluation_readiness", {"dataset": dataset})["ready"] is False
-    with pytest.raises(AssertionError, match="run_evaluation failed"):
-        evaluate(workshop, dataset)
+    assert workshop.call("list_datasets", {"search": "broken"})["datasets"] == []
 
 
 @pytest.mark.xfail(
