@@ -426,8 +426,10 @@ CELERY_TASK_ROUTES = {
     "overbae.tasks.datasets.turn": {"queue": "interactive"},
     "overbae.tasks.datasets.diagnose": {"queue": "interactive"},
     "overbae.tasks.eval.prepare_sample": {"queue": "batch"},
-    # Model warm-up can block for minutes; control stays free for reconcilers and metrics.
+    # Model warm-up and judge authoring block for minutes; control stays free for
+    # reconcilers and metrics.
     "overbae.tasks.eval.run_eval_run": {"queue": "io"},
+    "overbae.tasks.eval.preload_capability_eval_set": {"queue": "io"},
     "overbae.tasks.datasets.land": {"queue": "landing"},
     "overbae.tasks.connector_sync.sync_connector_chunk": {"queue": "batch"},
     "overbae.tasks.eval.execute_evaluator": {"queue": "io"},

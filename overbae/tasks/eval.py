@@ -14,6 +14,7 @@ from typing import Any
 
 from celery import chain, chord, current_app, group, shared_task
 from celery.exceptions import SoftTimeLimitExceeded
+from django.core.cache import cache
 from django.db import transaction
 from django.utils import timezone
 
@@ -339,12 +340,7 @@ def run_eval_run(*, eval_run_id: str, **kwargs) -> dict[str, Any]:
                 for item in items
             ),
         )
-        try:
-            dispatch_generation.delay()
-        except Exception:
-            logger.exception(
-                "generation dispatcher wakeup failed; periodic reconciliation will resume"
-            )
+        wake_generation_dispatcher()
         return {
             "status": "running",
             "samples": len(items) * len(variants),
@@ -496,8 +492,31 @@ def _resolve_items(run) -> list[dict[str, Any]]:
     return items
 
 
+GENERATION_WAKEUP_KEY = "eval-generation:wakeup"
+
+
+def wake_generation_dispatcher() -> None:
+    # Every dispatch serialises on the scheduler row lock, so one wakeup per completion
+    # would pin a control thread each. A pending wakeup covers every completion before
+    # it starts; the key's expiry and the 30s tick cover a lost message.
+    try:
+        if not cache.add(GENERATION_WAKEUP_KEY, "1", timeout=30):
+            return
+        try:
+            dispatch_generation.delay()
+        except Exception:
+            cache.delete(GENERATION_WAKEUP_KEY)
+            raise
+    except Exception:
+        logger.exception("generation dispatcher wakeup failed; periodic reconciliation will resume")
+
+
 @shared_task(name="overbae.tasks.eval.dispatch_generation")
 def dispatch_generation():
+    try:
+        cache.delete(GENERATION_WAKEUP_KEY)
+    except Exception:
+        logger.warning("generation wakeup key not cleared; it expires on its own", exc_info=True)
     with current_app.connection_for_write(
         connect_timeout=5,
         transport_options={"socket_connect_timeout": 5, "socket_timeout": 5},
@@ -553,12 +572,7 @@ def prepare_sample(self, *, sample_id: str, **kwargs) -> str:
         return sample_id
     finally:
         generation_admission.finish_generation(sample_id, self.request.id)
-        try:
-            dispatch_generation.delay()
-        except Exception:
-            logger.exception(
-                "generation completion wakeup failed; periodic reconciliation will resume"
-            )
+        wake_generation_dispatcher()
 
 
 def prepare_sample_body(*, sample_id: str) -> str:
