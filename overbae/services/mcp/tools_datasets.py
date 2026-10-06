@@ -8,7 +8,7 @@ import uuid
 import duckdb
 from asgiref.sync import sync_to_async
 
-from overbae.models import Capability, Dataset
+from overbae.models import Capability, Cell, Dataset
 from overbae.services.datasets import dispatch, paths, store
 from overbae.services.datasets.contract import stored_intents
 from overbae.services.datasets.lifecycle import DatasetError
@@ -287,6 +287,14 @@ def _run_dataset_sync(payload: RunDatasetInput, context: MCPContext) -> DatasetM
         proposal = dataset.cells.filter(id=proposal_id).first()
         if proposal is None:
             raise MCPError("cell_not_found", "The proposal was not found in this dataset.")
+    if payload.decision == "deny":
+        if proposal is None or proposal.state != Cell.State.PROPOSED:
+            raise MCPError("invalid_input", "Only a pending proposal can be denied.")
+        try:
+            dispatch.discard_cell(dataset, proposal, context.user)
+        except DatasetError as exc:
+            raise dataset_mcp_error(exc) from exc
+        return mutation_output(dataset, summary="Proposal denied.")
     try:
         dispatch.run_dataset(dataset, context.user, proposal=proposal)
     except DatasetError as exc:
@@ -370,7 +378,7 @@ def register_dataset_tools(catalog) -> None:
         (
             "run_dataset",
             "Run dataset",
-            "Run a dataset; approving a proposal activates it and resumes its agent request.",
+            "Run a dataset; approving a proposal activates it and resumes its agent request; decision=deny discards it.",
             RunDatasetInput,
             DatasetMutationOutput,
             _run_dataset_sync,

@@ -84,6 +84,30 @@ def test_approving_a_later_proposal_preserves_earlier_proposals_and_saved_data()
     assert store.file_sha256(paths.cell_path(dataset.id, source.id)) == fingerprint
 
 
+def test_a_proposal_can_be_denied_but_a_saved_cell_cannot():
+    context = mcp_context(("read", "write"))
+    dataset = _dataset(context)
+    land.land_rows(dataset, [{"input": "one", "expected_output": "yes"}])
+    dataset.refresh_from_db()
+    proposed = agent.Tools(dataset.id, context.user, lambda _: None).add_cell(
+        {"title": "Alternative", "script": "df['expected_output'] = 'unknown'", "kind": "semantic"}
+    )
+    source = dataset.source
+    refused = _call(
+        "run_dataset",
+        {"dataset": str(dataset.id), "proposal_cell": str(source.id), "decision": "deny"},
+        context,
+    )
+    denied = _call(
+        "run_dataset",
+        {"dataset": str(dataset.id), "proposal_cell": proposed["id"], "decision": "deny"},
+        context,
+    )
+    assert refused.isError is True
+    assert denied.isError is False, denied.structuredContent
+    assert list(dataset.cells.values_list("id", flat=True)) == [source.id]
+
+
 def test_list_datasets_is_project_scoped_filtered_paginated_and_uses_uuids():
     context = mcp_context(("read", "write"))
     capability = Capability.objects.create(project=context.project, name="Support", slug="support")
@@ -240,7 +264,7 @@ def test_inspect_is_bounded_ordered_and_refuses_an_ambiguous_name():
     assert body["next_actions"] == [
         {
             "tool": "run_dataset",
-            "reason": "User must approve this proposed cell.",
+            "reason": "User must approve or deny (decision=deny) this proposed cell.",
             "arguments": {
                 "dataset": str(dataset.id),
                 "proposal_cell": str(dataset.cells.get(position=1).id),

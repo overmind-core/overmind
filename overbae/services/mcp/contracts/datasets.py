@@ -407,6 +407,7 @@ class RunDatasetInput(MCPModel):
         validation_alias=AliasChoices("dataset", "dataset_id"),
     )
     proposal_cell: str | None = Field(default=None, min_length=1, max_length=80)
+    decision: Literal["approve", "deny"] = "approve"
 
 
 def _mutation_ref(dataset) -> DatasetMutationRef:
@@ -695,7 +696,7 @@ def next_actions(dataset, chain: list[Cell], active: Cell | None) -> list[NextAc
         return [
             NextAction(
                 tool="run_dataset",
-                reason="User must approve this proposed cell.",
+                reason="User must approve or deny (decision=deny) this proposed cell.",
                 arguments={"dataset": ds_id, "proposal_cell": str(cell.id)},
             )
             for cell in proposed[:5]
