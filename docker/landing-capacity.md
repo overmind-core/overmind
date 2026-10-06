@@ -15,10 +15,12 @@ aws ecs describe-services --cluster overmind-prod-cluster --services celery-batc
   --query 'services[0]' --output json > batch-service.json
 python scripts/plan_landing_capacity.py \
   --task-definition batch-task-definition.json --service batch-service.json \
-  --cluster overmind-prod-cluster --image "$REVIEWED_IMAGE_URI" \
+  --api-family api --cluster overmind-prod-cluster --image "$REVIEWED_IMAGE_URI" \
   --min-capacity 1 --max-capacity 4 --alarm-topic-arn "$EXISTING_ALARM_TOPIC_ARN" \
   --output landing-capacity-plan
 ```
+
+For staging, use its own batch snapshots and the observed API task-definition family (`overmind-staging-api`); the landing family retains the batch family prefix (`overmind-staging-celery-landing-worker`). Service and container names remain `celery-landing-worker` in each cluster. The `--api-family` value must come from that environment's current API task definition.
 
 The generator only writes local files. Review the image, task-role references, secret references, EFS mounts, network, min/max capacity, alarm destination and IAM additions. The initial plan preserves the existing 4-vCPU/8-GiB batch resource envelope and creates additional capacity. Its 1–4 task bounds are cost limits, not a promise to absorb unlimited arrivals. Adjust after measuring real import memory and execution time.
 

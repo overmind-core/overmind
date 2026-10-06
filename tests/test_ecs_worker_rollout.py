@@ -73,19 +73,22 @@ def service():
     }
 
 
-def test_bootstrap_isolated_worker_preserves_storage_and_secrets(definition, service):
+@pytest.mark.parametrize("prefix", ["", "overmind-staging-"])
+def test_bootstrap_isolated_worker_preserves_storage_and_secrets(definition, service, prefix):
+    definition["family"] = prefix + "celery-batch-worker"
     original = copy.deepcopy(definition)
     plan = capacity_plan(
         definition,
         service,
         image="repo:new",
+        api_family="api",
         cluster="test-cluster",
         min_capacity=1,
         max_capacity=4,
     )
     landing = plan["task-definition.json"]
     container = landing["containerDefinitions"][0]
-    assert landing["family"] == "celery-landing-worker"
+    assert landing["family"] == prefix + "celery-landing-worker"
     assert container["name"] == "celery-landing-worker"
     assert container["command"][-2:] == ["-Q", "landing"]
     assert "--pool=prefork" in container["command"]
@@ -153,6 +156,7 @@ def test_capacity_plan_has_hard_bounds_and_actionable_missing_metrics_alarm(defi
         definition,
         service,
         image="repo:new",
+        api_family="api",
         cluster="test-cluster",
         min_capacity=1,
         max_capacity=4,
@@ -183,24 +187,29 @@ def test_invalid_or_zero_warm_capacity_is_rejected(definition, service):
                 definition,
                 service,
                 image="repo:new",
+                api_family="api",
                 cluster="test-cluster",
                 min_capacity=minimum,
                 max_capacity=maximum,
             )
 
 
-def test_deploy_iam_grant_is_limited_to_migrations_and_task_inspection(definition, service):
+@pytest.mark.parametrize("api_family", ["api", "overmind-staging-api"])
+def test_deploy_iam_grant_is_limited_to_migrations_and_task_inspection(
+    definition, service, api_family
+):
     plan = capacity_plan(
         definition,
         service,
         image="repo:new",
+        api_family=api_family,
         cluster="test-cluster",
         min_capacity=1,
         max_capacity=4,
     )
     statements = plan["deploy-role-policy.json"]["Statement"]
     migrate = next(row for row in statements if row["Action"] == ["ecs:RunTask"])
-    assert migrate["Resource"].endswith(":task-definition/api:*")
+    assert migrate["Resource"].endswith(f":task-definition/{api_family}:*")
     assert migrate["Condition"]["ArnEquals"]["ecs:cluster"].endswith(":cluster/test-cluster")
     assert not any("iam:PassRole" in row["Action"] for row in statements)
 

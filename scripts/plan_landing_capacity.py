@@ -10,6 +10,7 @@ from __future__ import annotations
 import argparse
 import copy
 import json
+import re
 import shlex
 import sys
 from pathlib import Path
@@ -27,6 +28,7 @@ def capacity_plan(
     source_service,
     *,
     image,
+    api_family,
     cluster,
     min_capacity,
     max_capacity,
@@ -34,6 +36,8 @@ def capacity_plan(
 ):
     if min_capacity < 1 or max_capacity < min_capacity:
         raise ValueError("Landing requires 1 <= minimum <= maximum worker tasks")
+    if not re.fullmatch(r"[A-Za-z0-9_-]{1,255}", api_family):
+        raise ValueError("Expected the existing API task-definition family")
     definition = copy.deepcopy(definition.get("taskDefinition", definition))
     source_service = source_service.get("services", [source_service])[0]
     containers = [
@@ -50,12 +54,15 @@ def capacity_plan(
     log_options = containers[0].get("logConfiguration", {}).get("options", {})
     if "awslogs-stream-prefix" in log_options:
         log_options["awslogs-stream-prefix"] = "landing"
-    definition["family"] = SERVICE
+    family = definition["family"]
+    if not family.endswith(original_name):
+        raise ValueError("Batch task family must end with the batch container name")
+    definition["family"] = family.removesuffix(original_name) + SERVICE
     rendered = render_task_definition(definition, service=SERVICE, image=image, cluster=cluster)
     service = {
         "cluster": cluster,
         "serviceName": SERVICE,
-        "taskDefinition": SERVICE,
+        "taskDefinition": definition["family"],
         "desiredCount": min_capacity,
         "schedulingStrategy": "REPLICA",
         "networkConfiguration": source_service["networkConfiguration"],
@@ -183,7 +190,7 @@ def capacity_plan(
             {
                 "Effect": "Allow",
                 "Action": ["ecs:RunTask"],
-                "Resource": f"arn:{partition}:ecs:{region}:{account}:task-definition/api:*",
+                "Resource": f"arn:{partition}:ecs:{region}:{account}:task-definition/{api_family}:*",
                 "Condition": {
                     "ArnEquals": {
                         "ecs:cluster": f"arn:{partition}:ecs:{region}:{account}:cluster/{cluster}"
@@ -263,6 +270,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--task-definition", type=Path, required=True)
     parser.add_argument("--service", type=Path, required=True)
+    parser.add_argument("--api-family", required=True)
     parser.add_argument("--image", required=True)
     parser.add_argument("--cluster", required=True)
     parser.add_argument("--min-capacity", type=int, default=1)
@@ -274,6 +282,7 @@ def main():
         json.loads(args.task_definition.read_text()),
         json.loads(args.service.read_text()),
         image=args.image,
+        api_family=args.api_family,
         cluster=args.cluster,
         min_capacity=args.min_capacity,
         max_capacity=args.max_capacity,
