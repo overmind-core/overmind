@@ -97,6 +97,7 @@ from common import (  # noqa: E402
     rewrite_adapter_base_model,
 )
 from datasets import Dataset  # noqa: E402
+from packing import sft_collator_flags  # noqa: E402
 from pretok import pretok_row  # noqa: E402
 from token_accuracy import TokenAccuracy  # noqa: E402
 from transformers import AutoTokenizer  # noqa: E402
@@ -217,10 +218,9 @@ LORA_TARGET_MODULES: list[str] = (
     else [m.strip() for m in _lora_targets_raw.split(",") if m.strip()]
 )
 LOAD_IN_4BIT = os.getenv("LOAD_IN_4BIT", "0") == "1" and USE_LORA
-# PER_DEVICE_BATCH is always 1, so the stock padding-free collator has nothing to
-# flatten across; the waste is short rows sitting alone in a MAX_LENGTH step.
-# PACK_ROWS concatenates several pretokenized rows per example, carrying per-row
-# seq_lengths so the collator resets position_ids at each row boundary.
+# PACK_ROWS concatenates several pretokenized rows into one example of at most
+# MAX_LENGTH. TRL packing stays off (sft_collator_flags): its default bfd strategy
+# flattens the micro-batch into one sequence and Unsloth truncates it.
 # Default off: Modal omitted this env and the old default ("1") packed every job
 # to MAX_LENGTH, OOMing Gemma4 12B/26B on flex_attention (no FA2, GC forced off).
 # Honor PACKING too — BasetenRunner sets that name for the stock engine.
@@ -228,29 +228,19 @@ PACK_ROWS = os.getenv("PACK_ROWS", os.getenv("PACKING", "0")) == "1"
 
 
 def _pack_rows(rows: list[dict], max_length: int) -> list[dict]:
-    """Greedily concat pretokenized rows into <= max_length packed examples.
+    """Greedily concat pretokenized rows into separate examples of at most max_length.
 
-    The per-example "seq_lengths" is what stops packed rows attending into each
-    other: the padding-free collator resets position_ids at each boundary.
     Rows longer than max_length raise — never truncate user data.
     """
     packed: list[dict] = []
     cur_ids: list[int] = []
     cur_labels: list[int] = []
-    cur_lengths: list[int] = []
 
     def _flush() -> None:
         if cur_ids:
-            packed.append(
-                {
-                    "input_ids": list(cur_ids),
-                    "labels": list(cur_labels),
-                    "seq_lengths": list(cur_lengths),
-                }
-            )
+            packed.append({"input_ids": list(cur_ids), "labels": list(cur_labels)})
         cur_ids.clear()
         cur_labels.clear()
-        cur_lengths.clear()
 
     for i, row in enumerate(rows):
         ids, labels = row["input_ids"], row["labels"]
@@ -260,7 +250,6 @@ def _pack_rows(rows: list[dict], max_length: int) -> list[dict]:
             _flush()
         cur_ids.extend(ids)
         cur_labels.extend(labels)
-        cur_lengths.append(n)
     _flush()
     return packed
 
@@ -508,14 +497,6 @@ def main() -> None:
         lr_scheduler_type="cosine",
         logging_steps=LOGGING_EVERY,
         max_length=MAX_LENGTH,
-        # Only satisfies TRL's guard that padding_free + numeric max_length needs
-        # packing; _pack_rows does the actual packing, and skip_prepare_dataset
-        # below means TRL's packing code never runs.
-        packing=PACK_ROWS,
-        # Flattens each micro-batch into one sequence via position_ids instead of
-        # padding, resetting at every row boundary from "seq_lengths". Requires
-        # the stock TRL collator — a custom one is rejected when padding_free.
-        padding_free=PACK_ROWS,
         report_to=[],
         seed=SEED,
         save_strategy="no",  # final-only
@@ -527,6 +508,7 @@ def main() -> None:
         remove_unused_columns=False,
         **_sft_overrides,
         **sft_kwargs,
+        **sft_collator_flags(),
     )
 
     callback = ProgressCallback(RUN_DIR)
@@ -544,9 +526,6 @@ def main() -> None:
         # pretok tokenized with and what eos/pad were fixed on above, so nothing
         # downstream changes.
         processing_class=_inner_tok,
-        # None → TRL's own DataCollatorForLanguageModeling, which turns each
-        # example's "seq_lengths" into position_ids. A custom collator can't do
-        # that reset and TRL rejects one outright when padding_free=True.
         data_collator=None,
         callbacks=[callback],
     )
