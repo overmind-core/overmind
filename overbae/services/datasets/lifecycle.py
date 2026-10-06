@@ -40,6 +40,7 @@ def queue_workshop(dataset_id: Any, task_id: str) -> None:
         workshop_task_id=task_id,
         workshop_queued_at=timezone.now(),
         workshop_started_at=None,
+        workshop_heartbeat_at=None,
     )
 
 
@@ -47,15 +48,22 @@ def queue_workshop(dataset_id: Any, task_id: str) -> None:
 def claim_workshop(dataset_id: Any, task_id: str, *, state: str) -> bool:
     if not task_id:
         return False
+    now = timezone.now()
     return bool(
         Dataset.objects.filter(
             pk=dataset_id,
             state=state,
             workshop_task_id=task_id,
             workshop_started_at__isnull=True,
-            workshop_queued_at__gte=timezone.now() - timedelta(seconds=WORKSHOP_QUEUE_SECONDS),
-        ).update(workshop_started_at=timezone.now())
+            workshop_queued_at__gte=now - timedelta(seconds=WORKSHOP_QUEUE_SECONDS),
+        ).update(workshop_started_at=now, workshop_heartbeat_at=now)
     )
+
+
+def beat_workshop(dataset_id: Any, task_id: str) -> None:
+    Dataset.objects.filter(
+        pk=dataset_id, workshop_task_id=task_id, workshop_started_at__isnull=False
+    ).update(workshop_heartbeat_at=timezone.now())
 
 
 def _refuse_while_busy(dataset: Dataset) -> None:

@@ -475,7 +475,8 @@ CELERY_BEAT_SCHEDULE = {
     # Reaps notebook runs orphaned by a killed worker.
     "reap-stuck-dataset-runs": {
         "task": "overbae.tasks.datasets.reap_stuck_runs",
-        "schedule": 600.0,
+        "schedule": 60.0,
+        "options": {"expires": 55.0},
     },
     "cleanup-dataset-uploads": {
         "task": "overbae.tasks.cleanup_tmp.cleanup_uploads",

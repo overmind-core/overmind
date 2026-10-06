@@ -13,11 +13,12 @@ from datetime import timedelta
 from celery import current_app
 from django.conf import settings
 from django.db import transaction
-from django.db.models import Q
+from django.db.models import DateTimeField, ExpressionWrapper, F, Q, Value
+from django.db.models.functions import Least
 from django.utils import timezone
 
 from overbae.models import Dataset, DatasetImport, User
-from overbae.services.datasets import files, llm_calls, paths
+from overbae.services.datasets import files, heartbeat, llm_calls, paths
 from overbae.services.datasets import land as landing
 from overbae.services.datasets.lifecycle import DatasetError, claim_workshop, queue_workshop
 from overbae.services.datasets.notebook import events
@@ -27,6 +28,7 @@ logger = logging.getLogger(__name__)
 LANDING_RECEIPT_VERSION = 1
 EXECUTION_SECONDS = 60 * 60
 LEASE_GRACE_SECONDS = 5 * 60
+LEASE_SECONDS = 5 * 60
 MAX_ATTEMPTS = 3
 MAX_PUBLICATIONS = 8
 RECONCILE_BATCH = 40
@@ -252,7 +254,7 @@ def claim(run_id):
     run.state = DatasetImport.State.RUNNING
     run.owner = uuid.uuid4()
     run.started_at = now
-    run.lease_until = now + timedelta(seconds=EXECUTION_SECONDS + LEASE_GRACE_SECONDS)
+    run.lease_until = now + timedelta(seconds=LEASE_SECONDS)
     run.attempts += 1
     run.failure_code = run.error = ""
     run.save(
@@ -271,6 +273,18 @@ def claim(run_id):
         state=Dataset.State.LANDING, error="", updated_at=now
     )
     return ImportClaim(run.pk, run.owner)
+
+
+def renew(claimed):
+    """Progress never extends the absolute execution limit."""
+    limit = ExpressionWrapper(
+        F("started_at") + timedelta(seconds=EXECUTION_SECONDS + LEASE_GRACE_SECONDS),
+        output_field=DateTimeField(),
+    )
+    lease = Value(timezone.now() + timedelta(seconds=LEASE_SECONDS), DateTimeField())
+    DatasetImport.objects.filter(
+        pk=claimed.run_id, owner=claimed.owner, state=DatasetImport.State.RUNNING
+    ).update(lease_until=Least(lease, limit))
 
 
 @contextmanager
@@ -311,6 +325,11 @@ def resume(run_id):
             "The import attempt limit was reached. Its source is retained.",
             code="attempts_exhausted",
         )
+    return _requeue(run)
+
+
+def _requeue(run):
+    """The caller holds the receipt's row lock."""
     targets = list(
         Dataset.objects.select_for_update().filter(pk__in=_target_ids(run)).order_by("id")
     )
@@ -539,11 +558,17 @@ def reconcile():
                 and run.lease_until
                 and run.lease_until < now
             ):
-                _block(
-                    run,
-                    "worker_timeout",
-                    "The import worker stopped before publication. Its source is retained.",
-                )
+                if run.attempts >= MAX_ATTEMPTS:
+                    _block(
+                        run,
+                        "worker_timeout",
+                        "The import worker stopped before publication. Its source is retained.",
+                    )
+                else:
+                    try:
+                        _requeue(run)
+                    except DatasetError as exc:
+                        _block(run, exc.code, exc.detail)
             elif run.state == DatasetImport.State.QUEUED and run.queued_at < now - timedelta(
                 seconds=queue_seconds
             ):
@@ -674,84 +699,85 @@ def execute(task_id, inputs):
         run.refresh_from_db()
         return {"status": run.state}
     stage = paths.dataset_dir(dataset.pk) / "imports" / str(run.pk) / str(claimed.owner)
-    try:
-        run.refresh_from_db()
-        validate_sources(run)
-        targets = [Dataset.objects.get(pk=pk) for pk in _target_ids(run)]
-        user = (
-            User.objects.filter(pk=run.inputs.get("user_id")).first()
-            if run.inputs.get("user_id")
-            else None
-        )
-        for target in targets:
-            events.publish(target.pk, {"type": "land_started", "dataset_id": str(target.pk)})
-        parts, state = _read_parts(run, targets)
-        prepared = [
-            (
-                target,
-                landing.prepare(
-                    target,
-                    part,
-                    path=stage / f"{target.pk}.parquet",
-                    state=state,
-                    infer_capability=run.inputs.get("infer_capability", True),
-                ),
-            )
-            for target, part in parts
-        ]
-        validate_sources(run)
-        if state == Dataset.State.IDLE:
-            for target, result in prepared:
-                report = result.cell_fields["intent_report"].get(target.intent, {})
-                if not report.get("ok") or not result.cell_fields["rows"]:
-                    raise landing.LandError(
-                        report.get("reason") or "The source does not fit its intent."
-                    )
-        with publication(claimed) as locked:
-            rows = 0
-            for target, result in prepared:
-                landing.publish(target, result, user=user)
-                if state == Dataset.State.DIAGNOSING:
-                    queue_workshop(target.pk, str(uuid.uuid5(run.pk, f"diagnose:{target.pk}")))
-                rows += result.cell_fields["rows"]
-            locked.state = DatasetImport.State.COMPLETE
-            locked.result = {
-                "rows": rows,
-                "diagnose": [str(target.pk) for target in targets]
-                if state == Dataset.State.DIAGNOSING
-                else [],
-            }
-            locked.handoff_pending = bool(locked.result["diagnose"])
-            locked.owner = locked.lease_until = None
-            locked.save(
-                update_fields=[
-                    "state",
-                    "result",
-                    "handoff_pending",
-                    "owner",
-                    "lease_until",
-                    "updated_at",
-                ]
-            )
-        for target, result in prepared:
-            events.publish(
-                target.pk,
-                {
-                    "type": "land_done",
-                    "dataset_id": str(target.pk),
-                    "rows": result.cell_fields["rows"],
-                },
-            )
-        run.refresh_from_db()
+    with heartbeat.beating(lambda: renew(claimed)):
         try:
-            _release_sources(run)
-        except OSError:
-            logger.exception("could not clean up completed dataset import %s", run.pk)
-        publish_handoffs(run.pk)
-        return {"status": "ok", "rows": rows}
-    except Exception as exc:  # noqa: BLE001 — a failed attempt retains its exact source
-        logger.exception("dataset import %s failed", run.pk)
-        fail(claimed, str(exc), code=getattr(exc, "code", "import_failed"))
-        return {"status": "failed", "error": str(exc)}
-    finally:
-        shutil.rmtree(stage, ignore_errors=True)
+            run.refresh_from_db()
+            validate_sources(run)
+            targets = [Dataset.objects.get(pk=pk) for pk in _target_ids(run)]
+            user = (
+                User.objects.filter(pk=run.inputs.get("user_id")).first()
+                if run.inputs.get("user_id")
+                else None
+            )
+            for target in targets:
+                events.publish(target.pk, {"type": "land_started", "dataset_id": str(target.pk)})
+            parts, state = _read_parts(run, targets)
+            prepared = [
+                (
+                    target,
+                    landing.prepare(
+                        target,
+                        part,
+                        path=stage / f"{target.pk}.parquet",
+                        state=state,
+                        infer_capability=run.inputs.get("infer_capability", True),
+                    ),
+                )
+                for target, part in parts
+            ]
+            validate_sources(run)
+            if state == Dataset.State.IDLE:
+                for target, result in prepared:
+                    report = result.cell_fields["intent_report"].get(target.intent, {})
+                    if not report.get("ok") or not result.cell_fields["rows"]:
+                        raise landing.LandError(
+                            report.get("reason") or "The source does not fit its intent."
+                        )
+            with publication(claimed) as locked:
+                rows = 0
+                for target, result in prepared:
+                    landing.publish(target, result, user=user)
+                    if state == Dataset.State.DIAGNOSING:
+                        queue_workshop(target.pk, str(uuid.uuid5(run.pk, f"diagnose:{target.pk}")))
+                    rows += result.cell_fields["rows"]
+                locked.state = DatasetImport.State.COMPLETE
+                locked.result = {
+                    "rows": rows,
+                    "diagnose": [str(target.pk) for target in targets]
+                    if state == Dataset.State.DIAGNOSING
+                    else [],
+                }
+                locked.handoff_pending = bool(locked.result["diagnose"])
+                locked.owner = locked.lease_until = None
+                locked.save(
+                    update_fields=[
+                        "state",
+                        "result",
+                        "handoff_pending",
+                        "owner",
+                        "lease_until",
+                        "updated_at",
+                    ]
+                )
+            for target, result in prepared:
+                events.publish(
+                    target.pk,
+                    {
+                        "type": "land_done",
+                        "dataset_id": str(target.pk),
+                        "rows": result.cell_fields["rows"],
+                    },
+                )
+            run.refresh_from_db()
+            try:
+                _release_sources(run)
+            except OSError:
+                logger.exception("could not clean up completed dataset import %s", run.pk)
+            publish_handoffs(run.pk)
+            return {"status": "ok", "rows": rows}
+        except Exception as exc:  # noqa: BLE001 — a failed attempt retains its exact source
+            logger.exception("dataset import %s failed", run.pk)
+            fail(claimed, str(exc), code=getattr(exc, "code", "import_failed"))
+            return {"status": "failed", "error": str(exc)}
+        finally:
+            shutil.rmtree(stage, ignore_errors=True)

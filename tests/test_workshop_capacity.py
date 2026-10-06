@@ -61,6 +61,19 @@ def test_progress_does_not_extend_absolute_execution_deadline(queued):
     assert "worker stopped" in dataset.error
 
 
+def test_a_turn_whose_worker_stopped_beating_is_reaped_before_its_execution_limit(queued):
+    dataset, task_id = queued
+    assert lifecycle.claim_workshop(dataset.pk, task_id, state="diagnosing")
+    assert tasks.reap_stuck_runs()["reaped"] == 0
+    Dataset.objects.filter(pk=dataset.pk).update(
+        workshop_heartbeat_at=timezone.now() - timedelta(minutes=6)
+    )
+    assert tasks.reap_stuck_runs()["reaped"] == 1
+    dataset.refresh_from_db()
+    assert dataset.state == "error"
+    assert "worker stopped" in dataset.error
+
+
 def test_wrong_task_cannot_claim_or_hide_queued_demand(queued):
     dataset, task_id = queued
     old = timezone.now() - timedelta(minutes=4)

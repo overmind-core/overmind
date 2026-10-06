@@ -138,21 +138,59 @@ def test_claim_starts_a_new_execution_clock_after_long_queue_wait(imported_sourc
     assert dataset.updated_at > old
 
 
-def test_expired_running_import_is_blocked_with_its_source_intact(imported_source):
+def test_an_import_whose_worker_died_is_requeued_and_its_old_owner_fenced(imported_source):
     from overbae.services.datasets import imports
 
     dataset, run = create_import(imported_source)
-    claim = imports.claim(run.pk)
-    assert claim is not None
-    old = timezone.now() - timedelta(minutes=66)
-    DatasetImport.objects.filter(pk=run.pk).update(lease_until=old, updated_at=old)
-    Dataset.objects.filter(pk=dataset.pk).update(updated_at=old)
+    deliveries = imported_source[3]
+    dead = imports.claim(run.pk)
+    assert dead is not None
+    lapsed = timezone.now() - timedelta(seconds=1)
+    DatasetImport.objects.filter(pk=run.pk).update(lease_until=lapsed)
+    published = len(deliveries)
     imports.reconcile()
+    run.refresh_from_db()
+    dataset.refresh_from_db()
+    assert (run.state, dataset.state) == ("queued", "landing")
+    assert len(deliveries) == published + 1
+    with pytest.raises(DatasetError) as caught, imports.publication(dead):
+        pass
+    assert caught.value.code == "ownership_lost"
+    assert imports.claim(run.pk) is not None
+
+
+def test_an_import_that_keeps_losing_its_worker_is_blocked_with_its_source(imported_source):
+    from overbae.services.datasets import imports
+
+    dataset, run = create_import(imported_source)
+    for _ in range(imports.MAX_ATTEMPTS):
+        assert imports.claim(run.pk) is not None
+        DatasetImport.objects.filter(pk=run.pk).update(
+            lease_until=timezone.now() - timedelta(seconds=1)
+        )
+        imports.reconcile()
     run.refresh_from_db()
     dataset.refresh_from_db()
     assert run.state == "blocked" and run.failure_code == "worker_timeout"
     assert dataset.state == "error"
     assert files.upload_data_path(imported_source[1]).exists()
+
+
+def test_a_live_import_renews_its_lease_only_up_to_the_execution_limit(imported_source):
+    from overbae.services.datasets import imports
+
+    _dataset, run = create_import(imported_source)
+    live = imports.claim(run.pk)
+    imports.renew(live)
+    run.refresh_from_db()
+    assert run.lease_until > timezone.now() + timedelta(seconds=imports.LEASE_SECONDS - 5)
+    started = timezone.now() - timedelta(seconds=imports.EXECUTION_SECONDS)
+    DatasetImport.objects.filter(pk=run.pk).update(started_at=started)
+    imports.renew(live)
+    run.refresh_from_db()
+    assert run.lease_until <= started + timedelta(
+        seconds=imports.EXECUTION_SECONDS + imports.LEASE_GRACE_SECONDS
+    )
 
 
 def test_old_owner_cannot_publish_after_import_is_resumed(imported_source):
