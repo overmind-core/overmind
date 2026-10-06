@@ -67,26 +67,12 @@ def test_wrong_task_cannot_claim_or_hide_queued_demand(queued):
     Dataset.objects.filter(pk=dataset.pk).update(workshop_queued_at=old)
     assert not lifecycle.claim_workshop(dataset.pk, str(uuid.uuid4()), state="diagnosing")
     demand = read_workloads()["interactive"]
-    assert (demand["waiting"], demand["running"], demand["oldest"]) == (1, 0, old)
+    assert (demand["queued"], demand["running"], demand["oldest"]) == (1, 0, old)
     assert lifecycle.claim_workshop(dataset.pk, task_id, state="diagnosing")
     demand = read_workloads()["interactive"]
-    assert (demand["waiting"], demand["running"], demand["oldest"]) == (0, 1, None)
+    assert (demand["queued"], demand["running"], demand["oldest"]) == (0, 1, None)
     Dataset.objects.filter(pk=dataset.pk).update(state="idle")
     assert read_workloads()["interactive"]["running"] == 0
-
-
-def test_workshop_scaling_tracks_slots_and_preserves_busy_workers():
-    from scripts.plan_workshop_capacity import capacity_plan
-
-    plan = capacity_plan(cluster="test", min_capacity=1, max_capacity=6)
-    target = plan["scalable-target.json"]
-    assert target["MaxCapacity"] == 6
-    assert target["SuspendedState"]["DynamicScalingInSuspended"] is True
-    policy = plan["backlog-policy.json"]["TargetTrackingScalingPolicyConfiguration"]
-    assert policy["TargetValue"] == 4
-    assert policy["DisableScaleIn"] is True
-    assert policy["CustomizedMetricSpecification"]["MetricName"] == "BacklogPerWorker"
-    assert any(a["MetricName"] == "OldestQueuedAgeSeconds" for a in plan["alarms.json"])
 
 
 def test_stale_settlement_cannot_finish_a_successor(queued):

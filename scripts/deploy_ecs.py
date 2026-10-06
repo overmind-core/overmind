@@ -1,22 +1,31 @@
 #!/usr/bin/env python3
-"""Deploy reviewed immutable images and source-controlled worker commands.
+"""Roll an immutable image out to the ECS services cloud-platform provisions.
 
-AWS calls require an explicit ``migrate`` or ``deploy`` subcommand. The rendering
-helpers are pure so task definitions can be reviewed and tested without AWS.
+A release changes only the app image. cloud-platform owns every other task-definition
+field (command, environment, health check, resources), so an apply and a release never
+undo each other. Subcommands:
+
+  lanes      print the worker services this release deploys, as JSON
+  preflight  refuse the release unless every service it needs exists
+  migrate    run migrations in a one-off API task that never starts the web server
+  deploy     roll one service to the image and wait until it is running and healthy
 """
 
 from __future__ import annotations
 
 import argparse
 import copy
+import importlib.util
 import json
 import os
 import subprocess
+import sys
 import tempfile
 import time
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
+FIXED_SERVICES = ("api", "celery-beat")
 READ_ONLY_FIELDS = (
     "taskDefinitionArn",
     "revision",
@@ -29,40 +38,38 @@ READ_ONLY_FIELDS = (
 )
 
 
-def _environment(container, **values):
-    existing = {item["name"]: item["value"] for item in container.get("environment", [])}
-    existing.update({name: str(value) for name, value in values.items()})
-    container["environment"] = [{"name": key, "value": value} for key, value in existing.items()]
+def _lanes():
+    # Loaded by path: the deploy runner has none of the app's dependencies.
+    spec = importlib.util.spec_from_file_location("overbae_lanes", ROOT / "overbae/lanes.py")
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
+    spec.loader.exec_module(module)
+    return module
 
 
-def render_task_definition(document, *, service, image, cluster):
+def lane_services() -> list[str]:
+    lanes = _lanes()
+    return [lanes.service(lane) for lane in lanes.LANES]
+
+
+def absent_services(found: list[dict]) -> list[str]:
+    present = {item["serviceName"] for item in found}
+    return [name for name in [*FIXED_SERVICES, *lane_services()] if name not in present]
+
+
+def render_task_definition(document, *, image, repository):
     result = copy.deepcopy(document)
     for field in READ_ONLY_FIELDS:
         result.pop(field, None)
-    containers = [item for item in result["containerDefinitions"] if item["name"] == service]
-    if len(containers) != 1:
-        raise ValueError(f"Expected exactly one app container named {service!r}")
-    app = containers[0]
-    app["image"] = image
-    topology = json.loads((ROOT / "docker/worker-topology.json").read_text())
-    if service in topology:
-        app["command"] = topology[service]
-        app["entryPoint"] = ["/usr/local/bin/worker-entrypoint.sh"]
-    elif service != "api":
-        raise ValueError(f"No reviewed command for service {service!r}")
-    if service == "celery-control-worker":
-        _environment(app, QUEUE_METRICS_ENABLED="1", QUEUE_METRICS_CLUSTER=cluster)
-    if service == "celery-landing-worker":
-        app["healthCheck"] = {
-            "command": ["CMD", "python", "-m", "overbae.worker_health", "landing"],
-            "interval": 30,
-            "timeout": 15,
-            "retries": 3,
-            "startPeriod": 90,
-        }
-        # The durable importer owns retries after an interrupted process; scale-in
-        # remains disabled until a reviewed graceful-drain policy is installed.
-        app["stopTimeout"] = 120
+    apps = [
+        container
+        for container in result["containerDefinitions"]
+        if f"/{repository}:" in container["image"] or f"/{repository}@" in container["image"]
+    ]
+    if not apps:
+        raise ValueError(f"No container runs an image from {repository!r}")
+    for container in apps:
+        container["image"] = image
     return result
 
 
@@ -70,7 +77,6 @@ def migration_request(definition, service, *, task_definition, cluster):
     matches = [c for c in definition["containerDefinitions"] if c["name"] == "api"]
     if len(matches) != 1:
         raise ValueError("Expected exactly one migration container named 'api'")
-    app = matches[0]
     request = {
         "cluster": cluster,
         "taskDefinition": task_definition,
@@ -79,7 +85,7 @@ def migration_request(definition, service, *, task_definition, cluster):
         "overrides": {
             "containerOverrides": [
                 {
-                    "name": app["name"],
+                    "name": "api",
                     "command": ["python", "manage.py", "migrate", "--noinput"],
                     "environment": [{"name": "RUN_DB_BOOTSTRAP", "value": "0"}],
                 }
@@ -92,7 +98,7 @@ def migration_request(definition, service, *, task_definition, cluster):
     return request
 
 
-def service_ready(service, tasks, *, task_definition, require_health=True):
+def service_ready(service, tasks, *, task_definition, health_checked):
     desired = service.get("desiredCount", 0)
     if desired < 1 or service.get("pendingCount", 0) or service.get("runningCount", 0) < desired:
         return False
@@ -106,7 +112,7 @@ def service_ready(service, tasks, *, task_definition, require_health=True):
         for task in tasks
         if task.get("taskDefinitionArn") == task_definition
         and task.get("lastStatus") == "RUNNING"
-        and (not require_health or task.get("healthStatus") == "HEALTHY")
+        and (not health_checked or task.get("healthStatus") == "HEALTHY")
     ]
     return len(current) >= desired
 
@@ -119,59 +125,63 @@ def aws(*args, payload=None):
         json.dump(payload, fp)
         fp.flush()
         return json.loads(
-            subprocess.check_output(
-                [*command, "--cli-input-json", f"file://{fp.name}"],
-                text=True,
-            )
+            subprocess.check_output([*command, "--cli-input-json", f"file://{fp.name}"], text=True)
         )
 
 
-def describe_service(cluster, service):
-    response = aws("ecs", "describe-services", "--cluster", cluster, "--services", service)
+def describe_service(cluster, name):
+    response = aws("ecs", "describe-services", "--cluster", cluster, "--services", name)
     if response.get("failures") or len(response.get("services", [])) != 1:
-        raise RuntimeError(
-            f"Service {service!r} is absent. Provision the reviewed landing capacity plan "
-            "before this release; no producer has been deployed."
-        )
+        raise RuntimeError(f"Service {name!r} is absent; apply cloud-platform first.")
     return response["services"][0]
 
 
-def register(cluster, service_name, image):
-    service = describe_service(cluster, service_name)
+def preflight(cluster):
+    names = [*FIXED_SERVICES, *lane_services()]
+    found = []
+    # DescribeServices accepts at most ten services per call.
+    for offset in range(0, len(names), 10):
+        response = aws(
+            "ecs",
+            "describe-services",
+            "--cluster",
+            cluster,
+            "--services",
+            *names[offset : offset + 10],
+        )
+        found += [s for s in response.get("services", []) if s.get("status") == "ACTIVE"]
+    absent = absent_services(found)
+    if absent:
+        raise RuntimeError(
+            f"{', '.join(absent)} not provisioned in {cluster}; apply cloud-platform first. "
+            "Nothing was deployed."
+        )
+    print(f"All {len(names)} services are provisioned in {cluster}.")
+
+
+def register(cluster, name, image, repository):
+    service = describe_service(cluster, name)
     definition = aws(
-        "ecs",
-        "describe-task-definition",
-        "--task-definition",
-        service["taskDefinition"],
+        "ecs", "describe-task-definition", "--task-definition", service["taskDefinition"]
     )["taskDefinition"]
-    rendered = render_task_definition(
-        definition, service=service_name, image=image, cluster=cluster
-    )
+    rendered = render_task_definition(definition, image=image, repository=repository)
     registered = aws("ecs", "register-task-definition", payload=rendered)["taskDefinition"]
     return service, registered
 
 
-def migrate(cluster, image):
-    service, definition = register(cluster, "api", image)
-    response = aws(
-        "ecs",
-        "run-task",
-        payload=migration_request(
-            definition,
-            service,
-            task_definition=definition["taskDefinitionArn"],
-            cluster=cluster,
-        ),
+def migrate(cluster, image, repository):
+    service, definition = register(cluster, "api", image, repository)
+    request = migration_request(
+        definition, service, task_definition=definition["taskDefinitionArn"], cluster=cluster
     )
+    response = aws("ecs", "run-task", payload=request)
     if response.get("failures") or len(response.get("tasks", [])) != 1:
         raise RuntimeError(f"Migration task was not accepted: {response.get('failures')}")
     arn = response["tasks"][0]["taskArn"]
     subprocess.run(
-        ["aws", "ecs", "wait", "tasks-stopped", "--cluster", cluster, "--tasks", arn],
-        check=True,
+        ["aws", "ecs", "wait", "tasks-stopped", "--cluster", cluster, "--tasks", arn], check=True
     )
     task = aws("ecs", "describe-tasks", "--cluster", cluster, "--tasks", arn)["tasks"][0]
-    # Only the API app container runs migrations; ignore a successfully stopped sidecar.
     app = next(c for c in task["containers"] if c["name"] == "api")
     if app.get("exitCode") != 0:
         raise RuntimeError(
@@ -180,83 +190,74 @@ def migrate(cluster, image):
     print(f"Migration completed: {arn}")
 
 
-def deploy(cluster, service_name, image, timeout=4200):
-    _, definition = register(cluster, service_name, image)
+def deploy(cluster, name, image, repository, timeout=4200):
+    # Busy workers keep ECS task protection until their own work finishes, so a
+    # worker rollout can legitimately take as long as its longest task.
+    _, definition = register(cluster, name, image, repository)
     arn = definition["taskDefinitionArn"]
-    aws(
-        "ecs",
-        "update-service",
-        "--cluster",
-        cluster,
-        "--service",
-        service_name,
-        "--task-definition",
-        arn,
-    )
+    health_checked = any(c.get("healthCheck") for c in definition["containerDefinitions"])
+    aws("ecs", "update-service", "--cluster", cluster, "--service", name, "--task-definition", arn)
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
-        service = describe_service(cluster, service_name)
+        service = describe_service(cluster, name)
         primary = next(
-            (d for d in service.get("deployments", []) if d.get("status") == "PRIMARY"),
-            {},
+            (d for d in service.get("deployments", []) if d.get("status") == "PRIMARY"), {}
         )
         if primary.get("rolloutState") == "FAILED" or primary.get("taskDefinition") != arn:
-            raise RuntimeError(
-                f"Deployment {arn} failed or rolled back; producer rollout is stopped"
-            )
+            raise RuntimeError(f"Deployment {arn} failed or rolled back; the release is stopped")
         arns = aws(
             "ecs",
             "list-tasks",
             "--cluster",
             cluster,
             "--service-name",
-            service_name,
+            name,
             "--desired-status",
             "RUNNING",
         )["taskArns"]
         tasks = []
         for offset in range(0, len(arns), 100):
-            tasks.extend(
-                aws(
-                    "ecs",
-                    "describe-tasks",
-                    "--cluster",
-                    cluster,
-                    "--tasks",
-                    *arns[offset : offset + 100],
-                )["tasks"]
-            )
-        if service_ready(
-            service,
-            tasks,
-            task_definition=arn,
-            require_health=service_name == "celery-landing-worker",
-        ):
-            print(f"Ready: {service_name} {arn}")
+            tasks += aws(
+                "ecs",
+                "describe-tasks",
+                "--cluster",
+                cluster,
+                "--tasks",
+                *arns[offset : offset + 100],
+            )["tasks"]
+        if service_ready(service, tasks, task_definition=arn, health_checked=health_checked):
+            print(f"Ready: {name} {arn}")
             return
         time.sleep(10)
-    raise TimeoutError(f"Service {service_name} did not become ready; producer rollout is stopped")
+    raise TimeoutError(f"Service {name} did not become ready; the release is stopped")
 
 
 def main():
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("action", choices=["migrate", "deploy"])
-    parser.add_argument(
-        "--cluster",
-        default=os.environ.get("ECS_CLUSTER"),
-        required=not os.environ.get("ECS_CLUSTER"),
+    parser = argparse.ArgumentParser(
+        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
     )
-    parser.add_argument(
-        "--image",
-        default=os.environ.get("IMAGE_URI"),
-        required=not os.environ.get("IMAGE_URI"),
-    )
-    parser.add_argument("--service", default=os.environ.get("SERVICE", "api"))
+    parser.add_argument("action", choices=["lanes", "preflight", "migrate", "deploy"])
+    parser.add_argument("--cluster", default=os.environ.get("ECS_CLUSTER"))
+    parser.add_argument("--image", default=os.environ.get("IMAGE_URI"))
+    parser.add_argument("--repository", default=os.environ.get("ECR_REPOSITORY"))
+    parser.add_argument("--service", default=os.environ.get("SERVICE"))
     args = parser.parse_args()
+    if args.action == "lanes":
+        print(json.dumps(lane_services()))
+        return
+    if not args.cluster:
+        parser.error("--cluster or ECS_CLUSTER is required")
+    if args.action == "preflight":
+        preflight(args.cluster)
+        return
+    if not args.image or not args.repository:
+        parser.error("--image and --repository (or IMAGE_URI and ECR_REPOSITORY) are required")
     if args.action == "migrate":
-        migrate(args.cluster, args.image)
+        migrate(args.cluster, args.image, args.repository)
+    elif not args.service:
+        parser.error("--service or SERVICE is required")
     else:
-        deploy(args.cluster, args.service, args.image)
+        deploy(args.cluster, args.service, args.image, args.repository)
 
 
 if __name__ == "__main__":

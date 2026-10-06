@@ -1,53 +1,67 @@
-import json
-import threading
 from datetime import timedelta
-from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 import pytest
 from django.utils import timezone
 
+from overbae.lanes import LANES
 from overbae.services.queue_capacity import metric_data, read_workloads
 
 
-def test_metrics_count_durable_waiting_not_only_admitted_broker_messages():
+def _values(points, queue):
+    return {
+        item["MetricName"]: item["Value"]
+        for item in points
+        if {"Name": "Queue", "Value": queue} in item["Dimensions"]
+    }
+
+
+def test_slot_demand_is_relative_to_the_lane_process_count():
     now = timezone.now()
-    data = metric_data(
+    slots = LANES["interactive"].concurrency
+    points = metric_data(
         {
-            "landing": {
-                "waiting": 100,
-                "running": 2,
+            "interactive": {
+                "queued": 3 * slots,
+                "running": slots,
                 "oldest": now - timedelta(minutes=4),
-                "blocked": 3,
             }
         },
-        {"landing": 2},
+        {"interactive": 2},
         cluster="test",
         now=now,
     )
-    values = {item["MetricName"]: item["Value"] for item in data}
-    assert values["BacklogPerWorker"] == 51
+    values = _values(points, "interactive")
+    assert values["SlotDemand"] == 2
     assert values["OldestQueuedAgeSeconds"] == 240
-    assert values["BlockedImports"] == 3
-    assert values["MetricHeartbeat"] == 1
-    assert all(
-        item["Dimensions"]
-        == [{"Name": "ClusterName", "Value": "test"}, {"Name": "Queue", "Value": "landing"}]
-        for item in data
-    )
+    assert values["RunningWorkers"] == 2
 
 
-def test_zero_worker_capacity_is_observable_without_division_by_zero():
-    data = metric_data(
-        {"landing": {"waiting": 4, "running": 0, "oldest": None, "blocked": 0}}, {}, cluster="test"
+def test_zero_workers_still_report_demand_without_division_by_zero():
+    points = metric_data(
+        {"landing": {"queued": 4, "running": 0, "oldest": None, "newly_blocked": 0}},
+        {},
+        cluster="test",
     )
-    values = {item["MetricName"]: item["Value"] for item in data}
-    assert values["BacklogPerWorker"] == 4
-    assert values["MissingWorkers"] == 1
+    values = _values(points, "landing")
+    assert values["SlotDemand"] == 4 / LANES["landing"].concurrency
     assert values["RunningWorkers"] == 0
 
 
+def test_heartbeat_is_one_cluster_sample_independent_of_any_queue():
+    points = metric_data({}, {}, cluster="test")
+    assert [p for p in points if p["MetricName"] == "MetricHeartbeat"] == [
+        {
+            "MetricName": "MetricHeartbeat",
+            "Dimensions": [{"Name": "ClusterName", "Value": "test"}],
+            "Timestamp": points[0]["Timestamp"],
+            "Value": 1,
+            "Unit": "Count",
+        }
+    ]
+
+
 @pytest.mark.django_db
-def test_completed_and_cancelled_imports_do_not_request_capacity():
+def test_imports_report_queued_demand_and_only_newly_blocked_receipts():
     from overbae.models import Dataset, DatasetImport, Project
 
     now = timezone.now()
@@ -57,17 +71,48 @@ def test_completed_and_cancelled_imports_do_not_request_capacity():
         ("running", 300),
         ("complete", 5000),
         ("cancelled", 5000),
-        ("blocked", 700),
+        ("blocked", 60),
+        ("blocked", 7200),
     ]:
-        dataset = Dataset.objects.create(project=project, name=state)
-        DatasetImport.objects.create(
+        dataset = Dataset.objects.create(project=project, name=f"{state}-{age}")
+        receipt = DatasetImport.objects.create(
             dataset=dataset, state=state, queued_at=now - timedelta(seconds=age), inputs={}
         )
-    snapshot = read_workloads()["landing"]
-    assert snapshot["waiting"] == 1
-    assert snapshot["running"] == 1
-    assert snapshot["blocked"] == 1
-    assert (now - snapshot["oldest"]).total_seconds() == 120
+        DatasetImport.objects.filter(pk=receipt.pk).update(updated_at=now - timedelta(seconds=age))
+    landing = read_workloads(now=now)["landing"]
+    assert (landing["queued"], landing["running"]) == (1, 1)
+    assert landing["newly_blocked"] == 1, "a receipt blocked hours ago must not hold the alarm"
+    assert (now - landing["oldest"]).total_seconds() == 120
+
+
+@pytest.mark.django_db
+def test_eval_admission_waits_are_not_worker_demand():
+    from overbae.models import EvalRun, EvalSample, EvalVariant, Project
+    from overbae.models.eval_generation import EvalGenerationWork
+
+    now = timezone.now()
+    project = Project.objects.create(name="eval metric fixture", slug="eval-metrics")
+    run = EvalRun.objects.create(project=project, name="run", status="running")
+    variant = EvalVariant.objects.create(run=run, label="v", mode="generate")
+    for index, (state, queued, finished) in enumerate(
+        [
+            ("waiting", None, None),
+            ("waiting", None, None),
+            ("queued", now - timedelta(seconds=90), None),
+            ("running", now - timedelta(seconds=200), None),
+            ("unknown", now - timedelta(hours=1), now - timedelta(seconds=30)),
+            ("unknown", now - timedelta(hours=3), now - timedelta(hours=2)),
+        ]
+    ):
+        sample = EvalSample.objects.create(run=run, variant=variant, row_index=index)
+        EvalGenerationWork.objects.create(
+            sample=sample, state=state, queued_at=queued, finished_at=finished
+        )
+    batch = read_workloads(now=now)["batch"]
+    assert batch["waiting"] == 2
+    assert (batch["queued"], batch["running"]) == (1, 1)
+    assert batch["newly_blocked"] == 1
+    assert (now - batch["oldest"]).total_seconds() == 90
 
 
 def test_metrics_task_is_registered_periodic_and_never_waits_on_batch(settings):
@@ -86,92 +131,22 @@ def test_metrics_task_is_registered_periodic_and_never_waits_on_batch(settings):
 
 
 @pytest.mark.django_db
-def test_publisher_uses_refreshing_task_role_instead_of_archive_keys(settings, monkeypatch):
+def test_hosted_publisher_signs_with_the_refreshing_task_role(ecs):
     from overbae.tasks.queue_metrics import publish
 
-    requests = []
-    credential_reads = []
-
-    class Handler(BaseHTTPRequestHandler):
-        def log_message(self, *args):
-            pass
-
-        def do_GET(self):
-            credential_reads.append(self.path)
-            # The initial credentials expire soon enough to require refresh on signing.
-            expiry = timezone.now() + timedelta(seconds=30 if len(credential_reads) == 1 else 3600)
-            payload = json.dumps(
-                {
-                    "AccessKeyId": f"task-role-{len(credential_reads)}",
-                    "SecretAccessKey": "task-role-secret",
-                    "Token": "task-role-token",
-                    "Expiration": expiry.isoformat(),
-                }
-            ).encode()
-            self.send_response(200)
-            self.send_header("Content-Type", "application/json")
-            self.end_headers()
-            self.wfile.write(payload)
-
-        def do_POST(self):
-            self.rfile.read(int(self.headers["Content-Length"]))
-            requests.append((self.path, dict(self.headers)))
-            ecs = self.path == "/ecs"
-            body = (
-                json.dumps(
-                    {
-                        "services": [
-                            {"serviceName": "celery-landing-worker", "runningCount": 1},
-                            {"serviceName": "celery-batch-worker", "runningCount": 1},
-                        ]
-                    }
-                ).encode()
-                if ecs
-                else b""
-            )
-            self.send_response(200)
-            self.send_header(
-                "Content-Type", "application/x-amz-json-1.1" if ecs else "application/cbor"
-            )
-            self.end_headers()
-            self.wfile.write(body)
-
-    server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
-    thread = threading.Thread(target=server.serve_forever, daemon=True)
-    thread.start()
-    url = f"http://127.0.0.1:{server.server_port}"
-    monkeypatch.setenv("AWS_ACCESS_KEY_ID", "archive-key")
-    monkeypatch.setenv("AWS_SECRET_ACCESS_KEY", "archive-secret")
-    monkeypatch.delenv("AWS_CONTAINER_CREDENTIALS_RELATIVE_URI", raising=False)
-    monkeypatch.setenv("AWS_CONTAINER_CREDENTIALS_FULL_URI", url + "/credentials")
-    monkeypatch.setenv("AWS_ENDPOINT_URL_ECS", url + "/ecs")
-    monkeypatch.setenv("AWS_ENDPOINT_URL_CLOUDWATCH", url + "/cloudwatch")
-    settings.QUEUE_METRICS_ENABLED = True
-    settings.QUEUE_METRICS_CLUSTER = "test-cluster"
-    settings.AWS_REGION = "eu-west-1"
-    try:
-        assert publish() == {"metrics": 24}
-        assert len(credential_reads) >= 2
-        assert len(requests) == 2
-        for _, headers in requests:
-            assert "Credential=task-role-2/" in headers["Authorization"]
-            assert "archive-key" not in headers["Authorization"]
-            assert "/eu-west-1/" in headers["Authorization"]
-            assert headers["X-Amz-Security-Token"] == "task-role-token"
-    finally:
-        server.shutdown()
-        server.server_close()
-        thread.join(timeout=2)
+    ecs.short_lived_credentials = True
+    ecs.running = {"celery-landing-worker": 2}
+    assert publish() == {"cluster": "test-cluster", "metrics": 19}
+    assert ecs.api_calls == ["DescribeServices"]
+    assert ecs.credential_reads >= 2
+    (headers,) = ecs.metric_requests
+    assert "Credential=task-role-2/" in headers["Authorization"]
+    assert "/eu-west-1/" in headers["Authorization"]
+    assert headers["X-Amz-Security-Token"] == "task-role-token"
 
 
-def test_enabled_monitor_refuses_archive_credentials_without_an_ecs_role(settings, monkeypatch):
+def test_publisher_outside_ecs_reports_disabled(monkeypatch):
     from overbae.tasks.queue_metrics import publish
 
-    settings.QUEUE_METRICS_ENABLED = True
-    settings.QUEUE_METRICS_CLUSTER = "test-cluster"
-    monkeypatch.delenv("AWS_CONTAINER_CREDENTIALS_RELATIVE_URI", raising=False)
-    monkeypatch.delenv("AWS_CONTAINER_CREDENTIALS_FULL_URI", raising=False)
-    monkeypatch.setenv("AWS_ACCESS_KEY_ID", "archive-key")
-    monkeypatch.setenv("AWS_SECRET_ACCESS_KEY", "archive-secret")
-    with pytest.raises(RuntimeError, match="ECS task role"):
-        publish()
+    monkeypatch.delenv("ECS_CONTAINER_METADATA_URI_V4", raising=False)
+    assert publish() == {"enabled": False}

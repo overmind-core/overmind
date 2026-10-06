@@ -140,7 +140,7 @@ services:
   celery-control-worker:
     <<: *build-common
     entrypoint: ["/usr/local/bin/worker-entrypoint.sh"]
-    command: watchmedo auto-restart --directory=/code/overbae --pattern='*.py' --recursive --signal SIGTERM -- celery -A overbae worker -l info --pool=threads --concurrency=8 -Q control
+    command: watchmedo auto-restart --directory=/code/overbae --pattern='*.py' --recursive --signal SIGTERM -- python -m overbae.lanes control
     restart: unless-stopped
     environment:
       <<: *env-common
@@ -152,7 +152,8 @@ services:
 
   celery-io-worker:
     <<: *build-common
-    command: watchmedo auto-restart --directory=/code/overbae --pattern='*.py' --recursive --signal SIGTERM -- celery -A overbae worker -l info --pool=threads --concurrency=24 -Q io,io_traces
+    entrypoint: ["/usr/local/bin/worker-entrypoint.sh"]
+    command: watchmedo auto-restart --directory=/code/overbae --pattern='*.py' --recursive --signal SIGTERM -- python -m overbae.lanes io
     restart: unless-stopped
     environment:
       <<: *env-common
@@ -164,7 +165,8 @@ services:
 
   celery-batch-worker:
     <<: *build-common
-    command: watchmedo auto-restart --directory=/code/overbae --pattern='*.py' --recursive --signal SIGTERM -- celery -A overbae worker -l info --pool=prefork --concurrency=6 --prefetch-multiplier=1 --disable-prefetch -Q batch
+    entrypoint: ["/usr/local/bin/worker-entrypoint.sh"]
+    command: watchmedo auto-restart --directory=/code/overbae --pattern='*.py' --recursive --signal SIGTERM -- python -m overbae.lanes batch
     restart: unless-stopped
     environment:
       <<: *env-common
@@ -177,7 +179,7 @@ services:
   celery-landing-worker:
     <<: *build-common
     entrypoint: ["/usr/local/bin/worker-entrypoint.sh"]
-    command: watchmedo auto-restart --directory=/code/overbae --pattern='*.py' --recursive --signal SIGTERM -- celery -A overbae worker -l info --pool=prefork --concurrency=1 --prefetch-multiplier=1 --disable-prefetch --hostname=landing@%h -Q landing
+    command: watchmedo auto-restart --directory=/code/overbae --pattern='*.py' --recursive --signal SIGTERM -- python -m overbae.lanes landing
     restart: unless-stopped
     environment:
       <<: *env-common
@@ -189,7 +191,8 @@ services:
 
   celery-interactive-worker:
     <<: *build-common
-    command: watchmedo auto-restart --directory=/code/overbae --pattern='*.py' --recursive --signal SIGTERM -- celery -A overbae worker -l info --pool=prefork --concurrency=4 --prefetch-multiplier=1 -Q interactive
+    entrypoint: ["/usr/local/bin/worker-entrypoint.sh"]
+    command: watchmedo auto-restart --directory=/code/overbae --pattern='*.py' --recursive --signal SIGTERM -- python -m overbae.lanes interactive
     restart: unless-stopped
     environment:
       <<: *env-common
@@ -201,6 +204,7 @@ services:
 
   celery-beat:
     <<: *build-common
+    entrypoint: ["/usr/local/bin/worker-entrypoint.sh"]
     command: watchmedo auto-restart --directory=/code/overbae --pattern='*.py' --recursive --signal SIGTERM -- celery -A overbae beat -l info --scheduler django_celery_beat.schedulers:DatabaseScheduler
     restart: unless-stopped
     environment:

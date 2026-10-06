@@ -7,6 +7,7 @@ import pytest
 from asgiref.sync import SyncToAsync, async_to_sync
 from django.db import connections
 from fakes.clerk import ClerkAPI
+from fakes.ecs import FakeECS
 from fakes.http import ScriptedAPI
 from fakes.llm import FakeLLM, Network
 from fakes.modal import FakeModal, ServingBackend, SftBackend
@@ -92,6 +93,20 @@ def scripted(fake_llm):
         return api
 
     return install
+
+
+@pytest.fixture
+def ecs(monkeypatch):
+    """Run as a hosted ECS task. Archive keys stay in the environment, as they do in
+    production, so every AWS call must prove it signs with the task role instead."""
+    fake = FakeECS().start()
+    for name, value in fake.env().items():
+        monkeypatch.setenv(name, value)
+    monkeypatch.delenv("AWS_CONTAINER_CREDENTIALS_RELATIVE_URI", raising=False)
+    monkeypatch.setenv("AWS_ACCESS_KEY_ID", "archive-key")
+    monkeypatch.setenv("AWS_SECRET_ACCESS_KEY", "archive-secret")
+    yield fake
+    fake.stop()
 
 
 @pytest.fixture

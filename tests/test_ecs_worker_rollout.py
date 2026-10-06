@@ -1,48 +1,58 @@
-"""A release must update worker commands and prove the new consumer is healthy."""
+"""A release swaps the image and nothing else; cloud-platform owns every other field.
+
+Failure modes this file owns:
+- a release overwrites infrastructure-owned fields (command, environment, health check);
+- a release changes a sidecar image;
+- a migration task starts the web server;
+- a release reports ready before the new revision is running and healthy;
+- a release starts producers while a lane it routes to has no provisioned service;
+- producers deploy before the consumers and the scheduler they depend on.
+"""
 
 import copy
+from pathlib import Path
 
 import pytest
+import yaml
 
-from scripts.deploy_ecs import migration_request, render_task_definition, service_ready
-from scripts.plan_landing_capacity import capacity_plan
+from overbae.lanes import LANES, service
+from scripts.deploy_ecs import (
+    absent_services,
+    lane_services,
+    migration_request,
+    render_task_definition,
+    service_ready,
+)
+
+REPO = "overmind-prod-app"
+WORKFLOW = Path(__file__).resolve().parents[1] / ".github/workflows/deploy-api.yml"
 
 
 @pytest.fixture
 def definition():
     return {
-        "family": "celery-batch-worker",
+        "family": "celery-landing-worker",
         "revision": 6,
-        "taskDefinitionArn": "arn:aws:ecs:eu-west-1:123:task-definition/celery-batch-worker:6",
+        "taskDefinitionArn": "arn:aws:ecs:eu-west-1:123:task-definition/celery-landing-worker:6",
         "status": "ACTIVE",
         "requiresAttributes": [],
         "compatibilities": ["FARGATE"],
+        "registeredAt": "2026-10-06T00:00:00Z",
         "cpu": "4096",
         "memory": "8192",
         "networkMode": "awsvpc",
-        "requiresCompatibilities": ["FARGATE"],
         "taskRoleArn": "arn:aws:iam::123:role/app",
-        "executionRoleArn": "arn:aws:iam::123:role/exec",
-        "volumes": [{"name": "data", "efsVolumeConfiguration": {"fileSystemId": "fs-123"}}],
         "containerDefinitions": [
             {
-                "name": "celery-batch-worker",
-                "image": "123.dkr.ecr.eu-west-1.amazonaws.com/overmind-prod-app:v0.1.0",
-                "command": ["celery", "-A", "overbae", "worker", "-Q", "batch"],
-                "secrets": [
-                    {
-                        "name": "DATABASE_URL",
-                        "valueFrom": "arn:aws:secretsmanager:eu-west-1:123:secret:database",
-                    }
-                ],
+                "name": "celery-landing-worker",
+                "image": f"123.dkr.ecr.eu-west-1.amazonaws.com/{REPO}:sha-old",
+                "entryPoint": ["/usr/local/bin/worker-entrypoint.sh"],
+                "command": ["python", "-m", "overbae.lanes", "landing"],
                 "environment": [{"name": "KEEP", "value": "yes"}],
-                "mountPoints": [{"sourceVolume": "data", "containerPath": "/data"}],
-                "logConfiguration": {
-                    "logDriver": "awslogs",
-                    "options": {"awslogs-group": "/ecs/prod/batch", "awslogs-stream-prefix": "ecs"},
+                "healthCheck": {
+                    "command": ["CMD", "python", "-m", "overbae.worker_health", "landing"]
                 },
                 "essential": True,
-                "stopTimeout": 120,
             },
             {"name": "otel", "image": "otel:stable", "command": ["collector"], "essential": False},
         ],
@@ -50,89 +60,69 @@ def definition():
 
 
 @pytest.fixture
-def service():
+def service_description():
     return {
-        "serviceName": "celery-batch-worker",
-        "desiredCount": 1,
-        "runningCount": 1,
-        "pendingCount": 0,
+        "serviceName": "api",
         "launchType": "FARGATE",
         "platformVersion": "LATEST",
         "networkConfiguration": {
-            "awsvpcConfiguration": {
-                "subnets": ["subnet-a"],
-                "securityGroups": ["sg-a"],
-                "assignPublicIp": "DISABLED",
-            }
-        },
-        "deploymentConfiguration": {
-            "deploymentCircuitBreaker": {"enable": True, "rollback": True},
-            "maximumPercent": 200,
-            "minimumHealthyPercent": 100,
+            "awsvpcConfiguration": {"subnets": ["subnet-a"], "securityGroups": ["sg-a"]}
         },
     }
 
 
-@pytest.mark.parametrize("prefix", ["", "overmind-staging-"])
-def test_bootstrap_isolated_worker_preserves_storage_and_secrets(definition, service, prefix):
-    definition["family"] = prefix + "celery-batch-worker"
+def test_release_changes_only_the_app_image(definition):
     original = copy.deepcopy(definition)
-    plan = capacity_plan(
-        definition,
-        service,
-        image="repo:new",
-        api_family="api",
-        cluster="test-cluster",
-        min_capacity=1,
-        max_capacity=4,
-    )
-    landing = plan["task-definition.json"]
-    container = landing["containerDefinitions"][0]
-    assert landing["family"] == prefix + "celery-landing-worker"
-    assert container["name"] == "celery-landing-worker"
-    assert container["command"][-2:] == ["-Q", "landing"]
-    assert "--pool=prefork" in container["command"]
-    assert "--disable-prefetch" in container["command"]
-    assert container["secrets"] == original["containerDefinitions"][0]["secrets"]
-    assert container["mountPoints"] == original["containerDefinitions"][0]["mountPoints"]
-    assert landing["volumes"] == original["volumes"]
-    assert landing["containerDefinitions"][1] == original["containerDefinitions"][1]
-    assert "revision" not in landing and "taskDefinitionArn" not in landing
-    assert plan["create-service.json"]["networkConfiguration"] == service["networkConfiguration"]
+    image = f"123.dkr.ecr.eu-west-1.amazonaws.com/{REPO}:sha-new"
+    rendered = render_task_definition(definition, image=image, repository=REPO)
+    app, sidecar = rendered["containerDefinitions"]
+    assert app == {**original["containerDefinitions"][0], "image": image}
+    assert sidecar == original["containerDefinitions"][1]
+    assert "revision" not in rendered and "registeredAt" not in rendered
     assert definition == original
 
 
-def test_every_release_overrides_stale_worker_command(definition):
-    definition["family"] = "celery-landing-worker"
-    definition["containerDefinitions"][0]["name"] = "celery-landing-worker"
-    rendered = render_task_definition(
-        definition, service="celery-landing-worker", image="repo:new", cluster="test-cluster"
-    )
-    container = rendered["containerDefinitions"][0]
-    assert container["image"] == "repo:new"
-    assert container["command"][-2:] == ["-Q", "landing"]
-    assert container["entryPoint"] == ["/usr/local/bin/worker-entrypoint.sh"]
-    assert "overbae.worker_health" in " ".join(container["healthCheck"]["command"])
-    assert rendered["containerDefinitions"][1]["image"] == "otel:stable"
+def test_release_refuses_a_definition_without_the_app_image(definition):
+    definition["containerDefinitions"][0]["image"] = "elsewhere:latest"
+    with pytest.raises(ValueError, match=REPO):
+        render_task_definition(definition, image="new", repository=REPO)
 
 
-def test_migration_cannot_start_http_server(definition, service):
+def test_migration_cannot_start_http_server(definition, service_description):
     definition["containerDefinitions"][0]["name"] = "api"
     request = migration_request(
-        definition, service, task_definition="new:7", cluster="test-cluster"
+        definition, service_description, task_definition="api:7", cluster="test-cluster"
     )
     override = request["overrides"]["containerOverrides"][0]
     assert override["command"] == ["python", "manage.py", "migrate", "--noinput"]
-    assert {entry["name"]: entry["value"] for entry in override["environment"]}[
-        "RUN_DB_BOOTSTRAP"
-    ] == "0"
-    assert (
-        request["count"] == 1 and request["networkConfiguration"] == service["networkConfiguration"]
+    assert {"name": "RUN_DB_BOOTSTRAP", "value": "0"} in override["environment"]
+    assert request["networkConfiguration"] == service_description["networkConfiguration"]
+
+
+def test_migration_selects_api_even_when_an_essential_sidecar_is_first(
+    definition, service_description
+):
+    app = definition["containerDefinitions"][0]
+    app["name"] = "api"
+    sidecar = {"name": "essential-sidecar", "image": "sidecar:stable", "essential": True}
+    definition["containerDefinitions"] = [sidecar, app]
+    request = migration_request(
+        definition, service_description, task_definition="api:7", cluster="test-cluster"
     )
+    assert [item["name"] for item in request["overrides"]["containerOverrides"]] == ["api"]
 
 
-def test_running_container_without_health_or_current_revision_is_not_ready():
-    service = {
+def test_migration_refuses_a_task_definition_without_the_api_container(
+    definition, service_description
+):
+    with pytest.raises(ValueError, match="api"):
+        migration_request(
+            definition, service_description, task_definition="wrong:7", cluster="test-cluster"
+        )
+
+
+def test_ready_means_the_new_revision_runs_and_passes_its_own_health_check():
+    service_state = {
         "desiredCount": 1,
         "runningCount": 1,
         "pendingCount": 0,
@@ -141,91 +131,32 @@ def test_running_container_without_health_or_current_revision_is_not_ready():
         ],
     }
     task = {"lastStatus": "RUNNING", "taskDefinitionArn": "new:7", "healthStatus": "HEALTHY"}
-    assert service_ready(service, [task], task_definition="new:7")
-    assert not service_ready(
-        service, [{**task, "healthStatus": "UNKNOWN"}], task_definition="new:7"
-    )
-    assert not service_ready(
-        service, [{**task, "taskDefinitionArn": "old:6"}], task_definition="new:7"
-    )
-    assert not service_ready({**service, "desiredCount": 0}, [], task_definition="new:7")
+    checked = {"task_definition": "new:7", "health_checked": True}
+    assert service_ready(service_state, [task], **checked)
+    assert not service_ready(service_state, [{**task, "healthStatus": "UNKNOWN"}], **checked)
+    assert not service_ready(service_state, [{**task, "taskDefinitionArn": "old:6"}], **checked)
+    assert not service_ready({**service_state, "desiredCount": 0}, [], **checked)
+    unchecked = {"task_definition": "new:7", "health_checked": False}
+    assert service_ready(service_state, [{**task, "healthStatus": "UNKNOWN"}], **unchecked)
 
 
-def test_capacity_plan_has_hard_bounds_and_actionable_missing_metrics_alarm(definition, service):
-    plan = capacity_plan(
-        definition,
-        service,
-        image="repo:new",
-        api_family="api",
-        cluster="test-cluster",
-        min_capacity=1,
-        max_capacity=4,
-    )
-    target = plan["scalable-target.json"]
-    assert (target["MinCapacity"], target["MaxCapacity"]) == (1, 4)
-    policy = plan["backlog-policy.json"]["TargetTrackingScalingPolicyConfiguration"]
-    assert policy["CustomizedMetricSpecification"]["MetricName"] == "BacklogPerWorker"
-    assert policy["DisableScaleIn"] is True
-    alarms = plan["alarms.json"]
-    assert any(a.get("MetricName") == "OldestQueuedAgeSeconds" for a in alarms)
-    assert any(
-        a.get("MetricName") == "MetricHeartbeat" and a["TreatMissingData"] == "breaching"
-        for a in alarms
-    )
-    assert any(a.get("MetricName") == "BlockedImports" for a in alarms)
-    metric_permission = plan["metrics-role-policy.json"]["Statement"][0]
-    assert metric_permission["Action"] == ["cloudwatch:PutMetricData"]
-    assert (
-        metric_permission["Condition"]["StringEquals"]["cloudwatch:namespace"] == "Overmind/Queues"
-    )
+def test_every_lane_is_deployed_and_must_be_provisioned_first():
+    assert lane_services() == [service(lane) for lane in LANES]
+    found = [{"serviceName": name} for name in ["api", "celery-beat", *lane_services()[1:]]]
+    assert absent_services(found) == [lane_services()[0]]
 
 
-def test_invalid_or_zero_warm_capacity_is_rejected(definition, service):
-    for minimum, maximum in [(0, 4), (4, 3), (1, 0)]:
-        with pytest.raises(ValueError):
-            capacity_plan(
-                definition,
-                service,
-                image="repo:new",
-                api_family="api",
-                cluster="test-cluster",
-                min_capacity=minimum,
-                max_capacity=maximum,
-            )
+def test_consumers_deploy_before_scheduler_and_scheduler_before_api():
+    jobs = yaml.safe_load(WORKFLOW.read_text())["jobs"]
 
+    def before(name):
+        needs = jobs[name].get("needs", [])
+        needs = [needs] if isinstance(needs, str) else needs
+        return set(needs).union(*(before(n) for n in needs))
 
-@pytest.mark.parametrize("api_family", ["api", "overmind-staging-api"])
-def test_deploy_iam_grant_is_limited_to_migrations_and_task_inspection(
-    definition, service, api_family
-):
-    plan = capacity_plan(
-        definition,
-        service,
-        image="repo:new",
-        api_family=api_family,
-        cluster="test-cluster",
-        min_capacity=1,
-        max_capacity=4,
-    )
-    statements = plan["deploy-role-policy.json"]["Statement"]
-    migrate = next(row for row in statements if row["Action"] == ["ecs:RunTask"])
-    assert migrate["Resource"].endswith(f":task-definition/{api_family}:*")
-    assert migrate["Condition"]["ArnEquals"]["ecs:cluster"].endswith(":cluster/test-cluster")
-    assert not any("iam:PassRole" in row["Action"] for row in statements)
-
-
-def test_migration_selects_api_even_when_an_essential_sidecar_is_first(definition, service):
-    app = definition["containerDefinitions"][0]
-    app["name"] = "api"
-    sidecar = {"name": "essential-sidecar", "image": "sidecar:stable", "essential": True}
-    definition["containerDefinitions"] = [sidecar, app]
-    request = migration_request(
-        definition, service, task_definition="api:7", cluster="test-cluster"
-    )
-    assert [item["name"] for item in request["overrides"]["containerOverrides"]] == ["api"]
-    assert definition["containerDefinitions"][0] == sidecar
-
-
-def test_migration_refuses_a_task_definition_without_the_api_container(definition, service):
-    with pytest.raises(ValueError, match="api"):
-        migration_request(definition, service, task_definition="wrong:7", cluster="test-cluster")
+    assert "preflight" in before("migrate")
+    assert "migrate" in before("deploy-workers")
+    assert "deploy-workers" in before("deploy-beat")
+    assert "deploy-beat" in before("deploy-api")
+    matrix = jobs["deploy-workers"]["strategy"]["matrix"]["service"]
+    assert matrix == "${{ fromJSON(needs.preflight.outputs.lanes) }}"

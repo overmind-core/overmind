@@ -1,74 +1,84 @@
-"""Capacity demand comes from durable waiting receipts, not a bounded broker queue."""
+"""Lane demand comes from durable receipts, not the broker: admission keeps waiting work in
+Postgres, where a broker-depth metric cannot see it."""
 
-from __future__ import annotations
+from datetime import timedelta
 
 from django.db.models import Count, Min, Q
 from django.utils import timezone
 
+from overbae.lanes import LANES
 from overbae.models import Dataset, DatasetImport
 from overbae.models.eval_generation import EvalGenerationWork
 
 NAMESPACE = "Overmind/Queues"
-WORKER_SERVICES = {
-    "landing": "celery-landing-worker",
-    "batch": "celery-batch-worker",
-    "interactive": "celery-interactive-worker",
-}
+# Blocked work stays blocked until someone retries it, so an alarm on the standing
+# count never clears. Alarms watch what blocked within this window.
+BLOCKED_WINDOW = timedelta(minutes=5)
 
 
-def read_workloads():
-    imports = DatasetImport.objects.filter(state__in=["queued", "running", "blocked"]).aggregate(
-        waiting=Count("pk", filter=Q(state="queued")),
+def read_workloads(now=None):
+    now = now or timezone.now()
+    recent = now - BLOCKED_WINDOW
+    landing = DatasetImport.objects.filter(state__in=["queued", "running", "blocked"]).aggregate(
+        queued=Count("pk", filter=Q(state="queued")),
         running=Count("pk", filter=Q(state="running")),
-        blocked=Count("pk", filter=Q(state="blocked")),
+        newly_blocked=Count("pk", filter=Q(state="blocked", updated_at__gte=recent)),
         oldest=Min("queued_at", filter=Q(state="queued")),
     )
-    evaluation = EvalGenerationWork.objects.filter(sample__run__status="running").aggregate(
-        waiting=Count("pk", filter=Q(state__in=["waiting", "queued"])),
+    # Waiting samples are held by admission, not by worker capacity; only admitted
+    # work asks for slots.
+    batch = EvalGenerationWork.objects.filter(
+        Q(state__in=["waiting", "queued", "running"], sample__run__status="running")
+        | Q(state="unknown", finished_at__gte=recent)
+    ).aggregate(
+        waiting=Count("pk", filter=Q(state="waiting")),
+        queued=Count("pk", filter=Q(state="queued")),
         running=Count("pk", filter=Q(state="running")),
-        blocked=Count("pk", filter=Q(state="unknown")),
-        oldest_waiting=Min("sample__created_at", filter=Q(state="waiting")),
-        oldest_queued=Min("queued_at", filter=Q(state="queued")),
+        newly_blocked=Count("pk", filter=Q(state="unknown")),
+        oldest=Min("queued_at", filter=Q(state="queued")),
     )
-    ages = [evaluation.pop(key) for key in ("oldest_waiting", "oldest_queued")]
-    evaluation["oldest"] = min((stamp for stamp in ages if stamp is not None), default=None)
-    workshop = Dataset.objects.filter(state__in=["diagnosing", "running"]).aggregate(
-        waiting=Count("pk", filter=Q(workshop_started_at__isnull=True)),
+    interactive = Dataset.objects.filter(state__in=["diagnosing", "running"]).aggregate(
+        queued=Count(
+            "pk",
+            filter=Q(workshop_started_at__isnull=True, workshop_queued_at__isnull=False),
+        ),
         running=Count("pk", filter=Q(workshop_started_at__isnull=False)),
-        blocked=Count("pk", filter=Q(workshop_queued_at__isnull=True)),
         oldest=Min("workshop_queued_at", filter=Q(workshop_started_at__isnull=True)),
     )
-    return {"landing": imports, "batch": evaluation, "interactive": workshop}
+    return {"landing": landing, "batch": batch, "interactive": interactive}
 
 
 def metric_data(workloads, running_workers, *, cluster, now=None):
     now = now or timezone.now()
-    points = []
-    for queue, workload in workloads.items():
-        workers = max(0, running_workers.get(queue, 0))
-        age = max(0, (now - workload["oldest"]).total_seconds()) if workload["oldest"] else 0
+    cluster_dimensions = [{"Name": "ClusterName", "Value": cluster}]
+    points = [_point("MetricHeartbeat", 1, cluster_dimensions, now)]
+    for lane, workload in workloads.items():
+        workers = max(0, running_workers.get(lane, 0))
+        oldest = workload["oldest"]
         values = {
-            "WaitingWork": workload["waiting"],
+            "QueuedWork": workload["queued"],
             "RunningWork": workload["running"],
             "RunningWorkers": workers,
-            "MissingWorkers": int(workers == 0),
-            "BacklogPerWorker": (workload["waiting"] + workload["running"]) / max(workers, 1),
-            "OldestQueuedAgeSeconds": age,
-            "MetricHeartbeat": 1,
-            "BlockedImports" if queue == "landing" else "UnknownWork": workload["blocked"],
+            # Dimensionless, so scaling targets 1.0 whatever a lane's process count.
+            "SlotDemand": (workload["queued"] + workload["running"])
+            / (max(workers, 1) * LANES[lane].concurrency),
+            "OldestQueuedAgeSeconds": max(0.0, (now - oldest).total_seconds()) if oldest else 0,
         }
-        dimensions = [
-            {"Name": "ClusterName", "Value": cluster},
-            {"Name": "Queue", "Value": queue},
-        ]
-        for name, value in values.items():
-            points.append(
-                {
-                    "MetricName": name,
-                    "Dimensions": dimensions,
-                    "Timestamp": now,
-                    "Value": value,
-                    "Unit": "Seconds" if name.endswith("Seconds") else "Count",
-                }
-            )
+        if "waiting" in workload:
+            values["WaitingWork"] = workload["waiting"]
+        if "newly_blocked" in workload:
+            values["NewlyBlockedWork"] = workload["newly_blocked"]
+        dimensions = [*cluster_dimensions, {"Name": "Queue", "Value": lane}]
+        points += [_point(name, value, dimensions, now) for name, value in values.items()]
     return points
+
+
+def _point(name, value, dimensions, now):
+    unit = "Seconds" if name.endswith("Seconds") else "None" if name == "SlotDemand" else "Count"
+    return {
+        "MetricName": name,
+        "Dimensions": dimensions,
+        "Timestamp": now,
+        "Value": value,
+        "Unit": unit,
+    }

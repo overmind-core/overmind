@@ -1,31 +1,26 @@
-"""Fail a landing container health check unless its own Celery consumer is ready."""
-
-from __future__ import annotations
+"""Container health check: this task's own lane consumer is ready, or draining on purpose."""
 
 import socket
 import sys
 
-import django
-
 from overbae.celery import app
+from overbae.lanes import LANES
+from overbae.worker_lifecycle import healthy
 
 
-def healthy(queue="landing"):
-    django.setup()
-
-    destination = f"{queue}@{socket.gethostname()}"
-    inspector = app.control.inspect(destination=[destination], timeout=5)
-    queues = (inspector.active_queues() or {}).get(destination, [])
-    if {entry["name"] for entry in queues} != {queue}:
-        return False
-    registered = (inspector.registered() or {}).get(destination, [])
-    return "overbae.tasks.datasets.land" in registered
+def check(lane: str) -> bool:
+    destination = f"{lane}@{socket.gethostname()}"
+    replies = app.control.broadcast("lane_health", destination=[destination], reply=True, timeout=5)
+    reply = next((r[destination] for r in replies or [] if destination in r), None)
+    return healthy(lane, reply)
 
 
 if __name__ == "__main__":
+    if len(sys.argv) != 2 or sys.argv[1] not in LANES:
+        sys.exit(f"usage: python -m overbae.worker_health {{{','.join(LANES)}}}")
     try:
-        ok = healthy(sys.argv[1] if len(sys.argv) > 1 else "landing")
-    except Exception as exc:
-        print(f"Landing consumer is not ready: {type(exc).__name__}", file=sys.stderr)
+        ok = check(sys.argv[1])
+    except Exception as exc:  # noqa: BLE001 — any probe failure is an unhealthy consumer
+        print(f"{sys.argv[1]} consumer is not ready: {type(exc).__name__}", file=sys.stderr)
         ok = False
     raise SystemExit(0 if ok else 1)

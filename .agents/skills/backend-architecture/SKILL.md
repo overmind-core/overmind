@@ -18,9 +18,9 @@ Single Django app `overbae`, project-scoped tenancy.
 
 ## Celery topology
 
-Five workers, six queues. Workers are resource profiles; queues are fairness classes.
+Five lanes, six queues, registered once in `overbae/lanes.py`. Lanes are resource profiles; queues are fairness classes.
 
-| Worker        | Pool    | Conc | Queues           | Holds                                                    |
+| Lane          | Pool    | Conc | Queues           | Holds                                                    |
 | ------------- | ------- | ---- | ---------------- | -------------------------------------------------------- |
 | `control`     | threads | 8    | `control`        | orchestration, chord callbacks, FSM advances, beat       |
 | `io`          | threads | 24   | `io`,`io_traces` | judges, live trace scoring, connector polling, rebinding |
@@ -28,9 +28,9 @@ Five workers, six queues. Workers are resource profiles; queues are fairness cla
 | `landing`     | prefork | 1    | `landing`        | source import and split publication                      |
 | `interactive` | prefork | 4    | `interactive`    | workshop cell runs and agent turns                       |
 
-Three constraints set the worker split. Only prefork enforces `time_limit` and `revoke(terminate=True)`, so every time-limited task routes to `batch`, `landing` or `interactive`. A loaded prefork child costs hundreds of MB, so wide fan-out cannot be prefork. Orchestration holds its own lane because a chord callback stuck behind work never finalises its run.
+Three constraints set the lane split. Only prefork enforces `time_limit` and `revoke(terminate=True)`, so every time-limited task routes to `batch`, `landing` or `interactive`. A loaded prefork child costs hundreds of MB, so wide fan-out cannot be prefork. Orchestration holds its own lane because a chord callback stuck behind work never finalises its run.
 
-`io_traces` is a second queue on the io worker, not a second worker: one worker over both round-robins (kombu's redis default), so an unbounded trace-scoring burst cannot queue ahead of user-started eval scoring.
+`io_traces` is a second queue on the io lane, not a second lane: one worker over both round-robins (kombu's redis default), so an unbounded trace-scoring burst cannot queue ahead of user-started eval scoring.
 
 `interactive` sets `--prefetch-multiplier=1`. `batch` and `landing` also disable Redis prefetch so busy processes do not reserve waiting work. Landing workers consume only `landing`; raising bulk concurrency cannot protect import latency when every bulk slot is occupied.
 
@@ -38,9 +38,17 @@ Evaluation preparation uses `EvalGenerationWork` receipts and a global scheduler
 
 Chat HTTP clients enforce one cancellable elapsed deadline across request bodies, SSE heartbeats and retry waits. They close their connections on expiration; a socket read timeout alone is not a total time bound.
 
-Hosted commands come from `docker/worker-topology.json`. Deployment runs migrations, verifies a healthy landing-only consumer on the new image, then updates workers, beat and API. `scripts/plan_landing_capacity.py` generates the reviewed ECS, IAM, bounded scale-out and CloudWatch queue-age/blocked-import/monitor-health plan. Scale-in requires an explicit idle drain; automatic scale-in is disabled.
+### Hosting and release
 
-Routing lives in `CELERY_TASK_ROUTES` and must stay in sync with `make worker` (one process standing in for the whole fleet, so its `-Q` lists every queue) , docker-compose and the deployment command manifest. `tests/test_celery_topology.py` enforces it, and asserts no time-limited task lands on a threads lane. Workers hot-restart via watchmedo on `.py` changes.
+Each lane is one ECS service, `celery-<lane>-worker`, running `python -m overbae.lanes <lane>`. The image owns the Celery command; the `cloud-platform` repo owns the service, task role, resources, health check, scaling and alarms. A release only swaps the image (`scripts/deploy_ecs.py`): preflight refuses it unless every lane's service exists, then migrate in a one-off API task, all lanes in parallel, beat, API.
+
+Adding a lane: register it in `overbae/lanes.py` with its route, then add it to `celery_lanes` in `cloud-platform` and apply before the release. Until the service exists, preflight stops the release and nothing deploys.
+
+`overbae/worker_lifecycle.py` keeps work alive through scale-in and deployments. ECS gives a stopping task 120 seconds, less than an import, a turn or a generation. A worker holds ECS task protection while it has reserved work and releases it when idle, so scale-in only removes idle tasks. When a newer revision is primary it cancels its own consumer, finishes what it holds, then releases protection; a rollback resumes consumption. The container health check (`python -m overbae.worker_health <lane>`) asks the worker's own `lane_health` control command: it passes when the consumer drains exactly its lane queues with every routed task registered, or while draining. All of it is inert outside ECS.
+
+The control lane publishes `Overmind/Queues` every minute from durable receipts (`services/queue_capacity.py`): `SlotDemand` (admitted queued plus running work per process slot, the scaling target, 1.0 for every lane), `OldestQueuedAgeSeconds` for admitted work, `WaitingWork` for samples held by admission, `NewlyBlockedWork` for imports blocked and generations with unknown outcomes in the last five minutes, and a cluster `MetricHeartbeat`. Raising batch capacity beyond `EVAL_MAX_IN_FLIGHT` adds no throughput; admitted demand caps its scaling.
+
+Routing lives in `CELERY_TASK_ROUTES`; every routed queue belongs to exactly one lane. `make worker` is one solo process standing in for the fleet, so its `-Q` lists every queue. `tests/test_celery_topology.py` enforces all of it, and asserts no time-limited task lands on a threads lane. Compose workers hot-restart via watchmedo on `.py` changes.
 
 ## Tracing
 

@@ -403,17 +403,9 @@ CELERY_RESULT_SERIALIZER = "json"
 CELERY_ACCEPT_CONTENT = ["json"]
 CELERY_TIMEZONE = "UTC"
 
-# Workers are resource profiles, queues are fairness classes. Only prefork
-# enforces time_limit and revoke(terminate=True), so every time-limited task
-# routes to a prefork lane; test_celery_topology asserts it. io_traces is a
-# second queue on the io worker, not a second worker: round-robin keeps an
-# unbounded trace burst from queueing ahead of user-started eval scoring. Landing
-# has its own process pool: fair scheduling cannot preempt six occupied bulk slots.
+# Every queue below belongs to exactly one lane in overbae/lanes.py;
+# test_celery_topology asserts it.
 CELERY_TASK_DEFAULT_QUEUE = "control"
-
-# Enabled explicitly on the hosted control worker; local development is offline.
-QUEUE_METRICS_ENABLED = os.environ.get("QUEUE_METRICS_ENABLED", "0") == "1"
-QUEUE_METRICS_CLUSTER = os.environ.get("QUEUE_METRICS_CLUSTER", "")
 
 # Admission is a provider-spend/concurrency budget, independent of sample count.
 EVAL_MAX_IN_FLIGHT = int(os.environ.get("EVAL_MAX_IN_FLIGHT", "12"))
