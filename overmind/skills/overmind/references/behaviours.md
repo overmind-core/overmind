@@ -1,10 +1,11 @@
 # Behaviours and task executions
 
 Overmind's terminology is **Capability > behaviour > task execution**. A
-behaviour is a scanned contract; a task execution is a carved run or turn that
-can be bound and scored. The curated MCP surface exposes executions and
-instrumentation tickets, not a behaviour list tool. Read behaviours from
-`query_task_executions`; there is no `overmind://behaviours/...` resource.
+behaviour is a contract derived from `task()` declarations and the call graph
+at sync; a task execution is a carved run or turn that can be bound and scored.
+The curated MCP surface exposes executions and instrumentation tickets, not a
+behaviour list tool. Read behaviours from `query_task_executions`; there is no
+`overmind://behaviours/...` resource.
 
 ## Inspect executions
 
@@ -15,7 +16,7 @@ route flags, terminal kind, and a resource link.
 
 Use `binding_source` to distinguish:
 
-- `anchor_join` — joined to the scanned contract by its code anchor.
+- `anchor_join` — joined to the declared contract by its code anchor.
 - `declared` — explicitly stamped by the SDK.
 - `unbound` — no contract joined; this is an instrumentation gap, not a
   scoring request.
@@ -36,7 +37,8 @@ The server cannot edit the target files. Apply tickets locally, run the
 application, then pass the run's `trace_id` to `verify_instrumentation`. That
 check is read-only and does not ingest spans or write scores. If the result has `human_action` or no
 placements, report its instruction and stop this attempt. When the registry is
-unavailable, run local `/overmind setup` followed by `overmind sync`, then
+unavailable, run local `/overmind setup` (decorate entry points, then
+`overmind sync` for the AST scan), then
 request the plan again in a new attempt.
 
 Do not guess behaviour keys, anchors, grains, or decorator targets.

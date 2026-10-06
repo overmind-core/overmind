@@ -2,8 +2,7 @@
 
 Commands:
     init                      Install skills, slash commands, MCP; seed overmind.toml.
-    sync                      Two-way sync of overmind.toml with the server.
-    chassis                   Print the deterministic AST digest the local scan uses as ground truth.
+    sync                      Scan decorator declarations and sync the agent graph.
     dataset upload FILE       Upload a local dataset and start a build.
     dataset export DATASET    Download a committed dataset locally.
     connector add TYPE        Add a tracing connector from env or a TTY prompt.
@@ -25,7 +24,6 @@ try:
     from rich.console import Console
 
     from overmind.analytics import cli_command_from_argv, track_cli_invocation
-    from overmind.chassis import chassis as chassis_cmd
     from overmind.connector_cmd import connector_app
     from overmind.dataset_cmd import dataset_app
     from overmind.init_cmd import init as init_cmd
@@ -63,8 +61,6 @@ def common(
     ctx: typer.Context,
     version: bool = typer.Option(None, "--version", callback=version_callback),
 ):
-    # Same pattern as the HQ usage path: one event when the CLI process closes,
-    # carrying the exact subcommand path, exit code, and duration.
     started = time.perf_counter()
 
     track_cli_invocation(
@@ -93,7 +89,6 @@ app.add_typer(connector_app, name="connector")
 app.add_typer(model_app, name="model")
 app.command("init")(init_cmd)
 app.command("sync")(sync_cmd)
-app.command("chassis")(chassis_cmd)
 app.command("backtest")(backtest_cmd)
 app.command("finetune")(finetune_cmd)
 

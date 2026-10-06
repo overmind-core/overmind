@@ -16,6 +16,8 @@ from __future__ import annotations
 
 import json
 import os
+from collections.abc import Iterator
+from contextlib import contextmanager
 from pathlib import Path
 from typing import Annotated
 
@@ -25,9 +27,9 @@ from rich.panel import Panel
 from rich.table import Table
 
 import overmind.config as config_mod
-from overmind.optimizer import OptimiseLoop, attach_optimise, start_optimise
+from overmind.api import resolve_api_key, resolve_api_url
+from overmind.optimizer import OptimiseLoop, OptimiseState, attach_optimise, start_optimise
 from overmind.optimizer_api import OptimizerAPI
-from overmind.sync import resolve_api_key
 
 OPTIMISE_HELP = "Generate candidates locally; the server scores them."
 
@@ -40,6 +42,7 @@ optimise_app = typer.Typer(
 console = Console()
 
 _STATE_FILE = Path(".overmind") / "optimise_state.json"
+_STATE = OptimiseState(_STATE_FILE)
 _DATASET_CACHE = Path(".overmind") / "datasets"
 
 
@@ -56,39 +59,24 @@ def _make_api(cfg: config_mod.Config) -> OptimizerAPI:
     if not api_key:
         console.print("[red]No API key. Run `overmind sync` or set OVERMIND_API_KEY.[/]")
         raise typer.Exit(1)
-    base_url = os.getenv("OVERMIND_API_URL") or cfg.base_url
-    return OptimizerAPI(base_url, api_key)
-
-
-def _load_state() -> dict:
-    if _STATE_FILE.exists():
-        try:
-            return json.loads(_STATE_FILE.read_text())
-        except (json.JSONDecodeError, OSError):
-            return {}
-    return {}
-
-
-def _save_state(state: dict) -> None:
-    _STATE_FILE.parent.mkdir(parents=True, exist_ok=True)
-    _STATE_FILE.write_text(json.dumps(state, indent=2))
+    return OptimizerAPI(resolve_api_url("", cfg), api_key)
 
 
 def _resolve_experiment_id(explicit: str | None) -> str:
     if explicit:
         return explicit
-    state = _load_state()
-    eid = state.get("experiment_id")
+    eid = _STATE.read().get("experiment_id")
     if not eid:
         console.print("[red]No active experiment. Run `overmind optimise start` first, or pass --experiment <id>.[/]")
         raise typer.Exit(1)
     return eid
 
 
-def _make_loop(experiment_id: str, cfg: config_mod.Config) -> OptimiseLoop:
+def _make_loop(experiment: str | None) -> OptimiseLoop:
+    cfg = _load_config()
+    experiment_id = _resolve_experiment_id(experiment)
     api = _make_api(cfg)
-    state = _load_state()
-    dataset_path_raw = state.get("dataset_path")
+    dataset_path_raw = _STATE.read().get("dataset_path")
     if not dataset_path_raw:
         console.print("[red]No dataset path in local state. Re-run `overmind optimise start`.[/]")
         raise typer.Exit(1)
@@ -99,6 +87,18 @@ def _make_loop(experiment_id: str, cfg: config_mod.Config) -> OptimiseLoop:
         dataset_path=Path(dataset_path_raw),
         state_path=_STATE_FILE,
     )
+
+
+@contextmanager
+def _failing_as(prefix: str) -> Iterator[None]:
+    """Report any failure as ``<prefix>: <error>`` and exit 1."""
+    try:
+        yield
+    except typer.Exit:
+        raise
+    except Exception as exc:
+        console.print(f"[red]{prefix}: {exc}[/]")
+        raise typer.Exit(1) from exc
 
 
 def _print_experiment(exp: dict) -> None:
@@ -214,13 +214,15 @@ def start(
     candidates: Annotated[int, typer.Option("--candidates", help="Candidates per iteration")] = 3,
 ) -> None:
     """Create an optimize experiment (or attach to one) and cache the dataset locally."""
-    cfg = _load_config()
-    api = _make_api(cfg)
-    before = experiment or _load_state().get("experiment_id", "")
+    if not experiment and not (capability and dataset):
+        console.print("[red]Pass --capability and --dataset, or --experiment to attach.[/]")
+        raise typer.Exit(1)
+    api = _make_api(_load_config())
+    before = experiment or _STATE.read().get("experiment_id", "")
 
     try:
         if experiment:
-            exp, dataset_path, _loop = attach_optimise(
+            exp, _, _ = attach_optimise(
                 api,
                 experiment,
                 cache_dir=_DATASET_CACHE,
@@ -228,14 +230,9 @@ def start(
                 repo_cwd=os.getcwd(),
             )
         else:
-            if not capability or not dataset:
-                console.print("[red]Pass --capability and --dataset, or --experiment to attach.[/]")
-                raise typer.Exit(1)
-            cap = cfg.capabilities.get(capability)
-            cap_id = (cap.id if cap else "") or capability
-            exp, dataset_path, _loop = start_optimise(
+            exp, _, _ = start_optimise(
                 api,
-                capability_id=cap_id,
+                capability_id=capability.strip(),
                 dataset_id=dataset,
                 eval_set_id=eval_set,
                 cache_dir=_DATASET_CACHE,
@@ -248,14 +245,10 @@ def start(
             )
     except Exception as exc:
         console.print(f"[red]Failed to start: {exc}[/]")
-        created = _load_state().get("experiment_id", "")
+        created = _STATE.read().get("experiment_id", "")
         if created and created != before:
             console.print(f"Experiment {created} was created. Resume with --experiment {created}.")
         raise typer.Exit(1) from exc
-
-    state = _load_state()
-    state["dataset_path"] = str(dataset_path)
-    _save_state(state)
 
     _print_experiment(exp)
     console.print(f"\n[green]Experiment ready:[/] {exp['id']}")
@@ -270,13 +263,9 @@ def next_action(
     ] = None,
 ) -> None:
     """Print the next action for the skill / agent to take."""
-    cfg = _load_config()
-    loop = _make_loop(_resolve_experiment_id(experiment), cfg)
-    try:
+    loop = _make_loop(experiment)
+    with _failing_as("Error"):
         action = loop.next_action()
-    except Exception as exc:
-        console.print(f"[red]Error: {exc}[/]")
-        raise typer.Exit(1) from exc
     _print_action(action)
 
 
@@ -292,13 +281,9 @@ def set_template(
     if not file.exists():
         console.print(f"[red]File not found: {file}[/]")
         raise typer.Exit(1)
-    cfg = _load_config()
-    loop = _make_loop(_resolve_experiment_id(experiment), cfg)
-    try:
+    loop = _make_loop(experiment)
+    with _failing_as("Failed to set template"):
         exp = loop.set_template(file.read_text())
-    except Exception as exc:
-        console.print(f"[red]Failed to set template: {exc}[/]")
-        raise typer.Exit(1) from exc
     console.print("[green]Template saved.[/]")
     _print_experiment(exp)
 
@@ -311,13 +296,9 @@ def run_smoke(
     ] = None,
 ) -> None:
     """Run the first datapoint once to verify the template."""
-    cfg = _load_config()
-    loop = _make_loop(_resolve_experiment_id(experiment), cfg)
-    try:
+    loop = _make_loop(experiment)
+    with _failing_as("Smoke failed"):
         result = loop.run_smoke()
-    except Exception as exc:
-        console.print(f"[red]Smoke failed: {exc}[/]")
-        raise typer.Exit(1) from exc
     if result.get("success"):
         console.print("[green]Smoke passed.[/]")
     else:
@@ -335,13 +316,9 @@ def run_baseline(
     ] = None,
 ) -> None:
     """Run the full dataset against the current tree, post outputs, wait for scores."""
-    cfg = _load_config()
-    loop = _make_loop(_resolve_experiment_id(experiment), cfg)
-    try:
+    loop = _make_loop(experiment)
+    with _failing_as("Baseline failed"):
         exp = loop.run_baseline()
-    except Exception as exc:
-        console.print(f"[red]Baseline failed: {exc}[/]")
-        raise typer.Exit(1) from exc
     console.print("[green]Baseline scored.[/]")
     _print_experiment(exp)
 
@@ -358,13 +335,9 @@ def add_candidate(
     if not diff.exists():
         console.print(f"[red]File not found: {diff}[/]")
         raise typer.Exit(1)
-    cfg = _load_config()
-    loop = _make_loop(_resolve_experiment_id(experiment), cfg)
-    try:
+    loop = _make_loop(experiment)
+    with _failing_as("Failed to add candidate"):
         result = loop.add_candidate_diff(diff.read_text())
-    except Exception as exc:
-        console.print(f"[red]Failed to add candidate: {exc}[/]")
-        raise typer.Exit(1) from exc
     console.print(f"[green]Queued.[/] pending={result['pending']}")
 
 
@@ -376,13 +349,9 @@ def run_iteration(
     ] = None,
 ) -> None:
     """Apply queued diffs, run datapoints, post outputs, wait for scores."""
-    cfg = _load_config()
-    loop = _make_loop(_resolve_experiment_id(experiment), cfg)
-    try:
+    loop = _make_loop(experiment)
+    with _failing_as("Iteration failed"):
         exp = loop.run_iteration()
-    except Exception as exc:
-        console.print(f"[red]Iteration failed: {exc}[/]")
-        raise typer.Exit(1) from exc
     console.print("[green]Iteration scored.[/]")
     _print_experiment(exp)
     _print_scores(exp)
@@ -397,8 +366,7 @@ def status(
     as_json: Annotated[bool, typer.Option("--json")] = False,
 ) -> None:
     """Show experiment status and scores."""
-    cfg = _load_config()
-    loop = _make_loop(_resolve_experiment_id(experiment), cfg)
+    loop = _make_loop(experiment)
     exp = loop.status()
     if as_json:
         console.print_json(data=exp)
@@ -415,13 +383,9 @@ def complete(
     ] = None,
 ) -> None:
     """Seal the experiment and record the winner on the server."""
-    cfg = _load_config()
-    loop = _make_loop(_resolve_experiment_id(experiment), cfg)
-    try:
+    loop = _make_loop(experiment)
+    with _failing_as("Complete failed"):
         exp = loop.complete()
-    except Exception as exc:
-        console.print(f"[red]Complete failed: {exc}[/]")
-        raise typer.Exit(1) from exc
     console.print("[green]Experiment completed.[/]")
     _print_experiment(exp)
     _print_scores(exp)

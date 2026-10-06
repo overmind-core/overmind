@@ -11,28 +11,71 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
+from dataclasses import dataclass, replace
 from typing import Any
 
 from opentelemetry import trace
 
-from overmind import attrs
-from overmind.tracing import _coerce_to_otel_attribute, _json_dumps, _normalize_for_json
+from overmind import attrs, payloads
 
 logger = logging.getLogger(__name__)
 
-_EXPECT_KINDS = frozenset({"contains", "regex", "schema", "constraint", "checkpoints"})
-_EXPECT_SCOPES = frozenset({"span", "trace", "conversation"})
+EXPECT_KINDS = frozenset({"contains", "regex", "schema", "constraint", "checkpoints"})
+EXPECT_SCOPES = frozenset({"span", "trace", "conversation"})
+# The server keeps the first 64 expectations per unit and drops the rest.
+MAX_EXPECTATIONS = 64
 
 
-def _emit(event_name: str, payload: dict[str, Any]) -> None:
-    span = trace.get_current_span()
+def _emit(event_name: str, payload: dict[str, Any], span: trace.Span | None = None) -> None:
+    span = span if span is not None else trace.get_current_span()
     if not span.is_recording():
         logger.debug("%s ignored: no recording span", event_name)
         return
     span.add_event(
         event_name,
-        {attrs.EVAL_SCHEMA_VERSION: 1, attrs.EVAL_PAYLOAD: _json_dumps(payload)},
+        {attrs.EVAL_SCHEMA_VERSION: 1, attrs.EVAL_PAYLOAD: payloads.serialize(payload)},
     )
+
+
+@dataclass(frozen=True)
+class Expectation:
+    """One declared expectation, checked server-side when the trace is scored.
+
+    ``kind`` is ``contains`` / ``regex`` / ``schema`` / ``constraint`` /
+    ``checkpoints``; ``spec`` is what to check (a string, or an object such as
+    a JSON schema or the ordered checkpoint names). ``scope`` is ``span`` /
+    ``trace`` / ``conversation``; ``None`` lets the declaring site choose.
+    ``gate=True`` makes a miss cap the score. ``id`` defaults to a hash of
+    kind and spec, stable across runs so the platform can aggregate."""
+
+    kind: str
+    spec: Any
+    id: str | None = None
+    scope: str | None = None
+    gate: bool = False
+
+    def __post_init__(self) -> None:
+        if self.kind not in EXPECT_KINDS:
+            raise ValueError(f"expectation kind must be one of {sorted(EXPECT_KINDS)}, got {self.kind!r}")
+        if self.scope is not None and self.scope not in EXPECT_SCOPES:
+            raise ValueError(f"expectation scope must be one of {sorted(EXPECT_SCOPES)}, got {self.scope!r}")
+        spec = payloads.normalize(self.spec)
+        object.__setattr__(self, "spec", spec)
+        if self.id is None:
+            canonical = json.dumps(spec, sort_keys=True, ensure_ascii=False)
+            object.__setattr__(self, "id", hashlib.sha256(f"{self.kind}:{canonical}".encode()).hexdigest()[:12])
+
+    def scoped(self, default: str) -> Expectation:
+        return self if self.scope is not None else replace(self, scope=default)
+
+    def emit(self, span: trace.Span | None = None) -> None:
+        """Add the expectation event to *span* (default: the current span)."""
+        scope = self.scope or "trace"
+        _emit(
+            attrs.EVAL_EXPECTATION_EVENT,
+            {"id": self.id, "kind": self.kind, "spec": self.spec, "scope": scope, "gate": bool(self.gate)},
+            span,
+        )
 
 
 def expect(
@@ -43,39 +86,13 @@ def expect(
     scope: str = "trace",
     gate: bool = False,
 ) -> None:
-    """Declare a runtime expectation for server-side evaluation of this run.
-
-    Args:
-        kind: One of ``contains`` / ``regex`` / ``schema`` / ``constraint`` /
-            ``checkpoints``.
-        spec: What to check — a string (substring, regex, natural-language
-            constraint) or an object (e.g. a JSON schema, or for
-            ``checkpoints`` the ordered list of checkpoint names).
-        id: Stable identifier; derived as a short hash of kind+spec when omitted.
-        scope: What the expectation applies to: ``span`` / ``trace`` / ``conversation``.
-        gate: When true, failing this expectation caps the score (hard fail).
-    """
-    if kind not in _EXPECT_KINDS:
-        raise ValueError(f"expect() kind must be one of {sorted(_EXPECT_KINDS)}, got {kind!r}")
-    if scope not in _EXPECT_SCOPES:
-        raise ValueError(f"expect() scope must be one of {sorted(_EXPECT_SCOPES)}, got {scope!r}")
-    spec = _normalize_for_json(spec)
-    if id is None:
-        # Stable across runs so the platform can dedupe/aggregate per expectation.
-        canonical = json.dumps(spec, sort_keys=True, ensure_ascii=False)
-        id = hashlib.sha256(f"{kind}:{canonical}".encode()).hexdigest()[:12]
-    _emit(
-        attrs.EVAL_EXPECTATION_EVENT,
-        {"id": id, "kind": kind, "spec": spec, "scope": scope, "gate": bool(gate)},
-    )
+    """Declare a runtime expectation on the current span; see :class:`Expectation`."""
+    Expectation(kind, spec, id=id, scope=scope, gate=gate).emit()
 
 
 def eval_context(**facts: Any) -> None:
     """Attach runtime facts for the judge; values coerced like :func:`set_tag`."""
-    _emit(
-        attrs.EVAL_CONTEXT_EVENT,
-        {"facts": {key: _coerce_to_otel_attribute(value) for key, value in facts.items()}},
-    )
+    _emit(attrs.EVAL_CONTEXT_EVENT, {"facts": {key: payloads.to_attribute(value) for key, value in facts.items()}})
 
 
 def intent(text: str, *, source: str = "declared") -> None:
@@ -95,4 +112,4 @@ def end_conversation() -> None:
     _emit(attrs.EVAL_CONVERSATION_END_EVENT, {})
 
 
-__all__ = ["checkpoint", "end_conversation", "eval_context", "expect", "intent"]
+__all__ = ["Expectation", "checkpoint", "end_conversation", "eval_context", "expect", "intent"]

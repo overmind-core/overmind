@@ -38,10 +38,10 @@ export function RepositorySnapshot({ graph }: { graph: AgentGraph }) {
       ) : (
         <Badge
           size="chip"
-          title="Run /overmind setup in your coding agent from the repository to update the scan."
+          title="Run /overmind setup in your coding agent from the repository to update the snapshot."
           variant="neutral"
         >
-          {hasScan ? "Revision unavailable" : "No repository scan"}
+          {hasScan ? "Revision unavailable" : "No repository snapshot"}
         </Badge>
       )}
     </section>

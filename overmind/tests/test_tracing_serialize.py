@@ -1,5 +1,5 @@
-"""Tests for :func:`overmind.tracing._normalize_for_json` and
-:func:`overmind.tracing._coerce_to_otel_attribute`.
+"""Tests for :func:`overmind.payloads.normalize` and
+:func:`overmind.payloads.to_attribute`.
 
 These tests exercise:
 
@@ -17,7 +17,8 @@ import dataclasses
 import json
 from pathlib import PurePath
 
-from overmind.tracing import _coerce_to_otel_attribute, _json_dumps, _normalize_for_json
+from overmind import payloads
+from overmind.payloads import normalize, serialize, to_attribute
 
 
 @dataclasses.dataclass
@@ -38,7 +39,7 @@ class _PydanticLike:
 
 
 class _Console:
-    """Stand-in for any of the rich UI types in :data:`_SKIP_INPUT_TYPES`."""
+    """Stand-in for any of the rich UI types in the payload skip list."""
 
     def __init__(self) -> None:
         self.x = 1
@@ -51,51 +52,51 @@ _Console.__name__ = "Console"
 class TestNormalizeForJson:
     def test_passthrough_for_primitives(self):
         for v in ("s", 1, 1.5, True, False, None):
-            assert _normalize_for_json(v) == v
+            assert normalize(v) == v
 
     def test_nested_dataclass_recurses(self):
-        result = _normalize_for_json(_Container(name="origin", point=_Point(0, 0)))
+        result = normalize(_Container(name="origin", point=_Point(0, 0)))
         assert result == {"name": "origin", "point": {"x": 0, "y": 0}}
 
     def test_pydantic_model_dump_used(self):
-        assert _normalize_for_json(_PydanticLike()) == {"kind": "pydantic", "ok": True}
+        assert normalize(_PydanticLike()) == {"kind": "pydantic", "ok": True}
 
     def test_pydantic_model_dump_failure_falls_back_to_str(self):
         class _BadDump:
             def model_dump(self):
                 raise RuntimeError("boom")
 
-        out = _normalize_for_json(_BadDump())
+        out = normalize(_BadDump())
         assert isinstance(out, str)
 
     def test_set_normalises_to_list(self):
-        result = _normalize_for_json({1, 2, 3})
+        result = normalize({1, 2, 3})
         assert isinstance(result, list)
         assert sorted(result) == [1, 2, 3]
 
     def test_frozenset_normalises_to_list(self):
-        assert sorted(_normalize_for_json(frozenset({"a", "b"}))) == ["a", "b"]
+        assert sorted(normalize(frozenset({"a", "b"}))) == ["a", "b"]
 
     def test_tuple_normalises_to_list(self):
-        assert _normalize_for_json((1, "x", True)) == [1, "x", True]
+        assert normalize((1, "x", True)) == [1, "x", True]
 
     def test_bytes_hex_encoded(self):
-        assert _normalize_for_json(b"\x00\xff") == "00ff"
+        assert normalize(b"\x00\xff") == "00ff"
 
     def test_path_stringified(self):
-        assert _normalize_for_json(PurePath("/tmp/x")) == "/tmp/x"
+        assert normalize(PurePath("/tmp/x")) == "/tmp/x"
 
     def test_skip_type_returns_tag(self):
-        out = _normalize_for_json(_Console())
+        out = normalize(_Console())
         assert out == "<Console>"
 
     def test_dict_keys_stringified(self):
-        assert _normalize_for_json({1: "a"}) == {"1": "a"}
+        assert normalize({1: "a"}) == {"1": "a"}
 
 
 class TestJsonDumps:
     def test_round_trip_via_json_loads(self):
-        raw = _json_dumps({"point": _Point(1, 2), "tags": {"alpha"}})
+        raw = serialize({"point": _Point(1, 2), "tags": {"alpha"}})
         loaded = json.loads(raw)
         assert loaded["point"] == {"x": 1, "y": 2}
         assert loaded["tags"] == ["alpha"]
@@ -106,7 +107,7 @@ class TestScrubbing:
     never truncated."""
 
     def test_secret_keys_redacted(self):
-        out = _normalize_for_json({
+        out = normalize({
             "api_key": "sk-123",
             "openai_api_key": "sk-456",
             "access_token": "t",
@@ -122,27 +123,27 @@ class TestScrubbing:
         assert out["query"] == "refund policy"
 
     def test_data_url_redacted(self):
-        out = _normalize_for_json("data:image/png;base64," + "A" * 100)
+        out = normalize("data:image/png;base64," + "A" * 100)
         assert out.startswith("<base64 ")
 
     def test_long_base64_blob_redacted(self):
         blob = "A" * 600
-        assert _normalize_for_json(blob) == f"<base64 {len(blob)} chars>"
+        assert normalize(blob) == f"<base64 {len(blob)} chars>"
 
     def test_long_plain_text_kept_in_full(self):
         text = ("the quick brown fox " * 200).strip()
-        assert _normalize_for_json(text) == text
+        assert normalize(text) == text
 
     def test_large_bytes_become_placeholder(self):
-        assert _normalize_for_json(b"\x00" * 1000) == "<bytes 1000>"
+        assert normalize(b"\x00" * 1000) == "<bytes 1000>"
 
     def test_init_redact_keys_extends_the_set(self, monkeypatch):
         from overmind import tracing
 
-        monkeypatch.setattr(tracing, "_extra_redact_keys", frozenset())
+        monkeypatch.setattr(payloads, "_extra_redact_keys", frozenset())
         monkeypatch.setattr(tracing, "_initialized", True)
         tracing.init(redact_keys=["headers", "Cookie"])
-        out = _normalize_for_json({"headers": {"x": 1}, "cookie": "c", "body": "ok"})
+        out = normalize({"headers": {"x": 1}, "cookie": "c", "body": "ok"})
         assert out["headers"] == "<redacted>"
         assert out["cookie"] == "<redacted>"
         assert out["body"] == "ok"
@@ -153,19 +154,19 @@ class TestScrubbing:
                 self.api_key = "sk-999"
                 self.name = "demo"
 
-        out = _normalize_for_json(_Config())
+        out = normalize(_Config())
         assert out == {"api_key": "<redacted>", "name": "demo"}
 
 
 class TestCoerceToOtelAttribute:
     def test_primitives_pass_through(self):
         for v in ("s", 1, 1.5, True, False):
-            assert _coerce_to_otel_attribute(v) == v
+            assert to_attribute(v) == v
 
     def test_list_of_strings_preserved(self):
-        assert _coerce_to_otel_attribute(["a", "b"]) == ["a", "b"]
+        assert to_attribute(["a", "b"]) == ["a", "b"]
 
     def test_mixed_list_becomes_json_string(self):
-        out = _coerce_to_otel_attribute([1, "a"])
+        out = to_attribute([1, "a"])
         assert isinstance(out, str)
         assert json.loads(out) == [1, "a"]

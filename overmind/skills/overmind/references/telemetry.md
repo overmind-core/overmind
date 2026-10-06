@@ -43,8 +43,9 @@ returned placement as an edit ticket and preserve its exact fields:
 `required_identity`. File + qualname locates the function. A missing
 registry returns an explicit human action; report it and stop this attempt.
 Do not continue when `placements` is empty. If recovery is needed, run local
-`/overmind setup` followed by `overmind sync`, then request the plan again in a
-new attempt.
+`/overmind setup` (decorate `@capability` / `@observe` / `task()`, then
+`overmind sync` so the CLI AST-scans those sites), then request the plan again
+in a new attempt.
 
 When subagents are available and repository policy permits coding delegation,
 derive each ticket's touched files from its primary `target.file` and every
@@ -56,19 +57,21 @@ The MCP server does not edit files. Apply the tickets locally and preserve the
 required identity. Current SDK decorators include:
 
 ```python
-@overmind.run(...)
-@overmind.task(...)
-@overmind.entry_point(...)
-@overmind.workflow(...)
+@overmind.capability(...)
+@overmind.observe(...)
+@overmind.task(...)          # context manager, or as a decorator
 @overmind.tool(...)
 @overmind.retrieval(...)
-@overmind.observe(...)
+@overmind.entry_point(...)   # alias of capability role
+@overmind.workflow(...)
+@overmind.run(...)
 ```
 
-Use the decorator named by the ticket. A run boundary should cover one
-execution; use a turn-grain task for an independently scored phase and do not
-wrap a run-grain task in a turn unit. Keep specialized spans nested under the
-run. Do not guess keys, anchors, grains, or identity.
+Use the decorator named by the ticket. Prefer `@capability` for the product
+entry and `@observe(type="tool"|"llm"|...)` for nested work. A run boundary
+should cover one execution; use a turn-grain task for an independently scored
+phase and do not wrap a run-grain task in a turn unit. Keep specialized spans
+nested under the run. Do not guess keys, anchors, grains, or identity.
 
 ## Local SDK configuration
 

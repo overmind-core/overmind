@@ -63,7 +63,8 @@ application or its tools. The recorded completion is the baseline.
 overmind backtest --models openai/gpt-5-mini,anthropic/claude-sonnet-4.5 --since 7d
 ```
 
-`--capability` is required when `overmind.toml` lists more than one. `--limit`
+`--capability` is required when the project has more than one capability
+(pass the slug or id from the capability resource). `--limit`
 caps the calls (default 200). The command waits and exits 1 when any candidate
 regresses against the recorded outputs, 2 on timeout. `overmind optimise` remains
 the path that reruns the repository.

@@ -132,6 +132,9 @@ models/DatasetValidationStats.ts
 models/DecisionPolicy.ts
 models/DecisionPolicyBackendEnum.ts
 models/DecisionPolicyRequest.ts
+models/DeclaredSymbol.ts
+models/DeclaredSymbolRequest.ts
+models/DeclaredSymbolRoleEnum.ts
 models/DeployedModel.ts
 models/DeployedModelStatusEnum.ts
 models/DeploymentProgress.ts
@@ -216,6 +219,7 @@ models/GenerateEvaluatorPromptRequestRequest.ts
 models/GenerateEvaluatorPromptResponse.ts
 models/GraphEdge.ts
 models/GraphEdgeKindEnum.ts
+models/GraphEdgeRequest.ts
 models/GuestClaimRequest.ts
 models/GuestClaimResult.ts
 models/GuestSession.ts

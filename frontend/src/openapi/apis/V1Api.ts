@@ -247,7 +247,7 @@ export class V1Api extends runtime.BaseAPI {
     }
 
     /**
-     * Two-way ``overmind.toml`` sync.  POST pushes the local snapshot. The server reconciles capability identity — carry / leftover / remount — and never deletes: absence sets ``status=leftover`` (observed rows stay). ``archived=true`` keeps leftover. POST response is the incoming set with ids filled in. GET returns leftovers with ``archived=true`` so toml round-trips them without listing them in the console.  Auth: ``X-Api-Key`` (``APIToken``). Project keys must match ``project_id``; account keys may sync any project the user belongs to.
+     * AgentManifest sync from a local decorator AST scan.  POST pushes the scanned symbols. The server derives capability cards, mints behaviours, and stores invokes edges. Absence sets ``status=leftover`` (observed rows stay). GET returns the current graph.
      */
     async v1SyncCreateRaw(requestParameters: V1SyncCreateRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<SyncSnapshot>> {
         if (requestParameters['syncSnapshotRequest'] == null) {
@@ -290,7 +290,7 @@ export class V1Api extends runtime.BaseAPI {
     }
 
     /**
-     * Two-way ``overmind.toml`` sync.  POST pushes the local snapshot. The server reconciles capability identity — carry / leftover / remount — and never deletes: absence sets ``status=leftover`` (observed rows stay). ``archived=true`` keeps leftover. POST response is the incoming set with ids filled in. GET returns leftovers with ``archived=true`` so toml round-trips them without listing them in the console.  Auth: ``X-Api-Key`` (``APIToken``). Project keys must match ``project_id``; account keys may sync any project the user belongs to.
+     * AgentManifest sync from a local decorator AST scan.  POST pushes the scanned symbols. The server derives capability cards, mints behaviours, and stores invokes edges. Absence sets ``status=leftover`` (observed rows stay). GET returns the current graph.
      */
     async v1SyncCreate(requestParameters: V1SyncCreateRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<SyncSnapshot> {
         const response = await this.v1SyncCreateRaw(requestParameters, initOverrides);
@@ -298,7 +298,7 @@ export class V1Api extends runtime.BaseAPI {
     }
 
     /**
-     * Two-way ``overmind.toml`` sync.  POST pushes the local snapshot. The server reconciles capability identity — carry / leftover / remount — and never deletes: absence sets ``status=leftover`` (observed rows stay). ``archived=true`` keeps leftover. POST response is the incoming set with ids filled in. GET returns leftovers with ``archived=true`` so toml round-trips them without listing them in the console.  Auth: ``X-Api-Key`` (``APIToken``). Project keys must match ``project_id``; account keys may sync any project the user belongs to.
+     * AgentManifest sync from a local decorator AST scan.  POST pushes the scanned symbols. The server derives capability cards, mints behaviours, and stores invokes edges. Absence sets ``status=leftover`` (observed rows stay). GET returns the current graph.
      */
     async v1SyncRetrieveRaw(requestParameters: V1SyncRetrieveRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<SyncSnapshot>> {
         if (requestParameters['projectId'] == null) {
@@ -342,7 +342,7 @@ export class V1Api extends runtime.BaseAPI {
     }
 
     /**
-     * Two-way ``overmind.toml`` sync.  POST pushes the local snapshot. The server reconciles capability identity — carry / leftover / remount — and never deletes: absence sets ``status=leftover`` (observed rows stay). ``archived=true`` keeps leftover. POST response is the incoming set with ids filled in. GET returns leftovers with ``archived=true`` so toml round-trips them without listing them in the console.  Auth: ``X-Api-Key`` (``APIToken``). Project keys must match ``project_id``; account keys may sync any project the user belongs to.
+     * AgentManifest sync from a local decorator AST scan.  POST pushes the scanned symbols. The server derives capability cards, mints behaviours, and stores invokes edges. Absence sets ``status=leftover`` (observed rows stay). GET returns the current graph.
      */
     async v1SyncRetrieve(requestParameters: V1SyncRetrieveRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<SyncSnapshot> {
         const response = await this.v1SyncRetrieveRaw(requestParameters, initOverrides);

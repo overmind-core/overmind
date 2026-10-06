@@ -1,13 +1,14 @@
 ---
 name: overmind
-description: Connect and set up Overmind, discover capabilities from a local repository, or coordinate work across product surfaces. Use the focused Overmind surface skills for individual platform workflows and native MCP prompts when available.
+description: Connect and set up Overmind, declare capabilities with decorators then overmind sync (AST scan), or coordinate work across product surfaces. Use the focused Overmind surface skills for individual platform workflows and native MCP prompts when available.
 ---
 
 # Overmind MCP
 
 Overmind models production work as **Capability > behaviour > task
 execution**. A capability is the product AI surface, a behaviour is a
-scanned contract, and a task execution is a carved, scored unit of a trace.
+contract from decorator `task()` declarations and the call graph at sync,
+and a task execution is a carved, scored unit of a trace.
 
 MCP prompts are the native guided workflows. Invoke the matching prompt when
 the client lets the agent invoke prompts. Otherwise, or when local repository
@@ -46,8 +47,9 @@ Route guided work to these exact prompt names:
 
 Initial Console onboarding and local capability discovery remain local
 workflows: use [references/onboard.md](references/onboard.md) for a new project
-and [references/setup.md](references/setup.md) for repository scanning and sync.
-Both use [references/onboarding-progress.md](references/onboarding-progress.md)
+and [references/setup.md](references/setup.md) to decorate entry points and
+run `overmind sync` (AST scan). Both use
+[references/onboarding-progress.md](references/onboarding-progress.md)
 for the opening roadmap, numbered progress updates, and data disclosures.
 
 Do not reimplement these workflows as a single generic call. The prompt
@@ -97,10 +99,10 @@ Each works directly with the configured MCP connection and can be used on its ow
 
 Follow these for ALL Overmind work:
 
-1. **Local setup, then MCP.** Capability discovery is local: scan the repo,
-   write `overmind.toml`, run `overmind sync` — see
-   [references/setup.md](references/setup.md). After that, all platform work
-   goes through the Overmind
+1. **Local setup, then MCP.** Capability discovery is local: decorate
+   entry points with `@capability` / `@observe` / `task()`, run
+   `overmind sync` — see [references/setup.md](references/setup.md).
+   After that, all platform work goes through the Overmind
    MCP server. Do not curl REST endpoints, do not invent base URLs, and do not
    hardcode hosts. The server is already configured (plugin, or `overmind init`)
    and authenticated through OAuth or an account/project API key. Call the named
@@ -172,8 +174,8 @@ Follow these for ALL Overmind work:
 
 ## Use-case references
 
-- Local setup (`overmind chassis` → scan repo → capability cards / trajectory
-  maps / eval matrix → `overmind.toml` → `overmind sync`):
+- Local setup (decorate `@capability` / `@observe` / `task()` →
+  `overmind sync` → server-derived card + behaviours):
   [references/setup.md](references/setup.md)
 - Resolving / updating agents, prompts, and eval spec:
   [references/capabilities.md](references/capabilities.md)
@@ -314,8 +316,8 @@ Typical loop (local setup once, then MCP):
    Resolve / retarget capabilities via [capabilities.md](references/capabilities.md)
    (`overmind://capabilities/{capability}`, `inspect_capability_health`,
    `set_active_model`). If none
-   exist, run [setup.md](references/setup.md) (`overmind chassis` →
-   `overmind.toml` → `overmind sync`). If nothing is landing, add tracing in the same file —
+   exist, run [setup.md](references/setup.md) (decorate entry points →
+   `overmind sync`). If nothing is landing, add tracing in the same file —
    stamp the capability's `id` and use the ticket fan-out workflow in
    [references/telemetry.md](references/telemetry.md).
 1. **Turn traces into data** — [datasets.md](references/datasets.md)
@@ -343,7 +345,7 @@ Discover accessible projects with `list_projects`. The project resource is:
 
 `overmind://project/current?project_id=ID`
 
-Includes `repository_snapshot` (repository, directory, branch, commit, dirty state, fingerprint and scan time) and `last_synced_at`. A null snapshot means the revision is unknown; sync time is not scan time. Run local `/overmind setup` to refresh the map.
+Includes `repository_snapshot` (repository, directory, branch, commit, dirty state, fingerprint and scan time) and `last_synced_at`. A null snapshot means the revision is unknown; sync time is not scan time. Run local `/overmind setup` (decorate + `overmind sync`) to refresh the map.
 
 `console_url` opens the authenticated project's ordinary Console on this
 deployment. It contains no credentials; the browser still requires its own
@@ -423,9 +425,11 @@ local work is needed:
 
 ### Local boundaries
 
-- `/overmind setup` scans the local repository and writes capability metadata;
-  `overmind sync` sends that snapshot to the configured project. MCP cannot
-  scan or edit the repository.
+- `/overmind setup` decorates agent entry points with `@capability` /
+  `@observe` / `task()`, then runs `overmind sync` (AST scan of those
+  call sites → AgentManifest → server-derived card). Do not write
+  capability tables into `overmind.toml`. MCP cannot scan or edit the
+  repository.
 - `get_instrumentation_plan` is read-only. Apply its exact tickets locally;
   the MCP server cannot edit files or ingest a smoke trace. Verify an ingested
   run with `verify_instrumentation(trace_id=...)`.

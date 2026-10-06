@@ -24,13 +24,22 @@ COMMAND = "overmind.command"
 # Generic lifecycle tags — explicit status / progress markers we set on any
 # span so the platform can surface "what's happening?" without parsing the
 # OTel ``status_code`` directly.
-STATUS = "overmind.status"  # "running" | "success" | "failed" | "cancelled"
+STATUS = "overmind.status"  # "running" | "success" | "failed" | "cancelled" | "aborted"
 ERROR_TYPE = "overmind.error.type"  # exception class name, when STATUS == "failed"
 ERROR_MESSAGE = "overmind.error.message"  # short, scrubbed message
 PROGRESS_PHASE = "overmind.progress.phase"  # human label for current pipeline step
 PROGRESS_CURRENT = "overmind.progress.current"  # current step index (1-based)
 PROGRESS_TOTAL = "overmind.progress.total"  # total number of steps
-DURATION_SECONDS = "overmind.duration.seconds"  # walltime of the wrapped span
+# Per-trace logical clock stamped on every span at start: happened-before
+# implies a smaller step, across threads and (via the carrier) processes.
+STEP = "overmind.step"
+# Set when a generator span's consumer closed it before exhaustion is
+# reported through STATUS = "aborted"; this is how many items it yielded.
+STREAM_ITEMS = "overmind.stream.items"
+# True when the matching payload exceeded the byte budget and was replaced
+# by a ``{"truncated": true, "bytes", "preview"}`` document.
+INPUTS_TRUNCATED = "overmind.inputs.truncated"
+OUTPUTS_TRUNCATED = "overmind.outputs.truncated"
 
 # Top-level resource / context tags (link spans to server-side entities).
 #
@@ -44,6 +53,12 @@ PROJECT_ID = "overmind.project.id"
 JOB_ID = "overmind.job.id"
 
 CAPABILITY_NAME = "overmind.capability.name"
+# Stable slug declared in code (``@capability("triage")``). Ingest resolves
+# id first, then this slug, then the span's entrypoint qualname.
+CAPABILITY_SLUG = "overmind.capability.slug"
+# Literal prompt text stamped by ``observe(prompt=...)`` for card derivation.
+PROMPT_TEMPLATE = "overmind.prompt.template"
+PROMPT_KWARGS = "overmind.prompt.kwargs"
 # Tracelo­op-compatible workflow label attached to every downstream span by
 # the on-start processor.  Stored in the OTel context so child spans pick
 # it up automatically.
@@ -377,11 +392,15 @@ OTEL_LLM_USAGE_TOTAL_TOKENS = "gen_ai.usage.total_tokens"
 # kept so module and qualname stay separately queryable server-side.
 CODE_NAMESPACE = "code.namespace"
 CODE_FUNCTION_NAME = "code.function.name"
+CODE_FILE_PATH = "code.file.path"
+CODE_LINE_NUMBER = "code.line.number"
 
 # Tool-call metadata (server reads these to classify + attribute tool spans).
 TOOL_NAME = "tool.name"
-TOOL_ARG_KEYS = "tool.arg_keys"
 TOOL_ERROR = "tool.error"
+# The model-emitted id of the call this tool span executes (OTel GenAI
+# semconv); the span also links to the LLM span that requested it.
+TOOL_CALL_ID = "gen_ai.tool.call.id"
 
 # Retrieval / RAG step metadata (namespaced under ``overmind.retrieval.*``;
 # server does not roll these up yet — see contract doc).

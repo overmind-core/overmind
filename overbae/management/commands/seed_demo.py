@@ -636,6 +636,7 @@ class Command(BaseCommand):
                     "system_prompt": TRIAGE_PROMPT,
                     "eval_metrics": [],
                     "capability_card": {
+                        "generator": "derive_card@v1",
                         "task": (
                             "Read an inbound support ticket, look the merchant up, and route the ticket "
                             "to the owning team with an urgency that respects the plan's SLA floor."
@@ -849,6 +850,7 @@ class Command(BaseCommand):
                     "system_prompt": KB_PROMPT,
                     "eval_metrics": [],
                     "capability_card": {
+                        "generator": "derive_card@v1",
                         "task": (
                             "Answer a merchant's how-to question strictly from retrieved help-centre "
                             "articles, citing every claim by article slug."
@@ -1022,6 +1024,7 @@ class Command(BaseCommand):
                     "system_prompt": DISPUTE_PROMPT,
                     "eval_metrics": [],
                     "capability_card": {
+                        "generator": "derive_card@v1",
                         "task": (
                             "Gather the ledger row and the evidence on file for a dispute, apply the "
                             "reason-code policy, and draft the merchant's reply."
@@ -2062,7 +2065,6 @@ class Command(BaseCommand):
                             feedback_score={},
                             attributes={
                                 "tool.name": tname,
-                                "tool.arg_keys": sorted(targs),
                                 "overmind.input.data": targs,
                                 "overmind.provenance": "environment",
                                 **({"tool.error": terr} if terr else {}),

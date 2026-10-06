@@ -53,7 +53,7 @@ def _by_name(exporter, name):
 
 
 def test_capability_requires_identity():
-    with pytest.raises(ValueError, match="name and/or id"):
+    with pytest.raises(ValueError, match="slug, name and/or id"):
         capability()
 
 

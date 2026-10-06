@@ -193,12 +193,15 @@ class AgentGraphView(APIView):
                 "-created_at"
             )
         )
+        settings = Project.objects.get(pk=project_id).settings or {}
         payload = {
             "project": project_id,
             "capabilities": current,
-            "edges": graph.weighted_edges(project_id, []),
+            "edges": graph.weighted_edges(
+                project_id,
+                list((settings.get("agent_graph") or {}).get("edges") or []),
+            ),
         }
-        settings = Project.objects.get(pk=project_id).settings or {}
         payload["repository_snapshot"] = settings.get("repository_snapshot")
         payload["last_synced_at"] = settings.get("last_synced_at")
         return Response(AgentGraphSerializer(payload).data)

@@ -1,25 +1,23 @@
-"""Two-way ``overmind.toml`` <-> ``POST|GET /api/v1/sync``.
+"""``overmind sync`` — AST-scan decorator call sites and push an AgentManifest.
 
-``overmind sync up``     POST the local snapshot; write the reconciled response.
-``overmind sync down``   GET the server snapshot; overwrite the local file.
+``overmind sync up``     Scan the repo and POST the manifest.
+``overmind sync down``   GET the server snapshot (capabilities + edges).
 ``overmind sync``        up, then down.
 
-When ``project-id`` is missing and the API key is account-scoped, ``up`` /
-``sync`` creates a project via ``POST /api/projects/`` and writes the id back
-before pushing. Project-scoped keys still require an explicit ``project-id``.
+``overmind.toml`` keeps only connection settings (base-url, project-id,
+project-name). Capability cards are derived server-side from the manifest.
 """
 
 from __future__ import annotations
 
-import os
-import re
 from pathlib import Path
 from typing import Annotated, Any, Literal
 
 import requests
 import typer
-from rich.console import Console
 
+from overmind.api import MISSING_API_KEY, open_session, raise_for_status, resolve_api_key, resolve_api_url
+from overmind.cli import console
 from overmind.config import (
     DEFAULT_PATH,
     Config,
@@ -32,82 +30,53 @@ from overmind.config import (
     protect_secret_file,
 )
 from overmind.init_cmd import preflight_mcp_configs, refresh_mcp_configs, resolve_mcp_url
+from overmind.manifest import AgentManifest, scan
+from overmind.slug import project_slug
 
 SYNC_PATH = "/api/v1/sync"
 PROJECTS_PATH = "/api/projects/"
 API_KEYS_PATH = "/api/auth/api-keys/"
 API_KEY_CURRENT_PATH = "/api/auth/api-keys/current/"
-DEFAULT_BASE_URL = "https://api.overmindlab.ai"
 
-console = Console()
+KeyScope = Literal["account", "project"]
+_LOCAL_WRITE_ERRORS = (SecretFileError, OSError, ValueError)
 
 
 class SyncError(Exception):
     """HTTP or local-file failure during sync."""
 
 
-def _session(api_key: str) -> requests.Session:
-    session = requests.Session()
-    session.headers.update({"X-Api-Key": api_key, "Content-Type": "application/json"})
-    return session
-
-
-def _raise_for_status(resp: requests.Response) -> None:
-    if resp.ok:
-        return
+def _request(method: str, base_url: str, api_key: str, path: str, operation: str, **kwargs: Any) -> requests.Response:
     try:
-        detail = resp.json()
-        msg = detail.get("error", {}).get("message") or detail.get("detail") or resp.text[:400]
-    except Exception:
-        msg = resp.text[:400]
-    raise SyncError(f"HTTP {resp.status_code}: {msg}")
-
-
-def post_snapshot(base_url: str, api_key: str, snapshot: dict[str, Any]) -> dict[str, Any]:
-    url = f"{base_url.rstrip('/')}{SYNC_PATH}"
-    try:
-        resp = _session(api_key).post(url, json=snapshot, timeout=60)
+        response = getattr(open_session(api_key), method)(f"{base_url.rstrip('/')}{path}", **kwargs)
     except requests.RequestException as exc:
-        raise SyncError(f"sync up failed: {exc}") from exc
-    _raise_for_status(resp)
-    return resp.json()
+        raise SyncError(f"{operation} failed: {exc}") from exc
+    return response
+
+
+def post_manifest(base_url: str, api_key: str, body: dict[str, Any]) -> dict[str, Any]:
+    response = _request("post", base_url, api_key, SYNC_PATH, "sync up", json=body, timeout=120)
+    raise_for_status(response, error=SyncError)
+    return response.json()
 
 
 def get_snapshot(base_url: str, api_key: str, project_id: str) -> dict[str, Any]:
-    url = f"{base_url.rstrip('/')}{SYNC_PATH}"
-    try:
-        resp = _session(api_key).get(url, params={"project_id": project_id}, timeout=60)
-    except requests.RequestException as exc:
-        raise SyncError(f"sync down failed: {exc}") from exc
-    _raise_for_status(resp)
-    return resp.json()
-
-
-def _slugify(value: str) -> str:
-    slug = re.sub(r"[^a-z0-9]+", "-", value.strip().lower()).strip("-")
-    return (slug or "project")[:80]
-
-
-def _project_name_hint(config: Config, path: Path) -> str:
-    ensure_project_name(config, path)
-    return (config.project_name or default_project_name(path))[:80]
+    response = _request("get", base_url, api_key, SYNC_PATH, "sync down", params={"project_id": project_id}, timeout=60)
+    raise_for_status(response, error=SyncError)
+    return response.json()
 
 
 def create_project(base_url: str, api_key: str, *, name: str, slug: str) -> str:
     """``POST /api/projects/``. Account-scoped keys only; project keys get 403."""
-    url = f"{base_url.rstrip('/')}{PROJECTS_PATH}"
     body = {"name": name, "slug": slug, "is_active": True, "settings": {}}
-    try:
-        resp = _session(api_key).post(url, json=body, timeout=60)
-    except requests.RequestException as exc:
-        raise SyncError(f"create project failed: {exc}") from exc
-    if resp.status_code == 403:
+    response = _request("post", base_url, api_key, PROJECTS_PATH, "create project", json=body, timeout=60)
+    if response.status_code == 403:
         raise SyncError(
             "No project-id in overmind.toml, and this API key cannot create projects "
             "(project-scoped keys are pinned). Set project-id, or use an account-scoped key."
         )
-    _raise_for_status(resp)
-    project_id = str((resp.json() or {}).get("id") or "")
+    raise_for_status(response, error=SyncError)
+    project_id = str((response.json() or {}).get("id") or "")
     if not project_id:
         raise SyncError("create project returned no id")
     return project_id
@@ -115,28 +84,20 @@ def create_project(base_url: str, api_key: str, *, name: str, slug: str) -> str:
 
 def mint_project_api_key(base_url: str, api_key: str, project_id: str) -> str:
     """``POST /api/auth/api-keys/`` — account-scoped keys only."""
-    url = f"{base_url.rstrip('/')}{API_KEYS_PATH}"
     body = {"name": "MCP — overmind sync", "project": project_id}
-    try:
-        resp = _session(api_key).post(url, json=body, timeout=60)
-    except requests.RequestException as exc:
-        raise SyncError(f"mint project API key failed: {exc}") from exc
-    _raise_for_status(resp)
-    key = str((resp.json() or {}).get("key") or "")
+    response = _request("post", base_url, api_key, API_KEYS_PATH, "mint project API key", json=body, timeout=60)
+    raise_for_status(response, error=SyncError)
+    key = str((response.json() or {}).get("key") or "")
     if not key:
         raise SyncError("mint project API key returned no key")
     return key
 
 
-def _api_key_scope(api_key: str, base_url: str) -> Literal["account", "project"]:
-    url = f"{base_url.rstrip('/')}{API_KEY_CURRENT_PATH}"
+def api_key_scope(api_key: str, base_url: str) -> KeyScope:
+    response = _request("get", base_url, api_key, API_KEY_CURRENT_PATH, "API key validation", timeout=30)
+    raise_for_status(response, error=SyncError)
     try:
-        resp = _session(api_key).get(url, timeout=30)
-    except requests.RequestException as exc:
-        raise SyncError(f"API key validation failed: {exc}") from exc
-    _raise_for_status(resp)
-    try:
-        body = resp.json()
+        body = response.json()
     except ValueError as exc:
         raise SyncError("API key validation returned invalid JSON") from exc
     scope = body.get("scope") if isinstance(body, dict) else None
@@ -145,118 +106,134 @@ def _api_key_scope(api_key: str, base_url: str) -> Literal["account", "project"]
     return scope
 
 
-def ensure_mcp_project_key(
-    config: Config,
-    path: Path,
-    api_key: str,
-    base_url: str,
-    *,
-    key_scope: Literal["account", "project"] | None = None,
-) -> tuple[Config, str]:
-    if not config.project_id:
-        return config, api_key
-    scope = key_scope or _api_key_scope(api_key, base_url)
-    new_key = mint_project_api_key(base_url, api_key, config.project_id) if scope == "account" else api_key
-    config.api_key = new_key
-    dump(config, path)
-    if scope == "account":
-        console.print("Minted project-scoped API key for MCP.")
-    return config, new_key
-
-
 def ensure_project_id(config: Config, path: Path, api_key: str, base_url: str) -> tuple[Config, bool]:
     """Mint a project when ``project-id`` is blank and the key is account-scoped."""
     if config.project_id:
         return config, False
     if ensure_project_name(config, path):
         dump(config, path)
-    name = _project_name_hint(config, path)
-    project_id = create_project(base_url, api_key, name=name, slug=_slugify(name))
-    config.project_id = project_id
+    name = (config.project_name or default_project_name(path))[:80]
+    config.project_id = create_project(base_url, api_key, name=name, slug=project_slug(name))
     dump(config, path)
-    console.print(f"Created project {name!r} → project-id={project_id}")
+    console.print(f"Created project {name!r} → project-id={config.project_id}")
     return config, True
 
 
-def resolve_api_key(cli_key: str, config: Config | None) -> str:
-    if cli_key:
-        return cli_key
-    if config and config.project_id and config.api_key:
-        return config.api_key
-    env_key = os.environ.get("OVERMIND_API_KEY", "")
-    if env_key:
-        return env_key
-    toml_key = (config.api_key if config else "") or ""
-    if toml_key.startswith("env:"):
-        toml_key = os.environ.get(toml_key[4:], "")
-    return toml_key
+def ensure_mcp_project_key(
+    config: Config,
+    path: Path,
+    api_key: str,
+    base_url: str,
+    *,
+    key_scope: KeyScope | None = None,
+) -> tuple[Config, str]:
+    """Save a project-scoped key for MCP, minting one when ``api_key`` is account-scoped."""
+    if not config.project_id:
+        return config, api_key
+    scope = key_scope or api_key_scope(api_key, base_url)
+    config.api_key = mint_project_api_key(base_url, api_key, config.project_id) if scope == "account" else api_key
+    dump(config, path)
+    if scope == "account":
+        console.print("Minted project-scoped API key for MCP.")
+    return config, config.api_key
 
 
-def resolve_api_url(cli_url: str, config: Config | None) -> str:
-    if cli_url:
-        return cli_url.rstrip("/")
-    env = os.environ.get("OVERMIND_API_URL")
-    if env:
-        return env.rstrip("/")
-    if config and config.base_url:
-        return config.base_url.rstrip("/")
-    return DEFAULT_BASE_URL
+def _locate(path: Path) -> tuple[Path, Path]:
+    """``(repo_root, toml_path)`` for a path that names either one."""
+    if path.suffix == ".toml":
+        return path.resolve().parent, path
+    root = path.resolve()
+    return root, root / "overmind.toml"
 
 
-def run_up(path: Path, api_key: str, api_url: str) -> Config:
-    if not path.exists():
-        raise SyncError(f"{path} not found — nothing to push")
-    config = load(path)
-    key = resolve_api_key(api_key, config)
-    if not key:
-        raise SyncError("Missing API key. Pass --api-key or set OVERMIND_API_KEY.")
-    url = resolve_api_url(api_url, config)
+def _load_or_seed(toml_path: Path) -> Config:
+    if toml_path.exists():
+        return load(toml_path)
+    config = Config()
+    ensure_project_name(config, toml_path)
+    dump(config, toml_path)
+    console.print(f"Seeded {toml_path}")
+    return config
+
+
+def _scan(root: Path) -> AgentManifest:
+    console.print(f"Scanning {root} for decorator declarations…")
     try:
-        protect_secret_file(credentials_path(path), repo_root=path.resolve().parent)
-        preflight_mcp_configs(path.resolve().parent)
-    except (SecretFileError, OSError, ValueError) as exc:
-        raise SyncError(str(exc)) from exc
-    key_scope = _api_key_scope(key, url)
-    if key_scope == "account":
-        config.api_key = ""
+        manifest = scan(root)
+    except Exception as exc:
+        raise SyncError(f"manifest scan failed: {exc}") from exc
+    unresolved = [f"{s.qualname}: {', '.join(s.unresolved)}" for s in manifest.symbols if s.unresolved]
+    if unresolved:
+        console.print("[yellow]Non-literal decorator kwargs (skipped):[/yellow]")
+        for line in unresolved[:20]:
+            console.print(f"  {line}")
+    return manifest
+
+
+def _refresh_mcp_auth(root: Path, base_url: str, api_key: str) -> None:
+    mcp_url, _ = resolve_mcp_url("production", base_url)
     try:
-        config, _ = ensure_project_id(config, path, key, url)
-    except (SecretFileError, OSError, ValueError) as exc:
-        raise SyncError(f"Could not persist the local project configuration: {exc}") from exc
-    snapshot = post_snapshot(url, key, config.to_snapshot())
-    config.apply_snapshot(snapshot)
-    try:
-        dump(config, path)
-        config, key = ensure_mcp_project_key(config, path, key, url, key_scope=key_scope)
-    except (SecretFileError, OSError, ValueError) as exc:
-        raise SyncError(f"Local sync persistence failed; a project credential may have been saved: {exc}") from exc
-    mcp_url, _ = resolve_mcp_url("production", url)
-    try:
-        updated = refresh_mcp_configs(path.resolve().parent, mcp_url, key)
-    except (SecretFileError, OSError, ValueError) as exc:
+        updated = refresh_mcp_configs(root, mcp_url, api_key)
+    except _LOCAL_WRITE_ERRORS as exc:
         raise SyncError(f"Project credential saved, but MCP config update failed: {exc}") from exc
     if updated:
         console.print(f"Updated MCP authentication: {', '.join(updated)}.")
         console.print("Reload the coding agent once. No re-export or re-init is required.")
     else:
         console.print("No Overmind MCP config found. Run `overmind init --ide <client>` to add one.")
+
+
+def run_up(path: Path, api_key: str, api_url: str) -> Config:
+    root, toml_path = _locate(path)
+    config = _load_or_seed(toml_path)
+    key = resolve_api_key(api_key, config)
+    if not key:
+        raise SyncError(MISSING_API_KEY)
+    url = resolve_api_url(api_url, config)
+    try:
+        protect_secret_file(credentials_path(toml_path), repo_root=root)
+        preflight_mcp_configs(root)
+    except _LOCAL_WRITE_ERRORS as exc:
+        raise SyncError(str(exc)) from exc
+
+    key_scope = api_key_scope(key, url)
+    if key_scope == "account":
+        # An account key must never be persisted as this project's credential.
+        config.api_key = ""
+    try:
+        config, _ = ensure_project_id(config, toml_path, key, url)
+    except _LOCAL_WRITE_ERRORS as exc:
+        raise SyncError(f"Could not persist the local project configuration: {exc}") from exc
+
+    manifest = _scan(root)
+    body = {**manifest.to_wire(), "project_id": config.project_id, "version": manifest.sdk_version}
+    snapshot = post_manifest(url, key, body)
+    console.print(
+        f"Pushed {len(manifest.symbols)} symbol(s) → {len(snapshot.get('capabilities') or [])} capability(ies)"
+    )
+
+    try:
+        config, key = ensure_mcp_project_key(config, toml_path, key, url, key_scope=key_scope)
+    except _LOCAL_WRITE_ERRORS as exc:
+        raise SyncError(f"Local sync persistence failed; a project credential may have been saved: {exc}") from exc
+    _refresh_mcp_auth(root, url, key)
     return config
 
 
 def run_down(path: Path, api_key: str, api_url: str) -> Config:
-    config = load(path) if path.exists() else Config()
+    _root, toml_path = _locate(path)
+    config = load(toml_path) if toml_path.exists() else Config()
     key = resolve_api_key(api_key, config)
     if not key:
-        raise SyncError("Missing API key. Pass --api-key or set OVERMIND_API_KEY.")
+        raise SyncError(MISSING_API_KEY)
     if not config.project_id:
         raise SyncError(
-            f"{path} has no project-id (needed to fetch server state). "
+            f"{toml_path} has no project-id (needed to fetch server state). "
             "Run `overmind sync up` first with an account-scoped key, or set project-id."
         )
-    url = resolve_api_url(api_url, config)
-    snapshot = get_snapshot(url, key, config.project_id)
-    config.apply_snapshot(snapshot)
-    dump(config, path)
+    snapshot = get_snapshot(resolve_api_url(api_url, config), key, config.project_id)
+    count = len(snapshot.get("capabilities") or [])
+    console.print(f"Server has {count} capability(ies); cards live on the server (not written to toml).")
     return config
 
 
@@ -265,32 +242,30 @@ def run_both(path: Path, api_key: str, api_url: str) -> Config:
     return run_down(path, config.api_key or api_key, api_url)
 
 
+_DIRECTIONS = {
+    "up": (run_up, "Sync up complete"),
+    "down": (run_down, "Sync down complete"),
+    "both": (run_both, "Synced"),
+}
+
+
 def sync(
     direction: Annotated[
         str,
         typer.Argument(help="up (POST local), down (GET server), or omit for both"),
     ] = "both",
-    api_key: Annotated[
-        str,
-        typer.Option(help="Overmind API key", show_default=False),
-    ] = "",
+    api_key: Annotated[str, typer.Option(help="Overmind API key", show_default=False)] = "",
     api_url: Annotated[str, typer.Option(envvar="OVERMIND_API_URL", help="Overmind backend base URL")] = "",
-    path: Annotated[Path, typer.Option(help="Path to overmind.toml")] = DEFAULT_PATH,
+    path: Annotated[Path, typer.Option(help="Path to overmind.toml or repo root")] = DEFAULT_PATH,
 ) -> None:
-    """Two-way sync of overmind.toml with POST|GET /api/v1/sync."""
-    if direction not in ("both", "up", "down"):
+    """Scan decorator declarations and sync the agent graph with the server."""
+    if direction not in _DIRECTIONS:
         console.print("[red]direction must be up, down, or omitted[/red]")
         raise typer.Exit(2)
+    run, done = _DIRECTIONS[direction]
     try:
-        if direction == "up":
-            run_up(path, api_key, api_url)
-            console.print(f"Pushed {path}")
-        elif direction == "down":
-            run_down(path, api_key, api_url)
-            console.print(f"Pulled {path}")
-        else:
-            run_both(path, api_key, api_url)
-            console.print(f"Synced {path}")
+        run(path, api_key, api_url)
     except SyncError as exc:
         console.print(f"[red]{exc}[/red]")
         raise typer.Exit(1) from exc
+    console.print(done)

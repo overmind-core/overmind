@@ -32,6 +32,7 @@ from posthog import Posthog
 
 from overmind import __version__ as sdk_version
 from overmind import config
+from overmind.api import resolve_api_key, resolve_api_url
 
 # Write-only Console PostHog project key (same as frontend/src/analytics.ts).
 _POSTHOG_API_KEY = "phc_XrIVhixaz5sOqrdzpRwwqlvKXilmcy3PWPgdk0pemZa"
@@ -161,12 +162,9 @@ def _resolve_api_credentials(
     key = (api_key or "").strip()
     url = (base_url or "").strip()
     if not key or not url:
-        # Lazy: overmind.sync pulls the Typer CLI stack into library imports.
-        from overmind.sync import DEFAULT_BASE_URL, resolve_api_key, resolve_api_url
-
         cfg = config.load(config.DEFAULT_PATH) if config.DEFAULT_PATH.exists() else None
         key = key or (resolve_api_key("", cfg) or "").strip()
-        url = url or resolve_api_url("", cfg) or DEFAULT_BASE_URL
+        url = url or resolve_api_url("", cfg)
     if not key or not url:
         return None
     return key, url.rstrip("/")

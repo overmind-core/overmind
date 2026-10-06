@@ -130,13 +130,13 @@ def test_init_seeds_toml_and_slash_commands(tmp_path, monkeypatch):
     assert 'project-id = "proj-uuid"' in toml
     assert 'project-name = "' in toml
     assert 'base-url = "http://localhost:8000"' in toml
-    assert "[capabilities]" in toml
+    assert "[capabilities]" not in toml
 
     setup_cmd = (tmp_path / ".cursor" / "commands" / "overmind-setup.md").read_text()
-    assert setup_cmd.startswith("Scan the repository and sync capabilities\n")
+    assert setup_cmd.startswith("Decorate agent entry points, then overmind sync (AST scan)\n")
     assert not setup_cmd.startswith("---")
     assert "/overmind setup" in setup_cmd
-    assert "Scan the repository" in setup_cmd
+    assert "Decorate agent entry points" in setup_cmd
     assert ".cursor/skills/overmind/references/setup.md" not in setup_cmd
     tracing_cmd = (tmp_path / ".cursor" / "commands" / "overmind-ensure-tracing.md").read_text()
     assert "/overmind ensure-tracing" in tracing_cmd

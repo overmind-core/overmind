@@ -1,4 +1,4 @@
-"""``POST`` / ``GET`` ``/api/v1/sync`` — two-way ``overmind.toml`` sync."""
+"""``POST`` / ``GET`` ``/api/v1/sync`` — AgentManifest sync from decorator scan."""
 
 from __future__ import annotations
 
@@ -11,21 +11,30 @@ from rest_framework.views import APIView
 from overbae.api.authentication import APITokenBackend
 from overbae.api.scoping import project_ids_for
 from overbae.models import APIToken, Project
-from overbae.services.sync import apply_snapshot, snapshot_of
+from overbae.services.agent_manifest import apply_manifest, snapshot_of
 
 TRACE_PROVIDERS = ("overmind", "langfuse", "langsmith", "opentelemetry")
-METRIC_TYPES = ("llm_judge_custom", "managed", "deterministic", "custom_judge")
 
 
-class EvalMetricSerializer(serializers.Serializer):
-    name = serializers.CharField()
-    type = serializers.ChoiceField(choices=METRIC_TYPES, default="llm_judge_custom")
-    prompt = serializers.CharField(required=False, allow_blank=True)
-    measures = serializers.CharField(required=False, allow_blank=True)
-    rationale = serializers.CharField(required=False, allow_blank=True)
-    rubric = serializers.CharField(required=False, allow_blank=True)
-    requires_reference = serializers.BooleanField(default=False)
-    managed_name = serializers.CharField(required=False, allow_blank=True)
+class DeclaredSymbolSerializer(serializers.Serializer):
+    qualname = serializers.CharField()
+    file = serializers.CharField()
+    line_start = serializers.IntegerField()
+    line_end = serializers.IntegerField()
+    role = serializers.ChoiceField(
+        choices=("capability", "tool", "llm", "retrieval", "function", "task")
+    )
+    capability = serializers.CharField(required=False, allow_blank=True, allow_null=True)
+    slug = serializers.CharField(required=False, allow_blank=True, allow_null=True)
+    name = serializers.CharField(required=False, allow_blank=True, default="")
+    description = serializers.CharField(required=False, allow_blank=True, default="")
+    signature = serializers.DictField(required=False)
+    expectations = serializers.ListField(child=serializers.DictField(), required=False)
+    task_key = serializers.CharField(required=False, allow_blank=True, allow_null=True)
+    unit = serializers.CharField(required=False, allow_blank=True, allow_null=True)
+    prompt_template = serializers.CharField(required=False, allow_blank=True, allow_null=True)
+    calls = serializers.ListField(child=serializers.CharField(), required=False)
+    unresolved = serializers.ListField(child=serializers.CharField(), required=False)
 
 
 class CapabilitySerializer(serializers.Serializer):
@@ -38,47 +47,67 @@ class CapabilitySerializer(serializers.Serializer):
     source_path = serializers.CharField(required=False, allow_blank=True)
     system_prompt = serializers.CharField(required=False, allow_blank=True)
     tools_summary = serializers.CharField(required=False, allow_blank=True)
-    eval_metrics = EvalMetricSerializer(many=True, required=False)
     capability_card = serializers.DictField(required=False)
-    eval_matrix = serializers.ListField(child=serializers.DictField(), required=False)
     archived = serializers.BooleanField(required=False, default=False)
     status = serializers.CharField(read_only=True)
 
 
 class RepositorySnapshotSerializer(serializers.Serializer):
-    repository = serializers.CharField(max_length=1024)
-    directory = serializers.CharField(max_length=1024)
-    branch = serializers.CharField(max_length=255, allow_blank=True)
-    commit = serializers.RegexField(r"\A(?:[0-9a-f]{40}|[0-9a-f]{64})?\Z", allow_blank=True)
-    dirty = serializers.BooleanField()
-    fingerprint = serializers.RegexField(r"\A[0-9a-f]{64}\Z")
-    scanned_at = serializers.DateTimeField()
+    repository = serializers.CharField(max_length=1024, required=False, allow_blank=True)
+    directory = serializers.CharField(max_length=1024, required=False, allow_blank=True)
+    branch = serializers.CharField(max_length=255, allow_blank=True, required=False)
+    commit = serializers.CharField(max_length=64, allow_blank=True, required=False)
+    dirty = serializers.BooleanField(required=False)
+    fingerprint = serializers.CharField(max_length=64, required=False, allow_blank=True)
+    scanned_at = serializers.CharField(required=False, allow_blank=True, allow_null=True)
+
+    def validate_commit(self, value):
+        text = (value or "").strip()
+        if not text:
+            return text
+        if len(text) < 7 or any(c not in "0123456789abcdefABCDEF" for c in text):
+            raise serializers.ValidationError("commit must be a hex SHA")
+        return text
+
+    def validate_fingerprint(self, value):
+        text = (value or "").strip()
+        if not text:
+            return text
+        if len(text) != 64 or any(c not in "0123456789abcdefABCDEF" for c in text):
+            raise serializers.ValidationError("fingerprint must be a 64-char hex digest")
+        return text
+
+
+class GraphEdgeSerializer(serializers.Serializer):
+    source = serializers.CharField()
+    target = serializers.CharField()
+    kind = serializers.CharField()
+    observed = serializers.IntegerField(required=False)
 
 
 class SyncSnapshotSerializer(serializers.Serializer):
-    """Wire form of ``overmind.toml`` — the unit of two-way sync."""
+    """Wire form of the AgentManifest — the unit of sync."""
 
     project_id = serializers.UUIDField()
-    repo_summary = serializers.CharField(required=False, allow_blank=True)
-    trace_provider = serializers.ChoiceField(choices=TRACE_PROVIDERS, default="overmind")
-    version = serializers.CharField()
+    sdk_version = serializers.CharField(required=False, allow_blank=True)
+    version = serializers.CharField(required=False, allow_blank=True)
     repository_snapshot = RepositorySnapshotSerializer(required=False, allow_null=True)
-    last_synced_at = serializers.DateTimeField(read_only=True, allow_null=True)
-    capabilities = CapabilitySerializer(many=True)
+    last_synced_at = serializers.CharField(read_only=True, allow_null=True, required=False)
+    symbols = DeclaredSymbolSerializer(many=True, required=False)
+    capabilities = CapabilitySerializer(many=True, required=False)
+    edges = GraphEdgeSerializer(many=True, required=False)
+    repo_summary = serializers.CharField(required=False, allow_blank=True)
+    trace_provider = serializers.ChoiceField(
+        choices=TRACE_PROVIDERS, default="overmind", required=False
+    )
 
 
 class SyncView(APIView):
-    """Two-way ``overmind.toml`` sync.
+    """AgentManifest sync from a local decorator AST scan.
 
-    POST pushes the local snapshot. The server reconciles capability identity —
-    carry / leftover / remount — and never deletes: absence sets
-    ``status=leftover`` (observed rows stay). ``archived=true`` keeps leftover.
-    POST response is the incoming set with ids filled in. GET returns leftovers
-    with ``archived=true`` so toml round-trips them without listing them in the
-    console.
-
-    Auth: ``X-Api-Key`` (``APIToken``). Project keys must match ``project_id``;
-    account keys may sync any project the user belongs to.
+    POST pushes the scanned symbols. The server derives capability cards,
+    mints behaviours, and stores invokes edges. Absence sets
+    ``status=leftover`` (observed rows stay). GET returns the current graph.
     """
 
     authentication_classes = [APITokenBackend]
@@ -116,7 +145,7 @@ class SyncView(APIView):
         project = _project_for(request, data["project_id"])
         if isinstance(project, Response):
             return project
-        applied = apply_snapshot(project, data)
+        applied = apply_manifest(project, data)
         return Response(SyncSnapshotSerializer(snapshot_of(project, capabilities=applied)).data)
 
 

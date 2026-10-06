@@ -8,36 +8,43 @@ decorators call straight through, spans are non-recording, and nothing raises.
 from __future__ import annotations
 
 import asyncio
-import dataclasses
 import importlib
 import importlib.util
 import inspect
 import json
 import logging
 import os
-import re
 import threading
 import time
-from collections.abc import Callable, Iterable, Mapping
-from contextlib import contextmanager, nullcontext
+from collections.abc import Callable, Iterable, Iterator, Mapping
+from contextlib import contextmanager
+from contextvars import ContextVar
+from dataclasses import dataclass, field, replace
 from enum import Enum
-from functools import wraps
-from pathlib import Path, PurePath
+from functools import partial, wraps
+from pathlib import Path
 from typing import Any, TypeVar
 
-from opentelemetry import trace
-from opentelemetry.context import attach, detach, get_value, set_value
+from opentelemetry import baggage, trace
+from opentelemetry.baggage.propagation import W3CBaggagePropagator
+from opentelemetry.context import Context, attach, detach, get_current, get_value, set_value
 from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
+from opentelemetry.propagators.composite import CompositePropagator
 from opentelemetry.sdk.resources import Resource
 from opentelemetry.sdk.trace import SpanProcessor, TracerProvider
 from opentelemetry.sdk.trace.export import BatchSpanProcessor
 from opentelemetry.sdk.trace.sampling import Decision, Sampler, SamplingResult
 from opentelemetry.semconv_ai import SpanAttributes
 from opentelemetry.trace import Status, StatusCode
+from opentelemetry.trace.propagation.tracecontext import TraceContextTextMapPropagator
 
-from overmind import attrs
-from overmind.config import DEFAULT_PATH, Config, load, saved_project_api_key
+from overmind import __version__ as sdk_version
+from overmind import analytics, attrs, payloads
+from overmind.api import resolve_api_key, resolve_api_url
+from overmind.config import DEFAULT_PATH, Config, load
+from overmind.evals import MAX_EXPECTATIONS, Expectation
 from overmind.genai_usage import canonical_usage_updates
+from overmind.slug import identity_slug, split_capability_reference
 
 logger = logging.getLogger(__name__)
 
@@ -53,8 +60,6 @@ _init_lock = threading.Lock()
 # "tracing disabled" line on every run — log it once per process, then DEBUG.
 _keyless_logged = False
 
-DEFAULT_BASE_URL = os.getenv("OVERMIND_API_URL", "https://api.overmindlab.ai")
-
 
 def _local_config() -> Config | None:
     try:
@@ -67,169 +72,12 @@ def get_api_settings(
     overmind_api_key: str | None = None,
     base_url: str | None = None,
 ) -> tuple[str, str]:
-    local_config = _local_config()
-    saved_key = saved_project_api_key(DEFAULT_PATH) if local_config else ""
-    overmind_api_key = (
-        overmind_api_key or saved_key or os.getenv("OVERMIND_API_KEY") or (local_config.api_key if local_config else "")
-    )
-    if not overmind_api_key:
+    """``(api_key, base_url)`` by the same precedence as ``init()`` and the CLI."""
+    config = _local_config()
+    api_key = resolve_api_key(overmind_api_key or "", config)
+    if not api_key:
         raise RuntimeError("Missing Overmind API key. Run `overmind sync` or set OVERMIND_API_KEY.")
-    resolved_url = (
-        base_url or os.getenv("OVERMIND_API_URL") or (local_config.base_url if local_config else DEFAULT_BASE_URL)
-    )
-    return overmind_api_key, resolved_url.rstrip("/")
-
-
-# Guards against cyclic / mock-heavy inputs that recurse forever.
-_MAX_NORMALIZE_DEPTH = 10
-
-_DATA_URL_RE = re.compile(r"^data:[\w.+-]+/[\w.+-]+;base64,")
-_BASE64ISH_RE = re.compile(r"^[A-Za-z0-9+/=_-]{512,}$")
-# Substring match on lowered dict keys, so provider-prefixed names
-# (``openai_api_key``, ``access_token``, ``sensitive_data``) are caught too.
-_SECRET_KEY_MARKERS = (
-    "password",
-    "secret",
-    "token",
-    "credential",
-    "authorization",
-    "api_key",
-    "apikey",
-    "sensitive",
-)
-# Extra exact-match keys, extended via ``init(redact_keys=...)``.
-_extra_redact_keys: frozenset[str] = frozenset()
-
-# Bytes payloads longer than this (screenshots, audio) become a placeholder
-# instead of a hex dump.
-_MAX_BYTES_HEX = 256
-
-
-def _is_secret_key(key: str) -> bool:
-    lowered = key.lower()
-    return lowered in _extra_redact_keys or any(marker in lowered for marker in _SECRET_KEY_MARKERS)
-
-
-def _scrub_text(value: str) -> str:
-    """Redact base64 blobs / data URLs; all other text passes through in full."""
-    if _DATA_URL_RE.match(value) or (len(value) >= 512 and _BASE64ISH_RE.match(value)):
-        return f"<base64 {len(value)} chars>"
-    return value
-
-
-def _normalize_for_json(obj: Any, *, _depth: int = 0) -> Any:
-    """Recursively convert *obj* into JSON-serialisable primitives, scrubbing
-    secrets and binary blobs on the way; never raises."""
-    if _depth > _MAX_NORMALIZE_DEPTH:
-        return f"<truncated:{type(obj).__name__}>"
-    if isinstance(obj, str):
-        return _scrub_text(obj)
-    if isinstance(obj, (int, float, bool, type(None))):
-        return obj
-    if dataclasses.is_dataclass(obj) and not isinstance(obj, type):
-        return {f.name: _normalize_for_json(getattr(obj, f.name), _depth=_depth + 1) for f in dataclasses.fields(obj)}
-    if _should_skip_value(obj):
-        return f"<{type(obj).__name__}>"
-    if isinstance(obj, dict):
-        return {
-            str(k): ("<redacted>" if _is_secret_key(str(k)) else _normalize_for_json(v, _depth=_depth + 1))
-            for k, v in obj.items()
-        }
-    if isinstance(obj, (list, tuple, set, frozenset)):
-        return [_normalize_for_json(item, _depth=_depth + 1) for item in obj]
-    if isinstance(obj, bytes):
-        return obj.hex() if len(obj) <= _MAX_BYTES_HEX else f"<bytes {len(obj)}>"
-    if isinstance(obj, PurePath):
-        return str(obj)
-    # model_dump last: MagicMock exposes a callable one that returns more mocks.
-    dumper = getattr(obj, "model_dump", None)
-    if callable(dumper):
-        try:
-            dumped = dumper(exclude_none=True, mode="json")
-        except TypeError:
-            try:
-                dumped = dumper()
-            except Exception:
-                return str(obj)
-        except Exception:
-            return str(obj)
-        if isinstance(dumped, dict):
-            return _normalize_for_json(dumped, _depth=_depth + 1)
-        return str(obj)
-    if hasattr(obj, "__dict__"):
-        try:
-            items = vars(obj).items()
-        except TypeError:
-            return str(obj)
-        return {
-            str(k): ("<redacted>" if _is_secret_key(str(k)) else _normalize_for_json(v, _depth=_depth + 1))
-            for k, v in items
-            if not k.startswith("_")
-        }
-    return str(obj)
-
-
-def _json_dumps(obj: Any) -> str:
-    """JSON-serialise *obj* via :func:`_normalize_for_json`, never raises."""
-    try:
-        return json.dumps(_normalize_for_json(obj), ensure_ascii=False)
-    except (TypeError, ValueError, OverflowError):
-        return repr(obj)
-
-
-# Public alias: platform telemetry (overbae workshop) serialises
-# manual span inputs/outputs through the same scrubbing path.
-serialize = _json_dumps
-
-
-_MESSAGE_ROLE_MAP = {"human": "user", "ai": "assistant"}
-
-
-def _message_text(content: Any) -> str:
-    if content is None:
-        return ""
-    if isinstance(content, str):
-        return content
-    if isinstance(content, list):
-        parts: list[str] = []
-        for part in content:
-            if isinstance(part, str):
-                parts.append(part)
-            elif isinstance(part, dict) and part.get("text"):
-                parts.append(str(part["text"]))
-            elif getattr(part, "text", None):
-                parts.append(str(part.text))
-        return "\n".join(parts)
-    return str(content)
-
-
-def normalize_messages(messages: Any) -> list[dict[str, Any]]:
-    """Normalise a chat-message list (dicts, OpenAI/Anthropic/LangChain
-    objects) into ``{"role", "content"}`` entries with full text. Image and
-    base64 parts are dropped; tool calls carried as ``tool_calls`` /
-    ``tool_call_id`` when present."""
-    out: list[dict[str, Any]] = []
-    for message in messages or []:
-        if isinstance(message, dict):
-            role = str(message.get("role") or message.get("type") or "user")
-            content = message.get("content")
-            tool_calls = message.get("tool_calls")
-            tool_call_id = message.get("tool_call_id")
-        else:
-            role = str(getattr(message, "role", None) or getattr(message, "type", None) or "user")
-            content = getattr(message, "text", None) or getattr(message, "content", None)
-            tool_calls = getattr(message, "tool_calls", None)
-            tool_call_id = getattr(message, "tool_call_id", None)
-        entry: dict[str, Any] = {"role": _MESSAGE_ROLE_MAP.get(role, role), "content": _message_text(content)}
-        if tool_calls:
-            entry["tool_calls"] = [
-                {"name": tc.get("name"), "args": tc.get("args")} if isinstance(tc, dict) else str(tc)
-                for tc in tool_calls
-            ]
-        if tool_call_id:
-            entry["tool_call_id"] = str(tool_call_id)
-        out.append(entry)
-    return out
+    return api_key, resolve_api_url(base_url or "", config)
 
 
 # provider name -> (importable module gate, instrumentation module, class)
@@ -313,8 +161,6 @@ def enable_tracing(providers: list[str] | str | None = None) -> None:
             # and deliver gate on _initialized — and attach the stamping +
             # genai processors, or every span lands unscorable.
             _ensure_pipeline_processors(provider)
-            from overmind import __version__ as sdk_version
-
             _tracer = trace.get_tracer("overmind", sdk_version)
             _initialized = True
     logger.info(f"Enabling tracing for providers: {providers}")
@@ -405,22 +251,29 @@ def _span_processor_on_start(span: trace.Span, parent_context: trace.Context | N
       boundary per trace, the root;
     - declared run at the root: stays ``"run"``, never carries a behaviour key;
     - turn unit / interior span: ambient behaviour key, unless the span
-      declared its own key (a turn-registry span is never re-keyed).
+      declared its own key (a turn-registry span is never re-keyed);
+    - every recording span: the trace's next ``overmind.step``.
+
+    Values are read from *parent_context* — the context the span was started
+    with — so a span started with an explicit ``context=`` is stamped from
+    it, not from whatever happens to be attached on this thread.
     """
-    if value := get_value(_CTX_KEY_WORKFLOW_NAME):
+    if value := get_value(_CTX_KEY_WORKFLOW_NAME, parent_context):
         span.set_attribute(SpanAttributes.TRACELOOP_WORKFLOW_NAME, str(value))
-    if capability_name := get_value(attrs.CAPABILITY_NAME):
+    if capability_name := get_value(attrs.CAPABILITY_NAME, parent_context):
         span.set_attribute(attrs.CAPABILITY_NAME, str(capability_name))
-    if capability_id := get_value(attrs.CAPABILITY_ID):
+    if capability_slug := get_value(attrs.CAPABILITY_SLUG, parent_context):
+        span.set_attribute(attrs.CAPABILITY_SLUG, str(capability_slug))
+    if capability_id := get_value(attrs.CAPABILITY_ID, parent_context):
         span.set_attribute(attrs.CAPABILITY_ID, str(capability_id))
-    if project_id := get_value(attrs.PROJECT_ID):
+    if project_id := get_value(attrs.PROJECT_ID, parent_context):
         span.set_attribute(attrs.PROJECT_ID, str(project_id))
-    if conversation_id := get_value(_CTX_KEY_CONVERSATION_ID):
+    if conversation_id := get_value(_CTX_KEY_CONVERSATION_ID, parent_context):
         span.set_attribute("conversation.id", str(conversation_id))
 
     declared = getattr(span, "attributes", None) or {}
     kind = _boundary_kind(declared)
-    pending = get_value(_CTX_KEY_PENDING_TURN)
+    pending = get_value(_CTX_KEY_PENDING_TURN, parent_context)
     if isinstance(pending, _PendingTurn) and not pending.consumed:
         pending.consumed = True
         kind = "turn"
@@ -429,8 +282,12 @@ def _span_processor_on_start(span: trace.Span, parent_context: trace.Context | N
     if kind is not None and declared.get(attrs.UNIT_KIND) != kind:
         span.set_attribute(attrs.UNIT_KIND, kind)
 
-    if (behaviour_key := get_value(attrs.BEHAVIOUR_KEY)) and kind != "run" and attrs.BEHAVIOUR_KEY not in declared:
+    behaviour_key = get_value(attrs.BEHAVIOUR_KEY, parent_context)
+    if behaviour_key and kind != "run" and attrs.BEHAVIOUR_KEY not in declared:
         span.set_attribute(attrs.BEHAVIOUR_KEY, str(behaviour_key))
+
+    if span.is_recording():
+        span.set_attribute(attrs.STEP, _traces.next_step(span.get_span_context().trace_id))
 
 
 def _task_scope_may_label(span) -> bool:
@@ -534,24 +391,6 @@ class _GenAiUsageSpanProcessor(SpanProcessor):
                 logger.debug("genai enrichment could not set %s", key, exc_info=True)
 
 
-def _attach_remote_parent_if_present() -> None:
-    """Attach the W3C ``TRACEPARENT`` env var (injected by the optimiser into
-    agent subprocesses) as the ambient parent context. No-op when absent."""
-    raw = os.environ.get("TRACEPARENT") or os.environ.get("OTEL_TRACEPARENT")
-    if not raw:
-        return
-    try:
-        from opentelemetry import context as _ctx
-        from opentelemetry.trace.propagation.tracecontext import TraceContextTextMapPropagator
-
-        propagator = TraceContextTextMapPropagator()
-        remote_ctx = propagator.extract(carrier={"traceparent": raw.strip()})
-        _ctx.attach(remote_ctx)
-        logger.debug(f"Attached remote parent context from TRACEPARENT: {raw}")
-    except Exception as exc:
-        logger.debug(f"Could not attach remote parent context: {exc}")
-
-
 _GIT_SHA_ENV_VARS = (
     "OVERMIND_GIT_SHA",  # explicit override, checked first
     "GIT_SHA",
@@ -626,9 +465,7 @@ def _enable_debug_logging() -> None:
 
 def _log_debug_summary(
     endpoint: str,
-    capability_id: str | None,
-    capability_name: str | None,
-    project_id: str | None,
+    identity: _Identity,
     flush_interval_ms: int | None = None,
     max_batch_size: int | None = None,
 ) -> None:
@@ -640,9 +477,9 @@ def _log_debug_summary(
     logger.info(
         "Overmind debug: endpoint=%s | capability_id=%s capability=%s project_id=%s | providers=%s | export=%s | export_orphan_spans=%s",
         endpoint,
-        capability_id,
-        capability_name,
-        project_id,
+        identity.capability_id,
+        identity.capability_name,
+        identity.project_id,
         ", ".join(sorted(_providers)) or "none",
         export,
         _export_orphan_spans,
@@ -658,25 +495,45 @@ def env_identity() -> tuple[str | None, str | None]:
     return os.environ.get("OVERMIND_CAPABILITY_ID"), os.environ.get("OVERMIND_CAPABILITY_NAME")
 
 
-def _track_sdk_init(
-    outcome: str,
-    *,
-    providers: list[str] | str | None,
-    capability_id: str | None,
-) -> None:
-    from overmind.analytics import capture
+@dataclass(frozen=True)
+class _Identity:
+    """Who this process's spans belong to, as ``init()`` resolved it."""
 
+    capability_id: str | None
+    capability_name: str | None
+    project_id: str | None
+
+    @classmethod
+    def resolve(cls, capability_id: str | None, capability: str | None, project_id: str | None) -> _Identity:
+        if capability_id is None and capability is None:
+            capability_id, capability = env_identity()
+        return cls(capability_id, capability, project_id or os.environ.get("OVERMIND_PROJECT_ID"))
+
+    def seed(self) -> None:
+        _seed_identity_context(self.capability_id, self.capability_name, self.project_id)
+
+    def resource_attributes(self) -> dict[str, str]:
+        # Identity on the resource lets the server resolve Agent/Project directly.
+        pairs = {
+            attrs.CAPABILITY_ID: self.capability_id,
+            attrs.CAPABILITY_NAME: self.capability_name,
+            attrs.PROJECT_ID: self.project_id,
+        }
+        return {key: value for key, value in pairs.items() if value}
+
+
+def _track_sdk_init(outcome: str, *, providers: list[str] | str | None, identity: _Identity) -> None:
     if providers is None:
         provider_names: list[str] = []
     elif isinstance(providers, str):
         provider_names = [providers]
     else:
         provider_names = list(providers)
-    capture(
+    analytics.capture(
         "sdk_init",
         outcome=outcome,
         providers=provider_names,
-        has_capability_id=bool(capability_id),
+        has_capability_id=bool(identity.capability_id),
         surface="library",
     )
 
@@ -704,7 +561,7 @@ def init(
     the orphan-export policy only.
 
     Args:
-        overmind_api_key: API key; defaults to OVERMIND_API_KEY, then the local synced credential.
+        overmind_api_key: API key; defaults to the local synced credential, then OVERMIND_API_KEY.
         service_name: Service name in traces; defaults to OVERMIND_SERVICE_NAME.
         environment: e.g. "production"; defaults to OVERMIND_ENVIRONMENT or "development".
         providers: Providers to auto-instrument: "openai", "anthropic", "google",
@@ -727,146 +584,130 @@ def init(
             instrumentors, export mode) and raise the ``overmind`` logger to
             DEBUG with a stderr handler.
     """
-    global _initialized, _tracer, _extra_redact_keys, _keyless_logged, _export_orphan_spans
+    global _export_orphan_spans
 
     if debug:
         _enable_debug_logging()
-
-    if capability_id is None and capability is None:
-        capability_id, capability_name = env_identity()
-    else:
-        capability_name = capability
-    project_id = project_id or os.environ.get("OVERMIND_PROJECT_ID")
+    identity = _Identity.resolve(capability_id, capability, project_id)
     _export_orphan_spans = bool(export_orphan_spans)
-
     if redact_keys:
-        _extra_redact_keys = _extra_redact_keys | {str(k).lower() for k in redact_keys}
+        payloads.add_redact_keys(redact_keys)
 
     with _init_lock:
         if _initialized:
             # Re-init only refreshes identity + providers; exporters stay as-is.
             logger.debug(f"Overmind SDK already initialised, reinitialising with providers: {providers}")
-            _seed_identity_context(capability_id, capability_name, project_id)
+            identity.seed()
             enable_tracing(providers)
             if debug:
-                _log_debug_summary("(unchanged — already initialised)", capability_id, capability_name, project_id)
-            _track_sdk_init("success", providers=providers, capability_id=capability_id)
-            return True
-
-        # Optimise-step subprocess: the runner wrapper set up a file-exporter
-        # provider (OVERMIND_TRACE_FILE) and stripped the API key — reuse it
-        # instead of crashing or replacing the exporter.
-        if os.environ.get("OVERMIND_TRACE_FILE") and not (overmind_api_key or os.environ.get("OVERMIND_API_KEY")):
-            from overmind import __version__ as sdk_version
-
-            logger.debug(
-                "Overmind SDK init() skipped: OVERMIND_TRACE_FILE is set and no "
-                "OVERMIND_API_KEY available; reusing the local file-exporter "
-                "TracerProvider configured by the optimise runner wrapper.",
+                _log_debug_summary("(unchanged — already initialised)", identity)
+        elif os.environ.get("OVERMIND_TRACE_FILE") and not (overmind_api_key or os.environ.get("OVERMIND_API_KEY")):
+            _adopt_trace_file_provider(identity, providers, debug=debug)
+        else:
+            config = _local_config()
+            api_key = resolve_api_key(overmind_api_key or "", config)
+            if not api_key:
+                return _stay_keyless(identity, providers)
+            if not identity.project_id and config and config.project_id:
+                identity = replace(identity, project_id=config.project_id)
+            _install_exporting_provider(
+                api_key,
+                resolve_api_url(overmind_base_url or "", config),
+                identity,
+                providers,
+                service_name=service_name,
+                environment=environment,
+                debug=debug,
             )
-            _ensure_pipeline_processors(trace.get_tracer_provider())
-            _tracer = trace.get_tracer("overmind", sdk_version)
-            _seed_identity_context(capability_id, capability_name, project_id)
-            enable_tracing(providers)
-            _attach_remote_parent_if_present()
-            _initialized = True
-            if debug:
-                _log_debug_summary(
-                    f"file:{os.environ['OVERMIND_TRACE_FILE']}", capability_id, capability_name, project_id
-                )
-            _track_sdk_init("success", providers=providers, capability_id=capability_id)
-            return True
-
-        local_config = _local_config()
-        saved_key = saved_project_api_key(DEFAULT_PATH) if local_config else ""
-        overmind_api_key = (
-            overmind_api_key
-            or saved_key
-            or os.getenv("OVERMIND_API_KEY")
-            or (local_config.api_key if local_config else "")
-        )
-        if not overmind_api_key:
-            msg = "Overmind tracing disabled: no project credential. Run `overmind sync` or set OVERMIND_API_KEY."
-            if _strict_mode:
-                _track_sdk_init("strict-fail", providers=providers, capability_id=capability_id)
-                raise RuntimeError(msg)
-            logger.log(logging.DEBUG if _keyless_logged else logging.INFO, msg)
-            _keyless_logged = True
-            _track_sdk_init("keyless", providers=providers, capability_id=capability_id)
-            return False
-        overmind_base_url = (
-            overmind_base_url
-            or os.getenv("OVERMIND_API_URL")
-            or (local_config.base_url if local_config else DEFAULT_BASE_URL)
-        ).rstrip("/")
-        project_id = project_id or (local_config.project_id if local_config else None)
-
-        environment = (
-            environment or os.environ.get("OVERMIND_ENVIRONMENT") or os.environ.get("ENVIRONMENT") or "development"
-        )
-
-        endpoint = f"{overmind_base_url}/api/v1/traces"
-
-        from overmind import __version__ as sdk_version
-
-        resource_attributes = {
-            "service.name": service_name or os.environ.get("OVERMIND_SERVICE_NAME") or "overmind-telemetry",
-            "service.version": os.environ.get("SERVICE_VERSION", sdk_version),
-            "deployment.environment": environment,
-            attrs.SDK_NAME: "overmind-python",
-            attrs.SDK_VERSION: sdk_version,
-        }
-        # Identity on the resource lets the server resolve Agent/Project directly.
-        if capability_id:
-            resource_attributes[attrs.CAPABILITY_ID] = capability_id
-        if capability_name:
-            resource_attributes[attrs.CAPABILITY_NAME] = capability_name
-        if project_id:
-            resource_attributes[attrs.PROJECT_ID] = project_id
-        # Commit sha binds every trace to the exact code the process runs.
-        if git_sha := _detect_git_sha():
-            resource_attributes[attrs.VCS_REF_HEAD_REVISION] = git_sha
-
-        resource = Resource.create(resource_attributes)
-
-        provider = TracerProvider(resource=resource, sampler=_OrphanSpanSampler())
-        # Must run before the exporting processor so its on-end mutation is exported.
-        provider.add_span_processor(_GenAiUsageSpanProcessor())
-        provider.add_span_processor(_TurnLifecycleSpanProcessor())
-
-        otlp_exporter = OTLPSpanExporter(endpoint=endpoint, headers={"X-Api-Key": overmind_api_key})
-
-        # Flush every ~2s (OTel default 5s) so progress streams while spans are open.
-        schedule_delay_millis = int(os.environ.get("OVERMIND_SPAN_FLUSH_INTERVAL_MS", "2000"))
-        max_export_batch_size = int(os.environ.get("OVERMIND_SPAN_MAX_EXPORT_BATCH_SIZE", "256"))
-        span_processor = BatchSpanProcessor(
-            otlp_exporter,
-            schedule_delay_millis=schedule_delay_millis,
-            max_export_batch_size=max_export_batch_size,
-        )
-        provider.add_span_processor(span_processor)
-        provider._overmind_processors_attached = True  # noqa: SLF001
-
-        trace.set_tracer_provider(provider)
-
-        _tracer = trace.get_tracer("overmind", sdk_version)
-        _seed_identity_context(capability_id, capability_name, project_id)
-        enable_tracing(providers)
-        _attach_remote_parent_if_present()
-
-        _initialized = True
-        logger.info(f"Overmind SDK initialised: service={service_name}, environment={environment}")
-        if debug:
-            _log_debug_summary(
-                endpoint,
-                capability_id,
-                capability_name,
-                project_id,
-                flush_interval_ms=schedule_delay_millis,
-                max_batch_size=max_export_batch_size,
-            )
-        _track_sdk_init("success", providers=providers, capability_id=capability_id)
+        _track_sdk_init("success", providers=providers, identity=identity)
         return True
+
+
+def _adopt_trace_file_provider(identity: _Identity, providers: list[str] | str | None, *, debug: bool) -> None:
+    """Optimise-step subprocess: the runner wrapper set up a file-exporter
+    provider (``OVERMIND_TRACE_FILE``) and stripped the API key. Reuse it
+    instead of crashing or replacing the exporter."""
+    logger.debug(
+        "Overmind SDK init() skipped: OVERMIND_TRACE_FILE is set and no "
+        "OVERMIND_API_KEY available; reusing the local file-exporter "
+        "TracerProvider configured by the optimise runner wrapper.",
+    )
+    _ensure_pipeline_processors(trace.get_tracer_provider())
+    _arm(identity, providers)
+    if debug:
+        _log_debug_summary(f"file:{os.environ['OVERMIND_TRACE_FILE']}", identity)
+
+
+def _stay_keyless(identity: _Identity, providers: list[str] | str | None) -> bool:
+    global _keyless_logged
+    message = "Overmind tracing disabled: no project credential. Run `overmind sync` or set OVERMIND_API_KEY."
+    if _strict_mode:
+        _track_sdk_init("strict-fail", providers=providers, identity=identity)
+        raise RuntimeError(message)
+    logger.log(logging.DEBUG if _keyless_logged else logging.INFO, message)
+    _keyless_logged = True
+    _track_sdk_init("keyless", providers=providers, identity=identity)
+    return False
+
+
+def _install_exporting_provider(
+    api_key: str,
+    base_url: str,
+    identity: _Identity,
+    providers: list[str] | str | None,
+    *,
+    service_name: str | None,
+    environment: str | None,
+    debug: bool,
+) -> None:
+    environment = (
+        environment or os.environ.get("OVERMIND_ENVIRONMENT") or os.environ.get("ENVIRONMENT") or "development"
+    )
+    resource_attributes = {
+        "service.name": service_name or os.environ.get("OVERMIND_SERVICE_NAME") or "overmind-telemetry",
+        "service.version": os.environ.get("SERVICE_VERSION", sdk_version),
+        "deployment.environment": environment,
+        attrs.SDK_NAME: "overmind-python",
+        attrs.SDK_VERSION: sdk_version,
+        **identity.resource_attributes(),
+    }
+    # Commit sha binds every trace to the exact code the process runs.
+    if git_sha := _detect_git_sha():
+        resource_attributes[attrs.VCS_REF_HEAD_REVISION] = git_sha
+
+    provider = TracerProvider(resource=Resource.create(resource_attributes), sampler=_OrphanSpanSampler())
+    # Must run before the exporting processor so its on-end mutation is exported.
+    provider.add_span_processor(_GenAiUsageSpanProcessor())
+    provider.add_span_processor(_TurnLifecycleSpanProcessor())
+
+    endpoint = f"{base_url}/api/v1/traces"
+    # Flush every ~2s (OTel default 5s) so progress streams while spans are open.
+    flush_interval_ms = int(os.environ.get("OVERMIND_SPAN_FLUSH_INTERVAL_MS", "2000"))
+    max_batch_size = int(os.environ.get("OVERMIND_SPAN_MAX_EXPORT_BATCH_SIZE", "256"))
+    provider.add_span_processor(
+        BatchSpanProcessor(
+            OTLPSpanExporter(endpoint=endpoint, headers={"X-Api-Key": api_key}),
+            schedule_delay_millis=flush_interval_ms,
+            max_export_batch_size=max_batch_size,
+        )
+    )
+    provider._overmind_processors_attached = True  # noqa: SLF001
+    trace.set_tracer_provider(provider)
+
+    _arm(identity, providers)
+    logger.info(f"Overmind SDK initialised: service={service_name}, environment={environment}")
+    if debug:
+        _log_debug_summary(endpoint, identity, flush_interval_ms=flush_interval_ms, max_batch_size=max_batch_size)
+
+
+def _arm(identity: _Identity, providers: list[str] | str | None) -> None:
+    """Point the SDK at the installed provider; decorators record from here on."""
+    global _initialized, _tracer
+    _tracer = trace.get_tracer("overmind", sdk_version)
+    identity.seed()
+    enable_tracing(providers)
+    _attach_environment_carrier()
+    _initialized = True
 
 
 def get_tracer() -> trace.Tracer:
@@ -887,20 +728,8 @@ def set_user(user_id: str, email: str | None = None, username: str | None = None
             span.set_attribute("user.username", username)
 
 
-def _coerce_to_otel_attribute(value: Any) -> Any:
-    """Coerce *value* to an OTel-legal attribute; rich values become JSON."""
-    if value is None:
-        return ""
-    if isinstance(value, (bool, str, int, float)):
-        return value
-    if isinstance(value, (list, tuple)) and all(isinstance(v, str) for v in value):
-        return list(value)
-    return _json_dumps(value)
-
-
 def _safe_set_attribute(otel_span, key: str, value: Any) -> None:
-    """Set *key* / *value* on *otel_span* via :func:`_coerce_to_otel_attribute`."""
-    otel_span.set_attribute(key, _coerce_to_otel_attribute(value))
+    otel_span.set_attribute(key, payloads.to_attribute(value))
 
 
 def set_tag(key: str, value) -> None:
@@ -930,16 +759,6 @@ def set_conversation_id(conversation_id: str) -> None:
     attach(set_value(attrs.CONVERSATION_ID, conversation_id))
 
 
-# Matches the platform's slug convention (Capability.slug, Behaviour.slug):
-# lowercase, non-alphanumeric runs collapse to single hyphens. The one copy —
-# langgraph behaviour keys and handoff detection must agree.
-_IDENTITY_SLUG_RE = re.compile(r"[^a-z0-9]+")
-
-
-def identity_slug(value: str) -> str:
-    return _IDENTITY_SLUG_RE.sub("-", value.lower()).strip("-")
-
-
 def _is_handoff(name: str | None, id: str | None) -> bool:
     """Entering a capability that differs from the active one, mid-trace.
 
@@ -960,30 +779,49 @@ def _is_handoff(name: str | None, id: str | None) -> bool:
     return False
 
 
+def _capability_context(name: str | None, id: str | None, *, slug: str | None = None) -> Context:
+    """The current context with *name* / *id* / *slug* as the capability identity.
+    Entering a different identity mid-trace arms a one-shot handoff turn."""
+    ctx = set_value(_CTX_KEY_PENDING_TURN, _PendingTurn() if _is_handoff(name or slug, id) else None)
+    # Keys are always written: a name-only scope must not inherit the outer
+    # scope's id (the server resolves id before slug before name).
+    ctx = set_value(attrs.CAPABILITY_NAME, name, ctx)
+    ctx = set_value(attrs.CAPABILITY_SLUG, slug, ctx)
+    ctx = set_value(attrs.CAPABILITY_ID, id, ctx)
+    # Behaviour keys are capability-scoped: a key declared under the outer
+    # capability means nothing here, so the ambient key resets with the
+    # identity (detach restores it once this scope closes).
+    return set_value(attrs.BEHAVIOUR_KEY, None, ctx)
+
+
 class _CapabilityScope:
     """Context manager (sync or async) and decorator produced by
     :func:`capability`. Entering attaches the capability identity to the OTel
     context (async-safe via contextvars) so the on-start processor stamps it
-    on every span created inside; exiting restores the outer identity."""
+    on every span created inside; exiting restores the outer identity.
 
-    def __init__(self, name: str | None, id: str | None) -> None:
-        if not name and not id:
-            raise ValueError("capability() requires a name and/or id")
+    Decorating a function that is not already ``observe``-wrapped makes it an
+    entry-point span; stacking over ``@tool`` / ``@observe`` only opens the
+    identity scope so the inner decorator owns the span."""
+
+    def __init__(
+        self,
+        name: str | None,
+        id: str | None,
+        *,
+        slug: str | None = None,
+        description: str = "",
+    ) -> None:
+        if not name and not id and not slug:
+            raise ValueError("capability() requires a slug, name and/or id")
         self._name = str(name) if name else None
         self._id = str(id) if id else None
+        self._slug = str(slug) if slug else None
+        self._description = str(description or "")
         self._token: Any = None
 
     def __enter__(self) -> _CapabilityScope:
-        ctx = set_value(_CTX_KEY_PENDING_TURN, _PendingTurn() if _is_handoff(self._name, self._id) else None)
-        # Both keys are always written: a name-only scope must not inherit the
-        # outer scope's id (the server resolves id before name).
-        ctx = set_value(attrs.CAPABILITY_NAME, self._name, ctx)
-        ctx = set_value(attrs.CAPABILITY_ID, self._id, ctx)
-        # Behaviour keys are capability-scoped: a key declared under the outer
-        # capability means nothing here, so the ambient key resets with the
-        # identity (detach restores it once this scope closes).
-        ctx = set_value(attrs.BEHAVIOUR_KEY, None, ctx)
-        self._token = attach(ctx)
+        self._token = attach(_capability_context(self._name, self._id, slug=self._slug))
         return self
 
     def __exit__(self, *exc) -> None:
@@ -998,40 +836,67 @@ class _CapabilityScope:
         self.__exit__(*exc)
 
     def __call__(self, func: F) -> F:
-        if inspect.iscoroutinefunction(func):
+        # Already observed (e.g. ``@capability`` over ``@tool``): scope only.
+        if getattr(func, "_overmind_observed", False):
+            if inspect.iscoroutinefunction(func):
+
+                @wraps(func)
+                async def async_scoped(*args, **kwargs):
+                    with self:
+                        return await func(*args, **kwargs)
+
+                return async_scoped  # type: ignore[return-value]
 
             @wraps(func)
-            async def async_wrapper(*args, **kwargs):
-                with _CapabilityScope(self._name, self._id):
-                    return await func(*args, **kwargs)
+            def sync_scoped(*args, **kwargs):
+                with self:
+                    return func(*args, **kwargs)
 
-            return async_wrapper  # type: ignore[return-value]
+            return sync_scoped  # type: ignore[return-value]
 
-        @wraps(func)
-        def sync_wrapper(*args, **kwargs):
-            with _CapabilityScope(self._name, self._id):
-                return func(*args, **kwargs)
+        # Bare function: entry point + identity.
+        return observe(
+            type=SpanType.ENTRY_POINT,
+            capability=self._slug or self._name,
+            capability_id=self._id,
+        )(func)
 
-        return sync_wrapper  # type: ignore[return-value]
 
-
-def capability(name: str | None = None, *, id: str | None = None) -> _CapabilityScope:
+def capability(
+    slug: str | None = None,
+    *,
+    description: str = "",
+    id: str | None = None,
+    name: str | None = None,
+) -> _CapabilityScope:
     """Declare that all work inside belongs to one capability.
 
-    ``id`` — the capability's UUID from the Console — is the identifier the
-    server resolves first and is stable through renames; pin it whenever you
-    have it. The positional ``name`` accepts the capability's slug (stable
-    through renames, recommended) or its display name (a mutable label the
-    server resolves through its alias table); it is safe to send alongside
-    ``id`` but never load-bearing when an id is present.
+    The positional argument is the capability's slug when it is already
+    lowercase kebab-case; otherwise it is treated as a display name and a
+    slug is derived. ``description`` is recorded for the AST manifest scan
+    and does not affect runtime spans.
+
+    ``id`` — the capability's UUID from the Console — is resolved first when
+    present and is stable through renames.
 
     Usable as a context manager (``with`` / ``async with``) or decorator.
-    Every span created inside carries ``overmind.capability.id`` / ``.name``; on
-    exit the outer identity is restored. Entering a *different* capability
-    mid-trace is a handoff: the first span of the new scope is stamped
-    ``overmind.unit_kind = "turn"`` so the platform opens a new scoring unit.
-    The identity must be one the project declared — nothing is auto-created."""
-    return _CapabilityScope(name, id)
+    Decorating a bare function makes it an entry-point span; stacking over
+    ``@tool`` / ``@observe`` only opens the identity scope. Every span created
+    inside carries ``overmind.capability.slug`` / ``.name`` / ``.id``; on exit
+    the outer identity is restored. Entering a *different* capability mid-trace
+    is a handoff: the first span of the new scope is stamped
+    ``overmind.unit_kind = "turn"``. The identity must be one the project
+    declared — nothing is auto-created."""
+    if not slug and not id and not name:
+        raise ValueError("capability() requires a slug, name and/or id")
+    resolved_slug: str | None = None
+    display: str | None = name
+    if slug:
+        reference_display, resolved_slug = split_capability_reference(slug)
+        display = display or reference_display
+    elif name:
+        resolved_slug = identity_slug(str(name)) or None
+    return _CapabilityScope(display, id, slug=resolved_slug, description=description)
 
 
 class _TurnRegistry:
@@ -1098,13 +963,13 @@ _turn_registry = _TurnRegistry()
 
 def _span_processor_on_end(span) -> None:
     """End the trace's open turn spans when its run-boundary span ends, and
-    drop its unclaimed evidence bucket so the registry stays bounded."""
+    forget the trace's registry entry so it stays bounded."""
     if _boundary_kind(getattr(span, "attributes", None) or {}) != "run":
         return
     ctx = span.get_span_context()
     if ctx.is_valid:
         _turn_registry.end_for_trace(ctx.trace_id)
-        _pop_evidence(ctx.trace_id)
+        _traces.drop(ctx.trace_id)
 
 
 class _TurnLifecycleSpanProcessor(SpanProcessor):
@@ -1259,232 +1124,519 @@ def _validate_unit(value: str | None) -> None:
         raise ValueError(f"unit must be one of {sorted(_UNIT_KINDS)}, got {value!r}")
 
 
-# Evidence registry — environment-provenance spans collected per trace so
-# deliver() can ground the terminal deliverable without app bookkeeping.
-# Keyed by trace id (not a ContextVar): middleware and subagent hooks often
-# run in isolated tasks/loops whose context never propagates back.
+# Per-trace registry — keyed by trace id, not a ContextVar: threads, isolated
+# event loops and remote hops share a trace id but not necessarily a context.
 
 _MAX_TRACKED_TRACES = 256
-_evidence_lock = threading.Lock()
-_trace_evidence: dict[int, list[str]] = {}
 
 
-def _current_trace_id() -> int | None:
-    ctx = trace.get_current_span().get_span_context()
-    return ctx.trace_id if ctx.is_valid else None
+@dataclass
+class _TraceState:
+    step: int = 0
+    evidence: list[str] = field(default_factory=list)  # environment-provenance span ids
+    tool_calls: dict[str, trace.SpanContext] = field(default_factory=dict)  # call id -> requesting LLM span
 
 
-def _remember_evidence(otel_span) -> None:
-    ctx = otel_span.get_span_context()
-    if not ctx.is_valid:
-        return
-    with _evidence_lock:
-        bucket = _trace_evidence.pop(ctx.trace_id, None)
-        if bucket is None:
-            while len(_trace_evidence) >= _MAX_TRACKED_TRACES:
-                _trace_evidence.pop(next(iter(_trace_evidence)))
-            bucket = []
-        # Re-insert at the end: eviction is LRU on last evidence, so a
-        # long-lived active trace is not the first casualty.
-        _trace_evidence[ctx.trace_id] = bucket
-        bucket.append(format(ctx.span_id, "016x"))
+class _TraceRegistry:
+    """Lock-guarded LRU of :class:`_TraceState`, capped so a process that
+    never closes a run boundary cannot grow it forever. An entry is dropped
+    when its run-boundary span ends."""
+
+    def __init__(self) -> None:
+        self._lock = threading.Lock()
+        self._states: dict[int, _TraceState] = {}
+
+    def _state(self, trace_id: int) -> _TraceState:
+        # Re-insert at the end so eviction takes the least recently touched trace.
+        state = self._states.pop(trace_id, None) or _TraceState()
+        self._states[trace_id] = state
+        while len(self._states) > _MAX_TRACKED_TRACES:
+            self._states.pop(next(iter(self._states)))
+        return state
+
+    def next_step(self, trace_id: int) -> int:
+        with self._lock:
+            state = self._state(trace_id)
+            state.step += 1
+            return state.step
+
+    def current_step(self, trace_id: int) -> int:
+        with self._lock:
+            state = self._states.get(trace_id)
+            return state.step if state else 0
+
+    def witness_step(self, trace_id: int, step: int) -> None:
+        """Lamport receive: this side's next step sorts after *step*."""
+        with self._lock:
+            state = self._state(trace_id)
+            state.step = max(state.step, step)
+
+    def remember_evidence(self, span_context: trace.SpanContext) -> None:
+        with self._lock:
+            self._state(span_context.trace_id).evidence.append(format(span_context.span_id, "016x"))
+
+    def take_evidence(self, trace_id: int) -> list[str]:
+        with self._lock:
+            state = self._states.get(trace_id)
+            if state is None:
+                return []
+            evidence, state.evidence = state.evidence, []
+            return evidence
+
+    def remember_tool_call(self, span_context: trace.SpanContext, call_id: str) -> None:
+        """Record the LLM span that requested *call_id*; the first writer wins."""
+        with self._lock:
+            self._state(span_context.trace_id).tool_calls.setdefault(call_id, span_context)
+
+    def tool_call_origin(self, trace_id: int, call_id: str) -> trace.SpanContext | None:
+        with self._lock:
+            state = self._states.get(trace_id)
+            return state.tool_calls.get(call_id) if state else None
+
+    def drop(self, trace_id: int) -> None:
+        with self._lock:
+            self._states.pop(trace_id, None)
 
 
-def _pop_evidence(trace_id: int | None) -> list[str]:
-    if trace_id is None:
-        return []
-    with _evidence_lock:
-        return _trace_evidence.pop(trace_id, [])
+_traces = _TraceRegistry()
 
 
-# Type names never serialised into span attributes; matched by name to
-# avoid importing rich / opentelemetry for an isinstance check.
-_SKIP_INPUT_TYPES = frozenset({
-    "Console",
-    "Progress",
-    "Live",
-    "Table",
-    "Panel",
-    "TracerProvider",
-    "Tracer",
-    "Span",
-})
+class _Outcome(Enum):
+    SUCCESS = "success"
+    FAILED = "failed"
+    CANCELLED = "cancelled"  # KeyboardInterrupt / asyncio.CancelledError
+    ABORTED = "aborted"  # a generator closed by its consumer before exhaustion
+
+    @classmethod
+    def of(cls, exc: BaseException) -> _Outcome:
+        return cls.CANCELLED if isinstance(exc, (KeyboardInterrupt, asyncio.CancelledError)) else cls.FAILED
 
 
-def _should_skip_value(value: Any) -> bool:
-    return type(value).__name__ in _SKIP_INPUT_TYPES
-
-
-def _finalize_span(
-    otel_span,
-    exc: BaseException | None,
-    start_monotonic: float,
-) -> None:
-    """Stamp lifecycle status + duration as the span closes (*exc* is None on success)."""
-    duration = max(0.0, time.monotonic() - start_monotonic)
-    otel_span.set_attribute(attrs.DURATION_SECONDS, duration)
-
-    if exc is None:
-        otel_span.set_attribute(attrs.STATUS, "success")
+def _end_span(otel_span: trace.Span, outcome: _Outcome, exc: BaseException | None = None) -> None:
+    """The one writer of lifecycle status; ends the span. An aborted span
+    keeps the OTel status UNSET: the consumer stopped, the function did not fail."""
+    otel_span.set_attribute(attrs.STATUS, outcome.value)
+    if outcome is _Outcome.SUCCESS:
         otel_span.set_status(Status(StatusCode.OK))
-        return
-
-    if isinstance(exc, (KeyboardInterrupt, asyncio.CancelledError)):
-        otel_span.set_attribute(attrs.STATUS, "cancelled")
+    elif outcome is _Outcome.CANCELLED:
         otel_span.record_exception(exc)
         otel_span.set_status(Status(StatusCode.ERROR, f"Cancelled ({type(exc).__name__})"))
-        return
-
-    otel_span.set_attribute(attrs.STATUS, "failed")
-    otel_span.set_attribute(attrs.ERROR_TYPE, type(exc).__name__)
-    otel_span.set_attribute(attrs.ERROR_MESSAGE, str(exc)[:1024])
-    otel_span.record_exception(exc)
-    otel_span.set_status(Status(StatusCode.ERROR, str(exc)))
-
-
-def _bound_arguments(func: Callable, args: tuple, kwargs: dict, ignore: frozenset[str]) -> dict[str, Any]:
-    """Name the positional args, merge kwargs, and drop self/cls, ignored
-    names, and never-serialised runtime types."""
-    sig = inspect.signature(func)
-    param_names = list(sig.parameters.keys())
-    is_method = bool(param_names) and param_names[0] in ("self", "cls")
-    start_idx = 1 if is_method else 0
-
-    bound: dict[str, Any] = {}
-    for i, arg in enumerate(args[start_idx:], start=start_idx):
-        bound[param_names[i] if i < len(param_names) else f"arg_{i}"] = arg
-    bound.update(kwargs)
-    return {k: v for k, v in bound.items() if k not in ignore and not _should_skip_value(v)}
+    elif outcome is _Outcome.FAILED:
+        otel_span.set_attribute(attrs.ERROR_TYPE, type(exc).__name__)
+        otel_span.set_attribute(attrs.ERROR_MESSAGE, str(exc)[:1024])
+        otel_span.record_exception(exc)
+        otel_span.set_status(Status(StatusCode.ERROR, str(exc)))
+    otel_span.end()
 
 
-def _capture_inputs(
-    otel_span,
-    bound: dict[str, Any],
-    capture: str,
-    format_input: Callable[[dict[str, Any]], Any] | None,
-) -> None:
-    """Attach the call's inputs per the capture mode (best-effort)."""
+_TRUNCATED_MARKER = {"inputs": attrs.INPUTS_TRUNCATED, "outputs": attrs.OUTPUTS_TRUNCATED}
+
+
+def _set_payload(otel_span: trace.Span, key: str, value: Any) -> None:
+    """The only writer of ``inputs`` / ``outputs``: bounded JSON plus the
+    truncation marker when the budget was exceeded."""
+    text, truncated = payloads.serialize_payload(value)
+    otel_span.set_attribute(key, text)
+    if truncated:
+        otel_span.set_attribute(_TRUNCATED_MARKER[key], True)
+
+
+# Set by tool_call(); the next tool span started in this context consumes it.
+_pending_tool_call: ContextVar[str | None] = ContextVar("overmind.pending_tool_call", default=None)
+
+
+@contextmanager
+def tool_call(call_id: str) -> Iterator[None]:
+    """Bind the next tool span started inside this block to the model-emitted
+    *call_id*: the span carries ``gen_ai.tool.call.id`` and links to the LLM
+    span whose output requested it (the SDK remembers the ids an observed
+    LLM span emits in its messages or its stream). One-shot and
+    context-local — enter it in the task or thread that runs the tool."""
+    if not call_id:
+        raise ValueError("tool_call() requires a call id")
+    token = _pending_tool_call.set(str(call_id))
     try:
-        if format_input is not None:
-            payload: Any = format_input(bound)
-        elif capture == "messages":
-            payload = {"messages": normalize_messages(bound.get("messages") or bound.get("input_messages"))}
-        else:
-            payload = bound
-        otel_span.set_attribute("inputs", _json_dumps(payload))
-    except Exception:
-        logger.debug("observe(): input capture failed", exc_info=True)
+        yield
+    finally:
+        _pending_tool_call.reset(token)
 
 
-def _capture_output(
-    otel_span,
-    result: Any,
-    capture: str = "auto",
-    format_output: Callable[[Any, dict[str, Any]], Any] | None = None,
-    bound: dict[str, Any] | None = None,
-) -> None:
-    """Serialise the return value per the capture mode (best-effort)."""
+def _start_span(name: str, declared: Mapping[str, Any], context: Context) -> trace.Span:
+    """The one start site for SDK-created spans. A tool span started inside
+    :func:`tool_call` takes the pending id here: links must be known at start."""
+    links: tuple[trace.Link, ...] = ()
+    call_id = _pending_tool_call.get() if declared.get(attrs.SPAN_TYPE) == SpanType.TOOL.value else None
+    if call_id:
+        _pending_tool_call.set(None)
+        parent = trace.get_current_span(context).get_span_context()
+        origin = _traces.tool_call_origin(parent.trace_id, call_id) if parent.is_valid else None
+        if origin is not None:
+            links = (trace.Link(origin, {attrs.TOOL_CALL_ID: call_id}),)
+    span = get_tracer().start_span(name, context=context, attributes=declared, links=links)
+    if call_id and span.is_recording():
+        span.set_attribute(attrs.TOOL_CALL_ID, call_id)
+    return span
+
+
+def _target(func: Callable) -> Callable:
+    """The code behind *func*: through ``__wrapped__``, ``functools.partial``
+    and a callable instance's ``__call__``."""
+    func = inspect.unwrap(func)
+    if isinstance(func, partial):
+        return _target(func.func)
+    if not inspect.isroutine(func) and not isinstance(func, type) and callable(func):
+        return _target(type(func).__call__)
+    return func
+
+
+def code_identity_attributes(func: Callable) -> dict[str, str | int]:
+    """``code.*`` attributes of the *unwrapped* function so the server can
+    bind the span to a code-symbol anchor (``module.qualname``). Best-effort,
+    never raises."""
+    out: dict[str, str | int] = {}
     try:
-        if format_output is not None:
-            payload: Any = format_output(result, bound or {})
-        elif capture == "messages" and isinstance(result, list):
-            payload = {"messages": normalize_messages(result)}
-        else:
-            payload = result
-        otel_span.set_attribute("outputs", _json_dumps(payload))
-    except Exception:
-        logger.debug("observe(): output capture failed", exc_info=True)
-
-
-def code_identity_attributes(func: Callable) -> dict[str, str]:
-    """``code.namespace`` / ``code.function.name`` from the *unwrapped*
-    function so the server can bind the span to a code-symbol anchor
-    (``module.qualname``). Best-effort, never raises."""
-    out: dict[str, str] = {}
-    try:
-        target = inspect.unwrap(func)
+        target = _target(func)
         if module := getattr(target, "__module__", None):
             out[attrs.CODE_NAMESPACE] = module
         if qualname := getattr(target, "__qualname__", None):
             out[attrs.CODE_FUNCTION_NAME] = qualname
+        if code := getattr(target, "__code__", None):
+            out[attrs.CODE_FILE_PATH] = code.co_filename
+            out[attrs.CODE_LINE_NUMBER] = code.co_firstlineno
     except Exception:
         logger.debug("observe(): code identity capture failed", exc_info=True)
     return out
 
 
-def _stamp_tool_metadata(otel_span, tool_name: str, bound: dict[str, Any]) -> None:
-    """Stamp ``tool.name`` / ``tool.arg_keys`` (keys only) on a tool span."""
+def _signature(func: Callable) -> inspect.Signature | None:
     try:
-        otel_span.set_attribute(attrs.TOOL_NAME, tool_name)
-        if bound:
-            otel_span.set_attribute(attrs.TOOL_ARG_KEYS, list(bound.keys()))
-    except Exception:
-        logger.debug("tool(): metadata capture failed for %s", tool_name, exc_info=True)
+        return inspect.signature(func)
+    except (TypeError, ValueError):
+        return None
 
 
-class _Outcome:
-    """Return-value cell the observe wrappers fill before the span closes."""
+def _bind_arguments(
+    signature: inspect.Signature | None, args: tuple, kwargs: dict, ignore: frozenset[str]
+) -> dict[str, Any]:
+    """Name the call's arguments; drop ``self``/``cls``, ignored names and
+    never-serialised runtime values. Without a usable signature the
+    positionals stay together under ``args``. Never raises."""
+    bound: dict[str, Any] = {"args": list(args), **kwargs}
+    if signature is not None:
+        try:
+            bound = dict(signature.bind_partial(*args, **kwargs).arguments)
+        except TypeError:
+            pass
+        else:
+            for name, parameter in signature.parameters.items():
+                if parameter.kind is inspect.Parameter.VAR_KEYWORD and name in bound:
+                    bound.update(bound.pop(name))
+            first = next(iter(signature.parameters), None)
+            if first in ("self", "cls"):
+                bound.pop(first, None)
+    return {k: v for k, v in bound.items() if k not in ignore and not payloads.should_skip(v)}
 
-    __slots__ = ("result",)
 
-    def __init__(self) -> None:
-        self.result: Any = None
+@dataclass(frozen=True)
+class _ObserveSpec:
+    """Everything :func:`observe` decides once per decorated function."""
 
+    name: str | Callable[..., str] | None
+    default_name: str  # the unwrapped function's qualname
+    short_name: str  # its __name__; tool.name when the name is not overridden
+    span_type: SpanType
+    declared: Mapping[str, Any]
+    capability: str | None
+    capability_id: str | None
+    capture: str
+    ignore: frozenset[str]
+    input_key: str | None
+    format_input: Callable[[dict[str, Any]], Any] | None
+    format_output: Callable[[Any, dict[str, Any]], Any] | None
+    expectations: tuple[Expectation, ...]
+    signature: inspect.Signature | None
+    prompt: str | None
 
-@contextmanager
-def _traced_call(
-    func: Callable,
-    args: tuple,
-    kwargs: dict,
-    *,
-    name: str,
-    tool_name: str,
-    span_type: SpanType,
-    declared: Mapping[str, str],
-    capability_name: str | None,
-    capability_id: str | None,
-    capture: str,
-    ignore: frozenset[str],
-    format_input: Callable | None,
-    format_output: Callable | None,
-):
-    """Shared body of the observe wrappers: capability scope, declared span
-    attributes, input/output capture, lifecycle finalisation, cancellation
-    flush."""
-    scope = _CapabilityScope(capability_name, capability_id) if capability_name or capability_id else nullcontext()
-    try:
-        with scope, get_tracer().start_as_current_span(name, attributes=declared) as otel_span:
-            bound = {}
-            if span_type is SpanType.TOOL or capture != "none":
-                try:
-                    bound = _bound_arguments(func, args, kwargs, ignore)
-                except Exception:
-                    logger.debug("observe(): argument binding failed for %s", name, exc_info=True)
-            if span_type is SpanType.TOOL:
-                _stamp_tool_metadata(otel_span, tool_name, bound)
-            if capture != "none":
-                _capture_inputs(otel_span, bound, capture, format_input)
-            outcome = _Outcome()
-            start = time.monotonic()
+    def names(self, args: tuple, kwargs: dict) -> tuple[str, str]:
+        """``(span name, tool.name)``; a per-call name callable names both."""
+        if isinstance(self.name, str):
+            return self.name, self.name
+        if callable(self.name):
             try:
-                yield outcome
-            except BaseException as exc:
-                if span_type is SpanType.TOOL:
-                    otel_span.set_attribute(attrs.TOOL_ERROR, type(exc).__name__)
-                _finalize_span(otel_span, exc, start)
-                raise
-            if capture != "none":
-                _capture_output(otel_span, outcome.result, capture, format_output, bound)
-            if declared.get(attrs.PROVENANCE) == "environment":
-                _remember_evidence(otel_span)
-            _finalize_span(otel_span, None, start)
-    except (KeyboardInterrupt, asyncio.CancelledError):
-        # The span already ended (the with-block unwound); flushing the run
-        # root keeps a cancellation from leaving the trace rootless until
-        # the batch timeout.
-        if span_type is SpanType.ENTRY_POINT:
+                resolved = str(self.name(*args, **kwargs))
+            except Exception:
+                logger.debug("observe(): span name callable failed for %s", self.default_name, exc_info=True)
+            else:
+                return resolved, resolved
+        return self.default_name, self.short_name
+
+
+_warned_expectations: set[str] = set()
+
+
+def _warn_expectations_dropped(qualname: str) -> None:
+    if qualname in _warned_expectations:
+        return
+    _warned_expectations.add(qualname)
+    logger.warning("expectations declared on %s were not emitted: the SDK is not initialised", qualname)
+
+
+class _ObservedCall:
+    """One invocation of an observed callable: its span, the context that
+    makes the span current, its bound arguments and, for generators, the
+    stream fold.
+
+    The span is current only inside :meth:`current`. Plain and async
+    functions take one step; generators take one per resume, so consumer
+    work between items never nests under the generator span. Without
+    ``init()`` the span is ``INVALID_SPAN`` and nothing is attached."""
+
+    __slots__ = ("spec", "span", "context", "bound", "stream", "items", "ended")
+
+    def __init__(self, spec: _ObserveSpec, args: tuple, kwargs: dict, *, streaming: bool = False) -> None:
+        self.spec = spec
+        self.bound: dict[str, Any] = {}
+        self.stream = payloads.StreamedMessage() if streaming else None
+        # Yielded items are kept only for a format_output hook to see.
+        self.items: list[Any] | None = [] if streaming and spec.format_output is not None else None
+        self.ended = False
+        name, tool_name = spec.names(args, kwargs)
+        if spec.capability or spec.capability_id:
+            display, slug = split_capability_reference(spec.capability) if spec.capability else (None, None)
+            ctx = _capability_context(display, spec.capability_id, slug=slug)
+        else:
+            ctx = get_current()
+        if not _initialized:
+            if spec.expectations:
+                _warn_expectations_dropped(spec.default_name)
+            self.span, self.context = trace.INVALID_SPAN, ctx
+            return
+        self.span = _start_span(name, spec.declared, ctx)
+        self.context = trace.set_span_in_context(self.span, ctx)
+        if not self.span.is_recording():
+            return
+        self.bound = _bind_arguments(spec.signature, args, kwargs, spec.ignore)
+        if spec.span_type is SpanType.TOOL:
+            self.span.set_attribute(attrs.TOOL_NAME, tool_name)
+        if spec.prompt:
+            self.span.set_attribute(attrs.PROMPT_TEMPLATE, spec.prompt)
+        if spec.capture != "none":
+            self._capture("inputs", self._input_payload)
+        for expectation in spec.expectations:
+            expectation.emit(self.span)
+
+    @contextmanager
+    def current(self) -> Iterator[None]:
+        """Make the span current for one step; detached on the same thread or task."""
+        if not self.span.get_span_context().is_valid:
+            yield
+            return
+        token = attach(self.context)
+        try:
+            yield
+        finally:
+            detach(token)
+
+    def observe_item(self, item: Any) -> None:
+        """Generators only, between steps: fold *item* and remember the tool
+        calls it introduced as requested by this span."""
+        if not self.span.is_recording():
+            return
+        if self.items is not None:
+            self.items.append(item)
+        for call_id in self.stream.add(item):
+            _traces.remember_tool_call(self.span.get_span_context(), call_id)
+
+    def succeed(self, result: Any = None) -> None:
+        if self.ended:
+            return
+        self.ended = True
+        if self.span.is_recording():
+            if self.spec.capture != "none":
+                self._capture("outputs", lambda: self._output_payload(result))
+            self._finish_recording()
+            if self.spec.span_type is SpanType.LLM and self.stream is None:
+                for call_id in payloads.requested_tool_call_ids(result):
+                    _traces.remember_tool_call(self.span.get_span_context(), call_id)
+            if self.spec.declared.get(attrs.PROVENANCE) == "environment":
+                _traces.remember_evidence(self.span.get_span_context())
+        _end_span(self.span, _Outcome.SUCCESS)
+
+    def fail(self, exc: BaseException) -> None:
+        if self.ended:
+            return
+        self.ended = True
+        outcome = _Outcome.of(exc)
+        if self.span.is_recording():
+            if self.spec.span_type is SpanType.TOOL:
+                self.span.set_attribute(attrs.TOOL_ERROR, type(exc).__name__)
+            self._finish_recording()
+        _end_span(self.span, outcome, exc)
+        # Flushing the run root keeps a cancellation from leaving the trace
+        # rootless until the batch timeout.
+        if self.spec.span_type is SpanType.ENTRY_POINT and outcome is _Outcome.CANCELLED:
             force_flush_traces(timeout_millis=5000)
-        raise
+
+    def abort(self) -> None:
+        """The consumer closed the generator early; keep what was streamed."""
+        if self.ended:
+            return
+        self.ended = True
+        if self.span.is_recording():
+            if self.spec.capture != "none":
+                self._capture("outputs", lambda: self._output_payload(None))
+            self._finish_recording()
+        _end_span(self.span, _Outcome.ABORTED)
+
+    def _capture(self, key: str, build: Callable[[], Any]) -> None:
+        try:
+            _set_payload(self.span, key, build())
+        except Exception:
+            logger.debug("observe(): %s capture failed for %s", key, self.spec.default_name, exc_info=True)
+
+    def _finish_recording(self) -> None:
+        if self.stream is not None:
+            self.span.set_attribute(attrs.STREAM_ITEMS, self.stream.count)
+
+    def _input_payload(self) -> Any:
+        spec = self.spec
+        if spec.format_input is not None:
+            return spec.format_input(self.bound)
+        if spec.input_key is not None:
+            return self.bound[spec.input_key]
+        if spec.capture == "messages":
+            return {
+                "messages": payloads.normalize_messages(self.bound.get("messages") or self.bound.get("input_messages"))
+            }
+        return self.bound
+
+    def _output_payload(self, result: Any) -> Any:
+        spec = self.spec
+        if spec.format_output is not None:
+            return spec.format_output(self.items if self.items is not None else result, self.bound)
+        if self.stream is not None:
+            if spec.capture == "messages":
+                message = self.stream.message()
+                return {"messages": [message] if message else []}
+            return result if result is not None else {"items": self.stream.count}
+        if spec.capture == "messages" and isinstance(result, list):
+            return {"messages": payloads.normalize_messages(result)}
+        return result
+
+
+def _wrap(func: Callable, spec: _ObserveSpec) -> Callable:
+    """Pick the wrapper by the callable's kind. A ``staticmethod`` /
+    ``classmethod`` applied under ``observe`` is traced through its function
+    and the descriptor rebuilt, so decorator order never breaks a method."""
+    if isinstance(func, (staticmethod, classmethod)):
+        result = type(func)(_wrap(func.__func__, spec))
+        result._overmind_observed = True  # type: ignore[attr-defined]
+        return result
+    target = _target(func)
+
+    if inspect.isasyncgenfunction(target):
+
+        async def async_generator_wrapper(*args, **kwargs):
+            call = _ObservedCall(spec, args, kwargs, streaming=True)
+            gen = func(*args, **kwargs)
+            sent, thrown = None, None
+            try:
+                while True:
+                    with call.current():
+                        try:
+                            item = await (gen.asend(sent) if thrown is None else gen.athrow(thrown))
+                        except StopAsyncIteration:
+                            call.succeed()
+                            return
+                    call.observe_item(item)
+                    try:
+                        sent, thrown = (yield item), None
+                    except GeneratorExit:
+                        with call.current():
+                            await gen.aclose()
+                        call.abort()
+                        raise
+                    except BaseException as exc:
+                        sent, thrown = None, exc
+            except BaseException as exc:
+                call.fail(exc)
+                raise
+
+        result = wraps(func)(async_generator_wrapper)
+    elif inspect.isgeneratorfunction(target):
+
+        def generator_wrapper(*args, **kwargs):
+            call = _ObservedCall(spec, args, kwargs, streaming=True)
+            gen = func(*args, **kwargs)
+            sent, thrown = None, None
+            try:
+                while True:
+                    with call.current():
+                        try:
+                            item = gen.send(sent) if thrown is None else gen.throw(thrown)
+                        except StopIteration as stop:
+                            call.succeed(stop.value)
+                            return stop.value  # noqa: B901
+                    call.observe_item(item)
+                    try:
+                        sent, thrown = (yield item), None
+                    except GeneratorExit:
+                        with call.current():
+                            gen.close()
+                        call.abort()
+                        raise
+                    except BaseException as exc:
+                        sent, thrown = None, exc
+            except BaseException as exc:
+                call.fail(exc)
+                raise
+
+        result = wraps(func)(generator_wrapper)
+    elif inspect.iscoroutinefunction(target):
+
+        async def coroutine_wrapper(*args, **kwargs):
+            call = _ObservedCall(spec, args, kwargs)
+            with call.current():
+                try:
+                    value = await func(*args, **kwargs)
+                except BaseException as exc:
+                    call.fail(exc)
+                    raise
+            call.succeed(value)
+            return value
+
+        result = wraps(func)(coroutine_wrapper)
+    else:
+
+        def function_wrapper(*args, **kwargs):
+            call = _ObservedCall(spec, args, kwargs)
+            with call.current():
+                try:
+                    value = func(*args, **kwargs)
+                except BaseException as exc:
+                    call.fail(exc)
+                    raise
+            call.succeed(value)
+            return value
+
+        result = wraps(func)(function_wrapper)
+
+    result._overmind_observed = True  # type: ignore[attr-defined]
+    return result
+
+
+def _resolve_expectations(items: Iterable[Expectation], default_scope: str) -> tuple[Expectation, ...]:
+    resolved: list[Expectation] = []
+    for item in items:
+        if not isinstance(item, Expectation):
+            raise TypeError(f"expectations must be Expectation instances, got {type(item).__name__}")
+        resolved.append(item.scoped(default_scope))
+    if len(resolved) > MAX_EXPECTATIONS:
+        raise ValueError(f"at most {MAX_EXPECTATIONS} expectations per span, got {len(resolved)}")
+    ids = [expectation.id for expectation in resolved]
+    if len(set(ids)) != len(ids):
+        raise ValueError("expectation ids must be unique within one decorator")
+    return tuple(resolved)
 
 
 def observe(
@@ -1497,11 +1649,20 @@ def observe(
     capability_id: str | None = None,
     capture: str = "auto",
     ignore: Iterable[str] = (),
+    input_key: str | None = None,
+    expectations: Iterable[Expectation] = (),
     format_input: Callable[[dict[str, Any]], Any] | None = None,
     format_output: Callable[[Any, dict[str, Any]], Any] | None = None,
+    prompt: str | None = None,
 ) -> Callable[[F], F]:
-    """Decorator (sync or async) that traces a function with the full
-    evidence contract. No-op call-through when the SDK is not initialised.
+    """Decorator that traces a function with the full evidence contract.
+    Works on plain functions, coroutines, generators and async generators;
+    a no-op call-through when the SDK is not initialised.
+
+    A generator's span stays open across its yields but is current only
+    while the body runs, so work the consumer does between items is not
+    parented to it. Closing the generator early ends the span
+    ``overmind.status = "aborted"``.
 
     Args:
         span_name: Span name; defaults to the function's ``__qualname__``.
@@ -1524,67 +1685,62 @@ def observe(
             with or without ``capability``.
         capture: ``"auto"`` (scrubbed args/result), ``"none"`` (no payloads),
             or ``"messages"`` (normalise the ``messages`` argument and a
-            list result into role/content chat evidence).
+            list result — or a streamed generator — into role/content chat
+            evidence).
         ignore: Argument names never captured (heavy runtime objects,
             sessions, model handles).
+        input_key: Capture only this argument as the input.
+        expectations: :class:`~overmind.evals.Expectation` declarations
+            emitted on every call. Scope defaults to ``"trace"`` on a unit
+            boundary (entry point, ``unit=``) and ``"span"`` elsewhere.
         format_input: Optional ``fn(bound_args) -> payload`` overriding input
             capture.
         format_output: Optional ``fn(result, bound_args) -> payload``
-            overriding output capture.
+            overriding output capture; for a generator ``result`` is the list
+            of yielded items.
+        prompt: Literal system/prompt template stamped as
+            ``overmind.prompt.template`` for card derivation.
     """
     span_type = _coerce_span_type(type)
     _validate_provenance(provenance)
     _validate_unit(unit)
     if capture not in _CAPTURE_MODES:
         raise ValueError(f"capture must be one of {sorted(_CAPTURE_MODES)}, got {capture!r}")
+    if input_key is not None and format_input is not None:
+        raise ValueError("input_key and format_input are exclusive")
     ignore_set = frozenset(ignore)
+    if input_key is not None and input_key in ignore_set:
+        raise ValueError(f"input_key {input_key!r} is also ignored")
+    declared = _declared_attributes(span_type, provenance, unit)
+    resolved = _resolve_expectations(expectations, "trace" if _boundary_kind(declared) else "span")
+    prompt_text = str(prompt) if prompt is not None else None
 
     def decorator(func: F) -> F:
-        static_name = span_name if isinstance(span_name, str) else None
-        call_kwargs = dict(
-            name=static_name or func.__qualname__,
-            tool_name=static_name or func.__name__,
+        signature = _signature(func)
+        if input_key is not None and signature is not None:
+            parameters = signature.parameters
+            accepts_any = any(p.kind is inspect.Parameter.VAR_KEYWORD for p in parameters.values())
+            if input_key not in parameters and not accepts_any:
+                raise ValueError(f"input_key {input_key!r} is not a parameter of {func!r}")
+        target = _target(func)
+        spec = _ObserveSpec(
+            name=span_name,
+            default_name=getattr(target, "__qualname__", None) or repr(func),
+            short_name=getattr(target, "__name__", None) or repr(func),
             span_type=span_type,
-            declared=_declared_attributes(span_type, provenance, unit) | code_identity_attributes(func),
-            capability_name=capability,
+            declared=declared | code_identity_attributes(func),
+            capability=capability,
             capability_id=capability_id,
             capture=capture,
             ignore=ignore_set,
+            input_key=input_key,
             format_input=format_input,
             format_output=format_output,
+            expectations=resolved,
+            signature=signature,
+            prompt=prompt_text,
         )
-
-        def resolved_kwargs(args: tuple, kwargs: dict) -> dict:
-            if not callable(span_name):
-                return call_kwargs
-            try:
-                name = str(span_name(*args, **kwargs))
-            except Exception:
-                logger.debug("observe(): span name callable failed for %s", func.__qualname__, exc_info=True)
-                return call_kwargs
-            return {**call_kwargs, "name": name, "tool_name": name}
-
-        if inspect.iscoroutinefunction(func):
-
-            @wraps(func)
-            async def async_wrapper(*args, **kwargs):
-                if not _initialized:
-                    return await func(*args, **kwargs)
-                with _traced_call(func, args, kwargs, **resolved_kwargs(args, kwargs)) as outcome:
-                    outcome.result = await func(*args, **kwargs)
-                    return outcome.result
-
-            return async_wrapper  # type: ignore[return-value]
-
-        @wraps(func)
-        def sync_wrapper(*args, **kwargs):
-            if not _initialized:
-                return func(*args, **kwargs)
-            with _traced_call(func, args, kwargs, **resolved_kwargs(args, kwargs)) as outcome:
-                outcome.result = func(*args, **kwargs)
-                return outcome.result
-
-        return sync_wrapper  # type: ignore[return-value]
+        return _wrap(func, spec)  # type: ignore[return-value]
 
     return decorator
 
@@ -1608,21 +1764,18 @@ def start_span(
         yield trace.INVALID_SPAN
         return
     declared = _declared_attributes(span_type, provenance, unit)
-    tracer = get_tracer()
-    with tracer.start_as_current_span(name, attributes=declared) as otel_span:
-        if attributes:
-            for key, value in attributes.items():
-                _safe_set_attribute(otel_span, key, value)
-        start = time.monotonic()
+    otel_span = _start_span(name, declared, get_current())
+    for key, value in (attributes or {}).items():
+        _safe_set_attribute(otel_span, key, value)
+    with trace.use_span(otel_span, end_on_exit=False, record_exception=False, set_status_on_exception=False):
         try:
             yield otel_span
         except BaseException as exc:
-            _finalize_span(otel_span, exc, start)
+            _end_span(otel_span, _Outcome.of(exc), exc)
             raise
-        else:
-            if declared.get(attrs.PROVENANCE) == "environment":
-                _remember_evidence(otel_span)
-            _finalize_span(otel_span, None, start)
+    if declared.get(attrs.PROVENANCE) == "environment":
+        _traces.remember_evidence(otel_span.get_span_context())
+    _end_span(otel_span, _Outcome.SUCCESS)
 
 
 @contextmanager
@@ -1658,7 +1811,9 @@ def workflow(name: str | None = None, **kwargs) -> Callable[[F], F]:
 
 
 def tool(name: str | Callable[..., str] | None = None, **kwargs) -> Callable[[F], F]:
-    """Decorator that traces a tool span (adds ``tool.name`` / ``tool.arg_keys``).
+    """Decorator that traces a tool span (adds ``tool.name``; inside
+    :func:`tool_call` also ``gen_ai.tool.call.id`` and a link to the
+    requesting LLM span).
 
     ``name`` may be a callable receiving each call's arguments, so a
     polymorphic dispatcher emits per-action tool spans from one decoration:
@@ -1699,11 +1854,85 @@ def deliver(
         return
     _validate_provenance(provenance)
     if grounded_by is None:
-        grounded_by = _pop_evidence(_current_trace_id())
+        span_context = trace.get_current_span().get_span_context()
+        grounded_by = _traces.take_evidence(span_context.trace_id) if span_context.is_valid else []
     with _start_child_span(name, provenance=provenance, attributes={attrs.DELIVERY: True}) as otel_span:
         if grounded_by:
             otel_span.set_attribute(attrs.GROUNDED_BY, json.dumps([_grounding_span_id(h) for h in grounded_by]))
-        _capture_output(otel_span, payload)
+        _set_payload(otel_span, "outputs", payload)
+
+
+# Crossing a boundary that does not copy contextvars (threads, queues,
+# subprocesses). The carried context values are the OTel context keys the
+# on-start processor reads, so continuing a trace is a straight copy.
+_PROPAGATOR = CompositePropagator([TraceContextTextMapPropagator(), W3CBaggagePropagator()])
+_CARRIED_KEYS = (
+    attrs.CAPABILITY_ID,
+    attrs.CAPABILITY_NAME,
+    attrs.CAPABILITY_SLUG,
+    attrs.PROJECT_ID,
+    attrs.BEHAVIOUR_KEY,
+    attrs.WORKFLOW_NAME,
+    attrs.CONVERSATION_ID,
+)
+
+
+def carrier() -> dict[str, str]:
+    """The current trace as header-safe strings (``traceparent``, ``baggage``
+    with the capability identity, behaviour key, conversation and step), for
+    a queue message, HTTP headers or a subprocess environment. ``{}`` when
+    no span is current."""
+    span_context = trace.get_current_span().get_span_context()
+    if not span_context.is_valid:
+        return {}
+    ctx = get_current()
+    for key in _CARRIED_KEYS:
+        if (value := get_value(key)) is not None:
+            ctx = baggage.set_baggage(key, str(value), ctx)
+    ctx = baggage.set_baggage(attrs.STEP, str(_traces.current_step(span_context.trace_id)), ctx)
+    out: dict[str, str] = {}
+    _PROPAGATOR.inject(out, ctx)
+    return out
+
+
+def _remote_context(carrier: Mapping[str, str]) -> Context:
+    """Decode a carrier (keys case-insensitive, so ``os.environ`` works) on
+    top of the current context, copying the carried values back onto their
+    context keys and witnessing the remote step. A carrier without a
+    traceparent leaves the current context as it is."""
+    lowered = {str(k).lower(): str(v) for k, v in carrier.items()}
+    ctx = _PROPAGATOR.extract(lowered, get_current())
+    carried = baggage.get_all(ctx)
+    for key in _CARRIED_KEYS:
+        if key in carried:
+            ctx = set_value(key, carried[key], ctx)
+    span_context = trace.get_current_span(ctx).get_span_context()
+    if span_context.is_valid and str(carried.get(attrs.STEP, "")).isdigit():
+        _traces.witness_step(span_context.trace_id, int(carried[attrs.STEP]))
+    return ctx
+
+
+@contextmanager
+def continue_trace(carrier: Mapping[str, str]) -> Iterator[None]:
+    """Make spans inside this block continue the trace in *carrier* — the
+    primitive for threads, Celery task bodies and any hop that does not copy
+    contextvars (``asyncio.create_task`` already does). An empty or invalid
+    carrier is a no-op block."""
+    token = attach(_remote_context(carrier))
+    try:
+        yield
+    finally:
+        detach(token)
+
+
+def _attach_environment_carrier() -> None:
+    """A subprocess started with ``env={**os.environ, **carrier()}`` — or the
+    optimiser's ``TRACEPARENT`` — continues the parent trace for its lifetime."""
+    env = {key.lower(): value for key, value in os.environ.items()}
+    if "traceparent" not in env and "otel_traceparent" in env:
+        env["traceparent"] = env["otel_traceparent"]
+    if "traceparent" in env:
+        attach(_remote_context(env))
 
 
 def flush_traces(timeout_millis: int = 1000) -> None:
@@ -1726,19 +1955,21 @@ def force_flush_traces(timeout_millis: int = 1000) -> None:
 __all__ = [
     "SpanType",
     "capability",
-    "flush_traces",
     "capture_exception",
+    "carrier",
+    "code_identity_attributes",
+    "continue_trace",
     "deliver",
     "enable_tracing",
     "entry_point",
+    "env_identity",
+    "flush_traces",
     "force_flush_traces",
     "get_api_settings",
     "get_tracer",
     "init",
-    "normalize_messages",
     "observe",
     "retrieval",
-    "serialize",
     "set_conversation_id",
     "set_tag",
     "set_user",
@@ -1746,5 +1977,6 @@ __all__ = [
     "start_span",
     "task",
     "tool",
+    "tool_call",
     "workflow",
 ]

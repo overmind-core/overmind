@@ -8,22 +8,18 @@ from unittest.mock import MagicMock
 import pytest
 
 from overmind.optimizer import OptimiseLoop
-from overmind.optimizer_api import (
-    TOKENS,
-    _new_traceparent,
-    _render_command,
-    _run_datapoint,
-)
+from overmind.optimizer_api import OptimizerAPI
+from overmind.optimizer_runner import TOKENS, new_traceparent, render_command, run_datapoint
 
 
 def test_traceparent_shape():
-    header, trace_id = _new_traceparent()
+    header, trace_id = new_traceparent()
     assert header == f"00-{trace_id}-{header.split('-')[2]}-01"
     assert len(trace_id) == 32 and int(trace_id, 16) >= 0
 
 
 def test_render_command_substitutes_tokens():
-    rendered = _render_command(
+    rendered = render_command(
         "echo __DATAPOINT_INPUT__ __CANDIDATE_ID__ __DATAPOINT_INDEX__",
         experiment_id="e1",
         capability_id="c1",
@@ -42,7 +38,7 @@ def test_render_command_substitutes_tokens():
 
 
 def test_run_datapoint_success_round_trip(tmp_path):
-    result = _run_datapoint(
+    result = run_datapoint(
         template="echo hi",
         experiment_id="e",
         capability_id="c",
@@ -60,7 +56,7 @@ def test_run_datapoint_success_round_trip(tmp_path):
 
 
 def test_run_datapoint_failure_reports_error(tmp_path):
-    result = _run_datapoint(
+    result = run_datapoint(
         template="echo boom >&2; exit 3",
         experiment_id="e",
         capability_id="c",
@@ -77,8 +73,6 @@ def test_run_datapoint_failure_reports_error(tmp_path):
 
 
 def test_export_dataset_reuses_a_cache_whose_hash_matches_the_pin(tmp_path):
-    from overmind.optimizer_api import OptimizerAPI
-
     cache = tmp_path / "datasets"
     cache.mkdir()
     (cache / "ver-9.jsonl").write_text('{"input": 1}\n')
@@ -91,8 +85,6 @@ def test_export_dataset_reuses_a_cache_whose_hash_matches_the_pin(tmp_path):
 
 
 def test_export_dataset_fetches_the_pinned_checkpoint_and_keeps_its_hash(tmp_path):
-    from overmind.optimizer_api import OptimizerAPI
-
     api = OptimizerAPI("http://api", "k")
     api._session = MagicMock()
     api._session.get.return_value.iter_content.return_value = [b'{"input": 1}\n']
@@ -108,8 +100,6 @@ def test_export_dataset_fetches_the_pinned_checkpoint_and_keeps_its_hash(tmp_pat
 
 
 def test_export_dataset_refetches_when_the_hash_is_stale_or_missing(tmp_path):
-    from overmind.optimizer_api import OptimizerAPI
-
     cache = tmp_path / "datasets"
     cache.mkdir()
     (cache / "ver-9.jsonl").write_text("old\n")
@@ -127,8 +117,6 @@ def test_export_dataset_refetches_when_the_hash_is_stale_or_missing(tmp_path):
 
 
 def test_export_dataset_needs_a_used_version(tmp_path):
-    from overmind.optimizer_api import OptimizerAPI
-
     api = OptimizerAPI("http://api", "k")
     with pytest.raises(RuntimeError, match="used version"):
         api.export_dataset("ds-1", "", tmp_path)

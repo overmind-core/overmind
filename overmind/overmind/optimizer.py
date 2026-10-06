@@ -12,17 +12,25 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 from typing import Any
 
+from overmind.api import poll
 from overmind.backtest import openrouter_env
-from overmind.optimizer_api import (
-    _EVALUATED_STATUSES,
-    _TERMINAL_STATUSES,
+from overmind.optimizer_api import OptimizerAPI
+from overmind.optimizer_runner import (
     OUTPUT_TAIL,
     REFERENCE_COMMAND_TEMPLATE,
-    OptimizerAPI,
-    _ensure_worktree,
-    _remove_worktrees,
-    _run_datapoint,
+    ensure_worktree,
+    remove_worktrees,
+    run_datapoint,
 )
+
+TERMINAL_STATUSES = frozenset({"completed", "failed", "cancelled"})
+SCORED_STATUSES = frozenset({
+    "evaluated_baseline_outputs",
+    "evaluated_candidate_outputs",
+    "iterating",
+    *TERMINAL_STATUSES,
+})
+SCORING_STATUSES = frozenset({"evaluating_baseline_outputs", "evaluating_candidate_outputs"})
 
 
 def command_template_prompt(*, capability_name: str = "", entrypoint: str = "") -> str:
@@ -60,6 +68,35 @@ def candidate_prompt(
     )
 
 
+class OptimiseState:
+    """``.overmind/optimise_state.json`` — the loop's local progress.
+
+    Keys: ``experiment_id``, ``dataset_id``, ``dataset_path``, ``capability_id``,
+    ``smoke_done``, ``next_order``, ``pending_diffs``, ``kind``. An unreadable
+    file reads as empty.
+    """
+
+    def __init__(self, path: Path) -> None:
+        self.path = path
+
+    def read(self) -> dict[str, Any]:
+        if not self.path.exists():
+            return {}
+        try:
+            return json.loads(self.path.read_text())
+        except (json.JSONDecodeError, OSError):
+            return {}
+
+    def write(self, state: dict[str, Any]) -> None:
+        self.path.parent.mkdir(parents=True, exist_ok=True)
+        self.path.write_text(json.dumps(state, indent=2))
+
+    def update(self, **changes: Any) -> dict[str, Any]:
+        state = {**self.read(), **changes}
+        self.write(state)
+        return state
+
+
 class OptimiseLoop:
     """Template → smoke → baseline → candidate diffs → complete."""
 
@@ -79,49 +116,39 @@ class OptimiseLoop:
         self.experiment_id = experiment_id
         self.repo_cwd = repo_cwd
         self.dataset_path = dataset_path
-        self.state_path = state_path
+        self.state = OptimiseState(state_path)
         self.timeout = timeout
         self.poll_interval = poll_interval
         self.poll_timeout = poll_timeout
 
     def _load_dataset(self) -> list[dict]:
-        rows: list[dict] = []
         with self.dataset_path.open() as fh:
-            for line in fh:
-                line = line.strip()
-                if line:
-                    rows.append(json.loads(line))
-        return rows
+            return [json.loads(line) for line in (raw.strip() for raw in fh) if line]
 
-    def _load_state(self) -> dict:
-        if self.state_path.exists():
-            try:
-                return json.loads(self.state_path.read_text())
-            except (json.JSONDecodeError, OSError):
-                return {}
-        return {}
+    def _wait_until_scored(self) -> dict:
+        return poll(
+            lambda: self.api.get_experiment(self.experiment_id),
+            settled=lambda exp: exp.get("status", "") in SCORED_STATUSES,
+            deadline=time.monotonic() + self.poll_timeout,
+            interval=self.poll_interval,
+            timed_out=lambda _exp: TimeoutError(
+                f"Optimise {self.experiment_id} did not finish scoring within {self.poll_timeout}s"
+            ),
+        )
 
-    def _save_state(self, state: dict) -> None:
-        self.state_path.parent.mkdir(parents=True, exist_ok=True)
-        self.state_path.write_text(json.dumps(state, indent=2))
-
-    def _poll_until_evaluated(self) -> dict:
-        deadline = time.monotonic() + self.poll_timeout
-        while time.monotonic() < deadline:
-            exp = self.api.get_experiment(self.experiment_id)
-            status = exp.get("status", "")
-            if status in _EVALUATED_STATUSES or status in _TERMINAL_STATUSES:
-                return exp
-            time.sleep(self.poll_interval)
-        raise TimeoutError(f"Optimise {self.experiment_id} did not finish scoring within {self.poll_timeout}s")
+    def _template(self, exp: dict) -> str:
+        template = exp.get("command_template") or ""
+        if not template:
+            raise RuntimeError("No command template set.")
+        return template
 
     def next_action(self) -> dict[str, Any]:
         exp = self.api.get_experiment(self.experiment_id)
         status = exp.get("status", "")
-        local = self._load_state()
+        local = self.state.read()
         iterations = exp.get("iterations") or []
 
-        if status in _TERMINAL_STATUSES:
+        if status in TERMINAL_STATUSES:
             return {"action": "DONE", "experiment": exp, "scores": exp.get("scores") or {}}
 
         if not exp.get("command_template"):
@@ -137,7 +164,7 @@ class OptimiseLoop:
         if not local.get("smoke_done"):
             return {"action": "RUN_SMOKE", "experiment": exp}
 
-        if status in ("evaluating_baseline_outputs", "evaluating_candidate_outputs"):
+        if status in SCORING_STATUSES:
             return {
                 "action": "WAIT",
                 "message": "Server is scoring — run `overmind optimise next` again shortly.",
@@ -202,7 +229,7 @@ class OptimiseLoop:
         models = list(exp.get("model_ids") or [])
         if models:
             extra = openrouter_env(models[0])
-        result = _run_datapoint(
+        result = run_datapoint(
             template=template,
             experiment_id=self.experiment_id,
             capability_id=str(exp.get("capability") or ""),
@@ -216,9 +243,7 @@ class OptimiseLoop:
             extra_env=extra,
         )
         if result["success"]:
-            local = self._load_state()
-            local["smoke_done"] = True
-            self._save_state(local)
+            self.state.update(smoke_done=True)
         result["output"] = (result.get("output") or "")[-OUTPUT_TAIL:]
         return result
 
@@ -254,16 +279,13 @@ class OptimiseLoop:
                 })
         results: list[dict] = []
         with ThreadPoolExecutor(max_workers=8) as pool:
-            for fut in as_completed([pool.submit(_run_datapoint, **kw) for kw in jobs]):
+            for fut in as_completed([pool.submit(run_datapoint, **kw) for kw in jobs]):
                 results.append(fut.result())
         return results
 
     def run_baseline(self) -> dict:
         exp = self.api.get_experiment(self.experiment_id)
-        template = exp.get("command_template") or ""
-        if not template:
-            raise RuntimeError("No command template set.")
-        local = self._load_state()
+        template = self._template(exp)
         iteration = self.api.add_iteration(
             self.experiment_id,
             order=0,
@@ -283,25 +305,19 @@ class OptimiseLoop:
         )
         self.api.post_results(self.experiment_id, results)
         self.api.evaluate(self.experiment_id, 0)
-        exp = self._poll_until_evaluated()
-        local["next_order"] = 1
-        self._save_state(local)
+        exp = self._wait_until_scored()
+        self.state.update(next_order=1)
         return exp
 
     def add_candidate_diff(self, diff: str) -> dict:
-        local = self._load_state()
-        pending = list(local.get("pending_diffs") or [])
-        pending.append(diff)
-        local["pending_diffs"] = pending
-        self._save_state(local)
+        pending = [*(self.state.read().get("pending_diffs") or []), diff]
+        self.state.update(pending_diffs=pending)
         return {"pending": len(pending)}
 
     def run_iteration(self, diffs: list[str] | None = None) -> dict:
         exp = self.api.get_experiment(self.experiment_id)
-        template = exp.get("command_template") or ""
-        if not template:
-            raise RuntimeError("No command template set.")
-        local = self._load_state()
+        template = self._template(exp)
+        local = self.state.read()
         pending = list(diffs if diffs is not None else local.get("pending_diffs") or [])
         if not pending:
             raise RuntimeError("No candidate diffs. Run `overmind optimise add-candidate --diff`.")
@@ -345,7 +361,7 @@ class OptimiseLoop:
         pairs: list[tuple[dict, str]] = []
         for candidate in created:
             diff = str(candidate.get("code_path") or "")
-            cwd = str(_ensure_worktree(self.repo_cwd, self.experiment_id, str(candidate.get("id")), diff))
+            cwd = str(ensure_worktree(self.repo_cwd, self.experiment_id, str(candidate.get("id")), diff))
             pairs.append((candidate, cwd))
         all_results = self._run_candidates(
             template=template,
@@ -357,14 +373,12 @@ class OptimiseLoop:
 
         self.api.post_results(self.experiment_id, all_results)
         self.api.evaluate(self.experiment_id, order)
-        exp = self._poll_until_evaluated()
-        local["pending_diffs"] = []
-        local["next_order"] = order + 1
-        self._save_state(local)
+        exp = self._wait_until_scored()
+        self.state.update(pending_diffs=[], next_order=order + 1)
         return exp
 
     def complete(self) -> dict:
-        _remove_worktrees(self.repo_cwd, self.experiment_id)
+        remove_worktrees(self.repo_cwd, self.experiment_id)
         return self.api.complete(self.experiment_id)
 
     def status(self) -> dict:
@@ -410,11 +424,10 @@ def start_optimise(
         "pending_diffs": [],
         "kind": "optimise",
     }
-    state_path.parent.mkdir(parents=True, exist_ok=True)
-    state_path.write_text(json.dumps(state, indent=2))
+    store = OptimiseState(state_path)
+    store.write(state)
     dataset_path = pull_dataset(api, exp, cache_dir)
-    state["dataset_path"] = str(dataset_path)
-    state_path.write_text(json.dumps(state, indent=2))
+    store.update(dataset_path=str(dataset_path))
     loop = OptimiseLoop(
         api,
         exp["id"],
@@ -464,8 +477,7 @@ def attach_optimise(
         "pending_diffs": [],
         "kind": "optimise",
     }
-    state_path.parent.mkdir(parents=True, exist_ok=True)
-    state_path.write_text(json.dumps(state, indent=2))
+    OptimiseState(state_path).write(state)
     loop = OptimiseLoop(
         api,
         exp["id"],

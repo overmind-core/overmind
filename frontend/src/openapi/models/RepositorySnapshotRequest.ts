@@ -24,56 +24,49 @@ export interface RepositorySnapshotRequest {
      * @type {string}
      * @memberof RepositorySnapshotRequest
      */
-    repository: string;
+    repository?: string;
     /**
      *
      * @type {string}
      * @memberof RepositorySnapshotRequest
      */
-    directory: string;
+    directory?: string;
     /**
      *
      * @type {string}
      * @memberof RepositorySnapshotRequest
      */
-    branch: string;
+    branch?: string;
     /**
      *
      * @type {string}
      * @memberof RepositorySnapshotRequest
      */
-    commit: string;
+    commit?: string;
     /**
      *
      * @type {boolean}
      * @memberof RepositorySnapshotRequest
      */
-    dirty: boolean;
+    dirty?: boolean;
     /**
      *
      * @type {string}
      * @memberof RepositorySnapshotRequest
      */
-    fingerprint: string;
+    fingerprint?: string;
     /**
      *
-     * @type {Date}
+     * @type {string}
      * @memberof RepositorySnapshotRequest
      */
-    scannedAt: Date;
+    scannedAt?: string | null;
 }
 
 /**
  * Check if a given object implements the RepositorySnapshotRequest interface.
  */
 export function instanceOfRepositorySnapshotRequest(value: object): value is RepositorySnapshotRequest {
-    if (!('repository' in value) || value['repository'] === undefined) return false;
-    if (!('directory' in value) || value['directory'] === undefined) return false;
-    if (!('branch' in value) || value['branch'] === undefined) return false;
-    if (!('commit' in value) || value['commit'] === undefined) return false;
-    if (!('dirty' in value) || value['dirty'] === undefined) return false;
-    if (!('fingerprint' in value) || value['fingerprint'] === undefined) return false;
-    if (!('scannedAt' in value) || value['scannedAt'] === undefined) return false;
     return true;
 }
 
@@ -87,13 +80,13 @@ export function RepositorySnapshotRequestFromJSONTyped(json: any, ignoreDiscrimi
     }
     return {
 
-        'repository': json['repository'],
-        'directory': json['directory'],
-        'branch': json['branch'],
-        'commit': json['commit'],
-        'dirty': json['dirty'],
-        'fingerprint': json['fingerprint'],
-        'scannedAt': (new Date(json['scanned_at'])),
+        'repository': json['repository'] == null ? undefined : json['repository'],
+        'directory': json['directory'] == null ? undefined : json['directory'],
+        'branch': json['branch'] == null ? undefined : json['branch'],
+        'commit': json['commit'] == null ? undefined : json['commit'],
+        'dirty': json['dirty'] == null ? undefined : json['dirty'],
+        'fingerprint': json['fingerprint'] == null ? undefined : json['fingerprint'],
+        'scannedAt': json['scanned_at'] == null ? undefined : json['scanned_at'],
     };
 }
 
@@ -114,6 +107,6 @@ export function RepositorySnapshotRequestToJSONTyped(value?: RepositorySnapshotR
         'commit': value['commit'],
         'dirty': value['dirty'],
         'fingerprint': value['fingerprint'],
-        'scanned_at': value['scannedAt'].toISOString(),
+        'scanned_at': value['scannedAt'],
     };
 }

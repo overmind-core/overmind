@@ -14,7 +14,8 @@ from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanE
 
 import overmind.tracing as tracing
 from overmind import attrs
-from overmind.tracing import SpanType, normalize_messages, observe, start_span, tool
+from overmind.payloads import normalize_messages
+from overmind.tracing import SpanType, observe, start_span, tool
 
 
 @pytest.fixture
@@ -173,7 +174,6 @@ def test_tool_callable_name_emits_per_action_tool_spans(exporter):
         assert span.attributes[attrs.PROVENANCE] == "environment"
         assert span.attributes[attrs.CODE_FUNCTION_NAME].endswith("Tools.act")
     assert json.loads(spans["navigate"].attributes["inputs"]) == {"action": "navigate", "url": "https://ex.io"}
-    assert spans["navigate"].attributes[attrs.TOOL_ARG_KEYS] == ("action", "url")
 
 
 def test_tool_callable_name_supports_async(exporter):
@@ -216,7 +216,7 @@ def test_normalize_messages_handles_dicts_objects_and_parts():
         {
             "role": "assistant",
             "content": "part one\npart two",
-            "tool_calls": [{"name": "search", "args": {"q": "x"}}],
+            "tool_calls": [{"id": None, "name": "search", "arguments": {"q": "x"}}],
         },
         {"role": "tool", "content": "result", "tool_call_id": "tc-1"},
     ]

@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 import re
 import time
 import uuid
@@ -12,12 +11,10 @@ from typing import Annotated, Any
 
 import requests
 import typer
-from rich.console import Console
 
-from overmind.config import DEFAULT_PATH, Config, load
-from overmind.sync import resolve_api_key, resolve_api_url
-
-console = Console()
+from overmind.api import Connection, open_session, poll, read_json
+from overmind.cli import ApiKeyOption, ApiUrlOption, ConfigPathOption, ProjectIdOption, console, guard
+from overmind.config import DEFAULT_PATH
 
 BACKTEST_CAP = 5
 FINETUNE_CAP = 4
@@ -79,26 +76,24 @@ def _parse_iso(value: str, *, what: str) -> datetime:
     return parsed
 
 
-def resolve_capability(config: Config, reference: str) -> tuple[str, str]:
+def resolve_capability(reference: str) -> tuple[str, str]:
+    """Resolve ``--capability`` to ``(id, display)``.
+
+    Capabilities live on the server (decorator manifest), not in ``overmind.toml``.
+    Pass a UUID or a slug; the slug is sent as-is for the server to resolve.
+    """
     reference = reference.strip()
-    caps = [cap for cap in config.capabilities.values() if cap.id]
-    if reference:
-        for cap in caps:
-            if reference in (cap.slug, cap.id, cap.name):
-                return cap.id, cap.slug or cap.id[:8]
-        try:
-            return str(uuid.UUID(reference)), reference[:8]
-        except ValueError as exc:
-            raise LayerError("Capability not found in overmind.toml. Pass its slug or id.") from exc
-    if len(caps) == 1:
-        cap = caps[0]
-        return cap.id, cap.slug or cap.id[:8]
-    if not caps:
-        raise LayerError("Pass --capability. overmind.toml has no capability id.")
-    raise LayerError("Pass --capability. overmind.toml has more than one.")
+    if not reference:
+        raise LayerError("Pass --capability <slug-or-id>.")
+    try:
+        return str(uuid.UUID(reference)), reference[:8]
+    except ValueError:
+        return reference, reference
 
 
 class Client:
+    """The Overmind API as the backtest and finetune flows use it."""
+
     def __init__(self, session: requests.Session, base_url: str, *, sleep=time.sleep, clock=time.monotonic):
         self.session = session
         self.base_url = base_url.rstrip("/")
@@ -106,51 +101,39 @@ class Client:
         self.clock = clock
 
     def get(self, path: str) -> dict[str, Any]:
-        response = self.session.get(f"{self.base_url}{path}", timeout=60)
-        return _json(response, "GET")
+        return read_json(self.session.get(f"{self.base_url}{path}", timeout=60), f"GET {path}", error=LayerError)
 
     def post(self, path: str, body: dict[str, Any]) -> dict[str, Any]:
         response = self.session.post(f"{self.base_url}{path}", json=body, timeout=60)
-        return _json(response, "POST")
+        return read_json(response, f"POST {path}", error=LayerError)
 
     def wait_dataset(self, dataset_id: str, *, deadline: float) -> dict[str, Any]:
-        while True:
-            dataset = self.get(f"/api/datasets/{dataset_id}/")
-            if dataset.get("state") == "idle":
-                return dataset
+        def settled(dataset: dict[str, Any]) -> bool:
             if dataset.get("state") == "error":
                 raise LayerError(dataset.get("error") or "Landing failed.")
-            if self.clock() >= deadline:
-                raise LayerError("Timed out waiting for the dataset.", code=2)
-            self.sleep(2)
+            return dataset.get("state") == "idle"
+
+        return self._wait(f"/api/datasets/{dataset_id}/", settled, deadline, "Timed out waiting for the dataset.")
 
     def wait_eval(self, run_id: str, *, deadline: float) -> dict[str, Any]:
-        while True:
-            run = self.get(f"/api/eval-runs/{run_id}/")
+        def settled(run: dict[str, Any]) -> bool:
             status = run.get("status")
-            if status == "completed":
-                return run
             if status in {"failed", "cancelled"}:
                 raise LayerError(run.get("error") or f"Evaluation {status}.")
-            if self.clock() >= deadline:
-                raise LayerError("Timed out waiting for the evaluation.", code=2)
-            self.sleep(2)
+            return status == "completed"
 
+        return self._wait(f"/api/eval-runs/{run_id}/", settled, deadline, "Timed out waiting for the evaluation.")
 
-def _json(response: requests.Response, operation: str) -> dict[str, Any]:
-    try:
-        payload = response.json()
-    except (TypeError, ValueError):
-        payload = None
-    if response.ok and isinstance(payload, dict):
-        return payload
-    detail = ""
-    if isinstance(payload, dict):
-        raw = payload.get("detail") or payload.get("error") or payload
-        detail = raw if isinstance(raw, str) else json.dumps(raw, ensure_ascii=False)
-    elif getattr(response, "text", ""):
-        detail = str(response.text)[:400]
-    raise LayerError(detail or f"{operation} failed ({response.status_code}).")
+    def _wait(self, path: str, settled, deadline: float, timeout_message: str) -> dict[str, Any]:
+        return poll(
+            lambda: self.get(path),
+            settled=settled,
+            deadline=deadline,
+            interval=2,
+            timed_out=lambda _value: LayerError(timeout_message, code=2),
+            sleep=self.sleep,
+            clock=self.clock,
+        )
 
 
 def _cell_id(dataset: dict[str, Any]) -> str:
@@ -387,37 +370,26 @@ def run_finetune(
     return 0
 
 
-def _client(api_key: str, api_url: str, path) -> tuple[Client, Config]:
-    config = load(path) if path.exists() else Config()
-    key = resolve_api_key(api_key, config)
-    if not key:
-        raise LayerError("Missing API key. Pass --api-key or set OVERMIND_API_KEY.")
-    session = requests.Session()
-    session.headers["X-Api-Key"] = key
-    return Client(session, resolve_api_url(api_url, config)), config
-
-
-def _common(
+def _prepare(
     *,
     api_key: str,
     api_url: str,
-    path,
+    path: Path,
     project_id: str,
     capability: str,
     since: str,
     until: str,
 ) -> tuple[Client, str, str, str, datetime, datetime | None]:
-    client, config = _client(api_key, api_url, path)
-    project = project_id.strip() or config.project_id.strip()
-    if not project:
-        raise LayerError("Missing project-id. Pass --project-id or add project-id to overmind.toml.")
-    capability_id, slug = resolve_capability(config, capability)
-    now = datetime.now(UTC)
-    start = parse_since(since, now=now)
+    connection = Connection.resolve(
+        path, api_key=api_key, api_url=api_url, project_id=project_id, require_project=True, error=LayerError
+    )
+    client = Client(open_session(connection.api_key, json_body=False), connection.base_url)
+    capability_id, slug = resolve_capability(capability)
+    start = parse_since(since, now=datetime.now(UTC))
     end = parse_until(until)
     if end is not None and end < start:
         raise LayerError("until is before since.")
-    return client, project, capability_id, slug, start, end
+    return client, connection.project_id, capability_id, slug, start, end
 
 
 def backtest(
@@ -431,15 +403,15 @@ def backtest(
     limit: Annotated[int, typer.Option("--limit", min=1, max=10_000)] = 200,
     from_model: Annotated[str, typer.Option("--from-model", help="Only spans recorded from this model.")] = "",
     timeout: Annotated[str, typer.Option("--timeout", help="Wait budget, like 45m.")] = "45m",
-    project_id: Annotated[str, typer.Option("--project-id")] = "",
-    api_key: Annotated[str, typer.Option("--api-key", envvar="OVERMIND_API_KEY")] = "",
-    api_url: Annotated[str, typer.Option("--api-url", envvar="OVERMIND_API_URL")] = "",
-    path: Annotated[Path, typer.Option("--path", help="Path to overmind.toml")] = DEFAULT_PATH,
+    project_id: ProjectIdOption = "",
+    api_key: ApiKeyOption = "",
+    api_url: ApiUrlOption = "",
+    path: ConfigPathOption = DEFAULT_PATH,
 ) -> None:
     """Score models on stored LLM calls. Exit 1 when any model regresses."""
-    try:
+    with guard(LayerError):
         chosen = parse_models(models, cap=BACKTEST_CAP)
-        client, project, capability_id, slug, start, end = _common(
+        client, project, capability_id, slug, start, end = _prepare(
             api_key=api_key,
             api_url=api_url,
             path=path,
@@ -460,9 +432,6 @@ def backtest(
             from_model=from_model,
             timeout_s=parse_timeout(timeout),
         )
-    except LayerError as exc:
-        console.print(f"[red]{exc}[/red]")
-        raise typer.Exit(exc.code) from exc
     raise typer.Exit(code)
 
 
@@ -478,15 +447,15 @@ def finetune(
     from_model: Annotated[str, typer.Option("--from-model", help="Only spans recorded from this model.")] = "",
     eval_percent: Annotated[int, typer.Option("--eval-percent", min=1, max=99)] = 20,
     timeout: Annotated[str, typer.Option("--timeout", help="Wait budget for landing, like 45m.")] = "45m",
-    project_id: Annotated[str, typer.Option("--project-id")] = "",
-    api_key: Annotated[str, typer.Option("--api-key", envvar="OVERMIND_API_KEY")] = "",
-    api_url: Annotated[str, typer.Option("--api-url", envvar="OVERMIND_API_URL")] = "",
-    path: Annotated[Path, typer.Option("--path", help="Path to overmind.toml")] = DEFAULT_PATH,
+    project_id: ProjectIdOption = "",
+    api_key: ApiKeyOption = "",
+    api_url: ApiUrlOption = "",
+    path: ConfigPathOption = DEFAULT_PATH,
 ) -> None:
     """Start one fine-tune job per model from stored LLM calls. Does not wait for training."""
-    try:
+    with guard(LayerError):
         chosen = parse_models(models, cap=FINETUNE_CAP)
-        client, project, capability_id, slug, start, end = _common(
+        client, project, capability_id, slug, start, end = _prepare(
             api_key=api_key,
             api_url=api_url,
             path=path,
@@ -508,7 +477,4 @@ def finetune(
             eval_percent=eval_percent,
             timeout_s=parse_timeout(timeout),
         )
-    except LayerError as exc:
-        console.print(f"[red]{exc}[/red]")
-        raise typer.Exit(exc.code) from exc
     raise typer.Exit(code)

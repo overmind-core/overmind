@@ -20,19 +20,16 @@ Before starting work, show the complete numbered roadmap below, the current
 stage, and the data disclosure. If installation already finished before this
 skill became available, mark it complete. After a reload, briefly restate the
 roadmap with completed stages marked and continue from the verified position.
-An existing project starts scanning at stage 3 once installation and project
+An existing project starts decorating at stage 3 once installation and project
 connection are verified; do not reinstall or resync just to fill the checklist.
 
 1. **Install Overmind** — add the SDK and install the coding-agent skill.
 1. **Connect project** — create or connect the project and configure MCP; reload the coding agent once.
-1. **Inspect repository** — build a local inventory of functions and entry points.
-1. **Discover capabilities** — identify the distinct AI purposes in the repository.
-1. **Describe capabilities** — capture each capability's prompts, tools, inputs, and outputs.
-1. **Verify source references** — check the descriptions against the source.
-1. **Prepare evaluations** — draft the starter evaluation criteria.
-1. **Write snapshot** — save the capability descriptions incrementally.
-1. **Validate configuration** — convert and check the local `overmind.toml`.
-1. **Sync capabilities** — send the snapshot to the configured Overmind project.
+1. **Find entry points** — locate product AI handlers, CLI commands, and agent classes.
+1. **Decorate capabilities** — add `@capability` / `@observe` / `task()` at those sites.
+1. **Check literals** — keep `description`, `prompt`, and `expectations` as literals or module constants.
+1. **Sync** — run `overmind sync` (AST scan → AgentManifest push).
+1. **Confirm graph** — re-read `overmind://capabilities/{capability}` and the agent graph.
 
 The roadmap ends at a successful capability sync. Instrumentation, running the
 application, and completion of asynchronous server-side evaluator preparation
@@ -45,45 +42,15 @@ the current stage, completed count, and how many stages follow it. Add one
 sentence stating a useful finding so far and the current action. Prefer what
 the result means for this repository over a diary of commands or raw function
 counts. Keep the numbered format; do not add graphical bars or symbol legends.
-For example:
-
-```text
-Stage 5 of 10 · Describe capabilities
-4 complete · 5 stages after this
-
-Found one capability: Paper question answering. Its three execution modes share
-the same evidence and citation workflow. Checking their prompts and tools.
-```
 
 During a longer stage, repeat that heading with a concrete update after several
-tool calls, roughly once a minute while actively working:
-
-```text
-Stage 5 of 10 · Describe capabilities
-4 complete · 5 stages after this
-
-1 of 2 capability descriptions complete. Paper Q&A uses citations from its
-retrieved evidence; checking the second capability's output contract.
-```
-
-Use counts from completed work, never from started commands. During discovery,
-say how many capabilities have been found so far; the final total is unknown.
-Update the total if discovery changes it and revisit affected descriptions.
-When discovery finds no capabilities, say so and mark the per-capability stages
-as having no work; still validate, convert, and sync the empty snapshot.
-
-At the end of discovery, give a short reveal: name the capabilities in the
-repository's own terms and explain one source-grounded relationship, such as
-shared state, execution modes, or how evidence reaches an answer. Distinguish
-what the code declares from observed runtime behavior. Do not fabricate an
-insight to fill the format; for a large result, summarize representative groups
-and link the full snapshot once written. Examples here illustrate the voice,
-not names or counts to reuse without evidence.
+tool calls. Prefer counts from completed work, never from started commands.
+When discovery finds no entry points, say so and still sync the empty
+manifest so the project stays current.
 
 Stage numbers describe workflow position, not time or a percentage of effort.
 Do not estimate a duration or advance progress on a timer. Do not print internal
 markers such as `__STAGE__`, `__FOUND__`, `__NOTE__`, or JSON findings in chat.
-Keep progress out of the snapshot files.
 
 For a blocked stage, keep its number and completed count, label it **Blocked**,
 and state the failure and next action. If sync fails after the upload but before
@@ -92,15 +59,13 @@ the server. On resume, verify earlier outputs before marking them complete.
 
 ## Outcome and next action
 
-After sync succeeds, finish with **Onboarding complete · 10 of 10 stages**.
+After sync succeeds, finish with **Onboarding complete · 7 of 7 stages**.
 Give the user a compact outcome, not another recap of the steps:
 
-- What landed: capability names/count, destination, and a link to the local
-  `overmind.toml`. Count tools and proposed evaluation criteria only when those
-  details survived conversion and sync.
+- What landed: capability names/count and destination. Count tools only when
+  the sync response or capability resource confirms them.
 - One useful source-grounded finding, when available, and any material caveat
-  such as dropped metadata or an unverified path. Never turn a potential risk
-  into a confirmed runtime bug without evidence.
+  such as unresolved decorator kwargs reported by sync.
 - What has not been verified: instrumentation, a real application run, and
   asynchronous evaluator readiness are separate from a successful sync.
 - One recommended next action based on the remaining gap. For example, when
@@ -122,21 +87,27 @@ when the host exposes it; otherwise say **Selected in your coding agent; exact
 model not exposed to this session**. A model ID found in the customer's code
 is not the model performing the scan.
 
-- **Coding-agent model:** repository excerpts and tool results read during the scan enter the coding agent's context and may be sent to its configured provider. Local AST inventory and TOML conversion do not themselves call a model.
-- **Overmind destination:** name the resolved API host and project. The initial connection sends project setup data and any existing snapshot. The final sync sends the repository summary, capability descriptions, source paths/references, captured prompt text, tool descriptions/schemas, and evaluation specifications. It does not send a repository archive.
-- **Credentials:** the CLI uses the Overmind API key to authenticate to that host. The configuration's API-key field is excluded from the capability snapshot. Do not read secret files into model context or copy credential values into capability descriptions. Arbitrary prompt/card text is not automatically secret-free.
-- **After sync:** Overmind can use the synced capability metadata to prepare evaluators with its configured model providers. If this deployment's exact models/providers are not available, say **Server evaluator models not available in this session**; do not guess from SDK defaults or call this local-only processing.
+- **Coding-agent model:** repository excerpts and tool results read during
+  decoration enter the coding agent's context and may be sent to its configured
+  provider. The AST scan itself does not call a model; card authoring happens
+  server-side after sync.
+- **Overmind destination:** name the resolved API host and project. Sync sends
+  the AgentManifest (declared symbols, signatures, literal prompts/expectations,
+  call-graph edges, repository fingerprint). It does not send a repository archive.
+- **Credentials:** the CLI uses the Overmind API key to authenticate to that host.
+  Do not read secret files into model context or copy credential values into
+  decorator arguments.
+- **After sync:** Overmind derives the capability card and prepares evaluators
+  with its configured model providers. If this deployment's exact models/providers
+  are not available, say **Server evaluator models not available in this session**.
 
-Before the final sync, check the generated snapshot for accidentally copied
-secrets without echoing their values. If one is found, remove the secret value
-before upload while retaining the capability description. Then give a compact
-handoff using these fields:
+Before the final sync, check decorated source for accidentally copied secrets
+without echoing their values. Then give a compact handoff:
 
 - **Destination:** the resolved API host, project, and capability count.
-- **Included:** the data categories actually present in the generated snapshot.
-- **Credential checks:** state which checks ran and their result, or that they
-  were not performed; do not imply arbitrary text is guaranteed secret-free.
-- **Review:** a link to the local `overmind.toml`.
+- **Included:** declared symbols, signatures, prompts, tools, repository fingerprint.
+- **Credential checks:** state which checks ran and their result.
+- **Review:** a link to the decorated source files (not a capability toml).
 
 Show the full disclosure at the start and this handoff before upload, not at
 every stage. Surface material changes in destination or data scope before

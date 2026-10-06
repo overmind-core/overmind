@@ -372,13 +372,13 @@ def _resolve_capability(
 ) -> Capability | None:
     """Attribute a span to a current capability, or to the graph floor.
 
-    ``overmind.capability.id`` is the only mapping key; ``overmind.capability.name``
-    is an accessibility label and never resolves. Span-level identity wins over
-    resource identity: resource attributes are process-global (the FIRST
-    ``overmind.init()`` pins them), so a multi-capability process stamping
-    per-request identity must not be overridden.
-    Ingest never creates a capability — an id the project does not have
-    returns ``None`` and the span stays unbound, visibly."""
+    Resolution order: ``overmind.capability.id``, then
+    ``overmind.capability.slug``, then the span's ``code.namespace`` +
+    ``code.function.name`` matched against a current capability's
+    ``entrypoint_fn``. ``overmind.capability.name`` is an accessibility
+    label and never resolves. Span-level identity wins over resource
+    identity. Ingest never creates a capability — an unknown identity
+    leaves the span unbound."""
     resource_id = resource_attrs.get(oc_attrs.CAPABILITY_ID)
     tagged_id = overmind_tags.get(oc_attrs.CAPABILITY_ID)
     # Tags merge resource then span — a resource-only value is
@@ -390,10 +390,44 @@ def _resolve_capability(
         resolved = identity.lookup(project.id, str(probe))
         if resolved is not None:
             return resolved
-    if tagged_id or resource_id:
+
+    resource_slug = resource_attrs.get(oc_attrs.CAPABILITY_SLUG)
+    tagged_slug = overmind_tags.get(oc_attrs.CAPABILITY_SLUG)
+    span_level_slug = tagged_slug if tagged_slug and tagged_slug != resource_slug else None
+    for probe in (span_level_slug, resource_slug):
+        if not probe:
+            continue
+        resolved = identity.lookup(project.id, str(probe))
+        if resolved is not None:
+            return resolved
+
+    ns = str(
+        overmind_tags.get(oc_attrs.CODE_NAMESPACE)
+        or resource_attrs.get(oc_attrs.CODE_NAMESPACE)
+        or ""
+    ).strip()
+    fn = str(
+        overmind_tags.get(oc_attrs.CODE_FUNCTION_NAME)
+        or resource_attrs.get(oc_attrs.CODE_FUNCTION_NAME)
+        or ""
+    ).strip()
+    qualname = f"{ns}.{fn}" if ns and fn else fn
+    if qualname:
+        match = (
+            Capability.objects.filter(
+                project_id=project.id,
+                status=Capability.Status.CURRENT,
+                entrypoint_fn=qualname,
+            )
+            .order_by("created_at")
+            .first()
+        )
+        if match is not None:
+            return match
+
+    if tagged_id or resource_id or tagged_slug or resource_slug:
         logger.info(
-            "Unresolved capability id %r for project %s — span stays unbound",
-            str(tagged_id or resource_id)[:64],
+            "Unresolved capability identity for project %s — span stays unbound",
             project.slug,
         )
     return None

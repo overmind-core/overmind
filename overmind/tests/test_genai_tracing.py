@@ -17,6 +17,7 @@ Uses the repo's in-memory span exporter pattern (no network, no real LLMs).
 from __future__ import annotations
 
 import contextvars
+import json
 
 import pytest
 from opentelemetry.sdk.resources import Resource
@@ -144,7 +145,7 @@ def test_tool_decorator_stamps_metadata(inmem):
     span = exporter.get_finished_spans()[-1]
     assert span.attributes[attrs.SPAN_TYPE] == "tool_call"
     assert span.attributes[attrs.TOOL_NAME] == "search_kb"
-    assert set(span.attributes[attrs.TOOL_ARG_KEYS]) == {"query", "limit"}
+    assert json.loads(span.attributes["inputs"]) == {"query": "refund policy", "limit": 3}
 
 
 def test_tool_decorator_records_error(inmem):

@@ -1,0 +1,60 @@
+---
+description: Frontend copy is for the user — never display system instructions in the UI
+globs: frontend/**/*.{ts,tsx}
+alwaysApply: false
+---
+
+# Frontend copy — user instructions only
+
+Visible Console copy is an instruction or fact for the human. Never render a
+system instruction: a prompt, constraint, or procedure written for a coding
+agent, LLM, dataset agent, MCP tool, or the product itself.
+
+Same bar for backend strings the Console displays (errors, toasts, empty
+states). British English, sentence case, acronyms preserved — `DESIGN.md`.
+
+## Audience test
+
+Before a string is rendered (heading, description, empty state, button, toast,
+tooltip, helper, aria-label, placeholder):
+
+- Would a **user** act on this? Keep.
+- Would an **agent or model** act on this? Do not render. Put it in a
+  copy-paste payload, `chat.mutate(...)`, or an API body.
+
+Instrument voice: state the fact and stop. No rationale, reassurance, or
+coaching ("9 rows", never "9 rows — small enough to read").
+
+## Payloads vs display
+
+Clipboard prompts (`onboardWithAiBootstrapPrompt`, `telemetrySetupPrompt`),
+`chat.mutate` strings, and skill/MCP text are **payloads**. They may contain
+system instructions. Surrounding UI only says a prompt exists and what the
+user should do with it.
+
+A capability's own system prompt is **user data**. Show it in a prompt viewer.
+Do not recast it as Console guidance.
+
+## Examples
+
+```tsx
+// ❌ BAD — agent procedure as empty-state copy
+description="The agent runs init sync first; capability scan follows in the skill."
+
+// ✅ GOOD — what the user does, then the fact
+description="Paste the onboarding prompt in your coding agent. A project appears after overmind sync."
+```
+
+```tsx
+// ❌ BAD — bootstrap prompt rendered on screen
+<p>Use the published PyPI package only — do not install from git.</p>
+<p>Reload the IDE once after sync; do not re-export the key.</p>
+
+// ✅ GOOD — user instruction; payload stays on the clipboard
+<Button>Copy onboarding prompt for Cursor</Button>
+<p>Open the repository in Cursor, then paste the prompt.</p>
+```
+
+Do not use "You are…", "Do not…", "Never…", "Always…" aimed at an agent as UI
+copy. Do not paste a skill body, clipboard payload, or chat-agent instruction
+into a label or empty state.

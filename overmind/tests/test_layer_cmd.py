@@ -7,7 +7,6 @@ import pytest
 from typer.testing import CliRunner
 
 from overmind.__main__ import app
-from overmind.config import Capability, Config
 from overmind.layer_cmd import (
     Client,
     LayerError,
@@ -77,16 +76,12 @@ def test_parse_models_rejects_duplicates_and_the_cap():
         parse_models(None, cap=4)
 
 
-def test_capability_defaults_to_the_only_toml_entry():
-    only = Capability(slug="support", name="Support", id="11111111-1111-1111-1111-111111111111")
-    config = Config(capabilities={"support": only})
-    assert resolve_capability(config, "")[0] == only.id
-    other = Capability(slug="other", name="Other", id="22222222-2222-2222-2222-222222222222")
-    crowded = Config(capabilities={"support": only, "other": other})
+def test_capability_requires_explicit_reference():
     with pytest.raises(LayerError, match="Pass --capability"):
-        resolve_capability(crowded, "")
+        resolve_capability("")
     raw = "33333333-3333-3333-3333-333333333333"
-    assert resolve_capability(Config(), raw)[0] == raw
+    assert resolve_capability(raw)[0] == raw
+    assert resolve_capability("triage") == ("triage", "triage")
 
 
 def test_backtest_scores_each_model_and_exits_on_regression():

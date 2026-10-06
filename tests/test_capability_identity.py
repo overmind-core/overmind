@@ -61,12 +61,24 @@ def test_lookup_hides_leftover_unless_asked_and_never_returns_deleted():
     assert identity.lookup(project.id, str(gone.id), include_leftover=True) is None
 
 
-def test_ingest_binds_by_id_only_and_never_mints():
+def test_ingest_binds_by_id_slug_or_entrypoint_and_never_mints():
     project = _project()
-    capability = _capability(project, "Ledgerline Invoice Triage")
+    capability = _capability(project, "Ledgerline Invoice Triage", entrypoint_fn="agent.handle")
 
     assert (
         _resolve_capability(project, {}, {"overmind.capability.id": str(capability.id)})
+        == capability
+    )
+    assert (
+        _resolve_capability(project, {}, {"overmind.capability.slug": capability.slug})
+        == capability
+    )
+    assert (
+        _resolve_capability(
+            project,
+            {},
+            {"code.namespace": "agent", "code.function.name": "handle"},
+        )
         == capability
     )
     # The name is a display label: it never resolves, however exact.

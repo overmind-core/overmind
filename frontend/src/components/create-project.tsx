@@ -27,7 +27,7 @@ function CreateProjectForm({
         <OnboardWithAiPanel
           onPromptCopied={onSuccess}
           showManualSetup={false}
-          waitingHint="The project appears right after init sync; capabilities follow /overmind setup."
+          waitingHint="The project appears right after init sync; capabilities follow decorating entry points and overmind sync."
         />
       </DialogBody>
       <DialogFooter>

@@ -12,10 +12,10 @@ from overbae.models import Behaviour, BehaviourVersion, Capability
 from overbae.services.codebase.anchors import module_dotted_path
 
 _SPECIALIZED_DECORATORS = {
-    "tool": "@overmind.tool()",
-    "workflow": "@overmind.workflow()",
-    "retrieval": "@overmind.retrieval()",
-    "entry_point": "@overmind.entry_point()",
+    "tool": "@overmind.observe(type='tool')",
+    "workflow": "@overmind.observe(type='workflow')",
+    "retrieval": "@overmind.observe(type='retrieval')",
+    "entry_point": "@overmind.capability('<slug>')",
 }
 
 
@@ -88,7 +88,7 @@ def _required_spans(
             continue
         kind = str(anchor.get("kind") or "")
         decorator = (
-            "@overmind.observe()"
+            "@overmind.capability('<slug>')"
             if primary and kind == "entry_point"
             else _SPECIALIZED_DECORATORS.get(kind, "@overmind.observe()")
         )

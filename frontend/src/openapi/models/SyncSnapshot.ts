@@ -34,9 +34,23 @@ import {
     CapabilityToJSON,
     CapabilityToJSONTyped,
 } from './Capability';
+import type { DeclaredSymbol } from './DeclaredSymbol';
+import {
+    DeclaredSymbolFromJSON,
+    DeclaredSymbolFromJSONTyped,
+    DeclaredSymbolToJSON,
+    DeclaredSymbolToJSONTyped,
+} from './DeclaredSymbol';
+import type { GraphEdge } from './GraphEdge';
+import {
+    GraphEdgeFromJSON,
+    GraphEdgeFromJSONTyped,
+    GraphEdgeToJSON,
+    GraphEdgeToJSONTyped,
+} from './GraphEdge';
 
 /**
- * Wire form of ``overmind.toml`` — the unit of two-way sync.
+ * Wire form of the AgentManifest — the unit of sync.
  * @export
  * @interface SyncSnapshot
  */
@@ -52,19 +66,13 @@ export interface SyncSnapshot {
      * @type {string}
      * @memberof SyncSnapshot
      */
-    repoSummary?: string;
-    /**
-     *
-     * @type {TraceProviderEnum}
-     * @memberof SyncSnapshot
-     */
-    traceProvider?: TraceProviderEnum;
+    sdkVersion?: string;
     /**
      *
      * @type {string}
      * @memberof SyncSnapshot
      */
-    version: string;
+    version?: string;
     /**
      *
      * @type {RepositorySnapshot}
@@ -73,16 +81,40 @@ export interface SyncSnapshot {
     repositorySnapshot?: RepositorySnapshot | null;
     /**
      *
-     * @type {Date}
+     * @type {string}
      * @memberof SyncSnapshot
      */
-    readonly lastSyncedAt: Date | null;
+    readonly lastSyncedAt: string | null;
+    /**
+     *
+     * @type {Array<DeclaredSymbol>}
+     * @memberof SyncSnapshot
+     */
+    symbols?: Array<DeclaredSymbol>;
     /**
      *
      * @type {Array<Capability>}
      * @memberof SyncSnapshot
      */
-    capabilities: Array<Capability>;
+    capabilities?: Array<Capability>;
+    /**
+     *
+     * @type {Array<GraphEdge>}
+     * @memberof SyncSnapshot
+     */
+    edges?: Array<GraphEdge>;
+    /**
+     *
+     * @type {string}
+     * @memberof SyncSnapshot
+     */
+    repoSummary?: string;
+    /**
+     *
+     * @type {TraceProviderEnum}
+     * @memberof SyncSnapshot
+     */
+    traceProvider?: TraceProviderEnum;
 }
 
 
@@ -92,9 +124,7 @@ export interface SyncSnapshot {
  */
 export function instanceOfSyncSnapshot(value: object): value is SyncSnapshot {
     if (!('projectId' in value) || value['projectId'] === undefined) return false;
-    if (!('version' in value) || value['version'] === undefined) return false;
     if (!('lastSyncedAt' in value) || value['lastSyncedAt'] === undefined) return false;
-    if (!('capabilities' in value) || value['capabilities'] === undefined) return false;
     return true;
 }
 
@@ -109,12 +139,15 @@ export function SyncSnapshotFromJSONTyped(json: any, ignoreDiscriminator: boolea
     return {
 
         'projectId': json['project_id'],
+        'sdkVersion': json['sdk_version'] == null ? undefined : json['sdk_version'],
+        'version': json['version'] == null ? undefined : json['version'],
+        'repositorySnapshot': json['repository_snapshot'] == null ? undefined : RepositorySnapshotFromJSON(json['repository_snapshot']),
+        'lastSyncedAt': json['last_synced_at'],
+        'symbols': json['symbols'] == null ? undefined : ((json['symbols'] as Array<any>).map(DeclaredSymbolFromJSON)),
+        'capabilities': json['capabilities'] == null ? undefined : ((json['capabilities'] as Array<any>).map(CapabilityFromJSON)),
+        'edges': json['edges'] == null ? undefined : ((json['edges'] as Array<any>).map(GraphEdgeFromJSON)),
         'repoSummary': json['repo_summary'] == null ? undefined : json['repo_summary'],
         'traceProvider': json['trace_provider'] == null ? undefined : TraceProviderEnumFromJSON(json['trace_provider']),
-        'version': json['version'],
-        'repositorySnapshot': json['repository_snapshot'] == null ? undefined : RepositorySnapshotFromJSON(json['repository_snapshot']),
-        'lastSyncedAt': (json['last_synced_at'] == null ? null : new Date(json['last_synced_at'])),
-        'capabilities': ((json['capabilities'] as Array<any>).map(CapabilityFromJSON)),
     };
 }
 
@@ -130,10 +163,13 @@ export function SyncSnapshotToJSONTyped(value?: Omit<SyncSnapshot, 'last_synced_
     return {
 
         'project_id': value['projectId'],
-        'repo_summary': value['repoSummary'],
-        'trace_provider': TraceProviderEnumToJSON(value['traceProvider']),
+        'sdk_version': value['sdkVersion'],
         'version': value['version'],
         'repository_snapshot': RepositorySnapshotToJSON(value['repositorySnapshot']),
-        'capabilities': ((value['capabilities'] as Array<any>).map(CapabilityToJSON)),
+        'symbols': value['symbols'] == null ? undefined : ((value['symbols'] as Array<any>).map(DeclaredSymbolToJSON)),
+        'capabilities': value['capabilities'] == null ? undefined : ((value['capabilities'] as Array<any>).map(CapabilityToJSON)),
+        'edges': value['edges'] == null ? undefined : ((value['edges'] as Array<any>).map(GraphEdgeToJSON)),
+        'repo_summary': value['repoSummary'],
+        'trace_provider': TraceProviderEnumToJSON(value['traceProvider']),
     };
 }

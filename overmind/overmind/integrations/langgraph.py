@@ -25,8 +25,9 @@ import inspect
 from collections.abc import Callable, Mapping
 from typing import Any
 
+from overmind.slug import identity_slug
 from overmind.tracing import deliver as _deliver
-from overmind.tracing import identity_slug, observe, task
+from overmind.tracing import observe, task
 
 
 def slug(name: str) -> str:

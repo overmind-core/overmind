@@ -9,7 +9,7 @@ from pathlib import Path
 from urllib.parse import urlsplit
 
 # Generated scan files cannot make their own source snapshot dirty.
-_SOURCE_PATHS = [".", ":(exclude)overmind.toml", ":(exclude)overmind_capabilities.json", ":(exclude).overmind"]
+_SOURCE_PATHS = [".", ":(exclude)overmind.toml", ":(exclude).overmind"]
 
 
 def _git(root: Path, *args: str) -> bytes:
@@ -96,5 +96,5 @@ def finish_repository_scan(root: Path) -> dict | None:
     if snapshot is None:
         return None
     if capture_repository_snapshot(root) != snapshot:
-        raise ValueError("Repository changed during the scan. Run /overmind setup again before syncing.")
+        raise ValueError("Repository changed during the scan. Run `overmind sync` again.")
     return {**snapshot, "scanned_at": saved["scanned_at"]}

@@ -10,19 +10,23 @@ COMMAND = "overmind.command"
 CLI_VERSION = "overmind.cli.version"
 
 
-STATUS = "overmind.status"  # "running" | "success" | "failed" | "cancelled"
+STATUS = "overmind.status"  # "running" | "success" | "failed" | "cancelled" | "aborted"
 ERROR_TYPE = "overmind.error.type"
 ERROR_MESSAGE = "overmind.error.message"
 PROGRESS_PHASE = "overmind.progress.phase"
 PROGRESS_CURRENT = "overmind.progress.current"
 PROGRESS_TOTAL = "overmind.progress.total"
-DURATION_SECONDS = "overmind.duration.seconds"
+STEP = "overmind.step"  # per-trace logical clock; happened-before implies a smaller step
+STREAM_ITEMS = "overmind.stream.items"
+INPUTS_TRUNCATED = "overmind.inputs.truncated"
+OUTPUTS_TRUNCATED = "overmind.outputs.truncated"
 
 # Current SDKs stamp the bare key; older Python builds used the namespaced one.
 CONVERSATION_ID = "conversation.id"
 CONVERSATION_ID_LEGACY = "overmind.conversation.id"
 
 CAPABILITY_ID = "overmind.capability.id"
+CAPABILITY_SLUG = "overmind.capability.slug"
 PROJECT_ID = "overmind.project.id"
 JOB_ID = "overmind.job.id"
 ITERATION_ID = "overmind.iteration.id"
@@ -261,8 +265,15 @@ LLM_USAGE_COMPLETION_TOKENS = "genai.usage.completion_tokens"
 LLM_USAGE_TOTAL_TOKENS = "genai.usage.total_tokens"
 
 TOOL_NAME = "tool.name"
-TOOL_ARG_KEYS = "tool.arg_keys"
 TOOL_ERROR = "tool.error"
+TOOL_CALL_ID = (
+    "gen_ai.tool.call.id"  # the tool span also links to the LLM span that requested the call
+)
+
+CODE_NAMESPACE = "code.namespace"
+CODE_FUNCTION_NAME = "code.function.name"
+CODE_FILE_PATH = "code.file.path"
+CODE_LINE_NUMBER = "code.line.number"
 
 RETRIEVAL_QUERY_CHARS = "overmind.retrieval.query_chars"
 RETRIEVAL_RESULT_COUNT = "overmind.retrieval.result_count"

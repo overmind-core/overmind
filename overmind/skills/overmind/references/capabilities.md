@@ -7,27 +7,31 @@ capability in MCP calls; behaviours and task executions belong underneath it.
 
 Read `overmind://capabilities/{capability}` for safe capability metadata,
 including name, slug, stored status, model, active dataset, active eval set,
-active model, selected benchmark and ready trained benchmark candidates. A capability reference may be a name, slug, or id where the
-tool schema accepts it. `get_instrumentation_plan` with no capability returns
-placements for every current capability; `inspect_capability_health` reads
-one. There is no `list_capabilities` tool.
+active model, selected benchmark and ready trained benchmark candidates. A
+capability reference may be a name, slug, or id where the tool schema accepts
+it. `get_instrumentation_plan` with no capability returns placements for every
+current capability; `inspect_capability_health` reads one. There is no
+`list_capabilities` tool.
 
 The resource may report `current`, `leftover`, or `deleted` state. Current
 workflow tools resolve active current capabilities; do not reactivate or remove
 a capability through MCP.
 
-## Local discovery
+## Local discovery (decorators, not toml)
 
-MCP cannot scan a repository or create capability cards. If the project has no
-instrumentation plan or capability data:
+MCP cannot scan a repository or create capability cards. Capabilities are
+declared in code:
 
-1. Run local `/overmind setup` to scan the repository and write capability
-   metadata.
-1. Preserve existing project/capability ids and configuration.
-1. Run local `overmind sync`.
+1. Decorate entry points with `@capability` / `@observe` / `task()` — see
+   [setup.md](setup.md).
+1. Preserve existing `project-id` in `overmind.toml` (connection only; no
+   capability tables).
+1. Run local `overmind sync` — AST-scans decorator call sites and pushes an
+   AgentManifest; the server derives the card and behaviours.
 1. Re-read the capability resource and request `get_instrumentation_plan`.
 
-Never invent a capability id or ask the MCP server to analyze a Git provider.
+Never invent a capability id, ask the MCP server to analyze a Git provider, or
+write `[capabilities.*]` into `overmind.toml`.
 
 ## Active model
 

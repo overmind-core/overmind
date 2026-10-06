@@ -75,7 +75,7 @@ SLASH_LABELS: dict[str, str] = {
 COMMAND_DESCRIPTIONS: dict[str, str] = {
     "overmind": "Route Overmind setup, tracing, datasets, finetune, optimise, and backtest",
     "overmind-onboard": "Connect this repository to Overmind",
-    "overmind-setup": "Scan the repository and sync capabilities",
+    "overmind-setup": "Decorate agent entry points, then overmind sync (AST scan)",
     "overmind-ensure-tracing": "Inspect traces and instrument the agent",
     "overmind-dataset": "Build, clean, upload, or export a dataset",
     "overmind-finetune": "Fine-tune, deploy, and smoke-test a model",

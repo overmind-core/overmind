@@ -22,7 +22,8 @@ from overbae.services.mcp.errors import MCPError
 
 _REGISTRY_MESSAGE = "No instrumentation registry is available for this project."
 _REGISTRY_INSTRUCTION = (
-    "Run `/overmind setup` in the coding agent, then `overmind sync`, and request the plan again."
+    "Add @capability / @observe / task() decorators to the agent entry points, "
+    "then run `overmind sync`, and request the plan again."
 )
 
 

@@ -17,17 +17,19 @@ from .client import Client, ModelDeleted, OvermindInferenceError
 if TYPE_CHECKING:
     from opentelemetry.overmind.prompt import PromptString
 
-    from .evals import checkpoint, end_conversation, eval_context, expect, intent
+    from .evals import Expectation, checkpoint, end_conversation, eval_context, expect, intent
     from .lifecycle import RunHandle, run
+    from .payloads import normalize_messages
     from .tracing import (
         SpanType,
         capability,
         capture_exception,
+        carrier,
+        continue_trace,
         deliver,
         entry_point,
         force_flush_traces,
         init,
-        normalize_messages,
         observe,
         retrieval,
         set_conversation_id,
@@ -37,11 +39,13 @@ if TYPE_CHECKING:
         start_span,
         task,
         tool,
+        tool_call,
         workflow,
     )
 
 __all__ = [
     "Client",
+    "Expectation",
     "ModelDeleted",
     "OvermindInferenceError",
     "PromptString",
@@ -49,7 +53,9 @@ __all__ = [
     "SpanType",
     "capability",
     "capture_exception",
+    "carrier",
     "checkpoint",
+    "continue_trace",
     "deliver",
     "end_conversation",
     "entry_point",
@@ -69,20 +75,23 @@ __all__ = [
     "start_span",
     "task",
     "tool",
+    "tool_call",
     "workflow",
 ]
 
-_EVALS = frozenset({"checkpoint", "end_conversation", "eval_context", "expect", "intent"})
+_EVALS = frozenset({"Expectation", "checkpoint", "end_conversation", "eval_context", "expect", "intent"})
 _LIFECYCLE = frozenset({"RunHandle", "run"})
+_PAYLOADS = frozenset({"normalize_messages"})
 _TRACING = frozenset({
     "SpanType",
     "capability",
     "capture_exception",
+    "carrier",
+    "continue_trace",
     "deliver",
     "entry_point",
     "force_flush_traces",
     "init",
-    "normalize_messages",
     "observe",
     "retrieval",
     "set_conversation_id",
@@ -92,6 +101,7 @@ _TRACING = frozenset({
     "start_span",
     "task",
     "tool",
+    "tool_call",
     "workflow",
 })
 
@@ -111,6 +121,10 @@ def __getattr__(name: str) -> Any:
             from . import evals
 
             return getattr(evals, name)
+        if name in _PAYLOADS:
+            from . import payloads
+
+            return getattr(payloads, name)
         if name in _TRACING:
             from . import tracing
 
