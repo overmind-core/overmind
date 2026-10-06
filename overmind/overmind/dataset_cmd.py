@@ -244,6 +244,14 @@ def upload_file(
                 sent = received
                 source.seek(sent)
 
+        try:
+            inspect_response = client.post(
+                f"{base_url}{UPLOAD_PATH}{upload_id}/inspect/", json={"size": total}, timeout=DEFAULT_TIMEOUT
+            )
+        except requests.RequestException as exc:
+            raise DatasetUploadError(f"inspect upload failed: {exc}") from exc
+        _json(inspect_response, "inspect upload")
+
         body: dict[str, Any] = {
             "project": project_id,
             "name": path.name,

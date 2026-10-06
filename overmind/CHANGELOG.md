@@ -6,6 +6,11 @@ entries here cover the SDK surface.
 
 ## Unreleased
 
+### Changed
+
+- `overmind dataset upload` inspects the upload before creating the dataset; the
+  server now refuses an uninspected upload, so older CLI versions must upgrade.
+
 ### Added
 
 - Codex (`.agents/plugins/marketplace.json`) and Cursor (`.cursor-plugin/marketplace.json`)

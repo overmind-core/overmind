@@ -190,6 +190,7 @@ def test_concurrent_preserved_import_resumes_publish_one_durable_retry(
     project = Project.objects.create(name="Concurrent recovery", slug="concurrent-recovery")
     upload_id, _filename = files.begin_upload("passengers.csv")
     files.append_chunk(upload_id, 0, b"passenger_id,survived\n1,0\n2,1\n")
+    files.inspect_upload(upload_id, size=files.upload_received(upload_id))
     dataset = Dataset.objects.create(
         project=project, name="Passengers", state="error", error="The worker stopped."
     )

@@ -171,11 +171,12 @@ def _dataset_upload_resource(uri: str) -> dict:
         ),
         "flow": (
             "POST /api/uploads/, resume with PUT /api/uploads/{id}/chunk/?offset= using "
-            "chunk_bytes, then POST /api/datasets/ with upload_id and project."
+            "chunk_bytes, then POST /api/uploads/{id}/inspect/ with size in bytes (required: "
+            "an uninspected upload is refused), then POST /api/datasets/ with upload_id and project."
         ),
         "multiple_files": (
-            "Reserve and upload each file, then POST /api/uploads/{id}/inspect/ with size "
-            "in bytes to validate it and obtain rows. POST /api/datasets/ with project, name "
+            "Reserve, upload and inspect each file (POST /api/uploads/{id}/inspect/ with size "
+            "in bytes; required). POST /api/datasets/ with project, name "
             "and source.uploads containing the upload UUIDs in row order (up to 100 files). "
             "For a train/eval pair, POST /api/datasets/split/ with the same source, "
             "eval_percent (1–99) and position (head, tail or random)."

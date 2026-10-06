@@ -109,9 +109,11 @@ def test_upload_file_resumes_in_server_chunks_and_creates_dataset(tmp_path: Path
 
     assert result["id"] == "dataset-1"
     assert result["state"] == "landing"
-    assert [call[0] for call in session.calls] == ["POST", "GET", "PUT", "PUT", "POST"]
+    assert [call[0] for call in session.calls] == ["POST", "GET", "PUT", "PUT", "POST", "POST"]
     chunks = [call[2]["data"] for call in session.calls if call[0] == "PUT"]
     assert chunks == [b"3456", b"789"]
+    assert session.calls[-2][1] == "https://api.example/api/uploads/upload-1/inspect/"
+    assert session.calls[-2][2]["json"] == {"size": 10}
     assert session.calls[-1][1] == "https://api.example/api/datasets/"
     assert all("/api/ingestions/" not in url for url in _urls(session))
     assert session.calls[-1][2]["json"] == {

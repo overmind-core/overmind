@@ -125,15 +125,18 @@ class DatasetViewSet(viewsets.ModelViewSet):
         body.is_valid(raise_exception=True)
         data = body.validated_data
         project, capability, source = self._create_target(request, data)
-        dataset = dispatch.create_dataset(
-            project=project,
-            user=request.user if request.user.is_authenticated else None,
-            name=data["name"].strip(),
-            source=source,
-            intent=data.get("intent"),
-            capability=capability,
-            infer_capability="capability" not in data,
-        )
+        try:
+            dataset = dispatch.create_dataset(
+                project=project,
+                user=request.user if request.user.is_authenticated else None,
+                name=data["name"].strip(),
+                source=source,
+                intent=data.get("intent"),
+                capability=capability,
+                infer_capability="capability" not in data,
+            )
+        except lifecycle.DatasetError as exc:
+            raise ValidationError({"detail": exc.detail, "code": exc.code}) from exc
         return Response(DatasetSerializer(dataset).data, status=status.HTTP_201_CREATED)
 
     @extend_schema(

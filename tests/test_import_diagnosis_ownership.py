@@ -18,6 +18,7 @@ def source_import(monkeypatch):
     project = Project.objects.create(name="Diagnosis ownership", slug=uuid.uuid4().hex)
     upload, _ = files.begin_upload("rows.csv")
     files.append_chunk(upload, 0, b"input,expected_output\nq1,a1\nq2,a2\n")
+    files.inspect_upload(upload, size=files.upload_received(upload))
     monkeypatch.setattr(tasks.land, "apply_async", lambda **kwargs: None)
     handoffs = []
     monkeypatch.setattr(tasks.diagnose, "apply_async", lambda **kwargs: handoffs.append(kwargs))

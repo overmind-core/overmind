@@ -244,7 +244,24 @@ def inspect_upload(upload_id: str, *, size: int) -> dict[str, Any]:
         raise FileError(message) from exc
     if not rows:
         raise FileError("The file has no rows.")
+    record = {"bytes": size, "mtime_ns": path.stat().st_mtime_ns, "rows": rows}
+    _inspection_path(upload_id).write_text(json.dumps(record), encoding="utf-8")
     return {"filename": filename, "bytes": size, "rows": rows}
+
+
+def _inspection_path(upload_id: Any) -> Path:
+    return upload_dir(upload_id) / "inspection.json"
+
+
+def inspection(upload_id: Any) -> dict[str, Any] | None:
+    try:
+        record = json.loads(_inspection_path(upload_id).read_text(encoding="utf-8"))
+        stat = upload_data_path(upload_id).stat()
+    except (OSError, ValueError):
+        return None
+    if (record.get("bytes"), record.get("mtime_ns")) != (stat.st_size, stat.st_mtime_ns):
+        return None
+    return record
 
 
 def parse_text(text: str, *, filename: str = "") -> list[dict[str, Any]]:

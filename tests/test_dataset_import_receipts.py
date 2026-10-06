@@ -30,6 +30,7 @@ def imported_source(tmp_path, settings, monkeypatch):
     project = Project.objects.create(name="Queued imports", slug=f"imports-{uuid.uuid4().hex[:10]}")
     upload_id, filename = files.begin_upload("passengers.csv")
     files.append_chunk(upload_id, 0, b"passenger_id,survived\n1,0\n2,1\n")
+    files.inspect_upload(upload_id, size=files.upload_received(upload_id))
     deliveries = []
     monkeypatch.setattr(
         dataset_tasks.land, "apply_async", lambda **kwargs: deliveries.append(kwargs)

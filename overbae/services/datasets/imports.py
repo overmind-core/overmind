@@ -73,6 +73,12 @@ def _source_inputs(inputs):
             raise DatasetError(
                 "The source upload is missing. Upload it again.", code="source_missing"
             )
+        if not inputs["source"].get("pasted") and files.inspection(upload_id) is None:
+            raise DatasetError(
+                f"Inspect upload {upload_id} with POST /api/uploads/{upload_id}/inspect/ "
+                "before creating a dataset from it.",
+                code="upload_not_inspected",
+            )
         stat = path.stat()
         manifest.append(
             {
