@@ -18,6 +18,7 @@ from rest_framework_simplejwt.tokens import RefreshToken
 
 from overbae.api.auth_registration import UserMeSerializer
 from overbae.auth import ClerkAuthentication
+from overbae.core.telemetry import Event, capture
 from overbae.models import IntegrationType, Project, ProjectMembership, User, UserOnboarding
 
 logger = logging.getLogger(__name__)
@@ -66,6 +67,7 @@ def start_guest_session() -> tuple[User, Project, str, str]:
         "guest_started",
         extra={"event": "guest_started", "user_id": str(user.pk), "project_id": str(project.id)},
     )
+    capture(Event.PROJECT_CREATED, project.id, user=user, is_guest=True)
     return user, project, str(refresh.access_token), str(refresh)
 
 
@@ -107,6 +109,7 @@ def claim_guest(*, guest: User, clerk_token: str) -> tuple[User, Project]:
             "project_id": str(project.id),
         },
     )
+    capture(Event.GUEST_CLAIMED, project.id, user=owner, guest_id=guest.pk)
     return owner, project
 
 

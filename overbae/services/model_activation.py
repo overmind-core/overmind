@@ -9,6 +9,7 @@ from django.db.models import Q
 from django.utils import timezone
 
 from overbae.core.errors import InputValidationError
+from overbae.core.telemetry import Event, capture
 from overbae.models import Capability, DeployedModel, ModelActivation
 from overbae.services.deployment import poll_operation, spawn_verification
 
@@ -69,6 +70,13 @@ def start_activation(capability_id, target_id) -> ModelActivation | None:
                 "completed_at": None,
             },
         )
+        capture(
+            Event.MODEL_ACTIVATION_STARTED,
+            capability.project_id,
+            capability_id=capability.id,
+            target_id=target.id,
+            activation_id=activation.id,
+        )
         return activation
 
 
@@ -88,7 +96,9 @@ def advance_activation(activation_id) -> None:
         .update(claim=claim, claim_until=now + timedelta(seconds=45))
     ):
         return
-    activation = ModelActivation.objects.select_related("target").get(pk=activation_id)
+    activation = ModelActivation.objects.select_related("target", "capability").get(
+        pk=activation_id
+    )
     owned = ModelActivation.objects.filter(
         pk=activation_id, generation=activation.generation, claim=claim, stage__in=ACTIVE_STAGES
     )
@@ -169,6 +179,14 @@ def advance_activation(activation_id) -> None:
         # Poll transport errors retain the saved handle until the deadline.
     finally:
         owned.update(**changes, claim=None, claim_until=None)
+        if changes.get("stage") in ("complete", "failed"):
+            capture(
+                Event.MODEL_ACTIVATION_FINISHED,
+                activation.capability.project_id,
+                capability_id=activation.capability_id,
+                activation_id=activation.id,
+                stage=changes["stage"],
+            )
 
 
 def activation_progress(activation: ModelActivation | None) -> dict | None:

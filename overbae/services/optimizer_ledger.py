@@ -10,6 +10,7 @@ import logging
 
 from rest_framework.exceptions import ValidationError
 
+from overbae.core.telemetry import Event, capture
 from overbae.models.optimizer import (
     OptimizerCandidate,
     OptimizerCommand,
@@ -222,4 +223,10 @@ def complete_experiment(experiment: OptimizerExperiment) -> OptimizerExperiment:
     experiment.save()
     experiment._charge_cursor_usage()
     experiment.refresh_from_db()
+    capture(
+        Event.OPTIMIZER_FINISHED,
+        experiment.project_id,
+        experiment_id=experiment.id,
+        status=experiment.status,
+    )
     return experiment

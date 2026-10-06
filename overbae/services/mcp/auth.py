@@ -15,6 +15,7 @@ from starlette.responses import JSONResponse
 from starlette.types import Receive, Scope, Send
 
 from overbae.api.authentication import APITokenBackend
+from overbae.core import telemetry
 from overbae.models import APIToken, Project
 from overbae.services.mcp.context import MCPContext, bind_context
 from overbae.services.mcp.errors import MCPError, error_payload
@@ -191,6 +192,11 @@ class MCPAuthMiddleware:
                 )
                 await response(scope, receive, send)
                 return
+            telemetry.bind_context(
+                user=context.user,
+                auth=context.token,
+                project_id=context.project.pk if context.project else None,
+            )
             with bind_context(context):
                 await self.app(scope, receive, send)
         finally:

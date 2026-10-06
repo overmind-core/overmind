@@ -9,6 +9,7 @@ from django.db import transaction
 from django.db.models import Q
 from django.utils import timezone
 
+from overbae.core.telemetry import Event, capture
 from overbae.models import Cell, Dataset, DatasetImport
 from overbae.services.datasets import imports
 from overbae.services.datasets.land import SPLIT_POSITIONS
@@ -86,6 +87,7 @@ def create_dataset(
             "infer_capability": infer_capability,
         },
     )
+    capture(Event.DATASET_CREATED, project.id, user=user, dataset_id=dataset.id, intent=intent)
     return dataset
 
 
@@ -174,6 +176,7 @@ def message_agent(dataset, user, message: str) -> Dataset:
         task_id = str(uuid.uuid4())
         queue_workshop(dataset.pk, task_id)
         transaction.on_commit(lambda: turn.apply_async(kwargs=kwargs, task_id=task_id))
+    capture(Event.WORKSHOP_TURN_STARTED, dataset.project_id, user=user, dataset_id=dataset.id)
     return dataset
 
 
@@ -219,6 +222,13 @@ def run_dataset(dataset, user, proposal=None) -> Dataset:
         transaction.on_commit(lambda: run.apply_async(kwargs=kwargs, task_id=task_id))
     dataset.state = locked.state
     dataset.error = locked.error
+    capture(
+        Event.WORKSHOP_RUN_STARTED,
+        dataset.project_id,
+        user=user,
+        dataset_id=dataset.id,
+        has_proposal=proposal is not None,
+    )
     return dataset
 
 

@@ -7,6 +7,8 @@ from django.contrib.auth.base_user import BaseUserManager
 from django.contrib.auth.models import AbstractUser
 from django.db import models
 
+from overbae.core.telemetry import Event, capture
+
 
 class UserManager(BaseUserManager):
     use_in_migrations = True
@@ -267,5 +269,8 @@ class APIToken(models.Model):
             scope=project_scope(project.pk, permission=permission)
             if project is not None
             else account_scope(permission=permission),
+        )
+        capture(
+            Event.API_KEY_CREATED, instance.project_id, user=user, scope=instance.scope["scope"]
         )
         return raw, instance

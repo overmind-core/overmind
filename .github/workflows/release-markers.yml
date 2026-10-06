@@ -1,12 +1,12 @@
-name: Change Tracking Marker
+name: Release Markers
 on:
   release:
     types: [published]
 
 jobs:
-  newrelic:
+  markers:
     runs-on: ubuntu-latest
-    name: New Relic
+    name: New Relic and Sentry
     steps:
       - name: Set Release Version
         run: echo "RELEASE_VERSION=${{ github.event.release.tag_name }}" >> $GITHUB_ENV
@@ -19,3 +19,13 @@ jobs:
           version: "${{ env.RELEASE_VERSION }}"
           user: "${{ github.actor }}"
           region: EU
+
+      - name: Create Sentry release
+        uses: getsentry/action-release@v3
+        env:
+          SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
+          SENTRY_ORG: ${{ secrets.SENTRY_ORG }}
+          SENTRY_PROJECT: ${{ secrets.SENTRY_PROJECT }}
+        with:
+          environment: production
+          version: ${{ env.RELEASE_VERSION }}

@@ -4,6 +4,7 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from overbae.core.telemetry import Event, capture
 from overbae.models import APIToken
 from overbae.models.iam import account_scope, project_scope
 
@@ -200,4 +201,8 @@ class APITokenDestroyView(generics.DestroyAPIView):
 
     @extend_schema(summary="Revoke API token", description="Permanently revoke an API token.")
     def delete(self, request, *args, **kwargs):
+        token = self.get_object()
+        capture(
+            Event.API_KEY_REVOKED, token.project_id, user=request.user, scope=token.scope["scope"]
+        )
         return super().delete(request, *args, **kwargs)

@@ -12,6 +12,7 @@ from celery.exceptions import SoftTimeLimitExceeded
 from django.db.models import Q
 from django.utils import timezone
 
+from overbae.core.telemetry import Event, capture
 from overbae.services.connectors.schema import CONNECTOR_VERSION_ATTR
 from overbae.services.span_pricing import stamp_span_cost
 
@@ -226,6 +227,18 @@ def _apply_backoff(credential, exc: Exception) -> dict:
     return {"status": "error", "retry_after": delay, "error": str(exc)}
 
 
+def _capture_run(run, project) -> None:
+    capture(
+        Event.CONNECTOR_SYNC_FINISHED,
+        project.id,
+        credential_id=run.credential_id,
+        mode=run.mode,
+        status=run.status,
+        spans=run.spans_created,
+        traces=run.traces_seen,
+    )
+
+
 def _run_adapter_chunk(credential, cursor: dict) -> dict:
     """Provider-blind chunk: adapter.fetch_page → upsert → checkpoint cursor."""
     from overbae.models import ConnectorCredential, ConnectorSyncRun
@@ -279,6 +292,7 @@ def _run_adapter_chunk(credential, cursor: dict) -> dict:
         run.traces_seen = traces_seen
         run.spans_created = imported
         run.save()
+        _capture_run(run, target_project)
         raise
 
     run.status = ConnectorSyncRun.Status.COMPLETED
@@ -286,6 +300,7 @@ def _run_adapter_chunk(credential, cursor: dict) -> dict:
     run.traces_seen = traces_seen
     run.spans_created = imported
     run.save()
+    _capture_run(run, target_project)
 
     credential.refresh_from_db()
     new_traces = credential.total_traces_imported + traces_seen

@@ -16,6 +16,7 @@ from django.utils import timezone
 from modal.call_graph import InputStatus
 
 from overbae.core.errors import InputValidationError
+from overbae.core.telemetry import Event, capture
 from overbae.modal.gpu_selector import select_gpu
 from overbae.modal.model_registry import get_hf_base, get_model_config_any_backend
 from overbae.models import DeployedModel, FinetuningJob, FinetuningJobEval
@@ -467,7 +468,7 @@ def _finish(deployed: DeployedModel, *, error: str = "") -> None:
             job = FinetuningJob.objects.select_for_update().get(pk=deployed.finetuning_job_id)
             if job.status in ("failed", "cancelled"):
                 error = "Deployment stopped: training job is " + job.status + "."
-        _save(
+        finished = _save(
             deployed,
             status="failed" if error else "ready",
             status_changed_at=now,
@@ -477,6 +478,13 @@ def _finish(deployed: DeployedModel, *, error: str = "") -> None:
             deployment_cancel_pending=bool(error and deployed.deployment_call_id),
             deployed_at=deployed.deployed_at if error else now,
             deployment_stage=deployed.deployment_stage if error else "ready",
+        )
+    if finished:
+        capture(
+            Event.DEPLOYMENT_FINISHED,
+            deployed.project_id,
+            deployed_model_id=deployed.id,
+            status=deployed.status,
         )
 
 
@@ -535,11 +543,20 @@ def _notify(deployed: DeployedModel) -> None:
         job_ids = list(deployed.deployment_waiters.values_list("pk", flat=True))
         if deployed.finetuning_job_id:
             job_ids.append(deployed.finetuning_job_id)
-            FinetuningJob.objects.filter(pk=deployed.finetuning_job_id, status="deploying").update(
+            updated = FinetuningJob.objects.filter(
+                pk=deployed.finetuning_job_id, status="deploying"
+            ).update(
                 status="succeeded",
                 completed_at=timezone.now(),
                 error_message=deployed.error_message,
             )
+            if updated:
+                capture(
+                    Event.TRAINING_JOB_FINISHED,
+                    deployed.project_id,
+                    job_id=deployed.finetuning_job_id,
+                    status="succeeded",
+                )
         jobs = list(
             FinetuningJob.objects.select_related("capability__benchmark_model", "eval_cell")
             .filter(pk__in=job_ids)

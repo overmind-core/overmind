@@ -9,6 +9,8 @@ from celery import shared_task
 from django.db import transaction
 from django.utils import timezone
 
+from overbae.core.telemetry import Event, capture
+
 logger = logging.getLogger(__name__)
 
 LAND_SOFT_LIMIT = 55 * 60
@@ -107,20 +109,27 @@ def run(
             )
             dataset.refresh_from_db()
             _emit(dataset_id, {"type": "dataset_changed"})
+        result = {"status": dataset.state}
     except SoftTimeLimitExceeded:
         Dataset.objects.filter(pk=dataset_id, workshop_task_id=self.request.id).update(
             state=Dataset.State.ERROR, error="The run took too long and was stopped."
         )
         _emit(dataset_id, {"type": "run_failed", "error": "The run took too long and was stopped."})
-        return {"status": "timeout"}
+        result = {"status": "timeout"}
     except Exception as exc:  # noqa: BLE001 — a run must land in a terminal state
         logger.exception("run failed for dataset %s", dataset_id)
         Dataset.objects.filter(pk=dataset_id, workshop_task_id=self.request.id).update(
             state=Dataset.State.ERROR, error=str(exc)[:4000]
         )
         _emit(dataset_id, {"type": "run_failed", "error": str(exc)[:4000]})
-        return {"status": "failed", "error": str(exc)}
-    return {"status": dataset.state}
+        result = {"status": "failed", "error": str(exc)}
+    capture(
+        Event.WORKSHOP_RUN_FINISHED,
+        dataset.project_id,
+        dataset_id=dataset.id,
+        status=result["status"],
+    )
+    return result
 
 
 @shared_task(

@@ -1,4 +1,4 @@
-"""Neutral fine-tuning orchestration used by MCP."""
+"""Neutral fine-tuning orchestration used by REST and MCP."""
 
 from __future__ import annotations
 
@@ -6,11 +6,34 @@ from types import SimpleNamespace
 from typing import Any
 
 from overbae.api.serializers import FinetuningJobSerializer
+from overbae.core.telemetry import Event, capture
 from overbae.models import Capability, Dataset, EvalSet, FinetuningJob
+from overbae.tasks.finetuning import run_finetuning
 
 
 class FineTuneDispatchError(RuntimeError):
     """Raised when the job row exists but its worker could not be queued."""
+
+
+def queue_finetune_job(job: FinetuningJob) -> FinetuningJob:
+    try:
+        result = run_finetuning.apply_async(kwargs={"job_id": str(job.id)})
+    except Exception as exc:  # noqa: BLE001 — preserve the REST failure state safely
+        FinetuningJob.objects.filter(pk=job.pk).update(
+            status=FinetuningJob.Status.FAILED,
+            error_message="Could not queue the job. Retry it.",
+        )
+        raise FineTuneDispatchError from exc
+    FinetuningJob.objects.filter(pk=job.pk).update(celery_task_id=result.id)
+    job.refresh_from_db()
+    capture(
+        Event.TRAINING_JOB_STARTED,
+        job.project_id,
+        user=job.triggered_by,
+        job_id=job.id,
+        base_model=job.base_model,
+    )
+    return job
 
 
 def launch_finetune(
@@ -79,17 +102,4 @@ def launch_finetune(
     )
     serializer.is_valid(raise_exception=True)
     job = serializer.save(triggered_by=user)
-
-    from overbae.tasks.finetuning import run_finetuning
-
-    try:
-        result = run_finetuning.apply_async(kwargs={"job_id": str(job.id)})
-    except Exception as exc:  # noqa: BLE001 — preserve the REST failure state safely
-        FinetuningJob.objects.filter(pk=job.pk).update(
-            status=FinetuningJob.Status.FAILED,
-            error_message="Could not queue the job.",
-        )
-        raise FineTuneDispatchError from exc
-    FinetuningJob.objects.filter(pk=job.pk).update(celery_task_id=result.id)
-    job.refresh_from_db()
-    return job
+    return queue_finetune_job(job)

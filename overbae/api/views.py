@@ -81,6 +81,7 @@ from overbae.api.span_ordering import (
     llm_model_sql,
 )
 from overbae.core.errors import InputValidationError
+from overbae.core.telemetry import Event, capture
 from overbae.models import (
     APIToken,
     ConnectorCredential,
@@ -164,6 +165,12 @@ class ProjectViewSet(viewsets.ModelViewSet):
         _ensure_user_may_acquire_project_membership(self.request.user)
         project = serializer.save()
         ProjectMembership.objects.create(user=self.request.user, project=project)
+        capture(
+            Event.PROJECT_CREATED,
+            project.id,
+            user=self.request.user,
+            is_guest=self.request.user.is_guest,
+        )
 
     def perform_destroy(self, instance):
         instance.delete()
@@ -710,23 +717,17 @@ class FinetuningJobViewSet(viewsets.ModelViewSet):
 
     def perform_create(self, serializer):
         from overbae.api.credit_gate import require_credits
+        from overbae.services.finetuning_mcp import FineTuneDispatchError, queue_finetune_job
         from overbae.services.plan_limits import require_plan_quota
-        from overbae.tasks.finetuning import run_finetuning
 
         require_credits(self.request.user)
         require_plan_quota(self.request.user, "training_jobs")
 
         job = serializer.save(triggered_by=self.request.user)
         try:
-            result = run_finetuning.apply_async(kwargs={"job_id": str(job.id)})
-        except Exception:  # noqa: BLE001 — broker hiccup shouldn't 500 post-create
+            queue_finetune_job(job)
+        except FineTuneDispatchError:
             logger.exception("finetuning job %s dispatch failed", job.id)
-            FinetuningJob.objects.filter(pk=job.pk).update(
-                status=FinetuningJob.Status.FAILED,
-                error_message="Could not queue the job. Retry it.",
-            )
-            return
-        FinetuningJob.objects.filter(pk=job.pk).update(celery_task_id=result.id)
 
     @extend_schema(
         summary="List training runs — whole runs per page, newest first",

@@ -15,6 +15,8 @@ from rest_framework import status
 from rest_framework.response import Response
 from rest_framework.views import exception_handler as drf_exception_handler
 
+from overbae.core.telemetry import bind_context, request_project_id
+
 logger = logging.getLogger(__name__)
 
 
@@ -43,6 +45,14 @@ def api_exception_handler(exc, context):
         )
 
     error_id = uuid.uuid4().hex[:12]
+    request = context["request"]
+    # Tagged before logging so the one Sentry event the log emits is searchable by ref.
+    bind_context(
+        user=request.user,
+        auth=request.auth,
+        project_id=request_project_id(request),
+        error_id=error_id,
+    )
     logger.exception("Unhandled API error [%s] in %s", error_id, view_name)
     data = {
         "detail": f"The server hit an unexpected error (ref {error_id}).",

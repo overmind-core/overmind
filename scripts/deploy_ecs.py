@@ -50,6 +50,8 @@ def render_task_definition(document, *, service, image, cluster):
         app["entryPoint"] = ["/usr/local/bin/worker-entrypoint.sh"]
     elif service != "api":
         raise ValueError(f"No reviewed command for service {service!r}")
+    # overmind-prod-cluster -> prod, overmind-staging-cluster -> staging
+    _environment(app, SENTRY_ENVIRONMENT=cluster.removeprefix("overmind-").removesuffix("-cluster"))
     if service == "celery-control-worker":
         _environment(app, QUEUE_METRICS_ENABLED="1", QUEUE_METRICS_CLUSTER=cluster)
     if service == "celery-landing-worker":

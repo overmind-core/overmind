@@ -14,6 +14,7 @@ from typing import Any
 from django.db import transaction
 from django.utils import timezone
 
+from overbae.core.telemetry import Event, capture
 from overbae.models import Capability, Project
 from overbae.services.behaviour.registry import mint_behaviour_registry
 from overbae.services.capabilities import identity
@@ -179,7 +180,7 @@ def apply_snapshot(project: Project, snapshot: dict) -> list[Capability]:
         seen.add(cap.id)
         applied.append(cap)
 
-    leftovers = (
+    leftovers = list(
         _visible(project)
         .filter(status=Capability.Status.CURRENT, observed=False)
         .exclude(pk__in=seen)
@@ -187,6 +188,13 @@ def apply_snapshot(project: Project, snapshot: dict) -> list[Capability]:
     for cap in leftovers:
         cap.set_status(Capability.Status.LEFTOVER)
 
+    capture(
+        Event.SNAPSHOT_SYNCED,
+        project.id,
+        capabilities=len(applied),
+        newly_leftover=len(leftovers),
+        version=version,
+    )
     return applied
 
 

@@ -18,6 +18,7 @@ from django.db import transaction
 from django.utils import timezone
 
 from overbae.core.llms import ModelSpec
+from overbae.core.telemetry import Event, capture
 from overbae.models import EvalRun, FinetuningJob
 from overbae.services.datasets.examples import matches_reference
 from overbae.services.eval import (
@@ -76,11 +77,23 @@ def _fail_run(eval_run_id: str, reason: str) -> int:
         )
     )
     if flipped:
+        run = EvalRun.objects.get(pk=eval_run_id)
+        _capture_finished(run)
         try:
-            revoke_run_tasks(EvalRun.objects.get(pk=eval_run_id))
+            revoke_run_tasks(run)
         except Exception:
             logger.exception("failed to revoke terminal evaluation %s", eval_run_id)
     return flipped
+
+
+def _capture_finished(run) -> None:
+    capture(
+        Event.EVALUATION_FINISHED,
+        run.project_id,
+        eval_run_id=run.id,
+        status=run.status,
+        sample_count=run.samples.count(),
+    )
 
 
 def revoke_run_tasks(run) -> int:
@@ -109,6 +122,8 @@ def cancel_run(run) -> int:
     # Stamp still-pending samples, or the UI and aggregates read them as genuine
     # results once their revoked generation never lands.
     run.samples.filter(error="", trajectory={}).update(error="cancelled")
+    run.status = EvalRun.Status.CANCELLED
+    _capture_finished(run)
     return revoked
 
 
@@ -1685,11 +1700,13 @@ def aggregate_run(_eval_results=None, *, eval_run_id: str, **kwargs) -> dict[str
         EvalRun.Status.FAILED,
         EvalRun.Status.CANCELLED,
     ]
-    EvalRun.objects.filter(pk=run.pk).exclude(status__in=terminal).update(
-        status=EvalRun.Status.COMPLETED,
-        summary=summary,
-        completed_at=timezone.now(),
-    )
+    if (
+        EvalRun.objects.filter(pk=run.pk)
+        .exclude(status__in=terminal)
+        .update(status=EvalRun.Status.COMPLETED, summary=summary, completed_at=timezone.now())
+    ):
+        run.status = EvalRun.Status.COMPLETED
+        _capture_finished(run)
 
     # Training scheduling imports this task; defer the cyclic notification import.
     from overbae.services.finetuning_eval import sync_eval_scores

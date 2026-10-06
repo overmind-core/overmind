@@ -11,6 +11,8 @@ app = Celery("overbae")
 app.config_from_object("django.conf:settings", namespace="CELERY")
 app.autodiscover_tasks(["overbae.tasks"])
 
+import overbae.core.telemetry.celery  # noqa: E402, F401 — connects the task signals
+
 logger = logging.getLogger(__name__)
 
 

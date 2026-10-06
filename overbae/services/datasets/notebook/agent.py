@@ -13,6 +13,7 @@ from django.db.models import Q
 from django.utils import timezone
 from pydantic import ValidationError
 
+from overbae.core.telemetry import Event, capture
 from overbae.models import Capability, Cell, Dataset
 from overbae.services.datasets import diff as diff_svc
 from overbae.services.datasets import lifecycle, paths, review, semantic_checks, store, synthetic
@@ -1228,6 +1229,9 @@ def settle(dataset_id: Any, *, turn_key: str = "") -> None:
         )
     if owner.update(state=state, updated_at=timezone.now()):
         _emit(dataset_id, {"type": "dataset_changed"})
+        capture(
+            Event.WORKSHOP_TURN_FINISHED, dataset.project_id, dataset_id=dataset.id, state=state
+        )
 
 
 def diagnose(dataset_id: Any, *, user: Any = None, turn_key: str = "") -> Iterator[dict[str, Any]]:

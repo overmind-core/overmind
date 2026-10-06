@@ -86,6 +86,8 @@ jobs:
             org.opencontainers.image.description=Overmind production API and background workers
             org.opencontainers.image.vendor=Overmind Platform
           context: .
+          build-args: |
+            RELEASE=${{ env.IMAGE_TAG }}
           push: true
           # Avoid extra untagged manifest rows in ECR from attestations
           provenance: false

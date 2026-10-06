@@ -12,6 +12,7 @@ from typing import Any
 from celery import shared_task
 from django.utils import timezone
 
+from overbae.core.telemetry import Event, capture
 from overbae.services.training_preparation import for_job, preparation_error
 from overbae.tasks.training_preparation import inspect_preparation
 
@@ -230,6 +231,7 @@ def _transition(job, status: str, *, message: str = "", error: str = "") -> None
         FinetuningJob.Status.CANCELLED,
     }:
         _charge_modal_finetuning(job)
+        capture(Event.TRAINING_JOB_FINISHED, job.project_id, job_id=job.id, status=status)
 
 
 def _remote_id(job) -> str:

@@ -20,7 +20,6 @@ from mcp.server.transport_security import (
     TransportSecuritySettings,
 )
 from mcp.shared.version import SUPPORTED_PROTOCOL_VERSIONS
-from posthog import Posthog
 from posthog.mcp import PostHogMcpStatelessSessionMiddleware, instrument
 from posthog.mcp.types import MCPAnalyticsOptions, UserIdentity
 from starlette.applications import Starlette
@@ -29,6 +28,7 @@ from starlette.responses import JSONResponse
 from starlette.routing import Route
 from starlette.types import Message, Receive, Scope, Send
 
+from overbae.core.telemetry import get_client
 from overbae.services.mcp.auth import MCP_PATH, MCPAuthMiddleware
 from overbae.services.mcp.catalog import CATALOG
 from overbae.services.mcp.context import get_context
@@ -167,11 +167,7 @@ ANALYTICS_OPTIONS = MCPAnalyticsOptions(
     event_properties=_project_properties,
     before_send=_drop_payloads,
 )
-posthog_client = (
-    Posthog(settings.POSTHOG_PROJECT_TOKEN, host=settings.POSTHOG_HOST)
-    if settings.POSTHOG_PROJECT_TOKEN
-    else None
-)
+posthog_client = get_client()
 mcp_analytics = (
     instrument(mcp_server, posthog_client, ANALYTICS_OPTIONS) if posthog_client else None
 )

@@ -13,6 +13,7 @@ from rest_framework.exceptions import PermissionDenied
 
 from overbae.api.serializers import _user_project_ids
 from overbae.core.model_registry import judge_picker_models
+from overbae.core.telemetry import Event, capture
 from overbae.models import (
     Annotation,
     Behaviour,
@@ -1398,6 +1399,13 @@ class EvalRunSerializer(serializers.ModelSerializer):
                 order=v.get("order", i),
             )
         snapshot_context(run, run.variants.select_related("prompt"))
+        capture(
+            Event.EVALUATION_STARTED,
+            run.project_id,
+            user=run.triggered_by,
+            eval_run_id=run.id,
+            data_source=run.data_source,
+        )
         return run
 
 

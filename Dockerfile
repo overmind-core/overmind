@@ -58,12 +58,14 @@ RUN echo "apt security refresh: ${APT_SECURITY_REFRESH}" \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
+ARG RELEASE=
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     DJANGO_SETTINGS_MODULE=overbae.settings \
     PATH="/opt/git/bin:/code/.venv/bin:$PATH" \
     VIRTUAL_ENV="/code/.venv" \
-    PIP_NO_CACHE_DIR=1
+    PIP_NO_CACHE_DIR=1 \
+    OVERMIND_RELEASE=${RELEASE}
 
 COPY --from=deps /opt/git /opt/git
 COPY --from=deps /code/.venv /code/.venv

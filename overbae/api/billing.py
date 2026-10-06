@@ -21,6 +21,7 @@ from overbae.api.serializers import (
     CreditTopUpRequestSerializer,
     SubscriptionSerializer,
 )
+from overbae.core.telemetry import Event, capture
 from overbae.models import BillingTelemetry, Subscription, SubscriptionStatus, User
 from overbae.services.billing_ledger import (
     CREDITS_PER_USD,
@@ -418,6 +419,7 @@ def sync_subscription_from_stripe(stripe_sub: Any) -> None:
     sub.save(update_fields=update_fields)
 
     user = sub.user
+    capture(Event.PLAN_CHANGED, None, user=user, plan_status=sub.status, subscription_id=sub.pk)
     if sub.status == SubscriptionStatus.ACTIVE and user.projects_limit is not None:
         user.projects_limit = None
         user.save(update_fields=["projects_limit"])
@@ -761,6 +763,7 @@ def grant_credits_from_checkout_session(session: Any) -> None:
         amount,
         balance_usd(user),
     )
+    capture(Event.CREDITS_PURCHASED, None, user=user, amount_usd=float(amount))
 
 
 class StripeWebhookView(APIView):

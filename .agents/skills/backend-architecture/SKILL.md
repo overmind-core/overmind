@@ -1,6 +1,6 @@
 ---
 name: backend-architecture
-description: Deeper backend map of overbae — module layout, celery queue topology, the span-only tracing model and its API surface, capabilities and toml sync, behaviour-keyed scoring, auth and guests, model serving and base weights. Use when navigating unfamiliar backend subsystems or wiring cross-subsystem behavior.
+description: Deeper backend map of overbae — module layout, celery queue topology, operator telemetry, the span-only tracing model and its API surface, capabilities and toml sync, behaviour-keyed scoring, auth and guests, model serving and base weights. Use when navigating unfamiliar backend subsystems or wiring cross-subsystem behavior.
 ---
 
 # overbae backend map
@@ -15,6 +15,16 @@ Single Django app `overbae`, project-scoped tenancy.
 - `overbae/tasks/` — Celery tasks, roughly one module per feature; `utils/task_lock.py` for locking.
 - `overbae/modal/` — Modal.com GPU workers (vLLM serving, SFT, PII NER).
 - `overbae/management/commands/` — backfills and syncs.
+
+## Telemetry
+
+`overbae/core/telemetry/` owns Sentry, New Relic custom attributes and PostHog. Call sites never import vendor SDKs.
+
+- `bind_context(user=, auth=, project_id=, **tags)` — Sentry scope tags/user and New Relic custom attributes; `auth_kind` is derived from the auth object.
+- `capture(Event.X, project_id, user=None, **scalars)` — one PostHog event, sent on commit. `Event` in `analytics.py` is the catalog (`object verb` names). Properties are scalars or UUIDs; dict/list raise in tests and are dropped in production. Without a user the event attributes to `project:<id>` and creates no person.
+- Middleware emits `api request`. Celery `task_postrun` emits `task finished` with state and exception type. Domain lifecycle moments call `capture` where the transition's `.filter().update()` matched — never a signal.
+- MCP reuses the shared PostHog client for `$mcp_*` events and calls `bind_context` from its auth layer.
+- Blank `SENTRY_DSN` / `POSTHOG_PROJECT_TOKEN` disables that vendor. New Relic still wraps the process only when `NEW_RELIC_LICENSE_KEY` is set in the entrypoint.
 
 ## Celery topology
 

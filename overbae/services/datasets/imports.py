@@ -16,6 +16,7 @@ from django.db import transaction
 from django.db.models import Q
 from django.utils import timezone
 
+from overbae.core.telemetry import Event, capture
 from overbae.models import Dataset, DatasetImport, User
 from overbae.services.datasets import files, llm_calls, paths
 from overbae.services.datasets import land as landing
@@ -748,10 +749,27 @@ def execute(task_id, inputs):
         except OSError:
             logger.exception("could not clean up completed dataset import %s", run.pk)
         publish_handoffs(run.pk)
+        capture(
+            Event.DATASET_IMPORT_FINISHED,
+            dataset.project_id,
+            dataset_id=dataset.id,
+            import_id=run.pk,
+            status="ok",
+            rows=rows,
+        )
         return {"status": "ok", "rows": rows}
     except Exception as exc:  # noqa: BLE001 — a failed attempt retains its exact source
         logger.exception("dataset import %s failed", run.pk)
-        fail(claimed, str(exc), code=getattr(exc, "code", "import_failed"))
+        code = getattr(exc, "code", "import_failed")
+        fail(claimed, str(exc), code=code)
+        capture(
+            Event.DATASET_IMPORT_FINISHED,
+            dataset.project_id,
+            dataset_id=dataset.id,
+            import_id=run.pk,
+            status="failed",
+            error_code=str(code),
+        )
         return {"status": "failed", "error": str(exc)}
     finally:
         shutil.rmtree(stage, ignore_errors=True)

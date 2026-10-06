@@ -7,6 +7,8 @@ from pathlib import Path
 from django.core.exceptions import ImproperlyConfigured
 from dotenv import load_dotenv
 
+from overbae.core.telemetry.sentry import init_sentry
+
 BASE_DIR = Path(__file__).resolve().parent.parent
 
 logger = logging.getLogger(__name__)
@@ -57,6 +59,7 @@ MIDDLEWARE = [
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
     "django.contrib.auth.middleware.AuthenticationMiddleware",
+    "overbae.core.telemetry.middleware.TelemetryMiddleware",
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
 ]
@@ -535,8 +538,9 @@ CLERK_AUTHORIZED_PARTIES = os.environ.get(
     "CLERK_AUTHORIZED_PARTIES", "http://localhost:5173"
 ).split(",")
 
-# MCP analytics. The Console's public PostHog ingest token is the default only on
-# hosted deployments (Clerk, not DEBUG); an empty variable disables it.
+# Backend analytics (API requests, Celery tasks, domain events, MCP $mcp_*).
+# Empty disables PostHog. Hosted deployments (Clerk, not DEBUG) default to the
+# Overmind project token when the variable is unset.
 POSTHOG_PROJECT_TOKEN = (
     ""
     if TESTING
@@ -548,6 +552,11 @@ POSTHOG_PROJECT_TOKEN = (
     )
 )
 POSTHOG_HOST = os.environ.get("POSTHOG_HOST", "https://eu.i.posthog.com")
+
+# Operator error/APM telemetry. Blank DSN disables Sentry.
+SENTRY_DSN = "" if TESTING else os.environ.get("SENTRY_DSN", "")
+SENTRY_ENVIRONMENT = os.environ.get("SENTRY_ENVIRONMENT", "local")
+OVERMIND_RELEASE = os.environ.get("OVERMIND_RELEASE", "")
 
 # TLS terminates at the Fly proxy, which forwards X-Forwarded-Proto: trusting it
 # is how Django sees a client's HTTPS behind plain HTTP on the machine.
@@ -686,3 +695,12 @@ if _missing_keys:
         + "; ".join(_missing_keys)
         + ". .env.example describes each one."
     )
+
+init_sentry(
+    dsn=SENTRY_DSN,
+    environment=SENTRY_ENVIRONMENT,
+    release=OVERMIND_RELEASE,
+    traces_sample_rate=float(os.environ.get("SENTRY_TRACES_SAMPLE_RATE", "1.0")),
+    profile_session_sample_rate=float(os.environ.get("SENTRY_PROFILE_SESSION_SAMPLE_RATE", "1.0")),
+    propagate_traces_to=[url for url in (INFERENCE_API_URL, MCP_SERVER_URL) if url],
+)

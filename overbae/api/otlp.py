@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import logging
 import zlib
+from collections import defaultdict
 from datetime import UTC, datetime
 from typing import Any
 
@@ -22,6 +23,7 @@ from rest_framework.permissions import IsAuthenticated
 
 from overbae.api import overmind_attrs as oc_attrs
 from overbae.api.scoping import project_ids_for
+from overbae.core.telemetry import Event, capture
 from overbae.core.utils import safe_float, safe_int, safe_json, safe_json_or_default
 from overbae.models import (
     APIToken,
@@ -843,6 +845,17 @@ def otlp_traces(request):
                 update_conflicts=True,
                 unique_fields=["span_id"],
                 update_fields=_SPAN_UPSERT_FIELDS,
+            )
+        trace_ids_by_project = defaultdict(list)
+        for span in all_spans:
+            trace_ids_by_project[span.project_id].append(span.trace_id)
+        for project_id, trace_ids in trace_ids_by_project.items():
+            capture(
+                Event.TRACES_INGESTED,
+                project_id,
+                user=request.user,
+                spans=len(trace_ids),
+                traces=len(set(trace_ids)),
             )
 
     # Spans are already persisted, so one poison span must not 500 the batch:

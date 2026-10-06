@@ -11,6 +11,7 @@ from rest_framework.exceptions import ValidationError
 
 from overbae.api.credit_gate import require_credits
 from overbae.core.model_registry import pricing_slug
+from overbae.core.telemetry import Event, capture
 from overbae.models import DeployedModel, OptimizerExperiment
 from overbae.models.optimizer import optimizer_dataset_error
 from overbae.services.model_catalog import (
@@ -170,7 +171,7 @@ def create_optimizer_experiment(
 
     from overbae.services.datasets import use  # noqa: PLC0415 — avoid import cycle
 
-    return OptimizerExperiment.objects.create(
+    experiment = OptimizerExperiment.objects.create(
         project=capability.project,
         capability=capability,
         dataset=dataset,
@@ -190,3 +191,11 @@ def create_optimizer_experiment(
         scores={},
         current_iteration=0,
     )
+    capture(
+        Event.OPTIMIZER_STARTED,
+        capability.project_id,
+        user=user,
+        experiment_id=experiment.id,
+        mode=mode,
+    )
+    return experiment
