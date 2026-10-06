@@ -12,13 +12,14 @@ import copy
 import json
 import re
 import shlex
-import sys
 from pathlib import Path
 
-# Also support ``python scripts/plan_landing_capacity.py`` from a checkout.
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from scripts.deploy_ecs import render_task_definition  # noqa: E402
-from scripts.queue_scaling import scaling_plan  # noqa: E402
+if __package__:
+    from .deploy_ecs import render_task_definition
+    from .queue_scaling import scaling_plan
+else:
+    from deploy_ecs import render_task_definition
+    from queue_scaling import scaling_plan
 
 NAMESPACE = "Overmind/Queues"
 SERVICE = "celery-landing-worker"

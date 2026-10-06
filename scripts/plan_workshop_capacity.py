@@ -3,12 +3,14 @@
 
 import argparse
 import json
-import sys
 from pathlib import Path
 
+if __package__:
+    from .queue_scaling import scaling_plan
+else:
+    from queue_scaling import scaling_plan
+
 ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT))
-from scripts.queue_scaling import scaling_plan  # noqa: E402
 
 
 def capacity_plan(*, cluster, min_capacity=1, max_capacity=6, alarm_topic_arn=None):
