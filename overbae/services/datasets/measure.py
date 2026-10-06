@@ -12,17 +12,7 @@ from overbae.models import Cell, Dataset
 from overbae.services.datasets import alignment, contract, store
 
 
-def frame(
-    dataset: Dataset,
-    cell: Cell,
-    path: Path,
-    *,
-    df: pd.DataFrame | None = None,
-    report: dict[str, Any] | None = None,
-    **fields,
-) -> Cell:
-    """``df`` and ``report`` spare a second read and a second measure when the
-    caller already holds them for ``path``."""
+def describe_frame(dataset, path, *, df=None, report=None):
     if df is None:
         df = store.read_frame(path)
     report = report or contract.measure(df)
@@ -33,17 +23,30 @@ def frame(
         if dataset.capability_id is not None
         else {}
     )
+    return {
+        "state": Cell.State.OK,
+        "error": "",
+        "rows": int(len(df)),
+        "columns": [{**c, "null_rate": null_rates.get(c["name"], 0.0)} for c in manifest],
+        "fingerprint": store.file_sha256(path),
+        "intent_report": {"train": report["train"], "eval": report["eval"]},
+        "capability_report": capability_report,
+        "stats": contract.stats(df),
+        "updated_at": timezone.now(),
+    }
+
+
+def frame(
+    dataset: Dataset,
+    cell: Cell,
+    path: Path,
+    *,
+    df: pd.DataFrame | None = None,
+    report: dict[str, Any] | None = None,
+    **fields,
+) -> Cell:
     Cell.objects.filter(pk=cell.pk).update(
-        state=Cell.State.OK,
-        error="",
-        rows=int(len(df)),
-        columns=[{**c, "null_rate": null_rates.get(c["name"], 0.0)} for c in manifest],
-        fingerprint=store.file_sha256(path),
-        intent_report={"train": report["train"], "eval": report["eval"]},
-        capability_report=capability_report,
-        stats=contract.stats(df),
-        updated_at=timezone.now(),
-        **fields,
+        **{**describe_frame(dataset, path, df=df, report=report), **fields}
     )
     cell.refresh_from_db()
     from overbae.services.eval.eval_set import maybe_enqueue_card_evaluator_sync

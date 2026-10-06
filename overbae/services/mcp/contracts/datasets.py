@@ -9,10 +9,11 @@ from pathlib import Path
 from typing import Any, Literal
 from urllib.parse import quote
 
+from django.db.models import Q
 from pydantic import AliasChoices, Field, field_validator, model_validator
 
-from overbae.models import Cell, Dataset
-from overbae.services.datasets import review
+from overbae.models import Cell, Dataset, DatasetImport
+from overbae.services.datasets import imports, review
 from overbae.services.datasets.context import workshop_context
 from overbae.services.datasets.contract import public_intent
 from overbae.services.mcp.contracts.common import (
@@ -663,6 +664,24 @@ def next_actions(dataset, chain: list[Cell], active: Cell | None) -> list[NextAc
             )
         ]
     if dataset.state == Dataset.State.ERROR:
+        if not chain:
+            attempts = (
+                DatasetImport.objects.filter(
+                    Q(dataset=dataset) | Q(evaluation=dataset), state=DatasetImport.State.BLOCKED
+                )
+                .values_list("attempts", flat=True)
+                .first()
+            )
+            if attempts is not None:
+                if attempts >= imports.MAX_ATTEMPTS:
+                    return []
+                return [
+                    NextAction(
+                        tool="run_dataset",
+                        reason="Resume the retained source import.",
+                        arguments={"dataset": ds_id},
+                    )
+                ]
         reason = sanitize_error(dataset.error) or "The dataset is in error."
         return [
             NextAction(

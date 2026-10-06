@@ -164,7 +164,20 @@ services:
 
   celery-batch-worker:
     <<: *build-common
-    command: watchmedo auto-restart --directory=/code/overbae --pattern='*.py' --recursive --signal SIGTERM -- celery -A overbae worker -l info --pool=prefork --concurrency=6 -Q batch
+    command: watchmedo auto-restart --directory=/code/overbae --pattern='*.py' --recursive --signal SIGTERM -- celery -A overbae worker -l info --pool=prefork --concurrency=6 --prefetch-multiplier=1 --disable-prefetch -Q batch
+    restart: unless-stopped
+    environment:
+      <<: *env-common
+    depends_on:
+      api:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  celery-landing-worker:
+    <<: *build-common
+    entrypoint: ["/usr/local/bin/worker-entrypoint.sh"]
+    command: watchmedo auto-restart --directory=/code/overbae --pattern='*.py' --recursive --signal SIGTERM -- celery -A overbae worker -l info --pool=prefork --concurrency=1 --prefetch-multiplier=1 --disable-prefetch --hostname=landing@%h -Q landing
     restart: unless-stopped
     environment:
       <<: *env-common

@@ -6,9 +6,11 @@ import json
 import uuid
 
 from django.db import transaction
+from django.db.models import Q
 from django.utils import timezone
 
-from overbae.models import Cell, Dataset
+from overbae.models import Cell, Dataset, DatasetImport
+from overbae.services.datasets import imports
 from overbae.services.datasets.land import SPLIT_POSITIONS
 from overbae.services.datasets.lifecycle import (
     DatasetError,
@@ -55,6 +57,7 @@ def _new(project, user, name: str, source: dict, intent: str | None, capability)
     return dataset
 
 
+@transaction.atomic
 def create_dataset(
     *,
     project,
@@ -73,19 +76,19 @@ def create_dataset(
     ):
         raise DatasetError("Choose train or eval.", code="intent")
     dataset = _new(project, user, name, source, intent, capability)
-    from overbae.tasks.datasets import land
-
-    land.apply_async(
-        kwargs={
+    imports.enqueue(
+        dataset,
+        {
             "dataset_id": str(dataset.id),
             "source": source,
             "user_id": _user_id(user),
             "infer_capability": infer_capability,
-        }
+        },
     )
     return dataset
 
 
+@transaction.atomic
 def create_split(
     *,
     project,
@@ -124,10 +127,9 @@ def create_split(
     with transaction.atomic():
         train = _new(project, user, f"{name} train", source, Dataset.Intent.TRAIN, capability)
         evaluation = _new(project, user, f"{name} eval", source, Dataset.Intent.EVAL, capability)
-    from overbae.tasks.datasets import land
-
-    land.apply_async(
-        kwargs={
+    imports.enqueue(
+        train,
+        {
             "dataset_id": str(train.id),
             "source": source,
             "user_id": _user_id(user),
@@ -140,34 +142,53 @@ def create_split(
                 "stratify_by": stratify_by,
                 "deduplicate": deduplicate,
             },
-        }
+        },
     )
     return train, evaluation
 
 
 def message_agent(dataset, user, message: str) -> Dataset:
-    if not enter_busy(
-        dataset.pk, Dataset.State.DIAGNOSING, from_states=[Dataset.State.IDLE, Dataset.State.ERROR]
-    ):
-        dataset.refresh_from_db()
-        raise DatasetError("The dataset is busy. Wait for it.", code=dataset.state)
-    dataset.state = Dataset.State.DIAGNOSING
-    from overbae.tasks.datasets import turn
+    with imports.explicit_operation(dataset.pk) as locked:
+        if (
+            locked.source is None
+            and DatasetImport.objects.filter(
+                Q(dataset=locked) | Q(evaluation=locked), state=DatasetImport.State.BLOCKED
+            ).exists()
+        ):
+            raise DatasetError(
+                "Retry the source import before sending another message.", code="import_blocked"
+            )
+        if not enter_busy(
+            locked.pk,
+            Dataset.State.DIAGNOSING,
+            from_states=[Dataset.State.IDLE, Dataset.State.ERROR],
+        ):
+            dataset.refresh_from_db()
+            raise DatasetError("The dataset is busy. Wait for it.", code=dataset.state)
+        locked.state = Dataset.State.DIAGNOSING
+        dataset.state = Dataset.State.DIAGNOSING
+        from overbae.tasks.datasets import turn
 
-    turn.apply_async(
-        kwargs={
-            "dataset_id": str(dataset.id),
-            "message": message,
-            "user_id": _user_id(user),
-        }
-    )
+        kwargs = {"dataset_id": str(dataset.id), "message": message, "user_id": _user_id(user)}
+        transaction.on_commit(lambda: turn.apply_async(kwargs=kwargs))
     return dataset
 
 
 def run_dataset(dataset, user, proposal=None) -> Dataset:
     """Refuse landing, diagnosing, running. Idle and error may run."""
-    with transaction.atomic():
-        locked = Dataset.objects.select_for_update().get(pk=dataset.pk)
+    if proposal is None and dataset.source is None:
+        pending = DatasetImport.objects.filter(
+            dataset=dataset, state=DatasetImport.State.BLOCKED
+        ).first()
+        if pending is None:
+            pending = DatasetImport.objects.filter(
+                evaluation=dataset, state=DatasetImport.State.BLOCKED
+            ).first()
+        if pending is not None:
+            imports.resume(pending.pk)
+            dataset.refresh_from_db()
+            return dataset
+    with imports.explicit_operation(dataset.pk) as locked:
         if proposal is not None:
             if proposal.dataset_id != locked.id:
                 raise DatasetError("That version belongs to another dataset.", code="cell_mismatch")

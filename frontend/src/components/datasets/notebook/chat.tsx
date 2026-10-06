@@ -232,6 +232,7 @@ export function DatasetChat({
   onAccept,
   onDiscard,
   initialRequest = "",
+  sourceReady = true,
 }: {
   turns: ChatTurn[];
   live: LiveTurn | null;
@@ -245,6 +246,7 @@ export function DatasetChat({
   onAccept: (id: string) => void;
   onDiscard: (id: string) => void;
   initialRequest?: string;
+  sourceReady?: boolean;
 }) {
   const [draft, setDraft] = useState(initialRequest);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -283,7 +285,7 @@ export function DatasetChat({
 
   const send = () => {
     const text = draft.trim();
-    if (!text || busy) return;
+    if (!text || busy || !sourceReady) return;
     onSend(text);
     setDraft("");
   };
@@ -356,12 +358,17 @@ export function DatasetChat({
           <textarea
             aria-label="Message the agent"
             className="block max-h-40 min-h-12 w-full resize-none bg-transparent text-sm outline-none field-sizing-content placeholder:text-muted-foreground"
+            disabled={!sourceReady}
             onChange={(e) => setDraft(e.target.value)}
             onKeyDown={onKeyDown}
             placeholder={
-              busy
-                ? "Draft your next message…"
-                : "Ask about the data, make a change or generate examples…"
+              !sourceReady
+                ? state === "error"
+                  ? "Retry the import to start chatting…"
+                  : "Waiting for the source to land…"
+                : busy
+                  ? "Draft your next message…"
+                  : "Ask about the data, make a change or generate examples…"
             }
             ref={composerRef}
             rows={2}
@@ -370,7 +377,7 @@ export function DatasetChat({
           <div className="mt-2 flex justify-end">
             <Button
               aria-label="Send"
-              disabled={busy || !draft.trim()}
+              disabled={busy || !sourceReady || !draft.trim()}
               onClick={send}
               size="icon-sm"
               variant="secondary"

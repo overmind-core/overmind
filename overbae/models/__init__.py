@@ -3,7 +3,8 @@ from .billing import BillingService, BillingTelemetry, Subscription, Subscriptio
 from .capabilities import Capability, IdentityAlias, Prompt
 from .connectors import ConnectorCredential, ConnectorSyncConfig, ConnectorSyncRun
 from .dataset_context import DatasetContext
-from .datasets import Cell, Dataset
+from .datasets import Cell, Dataset, DatasetImport
+from .eval_generation import EvalGenerationRun, EvalGenerationScheduler, EvalGenerationWork
 from .evaluation import (
     Annotation,
     EvalRun,
@@ -49,6 +50,9 @@ from .optimizer import (
 from .traces import BacktestRun, Conversation, Span
 
 __all__ = [
+    "EvalGenerationRun",
+    "EvalGenerationScheduler",
+    "EvalGenerationWork",
     "MCPOAuthClient",
     "MCPOAuthGrant",
     "MCPOAuthToken",
@@ -74,6 +78,7 @@ __all__ = [
     "ConnectorSyncConfig",
     "ConnectorSyncRun",
     "Dataset",
+    "DatasetImport",
     "Cell",
     "DatasetContext",
     "Conversation",

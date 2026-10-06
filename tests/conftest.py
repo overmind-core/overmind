@@ -96,10 +96,19 @@ def scripted(fake_llm):
 
 @pytest.fixture
 def slept(monkeypatch) -> list[float]:
+    import asyncio
     import time
 
     naps: list[float] = []
     monkeypatch.setattr(time, "sleep", naps.append)
+    original_sleep = asyncio.sleep
+
+    async def async_nap(delay, result=None):
+        if delay > 0:
+            naps.append(float(delay))
+        return await original_sleep(0, result)
+
+    monkeypatch.setattr(asyncio, "sleep", async_nap)
     return naps
 
 
@@ -182,7 +191,9 @@ def _inline_dataset_tasks(monkeypatch):
 
     for task in (dataset_tasks.land, dataset_tasks.run):
         monkeypatch.setattr(
-            task, "apply_async", lambda kwargs, _t=task, **_: _t.apply(kwargs=kwargs)
+            task,
+            "apply_async",
+            lambda kwargs, task_id=None, _t=task, **_: _t.apply(kwargs=kwargs, task_id=task_id),
         )
     # The agent needs Cursor; a test that wants a turn drives the agent module itself.
     # Landing hands the dataset to its first scan, so the stub ends that scan.

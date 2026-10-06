@@ -19,6 +19,7 @@ from . import (  # noqa: E402
     inference_controller,
     model_deployment,
     optimizer_reconciler,
+    queue_metrics,
     trace_scoring,
     training_preparation,
 )
@@ -40,6 +41,7 @@ __all__ = [
     "guest_cleanup",
     "inference_controller",
     "optimizer_reconciler",
+    "queue_metrics",
     "model_deployment",
     "process_span",
     "refresh_dataset_context",

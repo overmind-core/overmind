@@ -6,6 +6,7 @@ from datetime import timedelta
 import pytest
 from celery.exceptions import SoftTimeLimitExceeded
 from conftest import frozen_dataset
+from database_callbacks import database_callback
 from django.utils import timezone
 
 from overbae.models import EvalRun, EvalSample, EvalVariant, Project
@@ -196,6 +197,7 @@ def test_finished_generation_refreshes_run_activity(fake_llm, failure):
     assert bool(sample.error) == failure
 
 
+@pytest.mark.django_db(transaction=True)
 def test_each_generated_decision_refreshes_activity_before_next_call(fake_llm):
     sample = _sample(turns=2)
     old = timezone.now() - timedelta(minutes=35)
@@ -203,7 +205,7 @@ def test_each_generated_decision_refreshes_activity_before_next_call(fake_llm):
     seen = []
 
     def decision(request):
-        seen.append(EvalRun.objects.get(pk=sample.run_id).updated_at)
+        seen.append(database_callback(lambda: EvalRun.objects.get(pk=sample.run_id).updated_at))
         return "decision"
 
     fake_llm.on(lambda r: r.model == "openai/gpt-5-mini", decision)

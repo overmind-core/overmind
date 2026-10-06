@@ -7,6 +7,8 @@ on:
     paths:
       - "Dockerfile"
       - "overbae/**"
+      - "docker/**"
+      - "scripts/deploy_ecs.py"
       - "pyproject.toml"
       - "manage.py"
       - ".github/workflows/deploy-api.yml"
@@ -86,115 +88,95 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-  # API first (migrations / schema), then celery workers in parallel.
-  deploy-api:
+  # Apply compatible schema changes without starting new producers. Every new
+  # producer (API, worker or beat) follows a healthy landing consumer.
+  migrate:
     runs-on: ubuntu-latest
     needs: [build-and-push]
     steps:
-      - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v4
+      - uses: actions/checkout@v4
+      - uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: ${{ env.AWS_DEPLOY_ROLE_ARN }}
           aws-region: ${{ env.AWS_REGION }}
-          role-session-name: github-${{ github.run_id }}-api
-
-      # A plain --force-new-deployment would just redeploy whatever tag the task
-      # definition already pins. Since we no longer push `latest`, register a new
-      # task definition revision pointing at the immutable image, then roll to it.
-      - name: Deploy immutable image
+          role-session-name: github-${{ github.run_id }}-migrate
+      - name: Migrate without starting the API
         env:
           IMAGE_URI: ${{ needs.build-and-push.outputs.image_uri }}
-          SERVICE: api
-        run: |
-          set -euo pipefail
+        run: python scripts/deploy_ecs.py migrate
 
-          task_def_arn=$(aws ecs describe-services \
-            --cluster "$ECS_CLUSTER" --services "$SERVICE" \
-            --query 'services[0].taskDefinition' --output text)
-
-          aws ecs describe-task-definition --task-definition "$task_def_arn" \
-            --query 'taskDefinition' --output json > taskdef.json
-
-          # Repoint only containers running our app image; leave any sidecars alone.
-          jq --arg image "$IMAGE_URI" --arg repo "$ECR_REPOSITORY" '
-            .containerDefinitions |= map(
-              if (.image | contains("/" + $repo + ":")) then .image = $image else . end
-            )
-            | del(.taskDefinitionArn, .revision, .status, .requiresAttributes,
-                  .compatibilities, .registeredAt, .registeredBy, .deregisteredAt)
-          ' taskdef.json > new-taskdef.json
-
-          new_task_def_arn=$(aws ecs register-task-definition \
-            --cli-input-json file://new-taskdef.json \
-            --query 'taskDefinition.taskDefinitionArn' --output text)
-
-          aws ecs update-service \
-            --cluster "$ECS_CLUSTER" --service "$SERVICE" \
-            --task-definition "$new_task_def_arn" \
-            --query 'service.serviceName' --output text
-
-      - name: Wait for service stability
-        run: |
-          aws ecs wait services-stable \
-            --cluster "$ECS_CLUSTER" \
-            --services api
+  deploy-landing:
+    runs-on: ubuntu-latest
+    needs: [build-and-push, migrate]
+    timeout-minutes: 80
+    steps:
+      - uses: actions/checkout@v4
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ env.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+          role-session-name: github-${{ github.run_id }}-landing
+      # Fail here if the reviewed capacity plan has not provisioned the service.
+      # ECS health requires this exact worker's registered landing-only consumer.
+      - name: Deploy and verify isolated landing capacity
+        env:
+          IMAGE_URI: ${{ needs.build-and-push.outputs.image_uri }}
+          SERVICE: celery-landing-worker
+        run: python scripts/deploy_ecs.py deploy
 
   deploy-workers:
     runs-on: ubuntu-latest
-    needs: [build-and-push, deploy-api]
+    needs: [build-and-push, deploy-landing]
+    timeout-minutes: 80
     strategy:
       fail-fast: false
       matrix:
-        service:
-          [
-            celery-beat,
-            celery-control-worker,
-            celery-io-worker,
-            celery-batch-worker,
-            celery-interactive-worker,
-          ]
+        service: [celery-control-worker, celery-io-worker, celery-batch-worker, celery-interactive-worker]
     steps:
-      - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v4
+      - uses: actions/checkout@v4
+      - uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: ${{ env.AWS_DEPLOY_ROLE_ARN }}
           aws-region: ${{ env.AWS_REGION }}
           role-session-name: github-${{ github.run_id }}-${{ matrix.service }}
-
-      - name: Deploy immutable image
+      - name: Deploy immutable image and reviewed worker command
         env:
           IMAGE_URI: ${{ needs.build-and-push.outputs.image_uri }}
           SERVICE: ${{ matrix.service }}
-        run: |
-          set -euo pipefail
+        run: python scripts/deploy_ecs.py deploy
 
-          task_def_arn=$(aws ecs describe-services \
-            --cluster "$ECS_CLUSTER" --services "$SERVICE" \
-            --query 'services[0].taskDefinition' --output text)
+  deploy-beat:
+    runs-on: ubuntu-latest
+    needs: [build-and-push, deploy-workers]
+    timeout-minutes: 80
+    steps:
+      - uses: actions/checkout@v4
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ env.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+          role-session-name: github-${{ github.run_id }}-beat
+      # Beat must not send newly introduced tasks to old workers that cannot
+      # register them. Old beat can keep serving existing schedules during rollout.
+      - name: Deploy scheduler after workers
+        env:
+          IMAGE_URI: ${{ needs.build-and-push.outputs.image_uri }}
+          SERVICE: celery-beat
+        run: python scripts/deploy_ecs.py deploy
 
-          aws ecs describe-task-definition --task-definition "$task_def_arn" \
-            --query 'taskDefinition' --output json > taskdef.json
-
-          # Repoint only containers running our app image; leave any sidecars alone.
-          jq --arg image "$IMAGE_URI" --arg repo "$ECR_REPOSITORY" '
-            .containerDefinitions |= map(
-              if (.image | contains("/" + $repo + ":")) then .image = $image else . end
-            )
-            | del(.taskDefinitionArn, .revision, .status, .requiresAttributes,
-                  .compatibilities, .registeredAt, .registeredBy, .deregisteredAt)
-          ' taskdef.json > new-taskdef.json
-
-          new_task_def_arn=$(aws ecs register-task-definition \
-            --cli-input-json file://new-taskdef.json \
-            --query 'taskDefinition.taskDefinitionArn' --output text)
-
-          aws ecs update-service \
-            --cluster "$ECS_CLUSTER" --service "$SERVICE" \
-            --task-definition "$new_task_def_arn" \
-            --query 'service.serviceName' --output text
-
-      - name: Wait for service stability
-        run: |
-          aws ecs wait services-stable \
-            --cluster "$ECS_CLUSTER" \
-            --services "${{ matrix.service }}"
+  deploy-api:
+    runs-on: ubuntu-latest
+    needs: [build-and-push, deploy-beat]
+    timeout-minutes: 80
+    steps:
+      - uses: actions/checkout@v4
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ env.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+          role-session-name: github-${{ github.run_id }}-api
+      - name: Deploy API after consumers and scheduler
+        env:
+          IMAGE_URI: ${{ needs.build-and-push.outputs.image_uri }}
+          SERVICE: api
+        run: python scripts/deploy_ecs.py deploy

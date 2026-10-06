@@ -1,3 +1,4 @@
+import asyncio
 import json
 import logging
 import os
@@ -12,12 +13,12 @@ from urllib.parse import parse_qsl, urlsplit, urlunsplit
 import json_repair
 import openai
 from celery.exceptions import SoftTimeLimitExceeded
-from openai import OpenAI
+from openai import AsyncOpenAI, OpenAI
 from openai.lib._pydantic import to_strict_json_schema
 from pydantic import BaseModel
 from tenacity import (
+    AsyncRetrying,
     RetryCallState,
-    Retrying,
     before_sleep_log,
     stop_after_delay,
     wait_exponential_jitter,
@@ -45,7 +46,7 @@ _TOGETHER_BASE_URL = "https://api.together.xyz/v1"
 # Seconds per completion. The SDK default of 600s lets one hung socket read pin
 # a `--pool=threads` worker thread long enough to starve the queue, so this stays
 # well above a healthy completion but far below the default. Total retry time is
-# bounded separately by `stop_after_delay(300)`.
+# bounded by a cancellable elapsed deadline, including retries and heartbeats.
 _REQUEST_TIMEOUT = float(os.environ.get("LLM_REQUEST_TIMEOUT", "120"))
 
 # Reasoning models spend hidden reasoning tokens out of the same completion
@@ -92,13 +93,12 @@ class IncompleteCompletionError(RuntimeError):
 _SDK_RETRIES = 0
 
 
-@lru_cache(maxsize=8)
-def _provider_client(name: str) -> OpenAI:
-    provider = PROVIDERS[name]
+def _provider_client(provider: str | Provider) -> AsyncOpenAI:
+    provider = PROVIDERS[provider] if isinstance(provider, str) else provider
     api_key = provider.key()
     if not api_key:
         raise RuntimeError(f"{provider.key_env} is required for LLM completions")
-    return OpenAI(
+    return AsyncOpenAI(
         api_key=api_key,
         base_url=provider.base_url,
         default_headers=provider.headers or None,
@@ -107,7 +107,7 @@ def _provider_client(name: str) -> OpenAI:
     )
 
 
-def _openrouter_client() -> OpenAI:
+def _openrouter_client() -> AsyncOpenAI:
     return _provider_client("openrouter")
 
 
@@ -119,17 +119,16 @@ def _openai_client() -> OpenAI:
     return OpenAI(api_key=api_key, timeout=_REQUEST_TIMEOUT)
 
 
-@lru_cache(maxsize=64)
 def _openai_compatible_client(
     base_url: str,
     api_key: str,
     query_items: tuple[tuple[str, str], ...] = (),
     header_items: tuple[tuple[str, str], ...] = (),
-) -> OpenAI:
+) -> AsyncOpenAI:
     # ``query_items`` are routing params that must ride on every request. Passing
     # them via ``default_query`` keeps them after the appended
     # ``/chat/completions`` path; baked into ``base_url`` they get corrupted.
-    return OpenAI(
+    return AsyncOpenAI(
         api_key=api_key,
         base_url=base_url,
         timeout=_REQUEST_TIMEOUT,
@@ -170,7 +169,7 @@ def _split_base_url(url: str) -> tuple[str, tuple[tuple[str, str], ...]]:
     return base, tuple(parse_qsl(parts.query))
 
 
-def _model_spec_client_and_name(spec: ModelSpec) -> tuple[OpenAI, str, str]:
+def _model_spec_client_and_name(spec: ModelSpec) -> tuple[AsyncOpenAI, str, str]:
     provider = (spec.provider or "").lower()
     if provider == "together":
         key_env = spec.api_key_env or "TOGETHER_API_KEY"
@@ -269,16 +268,20 @@ class _WaitHonouringRetryAfter:
 _LLM_WAIT = _WaitHonouringRetryAfter(wait_exponential_jitter(initial=1, max=60, jitter=5))
 
 
-def _do_openai_completion(
-    client: OpenAI,
+class CompletionDeadlineExceededError(TimeoutError):
+    """The total completion budget expired, even if the server kept sending bytes."""
+
+
+async def _create_completion(
+    client: AsyncOpenAI,
     completion_kwargs: dict,
     request_kwargs: dict,
     retry_deadline: float = RETRY_DEADLINE_BACKGROUND,
 ):
-    def _once():
+    async def _once():
         started = time.monotonic()
         try:
-            response = client.chat.completions.create(**completion_kwargs, **request_kwargs)
+            response = await client.chat.completions.create(**completion_kwargs, **request_kwargs)
         except openai.APIConnectionError as exc:
             if isinstance(exc.__cause__, SoftTimeLimitExceeded):
                 raise exc.__cause__ from None
@@ -288,13 +291,79 @@ def _do_openai_completion(
             object.__setattr__(response, "_response_ms", response_ms)
         return response
 
-    return Retrying(
+    return await AsyncRetrying(
         retry=_should_retry_llm_call,
         wait=_LLM_WAIT,
         stop=stop_after_delay(retry_deadline),
         reraise=True,
         before_sleep=before_sleep_log(logger, logging.WARNING),
     )(_once)
+
+
+def _do_openai_completion(
+    client: AsyncOpenAI,
+    completion_kwargs: dict,
+    request_kwargs: dict,
+    retry_deadline: float = RETRY_DEADLINE_BACKGROUND,
+):
+    # Each chat owns its client and loop. Cached asynchronous clients cannot be
+    # reused across worker threads or across the loops of successive calls.
+    budget = retry_deadline if retry_deadline > 0 else _REQUEST_TIMEOUT
+    if completion_kwargs.get("stream"):
+        return _completion_stream(client, completion_kwargs, request_kwargs, retry_deadline, budget)
+
+    async def complete():
+        try:
+            async with client, asyncio.timeout(budget):
+                return await _create_completion(
+                    client, completion_kwargs, request_kwargs, retry_deadline
+                )
+        except TimeoutError as exc:
+            raise CompletionDeadlineExceededError(
+                f"Completion deadline exceeded after {budget:g}s"
+            ) from exc
+
+    return asyncio.run(complete())
+
+
+def _completion_stream(client, completion_kwargs, request_kwargs, retry_deadline, budget):
+    async def chunks():
+        deadline = asyncio.get_running_loop().time() + budget
+        try:
+            async with client:
+                async with asyncio.timeout_at(deadline):
+                    stream = await _create_completion(
+                        client, completion_kwargs, request_kwargs, retry_deadline
+                    )
+                try:
+                    iterator = stream.__aiter__()
+                    while True:
+                        if asyncio.get_running_loop().time() >= deadline:
+                            raise TimeoutError
+                        # A single absolute deadline covers every read, including
+                        # SSE comments that never yield a model token.
+                        async with asyncio.timeout_at(deadline):
+                            chunk = await anext(iterator, None)
+                        if chunk is None:
+                            break
+                        yield chunk
+                finally:
+                    await stream.close()
+        except TimeoutError as exc:
+            raise CompletionDeadlineExceededError(
+                f"Completion deadline exceeded after {budget:g}s"
+            ) from exc
+
+    with asyncio.Runner() as runner:
+        iterator = chunks()
+        try:
+            while True:
+                chunk = runner.run(anext(iterator, None))
+                if chunk is None:
+                    break
+                yield chunk
+        finally:
+            runner.run(iterator.aclose())
 
 
 class EmbeddingUnavailableError(RuntimeError):
@@ -674,7 +743,7 @@ def call_llm_tools(
     )
     try:
         response = _do_openai_completion(
-            _provider_client(provider.name), completion_kwargs, {}, retry_deadline
+            _provider_client(provider), completion_kwargs, {}, retry_deadline
         )
     except SoftTimeLimitExceeded:
         raise
@@ -774,7 +843,7 @@ def stream_llm_tools(
     started = time.monotonic()
     try:
         stream = _do_openai_completion(
-            _provider_client(provider.name), completion_kwargs, {}, retry_deadline
+            _provider_client(provider), completion_kwargs, {}, retry_deadline
         )
     except SoftTimeLimitExceeded:
         raise

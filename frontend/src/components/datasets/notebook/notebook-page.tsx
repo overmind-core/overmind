@@ -9,6 +9,7 @@ import { DatasetChat, type LiveTurn } from "@/components/datasets/notebook/chat"
 import { NotebookOutline } from "@/components/datasets/notebook/outline";
 import { ContaminationReport } from "@/components/datasets/notebook/preparation";
 import { Button } from "@/components/ui/button";
+import { EmptyState } from "@/components/ui/empty-state";
 import { Spinner } from "@/components/ui/spinner";
 import {
   activeCellOf,
@@ -269,13 +270,33 @@ export function DatasetNotebook({
             <div className="min-h-0 min-w-0 flex-1 overflow-y-auto pt-2 pb-6 pl-10" ref={cellsRef}>
               <ContaminationReport spec={dataset.sourceSpec} />
               {cells.length === 0 ? (
-                <p className="p-3 text-xs text-muted-foreground">
-                  {dataset.state !== "landing"
-                    ? "Nothing landed."
-                    : tracesRead > 0
-                      ? `Landing the source… ${tracesRead.toLocaleString()} traces read`
-                      : "Landing the source…"}
-                </p>
+                dataset.state === "error" ? (
+                  <EmptyState
+                    action={
+                      <Button
+                        aria-busy={run.isPending}
+                        disabled={!editable || run.isPending}
+                        onClick={guard(() => run.mutate())}
+                        size="sm"
+                        variant="secondary"
+                      >
+                        {run.isPending && <Spinner className="size-3.5" />}
+                        Retry import
+                      </Button>
+                    }
+                    description="The source has not landed."
+                    size="section"
+                    title="Import failed"
+                  />
+                ) : (
+                  <p className="p-3 text-xs text-muted-foreground">
+                    {dataset.state !== "landing"
+                      ? "Nothing landed."
+                      : tracesRead > 0
+                        ? `Landing the source… ${tracesRead.toLocaleString()} traces read`
+                        : "Landing the source…"}
+                  </p>
+                )
               ) : (
                 cells.map((cell) => (
                   <NotebookCell
@@ -337,7 +358,7 @@ export function DatasetNotebook({
         <PanelResizeHandle className="relative w-px bg-border/60 transition-colors hover:bg-foreground/40 data-[resize-handle-state='drag']:bg-foreground/60" />
         <Panel defaultSize={34} id="chat" minSize={22} order={2}>
           <DatasetChat
-            busy={busy || acceptCell.isPending || removeCell.isPending}
+            busy={busy || run.isPending || acceptCell.isPending || removeCell.isPending}
             cells={all}
             error={dataset.state === "error" ? dataset.error || undefined : undefined}
             initialRequest={initialRequest}
@@ -346,6 +367,7 @@ export function DatasetNotebook({
             onDiscard={guard((id: string) => removeCell.mutate(id))}
             onSelect={scrollTo}
             onSend={guard((message: string) => chat.mutate(message))}
+            sourceReady={cells.length > 0}
             state={dataset.state ?? ""}
             turns={turns}
           />

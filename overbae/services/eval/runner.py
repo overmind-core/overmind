@@ -12,6 +12,7 @@ from __future__ import annotations
 import json
 import logging
 import math
+from collections.abc import Callable
 from copy import deepcopy
 from dataclasses import dataclass, field
 from typing import Any, Protocol
@@ -332,6 +333,7 @@ def run_capability(
     max_steps: int = _DEFAULT_MAX_STEPS,
     reasoning_effort: str | None = None,
     project_id: str | None = None,
+    check_active: Callable[[], None] | None = None,
 ) -> RunResult:
     """``input_messages`` seeds the conversation; ``output_messages`` carries
     only the NEW assistant/tool messages produced."""
@@ -353,6 +355,8 @@ def run_capability(
     checks = []
 
     for step in range(max_steps):
+        if check_active is not None:
+            check_active()
         # Force a final-answer turn at the budget edge: a divergent replay that
         # is still mid-tool-loop would otherwise be cut off with nothing
         # gradable. Well-behaved replays stop emitting tool calls earlier and

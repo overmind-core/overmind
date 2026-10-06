@@ -18,7 +18,7 @@ from overbae.services.datasets.llm_calls import call_record, hash_split, shape
 from overbae.services.finetuning_validator import validate_rows
 from overbae.tasks import datasets as dataset_tasks
 
-pytestmark = pytest.mark.django_db
+pytestmark = pytest.mark.django_db(transaction=True)
 
 _TOOLS = [
     {

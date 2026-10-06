@@ -493,3 +493,31 @@ describe("Workshop chat", () => {
     expect(actions.onSend).toHaveBeenCalledWith("Repair the selected task");
   });
 });
+
+it("keeps the original request but cannot send until the source is available", () => {
+  const actions = callbacks();
+  const props = {
+    ...actions,
+    busy: false,
+    cells: [],
+    initialRequest: "Prepare training data",
+    live: null,
+    sourceReady: false,
+    state: "error",
+    turns: [],
+  };
+  const view = render(<DatasetChat {...props} />);
+  const composer = screen.getByRole("textbox", {
+    name: "Message the agent",
+  }) as HTMLTextAreaElement;
+  expect(composer.disabled).toBe(true);
+  expect(composer.placeholder).toBe("Retry the import to start chatting…");
+  expect((screen.getByRole("button", { name: "Send" }) as HTMLButtonElement).disabled).toBe(true);
+  fireEvent.keyDown(composer, { key: "Enter" });
+  expect(actions.onSend).not.toHaveBeenCalled();
+  view.rerender(<DatasetChat {...props} cells={[source]} sourceReady state="idle" />);
+  expect(composer.disabled).toBe(false);
+  expect(composer.value).toBe("Prepare training data");
+  fireEvent.keyDown(composer, { key: "Enter" });
+  expect(actions.onSend).toHaveBeenCalledWith("Prepare training data");
+});

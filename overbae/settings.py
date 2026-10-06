@@ -34,6 +34,7 @@ ALLOWED_HOSTS = [
 # Browser `localhost` on macOS often hits the API over IPv6; curl/Host is `[::1]`.
 
 INSTALLED_APPS = [
+    "django.contrib.postgres",
     "django.contrib.admin",
     "django.contrib.auth",
     "django.contrib.contenttypes",
@@ -406,8 +407,18 @@ CELERY_TIMEZONE = "UTC"
 # enforces time_limit and revoke(terminate=True), so every time-limited task
 # routes to a prefork lane; test_celery_topology asserts it. io_traces is a
 # second queue on the io worker, not a second worker: round-robin keeps an
-# unbounded trace burst from queueing ahead of user-started eval scoring.
+# unbounded trace burst from queueing ahead of user-started eval scoring. Landing
+# has its own process pool: fair scheduling cannot preempt six occupied bulk slots.
 CELERY_TASK_DEFAULT_QUEUE = "control"
+
+# Enabled explicitly on the hosted control worker; local development is offline.
+QUEUE_METRICS_ENABLED = os.environ.get("QUEUE_METRICS_ENABLED", "0") == "1"
+QUEUE_METRICS_CLUSTER = os.environ.get("QUEUE_METRICS_CLUSTER", "")
+
+# Admission is a provider-spend/concurrency budget, independent of sample count.
+EVAL_MAX_IN_FLIGHT = int(os.environ.get("EVAL_MAX_IN_FLIGHT", "12"))
+EVAL_MAX_IN_FLIGHT_PER_RUN = int(os.environ.get("EVAL_MAX_IN_FLIGHT_PER_RUN", "2"))
+DATASET_IMPORT_MAX_QUEUE_SECONDS = int(os.environ.get("DATASET_IMPORT_MAX_QUEUE_SECONDS", "900"))
 
 CELERY_TASK_ROUTES = {
     "overbae.tasks.training_preparation.inspect_preparation": {"queue": "io"},
@@ -415,7 +426,7 @@ CELERY_TASK_ROUTES = {
     "overbae.tasks.datasets.turn": {"queue": "interactive"},
     "overbae.tasks.datasets.diagnose": {"queue": "interactive"},
     "overbae.tasks.eval.prepare_sample": {"queue": "batch"},
-    "overbae.tasks.datasets.land": {"queue": "batch"},
+    "overbae.tasks.datasets.land": {"queue": "landing"},
     "overbae.tasks.connector_sync.sync_connector_chunk": {"queue": "batch"},
     "overbae.tasks.eval.execute_evaluator": {"queue": "io"},
     "overbae.tasks.model_deployment.advance_model_deployment": {"queue": "io"},
@@ -427,6 +438,21 @@ CELERY_TASK_ROUTES = {
 }
 
 CELERY_BEAT_SCHEDULE = {
+    "reconcile-dataset-imports": {
+        "task": "overbae.tasks.datasets.reconcile_imports",
+        "schedule": 30.0,
+        "options": {"expires": 25.0},
+    },
+    "dispatch-evaluation-generation": {
+        "task": "overbae.tasks.eval.dispatch_generation",
+        "schedule": 30.0,
+        "options": {"expires": 25.0},
+    },
+    "queue-capacity-metrics": {
+        "task": "overbae.tasks.queue_metrics.publish",
+        "schedule": 60.0,
+        "options": {"expires": 55.0},
+    },
     "training-preparation": {
         "task": "overbae.tasks.training_preparation.reconcile",
         "schedule": 15.0,

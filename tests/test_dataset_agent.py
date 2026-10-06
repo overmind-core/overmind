@@ -10,6 +10,7 @@ import uuid
 from concurrent.futures import ThreadPoolExecutor
 
 import pytest
+from database_callbacks import database_callback
 from fakes.llm import tool_call
 
 from overbae.core.model_registry import WORKSHOP_KEY_ENVS
@@ -489,6 +490,7 @@ def test_a_cursor_turn_streams_cells_and_text_and_lands_on_the_dataset(cursor):
     assert cursor.created[-1].disallowed_tools == ["shell", "task"]
 
 
+@pytest.mark.django_db(transaction=True)
 def test_running_generation_progress_is_persisted_and_partial_rows_survive_failure(
     openrouter, fake_llm
 ):
@@ -497,8 +499,7 @@ def test_running_generation_progress_is_persisted_and_partial_rows_survive_failu
     seen = []
 
     def interrupted(request):
-        dataset.refresh_from_db()
-        seen.append(dataset.chat[-1])
+        seen.append(database_callback(lambda: Dataset.objects.get(pk=dataset.pk).chat[-1]))
         return True
 
     fake_llm.stream_rounds(

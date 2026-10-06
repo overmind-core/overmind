@@ -10,6 +10,8 @@ from __future__ import annotations
 import datetime as dt
 import json
 import logging
+import tempfile
+import uuid
 from collections.abc import Iterable, Iterator
 from dataclasses import dataclass, field, replace
 from pathlib import Path
@@ -71,51 +73,98 @@ def _stamp_source_rows(rows: list[dict[str, Any]]) -> None:
         row["_overmind_provenance"] = preserve_lineage(row)
 
 
-@transaction.atomic
-def commit(
-    dataset: Dataset,
-    landing: Landing,
-    *,
-    user: Any = None,
-    state: str = Dataset.State.IDLE,
-    infer_capability: bool = True,
-) -> Dataset:
-    """Write cell 0 without exposing an idle dataset before automatic preparation."""
+@dataclass
+class PreparedLanding:
+    dataset_id: Any
+    cell_id: uuid.UUID
+    path: Path
+    dataset_fields: dict[str, Any]
+    cell_fields: dict[str, Any]
+
+
+def prepare(dataset, landing, *, path, state=Dataset.State.IDLE, infer_capability=True):
     rows = landing.rows
     _stamp_source_rows(rows)
-    source = dataset.cells.filter(position=0).first()
-    if source is None:
-        source = Cell.objects.create(
-            dataset=dataset,
-            position=0,
-            title="Source",
-            state=Cell.State.QUEUED,
-            created_by=user if getattr(user, "pk", None) else None,
-        )
-    path = paths.cell_path(dataset.id, source.id)
     manifest = landing.manifest
     if manifest and not any(column["name"] == "_overmind_provenance" for column in manifest):
         manifest = [*manifest, {"name": "_overmind_provenance", "type": "json"}]
     store.write_rows(path, rows, manifest)
-    fields: dict[str, Any] = {
+    df = store.read_frame(path)
+    fields = {
         "source_kind": landing.kind,
         "source_spec": {**landing.spec, "landed_at": timezone.now().isoformat()},
         "state": state,
         "error": "",
+        "capability_rank": alignment.rank(dataset.project_id, df),
     }
-    df = store.read_frame(path)
-    fields["capability_rank"] = alignment.rank(dataset.project_id, df)
-    if infer_capability and dataset.capability_id is None and fields["capability_rank"]:
+    measured = Dataset.objects.select_related("capability").get(pk=dataset.pk)
+    if infer_capability and measured.capability_id is None and fields["capability_rank"]:
         best = fields["capability_rank"][0]
         if best["score"] > 0:
             fields["capability_id"] = best["capability_id"]
+            measured.capability_id = best["capability_id"]
     report = contract.measure(df)
-    if dataset.intent == Dataset.Intent.PENDING:
+    if measured.intent == Dataset.Intent.PENDING:
         fields["intent"] = contract.propose_intent(df, report)
-    Dataset.objects.filter(pk=dataset.pk).update(**fields, updated_at=timezone.now())
+        measured.intent = fields["intent"]
+    source = dataset.cells.filter(position=0).first()
+    return PreparedLanding(
+        dataset.pk,
+        source.pk if source else uuid.uuid4(),
+        path,
+        fields,
+        {
+            **measure.describe_frame(measured, path, df=df, report=report),
+            "input_fingerprint": "",
+            "seconds": 0.0,
+        },
+    )
+
+
+@transaction.atomic
+def publish(dataset, prepared, *, user=None):
+    if prepared.dataset_id != dataset.pk:
+        raise LandError("The prepared source belongs to another dataset.")
+    locked = Dataset.objects.select_for_update().get(pk=dataset.pk)
+    source = locked.cells.filter(position=0).first()
+    if source is not None and source.pk != prepared.cell_id:
+        raise LandError("The source changed before publication.")
+    destination = paths.cell_path(locked.pk, prepared.cell_id)
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    prepared.path.replace(destination)
+    if source is None:
+        Cell.objects.create(
+            id=prepared.cell_id,
+            dataset=locked,
+            position=0,
+            title="Source",
+            created_by=user if getattr(user, "pk", None) else None,
+            **prepared.cell_fields,
+        )
+    else:
+        Cell.objects.filter(pk=source.pk).update(**prepared.cell_fields)
+    Dataset.objects.filter(pk=locked.pk).update(
+        **prepared.dataset_fields, updated_at=timezone.now()
+    )
     dataset.refresh_from_db()
-    measure.frame(dataset, source, path, df=df, report=report, input_fingerprint="", seconds=0.0)
+    from overbae.services.eval.eval_set import maybe_enqueue_card_evaluator_sync
+
+    maybe_enqueue_card_evaluator_sync(dataset)
     return dataset
+
+
+def commit(dataset, landing, *, user=None, state=Dataset.State.IDLE, infer_capability=True):
+    parent = paths.dataset_dir(dataset.pk)
+    parent.mkdir(parents=True, exist_ok=True)
+    with tempfile.TemporaryDirectory(prefix="source-", dir=parent) as directory:
+        prepared = prepare(
+            dataset,
+            landing,
+            path=Path(directory) / "source.parquet",
+            state=state,
+            infer_capability=infer_capability,
+        )
+        return publish(dataset, prepared, user=user)
 
 
 def read_file(path: Path, *, filename: str) -> Landing:

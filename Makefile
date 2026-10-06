@@ -10,7 +10,7 @@ install-hooks:
 worker:
 	OBJC_DISABLE_INITIALIZE_FORK_SAFETY=YES TOGETHER_API_KEY=placeholder-local-dev \
 		uv run celery -A overbae worker -l info --pool=solo -n local@%h \
-		-Q control,io,io_traces,batch,interactive
+		-Q control,io,io_traces,batch,landing,interactive
 
 lint-format:
 	$(MAKE) --no-print-directory -j2 lint-backend lint-frontend

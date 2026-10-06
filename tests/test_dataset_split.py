@@ -13,7 +13,7 @@ from overbae.models import Dataset, ProjectMembership, Span
 from overbae.services.datasets import dispatch, land, paths, store
 from overbae.services.datasets.lifecycle import DatasetError
 
-pytestmark = pytest.mark.django_db
+pytestmark = pytest.mark.django_db(transaction=True)
 
 ROWS = [{"input": f"q{i}", "expected_output": f"a{i}"} for i in range(10)]
 

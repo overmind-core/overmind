@@ -121,6 +121,7 @@ def test_inspection_does_not_expose_parser_or_storage_diagnostics(
     assert private in caplog.text
 
 
+@pytest.mark.django_db(transaction=True)
 @pytest.mark.parametrize("split", [False, True])
 def test_multiple_files_land_in_order_and_split_across_the_combined_rows(client_project, split):
     client, project = client_project

@@ -14,7 +14,7 @@ from overbae.models import Capability, Dataset, Span
 from overbae.services.datasets import lifecycle, use
 from overbae.services.datasets.notebook import run as run_svc
 
-pytestmark = pytest.mark.django_db
+pytestmark = pytest.mark.django_db(transaction=True)
 
 ROWS = [
     {"question": "q1", "answer": "a1", "tag": "keep"},
