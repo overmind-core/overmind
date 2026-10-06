@@ -36,6 +36,10 @@ def test_a_trained_model_is_benchmarked_served_and_switched_in(
     fake_llm.on(served("base--"), BAD_REPLY)
     fake_llm.on(served("ft-"), trained_turn)
     fake_llm.on("You triage customer support tickets.", "refund")
+    fake_llm.on_json(
+        lambda r: r.schema_name == "_Checklist",
+        lambda r: {"items": [{"id": "resolved", "q": "Does the reply confirm the refund?"}]},
+    )
     answer = workshop.capability("answer")
     train = upload(
         cli,
@@ -51,11 +55,26 @@ def test_a_trained_model_is_benchmarked_served_and_switched_in(
     )
     drain(worker)
 
+    # An agent authors its own judge from prose alone, as most agents do.
+    judge = workshop.call(
+        "upsert_evaluator",
+        {
+            "name": "resolves-the-ticket",
+            "capability": "answer",
+            "rubric_md": "The reply confirms the delivery and that the refund is on its way.",
+        },
+    )["id"]
+    eval_set = workshop.call(
+        "create_eval_set",
+        {"name": "Ticket resolution", "capability": "answer", "evaluator_ids": [judge]},
+    )["eval_set"]["id"]
+
     job = workshop.call(
         "start_finetune",
         {
             "dataset": train,
             "eval_dataset": evals,
+            "eval_set": eval_set,
             "base_model": "Qwen/Qwen3-1.7B",
             "capability": "answer",
         },

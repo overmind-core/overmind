@@ -31,6 +31,7 @@ from overbae.services.eval.context_check import check_context
 from overbae.services.eval.context_suggestions import judge_model_options
 from overbae.services.eval.eval_set import active_members
 from overbae.services.eval.roles import roles_for_evaluator
+from overbae.services.eval.rubric_compiler import attach_compiled_checklist
 from overbae.services.eval.sanitation import sanitize_authored_text
 from overbae.services.eval.specs import EvaluatorSpec
 from overbae.services.mcp.context import MCPContext
@@ -403,6 +404,26 @@ def _upsert_sync(payload: EvaluatorUpsertInput, context: MCPContext) -> Evaluato
         or []
     )
     variable_mapping = _json_entries(variable_mapping)
+    # Same step as Console authoring: a generative judge scores from its
+    # checklist, so prose alone is compiled before save.
+    if (
+        kind == Evaluator.Kind.LLM_JUDGE
+        and rubric
+        and "checklist" not in payload.model_fields_set
+        and (not checklist or current is None or rubric != current.rubric_md)
+    ):
+        compiled = attach_compiled_checklist(
+            {
+                "rubric_md": rubric,
+                "score_type": score_type,
+                "score_min": _field(payload, "score_min", current.score_min if current else 0.0),
+                "score_max": _field(payload, "score_max", current.score_max if current else 1.0),
+                "variable_mapping": variable_mapping,
+                "capability": capability,
+            }
+        )
+        checklist = compiled["checklist"]
+        variable_mapping = compiled["variable_mapping"]
     choices = _field(payload, "choices", _choices_from_evaluator(current))
     spec_payload = {
         "name": name,
