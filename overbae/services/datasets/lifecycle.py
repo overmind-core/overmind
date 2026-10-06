@@ -15,6 +15,7 @@ from overbae.services.datasets import measure, paths, store
 from overbae.services.datasets.context import context_fingerprint
 
 WORKSHOP_QUEUE_SECONDS = 60 * 60
+_BUSY = (Dataset.State.LANDING, Dataset.State.RUNNING, Dataset.State.DIAGNOSING)
 
 
 class DatasetError(ValueError):
@@ -249,7 +250,13 @@ def set_active(dataset: Dataset, cell: Cell | None) -> Dataset:
     return dataset
 
 
-def set_intent(dataset: Dataset, intent: str) -> Dataset:
+def _refuse_user_edit_while_busy(dataset: Dataset, agent: bool) -> None:
+    if not agent and dataset.state in _BUSY:
+        raise DatasetError("The dataset is busy. Wait for it to finish.", code=dataset.state)
+
+
+def set_intent(dataset: Dataset, intent: str, *, agent: bool = False) -> Dataset:
+    _refuse_user_edit_while_busy(dataset, agent)
     if intent not in (Dataset.Intent.TRAIN, Dataset.Intent.EVAL):
         raise DatasetError("The intent is train or eval.", code="intent")
     if dataset.frozen_before >= 0:
@@ -269,7 +276,8 @@ def refuse_deleted_capability(capability: Any) -> None:
         raise DatasetError("That capability was deleted.", code="capability")
 
 
-def set_capability(dataset: Dataset, capability: Any) -> Dataset:
+def set_capability(dataset: Dataset, capability: Any, *, agent: bool = False) -> Dataset:
+    _refuse_user_edit_while_busy(dataset, agent)
     if dataset.frozen_before >= 0:
         raise DatasetError("A version was used; the capability is fixed.", code="frozen")
     if capability is not None and capability.project_id != dataset.project_id:
@@ -337,8 +345,8 @@ def usage(cell: Cell) -> dict[str, list[dict[str, Any]]]:
 
 
 def delete_blocked_reason(dataset: Dataset) -> str:
-    if dataset.state == Dataset.State.RUNNING:
-        return "The notebook is running. Wait for it to finish."
+    if dataset.state in _BUSY:
+        return "The dataset is busy. Wait for it to finish."
     used = [c for c in dataset.cells.all() if c.used_at is not None or any(usage(c).values())]
     if used:
         versions = dataset.versions()

@@ -688,7 +688,7 @@ class Tools:
     def set_intent(self, args: dict[str, Any], _ctx: Any = None) -> dict[str, Any]:
         dataset = _dataset(self.dataset_id)
         try:
-            lifecycle.set_intent(dataset, str(args.get("intent") or ""))
+            lifecycle.set_intent(dataset, str(args.get("intent") or ""), agent=True)
         except lifecycle.DatasetError as exc:
             return {"ok": False, "error": exc.detail}
         self.emit({"type": "dataset_changed"})
@@ -716,7 +716,7 @@ class Tools:
                     "capabilities": names,
                 }
         try:
-            lifecycle.set_capability(dataset, capability)
+            lifecycle.set_capability(dataset, capability, agent=True)
         except lifecycle.DatasetError as exc:
             return {"ok": False, "error": exc.detail}
         self.emit({"type": "dataset_changed"})

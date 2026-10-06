@@ -285,6 +285,12 @@ def test_chat_is_refused_while_busy_and_locks_the_dataset_at_once():
         Dataset.objects.filter(pk=dataset.pk).update(state=state)
         res = client.post(f"/api/datasets/{dataset.id}/chat/", {"message": "hi"}, format="json")
         assert res.status_code == 409
+    for state in ("diagnosing", "running", "landing"):
+        Dataset.objects.filter(pk=dataset.pk).update(state=state)
+        res = client.patch(f"/api/datasets/{dataset.id}/", {"intent": "train"}, format="json")
+        assert res.status_code == 400
+        assert client.delete(f"/api/datasets/{dataset.id}/").status_code == 409
+    assert Dataset.objects.get(pk=dataset.pk).intent != "train"
     # A chain whose last run failed is exactly what the user wants the agent for.
     Dataset.objects.filter(pk=dataset.pk).update(state="error", error="Bad: nope")
     res = client.post(f"/api/datasets/{dataset.id}/chat/", {"message": "fix it"}, format="json")
