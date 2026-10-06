@@ -10,7 +10,7 @@ import pytest
 from factories import make_project, make_user, member_client
 
 from overbae.models import Dataset, ProjectMembership, Span
-from overbae.services.datasets import dispatch, land, paths, store
+from overbae.services.datasets import dispatch, files, land, paths, store
 from overbae.services.datasets.lifecycle import DatasetError
 
 pytestmark = pytest.mark.django_db(transaction=True)
@@ -97,15 +97,33 @@ def test_create_split_refuses_a_bad_cut_or_a_short_source_before_creating():
             dispatch.create_split(
                 project=project, user=user, name="S", source={"rows": ROWS}, **bad
             )
-    with pytest.raises(DatasetError, match="Two rows"):
-        dispatch.create_split(
-            project=project,
-            user=user,
-            name="S",
-            source={"rows": ROWS[:1]},
-            eval_percent=20,
-            position="tail",
-        )
+    Span.objects.create(
+        span_id=uuid.uuid4().hex[:16],
+        trace_id=uuid.uuid4().hex,
+        project=project,
+        span_type="entry_point",
+        name="run",
+        start_time_ns=1,
+        end_time_ns=2,
+        duration_ns=1,
+    )
+    upload_id, _ = files.begin_upload("one.jsonl")
+    files.append_chunk(upload_id, 0, b'{"input":"one"}\n')
+    files.inspect_upload(upload_id, size=files.upload_received(upload_id))
+    for source in (
+        {"rows": ROWS[:1]},
+        {"traces": {"filters": {"name": "run"}}},
+        {"uploads": [upload_id]},
+    ):
+        with pytest.raises(DatasetError, match="Two rows"):
+            dispatch.create_split(
+                project=project,
+                user=user,
+                name="S",
+                source=source,
+                eval_percent=20,
+                position="tail",
+            )
     assert Dataset.objects.filter(project=project).count() == 0
 
 
