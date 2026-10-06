@@ -3,7 +3,9 @@
 import logging
 
 import boto3
+import botocore.session
 from botocore.config import Config
+from botocore.credentials import ContainerProvider, CredentialResolver
 from celery import shared_task
 from django.conf import settings
 
@@ -28,7 +30,16 @@ def publish():
     # Celery time limit that threads cannot enforce. Failed samples stay missing,
     # which trips the monitor-health alarm rather than reporting a healthy zero.
     config = Config(connect_timeout=3, read_timeout=5, retries={"total_max_attempts": 1})
-    ecs = boto3.client("ecs", region_name=settings.AWS_REGION, config=config)
+    # Archive credentials are also present in the worker environment. Monitoring
+    # must use its ECS role, with credential rotation retained by ContainerProvider.
+    role_session = botocore.session.get_session()
+    role_session.register_component(
+        "credential_provider", CredentialResolver([ContainerProvider()])
+    )
+    session = boto3.Session(botocore_session=role_session)
+    if session.get_credentials() is None:
+        raise RuntimeError("Queue metrics require an ECS task role")
+    ecs = session.client("ecs", region_name=settings.AWS_REGION, config=config)
     services = ecs.describe_services(cluster=cluster, services=list(WORKER_SERVICES.values()))
     counts = {
         service["serviceName"]: service.get("runningCount", 0)
@@ -36,7 +47,7 @@ def publish():
     }
     running = {queue: counts.get(service, 0) for queue, service in WORKER_SERVICES.items()}
     points = metric_data(read_workloads(), running, cluster=cluster)
-    cloudwatch = boto3.client("cloudwatch", region_name=settings.AWS_REGION, config=config)
+    cloudwatch = session.client("cloudwatch", region_name=settings.AWS_REGION, config=config)
     cloudwatch.put_metric_data(Namespace=NAMESPACE, MetricData=points)
     logger.info("queue_capacity: published %s metrics for %s", len(points), cluster)
     return {"metrics": len(points)}

@@ -1,4 +1,7 @@
+import json
+import threading
 from datetime import timedelta
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 import pytest
 from django.utils import timezone
@@ -80,3 +83,95 @@ def test_metrics_task_is_registered_periodic_and_never_waits_on_batch(settings):
         settings.CELERY_TASK_ROUTES.get(name, {}).get("queue", settings.CELERY_TASK_DEFAULT_QUEUE)
         == "control"
     )
+
+
+@pytest.mark.django_db
+def test_publisher_uses_refreshing_task_role_instead_of_archive_keys(settings, monkeypatch):
+    from overbae.tasks.queue_metrics import publish
+
+    requests = []
+    credential_reads = []
+
+    class Handler(BaseHTTPRequestHandler):
+        def log_message(self, *args):
+            pass
+
+        def do_GET(self):
+            credential_reads.append(self.path)
+            # The initial credentials expire soon enough to require refresh on signing.
+            expiry = timezone.now() + timedelta(seconds=30 if len(credential_reads) == 1 else 3600)
+            payload = json.dumps(
+                {
+                    "AccessKeyId": f"task-role-{len(credential_reads)}",
+                    "SecretAccessKey": "task-role-secret",
+                    "Token": "task-role-token",
+                    "Expiration": expiry.isoformat(),
+                }
+            ).encode()
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.end_headers()
+            self.wfile.write(payload)
+
+        def do_POST(self):
+            self.rfile.read(int(self.headers["Content-Length"]))
+            requests.append((self.path, dict(self.headers)))
+            ecs = self.path == "/ecs"
+            body = (
+                json.dumps(
+                    {
+                        "services": [
+                            {"serviceName": "celery-landing-worker", "runningCount": 1},
+                            {"serviceName": "celery-batch-worker", "runningCount": 1},
+                        ]
+                    }
+                ).encode()
+                if ecs
+                else b""
+            )
+            self.send_response(200)
+            self.send_header(
+                "Content-Type", "application/x-amz-json-1.1" if ecs else "application/cbor"
+            )
+            self.end_headers()
+            self.wfile.write(body)
+
+    server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    url = f"http://127.0.0.1:{server.server_port}"
+    monkeypatch.setenv("AWS_ACCESS_KEY_ID", "archive-key")
+    monkeypatch.setenv("AWS_SECRET_ACCESS_KEY", "archive-secret")
+    monkeypatch.delenv("AWS_CONTAINER_CREDENTIALS_RELATIVE_URI", raising=False)
+    monkeypatch.setenv("AWS_CONTAINER_CREDENTIALS_FULL_URI", url + "/credentials")
+    monkeypatch.setenv("AWS_ENDPOINT_URL_ECS", url + "/ecs")
+    monkeypatch.setenv("AWS_ENDPOINT_URL_CLOUDWATCH", url + "/cloudwatch")
+    settings.QUEUE_METRICS_ENABLED = True
+    settings.QUEUE_METRICS_CLUSTER = "test-cluster"
+    settings.AWS_REGION = "eu-west-1"
+    try:
+        assert publish() == {"metrics": 16}
+        assert len(credential_reads) >= 2
+        assert len(requests) == 2
+        for _, headers in requests:
+            assert "Credential=task-role-2/" in headers["Authorization"]
+            assert "archive-key" not in headers["Authorization"]
+            assert "/eu-west-1/" in headers["Authorization"]
+            assert headers["X-Amz-Security-Token"] == "task-role-token"
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=2)
+
+
+def test_enabled_monitor_refuses_archive_credentials_without_an_ecs_role(settings, monkeypatch):
+    from overbae.tasks.queue_metrics import publish
+
+    settings.QUEUE_METRICS_ENABLED = True
+    settings.QUEUE_METRICS_CLUSTER = "test-cluster"
+    monkeypatch.delenv("AWS_CONTAINER_CREDENTIALS_RELATIVE_URI", raising=False)
+    monkeypatch.delenv("AWS_CONTAINER_CREDENTIALS_FULL_URI", raising=False)
+    monkeypatch.setenv("AWS_ACCESS_KEY_ID", "archive-key")
+    monkeypatch.setenv("AWS_SECRET_ACCESS_KEY", "archive-secret")
+    with pytest.raises(RuntimeError, match="ECS task role"):
+        publish()
