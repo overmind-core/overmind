@@ -59,8 +59,12 @@ from .optimizer import (
     OptimizerIteration,
 )
 from .traces import BacktestRun, Conversation, Span
+from .workshop import WorkshopRecord, WorkshopRun, WorkshopWorkItem
 
 __all__ = [
+    "WorkshopRun",
+    "WorkshopWorkItem",
+    "WorkshopRecord",
     "MCPOAuthClient",
     "MCPOAuthGrant",
     "MCPOAuthToken",

@@ -186,17 +186,15 @@ def finish_inspection():
     assert dataset.cells.count() == 1
 
 
-def test_add_cell_runs_and_reports_and_a_proposal_waits():
+def test_add_cell_runs_dependent_changes_and_reports_impact():
     dataset = _dataset(intent="eval")
     tools, events = _tools(dataset)
     result = tools.add_cell({"title": "Keep", "script": KEEP, "note": "drops 1 junk row"})
-    assert result["ok"] and result["proposed"] and result["review"]["rows_after"] == 2
-    assert [e["action"] for e in events if e["type"] == "chat_cell"] == ["proposed"]
-    accept(dataset, result)
-    proposal = tools.add_cell({"title": "Shape", "script": SHAPE, "run": False, "note": "x"})
-    assert proposal["proposed"] is True
-    assert dataset.cells.get(pk=proposal["id"]).state == "proposed"
-    assert tools.status({})["active"] == "1.1"
+    assert result["ok"] and result["rows"] == 2
+    shaped = tools.add_cell({"title": "Shape", "script": SHAPE})
+    assert shaped["ok"] and shaped["rows"] == 2
+    assert tools.status({})["active"] == "1.2"
+    assert all(c.state == "ok" for c in dataset.chain)
     diff = tools.diff({"to": "1.1"})
     assert diff["from"] == "1.0" and diff["rows_removed"] == 1
     assert diff["removed_examples"][0]["tag"] == "junk"
@@ -242,14 +240,11 @@ def test_proposal_cleanup_preserves_applied_versions_and_active_selection():
     assert tools.set_active({"version": "1.1"})["active"] == "1.1"
     removed = tools.remove_cell({"version": "1.1"})
     assert not removed["ok"]
-    proposal = tools.add_cell(
-        {"title": "Exclude", "script": "df = df.iloc[:1]", "kind": "semantic"}
-    )
-    removed = tools.remove_cell({"id": proposal["id"]})
-    assert removed["ok"] and removed["removed"] == "Exclude" and removed["active"] == "1.1"
-    assert [c.title for c in dataset.chain] == ["Source", "Keep", "Shape"]
+    applied = tools.add_cell({"title": "Exclude", "script": "df = df.iloc[:1]", "kind": "semantic"})
+    removed = tools.remove_cell({"id": applied["id"]})
+    assert not removed["ok"]
+    assert [c.title for c in dataset.chain] == ["Source", "Keep", "Shape", "Exclude"]
     assert tools.status({})["cells"][1]["rows"] == 2
-    assert [e["action"] for e in events if e["type"] == "chat_cell"][-1] == "removed"
 
 
 def test_set_capability_and_rename_change_the_dataset():
@@ -292,6 +287,8 @@ def test_guarded_tools_return_json_safe_errors():
             "install",
             "seed_examples",
             "add_synthetic_rows",
+            "generate_examples",
+            "chunk_text",
             "record_quality_review",
             "check_semantic_quality",
         }
@@ -657,9 +654,9 @@ def test_a_cursor_turn_streams_cells_and_text_and_lands_on_the_dataset(cursor):
     assert [t["role"] for t in dataset.chat] == ["user", "agent"]
     assert dataset.chat[1]["text"] == "Kept 2 rows."
     assert dataset.chat[1]["engine"] == "cursor" and dataset.chat[1]["model"] == "composer-2.5"
-    assert [c["action"] for c in dataset.chat[1]["cells"]] == ["proposed"]
+    assert [c["action"] for c in dataset.chat[1]["cells"]] == ["ran"]
     assert len(dataset.chat[1]["steps"]) == 6 and dataset.chat[1]["ms"] >= 0
-    assert dataset.versions()[dataset.active_cell.id] == "1.0"
+    assert dataset.versions()[dataset.active_cell.id] == "1.1"
     assert cursor.created[-1].model == "composer-2.5"
     assert set(cursor.created[-1].local.custom_tools) == set(agent.TOOL_SPECS)
     assert cursor.created[-1].tools == ["mcp"]
@@ -687,7 +684,7 @@ def test_running_generation_progress_is_persisted_and_partial_rows_survive_failu
             draft = dataset.chat[-1]
             assert draft["status"] == "running"
             assert draft["progress"]["generated_rows"] == 1
-            assert draft["cells"] == [{"id": result["id"], "action": "ran"}]
+            assert draft["cells"] == [] and result["id"] is None
             yield from pending
             raise RuntimeError("provider interrupted")
 
@@ -702,8 +699,30 @@ def test_running_generation_progress_is_persisted_and_partial_rows_survive_failu
     assert turn["status"] == "error" and turn["progress"]["stage"] == "partial"
     assert turn["progress"]["generated_rows"] == 1
     assert not dataset.cells.filter(state="proposed").exists()
-    assert dataset.active_cell.rows == 4
-    assert dataset.active_cell.review["generator"]["engine"] == "test"
+    assert dataset.active_cell.rows == 3
+    assert agent.status(dataset)["workflow"]["generation"]["generated_rows"] == 1
+
+
+def test_blocked_preparation_surfaces_the_saved_tool_failure(monkeypatch):
+    dataset = _dataset(intent="train")
+
+    class InvalidPlanEngine:
+        name = "test"
+
+        def run(self, dataset, message, tools, pending):
+            for _ in range(3):
+                tools.handlers()["record_preparation_plan"]({"version": "1.0"})
+            yield from pending
+            return engines.Outcome()
+
+    monkeypatch.setattr(engines, "select", lambda user=None: InvalidPlanEngine())
+    list(agent.follow_up(dataset.id, "Prepare this data", preparation_turn=True))
+
+    dataset.refresh_from_db()
+    workflow_failure = agent.workflow.current(dataset.id).failure
+    assert workflow_failure["detail"]
+    assert dataset.chat[-1]["error"] == f"Preparation stopped: {workflow_failure['detail']}"
+    assert "Inspect the saved workflow outcome" not in dataset.chat[-1]["error"]
 
 
 def test_cursor_thinking_streams_and_survives_reload(cursor, monkeypatch):
@@ -947,9 +966,9 @@ def test_a_native_turn_streams_cells_and_text_and_lands_on_the_dataset(openroute
     assert [t["role"] for t in dataset.chat] == ["user", "agent"]
     assert dataset.chat[1]["text"] == "Kept 2 rows."
     assert dataset.chat[1]["engine"] == "openrouter"
-    assert [c["action"] for c in dataset.chat[1]["cells"]] == ["proposed"]
+    assert [c["action"] for c in dataset.chat[1]["cells"]] == ["ran"]
     assert len(dataset.chat[1]["steps"]) == 6 and dataset.chat[1]["ms"] >= 0
-    assert dataset.versions()[dataset.active_cell.id] == "1.0"
+    assert dataset.versions()[dataset.active_cell.id] == "1.1"
 
 
 def test_native_narration_separates_complete_model_responses(openrouter, monkeypatch):
@@ -1061,7 +1080,10 @@ def test_a_long_turn_keeps_its_instructions(openrouter, monkeypatch):
     monkeypatch.setattr(native, "COMPACT_RESULT_CHARS", 100)
     seen: list[list[dict]] = []
 
-    rounds = [([_call("status", {})], "")] * 6 + [([], "Done.")]
+    rounds = [
+        ([_call("query", {"sql": f"SELECT * FROM t LIMIT 1 OFFSET {offset}"})], "")
+        for offset in range(6)
+    ] + [([], "Done.")]
     inner = _fake_stream(rounds)
 
     def _spy(messages, schemas, **kwargs):
@@ -1362,7 +1384,6 @@ def test_preparation_applies_evidence_repair_with_residual_warnings(
                                     "df = df[['input', 'expected_output', 'mode']].copy()"
                                 ),
                                 "kind": "mechanical",
-                                "run": True,
                             },
                         )
                     ],

@@ -23,8 +23,10 @@ def _slug(title: str) -> str:
     return _SLUG.sub("_", title.lower()).strip("_") or "step"
 
 
-def prepare(dataset: Dataset, system_prompt: str) -> Path:
+def prepare(dataset: Dataset, system_prompt: str, *, scope: str = "") -> Path:
     root = paths.workspace_dir(dataset.id)
+    if scope:
+        root = root / scope
     root.mkdir(parents=True, exist_ok=True)
     (root / "AGENTS.md").write_text(system_prompt + "\n" + WORKSPACE_NOTE, encoding="utf-8")
     cells_dir = root / "cells"

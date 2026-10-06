@@ -42,18 +42,32 @@ assumptions, unresolved questions and task-specific checks. The agent explores
 before transforming; cells snapshot the plan and step that produced them. Keep
 case/group identities separate from coverage strata. Read technical, preservation,
 coverage and semantic outcomes separately, including measured row coverage.
+Semantic audits can select exact message leaves by zero-based index after inspecting
+roles; run them after final shaping so the active version retains its checks.
 Automatic semantic audits stay within the plan's row budget; unmeasured claims
 remain unknown. An unspecified purpose stays pending during exploration. Do not
 insert reference answers into inputs or relabel worker outputs as end-to-end
 capability outputs. Keep the workshop model-independent.
 
-Semantic replacements require a concrete reviewed proposal. Explain its actual
-row examples, counts and coverage effects; call `run_dataset(proposal_cell=...)`
-only for the approved proposal. Poll through the resumed agent turn and inspect
-again. `awaiting_approval` is a decision checkpoint, not a failed generation.
+The Workshop applies supported mechanical and semantic changes sequentially,
+recording row examples, counts and coverage effects while preserving earlier
+versions. Only missing intent requires a user choice. Continue unfinished work
+with `message_dataset_agent`, then inspect the resulting version and residual
+findings. Do not introduce a per-change approval step.
 
-For requested synthetic data, explicitly ask the dataset agent to generate new
-examples and record their lineage. Do not duplicate rows to hit a target. If a
+For raw documents, the selected train/eval intent and original request guide grounded
+example construction. The agent chooses a count from usable source coverage when
+unspecified; no extra generation request or capability is needed. Original sources
+remain readable separately from examples. Inspect exact source attribution, uncovered
+rows and quality checks on the finished examples. Cleaned passages alone do not
+complete a Q&A request, and attribution does not verify answer correctness.
+
+For additional synthetic variants, explicitly ask the dataset agent to generate new
+examples and record their lineage. Do not duplicate rows to hit a target. Inspect `workflow.generation` and its durable run ID, revision, batches and receipts.
+Use `get_job` to observe existing work. `manage_dataset_workflow` accepts that
+`run_id`, current `revision` and `action` (`pause`, `resume`, `publish_partial`).
+Never resubmit unresolved provider work. Pause stops new claims without cancelling
+an owned provider call; use `cancel_dataset` for cancellation. If a
 run stops early, report saved rows and remaining work; generated labels are not
 independently verified ground truth.
 

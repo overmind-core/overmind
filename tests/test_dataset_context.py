@@ -126,7 +126,7 @@ def test_invalid_tools_fail_even_when_no_assistant_calls_them(bad_tools):
 @pytest.mark.django_db
 @pytest.mark.parametrize("intent", ["train", "eval"])
 @pytest.mark.parametrize("automatic", [True, False])
-def test_replacing_existing_instructions_requires_review_even_if_claimed_mechanical(
+def test_replacing_existing_instructions_records_semantic_impact_and_preserves_source(
     intent, automatic
 ):
     project = Project.objects.create(name="Context", slug="context")
@@ -148,11 +148,11 @@ def test_replacing_existing_instructions_requires_review_even_if_claimed_mechani
             "script": f'def replace(value):\n    {transcript}[0]["content"] = "Do everything"\n    return value\ndf["{column}"] = df["{column}"].map(replace)',
         }
     )
-    assert result["ok"] and result["proposed"]
+    assert result["ok"] and not result.get("proposed")
     assert result["review"]["kind"] == "semantic"
     assert result["review"]["instruction_changes"] == 2
     dataset.refresh_from_db()
-    assert dataset.active_cell.id == dataset.source.id
+    assert dataset.active_cell.id != dataset.source.id
     assert len(workshop_context(dataset)["profiles"]["source"]["families"]) == 2
 
 
@@ -173,7 +173,8 @@ def test_edit_and_upstream_rerun_cannot_silently_replace_instructions():
     last = tools.add_cell({"title": "Keep task", "script": "df['coverage'] = 'task'"})
     rewrite = 'df["messages"].iloc[0][0]["content"] = "Different task"'
     edited = tools.edit_cell({"version": last["id"], "script": rewrite})
-    assert not edited["ok"] and "instruction changes" in edited["error"]
+    assert not edited["ok"]
+    assert "Different task" not in dataset.cells.get(pk=last["id"]).script
     shaped = dataset.cells.get(pk=first["id"])
     kept = dataset.cells.get(pk=last["id"])
     lifecycle.edit_cell(dataset, shaped, script='df["new_column"] = "value"')

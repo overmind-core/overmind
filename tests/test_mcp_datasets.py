@@ -16,9 +16,10 @@ from overbae.models import (
     ProjectMembership,
     Span,
     User,
+    WorkshopRun,
 )
-from overbae.services.datasets import land, paths, store
-from overbae.services.datasets.notebook import agent, engines
+from overbae.services.datasets import land, lifecycle, paths, review, store
+from overbae.services.datasets.notebook import agent, engines, run
 from overbae.services.mcp import tools_datasets
 from overbae.services.mcp.catalog import CATALOG
 from overbae.services.mcp.context import MCPContext
@@ -92,7 +93,14 @@ def _ran_cell(dataset: Dataset, *, position: int = 0, title: str = "Source") -> 
     )
 
 
-def test_approving_a_later_proposal_retires_old_previews_and_preserves_saved_data():
+def saved_proposal(dataset, title, script):
+    cell = lifecycle.add_cell(dataset, title=title, script=script, proposed=True)
+    preview = run.try_script(dataset, script, after=dataset.source)
+    review.save_proposal(dataset, cell, dataset.source, preview.path, kind="semantic", note="")
+    return str(cell.id)
+
+
+def test_accepting_a_saved_preview_retires_old_previews_and_preserves_saved_data():
     context = _context()
     dataset = _dataset(context)
     land.land_rows(
@@ -100,23 +108,16 @@ def test_approving_a_later_proposal_retires_old_previews_and_preserves_saved_dat
         [{"input": "one", "expected_output": "yes"}, {"input": "two", "expected_output": "no"}],
     )
     dataset.refresh_from_db()
-    tools = agent.Tools(dataset.id, context.user, lambda _: None)
-    earlier = tools.add_cell(
-        {"title": "Alternative", "script": "df['expected_output'] = 'unknown'", "kind": "semantic"}
-    )
-    selected = tools.add_cell(
-        {"title": "Keep eligible rows", "script": "df = df.iloc[:1]", "kind": "semantic"}
-    )
+    earlier = saved_proposal(dataset, "Alternative", "df['expected_output'] = 'unknown'")
+    selected = saved_proposal(dataset, "Keep eligible rows", "df = df.iloc[:1]")
     source = dataset.source
     fingerprint = store.file_sha256(paths.cell_path(dataset.id, source.id))
-    result = _call(
-        "run_dataset", {"dataset": str(dataset.id), "proposal_cell": selected["id"]}, context
-    )
+    result = _call("run_dataset", {"dataset": str(dataset.id), "proposal_cell": selected}, context)
     assert not result.isError, result.structuredContent
     dataset.refresh_from_db()
-    assert str(dataset.active_cell.id) == selected["id"]
+    assert str(dataset.active_cell.id) == selected
     assert dataset.active_cell.rows == 1
-    assert not dataset.cells.filter(pk=earlier["id"]).exists()
+    assert not dataset.cells.filter(pk=earlier).exists()
     assert list(dataset.cells.values_list("position", flat=True)) == [0, 1]
     assert store.file_sha256(paths.cell_path(dataset.id, source.id)) == fingerprint
 
@@ -176,6 +177,29 @@ def test_inspection_and_job_report_saved_generation_progress():
     job = _call("get_job", {"kind": "dataset_run", "id": str(dataset.id)}, context)
     assert not job.isError
     assert job.structuredContent["details"]["latest_turn"]["status"] == "running"
+
+
+def test_idle_dataset_reports_blocked_workflow_and_error_through_mcp():
+    context = _context()
+    dataset = _dataset(context)
+    WorkshopRun.objects.create(
+        dataset=dataset,
+        kind="preparation",
+        state="blocked",
+        failure={"code": "evidence_mismatch", "detail": "Example 4 cites the wrong seed."},
+        result={
+            "execution": "blocked",
+            "error": "Generation stopped after saving 3 of 800 requested rows.",
+        },
+    )
+    job = _call("get_job", {"kind": "dataset_run", "id": str(dataset.pk)}, context)
+    assert not job.isError
+    assert job.structuredContent["status"] == "blocked"
+    assert (
+        job.structuredContent["job_error"]
+        == "Generation stopped after saving 3 of 800 requested rows."
+    )
+    assert job.structuredContent["details"]["state"] == "idle"
 
 
 def test_inspection_exposes_the_workshops_source_families_and_consumer_requirements():
@@ -345,11 +369,11 @@ def test_inspect_is_bounded_ordered_and_refuses_an_ambiguous_name(monkeypatch):
     assert body["recent_chat"][0]["text"] == "5"
     assert body["next_actions"] == [
         {
-            "tool": "run_dataset",
-            "reason": "User must approve this proposed cell.",
+            "tool": "message_dataset_agent",
+            "reason": "Continue unfinished preparation against the current data.",
             "arguments": {
                 "dataset": str(dataset.id),
-                "proposal_cell": str(dataset.cells.get(position=1).id),
+                "message": "Continue the original request and complete the unfinished preparation steps.",
             },
         }
     ]
@@ -555,10 +579,8 @@ def test_run_accepts_only_a_proposal_from_that_dataset(monkeypatch):
     dataset = _dataset(context)
     land.land_rows(dataset, [{"input": "question", "expected_output": "answer"}])
     dataset.refresh_from_db()
-    proposed = agent.Tools(dataset.id, None, lambda _: None).add_cell(
-        {"title": "Proposal", "script": "df['expected_output'] = 'unknown'", "kind": "semantic"}
-    )
-    proposal = dataset.cells.get(pk=proposed["id"])
+    proposal_id = saved_proposal(dataset, "Proposal", "df['expected_output'] = 'unknown'")
+    proposal = dataset.cells.get(pk=proposal_id)
     other = _dataset(context, "Other")
     foreign = Cell.objects.create(
         dataset=other,
@@ -693,3 +715,73 @@ def test_llm_call_creation_lands_one_row_per_call():
     row = frame.iloc[0].to_dict()
     assert row["expected_output"]["content"] == "recorded"
     assert "trace_id" not in row
+
+
+def test_workshop_pause_resume_shared_between_mcp_and_rest(monkeypatch):
+    from conftest import plan_fixture
+    from rest_framework.test import APIClient
+
+    from overbae.services.datasets import generation_worker
+
+    context = _context()
+    dataset = _dataset(context, intent="train")
+    land.land_rows(dataset, [{"text": "A loan lasts fourteen days."}])
+    dataset.refresh_from_db()
+    plan_fixture(dataset)
+    setup = agent.Tools(dataset.pk, context.user, lambda _: None).seed_examples(
+        {
+            "mode": "derive",
+            "target_rows": 2,
+            "instruction": "Grounded questions",
+            "plan_step": "prepare",
+        }
+    )
+    inspected = _call("inspect_dataset", {"dataset": str(dataset.pk)}, context)
+    state = inspected.structuredContent["workflow"]["generation"]
+    paused = _call(
+        "manage_dataset_workflow",
+        {
+            "dataset": str(dataset.pk),
+            "run_id": setup["run_id"],
+            "revision": state["revision"],
+            "action": "pause",
+        },
+        context,
+    )
+    assert not paused.isError, paused.structuredContent
+    client = APIClient()
+    client.force_authenticate(context.user)
+    inspected = client.get(f"/api/datasets/{dataset.pk}/")
+    assert inspected.status_code == 200
+    paused_state = inspected.data["workflow"]["generation"]
+    assert paused_state["state"] == "paused"
+    scheduled = []
+    monkeypatch.setattr(generation_worker, "schedule", lambda run_id: scheduled.append(str(run_id)))
+    response = client.post(
+        f"/api/datasets/{dataset.pk}/workflow/",
+        {"run_id": setup["run_id"], "revision": paused_state["revision"], "action": "resume"},
+    )
+    assert response.status_code == 200, response.data
+    assert scheduled == [setup["run_id"]]
+    stale = _call(
+        "manage_dataset_workflow",
+        {
+            "dataset": str(dataset.pk),
+            "run_id": setup["run_id"],
+            "revision": state["revision"],
+            "action": "resume",
+        },
+        context,
+    )
+    assert stale.isError
+    foreign = _call(
+        "manage_dataset_workflow",
+        {
+            "dataset": str(dataset.pk),
+            "run_id": setup["run_id"],
+            "revision": paused_state["revision"] + 1,
+            "action": "resume",
+        },
+        _context(),
+    )
+    assert foreign.isError

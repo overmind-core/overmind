@@ -41,6 +41,7 @@ models/APITokenMetadata.ts
 models/APITokenScope.ts
 models/APITokenScopeRequest.ts
 models/APITokenScopeScopeEnum.ts
+models/ActionEnum.ts
 models/AgentGraph.ts
 models/AnnotatorKindEnum.ts
 models/ApiVersionEnum.ts
@@ -342,6 +343,7 @@ models/PostResultsRequest.ts
 models/PreparationCheck.ts
 models/PreparationExecution.ts
 models/PreparationFamily.ts
+models/PreparationOutcome.ts
 models/PreparationPlan.ts
 models/PreparationSpecification.ts
 models/PreparationStep.ts
@@ -420,6 +422,7 @@ models/UserMe.ts
 models/UserOnboarding.ts
 models/Verdict.ts
 models/VerdictOutcomeEnum.ts
+models/WorkshopControlRequest.ts
 models/WorkshopFunding.ts
 models/index.ts
 runtime.ts

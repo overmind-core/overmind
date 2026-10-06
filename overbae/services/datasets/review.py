@@ -24,7 +24,7 @@ from overbae.services.datasets.examples import (
     native_decision,
 )
 from overbae.services.datasets.notebook import runner
-from overbae.services.datasets.partition import preserve_lineage
+from overbae.services.datasets.partition import contamination_keys, preserve_lineage
 
 PROVENANCE_COLUMN = "_overmind_provenance"
 _COVERAGE_COLUMNS = (
@@ -179,12 +179,33 @@ def impact(before: pd.DataFrame, after: pd.DataFrame) -> dict:
     }
 
 
-def same_files(before: Path, after: Path) -> bool:
-    if [c["name"] for c in store.read_manifest(before)] != [
-        c["name"] for c in store.read_manifest(after)
+def same_data(before: Path, after: Path) -> bool:
+    # Scripts cannot remove platform lineage; projecting it away is not a new version.
+    inherited = {
+        PROVENANCE_COLUMN,
+        "human_reviewed",
+        "trace_id",
+        "source_trace_id",
+        "conversation_id",
+    }
+    if [
+        c["name"]
+        for c in store.read_manifest(before)
+        if c["name"] not in inherited | {store.SOURCE_ROW}
+    ] != [
+        c["name"]
+        for c in store.read_manifest(after)
+        if c["name"] not in inherited | {store.SOURCE_ROW}
     ]:
         return False
-    return all(a == b for a, b in zip_longest(store.iter_rows(before), store.iter_rows(after)))
+    for a, b in zip_longest(store.iter_rows(before), store.iter_rows(after)):
+        if a is None or b is None:
+            return False
+        if {k: v for k, v in a.items() if k not in inherited} != {
+            k: v for k, v in b.items() if k not in inherited
+        }:
+            return False
+    return True
 
 
 def distribution_file(path: Path) -> dict:
@@ -286,35 +307,96 @@ def impact_files(before: Path, after: Path) -> dict:
     }
 
 
-def preserve_file_provenance(before: Path, after: Path, destination: Path, *, group_by=()):
+def preserve_file_provenance(
+    before: Path, after: Path, destination: Path, *, group_by=(), generated=False
+):
     columns = {c["name"] for c in store.read_manifest(before)}
     inherited = {
-        PROVENANCE_COLUMN,
         "trace_id",
         "source_trace_id",
         "conversation_id",
         "human_reviewed",
         *group_by,
     } & columns
-    if store.SOURCE_ROW not in columns or store.SOURCE_ROW not in {
-        c["name"] for c in store.read_manifest(after)
-    }:
-        store.write_rows(destination, store.iter_rows(after), store.read_manifest(after))
-        return
-    with indexed_rows(before) as (con, _tracked):
+    if store.SOURCE_ROW not in columns:
+        raise ValueError("The source has no record identities.")
+    fingerprint = store.file_sha256(before)
+    with indexed_rows(before) as (con, tracked):
+        if not tracked:
+            raise ValueError(
+                "The source has ambiguous row identities. Select an earlier intact version."
+            )
+        largest = (
+            con.execute("SELECT max(CAST(identity AS INTEGER)) FROM original").fetchone()[0] or 0
+        )
+        con.execute("CREATE TABLE assigned (identity INTEGER PRIMARY KEY)")
 
         def records():
+            next_id = largest + 1
             for row in store.iter_rows(after):
-                found = con.execute(
-                    "SELECT body FROM original WHERE identity=?",
-                    (json.dumps(row[store.SOURCE_ROW]),),
-                ).fetchone()
-                if found:
-                    original = json.loads(found[0])
-                    original[PROVENANCE_COLUMN] = preserve_lineage(original, group_by=group_by)
-                    for column in inherited | {PROVENANCE_COLUMN}:
-                        if original.get(column) is not None:
-                            row[column] = original[column]
+                if (
+                    generated
+                    and isinstance(row.get(PROVENANCE_COLUMN), dict)
+                    and row[PROVENANCE_COLUMN].get("kind") == "synthetic"
+                ):
+                    yield row
+                    continue
+                explicit = row.pop("_overmind_parent_rows", None)
+                identity = row.get(store.SOURCE_ROW)
+                parent_ids = explicit if explicit is not None else [identity]
+                if not isinstance(parent_ids, list) or not parent_ids or len(parent_ids) > 10000:
+                    raise ValueError(
+                        "A merged row needs _overmind_parent_rows containing its contributing source_row identities."
+                    )
+                originals = []
+                for parent in dict.fromkeys(parent_ids):
+                    if isinstance(parent, bool) or not isinstance(parent, int) or parent < 0:
+                        raise ValueError(
+                            "Preserve source_row, or declare _overmind_parent_rows for a split or merge."
+                        )
+                    found = con.execute(
+                        "SELECT body FROM original WHERE identity=?", (json.dumps(parent),)
+                    ).fetchone()
+                    if found is None:
+                        raise ValueError("A parent row is not present in the bound source version.")
+                    originals.append(json.loads(found[0]))
+                if (
+                    explicit is not None
+                    or con.execute(
+                        "SELECT 1 FROM assigned WHERE identity=?", (identity,)
+                    ).fetchone()
+                ):
+                    identity, next_id = next_id, next_id + 1
+                con.execute("INSERT INTO assigned VALUES (?)", (identity,))
+                row[store.SOURCE_ROW] = identity
+                if explicit is None and len(originals) == 1 and row == originals[0]:
+                    yield row
+                    continue
+                keys = set().union(
+                    *(contamination_keys(original, group_by) for original in originals)
+                )
+                provenance = (
+                    preserve_lineage(originals[0], group_by=group_by)
+                    if len(originals) == 1
+                    else {"kind": "transform"}
+                )
+                row[PROVENANCE_COLUMN] = {
+                    **provenance,
+                    "parents": [
+                        {
+                            "cell": before.stem,
+                            "fingerprint": fingerprint,
+                            "row": original[store.SOURCE_ROW],
+                        }
+                        for original in originals
+                    ],
+                    "source_content_keys": sorted(v for k, v in keys if k == "content"),
+                    "source_group_keys": sorted([k, v] for k, v in keys if k != "content"),
+                }
+                for column in inherited:
+                    values = [original.get(column) for original in originals]
+                    if values[0] is not None and all(value == values[0] for value in values):
+                        row[column] = values[0]
                 yield row
 
         store.write_rows(destination, records())
@@ -437,7 +519,11 @@ def save_proposal(dataset, cell, previous, output: Path, *, kind: str, note: str
     before = paths.cell_path(dataset.id, previous.id)
     path = paths.cell_path(dataset.id, cell.id)
     preserve_file_provenance(
-        before, output, path, group_by=preparation.group_columns(dataset, cell)
+        before,
+        output,
+        path,
+        group_by=preparation.group_columns(dataset, cell),
+        generated=kind == "synthetic",
     )
     report = {
         "kind": kind,
@@ -447,6 +533,7 @@ def save_proposal(dataset, cell, previous, output: Path, *, kind: str, note: str
         "context_fingerprint": context_fingerprint(dataset.capability),
         "intent": dataset.intent,
         "status": "pending",
+        "script": cell.script,
         **impact_files(before, path),
     }
     Cell.objects.filter(pk=cell.pk).update(review=report, quality_report={})
@@ -670,6 +757,7 @@ def record_quality_results(
         current = Cell.objects.select_for_update().get(pk=cell.pk)
         if (
             current.fingerprint != cell.fingerprint
+            or current_dataset.brief != dataset.brief
             or current_dataset.intent != dataset.intent
             or current_dataset.capability_id != dataset.capability_id
             or context_fingerprint(current_dataset.capability) != context

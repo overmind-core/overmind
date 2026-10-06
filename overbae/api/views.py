@@ -107,6 +107,10 @@ from overbae.models import (
 from overbae.services import native_evaluation as native_evaluation_service
 from overbae.services.datasets.lifecycle import DatasetError
 from overbae.services.deployment import ensure_training_deployment, retry_deployment
+from overbae.services.finetuning_checkpoints import (
+    CheckpointArchiveError,
+    get_checkpoint_download_url,
+)
 from overbae.services.inference_live import live_worker_stats
 from overbae.services.inference_metrics import model_activity, model_metrics, percentile
 from overbae.services.training_preparation import retry_for_job as retry_training_preparation
@@ -2150,11 +2154,6 @@ class DeployedModelViewSet(
     )
     @action(detail=True, methods=["get"], url_path="checkpoints")
     def checkpoints(self, request, id=None):
-        from overbae.services.finetuning_checkpoints import (
-            CheckpointArchiveError,
-            get_checkpoint_download_url,
-        )
-
         instance = self.get_object()
         if instance.finetuning_job_id is None:
             return Response(
@@ -2165,7 +2164,8 @@ class DeployedModelViewSet(
             file = get_checkpoint_download_url(instance.finetuning_job)
         except CheckpointArchiveError as exc:
             return Response({"detail": str(exc)}, status=status.HTTP_502_BAD_GATEWAY)
-        return Response(ModelCheckpointsSerializer({"files": [file]}).data)
+        files = [file] if file is not None else []
+        return Response(ModelCheckpointsSerializer({"files": files}).data)
 
     @extend_schema(
         summary="Live serving stats (backlog / running / workers)",

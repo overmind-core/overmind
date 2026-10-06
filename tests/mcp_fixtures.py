@@ -65,6 +65,7 @@ EXPECTED_TOOL_NAMES = {
     "verify_instrumentation",
     "get_model_catalog",
     "cancel_dataset",
+    "manage_dataset_workflow",
     "schedule_native_evaluation",
 }
 

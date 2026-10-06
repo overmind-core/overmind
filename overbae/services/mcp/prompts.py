@@ -47,8 +47,8 @@ PROMPTS = (
             "Develop models from dataset {dataset} for this task: {task}. A repository and capability are optional. "
             "Read overmind://interface/current. Use explore_dataset for bounded profiles and sampling feasibility; derive_dataset preserves historical parents in a separate chain. Use inspect_dataset and message_dataset_agent for "
             "task-family interpretation and a source-bound preparation plan. Do not infer intent or target "
-            "meaning from numeric shape. Preserve the original request, full probability targets, mean-only "
-            "ratings and unknown semantics. Reinterpretation requires a concrete reviewed proposal. "
+            "meaning from numeric shape. Raw-source train/eval preparation should complete grounded example construction in its own version, preserving original sources, source attribution and uncovered-row counts. A missing capability or user-supplied row count is not a blocker. Check actual task completion and answer support, not just cleaned passages or schema fit. Preserve the original request, full probability targets, mean-only "
+            "ratings and unknown semantics. Evidence-backed reinterpretation runs as a recorded cell; unsupported meaning stays unknown. "
             "After preparation, use create_data_partition with a unique request_key, source_cell and recipe: "
             "seed, fractions keyed by train/development/calibration/final, group_by, optional stratify_by, "
             "and holdouts containing field, values and role. Inspect get_job(kind=data_partition) for actual "
@@ -305,8 +305,8 @@ PROMPTS = (
             "with the supplied project UUID. Never request an API key in chat. Parse the "
             "returned dataset UUID, poll with get_job(kind=dataset_run), and call inspect_dataset. Use "
             "message_dataset_agent for requested name, intent, capability, or cell changes, "
-            "then poll and inspect again. If a proposal exists, call "
-            "run_dataset(proposal_cell=...) only after user approval. Verify the chosen cell "
+            "then poll and inspect again. The agent applies supported preparation changes directly "
+            "and records their impact. Resume unfinished work with message_dataset_agent. Verify the chosen cell "
             "with query_dataset."
         ),
     ),

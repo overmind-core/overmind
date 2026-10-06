@@ -31,6 +31,7 @@ from overbae.api.dataset_serializers import (
     DetailSerializer,
     RowsPageSerializer,
     SourceSerializer,
+    WorkshopControlSerializer,
 )
 from overbae.api.scoping import project_ids_for
 from overbae.models import Capability, Cell, Dataset, Project
@@ -38,6 +39,8 @@ from overbae.services.datasets import diff as diff_svc
 from overbae.services.datasets import (
     dispatch,
     files,
+    generation,
+    generation_worker,
     lifecycle,
     operations,
     paths,
@@ -403,6 +406,25 @@ class DatasetViewSet(viewsets.ModelViewSet):
         except lifecycle.DatasetError as exc:
             return _error(exc)
         return Response(DatasetSerializer(dataset).data, status=status.HTTP_202_ACCEPTED)
+
+    @extend_schema(request=WorkshopControlSerializer, responses={200: DatasetSerializer})
+    @action(detail=True, methods=["post"], url_path="workflow")
+    def workflow(self, request, id=None):
+        dataset = self.get_object()
+        serializer = WorkshopControlSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        try:
+            generation.control(dataset, **serializer.validated_data)
+            if serializer.validated_data["action"] == "resume":
+                generation_worker.schedule(serializer.validated_data["run_id"])
+        except (ValueError, generation.WorkshopRun.DoesNotExist) as exc:
+            raise ValidationError(
+                {
+                    "detail": "The workflow cannot accept this action. Inspect its current revision, state and failure before continuing."
+                }
+            ) from exc
+        dataset.refresh_from_db()
+        return Response(DatasetSerializer(dataset).data)
 
     @extend_schema(request=None, responses={202: DatasetSerializer})
     @action(detail=True, methods=["post"], url_path="cancel")

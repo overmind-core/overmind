@@ -161,6 +161,12 @@ export interface Dataset {
     readonly preparationPlan: PreparationPlan | null;
     /**
      *
+     * @type {{ [key: string]: any; }}
+     * @memberof Dataset
+     */
+    readonly workflow: { [key: string]: any; };
+    /**
+     *
      * @type {any}
      * @memberof Dataset
      */
@@ -227,6 +233,7 @@ export function instanceOfDataset(value: object): value is Dataset {
     if (!('rows' in value) || value['rows'] === undefined) return false;
     if (!('readiness' in value) || value['readiness'] === undefined) return false;
     if (!('preparationPlan' in value) || value['preparationPlan'] === undefined) return false;
+    if (!('workflow' in value) || value['workflow'] === undefined) return false;
     if (!('operation' in value) || value['operation'] === undefined) return false;
     if (!('state' in value) || value['state'] === undefined) return false;
     if (!('error' in value) || value['error'] === undefined) return false;
@@ -263,6 +270,7 @@ export function DatasetFromJSONTyped(json: any, ignoreDiscriminator: boolean): D
         'rows': json['rows'],
         'readiness': DatasetReadinessFromJSON(json['readiness']),
         'preparationPlan': PreparationPlanFromJSON(json['preparation_plan']),
+        'workflow': json['workflow'],
         'operation': json['operation'],
         'state': DatasetStateEnumFromJSON(json['state']),
         'error': json['error'],
@@ -278,7 +286,7 @@ export function DatasetToJSON(json: any): Dataset {
     return DatasetToJSONTyped(json, false);
 }
 
-export function DatasetToJSONTyped(value?: Omit<Dataset, 'id'|'project'|'brief'|'source_kind'|'source_spec'|'capability_name'|'capability_rank'|'active_version'|'rows'|'readiness'|'preparation_plan'|'operation'|'state'|'error'|'cells'|'chat'|'created_by'|'created_at'|'updated_at'> | null, ignoreDiscriminator: boolean = false): any {
+export function DatasetToJSONTyped(value?: Omit<Dataset, 'id'|'project'|'brief'|'source_kind'|'source_spec'|'capability_name'|'capability_rank'|'active_version'|'rows'|'readiness'|'preparation_plan'|'workflow'|'operation'|'state'|'error'|'cells'|'chat'|'created_by'|'created_at'|'updated_at'> | null, ignoreDiscriminator: boolean = false): any {
     if (value == null) {
         return value;
     }

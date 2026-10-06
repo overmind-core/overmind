@@ -9,7 +9,14 @@ import duckdb
 from asgiref.sync import sync_to_async
 
 from overbae.models import Capability, Dataset
-from overbae.services.datasets import dispatch, operations, paths, store
+from overbae.services.datasets import (
+    dispatch,
+    generation,
+    generation_worker,
+    operations,
+    paths,
+    store,
+)
 from overbae.services.datasets.contract import stored_intents
 from overbae.services.datasets.lifecycle import DatasetError
 from overbae.services.datasets.notebook.agent import resolve_cell
@@ -24,6 +31,7 @@ from overbae.services.mcp.contracts.datasets import (
     InspectDatasetInput,
     ListDatasetsInput,
     ListDatasetsOutput,
+    ManageDatasetWorkflowInput,
     MessageDatasetAgentInput,
     QueryDatasetInput,
     QueryDatasetOutput,
@@ -330,6 +338,23 @@ def _cancel_dataset_sync(payload, context):
     )
 
 
+def _manage_dataset_workflow_sync(payload, context):
+    dataset = _resolve_dataset(context, payload.dataset)
+    try:
+        generation.control(
+            dataset, payload.run_id, action=payload.action, revision=payload.revision
+        )
+        if payload.action == "resume":
+            generation_worker.schedule(payload.run_id)
+    except (ValueError, generation.WorkshopRun.DoesNotExist) as exc:
+        raise MCPError(
+            "workflow_conflict",
+            "The workflow cannot accept this action. Inspect its current revision, state and failure before continuing.",
+        ) from exc
+    dataset.refresh_from_db()
+    return mutation_output(dataset, summary="Workshop workflow updated.")
+
+
 def _async_handler(function):
     async def handler(payload, context):
         return await sync_to_async(function, thread_sensitive=True)(payload, context)
@@ -341,6 +366,16 @@ def register_dataset_tools(catalog) -> None:
     from overbae.services.mcp.catalog import ToolDefinition
 
     definitions = [
+        (
+            "manage_dataset_workflow",
+            "Manage saved dataset work",
+            "Pause new generation claims, resume saved batches, or publish an explicit partial result. Requires the current run revision from inspect_dataset. Pause does not cancel an in-flight provider request. Unresolved provider submissions cannot be replayed.",
+            ManageDatasetWorkflowInput,
+            DatasetMutationOutput,
+            _manage_dataset_workflow_sync,
+            False,
+            "job",
+        ),
         (
             "cancel_dataset",
             "Cancel dataset operation",
@@ -459,7 +494,13 @@ def register_dataset_tools(catalog) -> None:
                     {"overmind:read"} if read_only else {"overmind:data:write"}
                 ),
                 cost_class="llm"
-                if name in {"run_dataset", "message_dataset_agent", "start_dataset"}
+                if name
+                in {
+                    "run_dataset",
+                    "message_dataset_agent",
+                    "start_dataset",
+                    "manage_dataset_workflow",
+                }
                 else "free",
                 async_mode=mode,
             ),

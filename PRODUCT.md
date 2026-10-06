@@ -151,7 +151,7 @@ navigation code but are no longer used to stage access.
   credit charge. ChatGPT plan limits stop the request; server models require an
   explicit switch. Evaluation runs, training and serving keep their own billing.
 - The Console upload composer requires ready source files and a written
-  prompt. If the user has not specified Training, Eval or Data exploration, the workshop pauses and asks them to choose before preparation. Data exploration is a saved intent, not an inferred training or evaluation target. A capability can follow exploration. The original
+  prompt. If the user has not specified Training, Eval or Data exploration, the workshop asks them to choose an intent chip before preparation. This is its only clarification question; further work uses inspected evidence and supported defaults, with limitations reported and supported semantic changes applied as recorded cells without per-change approval. Data exploration is a saved intent, not an inferred training or evaluation target. A capability can follow exploration. The original
   wording stays with the dataset. REST and MCP can still create a source-free draft.
   A bottom-anchored composer holds compact attachment chips beside the plus button,
   with retry and removal. The plus menu offers Add files and Select from traces;
@@ -183,10 +183,16 @@ navigation code but are no longer used to stage access.
   thinking stays collapsed by default, the latest answer expands, and previous
   answers collapse on a new prompt. A selected cell scopes the request without
   changing the active version.
-  Mechanical transformations and declared-rule derivations can run directly.
-  Semantic changes and replacement task instructions require concrete reviewed
-  proposals. Suggestions sit above the composer as compact rows with Approve/Reject
-  actions and expandable details. A changed input or task context retires the suggestion; any replacement requires a fresh preview. Requested synthetic generation is recorded as synthetic.
+  Supported mechanical and semantic changes run sequentially, with source evidence,
+  assumptions and measured impact recorded in the cells. The original source and
+  earlier versions remain available. There are no per-change approval controls;
+  only a missing initial intent asks for a choice. Unsupported facts remain unknown.
+  Requested synthetic generation is recorded as synthetic. Saved workflows retain
+  the original request, intended output, source bindings and measured completion.
+  Grounded generation qualifies a small pilot, continues in durable background
+  batches and publishes one result. Source preservation, coverage, compatibility
+  and quality remain separate. UI, REST and MCP inspect the same execution;
+  revision-checked controls recover saved work without repeating unknown calls.
   Quality findings are advisory; only unreadable or incompatible data blocks use.
 - Eval runs, optimiser runs, training runs **use** the exact
   version they read: it becomes the next major (2.0), it and every cell

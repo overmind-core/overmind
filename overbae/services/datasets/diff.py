@@ -19,7 +19,7 @@ def _short(value: Any) -> Any:
 
 
 def _names(path: Path) -> list[str]:
-    return [c["name"] for c in store.read_manifest(path)]
+    return [c["name"] for c in store.read_manifest(path) if c["name"] != "_overmind_provenance"]
 
 
 def _tracked(a: Path, b: Path) -> bool:

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import logging
 import time
@@ -16,8 +17,10 @@ from pydantic import ValidationError
 from overbae.models import Capability, Cell, Dataset
 from overbae.services.billing_ledger import record_workshop_usage
 from overbae.services.chatgpt import ChatGPTError
-from overbae.services.datasets import diff as diff_svc
 from overbae.services.datasets import (
+    chunking,
+    generation,
+    generation_quality,
     lifecycle,
     operations,
     paths,
@@ -26,8 +29,9 @@ from overbae.services.datasets import (
     sampling,
     semantic_checks,
     store,
-    synthetic,
+    workflow,
 )
+from overbae.services.datasets import diff as diff_svc
 from overbae.services.datasets.context import context_fingerprint, workshop_context
 from overbae.services.datasets.notebook import engines, events, libraries, prompts
 from overbae.services.datasets.notebook import run as run_svc
@@ -144,6 +148,7 @@ def status(dataset: Dataset) -> dict[str, Any]:
         "capability_rank": dataset.capability_rank[:3],
         "state": dataset.state,
         "preparation_plan": preparation.describe(dataset),
+        "workflow": workflow.describe(dataset),
         "error": dataset.error,
         "active": versions.get(active.id) if active else None,
         "active_id": str(active.id) if active else None,
@@ -204,6 +209,8 @@ class Tools:
         self.lock = RLock()
         self.turn_id = ""
         self.progress: dict[str, Any] = {}
+        self.workflow_id = workflow.ensure(_dataset(dataset_id), user=user).pk
+        self.stop_requested = workflow.current(dataset_id).state == "blocked"
         self.generation: dict[str, Any] | None = None
         self.last_thought_save = 0.0
         self.text = ""
@@ -339,6 +346,7 @@ class Tools:
 
     def status(self, args: dict[str, Any], _ctx: Any = None) -> dict[str, Any]:
         result = status(_dataset(self.dataset_id))
+        result["available_tools"] = list(self.specs())
         for cell in result["cells"]:
             if cell["version"] != "proposed":
                 self.cell_references.setdefault(cell["version"], cell["id"])
@@ -350,10 +358,16 @@ class Tools:
             request = preparation.PlanRequest.model_validate(args)
             cell = self.resolve_cell(dataset, request.version, ran_only=True)
             preparation.save_plan(
-                dataset, cell, request, user_request=self.user_request, exploration=self.exploration
+                dataset,
+                cell,
+                request,
+                user_request=self.user_request,
+                exploration=self.exploration,
+                automatic=self.requires_preparation_plan(dataset),
             )
         except (ValueError, lifecycle.DatasetError) as exc:
             return {"ok": False, "error": str(exc)}
+        workflow.bind_plan(dataset, dataset.preparation_plan)
         self.emit({"type": "dataset_changed"})
         return {"ok": True, "plan": preparation.describe(dataset)}
 
@@ -431,7 +445,6 @@ class Tools:
 
     def add_cell(self, args: dict[str, Any], _ctx: Any = None) -> dict[str, Any]:
         dataset = _dataset(self.dataset_id)
-        run = args.get("run", True) is not False
         previous = dataset.cells.exclude(state=Cell.State.PROPOSED).order_by("-position").first()
         if previous is None or not previous.ran:
             return {"ok": False, "error": "Run or fix the existing chain first."}
@@ -457,15 +470,11 @@ class Tools:
                 and store.file_sha256(paths.cell_path(dataset.id, pending.id))
                 == report.get("output_fingerprint")
             ):
-                self._touch(pending, "proposed")
-                return {
-                    "ok": True,
-                    "proposed": True,
-                    "reused": True,
-                    "id": str(pending.id),
-                    "title": pending.title,
-                    "review": review.summary(report),
-                }
+                lifecycle.accept_proposal(dataset, pending)
+                pending.review = {**pending.review, "approval": "agent"}
+                pending.save(update_fields=["review"])
+                self._touch(pending, "created")
+                return {**self._run(dataset, pending), "reused": True}
         key = (previous.id, previous.fingerprint, script)
         result = (
             self.preview[3]
@@ -474,9 +483,13 @@ class Tools:
         )
         self.preview = None
         if result.path is None:
-            return {"ok": False, "error": result.error}
+            return {
+                "ok": False,
+                "error": result.error,
+                "failure": {"code": "execution_failed", "category": "execution"},
+            }
         before = paths.cell_path(dataset.id, previous.id)
-        if review.same_files(before, result.path):
+        if review.same_data(before, result.path):
             return {
                 "ok": True,
                 "unchanged": True,
@@ -494,17 +507,14 @@ class Tools:
         kind = args.get("kind", "mechanical")
         if kind not in {"mechanical", "semantic"}:
             return {"ok": False, "error": "kind must be mechanical or semantic."}
-        if changes["instruction_changes"]:
+        if changes["instruction_changes"] or changes["decision_changes"]:
             kind = "semantic"
-        if kind == "semantic" or review.requires_approval(changes, allow_exclusions=self.automatic):
-            run = False
         try:
             cell = lifecycle.add_cell(
                 dataset,
                 title=str(args.get("title") or "Step"),
                 script=str(args.get("script") or ""),
                 note=str(args.get("note") or ""),
-                proposed=not run,
                 user=self.user,
             )
         except ChatGPTError:
@@ -513,23 +523,15 @@ class Tools:
             return {"ok": False, "error": exc.detail}
         cell.preparation_plan = plan
         cell.save(update_fields=["preparation_plan"])
-        self._touch(cell, "proposed" if not run else "created")
+        self._touch(cell, "created")
         self.emit({"type": "cells_changed"})
         report = review.save_proposal(
             dataset, cell, previous, result.path, kind=kind, note=str(args.get("note") or "")
         )
-        if not run:
-            return {
-                "ok": True,
-                "proposed": True,
-                "id": str(cell.id),
-                "title": cell.title,
-                "review": review.summary(report),
-            }
         cell.review = {
             **report,
             "status": "accepted",
-            "approval": "preparation" if self.automatic else "mechanical",
+            "approval": "agent",
         }
         cell.save(update_fields=["review"])
         return self._run(dataset, cell)
@@ -569,140 +571,155 @@ class Tools:
                 + ")",
                 "note": f"Select {request['rows']} unchanged rows with seed {request['seed']}; retain minimum stratum coverage and allocate remaining capacity proportionally. This is a sample, not a train/eval split.",
                 "kind": "semantic",
-                "run": False,
             }
         )
 
-    def seed_examples(self, args: dict[str, Any], _ctx: Any = None) -> dict[str, Any]:
-        if self.automatic:
-            return {"ok": False, "error": "Synthetic generation requires a user request."}
+    def chunk_text(self, args: dict[str, Any], _ctx: Any = None) -> dict[str, Any]:
         dataset = _dataset(self.dataset_id)
-        target = args.get("target_rows")
-        instruction = str(args.get("instruction") or "").strip()[:4000]
-        if isinstance(target, bool) or not isinstance(target, int):
-            return {"ok": False, "error": "Set target_rows to the requested final dataset size."}
-        if not instruction:
-            return {"ok": False, "error": "Describe the requested examples and intended coverage."}
-        tail = dataset.cells.exclude(state=Cell.State.PROPOSED).order_by("-position").first()
-        if tail is None or not tail.ran:
-            return {"ok": False, "error": "Run or fix the existing chain first."}
-        cell_id = args.get("cell_id")
-        generated_cell = dataset.cells.filter(pk=cell_id).first() if cell_id else None
-        if cell_id and (generated_cell is None or not generated_cell.review.get("generation_id")):
-            return {"ok": False, "error": "No saved generation with that cell id."}
-        if (
-            not cell_id
-            and tail.review.get("target_rows") == target
-            and tail.review.get("generation_id")
-        ):
-            generated_cell = tail
-        if self.generation and (
-            self.generation["target_rows"] != target
-            or (generated_cell and self.generation["id"] != generated_cell.review["generation_id"])
-        ):
-            return {"ok": False, "error": "Keep the generation and target fixed for this request."}
-        cell = tail
-        if generated_cell is not None:
-            cell = dataset.cells.filter(pk=generated_cell.review.get("source_cell")).first()
-            if cell is None:
-                return {"ok": False, "error": "The generation source is no longer available."}
-            try:
-                synthetic.validate_generation(dataset, generated_cell, cell, target)
-            except ValueError as exc:
-                return {"ok": False, "error": str(exc)}
-            instruction = generated_cell.review["instruction"]
-            self._touch(generated_cell, "ran")
-        frame = store.read_frame(paths.cell_path(dataset.id, cell.id))
-        if target <= len(frame):
-            return {"ok": False, "error": "Set target_rows to the requested final dataset size."}
-        self.generation = self.generation or {
-            "id": generated_cell.review["generation_id"] if generated_cell else str(uuid.uuid4()),
-            "target_rows": target,
-            "instruction": instruction,
-            "source_cell": str(cell.id),
-            "source_fingerprint": cell.fingerprint,
-        }
-        generated = (
-            generated_cell.review.get("generated_rows", 0)
-            if generated_cell
-            else self.progress.get("generated_rows", 0)
+        source = dataset.cells.exclude(state=Cell.State.PROPOSED).order_by("-position").first()
+        plan = preparation.execution_plan(dataset, source, args.get("plan_step"), required=True)
+        cell = chunking.chunk_text(
+            dataset,
+            source,
+            text_column=args["text_column"],
+            group_by=args.get("group_by", []),
+            max_chars=args["max_chars"],
+            plan=plan,
+            user=self.user,
         )
+        self._touch(cell, "ran")
+        self.emit({"type": "cells_changed"})
+        return {"ok": True, **_cell_line(dataset, cell, dataset.versions())}
+
+    def seed_examples(self, args: dict[str, Any], _ctx: Any = None) -> dict[str, Any]:
+        dataset = _dataset(self.dataset_id)
+        mode = args.get("mode", "augment")
+        if self.automatic and mode != "derive":
+            return {"ok": False, "error": "Synthetic generation requires a user request."}
+        source = dataset.cells.exclude(state=Cell.State.PROPOSED).order_by("-position").first()
+        if source is None or not source.ran:
+            return {"ok": False, "error": "Run or fix the existing chain first."}
+        run_id = args.get("run_id")
+        if run_id:
+            saved = generation.get(run_id)
+            if saved.dataset_id != dataset.pk:
+                return {"ok": False, "error": "No saved generation with that run id."}
+            source = saved.source
+        try:
+            plan = preparation.execution_plan(
+                dataset, source, args.get("plan_step"), required=mode == "derive"
+            )
+            run = generation.start(
+                dataset,
+                source,
+                target_rows=args.get("target_rows"),
+                instruction=str(args.get("instruction") or ""),
+                mode=mode,
+                plan=plan,
+                user=self.user,
+                parent=workflow.current(dataset.pk),
+                run_id=run_id,
+            )
+        except ValueError as exc:
+            return {"ok": False, "error": str(exc)}
+        self.generation = {"id": str(run.pk), "instruction": run.request, "mode": mode}
+        summary = generation.describe(run.pk)
         self.report_progress(
             "generating",
             "Generating examples",
-            instruction,
-            rows_before=len(frame),
-            target_rows=target,
-            generated_rows=generated,
-            **({"cell_id": str(generated_cell.id)} if generated_cell else {}),
+            run.request,
+            rows_before=run.specification["source_rows"] if mode == "augment" else 0,
+            **{
+                k: summary[k]
+                for k in (
+                    "source_rows",
+                    "target_rows",
+                    "generated_rows",
+                    "remaining_rows",
+                    "batches",
+                    "source_rows_without_examples",
+                )
+            },
+            run_id=str(run.pk),
         )
-        count = min(max(int(args.get("limit", 3)), 1), 10)
-        sample = frame.sample(n=min(len(frame), count), random_state=42)
         return {
-            "version": dataset.versions().get(cell.id),
-            "rows_before": len(frame),
-            "target_rows": target,
-            "generated_rows": generated,
-            "remaining_rows": target - len(frame) - generated,
-            "examples": [
-                {
-                    "seed_row": int(row[store.SOURCE_ROW]),
-                    "row": {
-                        k: v
-                        for k, v in row.items()
-                        if k not in {store.SOURCE_ROW, review.PROVENANCE_COLUMN}
-                    },
-                }
-                for row in sample.to_dict(orient="records")
-            ],
+            "ok": True,
+            **summary,
+            "run_id": str(run.pk),
+            "examples": generation.seeds(run, limit=min(max(int(args.get("limit", 3)), 1), 10)),
         }
 
     def add_synthetic_rows(self, args: dict[str, Any], _ctx: Any = None) -> dict[str, Any]:
-        if self.automatic:
+        if self.automatic and (self.generation or {}).get("mode") != "derive":
             return {"ok": False, "error": "Synthetic generation requires a user request."}
         if self.generation is None:
             return {
                 "ok": False,
                 "error": "Call seed_examples with target_rows and instruction first.",
             }
-        dataset = _dataset(self.dataset_id)
-        previous = dataset.cells.filter(pk=self.generation["source_cell"]).first()
-        if previous is None or not previous.ran:
-            return {"ok": False, "error": "Run or fix the existing chain first."}
-        if (
-            str(previous.id) != self.generation["source_cell"]
-            or previous.fingerprint != self.generation["source_fingerprint"]
-        ):
-            return {
-                "ok": False,
-                "error": "The source changed during generation. Start a new request.",
-            }
-        cell = synthetic.add(
-            dataset,
-            previous,
-            args.get("examples"),
-            instruction=self.generation["instruction"],
-            generation_id=self.generation["id"],
-            target_rows=self.generation["target_rows"],
-            user=self.user,
-        )
-        self._touch(cell, "ran")
+        examples = args.get("examples")
+        key = hashlib.sha256(store.json_dumps(examples).encode()).hexdigest()
+        result = generation.accept_batch(self.generation["id"], key, examples)
+        cell = generation.publish(self.generation["id"]) if result["remaining_rows"] == 0 else None
+        summary = generation.describe(self.generation["id"])
+        if cell:
+            self._touch(cell, "ran")
+            self.emit({"type": "cells_changed"})
         self.report_progress(
             "generating",
             "Generating examples",
             self.generation["instruction"],
-            generated_rows=cell.review["generated_rows"],
-            cell_id=str(cell.id),
+            **{
+                k: summary[k]
+                for k in (
+                    "generated_rows",
+                    "remaining_rows",
+                    "batches",
+                    "source_rows_without_examples",
+                )
+            },
+            run_id=self.generation["id"],
+            cell_id=str(cell.pk) if cell else None,
         )
-        self.emit({"type": "cells_changed"})
         return {
             "ok": True,
-            "id": str(cell.id),
-            "version": dataset.versions().get(cell.id),
-            "generated_rows": cell.review["generated_rows"],
-            "rows_after": cell.review["rows_after"],
-            "remaining_rows": self.generation["target_rows"] - cell.review["rows_after"],
+            **summary,
+            "id": str(cell.pk) if cell else None,
+            "rows_after": summary["generated_rows"] + self.progress.get("rows_before", 0),
+            "version": _dataset(self.dataset_id).versions().get(cell.pk) if cell else None,
+            "run_id": self.generation["id"],
         }
+
+    def generate_examples(self, args: dict[str, Any], _ctx: Any = None) -> dict[str, Any]:
+        if self.generation is None:
+            return {"ok": False, "error": "Configure the saved recipe with seed_examples first."}
+        run = generation.get(self.generation["id"])
+        generation.validate_source(run)
+        if run.generated_rows == 0:
+            return {
+                "ok": False,
+                "error": "Save a small valid example batch with add_synthetic_rows before scheduling this recipe.",
+            }
+        if run.output_id:
+            return {"ok": True, **generation.describe(run.pk)}
+        qualification = generation_quality.qualify(run.pk)
+        run.refresh_from_db()
+        if qualification["status"] == "failed":
+            return {
+                "ok": False,
+                "error": "The pilot did not meet the saved task. Revise the generation instruction using these findings and call seed_examples again; the previous pilot remains saved.",
+                "qualification": qualification,
+            }
+        if run.state in {"paused", "cancelled", "blocked"}:
+            return {
+                "ok": False,
+                "error": "The saved workflow is stopped.",
+                **generation.describe(run.pk),
+            }
+        run.state = "queued"
+        run.save(update_fields=["state", "updated_at"])
+        self.stop_requested = True
+        return {"ok": True, **generation.describe(run.pk)}
 
     def record_quality_review(self, args: dict[str, Any], _ctx: Any = None) -> dict[str, Any]:
         dataset = _dataset(self.dataset_id)
@@ -775,7 +792,7 @@ class Tools:
                 if args.get("kind") == "semantic" or review.requires_approval(changes):
                     return {
                         "ok": False,
-                        "error": "Exclusions, evidence removal, instruction changes and semantic changes need a new proposal. Use add_cell with kind=semantic.",
+                        "error": "Keep the earlier version intact. Use add_cell with kind=semantic and a script written against the current chain tail; it runs directly without approval.",
                     }
             cell = lifecycle.edit_cell(
                 dataset,
@@ -915,16 +932,40 @@ class Tools:
     def handlers(self) -> dict[str, Callable[..., Any]]:
         return {name: _guarded(self, name, getattr(self, name)) for name in TOOL_SPECS}
 
+    def specs(self):
+        dataset = _dataset(self.dataset_id)
+        available = set(TOOL_SPECS)
+        if self.stop_requested:
+            available &= workflow.READ_ONLY
+        elif dataset.intent == Dataset.Intent.PENDING:
+            available &= workflow.READ_ONLY | {"set_intent", "rename", "record_preparation_plan"}
+        if not self.generation:
+            available -= {"add_synthetic_rows", "generate_examples"}
+        if dataset.frozen_before >= 0:
+            available -= {"set_intent", "set_capability"}
+        if not dataset.cells.filter(state=Cell.State.PROPOSED).exists():
+            available.discard("remove_cell")
+        return {name: spec for name, spec in TOOL_SPECS.items() if name in available}
+
+    def schemas(self):
+        return [
+            {
+                "type": "function",
+                "function": {"name": name, "description": description, "parameters": schema},
+            }
+            for name, (description, schema) in self.specs().items()
+        ]
+
 
 _TEXT = {"type": "string"}
 
 TOOL_SPECS: dict[str, tuple[str, dict]] = {
     "record_preparation_plan": (
-        "Save a complete preparation plan before proposing a sample or preparing rows. Required arguments: version, objective, consumer, understanding, families and checks. families is a nonempty array of objects with name and evidence. Only list column paths actually observed in the source; omit absent optional fields such as weights. Unchanged sampling needs no mapping. Any target_meaning other than unknown requires target_evidence, including hypotheses. A supported interpretation also requires nonempty evidence_references and interpretation_scope, with no conflicts; otherwise retain hypothesis or conflicted. checks is a nonempty array of objects with name, category, method and question. Declare each transformation or sample in steps using id, description and kind; later calls use that id as plan_step. Describe mappings, assumptions and unresolved questions from inspected evidence. Semantic row budget bounds automatic judging across turns; reserve zero unless independent evidence and a justified audit exist. Saving a plan does not approve semantic edits or sampling. Revise the plan when evidence or intent changes.",
+        "Save a complete preparation plan before preparing rows. Automatic preparation first requires query or inspect on this exact version, plus outcome.task, outcome.deliverables and outcome.model_input describing inference inputs separately from generator-only evidence. Required arguments: version, objective, consumer, understanding, families and checks. Families need name and evidence; only list observed column paths. Non-unknown target_meaning requires target_evidence; a supported interpretation also needs evidence_references, interpretation_scope and no conflicts. Constants are limited to shared decision.state, decision.kind, decision.options, decision.option_values and decision.target_semantics. Derive decision.question and row targets in a custom transform. Checks need name, category, method and question. Declare steps with id, description and kind; execution uses plan_step. Semantic row budget bounds automatic judging across turns. Plans record evidence and assumptions, not proof of label truth. Correct the exact field named by validation; do not repeat a rejected plan. Revise when evidence or intent changes.",
         preparation.PlanRequest.model_json_schema(),
     ),
     "check_semantic_quality": (
-        "Measure semantic row quality against named evidence and answer columns using the selected Workshop funding source. Never uses answers as their own evidence. Unknowns stay null; findings are advisory and do not authorize edits. Processes at most 200 unmeasured rows per call; repeat identical checks while remaining_rows is nonzero. Changing the version, task context, or checks starts a new audit. Use record_quality_review for deterministic format/schema checks.",
+        "Measure semantic row quality against named evidence and answer fields using the selected Workshop funding source. Nested objects and list indices are supported: inspect roles, then select e.g. messages.1.content as user evidence and messages.2.content as the assistant answer when those indices match. Never select a whole transcript as both evidence and answer. Audit after final shaping; do not add/remove helper columns when indexed paths suffice. Unknowns stay null; findings are advisory. Processes at most 200 unmeasured rows per call within the saved semantic budget. Changing the version, task context, or checks starts a new audit. Use record_quality_review for deterministic format/schema checks.",
         semantic_checks.SemanticReviewRequest.model_json_schema(),
     ),
     "prepare_examples": (
@@ -932,7 +973,7 @@ TOOL_SPECS: dict[str, tuple[str, dict]] = {
         {"type": "object", "properties": {"plan_step": _TEXT}},
     ),
     "sample_rows": (
-        "Propose a deterministic sample of unchanged rows. During preparation, first save record_preparation_plan with a kind=sample step, then pass its id as plan_step here. A description of a plan in chat is not a saved plan. Reads the full source in bounded passes; no quota tables or scripts needed. Stratify by scalar column paths, optionally native hard/soft targets. Reserve minimum coverage per nonempty stratum, then allocate remaining capacity proportionally by largest remainder. Preserves row order, multiplicity and lineage. Does not create train/eval splits. Fails instead of silently underfilling. Approval pins the reviewed output.",
+        "Apply a deterministic sample of unchanged rows as a new active version. During preparation, first save record_preparation_plan with a kind=sample step, then pass its id as plan_step here. A description of a plan in chat is not a saved plan. Reads the full source in bounded passes; no quota tables or scripts needed. Stratify by scalar column paths, optionally native hard/soft targets. Reserve minimum coverage per nonempty stratum, then allocate remaining capacity proportionally by largest remainder. Preserves row order, multiplicity and lineage. Does not create train/eval splits. Fails instead of silently underfilling. The saved output and original source remain inspectable.",
         {
             "type": "object",
             "additionalProperties": False,
@@ -997,7 +1038,7 @@ TOOL_SPECS: dict[str, tuple[str, dict]] = {
         },
     ),
     "add_cell": (
-        "Validate and run a cell at the end of the chain in one call. Failed scripts leave the chain unchanged. A separate try_script is optional; an identical preview is reused. run=false leaves a proposal.",
+        "Validate and run a cell at the end of the chain in one call. Failed scripts leave the chain unchanged. A separate try_script is optional; an identical preview is reused. Mechanical and semantic changes both apply directly, preserving the source and recording impact.",
         {
             "type": "object",
             "properties": {
@@ -1006,33 +1047,51 @@ TOOL_SPECS: dict[str, tuple[str, dict]] = {
                 "plan_step": _TEXT,
                 "note": {
                     **_TEXT,
-                    "description": "Why this change, the evidence or rule used, and affected row count. For a proposal, state the decision the user is approving and its tradeoff.",
+                    "description": "Why this change, the evidence or rule used, and affected row count. Record the chosen interpretation and tradeoff; no user decision is required.",
                 },
-                "run": {"type": "boolean"},
                 "kind": {
                     "type": "string",
                     "enum": ["mechanical", "semantic"],
-                    "description": "mechanical: evidence-preserving restructuring or deterministic derivation from supplied facts and declared rules, including complex schema changes. semantic: a judgement about meaning, labels, scope or sampling; always a reviewed proposal, including initial preparation. Initial measured cleaning can run directly; follow-up exclusions and script-based row additions require review. Requested generation uses add_synthetic_rows instead.",
+                    "description": "mechanical: evidence-preserving restructuring or deterministic derivation from supplied facts and declared rules, including complex schema changes. semantic: an evidence-backed judgement about meaning, labels, scope or sampling. Both kinds run directly with recorded impact. Preserve unsupported meaning as unknown. Do not fabricate new examples in scripts. Requested generation uses add_synthetic_rows instead.",
                 },
             },
             "required": ["title", "script"],
         },
     ),
+    "generate_examples": (
+        "Continue the qualified, saved recipe in durable background batches. First configure seed_examples and save a small representative batch with add_synthetic_rows. The platform resumes accepted batches, checks evidence and duplicates, and publishes once. This ends the interactive turn; do not repeatedly submit batches for a large target.",
+        {"type": "object", "properties": {}, "additionalProperties": False},
+    ),
+    "chunk_text": (
+        "Group adjacent evidence fragments and split text into bounded chunks. Every output receives a new row identity with all parent row and character-span references. Text is preserved exactly. Choose grouping and size from the source; no generated answers or labels.",
+        {
+            "type": "object",
+            "properties": {
+                "text_column": _TEXT,
+                "group_by": {"type": "array", "items": _TEXT, "maxItems": 10},
+                "max_chars": {"type": "integer", "minimum": 1, "maximum": 100000},
+                "plan_step": _TEXT,
+            },
+            "required": ["text_column", "max_chars", "plan_step"],
+        },
+    ),
     "seed_examples": (
-        "Start explicitly requested generation: set the final target_rows and coverage instruction, then read complete seed examples. An unfinished generation at the chain tail resumes automatically for the same target; cell_id selects a saved generation explicitly. Never generate during automatic preparation.",
+        "Build examples from source evidence. mode=derive creates a separate output version containing only derived examples; preserve raw source rows in their existing version. Required for documents-to-Q&A and other source-to-examples preparation, with a saved plan_step. target_rows is the output example count and may be smaller than the seed count. Choose a measured coverage-based count when the user has not supplied one; do not ask another question. mode=augment adds explicitly requested synthetic variants to existing examples; target_rows then includes existing rows and must exceed their count. Saved work resumes for the same mode and target; run_id selects it explicitly. Accepted batches survive across turns. Publish only when the target is met, or explicitly report a partial result.",
         {
             "type": "object",
             "properties": {
                 "limit": {"type": "integer", "minimum": 1, "maximum": 10},
                 "target_rows": {"type": "integer", "minimum": 1},
                 "instruction": _TEXT,
-                "cell_id": _TEXT,
+                "run_id": _TEXT,
+                "mode": {"type": "string", "enum": ["augment", "derive"], "default": "augment"},
+                "plan_step": _TEXT,
             },
             "required": ["target_rows", "instruction"],
         },
     ),
     "add_synthetic_rows": (
-        "Validate and add up to 50 rows directly to this request's generated version, making it active. Returns saved and remaining counts. Call seed_examples first. Repeat until remaining_rows is zero; exact batch retries are a no-op. Never invent trace identities. No approval step is needed.",
+        "Validate and save up to 50 pilot examples in the run started by seed_examples. Each row must already fit its consumer: chat training needs messages containing the input context/question and assistant answer; chat evaluation needs input and expected_output. Native decisions retain their typed contract. Derived examples require exact nonempty source quotes in evidence. Attribution is checked, not answer truth. Returns saved, remaining and uncovered-source counts. For a larger target call generate_examples after the pilot; do not loop over batches in chat. Exact batch retries are a no-op. Never invent trace identities.",
         {
             "type": "object",
             "properties": {
@@ -1045,6 +1104,17 @@ TOOL_SPECS: dict[str, tuple[str, dict]] = {
                         "properties": {
                             "seed_row": {"type": "integer"},
                             "row": {"type": "object", "additionalProperties": True},
+                            "evidence": {
+                                "type": "array",
+                                "minItems": 1,
+                                "maxItems": 20,
+                                "items": {
+                                    "type": "object",
+                                    "properties": {"column": _TEXT, "quote": _TEXT},
+                                    "required": ["column", "quote"],
+                                    "additionalProperties": False,
+                                },
+                            },
                         },
                         "required": ["seed_row", "row"],
                     },
@@ -1137,6 +1207,8 @@ def tool_schemas() -> list[dict[str, Any]]:
 
 
 TOOL_TITLES = {
+    "generate_examples": "Continue generation",
+    "chunk_text": "Chunk source text",
     "record_preparation_plan": "Save preparation plan",
     "prepare_examples": "Prepare examples",
     "sample_rows": "Sample rows",
@@ -1160,6 +1232,8 @@ TOOL_TITLES = {
 }
 
 TOOL_REASONS = {
+    "generate_examples": "Scheduling the saved recipe in bounded batches.",
+    "chunk_text": "Preserving text and parent evidence in bounded chunks.",
     "status": "Checking the current version, purpose and capability.",
     "query": "Checking the source data before making changes.",
     "inspect": "Measuring the data and its coverage.",
@@ -1198,19 +1272,60 @@ def _guarded(tools: Tools, name: str, fn: Callable[..., Any]) -> Callable[..., A
                 Draft202012Validator(schema).iter_errors(args), key=lambda e: str(e.path)
             )
             if violations:
-                result = {"ok": False, "error": violations[0].message[:600]}
+                result = {
+                    "ok": False,
+                    "error": violations[0].message[:600],
+                    "failure": {
+                        "code": "invalid_arguments",
+                        "category": "input",
+                        "action": "Correct the named argument using this tool's schema.",
+                    },
+                }
             else:
                 result = _safe(fn(args, ctx))
         except ChatGPTError:
             raise
         except lifecycle.DatasetError as exc:
-            result = {"ok": False, "error": exc.detail}
-        except Exception as exc:  # noqa: BLE001
+            result = {
+                "ok": False,
+                "error": exc.detail,
+                "failure": {
+                    "code": exc.code,
+                    "category": "state",
+                    "action": "Read status and select a valid action on the current version.",
+                },
+            }
+        except generation.EvidenceValidationError as exc:
+            result = exc.result()
+        except ValueError as exc:
+            result = {
+                "ok": False,
+                "error": str(exc)[:600],
+                "failure": {"code": "incompatible_input", "category": "input"},
+            }
+        except Exception:  # noqa: BLE001
             logger.warning("notebook tool %s failed", name, exc_info=True)
-            result = {"ok": False, "error": f"{type(exc).__name__}: {exc}"[:600]}
+            result = {
+                "ok": False,
+                "error": "The operation failed internally. Saved inputs and completed work are preserved.",
+                "failure": {
+                    "code": "internal_fault",
+                    "category": "internal",
+                    "action": "Inspect the saved failure; do not repeat an unresolved provider submission.",
+                },
+            }
         ok = not isinstance(result, dict) or (
             result.get("ok") is not False and not result.get("error")
         )
+        source = _dataset(tools.dataset_id).active_cell
+        result, stopped = workflow.record(
+            tools.workflow_id,
+            tool=name,
+            arguments=args,
+            result=result if isinstance(result, dict) else {"value": result},
+            source_fingerprint=source.fingerprint if source else "",
+        )
+        tools.stop_requested = tools.stop_requested or stopped
         tools.step(
             {
                 "phase": "tool_done",
@@ -1240,6 +1355,12 @@ def _guarded(tools: Tools, name: str, fn: Callable[..., Any]) -> Callable[..., A
 
     def serial_call(args: dict[str, Any], ctx: Any = None) -> Any:
         with tools.lock:
+            if tools.stop_requested and name not in workflow.READ_ONLY:
+                return {
+                    "ok": False,
+                    "error": "This workflow stopped after repeated failures. Saved results are preserved.",
+                    "failure": workflow.current(tools.dataset_id).failure,
+                }
             if tools.operation_id is not None:
                 operations.check_cancelled(tools.dataset_id, task_id=tools.operation_id)
             if _dataset(tools.dataset_id).intent == Dataset.Intent.PENDING and name not in {
@@ -1278,11 +1399,50 @@ def system_prompt(dataset: Dataset) -> str:
     )
     return (
         system
+        + prompts.EXECUTION
         + "\n\n## Original user request\n"
         + json.dumps(dataset.brief)
         + "\n"
         + prompts.DOCUMENTS
     )
+
+
+def complete_request(dataset, message, tools, engine, pending):
+    outcome = engines.Outcome()
+    inspected = set()
+    for _ in range(3):
+        current = yield from engine.run(dataset, message, tools, pending)
+        for key, value in current.stats.items():
+            if isinstance(value, (int, float)) and not isinstance(value, bool):
+                outcome.stats[key] = outcome.stats.get(key, 0) + value
+            elif isinstance(value, list):
+                outcome.stats[key] = [*outcome.stats.get(key, []), *value]
+            else:
+                outcome.stats[key] = value
+        outcome.text, outcome.error = current.text, current.error
+        if outcome.error or tools.stop_requested or not (tools.automatic or tools.preparation_turn):
+            break
+        dataset = _dataset(dataset.pk)
+        result = workflow.finish(tools.workflow_id)
+        missing = result["missing_checks"]
+        if not missing or result["execution"] in {
+            "blocked",
+            "cancelled",
+            "paused",
+            "queued",
+            "running",
+        }:
+            break
+        signature = (dataset.active_cell.fingerprint if dataset.active_cell else "", tuple(missing))
+        if signature in inspected:
+            break
+        inspected.add(signature)
+        message = (
+            "The saved task is not finished. Required checks are missing on the active version: "
+            + json.dumps(missing)
+            + ". Finish any shaping before auditing this exact version. Complete supported checks within the saved audit budget; do not regenerate, change targets, invent passing checks or ask the user to continue. If evidence or budget is insufficient, report the partial outcome and why."
+        )
+    return outcome
 
 
 def iter_turn(
@@ -1322,6 +1482,17 @@ def iter_turn(
                 yield _emit(dataset_id, {"type": "chat_turn", **closed})
         return
 
+    unfinished = [
+        {"title": cell.title, "script": cell.script, "note": cell.note}
+        for cell in dataset.cells.filter(state=Cell.State.PROPOSED).order_by("position")
+    ]
+    if unfinished:
+        message += (
+            "\n\nUnfinished preparation suggestions from earlier turns (reference only). "
+            "Reassess these against the request and current data, then apply supported changes "
+            "sequentially with add_cell. Do not ask for approval or blindly reuse saved outputs.\n"
+            + json.dumps(unfinished, ensure_ascii=False)
+        )
     operation_id = turn_key or str(uuid.uuid4())
     operations.started(dataset_id, operation_id)
     retire_outdated(dataset)
@@ -1342,6 +1513,9 @@ def iter_turn(
     yield _emit(dataset_id, {"type": "chat_turn", **turn_user})
 
     pending: list[dict[str, Any]] = []
+    existing_workflow = workflow.current(dataset_id)
+    if existing_workflow is None or existing_workflow.state not in {"queued", "running", "paused"}:
+        workflow.start(dataset, request=display, user=user, owner=operation_id)
     tools = Tools(dataset_id, user, lambda event: pending.append(_emit(dataset_id, event)))
     tools.operation_id = operation_id
     tools.automatic = automatic
@@ -1366,7 +1540,7 @@ def iter_turn(
         operations.finished(dataset_id, task_id=operation_id)
     else:
         try:
-            outcome = yield from engine.run(dataset, message, tools, pending)
+            outcome = yield from complete_request(dataset, message, tools, engine, pending)
         except Exception as exc:  # noqa: BLE001 — the turn must land on the page either way
             logger.warning("dataset %s: agent turn failed", dataset_id, exc_info=True)
             outcome.error = engine.describe_error(exc)
@@ -1377,38 +1551,35 @@ def iter_turn(
     retire_outdated(_dataset(dataset_id))
     awaiting_intent = _dataset(dataset_id).intent == Dataset.Intent.PENDING
     generated = tools.progress.get("generated_rows", 0)
-    awaiting_approval = Cell.objects.filter(
-        dataset_id=dataset_id,
-        pk__in=[ref["id"] for ref in tools.touched],
-        state=Cell.State.PROPOSED,
-    ).exists()
+    saved_generation = generation.get(tools.generation["id"]) if tools.generation else None
+    queued_generation = saved_generation is not None and saved_generation.state == "queued"
     if awaiting_intent and (not outcome.error or engine is None):
         outcome.text = INTENT_QUESTION
         outcome.error = ""
         tools.report_progress(
             "awaiting_intent", "Awaiting intent", "Choose Training, Eval, or Data exploration."
         )
-    elif awaiting_approval and not outcome.error:
-        tools.report_progress(
-            "awaiting_approval", "Awaiting approval", "Choose Approve or Deny to continue."
-        )
+    elif queued_generation:
+        outcome.text = "Generation continues in saved batches."
+        tools.report_progress("queued", "Generation queued", "Accepted batches are saved.")
     elif tools.generation:
         requested = tools.progress["target_rows"] - tools.progress["rows_before"]
         if generated < requested and not outcome.error:
             outcome.error = (
                 f"Generation stopped after saving {generated} of {requested} requested rows."
             )
+        published = saved_generation.output_id is not None
+        saved_result = (
+            f"{generated} generated rows added to the dataset."
+            if published
+            else f"{generated} generated rows saved in unpublished batches. The active dataset is unchanged."
+        )
         tools.report_progress(
             "partial" if outcome.error else "complete",
             "Generation incomplete" if outcome.error else "Generation complete",
-            "Generated rows have been added to the dataset."
-            if generated
-            else "No generated rows were saved.",
-        )
-        saved_result = (
-            f"{generated} generated rows added to the dataset."
-            if generated
-            else "No generated rows were added. The active dataset is unchanged."
+            saved_result,
+            published_rows=generated if published else 0,
+            publication="published" if published else "pending",
         )
         outcome.text = "\n\n".join(part for part in (outcome.text.strip(), saved_result) if part)
     else:
@@ -1417,6 +1588,25 @@ def iter_turn(
             "Request stopped" if outcome.error else "Complete",
             outcome.error or "The agent has finished this request.",
         )
+    result = workflow.finish(
+        tools.workflow_id,
+        error=outcome.error,
+        require_prepared=automatic or preparation_turn or bool(tools.generation),
+    )
+    if (
+        not awaiting_intent
+        and not queued_generation
+        and result["execution"] in {"blocked", "partial"}
+        and not outcome.error
+    ):
+        saved_workflow = workflow.current(dataset_id)
+        failure_detail = (saved_workflow.failure or {}).get("detail", "")
+        outcome.error = (
+            f"Preparation stopped: {failure_detail}"
+            if failure_detail
+            else "The requested preparation is incomplete. Inspect the saved workflow outcome."
+        )
+        tools.report_progress(result["execution"], "Preparation incomplete", outcome.error)
     while pending:
         yield pending.pop(0)
 
@@ -1439,8 +1629,6 @@ def iter_turn(
         if outcome.error
         else "awaiting_intent"
         if awaiting_intent
-        else "awaiting_approval"
-        if awaiting_approval
         else "complete",
         "progress": tools.progress,
     }
@@ -1492,6 +1680,17 @@ def _emit(dataset_id: Any, event: dict[str, Any]) -> dict[str, Any]:
 def settle(dataset_id: Any) -> None:
     dataset = Dataset.objects.filter(pk=dataset_id).first()
     if dataset is None or dataset.state != Dataset.State.DIAGNOSING:
+        return
+    generated = (
+        dataset.workshop_runs.filter(kind="generation", state="queued")
+        .order_by("-created_at")
+        .first()
+    )
+    if generated:
+        # Dispatch after the interactive operation releases its provider ownership.
+        from overbae.services.datasets.generation_worker import schedule
+
+        schedule(generated.pk)
         return
     if dataset.operation.get("state") == "cancel_pending":
         operations.reconcile(dataset_id, local_stopped=True)

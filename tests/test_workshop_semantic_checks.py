@@ -1,6 +1,7 @@
 from unittest.mock import Mock
 
 import pytest
+from conftest import plan_fixture
 from django.contrib.auth import get_user_model
 from django.core.cache import cache
 from django.db import DatabaseError
@@ -95,6 +96,38 @@ def test_partial_audit_preserves_unknown_coverage_and_resumes(dataset, provider)
     third = semantic_checks.run_checks(dataset, dataset.active_cell, request(max_rows=1))
     assert third["processed_rows"] == 2
     assert provider.call_count == 2
+
+
+def test_data_first_audit_receives_the_task_and_invalidates_changed_objectives(dataset, provider):
+    dataset.brief = "Extract the stated colour; short factual answers are intended."
+    dataset.save(update_fields=["brief"])
+    plan = plan_fixture(dataset)
+    cell = dataset.active_cell
+    semantic_checks.run_checks(dataset, cell, request())
+    context = provider.call_args.args[0]["state"]["task_context"]
+    assert context["user_request"] == dataset.brief
+    assert context["preparation"] == plan["specification"]
+    assert context["intent"] == "eval"
+    cell.refresh_from_db()
+    original_contract = cell.quality_report["semantic_audit"]["contract"]
+    dataset.brief = "Explain why the colour is unsuitable."
+    dataset.save(update_fields=["brief"])
+    semantic_checks.run_checks(dataset, cell, request())
+    cell.refresh_from_db()
+    assert provider.call_count == 2
+    assert cell.quality_report["semantic_audit"]["contract"] != original_contract
+
+
+def test_task_change_during_semantic_audit_rejects_stale_results(dataset, provider):
+    original = provider.side_effect
+
+    def change_task(body, **kwargs):
+        Dataset.objects.filter(pk=dataset.pk).update(brief="A different task")
+        return original(body, **kwargs)
+
+    provider.side_effect = change_task
+    with pytest.raises(ValueError, match="changed during the audit"):
+        semantic_checks.run_checks(dataset, dataset.active_cell, request())
 
 
 def test_provider_failure_uses_closed_shared_question_resolution(dataset, provider, monkeypatch):
@@ -301,3 +334,35 @@ def test_stale_result_spend_is_not_lost(dataset, provider, monkeypatch):
         semantic_checks.run_checks(dataset, dataset.active_cell, request())
     charged.assert_called_once()
     assert charged.call_args.args[1]["response_cost"] == 0.00001
+
+
+def test_audit_samples_declared_families_before_repeating_one(provider):
+    dataset = Dataset.objects.create(
+        project=Project.objects.create(name="Coverage", slug="coverage"),
+        name="Mixed",
+        intent="eval",
+    )
+    land.land_rows(
+        dataset,
+        [
+            {
+                "input": f"Evidence {i}",
+                "expected_output": "blue",
+                "language": "en" if i < 20 else "fr",
+            }
+            for i in range(22)
+        ],
+    )
+    dataset.refresh_from_db()
+    cell = dataset.active_cell
+    cell.preparation_plan = {"specification": {"families": [{"coverage_columns": ["language"]}]}}
+    cell.save(update_fields=["preparation_plan"])
+    semantic_checks.run_checks(dataset, cell, request(max_rows=2))
+    cell.refresh_from_db()
+    audit = cell.quality_report["semantic_audit"]
+    checked = [int(row) for row in audit["results"]]
+    assert len(checked) == 2
+    assert any(row < 20 for row in checked) and any(row >= 20 for row in checked)
+    assert audit["sampling"]["columns"] == ["language"]
+    assert audit["sampling"]["method"] == "stratified_hash"
+    assert audit["sampling"]["total_strata"] == 2

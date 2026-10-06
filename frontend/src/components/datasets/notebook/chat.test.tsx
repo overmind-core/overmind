@@ -35,9 +35,7 @@ const generated = {
   version: "1.1",
 } as unknown as Cell;
 const callbacks = () => ({
-  onAccept: vi.fn(),
   onChooseIntent: vi.fn(),
-  onDiscard: vi.fn(),
   onSelect: vi.fn(),
   onSend: vi.fn(),
   renderCell: (cell: Cell) => <div data-testid={`notebook-cell-${cell.id}`}>{cell.title}</div>,
@@ -94,7 +92,7 @@ describe("Workshop chat", () => {
     expect(screen.getByRole("button", { name: "View steps" })).toBeTruthy();
   });
 
-  it("restores an unanswered intent question with no default and keeps it on submission failure", async () => {
+  it("submits an intent chip directly and allows retry after a rejected submission", async () => {
     const onChooseIntent = vi.fn().mockResolvedValueOnce(false).mockResolvedValueOnce(true);
     const turns = chatOf(
       DatasetFromJSON({
@@ -121,20 +119,70 @@ describe("Workshop chat", () => {
       />
     );
     expect(screen.queryByText("Incomplete")).toBeNull();
-    expect(screen.getAllByRole("radio")).toHaveLength(3);
-    expect(
-      screen.getAllByRole("radio").every((radio) => !(radio as HTMLInputElement).checked)
-    ).toBe(true);
-    expect((screen.getByRole("button", { name: "Continue" }) as HTMLButtonElement).disabled).toBe(
-      true
+    const choices = within(screen.getByRole("group", { name: "What will you use this data for?" }));
+    expect(choices.getAllByRole("button").map((button) => button.textContent)).toEqual([
+      "Training",
+      "Eval",
+      "Data exploration",
+    ]);
+    expect(onChooseIntent).not.toHaveBeenCalled();
+    expect(screen.queryByRole("button", { name: "Continue" })).toBeNull();
+    await act(async () =>
+      fireEvent.click(choices.getByRole("button", { name: "Data exploration" }))
     );
-    fireEvent.click(screen.getByRole("radio", { name: "Data exploration" }));
-    await act(async () => fireEvent.click(screen.getByRole("button", { name: "Continue" })));
     expect(onChooseIntent).toHaveBeenCalledWith("explore", "intent-question");
+    expect(screen.getByRole("alert").textContent).toContain("Couldn't save your choice");
+    await act(async () =>
+      fireEvent.click(choices.getByRole("button", { name: "Data exploration" }))
+    );
+    expect(onChooseIntent).toHaveBeenCalledTimes(2);
+    expect(screen.queryByRole("alert")).toBeNull();
+  });
+
+  it("prevents repeated intent submissions while saving and recovers from a network error", async () => {
+    let reject!: (error: Error) => void;
+    const onChooseIntent = vi.fn().mockImplementation(
+      () =>
+        new Promise<boolean>((_, fail) => {
+          reject = fail;
+        })
+    );
+    const props = {
+      ...callbacks(),
+      busy: false,
+      cells: [source],
+      live: null,
+      onChooseIntent,
+      turns: [
+        { at: "", id: "intent-question", role: "agent", status: "awaiting_intent", text: "" },
+      ] as ChatTurn[],
+    };
+    const { rerender } = render(<DatasetChat {...props} />);
+    const group = () =>
+      within(screen.getByRole("group", { name: "What will you use this data for?" }));
+    fireEvent.click(group().getByRole("button", { name: "Training" }));
+    fireEvent.click(group().getByRole("button", { name: "Training" }));
+    fireEvent.click(group().getByRole("button", { name: "Eval" }));
+    expect(onChooseIntent).toHaveBeenCalledTimes(1);
+    expect(onChooseIntent).toHaveBeenCalledWith("train", "intent-question");
     expect(
-      (screen.getByRole("radio", { name: "Data exploration" }) as HTMLInputElement).checked
+      group()
+        .getAllByRole("button")
+        .every((button) => (button as HTMLButtonElement).disabled)
     ).toBe(true);
-    expect(screen.getByRole("button", { name: "Continue" })).toBeTruthy();
+    await act(async () => reject(new Error("Connection lost")));
+    expect(screen.getByRole("alert").textContent).toContain("Connection lost");
+    expect(
+      group()
+        .getAllByRole("button")
+        .every((button) => !(button as HTMLButtonElement).disabled)
+    ).toBe(true);
+    rerender(<DatasetChat {...props} busy />);
+    expect(
+      group()
+        .getAllByRole("button")
+        .every((button) => (button as HTMLButtonElement).disabled)
+    ).toBe(true);
   });
 
   it.each([
@@ -179,12 +227,12 @@ describe("Workshop chat", () => {
     rerender(<DatasetChat {...props} turns={refetched} />);
     expect(screen.getByRole("button", { name: "Thought for 4s" })).toBeTruthy();
     expect(screen.getByText("Checking the examples.")).toBeTruthy();
-    expect(!!screen.queryByText("Awaiting approval")).toBe(status === "awaiting_approval");
+    expect(screen.queryByText("Awaiting approval")).toBeNull();
     expect(!!screen.queryByText("Incomplete")).toBe(status === "error");
-    if (status === "running") expect(screen.getByText("7 of 20 rows added")).toBeTruthy();
+    if (status === "running") expect(screen.getByText("7 of 20 rows saved")).toBeTruthy();
   });
 
-  it("shows a pending approval without a failure or a running spinner after reload", () => {
+  it("retains saved turn history without restoring approval controls", () => {
     const turns: ChatTurn[] = [
       {
         at: new Date().toISOString(),
@@ -203,7 +251,7 @@ describe("Workshop chat", () => {
         {...callbacks()}
       />
     );
-    expect(screen.getByText("Awaiting approval")).toBeTruthy();
+    expect(screen.queryByText("Awaiting approval")).toBeNull();
     expect(screen.queryByText("Incomplete")).toBeNull();
     expect(screen.queryByText("Thinking…")).toBeNull();
     rerender(
@@ -220,53 +268,24 @@ describe("Workshop chat", () => {
     expect(screen.getByRole("button", { name: /Exclude invalid rows.*250 rows/ })).toBeTruthy();
   });
 
-  it("keeps unreferenced proposals beside the composer and applies the collapsed result", () => {
+  it("keeps the composer available without proposal decisions", () => {
     const actions = callbacks();
-    render(
-      <DatasetChat busy={false} cells={[source, proposal]} live={null} turns={[]} {...actions} />
-    );
-    const suggestions = screen.getByRole("region", { name: "Proposed changes" });
-    expect(screen.getByLabelText("Notebook flow").contains(suggestions)).toBe(false);
-    expect(
-      within(suggestions)
-        .getByRole("button", { name: "Review Exclude invalid rows" })
-        .getAttribute("aria-expanded")
-    ).toBe("false");
-    fireEvent.click(screen.getByRole("button", { name: "Approve" }));
-    expect(actions.onAccept).toHaveBeenCalledWith("proposal");
-    expect(screen.queryByRole("button", { name: "Generate examples" })).toBeNull();
-  });
-
-  it("expands before and after examples and rejects a recommendation without applying it", () => {
-    const actions = callbacks();
-    const recommendation = {
-      ...proposal,
-      review: {
-        ...proposal.review,
-        input_examples: [{ expected_output: "yes", source_row: 1 }],
-        output_examples: [{ expected_output: "abstain", source_row: 1 }],
-        rows_after: 270,
-        rows_removed: 0,
-      },
-    } as Cell;
     render(
       <DatasetChat
         busy={false}
-        cells={[source, recommendation]}
+        cells={[source, proposal, { ...proposal, id: "second" }]}
         live={null}
         turns={[]}
         {...actions}
       />
     );
-    expect(screen.queryByText("Input examples")).toBeNull();
-    fireEvent.click(screen.getByRole("button", { name: "Review Exclude invalid rows" }));
-    expect(screen.getByText("Input examples")).toBeTruthy();
-    expect(screen.getByText("Output examples")).toBeTruthy();
-    expect(screen.getByText(/"expected_output": "yes"/)).toBeTruthy();
-    expect(screen.getByText(/"expected_output": "abstain"/)).toBeTruthy();
-    fireEvent.click(screen.getByRole("button", { name: "Reject" }));
-    expect(actions.onDiscard).toHaveBeenCalledWith("proposal");
-    expect(actions.onAccept).not.toHaveBeenCalled();
+    expect(screen.queryByRole("region", { name: "Proposed changes" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Approve" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Reject" })).toBeNull();
+    const input = screen.getByRole("textbox", { name: "Message the agent" });
+    fireEvent.change(input, { target: { value: "Continue preparing the data" } });
+    fireEvent.keyDown(input, { key: "Enter" });
+    expect(actions.onSend).toHaveBeenCalledWith("Continue preparing the data");
   });
 
   it("restores running progress after a reload without a live stream", () => {
@@ -291,7 +310,7 @@ describe("Workshop chat", () => {
     render(
       <DatasetChat busy cells={[source, generated]} live={null} turns={turns} {...callbacks()} />
     );
-    expect(screen.getByText("50 of 230 rows added")).toBeTruthy();
+    expect(screen.getByText("50 of 230 rows saved")).toBeTruthy();
     expect(
       screen.getByRole("button", { name: /Synthetic examples.*320 rows.*1.1.*ran/ })
     ).toBeTruthy();
@@ -338,65 +357,6 @@ describe("Workshop chat", () => {
     expect(actions.onSend).toHaveBeenCalledWith("Continue to 500 rows");
   });
 
-  it("removes an outdated suggestion and shows its replacement", () => {
-    const actions = callbacks();
-    const { rerender } = render(
-      <DatasetChat
-        busy={false}
-        cells={[{ ...source, fingerprint: "changed" }, proposal]}
-        live={null}
-        turns={[]}
-        {...actions}
-      />
-    );
-    expect(screen.queryByRole("region", { name: "Proposed changes" })).toBeNull();
-    expect(screen.queryByText("Out of date")).toBeNull();
-    rerender(
-      <DatasetChat
-        busy={false}
-        cells={[
-          { ...source, fingerprint: "changed" },
-          { ...proposal, review: { ...proposal.review, input_fingerprint: "changed" } },
-        ]}
-        live={null}
-        turns={[]}
-        {...actions}
-      />
-    );
-    fireEvent.click(screen.getByRole("button", { name: "Approve" }));
-    expect(actions.onAccept).toHaveBeenCalledWith(proposal.id);
-  });
-
-  it.each([
-    "queued",
-    "running",
-    "failed",
-  ] as const)("hides suggestions while the chain is %s", (state) => {
-    render(
-      <DatasetChat
-        busy={false}
-        cells={[{ ...source, state }, proposal]}
-        live={null}
-        turns={[]}
-        {...callbacks()}
-      />
-    );
-    expect(screen.queryByRole("region", { name: "Proposed changes" })).toBeNull();
-  });
-
-  it("waits for a preview before suggesting a change", () => {
-    render(
-      <DatasetChat
-        busy={false}
-        cells={[source, { ...proposal, review: {} }]}
-        live={null}
-        turns={[]}
-        {...callbacks()}
-      />
-    );
-    expect(screen.queryByRole("region", { name: "Proposed changes" })).toBeNull();
-  });
-
   it("reports silent periods without inventing progress", () => {
     vi.useFakeTimers();
     const at = new Date().toISOString();
@@ -424,7 +384,7 @@ describe("Workshop chat", () => {
     );
     act(() => vi.advanceTimersByTime(31_000));
     expect(screen.getByText(/No new activity for 31s/)).toBeTruthy();
-    expect(screen.getByText("5 of 230 rows added")).toBeTruthy();
+    expect(screen.getByText("5 of 230 rows saved")).toBeTruthy();
   });
 
   it("does not show a worker-lost turn as still running", () => {

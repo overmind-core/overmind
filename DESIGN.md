@@ -699,8 +699,8 @@ capability and purpose share a row, and a two-line Intent field is explicitly
 optional with an example placeholder. Split controls appear only for Train + eval;
 their row counts stay inline. On narrow screens, fields stack and only the body scrolls.
 
-The dataset page fills its frame with one notebook canvas on app tokens.
-An unanswered purpose appears in a compact panel above the composer: “What will you use this data for?” with Training, Eval, and Data exploration radio choices and Continue. No choice is preselected. The question survives reloads; failed submissions retain the choice, and submission disables duplicate actions. Data exploration is neutral rather than a missing-intent warning.
+The dataset page fills its frame with one notebook canvas on app tokens. The flow starts with source content and chat; preparation-plan, data-partition and representative-pilot panels are not shown above it.
+An unanswered purpose appears above the composer: “What will you use this data for?” followed by Training, Eval, and Data exploration chips. Each neutral, small-radius chip submits its answer directly; there is no separate Continue action or enclosing card. Choices wrap at narrow widths. No choice is preselected. The question survives reloads; a failed submission shows an inline error and enables retry. The selected chip shows progress while all choices are disabled during submission. Data exploration is neutral rather than a missing-intent warning.
 Requests, cells and agent responses share the vertical flow. Cells appear once
 in canonical order; later revisions link back without moving the chain. There is no page header: the breadcrumb names the dataset, and the
 name, the intent and the capability change through the chat (the agent's
@@ -773,24 +773,18 @@ version and current state: `ran` on `success/10`,
 `failed` on `destructive/10`, `edited` on `info/10`, `removed` struck through,
 and discarded proposals dashed and struck through. A result row jumps to its cell.
 
-Initial preparation runs its cleaning and shaping cells end-to-end without
-routine per-cell approval. Judgement calls remain explicit proposals, including
-during initial preparation. The original source and coverage impact remain available;
-the user adjusts the result through chat. Requested synthetic generation also
-adds validated rows directly, without a draft or Apply step. Batches accumulate
-in one active cell; progress shows rows added. An interrupted run keeps the
-added rows, and a follow-up prompt resumes generation.
+Preparation runs supported cleaning, shaping and semantic changes sequentially
+without per-cell approval. Original versions, assumptions and coverage impact remain
+available; the user adjusts the result through chat. Missing initial intent is the
+only decision prompt. Requested synthetic generation also
+saves validated batches without a draft or Apply step. Progress reports persisted
+rows and remaining work. A complete or explicitly partial result publishes one
+cell. Interrupted work retains its source, recipe, batches and recovery status.
 
-Only current, complete previews appear as compact rows in one inset panel anchored above
-the composer, outside the cell scroll flow. Each row has a title, brief description
-and **Approve** / **Reject** actions. Clicking the description expands the full note,
-impact counts, coverage and input/output examples. One row expands at a time; the
-panel scrolls at 40% of the viewport height, keeping the input in place and the
-expanded row's description and actions pinned above its details.
-**Approve** consumes the saved transformation preview; **Reject** removes it.
-Suggestions are retired when their input or task context changes; the interface has no out-of-date suggestion state. Busy datasets disable both actions. Generated data uses the normal cell-result row instead.
+Applied changes appear as normal cell-result links. There is no proposal panel
+or Approve/Reject action row above the composer.
 Chat Markdown has no horizontal rules or heading underlines; tables and thinking
-elbows keep their borders. No divider sits above the composer or proposal actions.
+elbows keep their borders. No divider sits above the composer.
 The composer has an input and vendored pixel Send icon, without helper subtext. It stays
 at the bottom and accepts a draft while a request runs;
 Send is disabled until completion. New activity follows the bottom only while

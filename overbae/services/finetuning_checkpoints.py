@@ -8,6 +8,8 @@ from __future__ import annotations
 
 import logging
 
+import boto3
+from botocore.exceptions import BotoCoreError, ClientError
 from django.conf import settings
 
 logger = logging.getLogger(__name__)
@@ -31,8 +33,6 @@ def _s3_key(finetuning_job) -> str:
 
 
 def _s3_client():
-    import boto3  # noqa: PLC0415
-
     return boto3.client(
         "s3",
         region_name=getattr(settings, "AWS_REGION", "eu-west-1"),
@@ -60,43 +60,48 @@ def checkpoint_archive_exists(finetuning_job) -> bool:
     return (head.get("ContentLength") or 0) >= _MIN_ARCHIVE_BYTES
 
 
-def get_checkpoint_download_url(finetuning_job) -> dict:
-    """Return ``{name, size_bytes, download_url}`` for the job's archived checkpoint zip.
-
-    Raises CheckpointArchiveError when the bucket isn't configured or sync_*_to_s3
-    has not archived the job yet.
-    """
+def get_checkpoint_download_url(finetuning_job) -> dict | None:
+    """Absent or unsupported archives return None; storage failures remain errors."""
+    if finetuning_job.provider not in ("baseten", "modal"):
+        return None
     bucket = getattr(settings, "AWS_BUCKET_NAME", "") or ""
     if not bucket:
+        logger.error("Checkpoint downloads are not configured for job %s", finetuning_job.id)
         raise CheckpointArchiveError("Checkpoint downloads are not configured.")
-    if finetuning_job.provider not in ("baseten", "modal"):
-        raise CheckpointArchiveError("No downloadable weights for this fine-tuning job.")
 
-    from botocore.exceptions import ClientError  # noqa: PLC0415
-
-    s3 = _s3_client()
     key = _s3_key(finetuning_job)
-
+    operation = "client initialization"
     try:
+        s3 = _s3_client()
+        operation = "archive lookup"
         head = s3.head_object(Bucket=bucket, Key=key)
-    except ClientError as exc:
-        code = exc.response.get("Error", {}).get("Code", "")
-        if code in ("404", "NoSuchKey", "NotFound"):
-            raise CheckpointArchiveError(
-                "Checkpoint archive not ready yet — try again once the model has deployed."
-            ) from exc
-        logger.warning("S3 head_object failed for %s: %s", key, exc)
-        raise CheckpointArchiveError("Could not reach the checkpoint archive.") from exc
-
-    try:
+        operation = "link signing"
         url = s3.generate_presigned_url(
             "get_object",
             Params={"Bucket": bucket, "Key": key},
             ExpiresIn=_PRESIGN_EXPIRES_S,
         )
-    except ClientError as exc:
-        logger.warning("S3 presign failed for %s: %s", key, exc)
-        raise CheckpointArchiveError("Could not generate a download link.") from exc
+    except (BotoCoreError, ClientError) as exc:
+        code = (
+            exc.response.get("Error", {}).get("Code", "Unknown")
+            if isinstance(exc, ClientError)
+            else type(exc).__name__
+        )
+        if operation == "archive lookup" and code in ("404", "NoSuchKey", "NotFound"):
+            logger.info("Checkpoint archive absent for job %s (%s)", finetuning_job.id, code)
+            return None
+        logger.warning(
+            "Checkpoint download failed for job %s during %s (%s)",
+            finetuning_job.id,
+            operation,
+            code,
+        )
+        detail = (
+            "Could not generate a download link."
+            if operation == "link signing"
+            else "Could not reach the checkpoint archive."
+        )
+        raise CheckpointArchiveError(detail) from exc
 
     return {
         "name": "checkpoint.zip",

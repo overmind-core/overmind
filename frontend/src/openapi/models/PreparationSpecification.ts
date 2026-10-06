@@ -20,6 +20,13 @@ import {
     PreparationCheckToJSON,
     PreparationCheckToJSONTyped,
 } from './PreparationCheck';
+import type { PreparationOutcome } from './PreparationOutcome';
+import {
+    PreparationOutcomeFromJSON,
+    PreparationOutcomeFromJSONTyped,
+    PreparationOutcomeToJSON,
+    PreparationOutcomeToJSONTyped,
+} from './PreparationOutcome';
 import type { PreparationFamily } from './PreparationFamily';
 import {
     PreparationFamilyFromJSON,
@@ -41,6 +48,12 @@ import {
  * @interface PreparationSpecification
  */
 export interface PreparationSpecification {
+    /**
+     *
+     * @type {PreparationOutcome}
+     * @memberof PreparationSpecification
+     */
+    outcome?: PreparationOutcome | null;
     /**
      *
      * @type {string}
@@ -137,6 +150,7 @@ export function PreparationSpecificationFromJSONTyped(json: any, ignoreDiscrimin
     }
     return {
 
+        'outcome': json['outcome'] == null ? undefined : PreparationOutcomeFromJSON(json['outcome']),
         'objective': json['objective'],
         'consumer': json['consumer'],
         'understanding': json['understanding'],
@@ -162,6 +176,7 @@ export function PreparationSpecificationToJSONTyped(value?: PreparationSpecifica
 
     return {
 
+        'outcome': PreparationOutcomeToJSON(value['outcome']),
         'objective': value['objective'],
         'consumer': value['consumer'],
         'understanding': value['understanding'],

@@ -245,10 +245,25 @@ def _remote_id(job) -> str:
     return job.remote_job_id
 
 
-def _persist_snapshot_progress(
-    job, snap, *, last_fingerprint: str | None, tick_evals: bool
-) -> str | None:
-    """Returns the progress fingerprint, unchanged when nothing moved."""
+def _progress_fingerprint(progress):
+    metrics = progress.get("metrics") or {}
+    diagnostics = progress.get("diagnostics") or {}
+    # The committer heartbeat proves liveness, not forward progress of the training process.
+    return (
+        progress.get("trained_steps"),
+        progress.get("latest_train_loss"),
+        progress.get("latest_eval_loss"),
+        len(progress.get("checkpoints") or []),
+        *(len(metrics.get(key) or []) for key in ("loss", "learning_rate", "grad_norm")),
+        progress.get("stage") or "",
+        *(
+            diagnostics.get(key)
+            for key in ("attempt", "completed", "checkpoint_step", "restored_step")
+        ),
+    )
+
+
+def _persist_snapshot_progress(job, snap, *, tick_evals: bool) -> None:
     from overbae.models import FinetuningJob
     from overbae.services.finetuning_runner import progress_from_snapshot
 
@@ -270,31 +285,12 @@ def _persist_snapshot_progress(
             progress[key] = prev[key]
 
     metrics = progress.get("metrics") or {}
-    fingerprint = (
-        f"{progress.get('trained_steps')}:"
-        f"{progress.get('latest_train_loss')}:"
-        f"{progress.get('latest_eval_loss')}:"
-        f"{len(progress.get('checkpoints') or [])}:"
-        f"{len(metrics.get('loss') or [])}:"
-        f"{len(metrics.get('learning_rate') or [])}:"
-        f"{len(metrics.get('grad_norm') or [])}"
-    )
-    if last_fingerprint is None:
-        prev_metrics = prev.get("metrics") or {}
-        last_fingerprint = (
-            f"{prev.get('trained_steps')}:"
-            f"{prev.get('latest_train_loss')}:"
-            f"{prev.get('latest_eval_loss')}:"
-            f"{len(prev.get('checkpoints') or [])}:"
-            f"{len(prev_metrics.get('loss') or [])}:"
-            f"{len(prev_metrics.get('learning_rate') or [])}:"
-            f"{len(prev_metrics.get('grad_norm') or [])}"
-        )
-    moved = fingerprint != last_fingerprint and (
+    moved = _progress_fingerprint(progress) != _progress_fingerprint(prev) and (
         progress.get("trained_steps") is not None
         or progress.get("latest_train_loss") is not None
         or progress.get("checkpoints")
         or metrics.get("loss")
+        or progress.get("stage")
     )
     observe = dict(prev.get("observe") or {})
     now_iso = timezone.now().isoformat()
@@ -339,8 +335,6 @@ def _persist_snapshot_progress(
                 "n_checkpoints": len(progress.get("checkpoints") or []),
             },
         )
-        return fingerprint
-    return last_fingerprint
 
 
 def _finalize_success(job, runner, snap, remote: str) -> dict[str, Any]:
@@ -686,7 +680,7 @@ def observe_finetuning_job(job) -> dict[str, Any]:
             return _fail_and_cancel(job, runner, remote, f"Provider polling kept failing: {exc}")
         return {"status": "poll_error", "error": str(exc)}
 
-    _persist_snapshot_progress(job, snap, last_fingerprint=None, tick_evals=True)
+    _persist_snapshot_progress(job, snap, tick_evals=True)
 
     if runner.is_terminal_ok(snap.state) or snap.output_model_name or snap.weights_url:
         try:

@@ -165,13 +165,30 @@ TEXT_MAPPING_FIELDS = {
     "decision.target_semantics",
 }
 
+CONSTANT_FIELDS = {
+    "decision.state",
+    "decision.kind",
+    "decision.options",
+    "decision.option_values",
+    "decision.target_semantics",
+}
+
 
 def validate_mapping(mapping, constants):
     if not isinstance(mapping, dict) or not isinstance(constants, dict):
         raise ValueError("Mappings and constants must be objects.")
-    if set(mapping) & set(constants) or (set(mapping) | set(constants)) - MAPPING_FIELDS:
+    overlap = sorted(set(mapping) & set(constants))
+    unsupported = sorted((set(mapping) | set(constants)) - MAPPING_FIELDS)
+    if overlap or unsupported:
+        detail = []
+        if overlap:
+            detail.append("mapped and constant: " + ", ".join(overlap))
+        if unsupported:
+            detail.append("unsupported: " + ", ".join(unsupported))
         raise ValueError(
-            "Mappings use destination -> source path. Choose distinct destination fields from: "
+            "Mappings and constants must use distinct supported destinations ("
+            + "; ".join(detail)
+            + "). Choose from: "
             + ", ".join(sorted(MAPPING_FIELDS))
         )
     if any(
@@ -179,19 +196,14 @@ def validate_mapping(mapping, constants):
         for path in mapping.values()
     ):
         raise ValueError("Each mapped source must be a nonempty column path.")
-    if any(
-        key
-        not in {
-            "decision.state",
-            "decision.kind",
-            "decision.options",
-            "decision.option_values",
-            "decision.target_semantics",
-        }
-        for key in constants
-    ):
+    unsupported_constants = sorted(set(constants) - CONSTANT_FIELDS)
+    if unsupported_constants:
         raise ValueError(
-            "Constants may declare decision state, kind, ordered options, scale or target meaning; never targets."
+            "Unsupported constant fields: "
+            + ", ".join(unsupported_constants)
+            + ". Constants may only declare "
+            + ", ".join(sorted(CONSTANT_FIELDS))
+            + ". Move per-row fields such as decision.question and targets into a custom transform."
         )
 
 
@@ -201,9 +213,17 @@ def field_value(record, path, *, decode_result=True):
     value = record
     for part in path.split("."):
         value = decode(value)
-        if not isinstance(value, dict) or part not in value:
+        if isinstance(value, dict) and part in value:
+            value = value[part]
+        elif (
+            isinstance(value, list)
+            and part.isdecimal()
+            and part == str(int(part))
+            and int(part) < len(value)
+        ):
+            value = value[int(part)]
+        else:
             raise ValueError(f"Missing mapped field: {path}")
-        value = value[part]
     return decode(value) if decode_result else value
 
 

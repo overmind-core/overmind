@@ -197,7 +197,8 @@ class NativeEngine:
         pending: list[dict[str, Any]],
     ) -> Generator[dict[str, Any], None, ToolStreamResult]:
         tools.start_response()
-        for attempt in range(1, STREAM_ATTEMPTS + 1):
+        attempts = getattr(tools, "stream_attempts", STREAM_ATTEMPTS)
+        for attempt in range(1, attempts + 1):
             current = _Attempt(self, tools, pending)
             try:
                 result = yield from current.run(system, messages, schemas)
@@ -211,7 +212,7 @@ class NativeEngine:
                 carried_reasoning = any("reasoning_details" in m for m in messages)
                 if carried_reasoning:
                     messages[:] = _without_reasoning(messages)
-                if not (carried_reasoning or not current.flushed) or attempt == STREAM_ATTEMPTS:
+                if not (carried_reasoning or not current.flushed) or attempt == attempts:
                     raise exc
                 logger.warning("native engine: stream attempt %d failed", attempt, exc_info=True)
         raise RuntimeError("unreachable")
@@ -222,17 +223,31 @@ class NativeEngine:
         from overbae.services.datasets.notebook.agent import system_prompt, tool_schemas
 
         handlers = tools.handlers()
-        schemas = tool_schemas()
-        system = system_message(system_prompt(dataset))
-        history = list(dataset.agent_messages) if isinstance(dataset.agent_messages, list) else []
+        schemas = tools.schemas() if hasattr(tools, "schemas") else tool_schemas()
+        system = system_message(
+            tools.prompt(dataset) if hasattr(tools, "prompt") else system_prompt(dataset)
+        )
+        history = (
+            list(dataset.agent_messages)
+            if isinstance(dataset.agent_messages, list) and not getattr(tools, "isolated", False)
+            else []
+        )
         messages = [*history, {"role": "user", "content": message}]
         keep_from = len(history)
         outcome = Outcome()
 
-        for _ in range(MAX_ROUNDS):
+        for _ in range(getattr(tools, "max_rounds", MAX_ROUNDS)):
+            if getattr(tools, "stop_requested", False):
+                break
             tools.think()
             messages[:] = fit(messages, keep_from=keep_from, budget=CONTEXT_CHARS)
+            if hasattr(tools, "before_round"):
+                tools.before_round(self.name)
+            if hasattr(tools, "schemas"):
+                schemas = tools.schemas()
             result = yield from self._round(system, messages, schemas, tools, pending)
+            if hasattr(tools, "after_round"):
+                tools.after_round(result)
             _add_stats(outcome.stats, result.stats)
             messages.append(result.assistant_message())
             if not result.tool_calls:
@@ -265,7 +280,8 @@ class NativeEngine:
                 logger.warning("dataset %s: wrap-up failed", dataset.id, exc_info=True)
             outcome.error = "The agent used its whole tool budget for this turn."
 
-        Dataset.objects.filter(pk=dataset.pk).update(agent_messages=storable(messages))
+        if not getattr(tools, "isolated", False):
+            Dataset.objects.filter(pk=dataset.pk).update(agent_messages=storable(messages))
         outcome.text = tools.text
         return outcome
 

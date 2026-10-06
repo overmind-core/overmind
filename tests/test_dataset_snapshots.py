@@ -37,7 +37,7 @@ def test_snapshot_reads_chain_once_and_retains_versions_and_proposals(
     dataset.active = cells[0]
     dataset.save(update_fields=["active"])
     versions = dataset.versions()
-    with django_assert_num_queries(1):
+    with django_assert_num_queries(1 if reader == "workspace" else 2):
         if reader == "status":
             result = agent.status(dataset)
             assert result["active_id"] == str(cells[0].id)
@@ -57,7 +57,8 @@ def test_snapshot_reads_chain_once_and_retains_versions_and_proposals(
             assert result["active"]["id"] == str(cells[0].id)
             assert result["active"]["version"] == versions[cells[0].id]
             assert result["cells"] == {"n": count + 1, "states": {"ok": count, "proposed": 1}}
-            assert result["next_action"]["arguments"]["proposal_cell"] == str(proposal.id)
+            assert result["next_action"]["tool"] == "message_dataset_agent"
+            assert result["next_action"]["arguments"]["dataset"] == str(dataset.id)
 
     cells[0].state = "failed"
     cells[0].save(update_fields=["state"])

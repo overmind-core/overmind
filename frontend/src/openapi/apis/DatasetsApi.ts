@@ -29,6 +29,7 @@ import type {
   PatchedDatasetRequest,
   RowsPage,
   SourceRequest,
+  WorkshopControlRequest,
 } from '../models/index';
 import {
     CellFromJSON,
@@ -59,6 +60,8 @@ import {
     RowsPageToJSON,
     SourceRequestFromJSON,
     SourceRequestToJSON,
+    WorkshopControlRequestFromJSON,
+    WorkshopControlRequestToJSON,
 } from '../models/index';
 
 export interface DatasetsCancelCreateRequest {
@@ -170,6 +173,11 @@ export interface DatasetsSourcesRetrieveRequest {
 
 export interface DatasetsSplitCreateRequest {
     datasetSplitCreateRequest: DatasetSplitCreateRequest;
+}
+
+export interface DatasetsWorkflowCreateRequest {
+    id: string;
+    workshopControlRequest: WorkshopControlRequest;
 }
 
 /**
@@ -1452,6 +1460,71 @@ export class DatasetsApi extends runtime.BaseAPI {
      */
     async datasetsSplitCreate(requestParameters: DatasetsSplitCreateRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<DatasetPair> {
         const response = await this.datasetsSplitCreateRaw(requestParameters, initOverrides);
+        return await response.value();
+    }
+
+    /**
+     */
+    async datasetsWorkflowCreateRaw(requestParameters: DatasetsWorkflowCreateRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<Dataset>> {
+        if (requestParameters['id'] == null) {
+            throw new runtime.RequiredError(
+                'id',
+                'Required parameter "id" was null or undefined when calling datasetsWorkflowCreate().'
+            );
+        }
+
+        if (requestParameters['workshopControlRequest'] == null) {
+            throw new runtime.RequiredError(
+                'workshopControlRequest',
+                'Required parameter "workshopControlRequest" was null or undefined when calling datasetsWorkflowCreate().'
+            );
+        }
+
+        const queryParameters: any = {};
+
+        const headerParameters: runtime.HTTPHeaders = {};
+
+        headerParameters['Content-Type'] = 'application/json';
+
+        if (this.configuration && this.configuration.accessToken) {
+            const token = this.configuration.accessToken;
+            const tokenString = await token("ClerkBearerAuth", []);
+
+            if (tokenString) {
+                headerParameters["Authorization"] = `Bearer ${tokenString}`;
+            }
+        }
+        if (this.configuration && this.configuration.apiKey) {
+            headerParameters["X-Api-Key"] = await this.configuration.apiKey("X-Api-Key"); // ApiKeyAuth authentication
+        }
+
+        if (this.configuration && this.configuration.accessToken) {
+            const token = this.configuration.accessToken;
+            const tokenString = await token("BearerAuth", []);
+
+            if (tokenString) {
+                headerParameters["Authorization"] = `Bearer ${tokenString}`;
+            }
+        }
+
+        let urlPath = `/api/datasets/{id}/workflow/`;
+        urlPath = urlPath.replace(`{${"id"}}`, encodeURIComponent(String(requestParameters['id'])));
+
+        const response = await this.request({
+            path: urlPath,
+            method: 'POST',
+            headers: headerParameters,
+            query: queryParameters,
+            body: WorkshopControlRequestToJSON(requestParameters['workshopControlRequest']),
+        }, initOverrides);
+
+        return new runtime.JSONApiResponse(response, (jsonValue) => DatasetFromJSON(jsonValue));
+    }
+
+    /**
+     */
+    async datasetsWorkflowCreate(requestParameters: DatasetsWorkflowCreateRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<Dataset> {
+        const response = await this.datasetsWorkflowCreateRaw(requestParameters, initOverrides);
         return await response.value();
     }
 

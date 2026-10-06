@@ -6,17 +6,12 @@ import { Link, useNavigate } from "@tanstack/react-router";
 import { NotebookCell, type UsePurpose } from "@/components/datasets/notebook/cell";
 import { DatasetChat, type LiveTurn } from "@/components/datasets/notebook/chat";
 import { NotebookOutline } from "@/components/datasets/notebook/outline";
-import { PilotRequest } from "@/components/datasets/notebook/pilot-request";
-import {
-  ContaminationReport,
-  PreparationPlanDetails,
-} from "@/components/datasets/notebook/preparation";
+import { ContaminationReport } from "@/components/datasets/notebook/preparation";
 import {
   extractionStatus,
   SourceDetails,
   SourceLanding,
 } from "@/components/datasets/notebook/source";
-import { Partitions } from "@/components/model-workflows/partitions";
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
 import {
@@ -30,7 +25,6 @@ import {
   invalidateDataset,
   isBusy,
   rankOf,
-  useAcceptCellMutation,
   useCancelDatasetMutation,
   useChatMutation,
   useDatasetEvents,
@@ -67,7 +61,6 @@ export function DatasetNotebook({
   const patch = usePatchDatasetMutation(datasetId);
   const editCell = useEditCellMutation(datasetId);
   const removeCell = useRemoveCellMutation(datasetId);
-  const acceptCell = useAcceptCellMutation(datasetId);
   const run = useRunMutation(datasetId);
   const chat = useChatMutation(datasetId);
   const cancel = useCancelDatasetMutation(datasetId);
@@ -299,15 +292,6 @@ export function DatasetNotebook({
         before={
           <>
             <ContaminationReport spec={dataset.sourceSpec} />
-            <PreparationPlanDetails plan={dataset.preparationPlan} />
-            {active && <Partitions cellId={active.id} projectId={dataset.project} />}
-            {active && (
-              <PilotRequest
-                cell={active}
-                disabled={busy || chat.isPending}
-                onRequest={guard((message: string) => chat.mutate(message))}
-              />
-            )}
             {cells.length === 0 && (
               <SourceLanding
                 brief={dataset.brief ?? ""}
@@ -319,14 +303,13 @@ export function DatasetNotebook({
             )}
           </>
         }
-        busy={busy || chat.isPending || acceptCell.isPending || removeCell.isPending}
+        busy={busy || chat.isPending || removeCell.isPending}
         cells={all}
         error={dataset.state === "error" ? dataset.error || undefined : undefined}
         focusedCell={cells.find((cell) => cell.id === selectedId)}
         initialRequest={initialRequest}
         landingStatus={extractionStatus(dataset.sourceSpec)}
         live={live}
-        onAccept={guard((id: string) => acceptCell.mutate(id))}
         onChooseIntent={async (intentChoice, intentTurnId) => {
           let allowed = false;
           guard(() => {
@@ -337,7 +320,6 @@ export function DatasetNotebook({
           return true;
         }}
         onClearFocus={() => setSelectedId(null)}
-        onDiscard={guard((id: string) => removeCell.mutate(id))}
         onSelect={scrollTo}
         onSend={async (message: string, uploads?: string[]) => {
           let allowed = false;

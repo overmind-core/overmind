@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import json
 import uuid
+from collections import defaultdict
 from typing import Literal
 
 import pandas as pd
@@ -12,7 +13,7 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 from overbae.core.decisions import DecisionError, question_batches
 from overbae.services import chatgpt
 from overbae.services.billing_ledger import ensure_credits, record_workshop_usage
-from overbae.services.datasets import paths, review, rows, store
+from overbae.services.datasets import paths, preparation, review, rows, store
 from overbae.services.datasets.context import context_fingerprint, preparation_context
 from overbae.services.datasets.examples import field_value
 from overbae.services.eval import decisions, funnel
@@ -82,7 +83,9 @@ def _batch_request(batch, checks, context_data):
                 f"Independent evidence columns: {json.dumps(check.evidence_columns)}. "
                 f"Answer columns being checked: {json.dumps(check.answer_columns)}. "
                 "Never use the answer as evidence for itself. Do not borrow evidence from other rows. "
-                "Missing source evidence is insufficient, not a pass.",
+                "Missing source evidence is insufficient, not a pass. "
+                "For task_alignment, the user request defines the goal; the saved preparation is the agent's interpretation. "
+                "Do not introduce unstated difficulty or style requirements. A question that conflicts with the requested task is insufficient, not a failure of the example.",
             )
     return {"task_context": context_data, "rows": state_rows}, questions
 
@@ -116,6 +119,122 @@ def _charge_batch(user, dataset, cell, batch, contract):
         idempotency_key=f"semantic-check:{dataset.id}:{batch['id']}",
         metadata={"cell_id": str(cell.id), "workload": "semantic_checks", "contract": contract},
     )
+
+
+def select_audit_rows(records, frame, cell, audit, limit):
+    columns = sorted(
+        {
+            column
+            for family in cell.preparation_plan.get("specification", {}).get("families", [])
+            for column in family.get("coverage_columns", [])
+        }
+    )
+    strata = defaultdict(list)
+    checked = defaultdict(int)
+    for original, record in zip(frame.to_dict(orient="records"), records, strict=True):
+        values = []
+        for column in columns:
+            try:
+                values.append(field_value(original, column))
+            except ValueError:
+                values.append(None)
+        group = store.json_dumps(values)
+        if _row_key(record) in audit["results"]:
+            checked[group] += 1
+        else:
+            digest = hashlib.sha256(
+                f"73491:{cell.fingerprint}:{_row_key(record)}".encode()
+            ).hexdigest()
+            strata[group].append((digest, record))
+    for members in strata.values():
+        members.sort(reverse=True, key=lambda value: value[0])
+    selected, allocations = [], defaultdict(int)
+    available = {key: len(value) for key, value in strata.items()}
+    while len(selected) < limit and strata:
+        group = min(
+            strata,
+            key=lambda key: (
+                checked[key] + allocations[key],
+                hashlib.sha256(key.encode()).hexdigest(),
+            ),
+        )
+        selected.append(strata[group].pop()[1])
+        allocations[group] += 1
+        if not strata[group]:
+            del strata[group]
+    audit["sampling"] = {
+        "method": "stratified_hash",
+        "seed": 73491,
+        "columns": columns,
+        "total_strata": len(set(available) | set(checked)),
+        "allocations": [
+            {"stratum": key, "available": available[key], "selected": value}
+            for key, value in allocations.items()
+        ],
+    }
+    return selected
+
+
+def evaluate_batch(
+    batch, checks, context_data, *, project_id, contract, policy=None, chatgpt_session=None
+):
+    policy = policy or decisions.DecisionPolicy(backend="jev", min_confidence=0.9)
+    state, questions = _batch_request(batch, checks, context_data)
+
+    def fallback(state=state, questions=questions):
+        prompt = json.dumps(
+            {
+                "state": state,
+                "questions": {key: q.model_dump() for key, q in questions.items()},
+            },
+            ensure_ascii=False,
+        )
+        if len(prompt.encode()) > 350_000:
+            parsed = _Checks(answers=dict.fromkeys(questions, "insufficient"))
+            return funnel.JudgeOutcome(
+                parsed=parsed,
+                raw=parsed.model_dump_json(),
+                stats={"response_cost": 0.0, "response_ms": 0},
+                judge_trace_id=uuid.uuid4().hex,
+            )
+        resolved = decisions.resolve_questions(
+            state,
+            questions,
+            project_id=str(project_id),
+        )
+        resolved.parsed = _Checks(
+            answers={
+                key: answer.choice or "insufficient"
+                for key, answer in resolved.parsed.answers.items()
+            }
+        )
+        resolved.raw = resolved.parsed.model_dump_json()
+        return resolved
+
+    if chatgpt_session is not None:
+        answers, stats = chatgpt.semantic_questions(chatgpt_session, state, questions)
+        parsed = _Checks(answers=answers)
+        outcome = funnel.JudgeOutcome(
+            parsed=parsed,
+            raw=parsed.model_dump_json(),
+            stats=stats,
+            judge_trace_id=uuid.uuid4().hex,
+        )
+    else:
+        outcome = decisions.invoke(
+            state,
+            questions,
+            convert=lambda answers: _Checks(
+                answers={key: answer.choice or "insufficient" for key, answer in answers.items()}
+            ),
+            fallback=fallback,
+            project_id=str(project_id),
+            workload="workshop_semantic_checks",
+            contract=contract,
+            policy=policy,
+            independent=True,
+        )
+    return outcome
 
 
 def run_checks(
@@ -154,10 +273,17 @@ def run_checks(
         else policy.model_dump()
     )
     definitions = [check.model_dump() for check in request.checks]
+    context_data = {
+        **preparation_context(dataset.capability),
+        "user_request": dataset.brief,
+        "intent": dataset.intent,
+        "preparation": preparation.for_cell(dataset, cell).get("specification", {}),
+    }
     contract = hashlib.sha256(
         json.dumps(
             [
                 definitions,
+                context_data,
                 audit_policy,
                 decisions.ADAPTER_VERSION,
                 {"account": str(chatgpt_session.account_id), "model": chatgpt_session.model}
@@ -187,70 +313,22 @@ def run_checks(
         audit = json.loads(json.dumps(audit))
     for saved in audit["batches"]:
         _charge_batch(user, dataset, cell, saved, contract)
-    selected = [row for row in records if _row_key(row) not in audit["results"]][: request.max_rows]
-    context_data = preparation_context(dataset.capability)
+    selected = select_audit_rows(records, frame, cell, audit, request.max_rows)
     if selected and user is not None and chatgpt_session is None:
         ensure_credits(user)
     completed = 0
     report = previous
     for batch in _row_batches(selected, request.checks, context_data):
-        state, questions = _batch_request(batch, request.checks, context_data)
-
-        def fallback(state=state, questions=questions):
-            prompt = json.dumps(
-                {
-                    "state": state,
-                    "questions": {key: q.model_dump() for key, q in questions.items()},
-                },
-                ensure_ascii=False,
-            )
-            if len(prompt.encode()) > 350_000:
-                parsed = _Checks(answers=dict.fromkeys(questions, "insufficient"))
-                return funnel.JudgeOutcome(
-                    parsed=parsed,
-                    raw=parsed.model_dump_json(),
-                    stats={"response_cost": 0.0, "response_ms": 0},
-                    judge_trace_id=uuid.uuid4().hex,
-                )
-            resolved = decisions.resolve_questions(
-                state,
-                questions,
-                project_id=str(dataset.project_id),
-            )
-            resolved.parsed = _Checks(
-                answers={
-                    key: answer.choice or "insufficient"
-                    for key, answer in resolved.parsed.answers.items()
-                }
-            )
-            resolved.raw = resolved.parsed.model_dump_json()
-            return resolved
-
-        if chatgpt_session is not None:
-            answers, stats = chatgpt.semantic_questions(chatgpt_session, state, questions)
-            parsed = _Checks(answers=answers)
-            outcome = funnel.JudgeOutcome(
-                parsed=parsed,
-                raw=parsed.model_dump_json(),
-                stats=stats,
-                judge_trace_id=uuid.uuid4().hex,
-            )
-        else:
-            outcome = decisions.invoke(
-                state,
-                questions,
-                convert=lambda answers: _Checks(
-                    answers={
-                        key: answer.choice or "insufficient" for key, answer in answers.items()
-                    }
-                ),
-                fallback=fallback,
-                project_id=str(dataset.project_id),
-                workload="workshop_semantic_checks",
-                contract=contract,
-                policy=policy,
-                independent=True,
-            )
+        outcome = evaluate_batch(
+            batch,
+            request.checks,
+            context_data,
+            project_id=dataset.project_id,
+            contract=contract,
+            policy=policy,
+            chatgpt_session=chatgpt_session,
+        )
+        _, questions = _batch_request(batch, request.checks, context_data)
         checked = getattr(outcome.parsed, "answers", {}) or {}
         if set(checked) != set(questions):
             checked = dict.fromkeys(questions, "insufficient")

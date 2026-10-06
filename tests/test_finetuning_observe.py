@@ -232,3 +232,82 @@ def test_poll_errors_fail_after_budget():
     job.refresh_from_db()
     assert job.status == FinetuningJob.Status.FAILED
     runner.cancel.assert_called_once_with(job.remote_job_id)
+
+
+@pytest.mark.parametrize(
+    ("previous", "current"),
+    [
+        (
+            {"stage": "final_validation", "completed": 24960, "attempt": 1},
+            {"stage": "final_validation", "completed": 25024, "attempt": 1},
+        ),
+        (
+            {"stage": "final_validation", "completed": 58201, "attempt": 1},
+            {"stage": "verifying_checkpoint", "completed": 0, "attempt": 1},
+        ),
+        (
+            {"stage": "loading_model", "completed": None, "attempt": 1},
+            {"stage": "loading_model", "completed": None, "attempt": 2},
+        ),
+    ],
+)
+def test_native_stage_progress_prevents_false_stall(previous, current):
+    job = _job(
+        progress={
+            "trained_steps": 782,
+            "latest_train_loss": 1.25,
+            "stage": previous["stage"],
+            "diagnostics": previous,
+            "observe": {
+                "last_move_at": (timezone.now() - timedelta(minutes=31)).isoformat(),
+                "saw_step": True,
+            },
+        }
+    )
+    runner = _runner()
+    runner.poll.return_value = PollSnapshot(
+        state="running",
+        trained_steps=782,
+        step=782,
+        train_loss=1.25,
+        stage=current["stage"],
+        diagnostics={**current, "heartbeat_at": timezone.now().timestamp()},
+    )
+    _run_reconcile(runner=runner)
+    job.refresh_from_db()
+    assert job.status == FinetuningJob.Status.RUNNING
+    assert job.progress["diagnostics"]["completed"] == current["completed"]
+    runner.cancel.assert_not_called()
+    runner.submit.assert_not_called()
+
+
+def test_worker_heartbeat_does_not_hide_stalled_validation():
+    diagnostics = {"stage": "final_validation", "completed": 25024, "attempt": 1}
+    job = _job(
+        progress={
+            "trained_steps": 782,
+            "latest_train_loss": 1.25,
+            "stage": "final_validation",
+            "diagnostics": {
+                **diagnostics,
+                "heartbeat_at": (timezone.now() - timedelta(seconds=15)).timestamp(),
+            },
+            "observe": {
+                "last_move_at": (timezone.now() - timedelta(minutes=31)).isoformat(),
+                "saw_step": True,
+            },
+        }
+    )
+    runner = _runner()
+    runner.poll.return_value = PollSnapshot(
+        state="running",
+        trained_steps=782,
+        step=782,
+        train_loss=1.25,
+        stage="final_validation",
+        diagnostics={**diagnostics, "heartbeat_at": timezone.now().timestamp()},
+    )
+    _run_reconcile(runner=runner)
+    job.refresh_from_db()
+    assert job.status == FinetuningJob.Status.FAILED
+    runner.cancel.assert_called_once_with(job.remote_job_id)

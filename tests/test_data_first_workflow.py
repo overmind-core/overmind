@@ -315,7 +315,7 @@ def test_workshop_inspects_then_records_mean_mapping_before_preparing(settings):
     assert row.extra["rating"] == 3.4
 
 
-def test_changing_an_existing_mean_requires_a_reviewed_workshop_proposal():
+def test_changing_an_existing_mean_records_semantic_impact_and_preserves_source():
 
     project = Project.objects.create(name="Mean review", slug="mean-review")
     dataset = Dataset.objects.create(project=project, name="Means", intent="train")
@@ -338,8 +338,12 @@ def test_changing_an_existing_mean_requires_a_reviewed_workshop_proposal():
             "run": True,
         }
     )
-    assert result["proposed"], result
-    assert next(rows.iter_rows(dataset.active_cell)).extra["decision"]["target_mean"] == 0.4
+    assert result["ok"], result
+    dataset.refresh_from_db()
+    assert next(rows.iter_rows(dataset.source)).extra["decision"]["target_mean"] == 0.4
+    assert next(rows.iter_rows(dataset.active_cell)).extra["decision"]["target_mean"] == 0.9
+    assert dataset.active_cell.review["kind"] == "semantic"
+    assert dataset.active_cell.review["decision_changes"] == 1
 
 
 def test_demo_model_workflows_remain_terminal_and_reset_without_provider_work():

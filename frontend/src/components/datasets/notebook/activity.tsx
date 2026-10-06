@@ -131,10 +131,10 @@ export function WorkshopActivity({ progress }: { progress?: WorkshopProgress }) 
         <div className="space-y-2">
           <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
             <span>
-              {generated.toLocaleString()} of {requested.toLocaleString()} rows added
+              {generated.toLocaleString()} of {requested.toLocaleString()} rows saved
             </span>
           </div>
-          <Progress label="Generated rows added" percent={(generated / requested) * 100} />
+          <Progress label="Generated rows saved" percent={(generated / requested) * 100} />
         </div>
       )}
       {quietMs >= 30_000 && (

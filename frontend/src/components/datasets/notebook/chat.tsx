@@ -14,13 +14,11 @@ import type { AgentActivityPart } from "@/components/agent-activity/activity-tim
 import { Attachment } from "@/components/datasets/attachment";
 import { WorkshopActivity, WorkshopThinking } from "@/components/datasets/notebook/activity";
 import { chatSections, notebookFlow } from "@/components/datasets/notebook/chat-flow";
-import { ProposalImpact } from "@/components/datasets/notebook/preparation";
 import { WorkshopFundingControl } from "@/components/datasets/workshop-funding";
 import { WorkshopStatusIcon } from "@/components/datasets/workshop-status";
 import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Icon, type IconName } from "@/components/ui/icons";
 import { MarkdownContent } from "@/components/ui/markdown";
 import type { ChatCellRef, ChatTurn, WorkshopProgress } from "@/hooks/use-datasets";
@@ -41,28 +39,28 @@ function IntentQuestion({
   busy: boolean;
   onChoose: (intent: IntentChoice, turnId: string) => Promise<boolean | undefined> | undefined;
 }) {
-  const [choice, setChoice] = useState<IntentChoice | null>(null);
-  const [submitting, setSubmitting] = useState(false);
+  const [submitting, setSubmitting] = useState<IntentChoice | null>(null);
   const [error, setError] = useState("");
   const sending = useRef(false);
-  const submit = async () => {
-    if (!choice || busy || sending.current) return;
+  const submit = async (choice: IntentChoice) => {
+    if (busy || sending.current) return;
     sending.current = true;
-    setSubmitting(true);
+    setSubmitting(choice);
     setError("");
     try {
       if ((await onChoose(choice, turnId)) !== false) return;
+      setError("Couldn't save your choice. Try again.");
     } catch (err) {
       setError(errorMessage(err, "Couldn't save your choice. Try again."));
     }
     sending.current = false;
-    setSubmitting(false);
+    setSubmitting(null);
   };
   return (
-    <Card className="mb-2 bg-popover p-3">
-      <fieldset disabled={busy || submitting}>
-        <legend className="mb-3 text-sm text-foreground">What will you use this data for?</legend>
-        <div className="flex flex-wrap items-center gap-x-5 gap-y-3">
+    <div className="mb-3">
+      <fieldset aria-busy={submitting !== null} disabled={busy || submitting !== null}>
+        <legend className="mb-2 text-sm text-foreground">What will you use this data for?</legend>
+        <div className="flex flex-wrap gap-2">
           {(
             [
               ["train", "Training"],
@@ -70,28 +68,20 @@ function IntentQuestion({
               ["explore", "Data exploration"],
             ] as const
           ).map(([value, label]) => (
-            <label className="flex cursor-pointer items-center gap-2 text-sm" key={value}>
-              <input
-                checked={choice === value}
-                className="size-4 accent-primary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
-                name={`intent-${turnId}`}
-                onChange={() => setChoice(value)}
-                type="radio"
-                value={value}
-              />
+            <Button
+              aria-busy={submitting === value}
+              aria-label={label}
+              disabled={busy || submitting !== null}
+              key={value}
+              onClick={() => void submit(value)}
+              size="sm"
+              type="button"
+              variant="secondary"
+            >
+              {submitting === value && <WorkshopStatusIcon className="size-4" state="working" />}
               {label}
-            </label>
+            </Button>
           ))}
-          <Button
-            className="ml-auto"
-            disabled={!choice || busy || submitting}
-            onClick={() => void submit()}
-            size="sm"
-            type="button"
-          >
-            {submitting && <WorkshopStatusIcon className="size-4" state="working" />}
-            Continue
-          </Button>
         </div>
       </fieldset>
       {error && (
@@ -99,7 +89,7 @@ function IntentQuestion({
           {error}
         </Alert>
       )}
-    </Card>
+    </div>
   );
 }
 
@@ -127,7 +117,6 @@ export interface LiveTurn {
   progress?: WorkshopProgress;
 }
 
-/** The chip shows the cell as it is now: a proposal the user ran reads as ran. */
 function chipState(ref: ChatCellRef, cell: Cell): ChipState {
   if (cell.state === "ok" && cell.fingerprint) return "ran";
   if (cell.state === "failed") return "failed";
@@ -181,73 +170,6 @@ function CellResult({
   );
 }
 
-function ProposalRow({
-  cell,
-  busy,
-  onAccept,
-  onDiscard,
-  open,
-  onOpenChange,
-}: {
-  cell: Cell;
-  busy: boolean;
-  onAccept: (id: string) => void;
-  onDiscard: (id: string) => void;
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
-}) {
-  return (
-    <Collapsible asChild onOpenChange={onOpenChange} open={open}>
-      <li>
-        <div className="sticky top-0 z-10 flex flex-wrap items-center gap-x-3 gap-y-1 bg-popover px-3 py-2">
-          <CollapsibleTrigger asChild>
-            <button
-              aria-label={`Review ${cell.title}`}
-              className="flex min-w-0 flex-1 basis-40 items-center gap-2 rounded-sm py-1 text-left outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/60"
-              type="button"
-            >
-              <WorkshopStatusIcon className="size-3.5 shrink-0" state="review" />
-              <span className="min-w-0 flex-1">
-                <span className="block truncate text-sm">{cell.title}</span>
-                {cell.note && cell.note !== cell.title && (
-                  <span className="block truncate text-xs text-muted-foreground">{cell.note}</span>
-                )}
-              </span>
-              <Icon.chevronUp
-                className={cn(
-                  "size-3 shrink-0 text-muted-foreground transition-transform motion-reduce:transition-none",
-                  open && "rotate-180"
-                )}
-              />
-            </button>
-          </CollapsibleTrigger>
-          <div className="ml-auto flex shrink-0 items-center gap-1.5">
-            <Button disabled={busy} onClick={() => onAccept(cell.id)} size="xs">
-              <Icon.success />
-              Approve
-            </Button>
-            <Button
-              disabled={busy}
-              onClick={() => onDiscard(cell.id)}
-              size="xs"
-              variant="secondary"
-            >
-              Reject
-            </Button>
-          </div>
-        </div>
-        <CollapsibleContent className="px-3 pb-3">
-          <div className="space-y-3 border-t border-border/70 pt-3">
-            {cell.note && <p className="whitespace-pre-wrap break-words text-sm">{cell.note}</p>}
-            <ProposalImpact cell={cell} />
-            <p className="text-xs text-muted-foreground">Not applied.</p>
-          </div>
-        </CollapsibleContent>
-      </li>
-    </Collapsible>
-  );
-}
-
 const Turn = memo(function Turn({
   turn,
   cellsById,
@@ -287,7 +209,6 @@ const Turn = memo(function Turn({
     0
   );
   const interrupted = "status" in turn && turn.status === "running" && !busy;
-  const awaitingApproval = "status" in turn && turn.status === "awaiting_approval";
   if ("status" in turn && turn.status === "awaiting_intent") return null;
   const label = open
     ? "Agent response"
@@ -296,16 +217,7 @@ const Turn = memo(function Turn({
         .map((line) => line.trim())
         .find((line) => line && !/^#+\s/.test(line))
         ?.replace(/[*`]/g, "") || "Agent activity";
-  if (
-    !live &&
-    !turn.text &&
-    !steps.length &&
-    !chips.length &&
-    !error &&
-    !interrupted &&
-    !awaitingApproval
-  )
-    return null;
+  if (!live && !turn.text && !steps.length && !chips.length && !error && !interrupted) return null;
   const renderSection = (section: (typeof sections)[number], index: number) => (
     <div className="space-y-4" key={section.offset}>
       <WorkshopThinking
@@ -333,15 +245,7 @@ const Turn = memo(function Turn({
       >
         <WorkshopStatusIcon
           className="size-3.5"
-          state={
-            live
-              ? "working"
-              : awaitingApproval
-                ? "review"
-                : error || interrupted
-                  ? "error"
-                  : "complete"
-          }
+          state={live ? "working" : error || interrupted ? "error" : "complete"}
         />
         <span className="min-w-0 flex-1 truncate">{label}</span>
         <Icon.chevronRight
@@ -353,11 +257,7 @@ const Turn = memo(function Turn({
       </button>
       <div className="flex flex-col gap-4 pt-2 pb-4" hidden={!open}>
         {(error || interrupted) && <span className="text-xs text-warning">Incomplete</span>}
-        {awaitingApproval && (
-          <span className="text-xs text-warning" role="status">
-            Awaiting approval
-          </span>
-        )}
+
         {summaryIndex > 0 && (
           <details className="space-y-4" open={live ? true : undefined}>
             <summary className="cursor-pointer text-xs text-muted-foreground hover:text-foreground">
@@ -398,8 +298,6 @@ export function DatasetChat({
   error,
   onSend,
   onSelect,
-  onAccept,
-  onDiscard,
   onChooseIntent,
   initialRequest = "",
   focusedCell,
@@ -418,8 +316,6 @@ export function DatasetChat({
   error?: string;
   onSend: (message: string, uploads?: string[]) => Promise<boolean | undefined> | undefined;
   onSelect: (id: string) => void;
-  onAccept: (id: string) => void;
-  onDiscard: (id: string) => void;
   onChooseIntent: (
     intent: IntentChoice,
     turnId: string
@@ -456,19 +352,8 @@ export function DatasetChat({
   const localScrollRef = useRef<HTMLDivElement>(null);
   const scrollRef = externalScrollRef ?? localScrollRef;
   const [submittedAt, setSubmittedAt] = useState(-1);
-  const [expandedProposal, setExpandedProposal] = useState<string | null>(null);
   const composerRef = useRef<HTMLTextAreaElement>(null);
   const cellsById = useMemo(() => new Map(cells.map((c) => [c.id, c])), [cells]);
-  const tail = cells.filter((cell) => cell.state !== "proposed").at(-1);
-  const proposals = cells.filter((cell) => {
-    const review = cell.review as { input_fingerprint?: string } | null;
-    return (
-      cell.state === "proposed" &&
-      tail?.state === "ok" &&
-      !!tail.fingerprint &&
-      review?.input_fingerprint === tail.fingerprint
-    );
-  });
   const lastTurn = turns.at(-1);
   const runningIndex =
     lastTurn?.role === "agent" && lastTurn.status === "running" ? turns.length - 1 : -1;
@@ -603,25 +488,6 @@ export function DatasetChat({
               turnId={lastTurn.id}
             />
           )}
-          {proposals.length > 0 && (
-            <section aria-label="Proposed changes" className="mx-2 mb-2">
-              <Card className="max-h-[40dvh] overflow-y-auto bg-popover">
-                <ul className="divide-y divide-border/70">
-                  {proposals.map((cell) => (
-                    <ProposalRow
-                      busy={busy}
-                      cell={cell}
-                      key={cell.id}
-                      onAccept={onAccept}
-                      onDiscard={onDiscard}
-                      onOpenChange={(open) => setExpandedProposal(open ? cell.id : null)}
-                      open={expandedProposal === cell.id}
-                    />
-                  ))}
-                </ul>
-              </Card>
-            </section>
-          )}
           {error && (
             <pre className="mb-2 max-h-32 overflow-auto whitespace-pre-wrap break-words rounded-sm border border-destructive/40 bg-destructive/10 px-2 py-1 font-mono text-xs text-destructive">
               {error}
@@ -754,21 +620,13 @@ export function DatasetChat({
                     ? "working"
                     : error
                       ? "error"
-                      : proposals.length
-                        ? "review"
-                        : lastTurn?.role === "agent" && lastTurn.status === "complete"
-                          ? "complete"
-                          : "idle"
+                      : lastTurn?.role === "agent" && lastTurn.status === "complete"
+                        ? "complete"
+                        : "idle"
                 }
               />
               <span className="min-w-0 truncate" title={busy ? busyLabel : undefined}>
-                {busy
-                  ? busyLabel
-                  : error
-                    ? "Request failed"
-                    : proposals.length
-                      ? "Review changes"
-                      : "Data workshop"}
+                {busy ? busyLabel : error ? "Request failed" : "Data workshop"}
               </span>
             </div>
           </Card>

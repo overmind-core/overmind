@@ -439,15 +439,6 @@ export function useRemoveCellMutation(id: string) {
   });
 }
 
-export function useAcceptCellMutation(id: string) {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (cellId: string) => apiClient.datasets.datasetsCellsAcceptCreate({ cellId, id }),
-    onError: (e) => notify.error(e, "Couldn't run that proposal"),
-    onSettled: () => invalidateDataset(qc, id),
-  });
-}
-
 export function useRunMutation(id: string) {
   const qc = useQueryClient();
   return useMutation({

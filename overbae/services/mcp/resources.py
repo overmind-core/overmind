@@ -35,6 +35,7 @@ from overbae.models import (
     TrainingPreparation,
 )
 from overbae.services import model_workflows
+from overbae.services.datasets import workflow
 from overbae.services.deployment import deployment_progress
 from overbae.services.entity_resolution import (
     resolve_capability,
@@ -696,7 +697,11 @@ def dataset_run_job_payload(dataset, uri: str) -> dict:
     versions = dataset.versions(chain=chain)
     ran = [cell for cell in chain if cell.state == Cell.State.OK]
     active = next((cell for cell in ran if cell.id == dataset.active_id), ran[-1] if ran else None)
-    actions = [action.model_dump(mode="json") for action in next_actions(dataset, chain, active)]
+    execution = workflow.describe(dataset)
+    actions = [
+        action.model_dump(mode="json")
+        for action in next_actions(dataset, chain, active, execution=execution)
+    ]
     cells = {"n": len(chain), "states": dict(Counter(cell.state for cell in chain))}
     dataset_link = _dataset_link(dataset)
     job_link = resource_link(
@@ -705,12 +710,32 @@ def dataset_run_job_payload(dataset, uri: str) -> dict:
     error = _clip_text(dataset.error, _ERROR_CAP) or None
     latest_turn = _latest_turn(dataset)
     waiting = dataset.state == "idle" and (latest_turn or {}).get("status") == "awaiting_approval"
+    status = "awaiting_approval" if waiting else dataset.state
+    if dataset.state == "idle" and execution.get("state") in {
+        "blocked",
+        "partial",
+        "paused",
+        "queued",
+        "running",
+        "cancelled",
+    }:
+        status = execution["state"]
+        error = (
+            error
+            or _clip_text(
+                execution.get("result", {}).get("error")
+                or execution.get("failure", {}).get("detail")
+                or (latest_turn or {}).get("error"),
+                _ERROR_CAP,
+            )
+            or None
+        )
     return {
         "uri": uri,
         "kind": "dataset_run",
         "id": str(dataset.id),
         "name": dataset.name,
-        "status": "awaiting_approval" if waiting else dataset.state,
+        "status": status,
         "state": dataset.state,
         "error": error,
         "active": (
@@ -724,12 +749,14 @@ def dataset_run_job_payload(dataset, uri: str) -> dict:
             else None
         ),
         "latest_turn": latest_turn,
+        "workflow": execution,
         "cells": cells,
         "next_action": actions[0] if actions else None,
         "next_actions": actions,
         "dataset": dataset_link,
         "progress": {
             **((latest_turn or {}).get("progress") or {}),
+            "workflow": execution,
             "cells": cells["states"],
             "rows": active.rows if active else 0,
         },

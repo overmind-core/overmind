@@ -4,7 +4,7 @@ from cursor_sdk import Client
 from django.db import transaction
 from django.utils import timezone
 
-from overbae.models import Dataset
+from overbae.models import Dataset, WorkshopRun
 from overbae.services.datasets import paths
 from overbae.services.datasets.lifecycle import DatasetError
 
@@ -47,17 +47,24 @@ def started(dataset_id, task_id):
     return operation
 
 
-def provider_submitting(dataset_id, task_id, agent_id):
-    return change(
-        dataset_id, owner_id=task_id, provider={"agent_id": agent_id, "state": "submitting"}
-    )
-
-
-def provider_started(dataset_id, task_id, agent_id, run_id):
+def provider_submitting(dataset_id, task_id, agent_id, *, workspace_scope=""):
     return change(
         dataset_id,
         owner_id=task_id,
-        provider={"agent_id": agent_id, "run_id": run_id, "state": "running"},
+        provider={"agent_id": agent_id, "state": "submitting", "workspace_scope": workspace_scope},
+    )
+
+
+def provider_started(dataset_id, task_id, agent_id, run_id, *, workspace_scope=""):
+    return change(
+        dataset_id,
+        owner_id=task_id,
+        provider={
+            "agent_id": agent_id,
+            "run_id": run_id,
+            "state": "running",
+            "workspace_scope": workspace_scope,
+        },
     )
 
 
@@ -89,6 +96,10 @@ def cancel(dataset_id):
     dataset = Dataset.objects.get(pk=dataset_id)
     if dataset.operation.get("state") == "cancelled":
         return dataset.operation
+    WorkshopRun.objects.filter(
+        dataset_id=dataset_id,
+        state__in=["planning", "queued", "running", "paused", "blocked", "partial"],
+    ).update(state="cancelled", updated_at=timezone.now())
     change(dataset_id, state="cancel_pending", cancellation_requested_at=timezone.now().isoformat())
     return reconcile(dataset_id)
 
@@ -107,7 +118,16 @@ def reconcile(dataset_id, *, local_stopped=False):
         )
     if provider.get("run_id") and provider.get("state") not in {"cancelled", "completed"}:
         try:
-            cancel_provider(provider, workspace=paths.workspace_dir(dataset.pk))
+            root = paths.workspace_dir(dataset.pk)
+            scope = provider.get("workspace_scope", "")
+            if scope:
+                target = (root / scope).resolve()
+                if target.parent != root.resolve():
+                    raise DatasetError(
+                        "Saved workspace identity is invalid.", code="ownership_lost"
+                    )
+                root = target
+            cancel_provider(provider, workspace=root)
         except Exception:
             logger.warning(
                 "dataset %s: cancellation acknowledgement failed", dataset.pk, exc_info=True

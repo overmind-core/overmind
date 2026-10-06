@@ -52,7 +52,11 @@ class CursorEngine:
 
         from overbae.services.datasets.notebook.agent import TOOL_SPECS, system_prompt
 
-        root = workspace.prepare(dataset, system_prompt(dataset))
+        root = workspace.prepare(
+            dataset,
+            tools.prompt(dataset) if hasattr(tools, "prompt") else system_prompt(dataset),
+            scope=getattr(tools, "workspace_scope", ""),
+        )
         store_dir = root / ".agent"
         store_dir.mkdir(exist_ok=True)
         handlers = tools.handlers()
@@ -60,7 +64,9 @@ class CursorEngine:
             name: CustomTool(
                 execute=_on_sdk_thread(handlers[name]), description=description, input_schema=schema
             )
-            for name, (description, schema) in TOOL_SPECS.items()
+            for name, (description, schema) in (
+                tools.specs() if getattr(tools, "isolated", False) else TOOL_SPECS
+            ).items()
         }
         return AgentOptions(
             api_key=self.choice.provider.key(),
@@ -102,20 +108,41 @@ class CursorEngine:
 
         outcome = Outcome()
         options = self._options(dataset, tools)
+        if getattr(tools, "isolated", False):
+            dataset.agent_id = ""
         with self._open(dataset, options) as agent:
-            if agent.agent_id != dataset.agent_id:
+            if agent.agent_id != dataset.agent_id and not getattr(tools, "isolated", False):
                 Dataset.objects.filter(pk=dataset.pk).update(agent_id=agent.agent_id)
             # The bridge rejects an idempotency_key on a local agent's Send.
-            operations.provider_submitting(dataset.pk, dataset.agent_turn_key, agent.agent_id)
+            scope = getattr(tools, "workspace_scope", "")
+            operations.provider_submitting(
+                dataset.pk, dataset.agent_turn_key, agent.agent_id, workspace_scope=scope
+            )
+            if hasattr(tools, "before_round"):
+                tools.before_round(self.name)
             run = agent.send(
-                system_prompt_for_turn(dataset, message), SendOptions(on_delta=on_delta)
+                (tools.prompt(dataset) + "\n\n" + message)
+                if hasattr(tools, "prompt")
+                else system_prompt_for_turn(dataset, message),
+                SendOptions(on_delta=on_delta),
             )
             finished = False
             try:
                 operations.provider_started(
-                    dataset.pk, dataset.agent_turn_key, agent.agent_id, run.id
+                    dataset.pk,
+                    dataset.agent_turn_key,
+                    agent.agent_id,
+                    run.id,
+                    workspace_scope=scope,
                 )
+                if hasattr(tools, "provider_started"):
+                    tools.provider_started(
+                        {"agent_id": agent.agent_id, "run_id": run.id, "workspace_scope": scope}
+                    )
                 for _item in run.stream():
+                    if getattr(tools, "stop_requested", False):
+                        run.cancel()
+                        break
                     operations.check_cancelled(dataset.pk, task_id=dataset.agent_turn_key)
                     while pending:
                         yield pending.pop(0)
@@ -124,7 +151,12 @@ class CursorEngine:
                 operations.change(
                     dataset.pk,
                     owner_id=dataset.agent_turn_key,
-                    provider={"agent_id": agent.agent_id, "run_id": run.id, "state": "completed"},
+                    provider={
+                        "agent_id": agent.agent_id,
+                        "run_id": run.id,
+                        "state": "completed",
+                        "workspace_scope": scope,
+                    },
                 )
             finally:
                 # Closing a local SDK handle does not clear an active provider run.
@@ -138,6 +170,7 @@ class CursorEngine:
                                 "agent_id": agent.agent_id,
                                 "run_id": run.id,
                                 "state": "cancelled",
+                                "workspace_scope": scope,
                             },
                         )
                     except Exception:  # noqa: BLE001 — retain the original interruption

@@ -4,7 +4,7 @@ from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
 
 from overbae.models import Cell, Dataset
-from overbae.services.datasets import preparation, review
+from overbae.services.datasets import preparation, review, workflow
 from overbae.services.datasets.context import context_fingerprint
 from overbae.services.datasets.land import SPLIT_POSITIONS
 
@@ -43,7 +43,19 @@ class PreparationCheckSerializer(serializers.Serializer):
     question = serializers.CharField()
 
 
+class PreparationOutcomeSerializer(serializers.Serializer):
+    deliverables = serializers.ListField(child=serializers.CharField())
+    task = serializers.CharField()
+    confidence = serializers.CharField()
+    preservation = serializers.ListField(child=serializers.CharField())
+    required_checks = serializers.ListField(child=serializers.CharField())
+    target_rows = serializers.IntegerField(allow_null=True)
+    coverage = serializers.CharField(allow_blank=True)
+    model_input = serializers.CharField(allow_blank=True)
+
+
 class PreparationSpecificationSerializer(serializers.Serializer):
+    outcome = PreparationOutcomeSerializer(allow_null=True, required=False)
     objective = serializers.CharField()
     consumer = serializers.CharField()
     understanding = serializers.CharField()
@@ -180,7 +192,14 @@ class ChatTurnSerializer(serializers.Serializer):
     at = serializers.CharField()
 
 
+class WorkshopControlSerializer(serializers.Serializer):
+    run_id = serializers.UUIDField()
+    revision = serializers.IntegerField(min_value=0)
+    action = serializers.ChoiceField(choices=["pause", "resume", "publish_partial"])
+
+
 class DatasetSerializer(serializers.ModelSerializer):
+    workflow = serializers.SerializerMethodField()
     preparation_plan = serializers.SerializerMethodField()
     capability_name = serializers.CharField(source="capability.name", read_only=True, default=None)
     cells = serializers.SerializerMethodField()
@@ -207,6 +226,7 @@ class DatasetSerializer(serializers.ModelSerializer):
             "rows",
             "readiness",
             "preparation_plan",
+            "workflow",
             "operation",
             "state",
             "error",
@@ -219,6 +239,10 @@ class DatasetSerializer(serializers.ModelSerializer):
         read_only_fields = [
             f for f in fields if f not in ("name", "capability", "intent", "active")
         ]
+
+    @extend_schema_field(serializers.DictField())
+    def get_workflow(self, obj):
+        return workflow.describe(obj)
 
     def _chain(self, obj) -> list[Cell]:
         cached = getattr(obj, "_prefetched_objects_cache", {}).get("cells")

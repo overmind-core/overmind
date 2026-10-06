@@ -12,6 +12,13 @@ from overbae.services.datasets.notebook import run as notebook_run
 pytestmark = pytest.mark.django_db(transaction=True)
 
 
+def saved_proposal(dataset, title, script):
+    cell = lifecycle.add_cell(dataset, title=title, script=script, proposed=True)
+    preview = notebook_run.try_script(dataset, script, after=dataset.source)
+    review.save_proposal(dataset, cell, dataset.source, preview.path, kind="semantic", note="")
+    return cell
+
+
 @pytest.fixture
 def dataset():
     project = Project.objects.create(name="Workflow", slug=f"workflow-{uuid.uuid4()}")
@@ -25,14 +32,11 @@ def dataset():
 
 
 def test_approval_supersedes_other_previews_of_the_previous_frame(dataset):
-    tools = agent.Tools(dataset.id, None, lambda _: None)
     proposals = [
-        tools.add_cell(
-            {"title": label, "script": f"df['expected_output'] = {label!r}", "kind": "semantic"}
-        )
+        saved_proposal(dataset, label, f"df['expected_output'] = {label!r}")
         for label in ("first", "second", "third")
     ]
-    selected = dataset.cells.get(pk=proposals[-1]["id"])
+    selected = proposals[-1]
     lifecycle.accept_proposal(dataset, selected)
     assert list(dataset.cells.values_list("id", flat=True)) == [
         dataset.source.id,
@@ -62,7 +66,8 @@ def test_repeated_proposal_returns_the_existing_id(dataset):
     first = agent.Tools(dataset.id, None, lambda _: None).add_cell(arguments)
     repeated = agent.Tools(dataset.id, None, lambda _: None).add_cell(arguments)
     assert first["id"] == repeated["id"]
-    assert dataset.cells.filter(state=Cell.State.PROPOSED).count() == 1
+    assert dataset.cells.filter(state=Cell.State.PROPOSED).count() == 0
+    assert dataset.cells.count() == 2
 
 
 def test_quality_claims_cannot_pass_without_a_successful_audit(dataset):
@@ -89,9 +94,7 @@ def test_cleanup_never_resolves_ambiguous_references(dataset, arguments):
 
 
 def test_discard_rollback_keeps_the_preview_file(dataset):
-    proposal = agent.Tools(dataset.id, None, lambda _: None).add_cell(
-        {"title": "Alternative", "script": "df = df.iloc[:1]"}
-    )
+    proposal = {"id": saved_proposal(dataset, "Alternative", "df = df.iloc[:1]").pk}
     path = paths.cell_path(dataset.id, proposal["id"])
     with pytest.raises(ValueError), transaction.atomic():
         lifecycle.discard_proposal(dataset, proposal["id"])

@@ -20,7 +20,7 @@ list_datasets
 → message_dataset_agent when changes are needed
 → get_job(kind=dataset_run)
 → inspect_dataset
-→ run_dataset(proposal_cell=...) only after user approval when a proposal exists
+→ inspect applied versions and their recorded changes; no per-change approval
 → query_dataset for verification
 → start evaluation, fine-tuning, or optimisation with the chosen dataset/cell
 ```
@@ -102,7 +102,7 @@ source/active profiles grouped by instructions, task labels, input/output shapes
 and tool schemas. Missing profiles remain unmeasured; request explore_dataset to compute them. Profiles cover all rows; family lists and examples are bounded and
 report truncation. Query each relevant family before generalising. These profiles
 are structural evidence, not a semantic quality audit. Replacing existing task
-instructions requires a reviewed proposal; capability binding is not permission
+instructions requires source evidence and recorded rationale; capability binding is not permission
 to overwrite a mixed-task corpus with one prompt.
 
 When recent_chat contains `awaiting_intent`, ask the user to choose Training, Eval, or Data exploration. Answer with `message_dataset_agent(dataset=UUID, intent_choice="train"|"eval"|"explore", intent_turn_id=TURN_ID)`; omit message. This resumes the original request.
@@ -111,24 +111,22 @@ Use `message_dataset_agent(dataset=UUID, message=...)` for name, intent,
 capability, and cell changes. Poll `get_job(kind=dataset_run, id=UUID)`, then
 inspect again.
 
-When inspection returns a proposed cell, explain it and obtain user approval
-before calling `run_dataset(dataset=UUID, proposal_cell=CELL_UUID)`. Never
-accept a proposal automatically. Approval makes the exact reviewed result active
-and resumes the original agent request, including its remaining quality checks.
-The Console's Deny action also resumes the agent with the decision, without
-applying the proposal. Multiple proposals from one turn must all be decided before
-it resumes. Poll and inspect through the continuation, not just the cell run.
-`awaiting_approval` is a decision checkpoint, not a generation failure. The
-continuation uses the configured workshop engine and may incur model charges.
+The Workshop applies supported changes sequentially and reports the resulting
+versions and measured impact. Only missing initial intent requires a user choice.
+If older unfinished suggestions are present, continue through
+`message_dataset_agent`; the agent reassesses them against current data before
+applying changes. Poll and inspect through completion.
 
 Requested generation must produce new examples through `add_synthetic_rows`.
 Do not propose script-based replication or identifier remapping to reach a target.
 
-Mechanical repairs include complex evidence-preserving restructuring and deterministic derivation from supplied facts and declared rules. They can apply automatically. Initial preparation runs measured cleaning and justified exclusions, with source rows and coverage effects preserved. Judgement calls require a concrete proposal even during initial preparation; follow-up exclusions also require review. The Console offers Approve/Deny with identity-matched input/output examples, before/after counts and categorical coverage. Explain the decision, supporting evidence and tradeoff, not just the new row count. Approval is tied to the exact preview and its source/context; changed input or context retires the proposal; any replacement requires a fresh preview.
+Supported mechanical and semantic repairs run directly as recorded cells. Each step uses the latest successful output, preserves earlier versions, and records evidence, affected rows and coverage changes. Inspect the choices and their impact, not just the final row count. Missing evidence remains unknown; there are no Approve/Deny controls.
 
-Preparation requests mean transform, audit, repair actionable findings and recheck the changed version, not just report failures. A selected capability already defines the target. Map each target field to supplied evidence, a deterministic derivation, a representation change, missing evidence or a user decision; audit all four checks against that same target. Ask the workshop to inspect nested source payloads and recover supplied evidence before declaring it missing, and apply supported improvements even when other findings cannot be resolved. Do not join unrelated worker cases, cross held-out boundaries, fabricate missing evidence or relabel worker answers as orchestrator deliverables. Finish independent repairs before proposing a decision; approval cannot make unsupported facts true. Once supported repairs are exhausted, report remaining affected rows and let the user continue with warnings. Audit-only questions do not authorise transformations.
+Preparation requests mean transform, audit, repair actionable findings and recheck the changed version, not just report failures. A selected capability already defines the target. Map each target field to supplied evidence, a deterministic derivation, a representation change, missing evidence or an evidence-backed agent interpretation; audit all four checks against that same target. Ask the workshop to inspect nested source payloads and recover supplied evidence before declaring it missing, and apply supported improvements even when other findings cannot be resolved. Do not join unrelated worker cases, cross held-out boundaries, fabricate missing evidence or relabel worker answers as orchestrator deliverables. Complete independent supported repairs and report limitations; do not ask follow-up questions or invent unsupported facts. Once supported repairs are exhausted, report remaining affected rows and let the user continue with warnings. Audit-only questions do not authorise transformations.
 
-For synthetic generation, ask `message_dataset_agent` explicitly, for example: "Generate and add 20 examples from the existing rows and the selected capability's behaviour contracts, targeting missing coverage." No capability is required. The request authorizes adding validated rows directly, with no draft or Apply step. The agent uses the existing workshop engine, records seed lineage and generation context, checks shape and exact duplicates, and accumulates batches of at most 50 rows in one active generated version. Retries do not duplicate saved batches. If generation stops early, the added rows remain active; inspect the saved count and ask to continue to the same target (or specify the generated cell UUID). A used or changed version cannot be extended. Generated labels are not independently verified. Never treat them as ground truth without quality review or mix seed-derived rows across training and held-out evaluation.
+For source-to-examples preparation, the selected train/eval purpose and original request already authorize grounded construction. The Workshop chooses a count from inspected evidence if none was supplied. Derived examples occupy their own version; raw sources stay in earlier versions. Exact source quotes, document/group lineage and uncovered source counts are recorded. Inspect the final consumer format and task checks; generated answers are not independently verified by attribution alone. Do not treat cleaned pages or trivial pseudo-Q&A as completion of a substantive Q&A task.
+
+For additional synthetic variants, ask `message_dataset_agent` explicitly, for example: "Generate and add 20 examples from the existing rows and the selected capability's behaviour contracts, targeting missing coverage." No capability is required. The request authorizes a saved generation recipe, a small qualified pilot and bounded background batches. Inspect `workflow.generation` for the run ID, revision, generated/remaining rows, source binding and failure receipts. Accepted batches are immutable and are published as one version at completion or an explicit partial outcome; earlier and used versions stay unchanged. Do not repeat a generation request to poll it. Use `get_job` or `inspect_dataset`, and `manage_dataset_workflow` with the current `run_id`, `revision` and `action` (`pause`, `resume`, `publish_partial`) for supported recovery. A pause stops new claims; an owned provider call may still finish. Unknown provider outcomes require receipt recovery, never blind resubmission. `cancel_dataset` handles cancellation. Generated labels are not independently verified. Never split seed-derived rows across training and held-out evaluation.
 
 The workshop remains model-independent. `readiness` distinguishes **format-valid** from **quality-reviewed**; the latter records agent checks with evidence, including failures and unknowns, not a human certification. Capability task context and behaviour contracts guide those checks. Exact model/context compatibility belongs to training preparation: Console jobs run it after launch, and explicit REST/MCP preparation remains available. Follow [finetuning.md](finetuning.md) for exact preprocessing and bring specific affected `source_row` IDs back to the workshop for repairs.
 

@@ -1,4 +1,3 @@
-import uuid
 from concurrent.futures import ThreadPoolExecutor
 from unittest.mock import patch
 
@@ -7,7 +6,7 @@ from conftest import plan_fixture
 from django.db import close_old_connections
 
 from overbae.models import Behaviour, BehaviourVersion, Capability, Dataset, Project
-from overbae.services.datasets import land, lifecycle, paths, review, rows, store, synthetic, use
+from overbae.services.datasets import generation, land, lifecycle, paths, review, rows, store, use
 from overbae.services.datasets.context import preparation_context
 from overbae.services.datasets.notebook import agent, run
 from overbae.services.datasets.partition import content_key, split_rows
@@ -29,23 +28,24 @@ def dataset():
     return ds
 
 
-def test_semantic_exclusions_wait_with_coverage_and_consume_reviewed_output():
+def test_exclusions_apply_with_coverage_and_consume_validated_output():
     ds = dataset()
     tools = agent.Tools(ds.id, None, lambda _: None)
-    result = tools.add_cell({"title": "Exclude", "script": "df = df.iloc[1:]", "run": True})
-    assert result["proposed"]
+    with patch.object(run, "try_script", wraps=run.try_script) as execute:
+        result = tools.add_cell({"title": "Exclude", "script": "df = df.iloc[1:]"})
+        assert result["ok"] and execute.call_count == 1
     cell = ds.cells.get(pk=result["id"])
-    assert ds.active_cell.rows == 2
+    ds.refresh_from_db()
+    assert ds.active_cell.id == cell.id and cell.rows == 1
+    assert ds.source.rows == 2
     assert cell.review["rows_removed"] == 1
     assert cell.review["coverage_before"]["label"]["minority"] == 1
     assert "minority" not in cell.review["coverage_after"]["label"]
-    lifecycle.accept_proposal(ds, cell)
     with patch(
         "overbae.services.datasets.notebook.runner.run",
         side_effect=AssertionError("must not rerun"),
     ):
         run.execute(ds)
-    assert ds.active_cell.rows == 1
 
 
 def test_initial_preparation_runs_exclusions_and_preserves_source_and_coverage():
@@ -64,31 +64,37 @@ def test_initial_preparation_runs_exclusions_and_preserves_source_and_coverage()
     )
     assert result["ok"] and not result.get("proposed")
     assert ds.active_cell.rows == 1 and ds.source.rows == 2
-    assert ds.active_cell.review["approval"] == "preparation"
+    assert ds.active_cell.review["approval"] == "agent"
     assert ds.active_cell.review["rows_removed"] == 1
     assert ds.active_cell.review["coverage_before"]["label"]["minority"] == 1
     assert store.read_frame(paths.cell_path(ds.id, ds.source.id)).shape[0] == 2
 
 
-def test_initial_preparation_still_honours_proposals_and_guards_row_additions():
+def test_initial_preparation_applies_successive_changes_against_current_rows():
     ds = dataset()
     tools = agent.Tools(ds.id, None, lambda _: None)
     plan_fixture(ds)
     tools.automatic = True
-    proposed = tools.add_cell(
+    first = tools.add_cell(
         {
             "plan_step": "prepare",
-            "title": "Optional change",
+            "title": "Select",
             "script": "df = df.iloc[1:]",
-            "run": False,
+            "kind": "semantic",
         }
     )
-    assert proposed["proposed"]
-    added = tools.add_cell(
-        {"plan_step": "prepare", "title": "More rows", "script": "df = pd.concat([df, df])"}
+    second = tools.add_cell(
+        {
+            "plan_step": "prepare",
+            "title": "Normalise",
+            "script": "df['input'] = df['input'].str.upper()",
+        }
     )
-    assert added["proposed"]
-    assert ds.active_cell.rows == 2
+    assert first["ok"] and second["ok"]
+    assert ds.active_cell.rows == 1
+    assert store.read_frame(paths.cell_path(ds.id, ds.active_cell.id)).input.tolist() == ["TWO"]
+    assert ds.cells.count() == 3
+    assert not ds.cells.filter(state="proposed").exists()
 
 
 def test_preparation_cells_recalculate_impact_when_an_earlier_cell_changes():
@@ -139,10 +145,9 @@ def test_cell_creation_reuses_an_identical_preview_but_not_a_changed_input():
 
 def test_stale_proposal_refuses_acceptance():
     ds = dataset()
-    result = agent.Tools(ds.id, None, lambda _: None).add_cell(
-        {"title": "Exclude", "script": "df = df.iloc[1:]", "kind": "semantic"}
-    )
-    cell = ds.cells.get(pk=result["id"])
+    cell = lifecycle.add_cell(ds, title="Exclude", script="df = df.iloc[1:]", proposed=True)
+    output = run.try_script(ds, cell.script, after=ds.source)
+    review.save_proposal(ds, cell, ds.source, output.path, kind="semantic", note="Select one")
     ds.source.__class__.objects.filter(pk=ds.source.pk).update(fingerprint="changed")
     with pytest.raises(lifecycle.DatasetError, match="stale"):
         lifecycle.accept_proposal(ds, cell)
@@ -153,7 +158,7 @@ def test_preparation_reuses_a_preview_and_checks_unchanged_rows_once():
     tools = agent.Tools(ds.id, None, lambda _: None)
     with (
         patch.object(run, "try_script", wraps=run.try_script) as execute,
-        patch.object(review, "same_files", wraps=review.same_files) as compare,
+        patch.object(review, "same_data", wraps=review.same_data) as compare,
     ):
         tools.try_script(
             {"script": "def transform_batch(df):\n    return prepare_examples(df, intent='eval')"}
@@ -193,50 +198,34 @@ def test_preparation_only_waives_approval_for_exclusions(change, value):
 
 
 @pytest.mark.parametrize("initial", [True, False], ids=["initial", "follow_up"])
-@pytest.mark.parametrize("approve", [True, False], ids=["approve", "deny"])
-def test_judgement_waits_for_a_decision_without_blocking_the_current_version(initial, approve):
+def test_semantic_change_applies_and_retains_source_and_change_evidence(initial):
     ds = dataset()
     tools = agent.Tools(ds.id, None, lambda _: None)
     plan_fixture(ds)
     tools.automatic = initial
-    source_id = ds.active_cell.id
-    source_fingerprint = ds.active_cell.fingerprint
+    source = ds.source
+    source_fingerprint = source.fingerprint
     result = tools.add_cell(
         {
             "plan_step": "prepare",
-            "title": "Abstain on ambiguity",
-            "script": "df['expected_output'] = 'abstain'",
+            "title": "Normalise labels",
+            "script": "df['expected_output'] = df['expected_output'].str.upper()",
             "kind": "semantic",
-            "run": True,
-            "note": "Use abstention for 2 ambiguous labels instead of choosing a class.",
+            "note": "Use uppercase labels.",
         }
     )
-    assert result["ok"] and result["proposed"]
+    assert result["ok"] and not result.get("proposed")
     cell = ds.cells.get(pk=result["id"])
     ds.refresh_from_db()
-    assert ds.active_cell.id == source_id
+    assert ds.active_cell.id == cell.id
     assert cell.review["input_examples"][0]["expected_output"] == "yes"
-    assert cell.review["output_examples"][0]["expected_output"] == "abstain"
-    assert cell.review["coverage_before"] == cell.review["coverage_after"]
-    assert use.use(ds, intent="eval").id == source_id
-    if approve:
-        lifecycle.accept_proposal(ds, cell)
-        with patch(
-            "overbae.services.datasets.notebook.runner.run",
-            side_effect=AssertionError("must consume the approved preview"),
-        ):
-            run.execute(ds)
-        assert ds.active_cell.id == cell.id
-        assert store.read_frame(paths.cell_path(ds.id, cell.id)).expected_output.tolist() == [
-            "abstain",
-            "abstain",
-        ]
-    else:
-        lifecycle.remove_cell(ds, cell)
-        ds.refresh_from_db()
-        assert not ds.cells.filter(state="proposed").exists()
-        assert ds.active_cell.id == source_id
-        assert ds.active_cell.fingerprint == source_fingerprint
+    assert cell.review["output_examples"][0]["expected_output"] == "YES"
+    assert source.fingerprint == source_fingerprint
+    assert store.read_frame(paths.cell_path(ds.id, source.id)).expected_output.tolist() == [
+        "yes",
+        "no",
+    ]
+    assert use.use(ds, intent="eval").id == cell.id
 
 
 def test_proposal_input_examples_follow_output_identity_not_row_position():
@@ -252,24 +241,26 @@ def test_proposal_input_examples_follow_output_identity_not_row_position():
 
 def test_synthetic_rows_are_active_with_seed_lineage_and_reject_duplicates_or_invented_seeds():
     ds = dataset()
-    args = {"instruction": "Cover variants", "generation_id": str(uuid.uuid4()), "target_rows": 3}
+    run_id = agent.Tools(ds.pk, None, lambda _: None).seed_examples(
+        {"instruction": "Variants", "target_rows": 3}
+    )["run_id"]
     with pytest.raises(ValueError, match="seed_row"):
-        synthetic.add(ds, ds.source, [{"seed_row": 999, "row": {"input": "x"}}], **args)
-    existing = store.read_frame(paths.cell_path(ds.id, ds.source.id)).to_dict(orient="records")[0]
+        generation.accept_batch(run_id, "wrong", [{"seed_row": 999, "row": {"input": "x"}}])
+    existing = next(store.iter_rows(paths.cell_path(ds.pk, ds.source.pk)))
     with pytest.raises(ValueError, match="duplicates"):
-        synthetic.add(ds, ds.source, [{"seed_row": 0, "row": existing}], **args)
-    cell = synthetic.add(
-        ds, ds.source, [{"seed_row": 0, "row": {"input": "new", "expected_output": "yes"}}], **args
+        generation.accept_batch(run_id, "copy", [{"seed_row": 0, "row": existing}])
+    generation.accept_batch(
+        run_id, "valid", [{"seed_row": 0, "row": {"input": "new", "expected_output": "yes"}}]
     )
-    assert cell.state == "ok" and ds.active_cell.rows == 3
-    assert ds.source.rows == 2
-    assert not ds.cells.filter(state="proposed").exists()
+    cell = generation.publish(run_id)
+    assert ds.source.rows == 2 and cell.rows == 3
     run.execute(ds)
-    frame = store.read_frame(paths.cell_path(ds.id, cell.id))
-    provenance = frame.iloc[-1][review.PROVENANCE_COLUMN]
+    provenance = list(store.iter_rows(paths.cell_path(ds.pk, cell.pk)))[-1][
+        review.PROVENANCE_COLUMN
+    ]
     assert provenance["seed_row"] == 0 and provenance["capability"] is None
     assert content_key(existing) in provenance["seed_content_keys"]
-    assert rows.contamination(ds.active_cell, ds.source)["overlap_count"] == 3
+    assert rows.contamination(cell, ds.source)["overlap_count"] == 3
 
 
 @pytest.mark.parametrize("with_capability", [False, True])
@@ -278,21 +269,13 @@ def test_generation_locks_only_the_dataset_with_optional_capability(with_capabil
     if with_capability:
         ds.capability = Capability.objects.create(project=ds.project, name="Task", slug="task")
         ds.save(update_fields=["capability"])
-    # SQLite ignores row locks, so also assert the PostgreSQL lock scope.
-    with patch.object(
-        Dataset.objects, "select_for_update", wraps=Dataset.objects.select_for_update
-    ) as lock:
-        cell = synthetic.add(
-            ds,
-            ds.source,
-            [{"seed_row": 0, "row": {"input": "new", "expected_output": "yes"}}],
-            instruction="Cover variants",
-            generation_id=str(uuid.uuid4()),
-            target_rows=3,
-        )
-    lock.assert_called_once_with(of=("self",))
-    assert cell.state == "ok" and cell.review["generated_rows"] == 1
-    assert ds.active_cell.rows == 3
+    tools = agent.Tools(ds.pk, None, lambda _: None)
+    tools.seed_examples({"instruction": "Variants", "target_rows": 3})
+    result = tools.add_synthetic_rows(
+        {"examples": [{"seed_row": 0, "row": {"input": "new", "expected_output": "yes"}}]}
+    )
+    cell = ds.cells.get(pk=result["id"])
+    assert cell.state == "ok" and cell.rows == 3
     assert cell.review["output_examples"][-1][review.PROVENANCE_COLUMN]["capability"] == (
         str(ds.capability_id) if with_capability else None
     )
@@ -371,33 +354,33 @@ def test_generation_batches_accumulate_in_one_active_version():
         )
         for index in range(3)
     ]
-    assert len({r["id"] for r in results}) == 1
+    assert [r["id"] for r in results[:2]] == [None, None]
+    assert results[-1]["id"]
     assert [r["remaining_rows"] for r in results] == [2, 1, 0]
     assert len(tools.touched) == 1
-    generated = ds.cells.get(pk=results[0]["id"])
+    generated = ds.cells.get(pk=results[-1]["id"])
     assert generated.review["rows_before"] == 2
     assert generated.review["rows_after"] == 5
     assert generated.review["generated_rows"] == 3
     assert generated.state == "ok"
     assert not ds.cells.filter(state="proposed").exists()
     assert ds.active_cell.rows == 5
-    assert [r["version"] for r in results] == ["1.1"] * 3
+    assert [r["version"] for r in results] == [None, None, "1.1"]
     frame = store.read_frame(paths.cell_path(ds.id, generated.id))
     assert frame.source_row.is_unique
 
 
 def test_generation_retry_is_idempotent_and_cross_batch_duplicates_are_rejected():
     ds = dataset()
-    args = {"instruction": "Variants", "generation_id": str(uuid.uuid4()), "target_rows": 5}
+    run_id = agent.Tools(ds.pk, None, lambda _: None).seed_examples(
+        {"instruction": "Variants", "target_rows": 5}
+    )["run_id"]
     examples = [{"seed_row": 0, "row": {"input": "new", "expected_output": "yes"}}]
-    first = synthetic.add(ds, ds.source, examples, **args)
-    again = synthetic.add(ds, ds.source, examples, **args)
-    assert first.pk == again.pk
-    assert again.review["generated_rows"] == 1
+    first = generation.accept_batch(run_id, "first", examples)
+    assert generation.accept_batch(run_id, "first", examples) == first
     with pytest.raises(ValueError, match="duplicates"):
-        synthetic.add(ds, ds.source, [{**examples[0], "seed_row": 1}], **args)
-    first.refresh_from_db()
-    assert first.review["generated_rows"] == 1
+        generation.accept_batch(run_id, "second", [{**examples[0], "seed_row": 1}])
+    assert generation.describe(run_id)["generated_rows"] == 1
 
 
 @pytest.mark.parametrize("explicit_cell", [False, True])
@@ -412,47 +395,35 @@ def test_partial_generation_resumes_without_replacing_saved_rows(explicit_cell):
     plan = resumed.seed_examples(
         {
             "target_rows": 4,
-            "instruction": "Continue",
-            **({"cell_id": first["id"]} if explicit_cell else {}),
+            "instruction": "Variants",
+            **({"run_id": first["run_id"]} if explicit_cell else {}),
         }
     )
     assert plan["generated_rows"] == 1 and plan["remaining_rows"] == 1
-    assert resumed.progress["cell_id"] == first["id"]
+    assert resumed.progress["run_id"] == first["run_id"]
     assert resumed.generation["instruction"] == "Variants"
     result = resumed.add_synthetic_rows(
         {"examples": [{"seed_row": 1, "row": {"input": "another", "expected_output": "no"}}]}
     )
-    assert result["id"] == first["id"] and result["rows_after"] == 4
+    assert result["id"] and result["run_id"] == first["run_id"] and result["rows_after"] == 4
     assert ds.active_cell.rows == 4 and ds.cells.count() == 2
 
 
 def test_generation_never_changes_a_consumed_version():
     ds = dataset()
-    tools = agent.Tools(ds.id, None, lambda _: None)
-    tools.seed_examples({"target_rows": 4, "instruction": "Variants"})
+    tools = agent.Tools(ds.pk, None, lambda _: None)
+    setup = tools.seed_examples({"instruction": "Variants", "target_rows": 4})
     tools.add_synthetic_rows(
         {"examples": [{"seed_row": 0, "row": {"input": "new", "expected_output": "yes"}}]}
     )
-    review.record_quality(
-        ds,
-        ds.active_cell,
-        [
-            {"name": name, "result": "pass", "evidence": "Controlled fixture.", "rows_checked": 3}
-            for name in ("task_alignment", "input_evidence", "answer_support", "output_schema")
-        ],
-        script="df = pd.DataFrame({name: [True] * len(df) for name in ('task_alignment', 'input_evidence', 'answer_support', 'output_schema')})",
-    )
-    with patch.object(
-        Dataset.objects, "select_for_update", wraps=Dataset.objects.select_for_update
-    ) as lock:
-        consumed = use.use(ds, "eval")
-    lock.assert_called_once_with(of=("self",))
-    with pytest.raises(ValueError, match="used"):
+    cell = generation.publish(setup["run_id"], partial=True)
+    consumed = use.use(ds, "eval", cell=cell)
+    with pytest.raises(ValueError, match="published|complete"):
         tools.add_synthetic_rows(
             {"examples": [{"seed_row": 1, "row": {"input": "another", "expected_output": "no"}}]}
         )
-    assert ds.active_cell.rows == 3
-    assert store.file_sha256(paths.cell_path(ds.id, consumed.id)) == consumed.fingerprint
+    assert cell.rows == 3
+    assert store.file_sha256(paths.cell_path(ds.pk, consumed.pk)) == consumed.fingerprint
 
 
 def test_generation_refuses_to_append_after_another_transformation():
@@ -466,11 +437,11 @@ def test_generation_refuses_to_append_after_another_transformation():
     resumed = agent.Tools(ds.id, None, lambda _: None)
     assert (
         resumed.seed_examples(
-            {"cell_id": first["id"], "target_rows": 4, "instruction": "Continue"}
+            {"run_id": first["run_id"], "target_rows": 4, "instruction": "Variants"}
         )["ok"]
         is False
     )
-    assert ds.cells.get(pk=first["id"]).rows == 3
+    assert generation.describe(first["run_id"])["generated_rows"] == 1
 
 
 def test_resuming_checks_source_and_target_before_generating():
@@ -481,37 +452,32 @@ def test_resuming_checks_source_and_target_before_generating():
         {"examples": [{"seed_row": 0, "row": {"input": "new", "expected_output": "yes"}}]}
     )
     resumed = agent.Tools(ds.id, None, lambda _: None)
-    args = {"cell_id": first["id"], "target_rows": 5, "instruction": "Continue"}
+    args = {"run_id": first["run_id"], "target_rows": 5, "instruction": "Variants"}
     assert resumed.seed_examples(args)["ok"] is False
     ds.source.__class__.objects.filter(pk=ds.source.pk).update(fingerprint="changed")
     assert resumed.seed_examples({**args, "target_rows": 4})["ok"] is False
     assert resumed.generation is None
-    assert ds.cells.get(pk=first["id"]).review["generated_rows"] == 1
+    assert generation.describe(first["run_id"])["generated_rows"] == 1
 
 
 def test_generation_rejects_overshoot_and_changed_input_without_losing_saved_rows():
     ds = dataset()
-    args = {"instruction": "Variants", "generation_id": str(uuid.uuid4()), "target_rows": 3}
-    first = synthetic.add(
-        ds, ds.source, [{"seed_row": 0, "row": {"input": "new", "expected_output": "yes"}}], **args
+    run_id = agent.Tools(ds.pk, None, lambda _: None).seed_examples(
+        {"instruction": "Variants", "target_rows": 3}
+    )["run_id"]
+    generation.accept_batch(
+        run_id, "first", [{"seed_row": 0, "row": {"input": "new", "expected_output": "yes"}}]
     )
-    with pytest.raises(ValueError, match="remain"):
-        synthetic.add(
-            ds,
-            ds.source,
-            [{"seed_row": 0, "row": {"input": "extra", "expected_output": "yes"}}],
-            **args,
+    with pytest.raises(ValueError, match="remaining"):
+        generation.accept_batch(
+            run_id, "extra", [{"seed_row": 0, "row": {"input": "extra", "expected_output": "yes"}}]
         )
-    ds.source.__class__.objects.filter(pk=ds.source.pk).update(fingerprint="changed")
+    ds.cells.filter(pk=ds.source.pk).update(fingerprint="changed")
     with pytest.raises(ValueError, match="changed"):
-        synthetic.add(
-            ds,
-            ds.source,
-            [{"seed_row": 0, "row": {"input": "extra", "expected_output": "yes"}}],
-            **args,
+        generation.accept_batch(
+            run_id, "extra", [{"seed_row": 0, "row": {"input": "extra", "expected_output": "yes"}}]
         )
-    first.refresh_from_db()
-    assert first.review["generated_rows"] == 1
+    assert generation.describe(run_id)["generated_rows"] == 1
 
 
 def test_generation_seeds_preserve_full_system_prompts():
@@ -520,6 +486,9 @@ def test_generation_seeds_preserve_full_system_prompts():
     frame = store.read_frame(paths.cell_path(ds.id, ds.source.id))
     frame["system_prompt"] = long_prompt
     store.write_frame(paths.cell_path(ds.id, ds.source.id), frame)
+    ds.cells.filter(pk=ds.source.pk).update(
+        fingerprint=store.file_sha256(paths.cell_path(ds.pk, ds.source.pk))
+    )
     tools = agent.Tools(ds.id, None, lambda _: None)
     result = tools.seed_examples({"target_rows": 3, "instruction": "Variants"})
     assert result["examples"][0]["row"]["system_prompt"] == long_prompt
@@ -546,8 +515,8 @@ def test_concurrent_generation_batches_share_one_active_version():
 
     with ThreadPoolExecutor(max_workers=3) as pool:
         ids = list(pool.map(append, range(3)))
-    assert len(set(ids)) == 1
-    proposal = ds.cells.get(pk=ids[0])
+    assert sum(value is not None for value in ids) == 1
+    proposal = ds.cells.get(pk=next(value for value in ids if value))
     assert proposal.review["generated_rows"] == 3
     assert store.read_frame(paths.cell_path(ds.id, proposal.id)).source_row.is_unique
 

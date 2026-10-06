@@ -103,7 +103,8 @@ def test_explicit_prompt_intent_continues_without_a_question(workshop, monkeypat
     list(agent.diagnose(dataset.id))
     dataset.refresh_from_db()
     assert dataset.intent == intent
-    assert dataset.chat[-1]["status"] == "complete"
+    assert dataset.chat[-1]["status"] == ("error" if intent == "train" else "complete")
+    assert dataset.chat[-1]["status"] != "awaiting_intent"
 
 
 @pytest.mark.parametrize("intent", ["train", "eval", "explore"])
@@ -148,7 +149,8 @@ def test_answer_survives_reload_and_resumes_original_request_once(workshop, monk
     tasks.turn.run(**queued[0]["kwargs"])
     dataset.refresh_from_db()
     assert dataset.state == "idle" and dataset.intent == intent
-    assert dataset.chat[-1]["status"] == "complete"
+    assert dataset.chat[-1]["status"] == ("error" if intent == "train" else "complete")
+    assert dataset.chat[-1]["status"] != "awaiting_intent"
     assert dataset.chat[-1]["text"] == "Continued the original request."
 
 

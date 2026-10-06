@@ -84,7 +84,7 @@ Use the connected catalog and `overmind://interface/current` as the authority fo
 
 Data-first projects do not require repository scanning, capabilities or instrumentation. Use `develop-model-from-data` when starting with uploaded data. Repository discovery remains a local workflow only for code-backed projects. Installed skills assist discovery; they are not a correctness prerequisite.
 
-The catalog exposes deliberate lifecycle operations including `cancel_dataset`, `retry_data_partition`, and comparison pause/resume. Follow their schemas. Pausing a comparison stops new work; it does not acknowledge cancellation of an already-submitted provider call. Stopping observation does not stop execution.
+The catalog exposes deliberate lifecycle operations including `cancel_dataset`, revision-checked `manage_dataset_workflow`, `retry_data_partition`, and comparison pause/resume. Follow their schemas. Pausing a comparison stops new work; it does not acknowledge cancellation of an already-submitted provider call. Stopping observation does not stop execution.
 
 ## Core principles
 
@@ -300,8 +300,8 @@ Typical loop (local setup once, then MCP):
 1. **Turn traces into data** — [datasets.md](references/datasets.md)
    (`create_dataset_from_traces`, or CLI upload).
 1. **Shape it** — use `message_dataset_agent`, poll
-   `get_job(kind=dataset_run)`, inspect with `inspect_dataset`, and accept a
-   proposed cell with `run_dataset` only after user approval.
+   `get_job(kind=dataset_run)`, then inspect applied versions and change impact
+   with `inspect_dataset`. Only missing initial intent requires a user choice.
 1. **Grade it** — [evals.md](references/evals.md) when you want an
    eval-vs-eval comparison you drive yourself. Finetune and optimizer runs
    create their own incumbent / experiment baselines automatically — do not

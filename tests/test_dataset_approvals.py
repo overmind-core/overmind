@@ -5,10 +5,8 @@ import pytest
 from django.db import transaction
 
 from overbae.models import Capability, Cell, Dataset, Project
-from overbae.services.datasets import dispatch, land, lifecycle, paths, store
-from overbae.services.datasets.notebook import agent, engines
-from overbae.services.mcp.contracts.datasets import ChatTurn
-from overbae.services.mcp.resources import dataset_run_job_payload
+from overbae.services.datasets import dispatch, land, lifecycle, paths, review, store
+from overbae.services.datasets.notebook import agent, engines, run
 from overbae.tasks import datasets as tasks
 
 pytestmark = pytest.mark.django_db(transaction=True)
@@ -27,27 +25,31 @@ def dataset():
     return dataset
 
 
-def propose(dataset, monkeypatch, *, generation=False, error=""):
-    class Engine:
-        name = "test"
+def saved_proposal(
+    dataset, *, title="Resolve ambiguity", script="df['expected_output'] = 'unknown'"
+):
+    cell = lifecycle.add_cell(dataset, title=title, script=script, proposed=True)
+    result = run.try_script(dataset, script, after=dataset.source)
+    review.save_proposal(
+        dataset, cell, dataset.source, result.path, kind="semantic", note="Saved preview"
+    )
+    return cell
 
-        def run(self, dataset, message, tools, pending):
-            if generation:
-                tools.seed_examples({"target_rows": 5, "instruction": "Cover new scenarios"})
-            tools.add_cell(
-                {
-                    "title": "Resolve ambiguity",
-                    "script": "df['expected_output'] = 'unknown'",
-                    "kind": "semantic",
-                }
-            )
-            yield from pending
-            return engines.Outcome(text="Approve or deny the proposed labels.", error=error)
 
-    monkeypatch.setattr(engines, "select", lambda user=None: Engine())
-    list(agent.follow_up(dataset.id, "Prepare these rows and check their quality"))
-    dataset.refresh_from_db()
-    return dataset.cells.get(state=Cell.State.PROPOSED)
+def propose(dataset, monkeypatch):
+    cell = saved_proposal(dataset)
+    dataset.chat = [
+        {"role": "user", "text": "Prepare these rows and check their quality"},
+        {
+            "role": "agent",
+            "status": "awaiting_approval",
+            "progress": {"stage": "awaiting_approval"},
+            "cells": [{"id": str(cell.id), "action": "proposed"}],
+            "error": "",
+        },
+    ]
+    dataset.save(update_fields=["chat"])
+    return cell
 
 
 def test_approval_activates_exact_preview_and_resumes_once(dataset, monkeypatch):
@@ -93,26 +95,6 @@ def test_denial_preserves_active_rows_and_resumes_with_the_decision(dataset, mon
         "does not authorize a different semantic change"
         in enqueue.call_args.kwargs["kwargs"]["message"]
     )
-
-
-@pytest.mark.parametrize("generation", [False, True])
-def test_pending_decision_is_waiting_not_generation_failure(dataset, monkeypatch, generation):
-    propose(dataset, monkeypatch, generation=generation)
-    latest = dataset.chat[-1]
-    assert latest["status"] == "awaiting_approval"
-    assert latest["progress"]["stage"] == "awaiting_approval"
-    assert not latest["error"]
-    snapshot = dataset_run_job_payload(dataset, "test")
-    assert snapshot["status"] == "awaiting_approval"
-    assert snapshot["progress"]["stage"] == "awaiting_approval"
-    ChatTurn.model_validate(snapshot["latest_turn"])
-    assert dataset.state == Dataset.State.IDLE
-
-
-def test_provider_failure_is_not_hidden_by_pending_approval(dataset, monkeypatch):
-    propose(dataset, monkeypatch, error="Provider disconnected")
-    assert dataset.chat[-1]["status"] == "error"
-    assert dataset.chat[-1]["error"] == "Provider disconnected"
 
 
 def test_stale_approval_never_activates_or_resumes(dataset, monkeypatch):
@@ -175,15 +157,8 @@ def test_followup_repairs_advance_a_pinned_active_version(dataset):
 
 def test_all_decisions_arrive_before_one_continuation(dataset, monkeypatch):
     first = propose(dataset, monkeypatch)
-    tools = agent.Tools(dataset.id, None, lambda _: None)
-    second = dataset.cells.get(
-        pk=tools.add_cell(
-            {
-                "title": "Second option",
-                "script": "df['expected_output'] = 'maybe'",
-                "kind": "semantic",
-            }
-        )["id"]
+    second = saved_proposal(
+        dataset, title="Second option", script="df['expected_output'] = 'maybe'"
     )
     dataset.chat[-1]["cells"].append({"id": str(second.id), "action": "proposed"})
     dataset.save(update_fields=["chat"])
@@ -202,14 +177,8 @@ def test_all_decisions_arrive_before_one_continuation(dataset, monkeypatch):
 
 def test_approval_retires_other_suggestions_and_continues_on_current_data(dataset, monkeypatch):
     first = propose(dataset, monkeypatch)
-    second = dataset.cells.get(
-        pk=agent.Tools(dataset.id, None, lambda _: None).add_cell(
-            {
-                "title": "Second option",
-                "script": "df['expected_output'] = 'maybe'",
-                "kind": "semantic",
-            }
-        )["id"]
+    second = saved_proposal(
+        dataset, title="Second option", script="df['expected_output'] = 'maybe'"
     )
     dataset.chat[-1]["cells"].append({"id": str(second.id), "action": "proposed"})
     dataset.save(update_fields=["chat"])

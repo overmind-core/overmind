@@ -5,7 +5,7 @@ import pytest
 from conftest import plan_fixture
 
 from overbae.models import Dataset, Project
-from overbae.services.datasets import land, lifecycle, paths, store, use
+from overbae.services.datasets import land, paths, store, use
 from overbae.services.datasets.context import workshop_context
 from overbae.services.datasets.notebook import agent, run, runner
 
@@ -109,9 +109,15 @@ def test_native_preparation_keeps_empty_evidence_soft_targets_and_multiplicity(
     assert prepared[0]["decision"] == prepared[1]["decision"]
     assert prepared[2]["decision"] == rows[2]["decision"]
     original = list(store.iter_rows(paths.cell_path(ds.id, ds.source.id)))
-    assert [r["_overmind_provenance"] for r in prepared] == [
-        r["_overmind_provenance"] for r in original
-    ]
+    for result_row, source_row in zip(prepared, original, strict=True):
+        assert all(
+            result_row["_overmind_provenance"][k] == v
+            for k, v in source_row["_overmind_provenance"].items()
+        )
+        if "parents" in result_row["_overmind_provenance"]:
+            assert (
+                result_row["_overmind_provenance"]["parents"][0]["row"] == source_row["source_row"]
+            )
     assert cell.intent_report[intent]["ok"]
     if intent == "eval":
         for row in prepared:
@@ -177,7 +183,7 @@ def test_json_encoded_native_eval_cannot_hide_an_invalid_reference(settings, tmp
         use.check(ds, "eval", cell=ds.source)
 
 
-def test_sampling_proposal_replays_exact_rows_and_preserves_every_stratum(settings, tmp_path):
+def test_sampling_applies_exact_rows_and_preserves_every_stratum(settings, tmp_path):
     records = []
     for i in range(20_003):
         kind = "noul" if i % 2 else "choice"
@@ -203,13 +209,12 @@ def test_sampling_proposal_replays_exact_rows_and_preserves_every_stratum(settin
         "target_type": True,
     }
     result = tools.sample_rows(args)
-    assert result["ok"] and result["proposed"], result
+    assert result["ok"] and not result.get("proposed"), result
     cell = ds.cells.get(pk=result["id"])
     assert cell.review["rows_removed"] == 19_500
     assert cell.review["identity_preserved"]
     repeated = tools.sample_rows(args)
-    assert repeated["id"] == str(cell.id) and repeated["reused"]
-    lifecycle.accept_proposal(ds, cell)
+    assert repeated["id"] == str(cell.id) and repeated["unchanged"]
     with patch.object(runner, "run", side_effect=AssertionError("Approved preview must be reused")):
         run.execute(ds, activate_cell_id=cell.id)
     cell.refresh_from_db()
@@ -275,7 +280,7 @@ def test_truncated_diagnostics_are_explicit(tmp_path):
         "df['expected_output'] = [{'probabilities': [0.0, 1.0]}] * len(df)",
     ],
 )
-def test_automatic_cleanup_cannot_drop_or_relabel_native_decisions(settings, tmp_path, script):
+def test_native_repairs_record_impact_and_preserve_prior_decisions(settings, tmp_path, script):
     ds, tools = corpus(settings, tmp_path, "eval", [flat(), flat()])
     plan_fixture(ds)
     tools.automatic = True
@@ -290,7 +295,10 @@ def test_automatic_cleanup_cannot_drop_or_relabel_native_decisions(settings, tmp
             "kind": "mechanical",
         }
     )
-    assert result["ok"] and result["proposed"], result
+    assert result["ok"] and not result.get("proposed"), result
     ds.refresh_from_db()
-    assert ds.active_cell.id == original.id
-    assert ds.active_cell.rows == 2
+    assert ds.active_cell.id != original.id
+    original.refresh_from_db()
+    assert original.rows == 2
+    assert original.state == "ok"
+    assert ds.active_cell.review["input_fingerprint"] == original.fingerprint

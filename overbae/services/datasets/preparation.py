@@ -96,7 +96,27 @@ class Check(PlanModel):
     question: str = Field(min_length=1, max_length=2000)
 
 
+class Outcome(PlanModel):
+    deliverables: list[Annotated[str, Field(min_length=1, max_length=2000)]] = Field(
+        min_length=1, max_length=20
+    )
+    task: str = Field(min_length=1, max_length=4000)
+    confidence: Literal["unknown", "hypothesis", "supported", "conflicted"] = "hypothesis"
+    preservation: list[Annotated[str, Field(min_length=1, max_length=2000)]] = Field(
+        default_factory=list, max_length=30
+    )
+    required_checks: list[str] = Field(default_factory=list, max_length=30)
+    target_rows: int | None = Field(default=None, ge=1)
+    coverage: str = Field(default="", max_length=4000)
+    model_input: str = Field(
+        default="",
+        max_length=4000,
+        description="What evidence the resulting model receives at inference, distinct from generator-only evidence.",
+    )
+
+
 class PlanRequest(PlanModel):
+    outcome: Outcome | None = None
     version: str = Field(min_length=1, max_length=64)
     objective: str = Field(min_length=1, max_length=4000)
     consumer: Literal[
@@ -114,7 +134,7 @@ class PlanRequest(PlanModel):
     constants: dict = Field(
         default_factory=dict,
         max_length=10,
-        description="Declared constants for decision.kind, decision.state, decision.options, decision.option_values or decision.target_semantics. Support meaning and scale with source evidence; ask when unknown. Never invent target probabilities or means.",
+        description="Shared values only for decision.kind, decision.state, decision.options, decision.option_values or decision.target_semantics. decision.question and row targets are not constants; derive them in a custom transform. Support meaning and scale with source evidence; ask when unknown. Never invent target probabilities or means.",
     )
     assumptions: list[str] = Field(default_factory=list, max_length=30)
     unresolved_questions: list[str] = Field(default_factory=list, max_length=30)
@@ -131,12 +151,32 @@ class PlanRequest(PlanModel):
         for value in [*self.assumptions, *self.unresolved_questions]:
             if not value.strip() or len(value) > 2000:
                 raise ValueError("Assumptions and questions must contain 1–2000 characters.")
+        if self.outcome and set(self.outcome.required_checks) - {
+            check.name for check in self.checks
+        }:
+            raise ValueError("Every required outcome check must be defined in checks.")
         validate_mapping(self.mapping, self.constants)
         return self
 
 
-def save_plan(dataset, cell, request: PlanRequest, *, user_request="", exploration=None):
+def save_plan(
+    dataset, cell, request: PlanRequest, *, user_request="", exploration=None, automatic=False
+):
     rows.verify(cell)
+    inspected = [
+        receipt
+        for receipt in (exploration or (dataset.preparation_plan or {}).get("exploration", []))
+        if receipt.get("cell") == str(cell.pk) and receipt.get("fingerprint") == cell.fingerprint
+    ]
+    if automatic:
+        if not inspected:
+            raise ValueError(
+                "Inspect this version with query or inspect before saving its preparation plan. Read representative content as well as the source profile."
+            )
+        if request.outcome is None or not request.outcome.model_input:
+            raise ValueError(
+                "Define outcome.task, deliverables and model_input before editing. Distinguish what the model receives at inference from generator-only evidence."
+            )
     expected_intent = {
         "sft": "train",
         "decision_training": "train",
@@ -189,6 +229,15 @@ def save_plan(dataset, cell, request: PlanRequest, *, user_request="", explorati
         ):
             raise ValueError("The dataset changed while planning. Inspect it again.")
         previous = current.preparation_plan
+        reserved = previous.get("semantic_rows_reserved", 0)
+        if (
+            automatic
+            and reserved
+            and spec["semantic_row_budget"] > previous["specification"]["semantic_row_budget"]
+        ):
+            raise ValueError(
+                "Automatic preparation cannot increase a spent semantic row budget. Preserve unmeasured findings as unknown."
+            )
         if previous.get("specification") == spec and all(
             previous.get(k) == v for k, v in binding.items()
         ):
@@ -199,7 +248,8 @@ def save_plan(dataset, cell, request: PlanRequest, *, user_request="", explorati
             **binding,
             "specification": spec,
             "user_request": user_request[:8000],
-            "exploration": (exploration or [])[-12:],
+            "exploration": inspected[-12:],
+            "semantic_rows_reserved": reserved,
             "created_at": timezone.now().isoformat(),
         }
         Dataset.objects.filter(pk=current.pk).update(preparation_plan=plan)

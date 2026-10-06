@@ -5,7 +5,6 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { fireEvent, render, screen } from "@testing-library/react";
 import { expect, it } from "vitest";
 
-import { PilotRequest } from "@/components/datasets/notebook/pilot-request";
 import type { FinetuningJobList } from "@/openapi";
 import { NativeEvaluationPanel } from "./native-evaluation-panel";
 
@@ -90,11 +89,6 @@ it("renders paired coverage, uncertainty and scheduled work using real component
         </header>
         <NativeEvaluationPanel job={completed} projectId="fixture" />
         <NativeEvaluationPanel job={waiting} projectId="fixture" />
-        <PilotRequest
-          cell={{ fingerprint: "fixture", id: "source-fixture", rows: 500000, version: "1.0" }}
-          disabled={false}
-          onRequest={() => {}}
-        />
       </main>
     </QueryClientProvider>
   );

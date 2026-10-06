@@ -201,7 +201,7 @@ def test_model_transcript_is_not_validated_as_an_application_entry_point():
 
 
 @pytest.mark.django_db
-def test_mechanical_tool_prepares_eval_without_llm_and_context_loss_requires_review():
+def test_mechanical_preparation_and_context_loss_record_impact_and_keep_source():
     project = Project.objects.create(name="Consumer contract", slug="consumer-contract")
     dataset = Dataset.objects.create(project=project, name="Cases", intent="eval")
     land.land_rows(dataset, [example()])
@@ -222,8 +222,9 @@ def test_mechanical_tool_prepares_eval_without_llm_and_context_loss_requires_rev
             "script": "df['input'] = [{'onboarding_packet_id': 'case-1'} for _ in range(len(df))]",
         }
     )
-    assert lost["proposed"] and lost["review"]["input_evidence_removed"] == 1
-    assert use.use(dataset, "eval").id == active.id
+    assert lost["ok"] and lost["review"]["input_evidence_removed"] == 1
+    assert use.use(dataset, "eval", cell=active).id == active.id
+    assert store.head(paths.cell_path(dataset.id, active.id), 1)[0]["input"]["messages"]
 
 
 @pytest.mark.django_db

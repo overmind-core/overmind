@@ -91,8 +91,8 @@ def test_landing_measures_every_row_without_full_frame_reads(tmp_path, settings,
 
 
 @pytest.mark.django_db
-def test_batch_cell_proposal_acceptance_and_export_are_file_backed(tmp_path, settings, monkeypatch):
-    from overbae.services.datasets import lifecycle, use
+def test_batch_cell_impact_and_export_are_file_backed(tmp_path, settings, monkeypatch):
+    from overbae.services.datasets import use
     from overbae.services.datasets.notebook import agent
     from overbae.services.datasets.notebook import run as run_svc
 
@@ -122,18 +122,20 @@ def transform_batch(df):
     assert preview["ok"], preview
     assert preview["rows"] == 13_335
     proposed = tools.add_cell({"title": "Native", "script": script, "kind": "mechanical"})
-    assert proposed.get("proposed"), proposed
+    assert proposed["ok"] and not proposed.get("proposed"), proposed
     assert proposed["review"]["rows_removed"] == 6668
     assert proposed["review"]["identity_preserved"]
     cell = dataset.cells.get(pk=proposed["id"])
-    lifecycle.accept_proposal(dataset, cell)
     run_svc.execute(dataset, activate_cell_id=cell.id)
     dataset.refresh_from_db()
     assert dataset.state == "idle", dataset.error
     cell.refresh_from_db()
     assert cell.rows == 13_335 and cell.intent_report["train"]["ok"]
     first = store.head(paths.cell_path(dataset.id, cell.id), 1)[0]
-    assert first["_overmind_provenance"] == original["_overmind_provenance"]
+    assert all(
+        first["_overmind_provenance"][k] == v for k, v in original["_overmind_provenance"].items()
+    )
+    assert first["_overmind_provenance"]["parents"][0]["row"] == original["source_row"]
     assert first["decision"]["target_probabilities"] == [0.25, 0.75]
     assert use.check(dataset, "train", cell=cell).id == cell.id
 

@@ -623,7 +623,7 @@ def _get_job_sync(payload: GetJobInput, context: MCPContext) -> GetJobOutput:
         label, status, job_error = (
             (job.name or "Dataset")[:160],
             snapshot["status"],
-            job.error or None,
+            snapshot["error"],
         )
         progress = snapshot["progress"]
         details = {

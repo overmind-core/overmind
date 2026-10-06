@@ -443,11 +443,15 @@ def reap_stuck_runs() -> dict[str, Any]:
     longer than the hard limit is dead."""
     from datetime import timedelta
 
-    from overbae.models import Cell, Dataset
+    from overbae.models import Cell, Dataset, WorkshopRun
 
     now = timezone.now()
-    from overbae.services.datasets import operations
+    from overbae.services.datasets import generation_worker, operations
 
+    generation_worker.recover()
+    active_workflows = WorkshopRun.objects.filter(
+        kind="generation", state__in=["queued", "running"]
+    ).values("dataset_id")
     for pending in Dataset.objects.filter(operation__state="cancel_pending").only("id"):
         operations.reconcile(pending.id)
     ids: list[Any] = []
@@ -458,7 +462,7 @@ def reap_stuck_runs() -> dict[str, Any]:
     ):
         stuck = Dataset.objects.filter(
             state=state, updated_at__lt=now - timedelta(seconds=limit + REAP_GRACE)
-        )
+        ).exclude(pk__in=active_workflows)
         found = list(stuck.values_list("id", flat=True))
         Dataset.objects.filter(pk__in=found, state=state).update(
             state=Dataset.State.ERROR,
@@ -479,3 +483,27 @@ def reap_stuck_runs() -> dict[str, Any]:
             dataset_id, {"type": "run_failed", "error": "The worker stopped before this finished."}
         )
     return {"reaped": len(ids)}
+
+
+@shared_task(
+    bind=True,
+    name="overbae.tasks.datasets.generate",
+    soft_time_limit=12 * 60,
+    time_limit=14 * 60,
+    acks_late=True,
+    reject_on_worker_lost=True,
+)
+def generate(self, *, run_id):
+    from overbae.models import WorkshopRun
+    from overbae.services.datasets import generation_worker
+    from overbae.services.datasets.notebook import agent
+
+    result = generation_worker.execute(run_id, owner=self.request.id or "")
+    if result["state"] in {"queued", "running"}:
+        generation_worker.schedule(run_id)
+    elif result["published_cell"]:
+        generation_worker.audit(run_id)
+    else:
+        saved = WorkshopRun.objects.get(pk=run_id)
+        agent.settle(saved.dataset_id)
+    return result

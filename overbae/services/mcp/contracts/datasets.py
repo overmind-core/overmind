@@ -13,7 +13,7 @@ from urllib.parse import quote
 from pydantic import AliasChoices, Field, field_validator, model_validator
 
 from overbae.models import Cell, Dataset
-from overbae.services.datasets import preparation, review
+from overbae.services.datasets import preparation, review, workflow
 from overbae.services.datasets.context import workshop_context
 from overbae.services.datasets.contract import public_intent
 from overbae.services.mcp.contracts.common import (
@@ -216,14 +216,21 @@ class TouchedCell(MCPModel):
 
 
 class AgentProgress(MCPModel):
+    run_id: str | None = None
+    remaining_rows: int | None = Field(default=None, ge=0)
+    batches: int | None = Field(default=None, ge=0)
+    source_rows_without_examples: int | None = Field(default=None, ge=0)
     stage: str = Field(max_length=40)
     label: str = Field(max_length=255)
     detail: str = Field(max_length=4000)
     started_at: str | None = None
     updated_at: str | None = None
     rows_before: int | None = Field(default=None, ge=0)
+    source_rows: int | None = Field(default=None, ge=0)
     target_rows: int | None = Field(default=None, ge=0)
     generated_rows: int | None = Field(default=None, ge=0)
+    published_rows: int | None = Field(default=None, ge=0)
+    publication: Literal["pending", "published"] | None = None
     cell_id: str | None = None
     proposal_id: str | None = None
 
@@ -315,7 +322,15 @@ class DatasetHumanAction(MCPModel):
     arguments: dict[str, str] = Field(default_factory=dict, max_length=20)
 
 
+class ManageDatasetWorkflowInput(MCPModel):
+    dataset: str = Field(min_length=1, max_length=255)
+    run_id: str = Field(pattern=r"^[0-9a-f-]{36}$")
+    revision: int = Field(ge=0)
+    action: Literal["pause", "resume", "publish_partial"]
+
+
 class DatasetDetail(DatasetListItem):
+    workflow: dict[str, Any] = Field(default_factory=dict)
     operation: dict[str, Any] = Field(default_factory=dict)
     preparation_plan: dict[str, Any] = Field(default_factory=dict)
     brief: str = Field(default="", max_length=8000)
@@ -806,10 +821,39 @@ def _human_action(dataset, active: Cell | None) -> DatasetHumanAction | None:
     return None
 
 
-def next_actions(dataset, chain: list[Cell], active: Cell | None) -> list[NextAction]:
+def next_actions(
+    dataset, chain: list[Cell], active: Cell | None, *, execution=None
+) -> list[NextAction]:
     """The one answer to "what now" for a dataset. Every suggestion satisfies
     the named tool's schema as given."""
     ds_id = str(dataset.id)
+    saved = (workflow.describe(dataset) if execution is None else execution).get("generation", {})
+    if (
+        saved
+        and not saved.get("published_cell")
+        and saved.get("state") in {"paused", "partial", "blocked"}
+    ):
+        failure = saved.get("failure", {})
+        if saved["state"] != "blocked" and failure.get("code") != "insufficient_source":
+            return [
+                NextAction(
+                    tool="manage_dataset_workflow",
+                    reason="Resume the saved generation batches.",
+                    arguments={
+                        "dataset": ds_id,
+                        "run_id": saved["id"],
+                        "revision": saved["revision"],
+                        "action": "resume",
+                    },
+                )
+            ]
+        return [
+            NextAction(
+                tool="inspect_dataset",
+                reason="Inspect the saved failure and provider receipt before retrying; completed requests must not be repeated.",
+                arguments={"dataset": ds_id},
+            )
+        ]
     if dataset.state in _BUSY:
         return [
             NextAction(
@@ -831,11 +875,13 @@ def next_actions(dataset, chain: list[Cell], active: Cell | None) -> list[NextAc
     if proposed:
         return [
             NextAction(
-                tool="run_dataset",
-                reason="User must approve this proposed cell.",
-                arguments={"dataset": ds_id, "proposal_cell": str(cell.id)},
+                tool="message_dataset_agent",
+                reason="Continue unfinished preparation against the current data.",
+                arguments={
+                    "dataset": ds_id,
+                    "message": "Continue the original request and complete the unfinished preparation steps.",
+                },
             )
-            for cell in proposed[:5]
         ]
     if active is None:
         return [
@@ -926,6 +972,7 @@ def serialize_dataset_detail(
         {
             **fields,
             "operation": _jsonable(dataset.operation),
+            "workflow": _bounded(workflow.describe(dataset), 5000),
             "brief": _clip(dataset.brief, 8000),
             "sources": [
                 _bounded(item, 500) for item in dataset.source_spec.get("sources", [])[:10]

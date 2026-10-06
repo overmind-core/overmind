@@ -417,6 +417,7 @@ CELERY_TASK_ROUTES = {
     "overbae.tasks.native_evaluation.advance_plan": {"queue": "batch"},
     "overbae.tasks.training_preparation.inspect_preparation": {"queue": "io"},
     "overbae.tasks.datasets.run": {"queue": "interactive"},
+    "overbae.tasks.datasets.generate": {"queue": "interactive"},
     "overbae.tasks.datasets.turn": {"queue": "interactive"},
     "overbae.tasks.datasets.diagnose": {"queue": "interactive"},
     "overbae.tasks.eval.prepare_sample": {"queue": "batch"},

@@ -4,8 +4,8 @@ import pytest
 
 from overbae.api.dataset_serializers import DatasetSerializer
 from overbae.models import Dataset, Project
-from overbae.services.datasets import land, lifecycle, paths, review, store, use
-from overbae.services.datasets.notebook import agent, run
+from overbae.services.datasets import land, paths, review, store, use
+from overbae.services.datasets.notebook import agent
 from overbae.services.mcp.contracts.datasets import serialize_dataset_detail
 
 pytestmark = pytest.mark.django_db
@@ -72,6 +72,11 @@ def plan_request(ds):
         "objective": "Prepare probability decisions across survey and factual tasks.",
         "consumer": "decision_evaluation",
         "understanding": "Classes and probabilities are aligned in publisher order; empty evidence is allowed.",
+        "outcome": {
+            "deliverables": ["Native evaluation decisions"],
+            "task": "Choose among publisher options using the provided evidence.",
+            "model_input": "Evidence, question and ordered options; target probabilities remain reference-only.",
+        },
         "families": [
             {
                 "name": "Source families",
@@ -166,7 +171,51 @@ def test_plan_drives_native_mapping_and_shared_assessment(settings, tmp_path):
     assert mcp["cells"][-1]["readiness"]["assessment"] == readiness["assessment"]
 
 
-def test_plan_cannot_hide_conflicting_mapping_or_approve_selection(settings, tmp_path):
+def test_preparation_reads_the_pinned_source_and_defines_model_inputs_before_editing(
+    settings, tmp_path
+):
+    ds, tools = setup_dataset(settings, tmp_path)
+    tools.automatic = True
+    request = plan_request(ds)
+    request["outcome"] = {
+        "deliverables": ["Native evaluation decisions"],
+        "task": "Choose between the publisher's options using the provided evidence.",
+        "model_input": "Evidence, question and ordered options. Labels are reference-only.",
+    }
+    assert not tools.record_preparation_plan(request)["ok"]
+    assert not tools.prepare_examples({"plan_step": "shape"})["ok"]
+    assert ds.cells.count() == 1
+    tools.query({"sql": "SELECT * FROM t ORDER BY source_row"})
+    incomplete = {**request, "outcome": {**request["outcome"], "model_input": ""}}
+    assert not tools.record_preparation_plan(incomplete)["ok"]
+    assert ds.cells.count() == 1
+    saved = tools.record_preparation_plan(request)
+    assert saved["ok"], saved
+    assert tools.prepare_examples({"plan_step": "shape"})["ok"]
+    ds.refresh_from_db()
+    record = next(store.iter_rows(paths.cell_path(ds.pk, ds.active_cell.pk)))
+    assert record["input"]["decision"]["question"] == "Choose"
+    assert record["expected_output"]["probabilities"] == [0.7, 0.3]
+    next_turn = agent.Tools(ds.pk, None, lambda _: None)
+    next_turn.automatic = True
+    request["version"] = str(ds.active_cell.pk)
+    assert not next_turn.record_preparation_plan(request)["ok"]
+
+
+def test_plan_rejection_names_unsupported_constant_and_where_to_put_it(settings, tmp_path):
+    ds, tools = setup_dataset(settings, tmp_path)
+    request = plan_request(ds)
+    request["mapping"].pop("decision.question")
+    request["constants"]["decision.question"] = "Did this passenger survive?"
+
+    result = tools.record_preparation_plan(request)
+
+    assert not result["ok"]
+    assert "decision.question" in result["error"]
+    assert "custom transform" in result["error"]
+
+
+def test_planned_selection_preserves_native_values(settings, tmp_path):
     ds, tools = setup_dataset(settings, tmp_path)
     assert tools.record_preparation_plan(plan_request(ds))["ok"]
     result = tools.add_cell(
@@ -177,10 +226,7 @@ def test_plan_cannot_hide_conflicting_mapping_or_approve_selection(settings, tmp
             "plan_step": "shape",
         }
     )
-    assert result["proposed"] and ds.active_cell.rows == 2
-    proposal = ds.cells.get(pk=result["id"])
-    lifecycle.accept_proposal(ds, proposal)
-    run.execute(ds)
+    assert result["ok"] and not result.get("proposed")
     ds.refresh_from_db()
     assert ds.active_cell.rows == 1
     raw = list(store.iter_rows(paths.cell_path(ds.id, ds.active_cell.id)))[0]

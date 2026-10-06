@@ -111,7 +111,7 @@ def iter_execute(
         started = timezone.now()
         output_path = paths.cell_path(dataset.id, cell.id)
         automatic_rerun = (
-            cell.review.get("approval") in {"mechanical", "preparation"}
+            cell.review.get("approval") in {"mechanical", "preparation", "agent"}
             and cell.review.get("input_fingerprint") != previous.fingerprint
         )
         if cell.review.get("kind") == "attachment":
@@ -141,7 +141,14 @@ def iter_execute(
                 library_cache=cache,
                 cancelled=lambda: operations.cancellation_requested(dataset.id),
             )
-            if automatic_rerun and result.path is not None:
+            if (
+                automatic_rerun
+                and not (
+                    cell.review.get("approval") == "agent"
+                    and cell.review.get("script") == cell.script
+                )
+                and result.path is not None
+            ):
                 changes = review.impact_files(paths.cell_path(dataset.id, previous.id), result.path)
                 if review.requires_approval(
                     changes, allow_exclusions=cell.review.get("approval") == "preparation"
