@@ -5,11 +5,15 @@ from __future__ import annotations
 from django.db.models import Count, Min, Q
 from django.utils import timezone
 
-from overbae.models import DatasetImport
+from overbae.models import Dataset, DatasetImport
 from overbae.models.eval_generation import EvalGenerationWork
 
 NAMESPACE = "Overmind/Queues"
-WORKER_SERVICES = {"landing": "celery-landing-worker", "batch": "celery-batch-worker"}
+WORKER_SERVICES = {
+    "landing": "celery-landing-worker",
+    "batch": "celery-batch-worker",
+    "interactive": "celery-interactive-worker",
+}
 
 
 def read_workloads():
@@ -28,7 +32,13 @@ def read_workloads():
     )
     ages = [evaluation.pop(key) for key in ("oldest_waiting", "oldest_queued")]
     evaluation["oldest"] = min((stamp for stamp in ages if stamp is not None), default=None)
-    return {"landing": imports, "batch": evaluation}
+    workshop = Dataset.objects.filter(state__in=["diagnosing", "running"]).aggregate(
+        waiting=Count("pk", filter=Q(workshop_started_at__isnull=True)),
+        running=Count("pk", filter=Q(workshop_started_at__isnull=False)),
+        blocked=Count("pk", filter=Q(workshop_queued_at__isnull=True)),
+        oldest=Min("workshop_queued_at", filter=Q(workshop_started_at__isnull=True)),
+    )
+    return {"landing": imports, "batch": evaluation, "interactive": workshop}
 
 
 def metric_data(workloads, running_workers, *, cluster, now=None):

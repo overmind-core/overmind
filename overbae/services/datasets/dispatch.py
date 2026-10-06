@@ -16,6 +16,7 @@ from overbae.services.datasets.lifecycle import (
     DatasetError,
     accept_proposal,
     enter_busy,
+    queue_workshop,
     remove_cell,
 )
 
@@ -170,7 +171,9 @@ def message_agent(dataset, user, message: str) -> Dataset:
         from overbae.tasks.datasets import turn
 
         kwargs = {"dataset_id": str(dataset.id), "message": message, "user_id": _user_id(user)}
-        transaction.on_commit(lambda: turn.apply_async(kwargs=kwargs))
+        task_id = str(uuid.uuid4())
+        queue_workshop(dataset.pk, task_id)
+        transaction.on_commit(lambda: turn.apply_async(kwargs=kwargs, task_id=task_id))
     return dataset
 
 
@@ -211,7 +214,9 @@ def run_dataset(dataset, user, proposal=None) -> Dataset:
         kwargs = {"dataset_id": str(dataset.id), "user_id": _user_id(user)}
         if proposal is not None:
             kwargs["proposal_id"] = str(proposal.id)
-        transaction.on_commit(lambda: run.apply_async(kwargs=kwargs))
+        task_id = str(uuid.uuid4())
+        queue_workshop(dataset.pk, task_id)
+        transaction.on_commit(lambda: run.apply_async(kwargs=kwargs, task_id=task_id))
     dataset.state = locked.state
     dataset.error = locked.error
     return dataset
@@ -231,9 +236,9 @@ def resume_after_decision(dataset_id, cell_id, title, decision, *, user_id=None)
         None,
     )
     if owner is None:
-        Dataset.objects.filter(pk=dataset.pk, state=Dataset.State.DIAGNOSING).update(
-            state=Dataset.State.IDLE
-        )
+        Dataset.objects.filter(
+            pk=dataset.pk, state__in=[Dataset.State.DIAGNOSING, Dataset.State.RUNNING]
+        ).update(state=Dataset.State.IDLE)
         return
     turn = chat[owner]
     decisions = dict(turn.get("decisions", {}))
@@ -277,6 +282,7 @@ def resume_after_decision(dataset_id, cell_id, title, decision, *, user_id=None)
         from overbae.tasks.datasets import turn as agent_turn
 
         task_id = str(uuid.uuid5(dataset.id, f"decision:{cell_id}"))
+        queue_workshop(dataset.pk, task_id)
         transaction.on_commit(
             lambda: agent_turn.apply_async(
                 kwargs={

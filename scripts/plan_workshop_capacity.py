@@ -1,0 +1,51 @@
+#!/usr/bin/env python3
+"""Generate review-only interactive scaling; never change AWS resources."""
+
+import argparse
+import json
+import sys
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT))
+from scripts.queue_scaling import scaling_plan  # noqa: E402
+
+
+def capacity_plan(*, cluster, min_capacity=1, max_capacity=6, alarm_topic_arn=None):
+    command = json.loads((ROOT / "docker/worker-topology.json").read_text())[
+        "celery-interactive-worker"
+    ]
+    slots = int(next(arg.split("=", 1)[1] for arg in command if arg.startswith("--concurrency=")))
+    return scaling_plan(
+        cluster=cluster,
+        queue="interactive",
+        service="celery-interactive-worker",
+        slots=slots,
+        min_capacity=min_capacity,
+        max_capacity=max_capacity,
+        alarm_topic_arn=alarm_topic_arn,
+    )
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--cluster", required=True)
+    parser.add_argument("--min-capacity", type=int, default=1)
+    parser.add_argument("--max-capacity", type=int, default=6)
+    parser.add_argument("--alarm-topic-arn")
+    parser.add_argument("--output", type=Path, required=True)
+    args = parser.parse_args()
+    plan = capacity_plan(
+        cluster=args.cluster,
+        min_capacity=args.min_capacity,
+        max_capacity=args.max_capacity,
+        alarm_topic_arn=args.alarm_topic_arn,
+    )
+    args.output.mkdir(parents=True, exist_ok=True)
+    for name, value in plan.items():
+        (args.output / name).write_text(json.dumps(value, indent=2) + "\n")
+    print(f"Wrote review-only workshop plan to {args.output}; no AWS resources changed.")
+
+
+if __name__ == "__main__":
+    main()

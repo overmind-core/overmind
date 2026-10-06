@@ -9,6 +9,7 @@ from threading import RLock
 from typing import Any
 
 from django.db import transaction
+from django.db.models import Q
 from django.utils import timezone
 from pydantic import ValidationError
 
@@ -1215,15 +1216,18 @@ def _emit(dataset_id: Any, event: dict[str, Any]) -> dict[str, Any]:
     return payload
 
 
-def settle(dataset_id: Any) -> None:
+def settle(dataset_id: Any, *, turn_key: str = "") -> None:
     dataset = Dataset.objects.filter(pk=dataset_id).first()
     if dataset is None or dataset.state != Dataset.State.DIAGNOSING:
         return
     state = Dataset.State.ERROR if dataset.error else Dataset.State.IDLE
-    Dataset.objects.filter(pk=dataset_id, state=Dataset.State.DIAGNOSING).update(
-        state=state, updated_at=timezone.now()
-    )
-    _emit(dataset_id, {"type": "dataset_changed"})
+    owner = Dataset.objects.filter(pk=dataset_id, state=Dataset.State.DIAGNOSING)
+    if turn_key:
+        owner = owner.filter(
+            Q(workshop_task_id=turn_key) | Q(workshop_task_id="", agent_turn_key=turn_key)
+        )
+    if owner.update(state=state, updated_at=timezone.now()):
+        _emit(dataset_id, {"type": "dataset_changed"})
 
 
 def diagnose(dataset_id: Any, *, user: Any = None, turn_key: str = "") -> Iterator[dict[str, Any]]:
@@ -1244,7 +1248,7 @@ def diagnose(dataset_id: Any, *, user: Any = None, turn_key: str = "") -> Iterat
             turn_key=turn_key,
         )
     finally:
-        settle(dataset_id)
+        settle(dataset_id, turn_key=turn_key)
 
 
 def follow_up(
@@ -1270,7 +1274,7 @@ def follow_up(
             turn_key=turn_key,
         )
     finally:
-        settle(dataset_id)
+        settle(dataset_id, turn_key=turn_key)
 
 
 def transcript(dataset: Dataset) -> str:

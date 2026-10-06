@@ -887,6 +887,8 @@ def test_a_redelivered_turn_does_not_run_its_tools_twice(openrouter, fake_llm):
     )
     dataset = _dataset(intent="eval")
     assert list(agent.follow_up(dataset.id, "Keep the keep rows", turn_key="task-1"))
+    dataset.refresh_from_db()
+    assert dataset.state == Dataset.State.IDLE
     assert list(agent.follow_up(dataset.id, "Keep the keep rows", turn_key="task-1")) == []
     dataset.refresh_from_db()
     assert dataset.cells.count() == 2

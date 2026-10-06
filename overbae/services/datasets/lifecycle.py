@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import shutil
+from datetime import timedelta
 from typing import Any
 
 from django.db import transaction
@@ -12,6 +13,8 @@ from django.utils import timezone
 from overbae.models import Cell, Dataset
 from overbae.services.datasets import measure, paths, store
 from overbae.services.datasets.context import context_fingerprint
+
+WORKSHOP_QUEUE_SECONDS = 60 * 60
 
 
 class DatasetError(ValueError):
@@ -24,12 +27,34 @@ class DatasetError(ValueError):
 
 
 def enter_busy(dataset_id: Any, state: str, *, from_states: list[str]) -> bool:
-    """Claim the dataset for a landing, a run or a turn. ``updated_at`` moves
-    with the claim because the reaper measures a busy state's age from it."""
+    """Move the dataset into its owning operation's busy state."""
     return bool(
         Dataset.objects.filter(pk=dataset_id, state__in=from_states).update(
             state=state, error="", updated_at=timezone.now()
         )
+    )
+
+
+def queue_workshop(dataset_id: Any, task_id: str) -> None:
+    Dataset.objects.filter(pk=dataset_id).update(
+        workshop_task_id=task_id,
+        workshop_queued_at=timezone.now(),
+        workshop_started_at=None,
+    )
+
+
+@transaction.atomic
+def claim_workshop(dataset_id: Any, task_id: str, *, state: str) -> bool:
+    if not task_id:
+        return False
+    return bool(
+        Dataset.objects.filter(
+            pk=dataset_id,
+            state=state,
+            workshop_task_id=task_id,
+            workshop_started_at__isnull=True,
+            workshop_queued_at__gte=timezone.now() - timedelta(seconds=WORKSHOP_QUEUE_SECONDS),
+        ).update(workshop_started_at=timezone.now())
     )
 
 

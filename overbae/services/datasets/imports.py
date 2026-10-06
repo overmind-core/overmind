@@ -19,7 +19,7 @@ from django.utils import timezone
 from overbae.models import Dataset, DatasetImport, User
 from overbae.services.datasets import files, llm_calls, paths
 from overbae.services.datasets import land as landing
-from overbae.services.datasets.lifecycle import DatasetError
+from overbae.services.datasets.lifecycle import DatasetError, claim_workshop, queue_workshop
 from overbae.services.datasets.notebook import events
 
 logger = logging.getLogger(__name__)
@@ -480,7 +480,7 @@ def claim_diagnosis(dataset_id, task_id):
         .first()
     )
     if run is None:
-        return True
+        return claim_workshop(dataset_id, task_id, state=Dataset.State.DIAGNOSING)
     target = str(dataset_id)
     if (
         run.state != DatasetImport.State.COMPLETE
@@ -494,6 +494,8 @@ def claim_diagnosis(dataset_id, task_id):
         return False
     dataset = Dataset.objects.select_for_update().get(pk=dataset_id)
     if dataset.state != Dataset.State.DIAGNOSING or dataset.source is None:
+        return False
+    if not claim_workshop(dataset_id, task_id, state=Dataset.State.DIAGNOSING):
         return False
     claimed.append(target)
     run.result = {**run.result, "diagnose_claimed": claimed}
@@ -709,6 +711,8 @@ def execute(task_id, inputs):
             rows = 0
             for target, result in prepared:
                 landing.publish(target, result, user=user)
+                if state == Dataset.State.DIAGNOSING:
+                    queue_workshop(target.pk, str(uuid.uuid5(run.pk, f"diagnose:{target.pk}")))
                 rows += result.cell_fields["rows"]
             locked.state = DatasetImport.State.COMPLETE
             locked.result = {

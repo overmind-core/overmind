@@ -58,6 +58,9 @@ class Dataset(models.Model):
     agent_id = models.CharField(max_length=128, blank=True, default="")
     agent_messages = models.JSONField(default=list, blank=True)
     agent_turn_key = models.CharField(max_length=255, blank=True, default="")
+    workshop_task_id = models.CharField(max_length=255, blank=True, default="")
+    workshop_queued_at = models.DateTimeField(null=True, blank=True)
+    workshop_started_at = models.DateTimeField(null=True, blank=True)
     created_by = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.SET_NULL,
@@ -73,6 +76,11 @@ class Dataset(models.Model):
         indexes = [
             models.Index(fields=["project", "-created_at"]),
             models.Index(fields=["capability", "-created_at"]),
+            models.Index(
+                fields=["state", "workshop_started_at", "workshop_queued_at"],
+                name="dataset_workshop_busy_idx",
+                condition=models.Q(state__in=["diagnosing", "running"]),
+            ),
         ]
 
     def __str__(self):

@@ -26,7 +26,9 @@ def source_import(monkeypatch):
 
 
 def expire_diagnosis(dataset):
-    Dataset.objects.filter(pk=dataset.pk).update(updated_at=timezone.now() - timedelta(minutes=48))
+    Dataset.objects.filter(pk=dataset.pk).update(
+        workshop_queued_at=timezone.now() - timedelta(minutes=61)
+    )
     tasks.reap_stuck_runs()
     dataset.refresh_from_db()
     assert dataset.state == "error"

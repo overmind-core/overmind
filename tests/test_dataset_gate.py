@@ -129,7 +129,9 @@ def test_a_live_turn_on_an_old_dataset_is_not_reaped():
 def test_the_reaper_fails_a_state_only_after_that_state_own_limit():
     project, _capability, _user, train, evaluation = _setup()
     age = timedelta(seconds=dataset_tasks.RUN_HARD_LIMIT + dataset_tasks.REAP_GRACE + 60)
-    Dataset.objects.filter(pk=train.pk).update(state="running", updated_at=timezone.now() - age)
+    Dataset.objects.filter(pk=train.pk).update(
+        state="running", workshop_started_at=timezone.now() - age, updated_at=timezone.now() - age
+    )
     Dataset.objects.filter(pk=evaluation.pk).update(
         state="landing", updated_at=timezone.now() - age
     )

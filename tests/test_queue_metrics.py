@@ -150,7 +150,7 @@ def test_publisher_uses_refreshing_task_role_instead_of_archive_keys(settings, m
     settings.QUEUE_METRICS_CLUSTER = "test-cluster"
     settings.AWS_REGION = "eu-west-1"
     try:
-        assert publish() == {"metrics": 16}
+        assert publish() == {"metrics": 24}
         assert len(credential_reads) >= 2
         assert len(requests) == 2
         for _, headers in requests:

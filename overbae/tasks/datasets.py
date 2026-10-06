@@ -64,6 +64,7 @@ def reconcile_imports():
 
 
 @shared_task(
+    bind=True,
     name="overbae.tasks.datasets.run",
     soft_time_limit=RUN_SOFT_LIMIT,
     time_limit=RUN_HARD_LIMIT,
@@ -71,12 +72,12 @@ def reconcile_imports():
     reject_on_worker_lost=True,
 )
 def run(
-    *, dataset_id: str, user_id: str | None = None, proposal_id: str | None = None
+    self, *, dataset_id: str, user_id: str | None = None, proposal_id: str | None = None
 ) -> dict[str, Any]:
     from celery.exceptions import SoftTimeLimitExceeded
 
     from overbae.models import Dataset, User
-    from overbae.services.datasets import dispatch
+    from overbae.services.datasets import dispatch, lifecycle
     from overbae.services.datasets.notebook import run as run_svc
 
     dataset = Dataset.objects.filter(pk=dataset_id).first()
@@ -84,16 +85,20 @@ def run(
         return {"status": "gone"}
     if proposal_id and any(proposal_id in item.get("decisions", {}) for item in dataset.chat):
         return {"status": dataset.state}
+    if not lifecycle.claim_workshop(dataset_id, self.request.id, state=Dataset.State.RUNNING):
+        return {"status": "superseded"}
     user = User.objects.filter(pk=user_id).first() if user_id else None
     try:
         run_svc.execute(
             dataset,
             user=user,
             activate_cell_id=proposal_id,
-            hold=Dataset.State.DIAGNOSING if proposal_id else None,
+            hold=Dataset.State.RUNNING if proposal_id else None,
         )
         if dataset.error:
-            Dataset.objects.filter(pk=dataset_id).update(state=Dataset.State.ERROR)
+            Dataset.objects.filter(pk=dataset_id, workshop_task_id=self.request.id).update(
+                state=Dataset.State.ERROR
+            )
             dataset.state = Dataset.State.ERROR
         elif proposal_id:
             proposal = dataset.cells.get(pk=proposal_id)
@@ -103,14 +108,14 @@ def run(
             dataset.refresh_from_db()
             _emit(dataset_id, {"type": "dataset_changed"})
     except SoftTimeLimitExceeded:
-        Dataset.objects.filter(pk=dataset_id).update(
+        Dataset.objects.filter(pk=dataset_id, workshop_task_id=self.request.id).update(
             state=Dataset.State.ERROR, error="The run took too long and was stopped."
         )
         _emit(dataset_id, {"type": "run_failed", "error": "The run took too long and was stopped."})
         return {"status": "timeout"}
     except Exception as exc:  # noqa: BLE001 — a run must land in a terminal state
         logger.exception("run failed for dataset %s", dataset_id)
-        Dataset.objects.filter(pk=dataset_id).update(
+        Dataset.objects.filter(pk=dataset_id, workshop_task_id=self.request.id).update(
             state=Dataset.State.ERROR, error=str(exc)[:4000]
         )
         _emit(dataset_id, {"type": "run_failed", "error": str(exc)[:4000]})
@@ -140,7 +145,7 @@ def diagnose(self, *, dataset_id: str, user_id: str | None = None) -> dict[str, 
     except Exception as exc:  # noqa: BLE001 — the page shows the failure instead of hanging
         logger.exception("diagnosis failed for dataset %s", dataset_id)
         _emit(dataset_id, {"type": "chat_failed", "error": str(exc)[:400]})
-        agent.settle(dataset_id)
+        agent.settle(dataset_id, turn_key=self.request.id or "")
         return {"status": "failed"}
     return {"status": "ok"}
 
@@ -156,9 +161,12 @@ def diagnose(self, *, dataset_id: str, user_id: str | None = None) -> dict[str, 
 def turn(
     self, *, dataset_id: str, message: str, user_id: str | None = None, display: str | None = None
 ) -> dict[str, Any]:
-    from overbae.models import User
+    from overbae.models import Dataset, User
+    from overbae.services.datasets import lifecycle
     from overbae.services.datasets.notebook import agent
 
+    if not lifecycle.claim_workshop(dataset_id, self.request.id, state=Dataset.State.DIAGNOSING):
+        return {"status": "superseded"}
     user = User.objects.filter(pk=user_id).first() if user_id else None
     try:
         for _event in agent.follow_up(
@@ -168,19 +176,19 @@ def turn(
     except Exception as exc:  # noqa: BLE001
         logger.exception("agent turn failed for dataset %s", dataset_id)
         _emit(dataset_id, {"type": "chat_failed", "error": str(exc)[:400]})
-        agent.settle(dataset_id)
+        agent.settle(dataset_id, turn_key=self.request.id or "")
         return {"status": "failed"}
     return {"status": "ok"}
 
 
 @shared_task(name="overbae.tasks.datasets.reap_stuck_runs")
 def reap_stuck_runs() -> dict[str, Any]:
-    """A killed worker never marks its dataset terminal; anything busy for
-    longer than the hard limit is dead."""
+    """Queue waiting and execution have separate, immutable clocks."""
     from datetime import timedelta
 
     from overbae.models import Cell, Dataset, DatasetImport
     from overbae.services.datasets import imports
+    from overbae.services.datasets.lifecycle import WORKSHOP_QUEUE_SECONDS
 
     imports.reconcile()
     now = timezone.now()
@@ -190,12 +198,15 @@ def reap_stuck_runs() -> dict[str, Any]:
         (Dataset.State.RUNNING, RUN_HARD_LIMIT),
         (Dataset.State.DIAGNOSING, TURN_HARD_LIMIT),
     ):
-        stuck = Dataset.objects.filter(
-            state=state, updated_at__lt=now - timedelta(seconds=limit + REAP_GRACE)
-        )
+        stuck = Dataset.objects.filter(state=state)
         if state == Dataset.State.LANDING:
+            stuck = stuck.filter(updated_at__lt=now - timedelta(seconds=limit + REAP_GRACE))
             stuck = stuck.exclude(pk__in=DatasetImport.objects.values("dataset_id")).exclude(
                 pk__in=DatasetImport.objects.exclude(evaluation=None).values("evaluation_id")
+            )
+        else:
+            stuck = stuck.filter(
+                workshop_started_at__lt=now - timedelta(seconds=limit + REAP_GRACE)
             )
         with transaction.atomic():
             found = list(stuck.select_for_update(skip_locked=True).values_list("id", flat=True))
@@ -205,6 +216,19 @@ def reap_stuck_runs() -> dict[str, Any]:
                 updated_at=now,
             )
             ids += found
+    with transaction.atomic():
+        queued = Dataset.objects.filter(
+            state__in=[Dataset.State.DIAGNOSING, Dataset.State.RUNNING],
+            workshop_started_at__isnull=True,
+            workshop_queued_at__lt=now - timedelta(seconds=WORKSHOP_QUEUE_SECONDS),
+        )
+        waiting = list(queued.select_for_update(skip_locked=True).values_list("id", flat=True))
+        queue_error = (
+            "The request waited too long for a workshop worker. Send a message or run it again."
+        )
+        queued.filter(pk__in=waiting).update(
+            state=Dataset.State.ERROR, error=queue_error, updated_at=now
+        )
     Cell.objects.filter(dataset_id__in=ids, state=Cell.State.RUNNING).update(
         state=Cell.State.QUEUED
     )
@@ -212,4 +236,6 @@ def reap_stuck_runs() -> dict[str, Any]:
         _emit(
             dataset_id, {"type": "run_failed", "error": "The worker stopped before this finished."}
         )
-    return {"reaped": len(ids)}
+    for dataset_id in waiting:
+        _emit(dataset_id, {"type": "run_failed", "error": queue_error})
+    return {"reaped": len(ids) + len(waiting)}

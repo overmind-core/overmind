@@ -215,7 +215,7 @@ const Turn = memo(function Turn({
 /** What holds the dataset before the agent's first event: a turn that has not
  *  been picked up yet is queued, not working. */
 const WAITING: Record<string, string> = {
-  diagnosing: "Queued",
+  diagnosing: "Agent queued",
   landing: "Landing",
   running: "Running",
 };
@@ -302,7 +302,13 @@ export function DatasetChat({
       <div className="min-h-0 flex-1 overflow-y-auto" ref={scrollRef}>
         <div className="flex flex-col gap-4 px-3 py-3" ref={contentRef}>
           {turns.length === 0 && !live && (
-            <p className="text-xs text-muted-foreground">The agent starts when the source lands.</p>
+            <p className="text-xs text-muted-foreground">
+              {!sourceReady
+                ? "The agent starts when the source lands."
+                : state === "diagnosing"
+                  ? "Source loaded. The agent is queued."
+                  : "Ask about the data or request a change."}
+            </p>
           )}
           {turns.map((turn, i) => (
             <Turn

@@ -74,7 +74,11 @@ def test_approval_activates_exact_preview_and_resumes_once(dataset, monkeypatch,
     assert "record quality checks" in kwargs["message"]
     assert kwargs["display"] == "Proposal decisions: Resolve ambiguity — approved"
     dispatch.run_dataset(dataset, None, proposal=proposal)
-    tasks.run(dataset_id=str(dataset.id), proposal_id=str(proposal.id))
+    dataset.refresh_from_db()
+    tasks.run.apply(
+        kwargs={"dataset_id": str(dataset.id), "proposal_id": str(proposal.id)},
+        task_id=dataset.workshop_task_id,
+    )
     assert enqueue.call_count == 1
 
 
@@ -139,7 +143,11 @@ def test_changed_preview_after_approval_fails_without_resuming(dataset, monkeypa
         paths.cell_path(dataset.id, proposal.id),
         store.read_frame(paths.cell_path(dataset.id, dataset.source.id)),
     )
-    tasks.run(dataset_id=str(dataset.id), proposal_id=str(proposal.id))
+    dataset.refresh_from_db()
+    tasks.run.apply(
+        kwargs={"dataset_id": str(dataset.id), "proposal_id": str(proposal.id)},
+        task_id=dataset.workshop_task_id,
+    )
     dataset.refresh_from_db()
     assert dataset.state == Dataset.State.ERROR
     assert dataset.active_id == dataset.source.id

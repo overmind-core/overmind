@@ -33,7 +33,7 @@ Imports persist a `DatasetImport` receipt and source manifest before broker publ
 - `notebook/run.py` runs the queued cells in position order. A cell whose script and `input_fingerprint` are unchanged keeps its frame. The first failure stops the run and leaves the rest `queued`; the last good version stays active.
 - `notebook/runner.py` is the sandbox: an rlimited `python3 -I` child with `pd`, `np`, `source` and `df` bound, pandas/numpy file IO disabled, imports audited against `notebook/libraries.py` (the stdlib, a preloaded tier baked into the worker image, and an installable wheel-only tier that `install` pulls into `MEDIA_ROOT/libraries/<project>/`).
 - `lifecycle.py` holds every edit: `add_cell`, `edit_cell` (re-queues everything after), `remove_cell`, `accept_proposal`, `set_active`, `set_intent`, `set_capability`, `delete_dataset`.
-- `run`, `diagnose` and `turn` run on the `interactive` queue. Every busy transition goes through `lifecycle.enter_busy`, which moves `updated_at` with the state; `reap_stuck_runs` (beat) measures a busy state's age from it against that state's own hard limit. Live progress is Redis pubsub (`dataset:<id>`) replayed over the SSE `events/` endpoint.
+- `run`, `diagnose` and `turn` run on the `interactive` queue. Producers persist the task ID and queue timestamp before publication. A matching task claims `workshop_started_at` once; duplicate or superseded delivery cannot start again. Queue waiting has a separate one-hour deadline. `reap_stuck_runs` measures the execution limit from the claim, independently of progress updates. An agent retains `diagnosing` during nested cell execution. Live progress is Redis pubsub (`dataset:<id>`) replayed over the SSE `events/` endpoint.
 
 ## The agent
 
@@ -133,6 +133,8 @@ Thinking text is snapshotted at most once per second and capped at 16,000
 characters per step. Only provider-exposed text is shown; it is never fabricated.
 Completion updates that entry with `status`, `ms`, `engine` and `model`.
 MCP inspection and `get_job(kind=dataset_run)` expose the same saved progress.
+Interactive capacity metrics count durable queued and running datasets, including messages already reserved by workers. `scripts/plan_workshop_capacity.py` scales on demand per worker using the source-controlled process count, with queue-age and monitor alarms and scale-in suspended.
+
 The turn owns the dataset: `chat` sets `diagnosing` before it
 enqueues (from `idle` or `error`), a run inside the turn holds that state
 (`run.execute(hold=)`), API cell edits refuse it, and `agent.settle` ends it as
