@@ -189,7 +189,7 @@ services:
 
   celery-interactive-worker:
     <<: *build-common
-    command: watchmedo auto-restart --directory=/code/overbae --pattern='*.py' --recursive --signal SIGTERM -- celery -A overbae worker -l info --pool=prefork --concurrency=4 --prefetch-multiplier=1 -Q interactive
+    command: watchmedo auto-restart --directory=/code/overbae --pattern='*.py' --recursive --signal SIGTERM -- celery -A overbae worker -l info --pool=prefork --concurrency=4 --prefetch-multiplier=1 --hostname=interactive@%h -Q interactive
     restart: unless-stopped
     environment:
       <<: *env-common

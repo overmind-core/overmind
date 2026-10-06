@@ -17,6 +17,10 @@ import time
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
+HEALTH_CHECKED_QUEUES = {
+    "celery-landing-worker": "landing",
+    "celery-interactive-worker": "interactive",
+}
 READ_ONLY_FIELDS = (
     "taskDefinitionArn",
     "revision",
@@ -52,15 +56,21 @@ def render_task_definition(document, *, service, image, cluster):
         raise ValueError(f"No reviewed command for service {service!r}")
     if service == "celery-control-worker":
         _environment(app, QUEUE_METRICS_ENABLED="1", QUEUE_METRICS_CLUSTER=cluster)
-    if service == "celery-landing-worker":
+    if service in HEALTH_CHECKED_QUEUES:
         app["healthCheck"] = {
-            "command": ["CMD", "python", "-m", "overbae.worker_health", "landing"],
+            "command": [
+                "CMD",
+                "python",
+                "-m",
+                "overbae.worker_health",
+                HEALTH_CHECKED_QUEUES[service],
+            ],
             "interval": 30,
             "timeout": 15,
             "retries": 3,
             "startPeriod": 90,
         }
-        # The durable importer owns retries after an interrupted process; scale-in
+        # Durable leases own retries after an interrupted process; scale-in
         # remains disabled until a reviewed graceful-drain policy is installed.
         app["stopTimeout"] = 120
     return result
@@ -230,7 +240,7 @@ def deploy(cluster, service_name, image, timeout=4200):
             service,
             tasks,
             task_definition=arn,
-            require_health=service_name == "celery-landing-worker",
+            require_health=service_name in HEALTH_CHECKED_QUEUES,
         ):
             print(f"Ready: {service_name} {arn}")
             return
