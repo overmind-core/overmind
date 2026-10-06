@@ -408,7 +408,12 @@ def _upsert_sync(payload: EvaluatorUpsertInput, context: MCPContext) -> Evaluato
         kind == Evaluator.Kind.LLM_JUDGE
         and rubric
         and "checklist" not in payload.model_fields_set
-        and (not checklist or current is None or rubric != current.rubric_md)
+        and (
+            not checklist
+            or current is None
+            or rubric != current.rubric_md
+            or score_type != current.score_type
+        )
     ):
         compiled = attach_compiled_checklist(
             {
