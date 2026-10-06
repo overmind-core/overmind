@@ -206,7 +206,7 @@ def main():
     parser.add_argument("--image", required=True)
     parser.add_argument("--cluster", required=True)
     parser.add_argument("--min-capacity", type=int, default=1)
-    parser.add_argument("--max-capacity", type=int, default=4)
+    parser.add_argument("--max-capacity", type=int, default=8)
     parser.add_argument("--alarm-topic-arn")
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args()

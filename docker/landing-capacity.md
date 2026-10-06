@@ -16,13 +16,13 @@ aws ecs describe-services --cluster overmind-prod-cluster --services celery-batc
 python scripts/plan_landing_capacity.py \
   --task-definition batch-task-definition.json --service batch-service.json \
   --api-family api --cluster overmind-prod-cluster --image "$REVIEWED_IMAGE_URI" \
-  --min-capacity 1 --max-capacity 4 --alarm-topic-arn "$EXISTING_ALARM_TOPIC_ARN" \
+  --min-capacity 1 --max-capacity 8 --alarm-topic-arn "$EXISTING_ALARM_TOPIC_ARN" \
   --output landing-capacity-plan
 ```
 
 For staging, use its own batch snapshots and the observed API task-definition family (`overmind-staging-api`); the landing family retains the batch family prefix (`overmind-staging-celery-landing-worker`). Service and container names remain `celery-landing-worker` in each cluster. The `--api-family` value must come from that environment's current API task definition.
 
-The generator only writes local files. Review the image, task-role references, secret references, EFS mounts, network, min/max capacity, alarm destination and IAM additions. The initial plan preserves the existing 4-vCPU/8-GiB batch resource envelope and creates additional capacity. Its 1–4 task bounds are cost limits, not a promise to absorb unlimited arrivals. Adjust after measuring real import memory and execution time.
+The generator only writes local files. Review the image, task-role references, secret references, EFS mounts, network, min/max capacity, alarm destination and IAM additions. The initial plan preserves the existing 4-vCPU/8-GiB batch resource envelope and creates additional capacity. Its 1–8 task bounds are cost limits, not a promise to absorb unlimited arrivals. Adjust after measuring real import memory and execution time.
 
 The inspected production deployment inline policy does not grant `ecs:RunTask`, `ecs:ListTasks` or `ecs:DescribeTasks`. Check whether attached policies already grant them before applying an additional policy. The generated `deploy-role-policy.json` grants only API migration tasks in the selected cluster and task inspection; it does not expand `iam:PassRole`. Apply this reviewed additional policy to the environment's deployment role before using the new workflow. Its existing PassRole permission already covers the batch role reused by the landing task.
 
