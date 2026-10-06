@@ -45,6 +45,7 @@ def receipt_history():
             inputs={},
             published_at=now if state == "queued" else None,
             lease_until=now + timedelta(minutes=60) if state == "running" else None,
+            failure_code="worker_timeout" if state == "blocked" else "",
         )
     with connection.cursor() as cursor:
         cursor.execute("ANALYZE overbae_datasetimport")

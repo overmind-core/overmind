@@ -48,7 +48,7 @@ def scaling_plan(
     alarms = []
     for metric, threshold, periods, missing in (
         ("OldestQueuedAgeSeconds", 120, 2, "missing"),
-        ("BlockedImports" if queue == "landing" else "UnknownWork", 0, 1, "missing"),
+        ("NewlyBlockedImports" if queue == "landing" else "UnknownWork", 0, 1, "missing"),
         ("MissingWorkers", 0, 1, "breaching"),
         ("MetricHeartbeat", 1, 3, "breaching"),
     ):

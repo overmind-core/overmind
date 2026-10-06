@@ -27,7 +27,7 @@ def test_metrics_count_durable_waiting_not_only_admitted_broker_messages():
     values = {item["MetricName"]: item["Value"] for item in data}
     assert values["BacklogPerWorker"] == 51
     assert values["OldestQueuedAgeSeconds"] == 240
-    assert values["BlockedImports"] == 3
+    assert values["NewlyBlockedImports"] == 3
     assert values["MetricHeartbeat"] == 1
     assert all(
         item["Dimensions"]
@@ -47,22 +47,30 @@ def test_zero_worker_capacity_is_observable_without_division_by_zero():
 
 
 @pytest.mark.django_db
-def test_completed_and_cancelled_imports_do_not_request_capacity():
+def test_only_open_imports_request_capacity_and_only_new_system_blocks_alarm():
     from overbae.models import Dataset, DatasetImport, Project
 
     now = timezone.now()
     project = Project.objects.create(name="queue metric fixture", slug="queue-metrics")
-    for state, age in [
-        ("queued", 120),
-        ("running", 300),
-        ("complete", 5000),
-        ("cancelled", 5000),
-        ("blocked", 700),
+    for name, state, age, code in [
+        ("queued", "queued", 120, ""),
+        ("running", "running", 300, ""),
+        ("complete", "complete", 5000, ""),
+        ("cancelled", "cancelled", 5000, ""),
+        ("lost worker", "blocked", 700, "worker_timeout"),
+        ("old block", "blocked", 5000, "queue_timeout"),
+        ("bad rows", "blocked", 700, "import_failed"),
     ]:
-        dataset = Dataset.objects.create(project=project, name=state)
-        DatasetImport.objects.create(
-            dataset=dataset, state=state, queued_at=now - timedelta(seconds=age), inputs={}
+        dataset = Dataset.objects.create(project=project, name=name)
+        run = DatasetImport.objects.create(
+            dataset=dataset,
+            state=state,
+            queued_at=now - timedelta(seconds=age),
+            inputs={},
+            failure_code=code,
         )
+        if name == "old block":
+            DatasetImport.objects.filter(pk=run.pk).update(updated_at=now - timedelta(minutes=6))
     snapshot = read_workloads()["landing"]
     assert snapshot["waiting"] == 1
     assert snapshot["running"] == 1

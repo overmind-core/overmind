@@ -172,7 +172,7 @@ def test_capacity_plan_has_hard_bounds_and_actionable_missing_metrics_alarm(defi
         a.get("MetricName") == "MetricHeartbeat" and a["TreatMissingData"] == "breaching"
         for a in alarms
     )
-    assert any(a.get("MetricName") == "BlockedImports" for a in alarms)
+    assert any(a.get("MetricName") == "NewlyBlockedImports" for a in alarms)
     metric_permission = plan["metrics-role-policy.json"]["Statement"][0]
     assert metric_permission["Action"] == ["cloudwatch:PutMetricData"]
     assert (

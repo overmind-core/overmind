@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from datetime import timedelta
+
 from django.db.models import Count, Min, Q
 from django.utils import timezone
 
@@ -14,13 +16,22 @@ WORKER_SERVICES = {
     "batch": "celery-batch-worker",
     "interactive": "celery-interactive-worker",
 }
+SYSTEM_BLOCKS = ("queue_timeout", "worker_timeout", "dispatch_failed", "attempts_exhausted")
+NEWLY_BLOCKED_SECONDS = 5 * 60
 
 
 def read_workloads():
-    imports = DatasetImport.objects.filter(state__in=["queued", "running", "blocked"]).aggregate(
+    newly_blocked = Q(
+        state="blocked",
+        failure_code__in=SYSTEM_BLOCKS,
+        updated_at__gte=timezone.now() - timedelta(seconds=NEWLY_BLOCKED_SECONDS),
+    )
+    imports = DatasetImport.objects.filter(
+        Q(state__in=["queued", "running"]) | newly_blocked
+    ).aggregate(
         waiting=Count("pk", filter=Q(state="queued")),
         running=Count("pk", filter=Q(state="running")),
-        blocked=Count("pk", filter=Q(state="blocked")),
+        blocked=Count("pk", filter=newly_blocked),
         oldest=Min("queued_at", filter=Q(state="queued")),
     )
     evaluation = EvalGenerationWork.objects.filter(sample__run__status="running").aggregate(
@@ -55,7 +66,7 @@ def metric_data(workloads, running_workers, *, cluster, now=None):
             "BacklogPerWorker": (workload["waiting"] + workload["running"]) / max(workers, 1),
             "OldestQueuedAgeSeconds": age,
             "MetricHeartbeat": 1,
-            "BlockedImports" if queue == "landing" else "UnknownWork": workload["blocked"],
+            "NewlyBlockedImports" if queue == "landing" else "UnknownWork": workload["blocked"],
         }
         dimensions = [
             {"Name": "ClusterName", "Value": cluster},
