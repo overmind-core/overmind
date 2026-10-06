@@ -26,7 +26,7 @@ import modal
 
 from modal_shared.context_budget import completion_body
 from modal_shared.serving.args import lora_load_request
-from modal_shared.serving.artifacts import read_base_manifest
+from modal_shared.serving.artifacts import BASE_MANIFEST, read_base_manifest
 
 MODAL_ENVIRONMENT = os.environ.get("MODAL_ENVIRONMENT", "overmind-dev")
 IS_PROD = MODAL_ENVIRONMENT == "overmind-prod"
@@ -54,7 +54,7 @@ VLLM_PORT = 8000
 WORKER_TIMEOUT_SECONDS = 40 * MINUTES
 
 # modal_shared lives outside overbae on purpose — see modal_sft_worker.py.
-from modal_shared.modelfam import serve_image_from_checkpoint, serve_image_key  # noqa: E402
+from modal_shared.modelfam import serve_image_key  # noqa: E402
 from modal_shared.shared import (  # noqa: E402
     ADAPTER_PATH_HEADER,
     GPU_TYPE_HEADER,
@@ -160,41 +160,39 @@ def _rewrite_legacy_layer_types(cfg_path: Path, *, _json) -> None:
     print("[vLLM] rewrote layer_types attention → full_attention")
 
 
-def _peek_base_model(model_path: str) -> str:
-    meta_path = Path(WEIGHTS_MOUNT) / model_path / ".meta.json"
-    if not meta_path.is_file():
-        return ""
-    try:
-        return json.loads(meta_path.read_text()).get("base_model") or ""
-    except (OSError, json.JSONDecodeError, TypeError):
-        return ""
+def _serve_image_for(*, hinted: str = "") -> str:
+    return hinted or "vllm"
 
 
-def _peek_config_blobs(model_path: str) -> tuple[str, list[str]]:
-    cfg_path = Path(WEIGHTS_MOUNT) / model_path / "config.json"
-    if not cfg_path.is_file():
-        return "", []
-    try:
-        cfg = json.loads(cfg_path.read_text())
-    except (OSError, json.JSONDecodeError, TypeError):
-        return "", []
-    arches = cfg.get("architectures") or []
-    if not isinstance(arches, list):
-        arches = []
-    return str(cfg.get("model_type") or ""), [str(a) for a in arches]
+# Identity is immutable once a base is sealed. Read it through the volume API: reload()
+# on this mount fails while another concurrent request still has a checkpoint file open.
+_base_identities: dict[str, str] = {}
 
 
-def _serve_image_for(*, model_name: str, model_path: str, hinted: str = "") -> str:
-    if hinted and hinted != "vllm":
-        return hinted
-    weights_vol.reload()
-    model_type, arches = _peek_config_blobs(model_path)
-    return serve_image_from_checkpoint(
-        model_name=model_name,
-        base_model=_peek_base_model(model_path),
-        model_type=model_type,
-        architectures=arches,
+def _store_base_identity(model_path: str, raw: bytes) -> str:
+    identity = json.loads(raw).get("identity")
+    if not isinstance(identity, str) or not identity:
+        raise RuntimeError(f"Serving base manifest has no identity: {model_path}")
+    _base_identities[model_path] = identity
+    return identity
+
+
+def _base_identity(model_path: str) -> str:
+    cached = _base_identities.get(model_path)
+    if cached:
+        return cached
+    raw = b"".join(weights_vol.read_file(f"{model_path}/{BASE_MANIFEST}"))
+    return _store_base_identity(model_path, raw)
+
+
+async def _base_identity_aio(model_path: str) -> str:
+    cached = _base_identities.get(model_path)
+    if cached:
+        return cached
+    raw = b"".join(
+        [chunk async for chunk in weights_vol.read_file.aio(f"{model_path}/{BASE_MANIFEST}")]
     )
+    return _store_base_identity(model_path, raw)
 
 
 def _make_worker(
@@ -206,14 +204,13 @@ def _make_worker(
     serve_image: str = "vllm",
     enable_lora: bool = False,
     max_lora_rank: int = 16,
+    base_identity: str = "",
 ):
     cls_name = worker_cls_name(gpu_type, serve_image, enable_lora=enable_lora)
     worker_cls = modal.Cls.from_name(APP_NAME, cls_name)
     identity = {}
     if enable_lora:
-        weights_vol.reload()
-        manifest = read_base_manifest(Path(WEIGHTS_MOUNT) / model_path)
-        identity["base_identity"] = manifest["identity"]
+        identity["base_identity"] = base_identity or _base_identity(model_path)
     return worker_cls(
         model_path=model_path,
         model_name=model_name,
@@ -868,11 +865,7 @@ class InferenceAPIServer:
         max_model_len: int,
         serve_image: str = "vllm",
     ) -> str:
-        image = _serve_image_for(
-            model_name=model_name,
-            model_path=rel_weights_path(model_path),
-            hinted=serve_image,
-        )
+        image = _serve_image_for(hinted=serve_image)
         return resolve_inference_url(
             gpu_type=gpu_type,
             model_path=model_path,
@@ -991,16 +984,13 @@ class InferenceAPIServer:
                 )
 
             rel_path = rel_weights_path(routing["weights_path"])
-            serve_image = _serve_image_for(
-                model_name=model_id,
-                model_path=rel_path,
-                hinted=routing.get("serve_image") or "",
-            )
+            serve_image = _serve_image_for(hinted=routing.get("serve_image") or "")
             # Shared-base mode: the pool is keyed by the base, so it is named after the base
             # rather than this model. Naming it after the model would give every adapter its
             # own pool and its own cold start, which is the thing this avoids.
             adapter_rel = rel_weights_path(routing.get("adapter_path") or "")
             adapter = (model_id, adapter_rel) if adapter_rel else None
+            base_identity = await _base_identity_aio(rel_path) if adapter else ""
             try:
                 worker, cls_name = _make_worker(
                     gpu_type=routing["gpu_type"],
@@ -1010,6 +1000,7 @@ class InferenceAPIServer:
                     serve_image=serve_image,
                     enable_lora=bool(adapter),
                     max_lora_rank=routing.get("lora_rank") or 16,
+                    base_identity=base_identity,
                 )
             except ValueError as e:
                 raise HTTPException(status_code=400, detail=str(e)) from e
@@ -1109,7 +1100,7 @@ def pre_warm(
     is often already serving another adapter.
     """
     rel_path = rel_weights_path(weights_path)
-    serve_image = _serve_image_for(model_name=model_id, model_path=rel_path)
+    serve_image = _serve_image_for(hinted=serve_image_key(model_id))
     worker, _cls_name = _make_worker(
         gpu_type=gpu_type,
         model_path=rel_path,

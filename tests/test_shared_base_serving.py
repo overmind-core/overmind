@@ -154,9 +154,11 @@ async def test_control_endpoints_are_not_proxied(path):
 def test_shared_pool_uses_base_identity_not_adapter_identity(monkeypatch):
     cls = Mock()
     lookup = Mock(return_value=cls)
+    vol = Mock()
+    vol.read_file.return_value = [json.dumps({"identity": "immutable"}).encode()]
     monkeypatch.setattr(serving.modal.Cls, "from_name", lookup)
-    monkeypatch.setattr(serving, "weights_vol", Mock())
-    monkeypatch.setattr(serving, "read_base_manifest", Mock(return_value={"identity": "immutable"}))
+    monkeypatch.setattr(serving, "weights_vol", vol)
+    serving._base_identities.pop(".base_models/base", None)
     serving._make_worker(
         gpu_type="H200",
         model_path=".base_models/base",
@@ -164,6 +166,39 @@ def test_shared_pool_uses_base_identity_not_adapter_identity(monkeypatch):
         max_model_len=32768,
         enable_lora=True,
     )
+    vol.reload.assert_not_called()
+    vol.read_file.assert_called_once_with(".base_models/base/.base-manifest.json")
     assert lookup.call_args.args == (serving.APP_NAME, "H200_vllm_lora")
     assert cls.call_args.kwargs["base_identity"] == "immutable"
     assert "adapter" not in cls.call_args.kwargs
+    serving._make_worker(
+        gpu_type="H200",
+        model_path=".base_models/base",
+        model_name="base",
+        max_model_len=32768,
+        enable_lora=True,
+    )
+    vol.read_file.assert_called_once()
+
+
+def test_gateway_picks_serve_image_without_reloading(monkeypatch):
+    vol = Mock()
+    monkeypatch.setattr(serving, "weights_vol", vol)
+    assert serving._serve_image_for(hinted="") == "vllm"
+    assert serving._serve_image_for(hinted="vllm") == "vllm"
+    vol.reload.assert_not_called()
+    vol.read_file.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_gateway_reads_base_identity_without_reloading(monkeypatch):
+    async def chunks(_path):
+        yield json.dumps({"identity": "immutable"}).encode()
+
+    vol = Mock()
+    vol.read_file.aio = chunks
+    monkeypatch.setattr(serving, "weights_vol", vol)
+    serving._base_identities.pop(".base_models/fresh", None)
+    assert await serving._base_identity_aio(".base_models/fresh") == "immutable"
+    vol.reload.assert_not_called()
+    assert await serving._base_identity_aio(".base_models/fresh") == "immutable"
