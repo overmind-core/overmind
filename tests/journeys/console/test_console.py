@@ -1,5 +1,5 @@
 from ..datasets import tickets
-from ..stack import drain
+from ..stack import drain, settle
 
 
 def test_the_console_shows_the_synced_agent_and_its_traces(
@@ -36,11 +36,14 @@ def test_a_file_uploaded_in_the_console_becomes_a_usable_dataset(
     console.sees("3 rows")
     console.choose("#dataset-purpose", "Evaluation")
     console.press("Create dataset")
-    drain(worker)
 
-    [dataset] = [
-        d for d in mcp.call("list_datasets", {})["datasets"] if d["name"] == "Console upload"
-    ]
-    inspected = mcp.call("inspect_dataset", {"dataset": dataset["id"]})
+    def landed():
+        for dataset in mcp.call("list_datasets", {})["datasets"]:
+            if dataset["name"] == "Console upload":
+                inspected = mcp.call("inspect_dataset", {"dataset": dataset["id"]})
+                return inspected if inspected["active"] else None
+        return None
+
+    inspected = settle(worker, landed)
     assert inspected["active"]["rows"] == 3
     assert inspected["intent"] == "eval"

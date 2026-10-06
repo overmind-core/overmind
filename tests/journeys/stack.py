@@ -117,3 +117,16 @@ def drain(ledger: TaskLedger, timeout: float = 120) -> None:
         if time.monotonic() > deadline:
             raise TimeoutError(f"Tasks still running after {timeout}s: {ledger.pending()}")
         time.sleep(0.05)
+
+
+def settle(ledger: TaskLedger, condition, timeout: float = 60):
+    """Drain until ``condition()`` holds. A browser action returns before its request
+    commits, so the work it publishes may not exist yet when a single drain runs."""
+    deadline = time.monotonic() + timeout
+    while True:
+        drain(ledger, timeout=max(1.0, deadline - time.monotonic()))
+        if result := condition():
+            return result
+        if time.monotonic() > deadline:
+            raise TimeoutError(f"{condition.__name__} not met after {timeout}s")
+        time.sleep(0.1)
