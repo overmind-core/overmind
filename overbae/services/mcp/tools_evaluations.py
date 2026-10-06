@@ -404,8 +404,6 @@ def _upsert_sync(payload: EvaluatorUpsertInput, context: MCPContext) -> Evaluato
         or []
     )
     variable_mapping = _json_entries(variable_mapping)
-    # Same step as Console authoring: a generative judge scores from its
-    # checklist, so prose alone is compiled before save.
     if (
         kind == Evaluator.Kind.LLM_JUDGE
         and rubric
