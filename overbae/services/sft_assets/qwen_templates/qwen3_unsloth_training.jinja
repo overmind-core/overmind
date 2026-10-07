@@ -52,7 +52,8 @@
         {{- '<|im_start|>' + message.role + '\n' }}
         {%- generation %}
         {%- if loop.index0 > ns.last_query_index %}
-            {%- if loop.last or (not loop.last and reasoning_content) %}
+            {#- Empty <think> only appears on the final turn, so a following tool message changes the prefix and TRL rejects the template. Serving keeps thinking off, so omit it. -#}
+            {%- if reasoning_content.strip() %}
                 {{- '<think>\n' + reasoning_content.strip('\n') + '\n</think>\n\n' + content.lstrip('\n') }}
             {%- else %}
                 {{- content }}

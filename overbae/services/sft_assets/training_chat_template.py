@@ -29,6 +29,7 @@ KNOWN_TEMPLATE_PATCHES: tuple[tuple[str, str], ...] = (
     ("qwen_templates/qwen35_unsloth_4b.jinja", "qwen_templates/qwen35_unsloth_4b_training.jinja"),
     ("qwen_templates/qwen36_unsloth.jinja", "qwen_templates/qwen36_unsloth_training.jinja"),
     ("qwen_templates/qwen38_unsloth.jinja", "qwen_templates/qwen38_unsloth_training.jinja"),
+    ("lfm_templates/lfm25_12b_unsloth.jinja", "lfm_templates/lfm25_12b_unsloth_training.jinja"),
 )
 
 

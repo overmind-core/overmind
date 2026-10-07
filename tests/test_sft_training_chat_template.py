@@ -120,6 +120,70 @@ def test_gemma4_e2b_training_matches_base() -> None:
     assert env.from_string(base).render(**kwargs) == env.from_string(training).render(**kwargs)
 
 
+def test_lfm25_12b_training_matches_base() -> None:
+    env = _generation_env()
+    base = env.from_string((_ASSETS / "lfm_templates/lfm25_12b_unsloth.jinja").read_text())
+    training = env.from_string(
+        (_ASSETS / "lfm_templates/lfm25_12b_unsloth_training.jinja").read_text()
+    )
+    cases = [
+        [
+            {"role": "user", "content": "What is 2+2?"},
+            {"role": "assistant", "content": "4"},
+        ],
+        [
+            {"role": "user", "content": "hi"},
+            {"role": "assistant", "content": "<think>secret</think>old"},
+            {"role": "user", "content": "again"},
+            {"role": "assistant", "content": "now"},
+        ],
+    ]
+    for messages in cases:
+        kwargs = {
+            "messages": messages,
+            "tools": None,
+            "add_generation_prompt": False,
+            "bos_token": "<|startoftext|>",
+        }
+        assert base.render(**kwargs) == training.render(**kwargs)
+    plain = training.render(
+        messages=cases[0],
+        tools=None,
+        add_generation_prompt=False,
+        bos_token="<|startoftext|>",
+    )
+    assert "<think>" not in plain
+
+
+def test_qwen3_training_omits_empty_think_and_keeps_prefix() -> None:
+    env = _generation_env()
+    calls = [{"type": "function", "function": {"name": "dummy", "arguments": {}}}]
+    tool_turn = [
+        {"role": "user", "content": "dummy"},
+        {"role": "assistant", "content": "", "tool_calls": calls},
+    ]
+    with_tool = tool_turn + [{"role": "tool", "name": "dummy", "content": "dummy"}]
+    plain = [
+        {"role": "user", "content": "What is 2+2?"},
+        {"role": "assistant", "content": "4"},
+    ]
+    reasoned = [
+        {"role": "user", "content": "What is 2+2?"},
+        {"role": "assistant", "content": "<think>\nhalf\n</think>\n\n4"},
+    ]
+    for name in ("qwen3_unsloth_training.jinja", "qwen3_unsloth_06b_training.jinja"):
+        template = env.from_string((_ASSETS / "qwen_templates" / name).read_text(encoding="utf-8"))
+        first = template.render(messages=tool_turn, tools=None, add_generation_prompt=False)
+        second = template.render(messages=with_tool, tools=None, add_generation_prompt=True)
+        assert second.startswith(first)
+        assert "<think>" not in first
+        answer = template.render(messages=plain, tools=None, add_generation_prompt=False)
+        assert "<think>" not in answer
+        assert answer.endswith("4<|im_end|>\n")
+        kept = template.render(messages=reasoned, tools=None, add_generation_prompt=False)
+        assert "<think>\nhalf\n</think>" in kept
+
+
 def test_unknown_template_is_left_alone() -> None:
     tok = _Tok("{{ messages }}")
     assert patch_known_training_template(tok) is False
