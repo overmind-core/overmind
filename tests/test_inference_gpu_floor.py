@@ -4,9 +4,10 @@ from overbae.modal.gpu_selector import select_gpu
 from overbae.modal.model_registry import get_model_config_any_backend
 
 
+@pytest.mark.parametrize("model_id", ["google/gemma-4-E2B-it", "google/gemma-4-E4B-it"])
 @pytest.mark.parametrize("context", [512, 4096, 8192, 131072])
-def test_gemma_e4b_uses_l40s(context):
-    config = get_model_config_any_backend("google/gemma-4-E4B-it")
+def test_gemma4_small_models_use_l40s(model_id, context):
+    config = get_model_config_any_backend(model_id)
     assert select_gpu(config, context)[0] == "L40S"
 
 

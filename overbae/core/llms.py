@@ -38,6 +38,7 @@ from overbae.core.model_registry import (
     resolve_model,
 )
 from overbae.models import DeployedModel
+from overbae.services.deployment import serving_gpu
 
 logger = logging.getLogger(__name__)
 
@@ -151,7 +152,7 @@ def _inference_routing_header_items(model_id: str) -> tuple[tuple[str, str], ...
     return tuple(
         sorted(
             _modal_routing_headers(
-                gpu_type=dep.gpu_type,
+                gpu_type=serving_gpu(dep),
                 weights_path=dep.weights_path,
                 max_model_len=dep.max_model_len,
                 serve_image=serve_image_key(dep.base_model_id, dep.model_id),

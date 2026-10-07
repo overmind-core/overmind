@@ -16,7 +16,7 @@ from django.utils import timezone
 from modal.call_graph import InputStatus
 
 from overbae.core.errors import InputValidationError
-from overbae.modal.gpu_selector import select_gpu
+from overbae.modal.gpu_selector import gpu_vram_gb, select_gpu
 from overbae.modal.model_registry import get_hf_base, get_model_config_any_backend
 from overbae.models import DeployedModel, FinetuningJob, FinetuningJobEval
 from overbae.services.finetuning_runner import MAX_ACTIVITY_LINES
@@ -80,6 +80,26 @@ def deployment_progress(deployed: DeployedModel) -> dict:
         else None,
         "last_error": deployed.error_message or None,
     }
+
+
+def serving_gpu(deployed: DeployedModel) -> str:
+    """Stored GPU, raised when it sits below the catalog floor.
+
+    A row saved before the floor was measured keeps booting a worker that cannot hold the model.
+    """
+    stored = deployed.gpu_type or ""
+    cfg = get_model_config_any_backend(deployed.base_model_id) or {}
+    minimum = (cfg.get("inference") or {}).get("min_vram_gb") or 0
+    if not stored or not minimum or not deployed.max_model_len:
+        return stored
+    if deployed.is_lora:
+        cfg = {**cfg, "fp8_supported": False}
+    selected, _ = select_gpu(cfg, deployed.max_model_len)
+    if gpu_vram_gb(stored) >= gpu_vram_gb(selected):
+        return stored
+    DeployedModel.objects.filter(pk=deployed.pk, gpu_type=stored).update(gpu_type=selected)
+    deployed.gpu_type = selected
+    return selected
 
 
 def _reset(deployed: DeployedModel) -> None:
@@ -315,7 +335,7 @@ def _remote_operation(deployed: DeployedModel):
             "model_id": deployed.model_id,
             "weights_path": deployed.weights_path,
             "max_model_len": deployed.max_model_len,
-            "gpu_type": deployed.gpu_type,
+            "gpu_type": serving_gpu(deployed),
             "tokenizer_name": base,
         }
     if stage == "warm":
@@ -329,7 +349,7 @@ def verification_operation(deployed: DeployedModel):
     ), {
         "model_id": deployed.model_id,
         "weights_path": deployed.weights_path,
-        "gpu_type": deployed.gpu_type,
+        "gpu_type": serving_gpu(deployed),
         "max_model_len": deployed.max_model_len,
         "adapter": (deployed.model_id, deployed.adapter_path.removeprefix("/weights/"))
         if deployed.adapter_path

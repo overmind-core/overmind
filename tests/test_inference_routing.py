@@ -141,6 +141,22 @@ def test_inference_client_posts_routing_headers(gateway):
     assert headers[MAX_MODEL_LEN_HEADER.lower()] == "32768"
 
 
+def test_a_stored_gemma_e2b_l4_is_raised_to_l40s(gateway):
+    deployed = _deployed(
+        "ft-e2b",
+        gpu_type="L4",
+        weights_path="/weights/.base_models/unsloth--gemma-4-E2B-it",
+        max_model_len=16384,
+        base_model_id="google/gemma-4-E2B-it",
+        is_lora=True,
+        lora_rank=32,
+    )
+    _chat(deployed)
+    assert _sent(gateway)[GPU_TYPE_HEADER.lower()] == "L40S"
+    deployed.refresh_from_db()
+    assert deployed.gpu_type == "L40S"
+
+
 def test_inference_client_posts_routing_from_deployed(gateway):
     _chat(_deployed("ft-row", gpu_type="L4", weights_path="/weights/ft-row", max_model_len=4096))
     headers = _sent(gateway)
