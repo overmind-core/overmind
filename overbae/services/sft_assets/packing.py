@@ -23,6 +23,19 @@ def packs_safely(attn_implementation: str | None) -> bool:
     return attn_implementation in _VARLEN_ATTN
 
 
+def use_row_packing(requested: bool, attn_implementation: str | None) -> bool:
+    """Concatenate rows only when the kernel splits them.
+
+    Varlen kernels split documents only if position ids restart per row, and
+    this trainer does not emit those ids. SDPA's causal mask never splits
+    them. A dense block mask does, but it is quadratic in context.
+    """
+    if not (requested and packs_safely(attn_implementation)):
+        return False
+    # Varlen still needs per-row position ids, which this trainer does not emit.
+    return False
+
+
 def trl_flattens_micro_batch(
     packing: bool, padding_free: bool, packing_strategy: str = "bfd"
 ) -> bool:

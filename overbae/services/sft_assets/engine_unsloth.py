@@ -97,7 +97,7 @@ from common import (  # noqa: E402
     rewrite_adapter_base_model,
 )
 from datasets import Dataset  # noqa: E402
-from packing import sft_collator_flags  # noqa: E402
+from packing import sft_collator_flags, use_row_packing  # noqa: E402
 from pretok import pretok_row  # noqa: E402
 from token_accuracy import TokenAccuracy  # noqa: E402
 from transformers import AutoTokenizer  # noqa: E402
@@ -254,7 +254,21 @@ def _pack_rows(rows: list[dict], max_length: int) -> list[dict]:
     return packed
 
 
-def _build_dataset(tok, rows: list[dict]) -> Dataset | None:
+def _attention_implementation(model) -> str | None:
+    objects = [model]
+    get_base = getattr(model, "get_base_model", None)
+    if get_base is not None:
+        objects.append(get_base())
+    for obj in objects:
+        cfg = getattr(obj, "config", None)
+        for candidate in (cfg, getattr(cfg, "text_config", None) if cfg is not None else None):
+            impl = getattr(candidate, "_attn_implementation", None)
+            if impl:
+                return str(impl)
+    return None
+
+
+def _build_dataset(tok, rows: list[dict], *, pack: bool) -> Dataset | None:
     out: list[dict] = []
     for i, row in enumerate(rows):
         # Baseten receives conversations; Modal receives the CPU-validated artifact.
@@ -273,7 +287,7 @@ def _build_dataset(tok, rows: list[dict]) -> Dataset | None:
         out.append({"input_ids": ids, "labels": labels})
     if not out:
         return None
-    if PACK_ROWS:
+    if pack:
         packed = _pack_rows(out, MAX_LENGTH)
         print(
             f"Packed {len(out)} rows → {len(packed)} sequences (max_length={MAX_LENGTH})",
@@ -458,10 +472,18 @@ def main() -> None:
     if not train_rows:
         raise RuntimeError("data.jsonl is empty — nothing to train on")
 
-    train_ds = _build_dataset(tokenizer, train_rows)
+    _attn = _attention_implementation(model)
+    _pack = use_row_packing(PACK_ROWS, _attn)
+    if PACK_ROWS and not _pack:
+        print(
+            f"Not packing rows: {_attn or 'unspecified'} attention does not isolate documents",
+            flush=True,
+        )
+
+    train_ds = _build_dataset(tokenizer, train_rows, pack=_pack)
     if train_ds is None:
         raise RuntimeError("pretok produced zero usable training rows")
-    val_ds = _build_dataset(tokenizer, val_rows) if val_rows else None
+    val_ds = _build_dataset(tokenizer, val_rows, pack=_pack) if val_rows else None
     has_val = val_ds is not None
 
     # Mean row length × micro-batch — the real denominator for activation C.
