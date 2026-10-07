@@ -86,12 +86,13 @@ def _write_meta(run_dir: Path, **fields) -> None:
 
 def _run_training(run_id: str, env: dict[str, str]) -> dict:
     """Shared body of every training Function — only the container image differs between them."""
+    # Reload before mkdir. A stale mount does not show runs/, and creating it
+    # returns EPERM even though the committed upload is already there.
+    sft_vol.reload()
+    weights_vol.reload()
     run_dir = _run_dir(run_id)
     run_dir.mkdir(parents=True, exist_ok=True)
     final_dir = run_dir / "final"
-
-    sft_vol.reload()
-    weights_vol.reload()
     _write_meta(run_dir, run_id=run_id, status="starting", started_at=time.time())
     sft_vol.commit()
 
