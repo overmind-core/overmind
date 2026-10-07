@@ -74,6 +74,7 @@ if torch.cuda.is_available() and torch.cuda.device_count() > 1:
 # gets the TRL_SRC (pinned) classes; binding first would lock them to the
 # unsloth-patched copies, whose defaults the rest of this module works around.
 from basepath import base_weights_for  # noqa: E402
+from causal_mask import install_training_causal_mask  # noqa: E402
 from common import (  # noqa: E402
     CHECKPOINT_DIR,
     GRAD_ACCUM,
@@ -105,6 +106,20 @@ from trl import SFTConfig, SFTTrainer  # noqa: E402
 from truncation import refuse_truncation  # noqa: E402
 
 apply_shared_patches()
+
+
+def _install_qwen3_causal_mask(model) -> None:
+    try:
+        import unsloth.utils.attention_dispatch as dispatch
+        import xformers.ops.fmha.attn_bias as attn_bias
+    except ImportError:
+        return
+    # Multi-GPU turns xformers off: its bias is built once and does not move with the layer.
+    if not getattr(dispatch, "HAS_XFORMERS", False):
+        return
+    if install_training_causal_mask(model, attn_bias.LowerTriangularMask()):
+        print("Training forward uses the causal mask", flush=True)
+
 
 # unsloth_zoo force-injects `push_to_hub_token` into TrainingArguments.to_dict()
 # on transformers>=5.0, guarding a pop that TRL main now only does for
@@ -430,6 +445,7 @@ def main() -> None:
             random_state=SEED,
         )
     _hooks.post_load(model, tokenizer, use_lora=USE_LORA)
+    _install_qwen3_causal_mask(model)
     if Path("preparation.json").exists():
         prepared = json.loads(Path("preparation.json").read_text())
         prepared_tokenizer = AutoTokenizer.from_pretrained("tokenizer", local_files_only=True)
