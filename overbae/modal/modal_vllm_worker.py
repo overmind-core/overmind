@@ -818,9 +818,11 @@ def _register_worker(cls_name: str, gpu_type: str, serve_image: str, *, lora=Fal
             **(
                 {
                     "cpu": 8,
+                    # Restore maps the saved process while rebuilding it. Below this the
+                    # container is SIGKILL'd (137) and Modal retries with a cold boot.
                     "memory": {
-                        "L4": 65536,
-                        "L40S": 98304,
+                        "L4": 131072,
+                        "L40S": 196608,
                         "A100-80GB": 131072,
                         "H200": 196608,
                         "B200": 262144,
