@@ -1229,7 +1229,9 @@ def run_experiment_advance(experiment_id: str) -> None:
     from overbae.tasks.utils.task_lock import acquire_task_lock
 
     logger.info("optimizer advance start exp=%s", experiment_id)
-    with acquire_task_lock(f"optimizer_advance_{experiment_id}") as acquired:
+    with acquire_task_lock(
+        f"optimizer_advance_{experiment_id}", timeout=120, renew=True
+    ) as acquired:
         if not acquired:
             logger.info(
                 "optimizer advance skipped exp=%s (another worker holds the lock)", experiment_id
