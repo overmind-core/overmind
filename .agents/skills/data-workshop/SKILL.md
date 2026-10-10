@@ -133,7 +133,7 @@ Thinking text is snapshotted at most once per second and capped at 16,000
 characters per step. Only provider-exposed text is shown; it is never fabricated.
 Completion updates that entry with `status`, `ms`, `engine` and `model`.
 MCP inspection and `get_job(kind=dataset_run)` expose the same saved progress.
-Interactive capacity metrics count durable queued and running datasets, including messages already reserved by workers. `scripts/plan_workshop_capacity.py` scales on demand per worker using the source-controlled process count, with queue-age and monitor alarms and scale-in suspended.
+Interactive capacity metrics count durable queued and running datasets, including messages already reserved by workers. Terraform in `cloud-platform` scales the interactive service on backlog per worker at its process count, with queue-age and monitor alarms and scale-in suspended.
 
 The turn owns the dataset: `chat` sets `diagnosing` before it
 enqueues (from `idle` or `error`), a run inside the turn holds that state
