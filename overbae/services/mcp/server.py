@@ -9,7 +9,9 @@ from typing import Any
 from urllib.parse import parse_qs, urlsplit
 from uuid import UUID
 
+from asgiref.sync import ThreadSensitiveContext, sync_to_async
 from django.conf import settings
+from django.db import connections
 from django.http.request import split_domain_port, validate_host
 from mcp import types
 from mcp.server.lowlevel import Server
@@ -243,6 +245,30 @@ async def _read_body(receive: Receive) -> tuple[bytes, Receive]:
     return body, replay
 
 
+_close_connections = sync_to_async(connections.close_all, thread_sensitive=True)
+
+
+class RequestThreadMiddleware:
+    """Django's ASGIHandler gives each request its own sync thread and closes its
+    connections; MCP and OAuth requests never reach that handler. Without the
+    context, every thread-sensitive call in the process shares one thread, so one
+    slow tool call queues every other request behind it."""
+
+    def __init__(self, app):
+        self.app = app
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        if scope["type"] != "http":
+            await self.app(scope, receive, send)
+            return
+        async with ThreadSensitiveContext():
+            try:
+                await self.app(scope, receive, send)
+            finally:
+                # Connections are per thread, and this thread ends with the context.
+                await _close_connections()
+
+
 class MCPTransportMiddleware:
     def __init__(self, app):
         self.app = app
@@ -356,6 +382,7 @@ def create_mcp_application() -> Starlette:
             ),
         ],
         middleware=[
+            Middleware(RequestThreadMiddleware),
             Middleware(MCPAuthMiddleware),
             Middleware(MCPTransportMiddleware),
         ],
