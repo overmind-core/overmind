@@ -3,11 +3,15 @@
 from __future__ import annotations
 
 import logging
+import os
+import threading
 from typing import Any
 
 from celery import shared_task
 from django.db import transaction
 from django.utils import timezone
+
+from overbae.services.datasets import heartbeat, lifecycle
 
 logger = logging.getLogger(__name__)
 
@@ -18,6 +22,14 @@ RUN_HARD_LIMIT = 22 * 60
 TURN_SOFT_LIMIT = 40 * 60
 TURN_HARD_LIMIT = 42 * 60
 REAP_GRACE = 5 * 60
+
+
+def _start_workshop(task: Any, dataset_id: str) -> threading.Event:
+    owner = f"dataset {dataset_id} task {task.request.id}"
+    logger.info("%s claimed %s on %s pid %d", task.name, owner, task.request.hostname, os.getpid())
+    return heartbeat.start(
+        lambda: lifecycle.beat_workshop(dataset_id, task.request.id), owner=owner
+    )
 
 
 def _emit(dataset_id: Any, event: dict[str, Any]) -> None:
@@ -77,7 +89,7 @@ def run(
     from celery.exceptions import SoftTimeLimitExceeded
 
     from overbae.models import Dataset, User
-    from overbae.services.datasets import dispatch, heartbeat, lifecycle
+    from overbae.services.datasets import dispatch
     from overbae.services.datasets.notebook import run as run_svc
 
     dataset = Dataset.objects.filter(pk=dataset_id).first()
@@ -87,7 +99,7 @@ def run(
         return {"status": dataset.state}
     if not lifecycle.claim_workshop(dataset_id, self.request.id, state=Dataset.State.RUNNING):
         return {"status": "superseded"}
-    beat = heartbeat.start(lambda: lifecycle.beat_workshop(dataset_id, self.request.id))
+    beat = _start_workshop(self, dataset_id)
     user = User.objects.filter(pk=user_id).first() if user_id else None
     try:
         run_svc.execute(
@@ -136,12 +148,12 @@ def run(
 )
 def diagnose(self, *, dataset_id: str, user_id: str | None = None) -> dict[str, Any]:
     from overbae.models import User
-    from overbae.services.datasets import heartbeat, imports, lifecycle
+    from overbae.services.datasets import imports
     from overbae.services.datasets.notebook import agent
 
     if not imports.claim_diagnosis(dataset_id, self.request.id):
         return {"status": "superseded"}
-    beat = heartbeat.start(lambda: lifecycle.beat_workshop(dataset_id, self.request.id))
+    beat = _start_workshop(self, dataset_id)
     user = User.objects.filter(pk=user_id).first() if user_id else None
     try:
         for _event in agent.diagnose(dataset_id, user=user, turn_key=self.request.id or ""):
@@ -168,12 +180,11 @@ def turn(
     self, *, dataset_id: str, message: str, user_id: str | None = None, display: str | None = None
 ) -> dict[str, Any]:
     from overbae.models import Dataset, User
-    from overbae.services.datasets import heartbeat, lifecycle
     from overbae.services.datasets.notebook import agent
 
     if not lifecycle.claim_workshop(dataset_id, self.request.id, state=Dataset.State.DIAGNOSING):
         return {"status": "superseded"}
-    beat = heartbeat.start(lambda: lifecycle.beat_workshop(dataset_id, self.request.id))
+    beat = _start_workshop(self, dataset_id)
     user = User.objects.filter(pk=user_id).first() if user_id else None
     try:
         for _event in agent.follow_up(
@@ -198,7 +209,7 @@ def reap_stuck_runs() -> dict[str, Any]:
     from django.db.models import Q
 
     from overbae.models import Cell, Dataset, DatasetImport
-    from overbae.services.datasets import heartbeat, imports
+    from overbae.services.datasets import imports
     from overbae.services.datasets.lifecycle import WORKSHOP_QUEUE_SECONDS
 
     imports.reconcile()
@@ -224,7 +235,21 @@ def reap_stuck_runs() -> dict[str, Any]:
                 )
             )
         with transaction.atomic():
-            found = list(stuck.select_for_update(skip_locked=True).values_list("id", flat=True))
+            rows = list(
+                stuck.select_for_update(skip_locked=True).values(
+                    "id", "workshop_task_id", "workshop_started_at", "updated_at"
+                )
+            )
+            for row in rows:
+                logger.warning(
+                    "reaping %s dataset %s task %s: started %s, last beat %s",
+                    state,
+                    row["id"],
+                    row["workshop_task_id"] or "-",
+                    row["workshop_started_at"],
+                    row["updated_at"],
+                )
+            found = [row["id"] for row in rows]
             stuck.filter(pk__in=found).update(
                 state=Dataset.State.ERROR,
                 error="The worker stopped before this finished.",

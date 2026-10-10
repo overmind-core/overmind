@@ -705,7 +705,7 @@ def execute(task_id, inputs):
         run.refresh_from_db()
         return {"status": run.state}
     stage = paths.dataset_dir(dataset.pk) / "imports" / str(run.pk) / str(claimed.owner)
-    beat = heartbeat.start(lambda: renew(claimed))
+    beat = heartbeat.start(lambda: renew(claimed), owner=f"import {run.pk}")
     try:
         run.refresh_from_db()
         validate_sources(run)
